@@ -25,3 +25,4 @@ pub mod tensor_shape { include!(concat!(env!("OUT_DIR"), "/tensor_shape.rs")); }
 pub mod types { include!(concat!(env!("OUT_DIR"), "/types.rs")); }
 pub mod versions { include!(concat!(env!("OUT_DIR"), "/versions.rs")); }
 
+pub use self::graph::GraphDef;
