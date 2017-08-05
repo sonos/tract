@@ -60,6 +60,14 @@ impl Matrix {
         }
     }
 
+    pub fn take_f32s(self) -> Option<ArrayD<f32>> {
+        if let Matrix::F32(it) = self {
+            Some(it)
+        } else {
+            None
+        }
+    }
+
     pub fn as_f32s(&self) -> Option<&ArrayD<f32>> {
         if let &Matrix::F32(ref it) = self {
             Some(it)

@@ -113,17 +113,28 @@ fn op_const() {
     println!("{:?}", outputs[0]);
 }
 
-#[test]
-fn op_expand_dims() {
+fn test_one(name: &str) {
     let mut ours = tfdeploy::GraphAnalyser::from_file("model.pb");
     let theirs = load_tensorflow_graph("model.pb");
     let input = frame();
     let outputs = run_tensorflow_graph(
         &theirs.unwrap(),
         &hashmap!("inputs" => input.clone()),
-        &[&"word_cnn/ExpandDims_2"],
+        &[name],
     );
     ours.set_value("inputs", input).unwrap();
-    let our_output = ours.eval("word_cnn/ExpandDims_2").unwrap().unwrap();
-    assert_eq!(&outputs, our_output);
+    let our_output = ours.eval(name).unwrap().unwrap();
+    assert!(outputs[0].as_f32s().unwrap().all_close(our_output[0].as_f32s().unwrap(), 0.001));
+}
+
+#[test]
+fn test_net() {
+    let mut ours = tfdeploy::GraphAnalyser::from_file("model.pb");
+    println!("{:?}", ours.node_names());
+
+    test_one("word_cnn/ExpandDims_2");
+    test_one("word_cnn/ExpandDims_3");
+    test_one("word_cnn/layer_0_2/convolution");
+    test_one("word_cnn/layer_0_2/BiasAdd");
+    test_one("logits");
 }

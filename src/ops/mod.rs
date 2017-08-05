@@ -3,6 +3,7 @@
 //use tfpb::types::DataType;
 use ::{Matrix, Result};
 
+mod arith;
 mod conv;
 mod shape;
 pub mod trivial;
@@ -22,6 +23,7 @@ impl OpBuilder {
 
     pub fn build(&self, pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         match pb.get_op() {
+            "BiasAdd" => Ok(Box::new(arith::Add::build(pb)?)),
             "Const" => Ok(Box::new(trivial::Const::build(pb)?)),
             "Conv2D" => Ok(Box::new(conv::Conv2D::build(pb)?)),
             "ExpandDims" => Ok(Box::new(shape::ExpandDims)),

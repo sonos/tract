@@ -20,6 +20,7 @@ error_chain!{
     foreign_links {
         Io(::std::io::Error);
         NdarrayShape(::ndarray::ShapeError);
+        StrUtf8(::std::str::Utf8Error);
     }
 }
 
@@ -98,9 +99,8 @@ impl GraphAnalyser {
     }
 
     pub fn set_value(&mut self, name: &str, value: Matrix) -> Result<()> {
-        use std::borrow::BorrowMut;
-        let mut node = self.get_node(name)?;
-        if let Some(mut ph) = node.op.downcast_ref::<ops::Placeholder>() {
+        let node = self.get_node(name)?;
+        if let Some(ph) = node.op.downcast_ref::<ops::trivial::Placeholder>() {
             ph.set(value);
             Ok(())
         } else {
@@ -109,7 +109,6 @@ impl GraphAnalyser {
     }
 
     fn compute(&mut self, name: &str) -> Result<()> {
-        println!("computing {}", name);
         if self.outputs.contains_key(name) {
             return Ok(())
         }
