@@ -3,6 +3,7 @@
 //use tfpb::types::DataType;
 use ::{Matrix, Result};
 
+mod activ;
 mod arith;
 mod conv;
 mod shape;
@@ -28,6 +29,7 @@ impl OpBuilder {
             "Conv2D" => Ok(Box::new(conv::Conv2D::build(pb)?)),
             "ExpandDims" => Ok(Box::new(shape::ExpandDims)),
             "Placeholder" => Ok(Box::new(trivial::Placeholder::build(pb)?)),
+            "Relu" => Ok(Box::new(activ::Relu::build(pb)?)),
             _ => Ok(Box::new(UnimplementedOp(pb.get_op().to_string())))
         }
     }
