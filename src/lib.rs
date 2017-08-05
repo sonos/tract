@@ -1,13 +1,18 @@
+extern crate ndarray;
+extern crate num_traits;
 extern crate protobuf;
 
 pub mod tfpb;
+pub mod ops;
 
-use std::rc;
+use std::{ fs, path, rc, str };
 use std::collections::{HashMap, HashSet};
+use ops::Op;
 
-struct Node {
+pub struct Node {
     name: String,
     inputs: Vec<(rc::Rc<Node>, usize)>,
+    op: Op,
 }
 
 impl Node {
@@ -25,7 +30,7 @@ impl Node {
     }
 }
 
-struct GraphAnalyser {
+pub struct GraphAnalyser {
     graph: tfpb::GraphDef,
     nodes: HashMap<String, rc::Rc<Node>>,
 }
@@ -38,7 +43,17 @@ impl GraphAnalyser {
         }
     }
 
-    fn get_node(&mut self, name: &str) -> rc::Rc<Node> {
+    pub fn from_file<P: AsRef<path::Path>>(p: P) -> GraphAnalyser {
+        let mut model = fs::File::open(p).unwrap();
+        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model).unwrap();
+        GraphAnalyser::new(loaded)
+    }
+
+    pub fn node_names(&self) -> Vec<&str> {
+        self.graph.get_node().iter().map(|n| n.get_name()).collect()
+    }
+
+    pub fn get_node(&mut self, name: &str) -> rc::Rc<Node> {
         if !self.nodes.contains_key(name) {
             let node = self.make_node(name);
             self.nodes.insert(name.to_string(), rc::Rc::new(node));
@@ -60,6 +75,7 @@ impl GraphAnalyser {
                 .iter()
                 .map(|s| (self.get_node(&s), 0))
                 .collect(),
+            op: ops::Op::build(&pbnode)
         }
     }
 }
@@ -76,6 +92,16 @@ mod tests {
             .unwrap();
         let mut graph = GraphAnalyser::new(graph);
         let tree = graph.get_node("logits");
+        println!("{}", tree.dump_eval_tree());
+    }
+
+    #[test]
+    fn inputs() {
+        let mut model = fs::File::open("model.pb").unwrap();
+        let graph = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model)
+            .unwrap();
+        let mut graph = GraphAnalyser::new(graph);
+        let tree = graph.get_node("word_cnn/ExpandDims_2");
         println!("{}", tree.dump_eval_tree());
     }
 

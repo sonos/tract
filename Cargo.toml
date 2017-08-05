@@ -6,7 +6,13 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 [dependencies]
 protobuf = "*"
 ndarray = "*"
+num-traits = "*"
+error-chain = "*"
+maplit="*"
+tensorflow = "*"
 
 [build-dependencies]
 protoc-rust   = "*"
 tempdir = "0.3"
+
+[dev-dependencies]
