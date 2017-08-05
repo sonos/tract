@@ -30,6 +30,7 @@ impl OpBuilder {
             "ExpandDims" => Ok(Box::new(shape::ExpandDims)),
             "Placeholder" => Ok(Box::new(trivial::Placeholder::build(pb)?)),
             "Relu" => Ok(Box::new(activ::Relu::build(pb)?)),
+            "Squeeze" => Ok(Box::new(shape::Squeeze::build(pb)?)),
             _ => Ok(Box::new(UnimplementedOp(pb.get_op().to_string())))
         }
     }

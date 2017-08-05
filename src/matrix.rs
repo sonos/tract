@@ -83,4 +83,13 @@ impl Matrix {
             None
         }
     }
+
+    pub fn take_i32s(self) -> Option<ArrayD<i32>> {
+        if let Matrix::I32(it) = self {
+            Some(it)
+        } else {
+            None
+        }
+    }
+
 }
