@@ -8,7 +8,7 @@ use std::{fs, path};
 use std::collections::HashMap;
 
 use ndarray::ArrayD;
-use tfdeploy::Result;
+use tfdeploy::*;
 
 fn load_tensorflow_graph<P: AsRef<path::Path>>(p: P) -> Result<tf::Graph> {
     use std::io::Read;
@@ -22,19 +22,25 @@ fn load_tensorflow_graph<P: AsRef<path::Path>>(p: P) -> Result<tf::Graph> {
     Ok(graph)
 }
 
-fn tf2nd<D: tf::TensorType>(t: &tf::Tensor<D>) -> ArrayD<D> {
+fn tf_to_mat_f32(t: &tf::Tensor<f32>) -> Matrix {
     let dims = ndarray::IxDyn(&*t.dims().iter().map(|a| *a as _).collect::<Vec<_>>());
-    ArrayD::from_shape_vec(dims, t.to_vec()).unwrap()
+    Matrix::F32(ArrayD::from_shape_vec(dims, t.to_vec()).unwrap())
 }
 
-fn nd2tf<D: tf::TensorType>(t: &ArrayD<D>) -> tf::Tensor<D> {
+fn tf_to_mat_i32(t: &tf::Tensor<i32>) -> Matrix {
+    let dims = ndarray::IxDyn(&*t.dims().iter().map(|a| *a as _).collect::<Vec<_>>());
+    Matrix::I32(ArrayD::from_shape_vec(dims, t.to_vec()).unwrap())
+}
+
+fn mat_f32_to_tf(t: &Matrix) -> tf::Tensor<f32> {
     use ndarray::Dimension;
+    let t = t.as_f32s().unwrap();
     let dims = t.dim()
         .as_array_view()
         .iter()
         .map(|x| *x as _)
         .collect::<Vec<_>>();
-    let mut tf: tf::Tensor<D> = tf::Tensor::new(&*dims);
+    let mut tf: tf::Tensor<f32> = tf::Tensor::new(&*dims);
     for (tf, t) in tf.iter_mut().zip(t.iter()) {
         *tf = *t
     }
@@ -43,11 +49,11 @@ fn nd2tf<D: tf::TensorType>(t: &ArrayD<D>) -> tf::Tensor<D> {
 
 fn run_tensorflow_graph(
     graph: &tf::Graph,
-    inputs: &HashMap<&str, ArrayD<f32>>,
+    inputs: &HashMap<&str, Matrix>,
     outputs: &[&str],
-) -> Vec<ArrayD<f32>> {
+) -> Vec<Matrix> {
     let mut session = tf::Session::new(&tf::SessionOptions::new(), &graph).unwrap();
-    let tf_inputs: Vec<tf::Tensor<f32>> = inputs.iter().map(|p| nd2tf(p.1)).collect();
+    let tf_inputs: Vec<tf::Tensor<f32>> = inputs.iter().map(|p| mat_f32_to_tf(p.1)).collect();
     let mut step = tf::StepWithGraph::new();
     for (ix, (name, _)) in inputs.iter().enumerate() {
         step.add_input(
@@ -65,8 +71,17 @@ fn run_tensorflow_graph(
     session.run(&mut step).unwrap();
     outputs
         .into_iter()
-        .map(|o| tf2nd(&step.take_output(o).unwrap()))
+        .map(|o| tf_to_mat_f32(&step.take_output(o).unwrap()))
         .collect()
+}
+
+const INPUTS: [[f32; 40]; 334] = include!("../inputs.json");
+
+fn frame() -> Matrix {
+    use ndarray::IxDyn;
+    Matrix::F32(
+        ndarray::Array::from_shape_fn(IxDyn(&[41, 40]), |d| INPUTS[d[0]][d[1]])
+    )
 }
 
 #[test]
@@ -74,8 +89,9 @@ fn nd2tf2nd() {
     let a: ndarray::ArrayD<f32> = ndarray::arr2(&[[1., 2.], [3., 4.]])
         .into_shape(ndarray::IxDyn(&[2, 2]))
         .unwrap();
-    let tf = nd2tf(&a);
-    let a2 = tf2nd(&tf);
+    let a = Matrix::F32(a);
+    let tf = mat_f32_to_tf(&a);
+    let a2 = tf_to_mat_f32(&tf);
     assert_eq!(a2, a);
 }
 
@@ -85,11 +101,29 @@ fn op_const() {
     let theirs = load_tensorflow_graph("model.pb");
     println!("ours: {:?}", ours.node_names());
     let a: ndarray::ArrayD<f32> = ndarray::arr2(&[[1., 2.], [3., 4.]])
-        .into_shape(ndarray::IxDyn(&[2,2]))
+        .into_shape(ndarray::IxDyn(&[2, 2]))
         .unwrap();
+    let a = Matrix::F32(a);
     println!("{:?}", a);
-    let outputs = run_tensorflow_graph(&theirs.unwrap(),
-        &hashmap!("inputs" => a), &[&"word_cnn/ExpandDims_2"]);
+    let outputs = run_tensorflow_graph(
+        &theirs.unwrap(),
+        &hashmap!("inputs" => a),
+        &[&"word_cnn/ExpandDims_2"],
+    );
     println!("{:?}", outputs[0]);
-    panic!();
+}
+
+#[test]
+fn op_expand_dims() {
+    let mut ours = tfdeploy::GraphAnalyser::from_file("model.pb");
+    let theirs = load_tensorflow_graph("model.pb");
+    let input = frame();
+    let outputs = run_tensorflow_graph(
+        &theirs.unwrap(),
+        &hashmap!("inputs" => input.clone()),
+        &[&"word_cnn/ExpandDims_2"],
+    );
+    ours.set_value("inputs", input).unwrap();
+    let our_output = ours.eval("word_cnn/ExpandDims_2").unwrap().unwrap();
+    assert_eq!(&outputs, our_output);
 }

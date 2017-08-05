@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate downcast_rs;
+#[macro_use]
 extern crate error_chain;
 extern crate ndarray;
 extern crate num_traits;
@@ -46,6 +48,7 @@ pub struct GraphAnalyser {
     graph: tfpb::GraphDef,
     op_builder: ops::OpBuilder,
     nodes: HashMap<String, rc::Rc<Node>>,
+    outputs: HashMap<String, Vec<Matrix>>,
 }
 
 impl GraphAnalyser {
@@ -54,6 +57,7 @@ impl GraphAnalyser {
             graph,
             op_builder: ops::OpBuilder::new(),
             nodes: HashMap::new(),
+            outputs: HashMap::new(),
         }
     }
 
@@ -91,6 +95,37 @@ impl GraphAnalyser {
                 .collect::<Result<_>>()?,
             op: self.op_builder.build(&pbnode)?
         })
+    }
+
+    pub fn set_value(&mut self, name: &str, value: Matrix) -> Result<()> {
+        use std::borrow::BorrowMut;
+        let mut node = self.get_node(name)?;
+        if let Some(mut ph) = node.op.downcast_ref::<ops::Placeholder>() {
+            ph.set(value);
+            Ok(())
+        } else {
+            Err(format!("node {} is not a placeholder", name))?
+        }
+    }
+
+    fn compute(&mut self, name: &str) -> Result<()> {
+        println!("computing {}", name);
+        if self.outputs.contains_key(name) {
+            return Ok(())
+        }
+        let node:rc::Rc<Node> = self.get_node(name)?;
+        let inputs:Vec<Matrix> = node.inputs.iter().map(|i| {
+            self.compute(&*i.0.name)?;
+            Ok(self.outputs.get(&i.0.name).unwrap()[i.1].clone())
+        }).collect::<Result<_>>()?;
+        let outputs = node.op.eval(inputs)?;
+        self.outputs.insert(name.to_string(), outputs);
+        Ok(())
+    }
+
+    pub fn eval(&mut self, name: &str) -> Result<Option<&Vec<Matrix>>> {
+        self.compute(name)?;
+        Ok(self.outputs.get(name))
     }
 }
 

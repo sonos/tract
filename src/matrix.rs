@@ -1,7 +1,9 @@
-#[derive(Debug, Clone)]
+use ndarray::prelude::*;
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Matrix {
-    F32(::ndarray::ArrayD<f32>),
-    I32(::ndarray::ArrayD<i32>),
+    F32(ArrayD<f32>),
+    I32(ArrayD<i32>),
 }
 
 /*
@@ -22,7 +24,7 @@ impl Matrix {
             if t.get_tensor_content().len() != 0 {
                 Err(format!("content with no dim"))?
             }
-            let d = ::ndarray::IxDyn(&[1]);
+            let d = IxDyn(&[1]);
             match dtype {
                 DT_INT32 => Ok(I32(A::from_shape_vec(d, t.get_int_val().to_vec())?)),
                 _ => {
@@ -37,7 +39,7 @@ impl Matrix {
                 Err(format!("some dim, no content"))?
             }
             let dims: Vec<usize> = dims.iter().map(|d| d.size as usize).collect();
-            let d = ::ndarray::IxDyn(&*dims);
+            let d = IxDyn(&*dims);
             match dtype {
                 DT_FLOAT => {
                     let value: &[f32] = unsafe {
@@ -55,6 +57,22 @@ impl Matrix {
                     ))?
                 }
             }
+        }
+    }
+
+    pub fn as_f32s(&self) -> Option<&ArrayD<f32>> {
+        if let &Matrix::F32(ref it) = self {
+            Some(it)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_i32s(&self) -> Option<&ArrayD<i32>> {
+        if let &Matrix::I32(ref it) = self {
+            Some(it)
+        } else {
+            None
         }
     }
 }
