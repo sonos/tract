@@ -1,22 +1,34 @@
+#[macro_use]
+extern crate error_chain;
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
 
 pub mod tfpb;
+pub mod matrix;
 pub mod ops;
 
 use std::{ fs, path, rc, str };
 use std::collections::{HashMap, HashSet};
 use ops::Op;
 
+pub use matrix::Matrix;
+
+error_chain!{
+    foreign_links {
+        Io(::std::io::Error);
+        NdarrayShape(::ndarray::ShapeError);
+    }
+}
+
 pub struct Node {
     name: String,
     inputs: Vec<(rc::Rc<Node>, usize)>,
-    op: Op,
+    op: Box<Op>,
 }
 
 impl Node {
-    fn dump_eval_tree(&self) -> String {
+    pub fn dump_eval_tree(&self) -> String {
         self._dump_eval_tree(0, &mut HashSet::new())
     }
 
@@ -32,6 +44,7 @@ impl Node {
 
 pub struct GraphAnalyser {
     graph: tfpb::GraphDef,
+    op_builder: ops::OpBuilder,
     nodes: HashMap<String, rc::Rc<Node>>,
 }
 
@@ -39,6 +52,7 @@ impl GraphAnalyser {
     pub fn new(graph: tfpb::GraphDef) -> GraphAnalyser {
         GraphAnalyser {
             graph,
+            op_builder: ops::OpBuilder::new(),
             nodes: HashMap::new(),
         }
     }
@@ -53,30 +67,30 @@ impl GraphAnalyser {
         self.graph.get_node().iter().map(|n| n.get_name()).collect()
     }
 
-    pub fn get_node(&mut self, name: &str) -> rc::Rc<Node> {
+    pub fn get_node(&mut self, name: &str) -> Result<rc::Rc<Node>> {
         if !self.nodes.contains_key(name) {
-            let node = self.make_node(name);
+            let node = self.make_node(name)?;
             self.nodes.insert(name.to_string(), rc::Rc::new(node));
         }
-        self.nodes.get(name).unwrap().clone()
+        Ok(self.nodes.get(name).unwrap().clone())
     }
 
-    fn make_node(&mut self, name: &str) -> Node {
+    fn make_node(&mut self, name: &str) -> Result<Node> {
         let pbnode = self.graph
             .get_node()
             .iter()
             .find(|n| n.get_name() == name)
             .unwrap()
             .clone();
-        Node {
+        Ok(Node {
             name: name.to_string(),
             inputs: pbnode
                 .get_input()
                 .iter()
-                .map(|s| (self.get_node(&s), 0))
-                .collect(),
-            op: ops::Op::build(&pbnode)
-        }
+                .map(|s| self.get_node(&s).map(|n| (n, 0)))
+                .collect::<Result<_>>()?,
+            op: self.op_builder.build(&pbnode)?
+        })
     }
 }
 
@@ -91,7 +105,7 @@ mod tests {
         let graph = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model)
             .unwrap();
         let mut graph = GraphAnalyser::new(graph);
-        let tree = graph.get_node("logits");
+        let tree = graph.get_node("logits").unwrap();
         println!("{}", tree.dump_eval_tree());
     }
 
@@ -101,7 +115,7 @@ mod tests {
         let graph = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model)
             .unwrap();
         let mut graph = GraphAnalyser::new(graph);
-        let tree = graph.get_node("word_cnn/ExpandDims_2");
+        let tree = graph.get_node("word_cnn/ExpandDims_2").unwrap();
         println!("{}", tree.dump_eval_tree());
     }
 

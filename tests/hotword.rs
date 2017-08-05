@@ -1,6 +1,4 @@
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate maplit;
 extern crate ndarray;
 extern crate tensorflow as tf;
@@ -10,12 +8,7 @@ use std::{fs, path};
 use std::collections::HashMap;
 
 use ndarray::ArrayD;
-
-error_chain!{
-    foreign_links {
-        Io(::std::io::Error);
-    }
-}
+use tfdeploy::Result;
 
 fn load_tensorflow_graph<P: AsRef<path::Path>>(p: P) -> Result<tf::Graph> {
     use std::io::Read;
@@ -25,7 +18,7 @@ fn load_tensorflow_graph<P: AsRef<path::Path>>(p: P) -> Result<tf::Graph> {
     let mut graph = tf::Graph::new();
     graph
         .import_graph_def(&*buffer_model, &tf::ImportGraphDefOptions::new())
-        .map_err(|tfs| format!("Tensorflow error {:?}", tfs));
+        .map_err(|tfs| format!("Tensorflow error {:?}", tfs))?;
     Ok(graph)
 }
 
@@ -56,7 +49,7 @@ fn run_tensorflow_graph(
     let mut session = tf::Session::new(&tf::SessionOptions::new(), &graph).unwrap();
     let tf_inputs: Vec<tf::Tensor<f32>> = inputs.iter().map(|p| nd2tf(p.1)).collect();
     let mut step = tf::StepWithGraph::new();
-    for (ix, (name, value)) in inputs.iter().enumerate() {
+    for (ix, (name, _)) in inputs.iter().enumerate() {
         step.add_input(
             &graph.operation_by_name_required(name).unwrap(),
             0,
