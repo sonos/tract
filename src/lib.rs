@@ -2,6 +2,7 @@
 extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
@@ -63,8 +64,11 @@ impl GraphAnalyser {
     }
 
     pub fn from_file<P: AsRef<path::Path>>(p: P) -> GraphAnalyser {
-        let mut model = fs::File::open(p).unwrap();
-        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model).unwrap();
+        Self::from_reader(fs::File::open(p).unwrap())
+    }
+
+    pub fn from_reader<R: ::std::io::Read>(mut r:R) -> GraphAnalyser {
+        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r).unwrap();
         GraphAnalyser::new(loaded)
     }
 
@@ -98,6 +102,11 @@ impl GraphAnalyser {
         })
     }
 
+    pub fn reset(&mut self) -> Result<()> {
+        self.outputs.clear();
+        Ok(())
+    }
+
     pub fn set_value(&mut self, name: &str, value: Matrix) -> Result<()> {
         let node = self.get_node(name)?;
         if let Some(ph) = node.op.downcast_ref::<ops::trivial::Placeholder>() {
@@ -118,6 +127,7 @@ impl GraphAnalyser {
             Ok(self.outputs.get(&i.0.name).unwrap()[i.1].clone())
         }).collect::<Result<_>>()?;
         let outputs = node.op.eval(inputs)?;
+        // println!("storing {} -> {:?}", name, outputs.iter().map(|m| m.shape()).collect::<Vec<_>>());
         self.outputs.insert(name.to_string(), outputs);
         Ok(())
     }
@@ -125,6 +135,11 @@ impl GraphAnalyser {
     pub fn eval(&mut self, name: &str) -> Result<Option<&Vec<Matrix>>> {
         self.compute(name)?;
         Ok(self.outputs.get(name))
+    }
+
+    pub fn take(&mut self, name: &str) -> Result<Vec<Matrix>> {
+        self.compute(name)?;
+        Ok(self.outputs.remove(name).ok_or(format!("{} does not exits", name))?)
     }
 }
 

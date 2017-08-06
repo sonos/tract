@@ -37,8 +37,6 @@ impl Op for Squeeze {
     fn eval(&self, inputs:Vec<Matrix>) -> Result<Vec<Matrix>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let mut shape = data.shape().to_vec();
-        println!("shape: {:?}", shape);
-        println!("dims: {:?}", self.dims);
         for d in &self.dims {
             if *d >= 0 {
                 shape.remove(*d as usize);

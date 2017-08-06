@@ -53,60 +53,63 @@ impl Conv2D {
 
 impl Op for Conv2D {
     fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+        // [ batch, in_rows, in_cols, in_depth ]
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
-        let kernel = inputs[1].as_f32s().ok_or("Expect input #1 to be i32")?;
-        /*
-        println!("input shape: {:?}", data.shape());
-        println!("kernel shape: {:?}", kernel.shape());
+        // [ filter_rows, filter_cols, in_depth, out_depth]
+        let filter = inputs[1].as_f32s().ok_or("Expect input #1 to be i32")?;
+        println!("data shape: {:?}", data.shape());
+        println!("filter shape: {:?}", filter.shape());
         println!("strides: {:?}", self.strides);
-        */
-        if data.shape()[1] != kernel.shape()[0] || data.shape()[2] != kernel.shape()[1] ||
-            data.shape()[3] != kernel.shape()[2]
+        println!("data:\n{:?}", data);
+        println!("filter:\n{:?}", filter);
+        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 || 
+            self.strides[1] != self.strides[2]
         {
-            Err("dimension mismatch between data and kernel for Conv2D")?
+            Err(format!("strides must be of the form [1, s, s, 1], found {:?}", self.strides))?
         }
+        if data.shape().len() != 4 || filter.shape().len() != 4 {
+            Err(format!("data and filter must be of dimension 4. data is {:?}, filter is {:?}", data.shape(), filter.shape()))?
+        }
+        if data.shape()[3] != filter.shape()[2] {
+            Err(format!("data fourth dim (in_depth) must match filter third (data is {:?}, filter is {:?})", data.shape(), filter.shape()))?
+        }
+        let in_rows = data.shape()[1];
+        let in_cols = data.shape()[2];
+        let in_depth = data.shape()[3];
+        let filter_rows = filter.shape()[0];
+        let filter_cols = filter.shape()[1];
+        let out_depth = filter.shape()[3];
+
         let (out_height, out_width) = match self.padding {
             Padding::Same => (
-                (data.shape()[1] as f32 / self.strides[1] as f32) as isize,
-                (data.shape()[2] as f32 / self.strides[2] as f32) as isize,
+                (in_rows as f32 / self.strides[1] as f32) as isize,
+                (in_cols as f32 / self.strides[2] as f32) as isize,
             ),
             Padding::Valid => (
-                ((data.shape()[1] - kernel.shape()[0] + 1) as f32 /
+                ((in_rows - filter_rows + 1) as f32 /
                      self.strides[1] as f32) as isize,
-                ((data.shape()[2] - kernel.shape()[1] + 1) as f32 /
+                ((in_cols - filter_cols + 1) as f32 /
                      self.strides[2] as f32) as isize,
             ),
         };
-        /*
-        let pad_along_height = cmp::max(
-            0isize,
-            ((out_height - 1) * self.strides[1] as isize + kernel.shape()[0] as isize -
-                 data.shape()[1] as isize),
-        ) as usize;
-        let pad_along_width = cmp::max(
-            0isize,
-            ((out_width - 1) * self.strides[2] as isize + kernel.shape()[1] as isize -
-                 data.shape()[2] as isize),
-        ) as usize;
-        */
-        let dims = ::ndarray::IxDyn(
+        let out_shape = ::ndarray::IxDyn(
             &[
                 data.shape()[0],
                 out_height as usize,
                 out_width as usize,
-                kernel.shape()[3],
+                out_depth,
             ],
         );
         let strides = &self.strides;
-        let result = ::ndarray::ArrayD::from_shape_fn(dims, |dim| {
+        let result = ::ndarray::ArrayD::from_shape_fn(out_shape, |dim| {
             use ndarray::Dimension;
             let dim = dim.as_array_view();
             let mut sum = 0.0;
-            for di in 0..kernel.shape()[0] {
-                for dj in 0..kernel.shape()[1] {
-                    for q in 0..kernel.shape()[2] {
-                        if self.strides[1] * dim[1] + di < data.shape()[1] && strides[2] * dim[2] + dj < data.shape()[2] {
-                            sum += data[[dim[0], strides[1] * dim[1] + di, strides[2] * dim[2] + dj, q]] * kernel[[di, dj, q, dim[3]]]
+            for di in 0..filter_rows {
+                for dj in 0..filter_cols {
+                    for q in 0..in_depth {
+                        if self.strides[1] * dim[1] + di < in_rows && strides[2] * dim[2] + dj < in_cols {
+                            sum += data[[dim[0], strides[1] * dim[1] + di, strides[2] * dim[2] + dj, q]] * filter[[di, dj, q, dim[3]]]
                         }
                     }
                 }
@@ -114,5 +117,36 @@ impl Op for Conv2D {
             sum
         });
         Ok(vec![Matrix::F32(result)])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![warn(non_snake_case)]
+    use ::Matrix;
+    use super::*;
+
+    fn mk(sizes:&[usize]) -> Matrix {
+        let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0).into_shape(sizes).unwrap();
+        Matrix::F32(data)
+    }
+
+    fn verify(input:&[usize], filter:&[usize], stride:usize, padding:Padding, expect: &[f32]) {
+        let strides = vec!(1, stride, stride, 1);
+        let result = Conv2D {
+            padding: padding,
+            strides: strides,
+            _data_format: DataFormat::NHWC,
+        }.eval(vec!(mk(input), mk(filter))).unwrap().remove(0);
+        assert_eq!(expect.len(), result.shape().iter().product::<usize>());
+        let found = result.take_f32s().unwrap().into_shape((expect.len())).unwrap();
+        assert_eq!(expect, found.as_slice().unwrap());
+    }
+
+    #[test]
+    fn testConv2D1x1Filter() {
+        verify(&[1,2,3,3], &[1, 1, 3, 3], 1, Padding::Valid, &[
+        30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
+        204.0, 174.0, 216.0, 258.0, 210.0, 261.0, 312.0 ]);
     }
 }

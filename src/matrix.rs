@@ -92,4 +92,10 @@ impl Matrix {
         }
     }
 
+    pub fn shape(&self) -> &[usize] {
+        match self {
+            &Matrix::I32(ref it) => it.shape(),
+            &Matrix::F32(ref it) => it.shape(),
+        }
+    }
 }

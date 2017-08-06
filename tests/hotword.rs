@@ -80,7 +80,7 @@ const INPUTS: [[f32; 40]; 334] = include!("../inputs.json");
 fn frame() -> Matrix {
     use ndarray::IxDyn;
     Matrix::F32(
-        ndarray::Array::from_shape_fn(IxDyn(&[41, 40]), |d| INPUTS[d[0]][d[1]])
+        ndarray::Array::from_shape_fn(IxDyn(&[82, 40]), |d| INPUTS[d[0]][d[1]])
     )
 }
 
@@ -122,19 +122,24 @@ fn test_one(name: &str) {
         &hashmap!("inputs" => input.clone()),
         &[name],
     );
+//    println!("input shape {:?}", input.as_f32s().unwrap().dim());
     ours.set_value("inputs", input).unwrap();
     let our_output = ours.eval(name).unwrap().unwrap();
     assert!(outputs[0].as_f32s().unwrap().all_close(our_output[0].as_f32s().unwrap(), 0.001));
+    println!("name: {} me:{:?} tf:{:?}", name, our_output[0].as_f32s().unwrap().dim(), outputs[0].as_f32s().unwrap().dim(), );
 }
 
 #[test]
 fn test_net() {
     let mut ours = tfdeploy::GraphAnalyser::from_file("model.pb");
+    /*
     println!("{:?}", ours.node_names());
-
     test_one("word_cnn/ExpandDims_2");
     test_one("word_cnn/ExpandDims_3");
+    */
     test_one("word_cnn/layer_0_2/convolution");
+    /*
     test_one("word_cnn/layer_0_2/BiasAdd");
     test_one("logits");
+    */
 }
