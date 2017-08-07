@@ -56,12 +56,14 @@ impl Op for Conv2D {
         // [ batch, in_rows, in_cols, in_depth ]
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         // [ filter_rows, filter_cols, in_depth, out_depth]
-        let filter = inputs[1].as_f32s().ok_or("Expect input #1 to be i32")?;
+        let filter = inputs[1].as_f32s().ok_or("Expect input #1 to be f32")?;
+        /*
         println!("data shape: {:?}", data.shape());
         println!("filter shape: {:?}", filter.shape());
         println!("strides: {:?}", self.strides);
         println!("data:\n{:?}", data);
         println!("filter:\n{:?}", filter);
+        */
         if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 || 
             self.strides[1] != self.strides[2]
         {
