@@ -1,5 +1,5 @@
 use std::cell;
-use ::{Matrix, Result};
+use {Matrix, Result};
 use super::Op;
 
 pub struct Placeholder {
@@ -19,10 +19,8 @@ impl Placeholder {
 }
 
 impl Op for Placeholder {
-    fn eval(&self, _inputs:Vec<Matrix>) -> Result<Vec<Matrix>> {
-        unsafe {
-            Ok(vec!((*self.value.as_ptr()).as_ref().unwrap().clone()))
-        }
+    fn eval(&self, _inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+        unsafe { Ok(vec![(*self.value.as_ptr()).as_ref().unwrap().clone()]) }
     }
 }
 
@@ -38,8 +36,7 @@ impl Const {
 }
 
 impl Op for Const {
-    fn eval(&self, _inputs:Vec<Matrix>) -> Result<Vec<Matrix>> {
-        Ok(vec!(self.value.clone()))
+    fn eval(&self, _inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+        Ok(vec![self.value.clone()])
     }
 }
-

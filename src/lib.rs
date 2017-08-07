@@ -2,7 +2,6 @@
 extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
-#[macro_use]
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
@@ -11,7 +10,7 @@ pub mod tfpb;
 pub mod matrix;
 pub mod ops;
 
-use std::{ fs, path, rc, str };
+use std::{fs, path, rc, str};
 use std::collections::{HashMap, HashSet};
 use ops::Op;
 
@@ -67,8 +66,9 @@ impl GraphAnalyser {
         Self::from_reader(fs::File::open(p).unwrap())
     }
 
-    pub fn from_reader<R: ::std::io::Read>(mut r:R) -> GraphAnalyser {
-        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r).unwrap();
+    pub fn from_reader<R: ::std::io::Read>(mut r: R) -> GraphAnalyser {
+        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)
+            .unwrap();
         GraphAnalyser::new(loaded)
     }
 
@@ -98,7 +98,7 @@ impl GraphAnalyser {
                 .iter()
                 .map(|s| self.get_node(&s).map(|n| (n, 0)))
                 .collect::<Result<_>>()?,
-            op: self.op_builder.build(&pbnode)?
+            op: self.op_builder.build(&pbnode)?,
         })
     }
 
@@ -119,13 +119,16 @@ impl GraphAnalyser {
 
     fn compute(&mut self, name: &str) -> Result<()> {
         if self.outputs.contains_key(name) {
-            return Ok(())
+            return Ok(());
         }
-        let node:rc::Rc<Node> = self.get_node(name)?;
-        let inputs:Vec<Matrix> = node.inputs.iter().map(|i| {
-            self.compute(&*i.0.name)?;
-            Ok(self.outputs.get(&i.0.name).unwrap()[i.1].clone())
-        }).collect::<Result<_>>()?;
+        let node: rc::Rc<Node> = self.get_node(name)?;
+        let inputs: Vec<Matrix> = node.inputs
+            .iter()
+            .map(|i| {
+                self.compute(&*i.0.name)?;
+                Ok(self.outputs.get(&i.0.name).unwrap()[i.1].clone())
+            })
+            .collect::<Result<_>>()?;
         let outputs = node.op.eval(inputs)?;
         // println!("storing {} -> {:?}", name, outputs.iter().map(|m| m.shape()).collect::<Vec<_>>());
         self.outputs.insert(name.to_string(), outputs);
@@ -139,77 +142,8 @@ impl GraphAnalyser {
 
     pub fn take(&mut self, name: &str) -> Result<Vec<Matrix>> {
         self.compute(name)?;
-        Ok(self.outputs.remove(name).ok_or(format!("{} does not exits", name))?)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{fs, str};
-    use super::*;
-
-    #[test]
-    fn eval_tree() {
-        let mut model = fs::File::open("model.pb").unwrap();
-        let graph = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model)
-            .unwrap();
-        let mut graph = GraphAnalyser::new(graph);
-        let tree = graph.get_node("logits").unwrap();
-        println!("{}", tree.dump_eval_tree());
-    }
-
-    #[test]
-    fn inputs() {
-        let mut model = fs::File::open("model.pb").unwrap();
-        let graph = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model)
-            .unwrap();
-        let mut graph = GraphAnalyser::new(graph);
-        let tree = graph.get_node("word_cnn/ExpandDims_2").unwrap();
-        println!("{}", tree.dump_eval_tree());
-    }
-
-    #[test]
-    fn it_works() {
-        let mut model = fs::File::open("model.pb").unwrap();
-        let graph = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut model)
-            .unwrap();
-        for node in graph.get_node() {
-            println!("node : {} {}", node.get_name(), node.get_op());
-            for (key, rev) in node.get_attr() {
-                if rev.has_tensor() {
-                    println!(
-                        "  m {} -> {:?} {:?}",
-                        key,
-                        rev.get_tensor().get_dtype(),
-                        rev.get_tensor().get_tensor_shape()
-                    );
-                /*
-                } else if rev.has_f() {
-                    println!("  f {} -> {:?}", key, rev.get_f());
-                } else if rev.has_s() {
-                    println!("  s {} -> {:?}", key, str::from_utf8(rev.get_s()).unwrap());
-                } else if rev.has_b() {
-                    println!("  b {} -> {:?}", key, rev.get_b());
-                } else if rev.has_i() {
-                    println!("  i {} -> {:?}", key, rev.get_i());
-                } else if rev.has_field_type() {
-                    println!("  t {} -> {:?}", key, rev.get_field_type());
-                } else if rev.has_shape() {
-                    println!("  h {} -> {:?}", key, rev.get_shape());
-                } else if rev.has_tensor() {
-                    println!(
-                        "  m {} -> {:?} {:?}",
-                        key,
-                        rev.get_tensor().get_dtype(),
-                        rev.get_tensor().get_tensor_shape()
-                    );
-                } else if rev.has_list() {
-                    println!("  l {} -> {:?}", key, rev.get_list());
-                    */
-                } else {
-                    println!("  * {} -> {:?}", key, rev);
-                }
-            }
-        }
+        Ok(self.outputs.remove(name).ok_or(
+            format!("{} does not exits", name),
+        )?)
     }
 }

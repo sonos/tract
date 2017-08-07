@@ -1,7 +1,7 @@
 //use ndarray::{Array, ArrayD, IxDyn};
 //use num_traits::identities::Zero;
 //use tfpb::types::DataType;
-use ::{Matrix, Result};
+use {Matrix, Result};
 
 mod activ;
 mod arith;
@@ -10,12 +10,11 @@ mod shape;
 pub mod trivial;
 
 pub trait Op: ::downcast_rs::Downcast {
-    fn eval(&self, inputs:Vec<Matrix>) -> Result<Vec<Matrix>>;
+    fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>>;
 }
 impl_downcast!(Op);
 
-pub struct OpBuilder {
-}
+pub struct OpBuilder {}
 
 impl OpBuilder {
     pub fn new() -> OpBuilder {
@@ -31,7 +30,7 @@ impl OpBuilder {
             "Placeholder" => Ok(Box::new(trivial::Placeholder::build(pb)?)),
             "Relu" => Ok(Box::new(activ::Relu::build(pb)?)),
             "Squeeze" => Ok(Box::new(shape::Squeeze::build(pb)?)),
-            _ => Ok(Box::new(UnimplementedOp(pb.get_op().to_string())))
+            _ => Ok(Box::new(UnimplementedOp(pb.get_op().to_string()))),
         }
     }
 }
@@ -39,7 +38,7 @@ impl OpBuilder {
 pub struct UnimplementedOp(String);
 
 impl Op for UnimplementedOp {
-    fn eval(&self, _inputs:Vec<Matrix>) -> Result<Vec<Matrix>> {
+    fn eval(&self, _inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
 }

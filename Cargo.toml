@@ -9,16 +9,10 @@ ndarray = "*"
 num-traits = "*"
 error-chain = "*"
 maplit="*"
-tensorflow = "*"
 downcast-rs = "*"
-bencher = "*"
 
 [build-dependencies]
 protoc-rust   = "*"
 tempdir = "0.3"
 
 [dev-dependencies]
-
-[[bench]]
-name = "hotword"
-harness = false

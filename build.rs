@@ -2,7 +2,7 @@ extern crate protoc_rust;
 
 use std::{fs, io, path};
 
-use std::io::{ BufRead, Write };
+use std::io::{BufRead, Write};
 
 fn main() {
     let inputs: Vec<path::PathBuf> = fs::read_dir("protos/tensorflow/core/framework")

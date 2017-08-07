@@ -1,5 +1,3 @@
-use std::cmp;
-
 use {Matrix, Result};
 use super::Op;
 
@@ -64,16 +62,27 @@ impl Op for Conv2D {
         println!("data:\n{:?}", data);
         println!("filter:\n{:?}", filter);
         */
-        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 || 
+        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 ||
             self.strides[1] != self.strides[2]
         {
-            Err(format!("strides must be of the form [1, s, s, 1], found {:?}", self.strides))?
+            Err(format!(
+                "strides must be of the form [1, s, s, 1], found {:?}",
+                self.strides
+            ))?
         }
         if data.shape().len() != 4 || filter.shape().len() != 4 {
-            Err(format!("data and filter must be of dimension 4. data is {:?}, filter is {:?}", data.shape(), filter.shape()))?
+            Err(format!(
+                "data and filter must be of dimension 4. data is {:?}, filter is {:?}",
+                data.shape(),
+                filter.shape()
+            ))?
         }
         if data.shape()[3] != filter.shape()[2] {
-            Err(format!("data fourth dim (in_depth) must match filter third (data is {:?}, filter is {:?})", data.shape(), filter.shape()))?
+            Err(format!(
+                "data fourth dim (in_depth) must match filter third (data is {:?}, filter is {:?})",
+                data.shape(),
+                filter.shape()
+            ))?
         }
         let in_rows = data.shape()[1];
         let in_cols = data.shape()[2];
@@ -88,10 +97,10 @@ impl Op for Conv2D {
                 (in_cols as f32 / self.strides[2] as f32) as isize,
             ),
             Padding::Valid => (
-                ((in_rows - filter_rows + 1) as f32 /
-                     self.strides[1] as f32) as isize,
-                ((in_cols - filter_cols + 1) as f32 /
-                     self.strides[2] as f32) as isize,
+                ((in_rows - filter_rows + 1) as f32 / self.strides[1] as f32) as
+                    isize,
+                ((in_cols - filter_cols + 1) as f32 / self.strides[2] as f32) as
+                    isize,
             ),
         };
         let out_shape = ::ndarray::IxDyn(
@@ -110,8 +119,15 @@ impl Op for Conv2D {
             for di in 0..filter_rows {
                 for dj in 0..filter_cols {
                     for q in 0..in_depth {
-                        if self.strides[1] * dim[1] + di < in_rows && strides[2] * dim[2] + dj < in_cols {
-                            sum += data[[dim[0], strides[1] * dim[1] + di, strides[2] * dim[2] + dj, q]] * filter[[di, dj, q, dim[3]]]
+                        if self.strides[1] * dim[1] + di < in_rows &&
+                            strides[2] * dim[2] + dj < in_cols
+                        {
+                            sum += data[[
+                                dim[0],
+                                strides[1] * dim[1] + di,
+                                strides[2] * dim[2] + dj,
+                                q,
+                            ]] * filter[[di, dj, q, dim[3]]]
                         }
                     }
                 }
@@ -124,28 +140,37 @@ impl Op for Conv2D {
 
 #[cfg(test)]
 mod tests {
-    #![warn(non_snake_case)]
-    use ::Matrix;
+    #![allow(non_snake_case)]
+    use Matrix;
     use super::*;
 
-    fn mk(sizes:&[usize]) -> Matrix {
-        let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0).into_shape(sizes).unwrap();
+    fn mk(sizes: &[usize]) -> Matrix {
+        let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
+            .into_shape(sizes)
+            .unwrap();
         Matrix::F32(data)
     }
 
-    fn verify(input:&[usize], filter:&[usize], stride:usize, padding:Padding, expect: &[f32]) {
-        let strides = vec!(1, stride, stride, 1);
+    fn verify(input: &[usize], filter: &[usize], stride: usize, padding: Padding, expect: &[f32]) {
+        let strides = vec![1, stride, stride, 1];
         let result = Conv2D {
             padding: padding,
             strides: strides,
             _data_format: DataFormat::NHWC,
-        }.eval(vec!(mk(input), mk(filter))).unwrap().remove(0);
+        }.eval(vec![mk(input), mk(filter)])
+            .unwrap()
+            .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
-        let found = result.take_f32s().unwrap().into_shape((expect.len())).unwrap();
+        let found = result
+            .take_f32s()
+            .unwrap()
+            .into_shape((expect.len()))
+            .unwrap();
         assert_eq!(expect, found.as_slice().unwrap());
     }
 
     #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn testConv2D1x1Filter() {
         verify(&[1,2,3,3], &[1, 1, 3, 3], 1, Padding::Valid, &[
         30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
