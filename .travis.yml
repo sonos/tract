@@ -1,15 +1,14 @@
+sudo: true
 language: rust
 rust:
     - stable
     - beta
     - nightly
 
-addons:
-  apt:
-    sources:
-      - sourceline: ppa:maarten-fonville/protobuf
-    packages:
-      - protobuf
+before_install:
+  - sudo add-apt-repository ppa:maarten-fonville/protobuf -y
+  - sudo apt-get update -q
+  - sudo apt-get install protobuf -y
 
 matrix:
   allow_failures:
