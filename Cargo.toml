@@ -1,7 +1,13 @@
 [package]
 name = "tfdeploy"
 version = "0.0.1"
+license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+description = "Tiny, no-nonsense, self contained, TensorFlow inference"
+repository = "https://github.com/kali/tensorflow-deploy-rust"
+keywords = [ "TensorFlow", "Neural Networks" ]
+build="build.rs"
+categories = [ "Science" ]
 
 [dependencies]
 protobuf = "*"
