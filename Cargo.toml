@@ -10,15 +10,15 @@ build="build.rs"
 categories = [ "Science" ]
 
 [dependencies]
-protobuf = "*"
-ndarray = "*"
-num-traits = "*"
-error-chain = "*"
-maplit="*"
-downcast-rs = "*"
+protobuf = "1.4"
+ndarray = "0.10"
+num-traits = "0.1"
+error-chain = "0.10"
+maplit="0.1"
+downcast-rs = "1.0"
 
 [build-dependencies]
-protoc-rust   = "*"
+protoc-rust   = "1.4"
 tempdir = "0.3"
 
 [dev-dependencies]
