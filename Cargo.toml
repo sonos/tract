@@ -7,7 +7,7 @@ description = "Tiny, no-nonsense, self contained, TensorFlow inference"
 repository = "https://github.com/kali/tensorflow-deploy-rust"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 build="build.rs"
-categories = [ "Science" ]
+categories = [ "science" ]
 
 [dependencies]
 protobuf = "1.4"
