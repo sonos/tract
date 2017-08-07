@@ -1,0 +1,15 @@
+language: rust
+rust:
+    - stable
+    - beta
+    - nightly
+
+addons:
+  apt:
+    packages:
+      - protobuf-compiler
+
+matrix:
+  allow_failures:
+    - rust: nightly
+

@@ -9,6 +9,9 @@ keywords = [ "TensorFlow", "NeuralNetworks" ]
 build="build.rs"
 categories = [ "science" ]
 
+[badges]
+travis-ci = { repository = "kali/tensorflow-deploy-rust" }
+
 [dependencies]
 protobuf = "1.4"
 ndarray = "0.10"
