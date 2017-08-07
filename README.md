@@ -1,5 +1,7 @@
 # TF deploy / Rust
 
+[![Build Status](https://travis-ci.org/kali/tensorflow-deploy-rust.svg?branch=master)](https://travis-ci.org/kali/tensorflow-deploy-rust)
+
 A tiny TensorFlow inference-only executor.
 
 ## Status
