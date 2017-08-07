@@ -6,8 +6,10 @@ rust:
 
 addons:
   apt:
+    sources:
+      - sourceline: ppa:maarten-fonville/protobuf
     packages:
-      - protobuf-compiler
+      - protobuf
 
 matrix:
   allow_failures:
