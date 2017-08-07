@@ -6,12 +6,6 @@ pub enum Matrix {
     I32(ArrayD<i32>),
 }
 
-/*
-macro_rules {
-    pb!($DT:ident, $accessor:
-}
-*/
-
 impl Matrix {
     pub fn from_pb(t: &::tfpb::tensor::TensorProto) -> ::Result<Matrix> {
         use tfpb::types::DataType::*;

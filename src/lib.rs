@@ -20,6 +20,7 @@ error_chain!{
     foreign_links {
         Io(::std::io::Error);
         NdarrayShape(::ndarray::ShapeError);
+        Protobuf(::protobuf::ProtobufError);
         StrUtf8(::std::str::Utf8Error);
     }
 }
@@ -53,22 +54,21 @@ pub struct GraphAnalyser {
 }
 
 impl GraphAnalyser {
-    pub fn new(graph: tfpb::GraphDef) -> GraphAnalyser {
-        GraphAnalyser {
+    pub fn new(graph: tfpb::GraphDef) -> Result<GraphAnalyser> {
+        Ok(GraphAnalyser {
             graph,
             op_builder: ops::OpBuilder::new(),
             nodes: HashMap::new(),
             outputs: HashMap::new(),
-        }
+        })
     }
 
-    pub fn from_file<P: AsRef<path::Path>>(p: P) -> GraphAnalyser {
-        Self::from_reader(fs::File::open(p).unwrap())
+    pub fn from_file<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
+        Self::from_reader(fs::File::open(p)?)
     }
 
-    pub fn from_reader<R: ::std::io::Read>(mut r: R) -> GraphAnalyser {
-        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)
-            .unwrap();
+    pub fn from_reader<R: ::std::io::Read>(mut r: R) -> Result<GraphAnalyser> {
+        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)?;
         GraphAnalyser::new(loaded)
     }
 
