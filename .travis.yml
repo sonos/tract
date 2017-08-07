@@ -6,9 +6,12 @@ rust:
     - nightly
 
 before_install:
-  - sudo add-apt-repository ppa:maarten-fonville/protobuf -y
-  - sudo apt-get update -q
-  - sudo apt-get install protobuf -y
+  - curl -OL https://github.com/google/protobuf/releases/download/v3.2.0/protoc-3.2.0-linux-x86_64.zip
+  - unzip protoc-3.2.0-linux-x86_64.zip -d protoc3
+  - sudo mv protoc3/bin/* /usr/local/bin/
+  - sudo mv protoc3/include/* /usr/local/include/
+  - sudo chwon [user] /usr/local/bin/protoc
+  - sudo chwon -R [user] /usr/local/include/google
 
 matrix:
   allow_failures:
