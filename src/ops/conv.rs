@@ -1,20 +1,20 @@
 use {Matrix, Result};
 use super::Op;
 
-enum DataFormat {
+pub enum DataFormat {
     NHWC,
 }
 
 #[derive(Debug)]
-enum Padding {
+pub enum Padding {
     Valid,
     Same,
 }
 
 pub struct Conv2D {
-    _data_format: DataFormat,
-    padding: Padding,
-    strides: Vec<usize>,
+    pub _data_format: DataFormat,
+    pub padding: Padding,
+    pub strides: Vec<usize>,
 }
 
 impl Conv2D {

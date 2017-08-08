@@ -5,7 +5,7 @@ use {Matrix, Result};
 
 mod activ;
 mod arith;
-mod conv;
+pub mod conv;
 mod shape;
 pub mod trivial;
 
