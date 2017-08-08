@@ -5,7 +5,7 @@ pub enum DataFormat {
     NHWC,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Padding {
     Valid,
     Same,
@@ -55,13 +55,7 @@ impl Op for Conv2D {
         let filter = inputs.remove(1).take_f32s().ok_or("Expect input #1 to be f32")?;
         // [ batch, in_rows, in_cols, in_depth ]
         let data = inputs.remove(0).take_f32s().ok_or("Expect input #0 to be f32")?;
-        /*
-        println!("data shape: {:?}", data.shape());
-        println!("filter shape: {:?}", filter.shape());
-        println!("strides: {:?}", self.strides);
-        println!("data:\n{:?}", data);
-        println!("filter:\n{:?}", filter);
-        */
+
         if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 ||
             self.strides[1] != self.strides[2]
         {
@@ -84,6 +78,8 @@ impl Op for Conv2D {
                 filter.shape()
             ))?
         }
+
+        let stride = self.strides[1];
         let batches = data.shape()[0];
         let in_rows = data.shape()[1];
         let in_cols = data.shape()[2];
@@ -92,55 +88,48 @@ impl Op for Conv2D {
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
-        let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
+        let mut data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
         let filter = filter.into_shape((filter_rows, filter_cols, in_depth, out_depth))?;
 
         let (out_height, out_width) = match self.padding {
             Padding::Same => (
-                (in_rows as f32 / self.strides[1] as f32) as usize,
-                (in_cols as f32 / self.strides[2] as f32) as usize,
+                (in_rows as f32 / stride as f32).ceil() as usize,
+                (in_cols as f32 / stride as f32).ceil() as usize,
             ),
             Padding::Valid => (
-                ((in_rows - filter_rows + 1) as f32 / self.strides[1] as f32) as usize,
-                ((in_cols - filter_cols + 1) as f32 / self.strides[2] as f32) as usize,
+                ((in_rows - filter_rows + 1) as f32 / stride as f32).ceil() as usize,
+                ((in_cols - filter_cols + 1) as f32 / stride as f32).ceil() as usize,
             ),
         };
-        let out_shape = ::ndarray::IxDyn(
-            &[
-                data.shape()[0],
-                out_height,
-                out_width,
-                out_depth,
-            ],
-        );
-        // prepare local patches
+        let out_shape = ( data.shape()[0], out_height, out_width, out_depth);
         let patches_size = ((out_height*out_width) as usize, filter_rows*filter_cols*in_depth);
         unsafe {
+            let mut results = vec!();
             let mut patches = ::ndarray::Array2::<f32>::uninitialized(patches_size);
-            for i_x in 0..out_width {
-                for i_y in 0..out_height {
-                    let mut patch_row = patches.row_mut(i_y*out_width+i_x);
-                    for f_x in 0..filter_cols {
-                        for f_y in 0..filter_rows {
-                            for d in 0..in_depth {
-                                patch_row[f_y*in_depth*filter_cols+f_x*in_depth+d] = data[(0, i_y+f_y, i_x+f_x, d)];
+            let filters_mat = filter.into_shape((patches_size.1, out_depth))?;
+            if self.padding == Padding::Same {
+                let right_padding = ::ndarray::Array4::<f32>::zeros((batches, in_rows, stride, in_depth));
+                data = ::ndarray::stack(::ndarray::Axis(2), &[ data.view(), right_padding.view()])?;
+                let bottom_padding = ::ndarray::Array4::<f32>::zeros((batches, stride, in_cols+stride, in_depth));
+                data = ::ndarray::stack(::ndarray::Axis(1), &[ data.view(), bottom_padding.view()])?;
+            }
+            for b in 0..batches {
+                for i_x in 0..out_width {
+                    for i_y in 0..out_height {
+                        let mut patch_row = patches.row_mut(i_y*out_width+i_x);
+                        for f_x in 0..filter_cols {
+                            for f_y in 0..filter_rows {
+                                for d in 0..in_depth {
+                                    patch_row[f_y*in_depth*filter_cols+f_x*in_depth+d] = data[(b, i_y*stride+f_y, i_x*stride+f_x, d)];
+                                }
                             }
                         }
                     }
                 }
+                results.push(patches.dot(&filters_mat));
             }
-            let mut filters_mat = ::ndarray::Array2::<f32>::uninitialized((patches_size.1, out_depth));
-            for f_x in 0..filter_cols {
-                for f_y in 0..filter_rows {
-                    for d in 0..in_depth {
-                        let mut filter_row = filters_mat.row_mut(f_y*in_depth*filter_cols+f_x*in_depth+d);
-                        for od in 0..out_depth {
-                            filter_row[od] = filter[(f_y, f_x, d, od)];
-                        }
-                    }
-                }
-            }
-            let result = patches.dot(&filters_mat).into_shape(out_shape.clone())?;
+            let views:Vec<_> = results.iter().map(|m| m.view()).collect();
+            let result = ::ndarray::stack(::ndarray::Axis(0), &*views)?.into_shape(out_shape)?.into_dyn();
             return Ok(vec![Matrix::F32(result)])
         }
     }
@@ -184,4 +173,34 @@ mod tests {
         30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
         204.0, 174.0, 216.0, 258.0, 210.0, 261.0, 312.0 ]);
     }
+
+    #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    fn testConv2D1x2Filter() {
+        verify(&[1, 2, 3, 3], &[1, 2, 3, 3] , 1, Padding::Valid, &[
+        231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0,
+        936.0, 1029.0
+    ])}
+
+    #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    fn testConv2D2x2Filter() {
+        verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 1, Padding::Valid,
+               &[ 2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0 ])
+    }
+
+    #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    fn testConv2D2x2FilterStride2() {
+        verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 2, Padding::Valid,
+               &[2271.0, 2367.0, 2463.0])
+    }
+
+    #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
+    fn testConv2D2x2FilterStride2Same() {
+        verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 2, Padding::Same,
+               &[2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]);
+    }
+
 }
