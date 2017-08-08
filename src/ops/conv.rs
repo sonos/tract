@@ -50,11 +50,11 @@ impl Conv2D {
 }
 
 impl Op for Conv2D {
-    fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
-        // [ batch, in_rows, in_cols, in_depth ]
-        let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
+    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
         // [ filter_rows, filter_cols, in_depth, out_depth]
-        let filter = inputs[1].as_f32s().ok_or("Expect input #1 to be f32")?;
+        let filter = inputs.remove(1).take_f32s().ok_or("Expect input #1 to be f32")?;
+        // [ batch, in_rows, in_cols, in_depth ]
+        let data = inputs.remove(0).take_f32s().ok_or("Expect input #0 to be f32")?;
         /*
         println!("data shape: {:?}", data.shape());
         println!("filter shape: {:?}", filter.shape());
@@ -84,6 +84,7 @@ impl Op for Conv2D {
                 filter.shape()
             ))?
         }
+        let batches = data.shape()[0];
         let in_rows = data.shape()[1];
         let in_cols = data.shape()[2];
         let in_depth = data.shape()[3];
@@ -91,50 +92,57 @@ impl Op for Conv2D {
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
+        let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
+        let filter = filter.into_shape((filter_rows, filter_cols, in_depth, out_depth))?;
+
         let (out_height, out_width) = match self.padding {
             Padding::Same => (
-                (in_rows as f32 / self.strides[1] as f32) as isize,
-                (in_cols as f32 / self.strides[2] as f32) as isize,
+                (in_rows as f32 / self.strides[1] as f32) as usize,
+                (in_cols as f32 / self.strides[2] as f32) as usize,
             ),
             Padding::Valid => (
-                ((in_rows - filter_rows + 1) as f32 / self.strides[1] as f32) as
-                    isize,
-                ((in_cols - filter_cols + 1) as f32 / self.strides[2] as f32) as
-                    isize,
+                ((in_rows - filter_rows + 1) as f32 / self.strides[1] as f32) as usize,
+                ((in_cols - filter_cols + 1) as f32 / self.strides[2] as f32) as usize,
             ),
         };
         let out_shape = ::ndarray::IxDyn(
             &[
                 data.shape()[0],
-                out_height as usize,
-                out_width as usize,
+                out_height,
+                out_width,
                 out_depth,
             ],
         );
-        let strides = &self.strides;
-        let result = ::ndarray::ArrayD::from_shape_fn(out_shape, |dim| {
-            use ndarray::Dimension;
-            let dim = dim.as_array_view();
-            let mut sum = 0.0;
-            for di in 0..filter_rows {
-                for dj in 0..filter_cols {
-                    for q in 0..in_depth {
-                        if self.strides[1] * dim[1] + di < in_rows &&
-                            strides[2] * dim[2] + dj < in_cols
-                        {
-                            sum += data[[
-                                dim[0],
-                                strides[1] * dim[1] + di,
-                                strides[2] * dim[2] + dj,
-                                q,
-                            ]] * filter[[di, dj, q, dim[3]]]
+        // prepare local patches
+        let patches_size = ((out_height*out_width) as usize, filter_rows*filter_cols*in_depth);
+        unsafe {
+            let mut patches = ::ndarray::Array2::<f32>::uninitialized(patches_size);
+            for i_x in 0..out_width {
+                for i_y in 0..out_height {
+                    let mut patch_row = patches.row_mut(i_y*out_width+i_x);
+                    for f_x in 0..filter_cols {
+                        for f_y in 0..filter_rows {
+                            for d in 0..in_depth {
+                                patch_row[f_y*in_depth*filter_cols+f_x*in_depth+d] = data[(0, i_y+f_y, i_x+f_x, d)];
+                            }
                         }
                     }
                 }
             }
-            sum
-        });
-        Ok(vec![Matrix::F32(result)])
+            let mut filters_mat = ::ndarray::Array2::<f32>::uninitialized((patches_size.1, out_depth));
+            for f_x in 0..filter_cols {
+                for f_y in 0..filter_rows {
+                    for d in 0..in_depth {
+                        let mut filter_row = filters_mat.row_mut(f_y*in_depth*filter_cols+f_x*in_depth+d);
+                        for od in 0..out_depth {
+                            filter_row[od] = filter[(f_y, f_x, d, od)];
+                        }
+                    }
+                }
+            }
+            let result = patches.dot(&filters_mat).into_shape(out_shape.clone())?;
+            return Ok(vec![Matrix::F32(result)])
+        }
     }
 }
 
