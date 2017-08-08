@@ -2,6 +2,7 @@
 extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate ndarray;
 extern crate num_traits;
