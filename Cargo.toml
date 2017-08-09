@@ -16,7 +16,7 @@ travis-ci = { repository = "kali/tensorflow-deploy-rust" }
 protobuf = "1.4"
 ndarray = "0.10"
 num-traits = "0.1"
-error-chain = "0.10"
+error-chain =  { version = "0.10", default-features=false }
 maplit="0.1"
 downcast-rs = "1.0"
 
