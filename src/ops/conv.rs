@@ -187,7 +187,6 @@ mod tests {
     fn testConv2D2x1Filter() {
         verify(&[1, 2, 3, 3], &[2, 1, 3, 3] , 1, Padding::Valid,
           &[465.0, 504.0, 543.0, 618.0, 675.0, 732.0, 771.0, 846.0, 921.0]);
-        panic!();
     }
 
     #[test]
