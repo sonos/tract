@@ -25,7 +25,7 @@ protoc-rust   = "1.4"
 tempdir = "0.3"
 
 [dev-dependencies]
-bencher = "*"
+bencher = "0.1"
 
 [[bench]]
 harness= false
