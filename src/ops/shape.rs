@@ -1,6 +1,7 @@
 use {Matrix, Result};
 use super::Op;
 
+#[derive(Debug)]
 pub struct ExpandDims;
 
 impl Op for ExpandDims {
@@ -23,6 +24,7 @@ impl Op for ExpandDims {
     }
 }
 
+#[derive(Debug)]
 pub struct Squeeze {
     dims: Vec<isize>,
 }

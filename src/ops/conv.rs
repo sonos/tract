@@ -1,6 +1,7 @@
 use {Matrix, Result};
 use super::Op;
 
+#[derive(Debug)]
 pub enum DataFormat {
     NHWC,
 }
@@ -11,6 +12,7 @@ pub enum Padding {
     Same,
 }
 
+#[derive(Debug)]
 pub struct Conv2D {
     pub _data_format: DataFormat,
     pub padding: Padding,

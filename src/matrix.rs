@@ -4,12 +4,13 @@ use ndarray::prelude::*;
 pub enum Matrix {
     F32(ArrayD<f32>),
     I32(ArrayD<i32>),
+    U8(ArrayD<u8>),
 }
 
 impl Matrix {
     pub fn from_pb(t: &::tfpb::tensor::TensorProto) -> ::Result<Matrix> {
         use tfpb::types::DataType::*;
-        use ndarray::Array as A;
+        use ndarray::*;
         use Matrix::*;
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
@@ -18,9 +19,13 @@ impl Matrix {
             if t.get_tensor_content().len() != 0 {
                 Err(format!("content with no dim"))?
             }
-            let d = IxDyn(&[1]);
             match dtype {
-                DT_INT32 => Ok(I32(A::from_shape_vec(d, t.get_int_val().to_vec())?)),
+                DT_INT32 => Ok(I32(Array1::from_iter(t.get_int_val().iter().cloned()).into_dyn())),
+                DT_STRING => {
+                    let s = t.get_string_val()[0].to_vec();
+                    let r = Ok(U8(Array1::from_vec(s).into_dyn()));
+                    r
+                }
                 _ => {
                     Err(format!(
                         "Unimplemented case (trivial matrix, {:?} dtype)",
@@ -42,7 +47,7 @@ impl Matrix {
                             t.get_tensor_content().len() / 4,
                         )
                     };
-                    Ok(F32(A::from_shape_vec(d, value.to_vec())?))
+                    Ok(F32(ArrayD::from_shape_vec(d, value.to_vec())?))
                 }
                 _ => {
                     Err(format!(
@@ -86,10 +91,28 @@ impl Matrix {
         }
     }
 
+    pub fn as_u8s(&self) -> Option<&ArrayD<u8>> {
+        if let &Matrix::U8(ref it) = self {
+            Some(it)
+        } else {
+            None
+        }
+    }
+
+    pub fn take_u8s(self) -> Option<ArrayD<u8>> {
+        if let Matrix::U8(it) = self {
+            Some(it)
+        } else {
+            None
+        }
+    }
+
     pub fn shape(&self) -> &[usize] {
         match self {
             &Matrix::I32(ref it) => it.shape(),
             &Matrix::F32(ref it) => it.shape(),
+            &Matrix::U8(ref it) => it.shape(),
+            _ => unimplemented!(),
         }
     }
 }

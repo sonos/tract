@@ -2,6 +2,9 @@
 extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
+extern crate image;
+#[macro_use]
+extern crate log;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate ndarray;
@@ -20,6 +23,7 @@ pub use matrix::Matrix;
 
 error_chain!{
     foreign_links {
+        Image(image::ImageError);
         Io(::std::io::Error);
         NdarrayShape(::ndarray::ShapeError);
         Protobuf(::protobuf::ProtobufError);
@@ -27,6 +31,7 @@ error_chain!{
     }
 }
 
+#[derive(Debug)]
 pub struct Node {
     name: String,
     inputs: Vec<(rc::Rc<Node>, usize)>,
@@ -83,7 +88,7 @@ impl GraphAnalyser {
             let node = self.make_node(name)?;
             self.nodes.insert(name.to_string(), rc::Rc::new(node));
         }
-        Ok(self.nodes.get(name).unwrap().clone())
+        Ok(self.nodes.get(name).ok_or(format!("node {} do not exist", name))?.clone())
     }
 
     fn make_node(&mut self, name: &str) -> Result<Node> {
@@ -137,9 +142,9 @@ impl GraphAnalyser {
         Ok(())
     }
 
-    pub fn eval(&mut self, name: &str) -> Result<Option<&Vec<Matrix>>> {
+    pub fn eval(&mut self, name: &str) -> Result<&Vec<Matrix>> {
         self.compute(name)?;
-        Ok(self.outputs.get(name))
+        Ok(self.outputs.get(name).expect("node found but was not computed"))
     }
 
     pub fn take(&mut self, name: &str) -> Result<Vec<Matrix>> {

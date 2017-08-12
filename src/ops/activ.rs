@@ -1,6 +1,7 @@
 use {Matrix, Result};
 use super::Op;
 
+#[derive(Debug)]
 pub struct Relu {}
 
 impl Relu {

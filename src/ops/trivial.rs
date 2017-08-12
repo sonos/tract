@@ -24,6 +24,13 @@ impl Op for Placeholder {
     }
 }
 
+impl ::std::fmt::Debug for Placeholder {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
+        write!(f, "Placeholder")
+    }
+}
+
+#[derive(Debug)]
 pub struct Const {
     value: Matrix,
 }

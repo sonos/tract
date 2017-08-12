@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 //use ndarray::{Array, ArrayD, IxDyn};
 //use num_traits::identities::Zero;
 //use tfpb::types::DataType;
@@ -6,10 +8,11 @@ use {Matrix, Result};
 mod activ;
 mod arith;
 pub mod conv;
+pub mod image;
 mod shape;
 pub mod trivial;
 
-pub trait Op: ::downcast_rs::Downcast {
+pub trait Op: ::downcast_rs::Downcast + Debug {
     fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>>;
 }
 impl_downcast!(Op);
@@ -26,6 +29,7 @@ impl OpBuilder {
             "BiasAdd" => Ok(Box::new(arith::Add::build(pb)?)),
             "Const" => Ok(Box::new(trivial::Const::build(pb)?)),
             "Conv2D" => Ok(Box::new(conv::Conv2D::build(pb)?)),
+            "DecodeJpeg" => Ok((Box::new(image::DecodeJpeg::build(pb)?))),
             "ExpandDims" => Ok(Box::new(shape::ExpandDims)),
             "Placeholder" => Ok(Box::new(trivial::Placeholder::build(pb)?)),
             "Relu" => Ok(Box::new(activ::Relu::build(pb)?)),
@@ -35,6 +39,7 @@ impl OpBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct UnimplementedOp(String);
 
 impl Op for UnimplementedOp {
