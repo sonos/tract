@@ -21,11 +21,10 @@ pub struct Conv2D {
 
 impl Conv2D {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Conv2D> {
-        let data_format = pb.get_attr().get("data_format").ok_or(
-            "expect data_format in Conv2D args",
-        )?;
-        if data_format.get_s() == b"NCHW" {
-            Err("NCHW data_format not implemented")?
+        if let Some(data_format) = pb.get_attr().get("data_format") {
+            if data_format.get_s() == b"NCHW" {
+                Err("NCHW data_format not implemented")?
+            }
         }
         let strides = pb.get_attr()
             .get("strides")
@@ -54,9 +53,13 @@ impl Conv2D {
 impl Op for Conv2D {
     fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
         // [ filter_rows, filter_cols, in_depth, out_depth]
-        let filter = inputs.remove(1).take_f32s().ok_or("Expect input #1 to be f32")?;
+        let filter = inputs.remove(1).take_f32s().ok_or(
+            "Expect input #1 to be f32",
+        )?;
         // [ batch, in_rows, in_cols, in_depth ]
-        let data = inputs.remove(0).take_f32s().ok_or("Expect input #0 to be f32")?;
+        let data = inputs.remove(0).take_f32s().ok_or(
+            "Expect input #0 to be f32",
+        )?;
 
         if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 ||
             self.strides[1] != self.strides[2]
@@ -91,7 +94,9 @@ impl Op for Conv2D {
         let out_depth = filter.shape()[3];
 
         let mut data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
-        let filter = filter.into_shape((filter_rows, filter_cols, in_depth, out_depth))?;
+        let filter = filter.into_shape(
+            (filter_rows, filter_cols, in_depth, out_depth),
+        )?;
 
         let (out_height, out_width) = match self.padding {
             Padding::Same => (
@@ -103,26 +108,32 @@ impl Op for Conv2D {
                 ((in_cols - filter_cols + 1) as f32 / stride as f32).ceil() as usize,
             ),
         };
-        let out_shape = ( data.shape()[0], out_height, out_width, out_depth);
-        let patches_size = ((out_height*out_width) as usize, filter_rows*filter_cols*in_depth);
+        let out_shape = (data.shape()[0], out_height, out_width, out_depth);
+        let patches_size = (
+            (out_height * out_width) as usize,
+            filter_rows * filter_cols * in_depth,
+        );
         unsafe {
-            let mut results = vec!();
+            let mut results = vec![];
             let mut patches = ::ndarray::Array2::<f32>::uninitialized(patches_size);
             let filters_mat = filter.into_shape((patches_size.1, out_depth))?;
             if self.padding == Padding::Same {
-                let right_padding = ::ndarray::Array4::<f32>::zeros((batches, in_rows, stride, in_depth));
-                data = ::ndarray::stack(::ndarray::Axis(2), &[ data.view(), right_padding.view()])?;
-                let bottom_padding = ::ndarray::Array4::<f32>::zeros((batches, stride, in_cols+stride, in_depth));
-                data = ::ndarray::stack(::ndarray::Axis(1), &[ data.view(), bottom_padding.view()])?;
+                let right_padding =
+                    ::ndarray::Array4::<f32>::zeros((batches, in_rows, stride, in_depth));
+                data = ::ndarray::stack(::ndarray::Axis(2), &[data.view(), right_padding.view()])?;
+                let bottom_padding =
+                    ::ndarray::Array4::<f32>::zeros((batches, stride, in_cols + stride, in_depth));
+                data = ::ndarray::stack(::ndarray::Axis(1), &[data.view(), bottom_padding.view()])?;
             }
             for b in 0..batches {
                 for i_x in 0..out_width {
                     for i_y in 0..out_height {
-                        let mut patch_row = patches.row_mut(i_y*out_width+i_x);
+                        let mut patch_row = patches.row_mut(i_y * out_width + i_x);
                         for f_x in 0..filter_cols {
                             for f_y in 0..filter_rows {
                                 for d in 0..in_depth {
-                                    patch_row[f_y*in_depth*filter_cols+f_x*in_depth+d] = data[(b, i_y*stride+f_y, i_x*stride+f_x, d)];
+                                    patch_row[f_y * in_depth * filter_cols + f_x * in_depth + d] =
+                                        data[(b, i_y * stride + f_y, i_x * stride + f_x, d)];
                                 }
                             }
                         }
@@ -130,9 +141,11 @@ impl Op for Conv2D {
                 }
                 results.push(patches.dot(&filters_mat));
             }
-            let views:Vec<_> = results.iter().map(|m| m.view()).collect();
-            let result = ::ndarray::stack(::ndarray::Axis(0), &*views)?.into_shape(out_shape)?.into_dyn();
-            return Ok(vec![Matrix::F32(result)])
+            let views: Vec<_> = results.iter().map(|m| m.view()).collect();
+            let result = ::ndarray::stack(::ndarray::Axis(0), &*views)?
+                .into_shape(out_shape)?
+                .into_dyn();
+            return Ok(vec![Matrix::F32(result)]);
         }
     }
 }

@@ -54,6 +54,25 @@ fn compare<P: AsRef<path::Path>>(
     Ok(())
 }
 
+fn compare_all<P: AsRef<path::Path>>(
+    model: P,
+    inputs: Vec<(&str, Matrix)>,
+    output_name: &str,
+) -> Result<()> {
+    let mut tfd = tfdeploy::GraphAnalyser::from_file(model)?;
+    let names:Vec<String> = tfd.node_names().iter().map(|s| s.to_string()).collect();
+    for n in names {
+        let node = tfd.get_pbnode(&*n)?;
+        println!(" - node: {} {} {:?}", n, node.get_op(), node.get_input());
+    }
+    let output_node = tfd.get_node(output_name)?;
+    println!("\n\n final output node: {:?}", output_name);
+    for node in output_node.eval_order()? {
+        println!(" - {}", node.name);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

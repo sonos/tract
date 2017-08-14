@@ -20,6 +20,7 @@ log = "0.3"
 maplit="0.1"
 ndarray = "0.10"
 num-traits = "0.1"
+petgraph = "0.4"
 protobuf = "1.4"
 
 [build-dependencies]

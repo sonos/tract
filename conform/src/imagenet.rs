@@ -32,9 +32,9 @@ fn test() {
     let result = g.eval("DecodeJpeg");
     println!("result: {:?}", result);
     */
-    ::compare(
+    ::compare_all(
         "data/inception-2015-12-05/classify_image_graph_def.pb",
         vec![],
-        "DecodeJpeg",
+        "softmax",
     ).unwrap();
 }

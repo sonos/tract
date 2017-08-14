@@ -14,49 +14,42 @@ impl Matrix {
         use Matrix::*;
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
-        let dims = shape.get_dim();
-        if dims.len() == 0 {
-            if t.get_tensor_content().len() != 0 {
-                Err(format!("content with no dim"))?
-            }
+        let mut dims = shape.get_dim();
+        let dims = if dims.len() == 0 {
+            vec!(1)
+        } else {
+            dims.iter().map(|d| d.size as usize).collect()
+        };
+        let content = t.get_tensor_content();
+        if content.len() == 0 {
             match dtype {
-                DT_INT32 => Ok(I32(Array1::from_iter(t.get_int_val().iter().cloned()).into_dyn())),
+                DT_INT32 => Ok(Matrix::I32(Array1::from_iter(t.get_int_val().iter().cloned()).into_dyn())),
+                DT_FLOAT => Ok(Matrix::F32(Array1::from_iter(t.get_float_val().iter().cloned()).into_dyn())),
                 DT_STRING => {
-                    let s = t.get_string_val()[0].to_vec();
-                    let r = Ok(U8(Array1::from_vec(s).into_dyn()));
-                    r
-                }
-                _ => {
-                    Err(format!(
-                        "Unimplemented case (trivial matrix, {:?} dtype)",
-                        dtype
-                    ))?
-                }
+                    if t.get_string_val().len() != 1 {
+                        Err(format!("Multiple string tensor not supported"))?
+                    }
+                    Ok(Matrix::U8(Array1::from_iter(t.get_string_val()[0].iter().cloned()).into_dyn()))
+            },
+                _ => Err(format!("Missing simple tensor parser: type:{:?}", dtype))?
             }
         } else {
-            if t.get_tensor_content().len() == 0 {
-                Err(format!("some dim, no content"))?
-            }
-            let dims: Vec<usize> = dims.iter().map(|d| d.size as usize).collect();
-            let d = IxDyn(&*dims);
             match dtype {
-                DT_FLOAT => {
-                    let value: &[f32] = unsafe {
-                        ::std::slice::from_raw_parts(
-                            t.get_tensor_content().as_ptr() as _,
-                            t.get_tensor_content().len() / 4,
-                        )
-                    };
-                    Ok(F32(ArrayD::from_shape_vec(d, value.to_vec())?))
-                }
-                _ => {
-                    Err(format!(
-                        "Unimplemented loading case (non trivial matrix, {:?} dtype)",
-                        dtype
-                    ))?
-                }
+                DT_FLOAT => Ok(Matrix::F32(Self::from_content(dims, content)?)),
+                DT_INT32 => Ok(Matrix::I32(Self::from_content(dims, content)?)),
+                _ => Err(format!("Missing tensor parser: dims:{:?} type:{:?}, content.len:{}", dims, dtype, content.len()))?
             }
         }
+    }
+
+    pub fn from_content<T: Copy>(dims: Vec<usize>, content:&[u8]) -> ::Result<ArrayD<T>> {
+        let value: &[T] = unsafe {
+            ::std::slice::from_raw_parts(
+                content.as_ptr() as _,
+                content.len() / ::std::mem::size_of::<T>(),
+            )
+        };
+        Ok(Array1::from_iter(value.iter().cloned()).into_shape(dims)?.into_dyn())
     }
 
     pub fn take_f32s(self) -> Option<ArrayD<f32>> {

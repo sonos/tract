@@ -16,7 +16,11 @@ fn decode_one(input: &[u8]) -> Result<Array3<u8>> {
     use image::GenericImage;
     let image = ::image::load_from_memory(input)?;
     let dim = image.dimensions();
-    Ok(Array1::from_vec(image.raw_pixels()).into_shape((dim.0 as usize, dim.1 as usize, 3))?)
+    Ok(Array1::from_vec(image.raw_pixels()).into_shape((
+        dim.0 as usize,
+        dim.1 as usize,
+        3,
+    ))?)
 }
 
 impl Op for DecodeJpeg {

@@ -31,12 +31,34 @@ error_chain!{
     }
 }
 
+#[derive(Debug,Clone,PartialEq,Eq,Hash)]
+pub struct Node(pub rc::Rc<RawNode>);
+
+impl ::std::ops::Deref for Node {
+    type Target = RawNode;
+    fn deref(&self) -> &RawNode {
+        &*self.0
+    }
+}
+
 #[derive(Debug)]
-pub struct Node {
-    name: String,
-    inputs: Vec<(rc::Rc<Node>, usize)>,
+pub struct RawNode {
+    pub name: String,
+    inputs: Vec<(Node, Option<usize>)>,
     op: Box<Op>,
 }
+
+impl ::std::hash::Hash for RawNode {
+    fn hash<H: ::std::hash::Hasher>(&self, h: &mut H) {
+        self.name.hash(h)
+    }
+}
+impl PartialEq for RawNode {
+    fn eq(&self, other: &RawNode) -> bool {
+        self.name.eq(&other.name)
+    }
+}
+impl Eq for RawNode { }
 
 impl Node {
     pub fn dump_eval_tree(&self) -> String {
@@ -51,12 +73,73 @@ impl Node {
         }
         s
     }
+
+    pub fn eval_order(&self) -> Result<Vec<Node>> {
+        let mut order:Vec<Node> = Vec::new();
+        let mut done :HashSet<Node>= HashSet::new();
+        let mut needed:HashSet<Node> = HashSet::new();
+        let mut more: HashSet<Node> = HashSet::new();
+        needed.insert(self.clone());
+        loop {
+            let mut done_something = false;
+            more.clear();
+            needed.retain(|node| {
+                let mut computable = true;
+                for i in node.inputs.iter() {
+                    if !done.contains(&i.0) {
+                        computable = false;
+                        done_something = true;
+                        more.insert(i.0.clone());
+                    }
+                }
+                if computable {
+                    done_something = true;
+                    order.push(node.clone());
+                    done.insert(node.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+            needed.extend(more.iter().cloned());
+            if !done_something {
+                break;
+            }
+        }
+        if done.contains(self) {
+            Ok(order)
+        } else {
+            Err(format!("Could not compute node {}", self.name).into())
+        }
+    }
+    fn _eval_order<'a: 'b, 'b: 'c, 'c>(&'a self, entered: &'b mut HashSet<Node>, done:&'b mut HashMap<Node, Vec<Node>>) -> Result<&'c Vec<Node>> {
+        let mut result:Vec<Node> = vec![];
+        if !done.contains_key(&self) {
+            entered.insert(self.clone());
+            for i in &self.inputs {
+                if entered.contains(&i.0) {
+                    Err(format!(
+                        "Loop detected {} - {}! Need more code!",
+                        self.name,
+                        i.0.name,
+                    ))?
+                }
+                let v = i.0._eval_order(entered, done)?;
+                result.extend(v.into_iter().cloned());
+            }
+            result.push(self.clone());
+            entered.remove(&self);
+            println!("Eval order done for {}", self.name);
+            done.insert(self.clone(), result);
+        }
+        Ok(done.get(self).unwrap())
+    }
 }
 
 pub struct GraphAnalyser {
     graph: tfpb::GraphDef,
     op_builder: ops::OpBuilder,
-    nodes: HashMap<String, rc::Rc<Node>>,
+    nodes: HashMap<String, Node>,
     outputs: HashMap<String, Vec<Matrix>>,
 }
 
@@ -83,30 +166,47 @@ impl GraphAnalyser {
         self.graph.get_node().iter().map(|n| n.get_name()).collect()
     }
 
-    pub fn get_node(&mut self, name: &str) -> Result<rc::Rc<Node>> {
-        if !self.nodes.contains_key(name) {
-            let node = self.make_node(name)?;
-            self.nodes.insert(name.to_string(), rc::Rc::new(node));
-        }
-        Ok(self.nodes.get(name).ok_or(format!("node {} do not exist", name))?.clone())
+    pub fn dump_pbtext(&self) -> String {
+        protobuf::text_format::print_to_string(&self.graph)
     }
 
-    fn make_node(&mut self, name: &str) -> Result<Node> {
-        let pbnode = self.graph
+    pub fn get_node(&mut self, name: &str) -> Result<Node> {
+        if !self.nodes.contains_key(name) {
+            let node = self.make_node(name)?;
+            self.nodes.insert(name.to_string(), node);
+        }
+        Ok(
+            self.nodes
+                .get(name)
+                .ok_or(format!("node {} do not exist", name))?
+                .clone(),
+        )
+    }
+
+    pub fn get_pbnode(&mut self, name: &str) -> Result<&tfpb::node_def::NodeDef> {
+        Ok(self.graph
             .get_node()
             .iter()
             .find(|n| n.get_name() == name)
-            .unwrap()
-            .clone();
-        Ok(Node {
+            .ok_or_else(|| format!("Could not find node {}", name))?)
+    }
+
+    fn make_node(&mut self, name: &str) -> Result<Node> {
+        let pbnode = self.get_pbnode(name)?.to_owned();
+        let inputs:Vec<(Node, Option<usize>)> = pbnode.get_input().iter().map(|i|
+            if i.starts_with("^") {
+                Ok((self.get_node(&*i.replace("^", ""))?, None))
+            } else {
+                Ok((self.get_node(i)?, Some(0)))
+            }
+        ).collect::<Result<Vec<_>>>()
+        .map_err(|e| format!("While building node {}, {}", name, e.description()))?;
+        Ok(Node(rc::Rc::new(RawNode {
             name: name.to_string(),
-            inputs: pbnode
-                .get_input()
-                .iter()
-                .map(|s| self.get_node(&s).map(|n| (n, 0)))
-                .collect::<Result<_>>()?,
-            op: self.op_builder.build(&pbnode)?,
-        })
+            inputs: inputs,
+            op: self.op_builder.build(&pbnode)
+                .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
+        })))
     }
 
     pub fn reset(&mut self) -> Result<()> {
@@ -128,14 +228,14 @@ impl GraphAnalyser {
         if self.outputs.contains_key(name) {
             return Ok(());
         }
-        let node: rc::Rc<Node> = self.get_node(name)?;
-        let inputs: Vec<Matrix> = node.inputs
-            .iter()
-            .map(|i| {
-                self.compute(&*i.0.name)?;
-                Ok(self.outputs.get(&i.0.name).unwrap()[i.1].clone())
-            })
-            .collect::<Result<_>>()?;
+        let node: Node = self.get_node(name)?;
+        let mut inputs: Vec<Matrix> = vec!();
+        for i in &node.inputs {
+            self.compute(&*i.0.name)?;
+            if let Some(output) = i.1 {
+                inputs.push(self.outputs.get(&i.0.name).unwrap()[i.1.unwrap()].clone())
+            }
+        }
         let outputs = node.op.eval(inputs)?;
         // println!("storing {} -> {:?}", name, outputs.iter().map(|m| m.shape()).collect::<Vec<_>>());
         self.outputs.insert(name.to_string(), outputs);
@@ -144,7 +244,9 @@ impl GraphAnalyser {
 
     pub fn eval(&mut self, name: &str) -> Result<&Vec<Matrix>> {
         self.compute(name)?;
-        Ok(self.outputs.get(name).expect("node found but was not computed"))
+        Ok(self.outputs.get(name).expect(
+            "node found but was not computed",
+        ))
     }
 
     pub fn take(&mut self, name: &str) -> Result<Vec<Matrix>> {
