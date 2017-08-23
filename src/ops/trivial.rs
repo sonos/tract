@@ -2,6 +2,22 @@ use std::cell;
 use {Matrix, Result};
 use super::Op;
 
+#[derive(Debug)]
+pub struct Identity {
+}
+
+impl Identity {
+    pub fn build(_: &::tfpb::node_def::NodeDef) -> Result<Identity> {
+        Ok(Identity {})
+    }
+}
+
+impl Op for Identity {
+    fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+        Ok(inputs)
+    }
+}
+
 pub struct Placeholder {
     value: cell::Cell<Option<Matrix>>,
 }
@@ -47,3 +63,4 @@ impl Op for Const {
         Ok(vec![self.value.clone()])
     }
 }
+

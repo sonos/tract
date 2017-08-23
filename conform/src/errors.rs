@@ -5,6 +5,10 @@ error_chain! {
         Reqwest(::reqwest::Error);
         TfDeploy(::tfdeploy::Error);
     }
+
+    errors {
+        TFString
+    }
 }
 
 impl ::std::convert::From<::tensorflow::Status> for Error {

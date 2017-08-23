@@ -20,7 +20,7 @@ impl Op for ExpandDims {
                 Err(format!("unimplemented ExpandDims with negative parameter"))?
             }
         }
-        Ok(vec![Matrix::F32(data.into_shape(shape)?)])
+        Ok(vec![data.into_shape(shape)?.into()])
     }
 }
 
@@ -56,6 +56,6 @@ impl Op for Squeeze {
                 Err(format!("unimplemented Squeeze with negative parameter"))?
             }
         }
-        Ok(vec![Matrix::F32(data.clone().into_shape(shape)?)])
+        Ok(vec![data.clone().into_shape(shape)?.into()])
     }
 }

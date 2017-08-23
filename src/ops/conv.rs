@@ -60,6 +60,7 @@ impl Op for Conv2D {
         let data = inputs.remove(0).take_f32s().ok_or(
             "Expect input #0 to be f32",
         )?;
+        //        println!("kernel is {:?}", filter.shape());
 
         if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 ||
             self.strides[1] != self.strides[2]
@@ -109,6 +110,9 @@ impl Op for Conv2D {
             ),
         };
         let out_shape = (data.shape()[0], out_height, out_width, out_depth);
+        //        println!("data.shape:{:?} out_shape:{:?} stride:{}", data.shape(), out_shape, stride);
+        //        println!("{:?}", data);
+        //        println!("{:?}", filter);
         let patches_size = (
             (out_height * out_width) as usize,
             filter_rows * filter_cols * in_depth,
@@ -116,36 +120,51 @@ impl Op for Conv2D {
         unsafe {
             let mut results = vec![];
             let mut patches = ::ndarray::Array2::<f32>::uninitialized(patches_size);
+            //            println!("{:?}", patches);
             let filters_mat = filter.into_shape((patches_size.1, out_depth))?;
             if self.padding == Padding::Same {
+                //                println!("data:{:?}", data.shape());
+                let right_padding = stride * (in_cols / stride) + filter_cols - in_cols;
+                let bottom_padding = stride * (in_rows / stride) + filter_rows - in_rows;
+                //                println!("padding at right:{} bottom:{}", right_padding, bottom_padding);
                 let right_padding =
-                    ::ndarray::Array4::<f32>::zeros((batches, in_rows, stride, in_depth));
+                    ::ndarray::Array4::<f32>::zeros((batches, in_rows, right_padding, in_depth));
                 data = ::ndarray::stack(::ndarray::Axis(2), &[data.view(), right_padding.view()])?;
-                let bottom_padding =
-                    ::ndarray::Array4::<f32>::zeros((batches, stride, in_cols + stride, in_depth));
+                let bottom_padding = ::ndarray::Array4::<f32>::zeros(
+                    (batches, bottom_padding, data.shape()[2], in_depth),
+                );
                 data = ::ndarray::stack(::ndarray::Axis(1), &[data.view(), bottom_padding.view()])?;
+                //                println!("padded data:{:?} patches:{:?}", data.shape(), patches.shape());
             }
             for b in 0..batches {
+                //                println!("writting patches for id {}", b);
                 for i_x in 0..out_width {
                     for i_y in 0..out_height {
+                        //                        println!("getting row {}", i_y * out_width + i_x);
                         let mut patch_row = patches.row_mut(i_y * out_width + i_x);
                         for f_x in 0..filter_cols {
                             for f_y in 0..filter_rows {
+                                //                                println!("i_x:{} i_y:{} f_x:{} f_y:{}", i_x, i_y, f_x, f_y);
+                                //                                println!("writting loc: {:?}", (b, i_y * stride + f_y, i_x * stride + f_x));
                                 for d in 0..in_depth {
-                                    patch_row[f_y * in_depth * filter_cols + f_x * in_depth + d] =
-                                        data[(b, i_y * stride + f_y, i_x * stride + f_x, d)];
+                                    let loc = &mut patch_row[f_y * in_depth * filter_cols +
+                                                                 f_x * in_depth +
+                                                                 d];
+                                    *loc = data[(b, i_y * stride + f_y, i_x * stride + f_x, d)];
                                 }
                             }
                         }
                     }
                 }
+                //                println!("doing product");
                 results.push(patches.dot(&filters_mat));
             }
+            //            println!("building results");
             let views: Vec<_> = results.iter().map(|m| m.view()).collect();
             let result = ::ndarray::stack(::ndarray::Axis(0), &*views)?
                 .into_shape(out_shape)?
                 .into_dyn();
-            return Ok(vec![Matrix::F32(result)]);
+            return Ok(vec![result.into()]);
         }
     }
 }
@@ -157,10 +176,10 @@ mod tests {
     use super::*;
 
     fn mk(sizes: &[usize]) -> Matrix {
-        let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
+        ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
             .into_shape(sizes)
-            .unwrap();
-        Matrix::F32(data)
+            .unwrap()
+            .into()
     }
 
     fn verify(input: &[usize], filter: &[usize], stride: usize, padding: Padding, expect: &[f32]) {
@@ -216,6 +235,47 @@ mod tests {
     fn testConv2D2x2FilterStride2Same() {
         verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 2, Padding::Same,
                &[2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]);
+    }
+
+    #[test]
+    fn test_image_1() {
+        let conv = Conv2D {
+            padding: Padding::Same,
+            strides: vec![1, 1, 1, 1],
+            _data_format: DataFormat::NHWC,
+        };
+        // NHWC
+        let data:Matrix = ::ndarray::arr3(&[
+                [[1.0, 3.0], [0.0, 2.0], [0.0, 0.0]],
+                [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+                [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+                [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+            ]).into_shape((1,4,3,2)).unwrap().into_dyn().into();
+
+        let filter = ::ndarray::arr3(
+            &[[[1.0],[0.0]], [[0.0],[0.0]]],
+        ).into_shape((1,2,2,1)).unwrap().into_dyn().into();
+
+        let exp:Matrix = ::ndarray::arr3(&[
+                [[1.0], [0.0], [0.0]],
+                [[0.0], [0.0], [0.0]],
+                [[0.0], [0.0], [0.0]],
+                [[0.0], [0.0], [0.0]],
+            ]).into_shape((1,4,3,1)).unwrap().into_dyn().into();
+        assert_eq!(vec!(exp), conv.eval(vec!(data.clone(), filter)).unwrap());
+
+        let filter = ::ndarray::arr3(
+            &[[[0.0],[1.0]], [[5.0],[0.0]]],
+        ).into_shape((1,2,2,1)).unwrap().into_dyn().into();
+
+        let exp:Matrix = ::ndarray::arr3(&[
+                [[3.0], [2.0], [0.0]],
+                [[0.0], [0.0], [0.0]],
+                [[0.0], [0.0], [0.0]],
+                [[0.0], [0.0], [0.0]],
+            ]).into_shape((1,4,3,1)).unwrap().into_dyn().into();
+        assert_eq!(vec!(exp), conv.eval(vec!(data.clone(), filter)).unwrap());
+
     }
 
 }

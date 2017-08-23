@@ -3,6 +3,7 @@ extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
 extern crate image;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate log;
 #[allow(unused_imports)]
@@ -44,6 +45,7 @@ impl ::std::ops::Deref for Node {
 #[derive(Debug)]
 pub struct RawNode {
     pub name: String,
+    pub op_name: String,
     inputs: Vec<(Node, Option<usize>)>,
     op: Box<Op>,
 }
@@ -203,6 +205,7 @@ impl GraphAnalyser {
         .map_err(|e| format!("While building node {}, {}", name, e.description()))?;
         Ok(Node(rc::Rc::new(RawNode {
             name: name.to_string(),
+            op_name: pbnode.get_op().to_string(),
             inputs: inputs,
             op: self.op_builder.build(&pbnode)
                 .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
@@ -211,6 +214,11 @@ impl GraphAnalyser {
 
     pub fn reset(&mut self) -> Result<()> {
         self.outputs.clear();
+        Ok(())
+    }
+
+    pub fn set_outputs(&mut self, name: &str, values: Vec<Matrix>) -> Result<()> {
+        self.outputs.insert(name.to_string(), values);
         Ok(())
     }
 
@@ -232,7 +240,7 @@ impl GraphAnalyser {
         let mut inputs: Vec<Matrix> = vec!();
         for i in &node.inputs {
             self.compute(&*i.0.name)?;
-            if let Some(output) = i.1 {
+            if let Some(_) = i.1 {
                 inputs.push(self.outputs.get(&i.0.name).unwrap()[i.1.unwrap()].clone())
             }
         }

@@ -4,12 +4,12 @@ use tfdeploy::{Matrix, GraphAnalyser};
 use errors::*;
 
 pub struct TfDeploy {
-    graph: GraphAnalyser,
+    pub graph: GraphAnalyser,
 }
 
-pub fn build<P: AsRef<path::Path>>(p: P) -> Result<Box<::TfExecutor>> {
+pub fn build<P: AsRef<path::Path>>(p: P) -> Result<TfDeploy> {
     let graph = GraphAnalyser::from_file(p)?;
-    Ok(Box::new(TfDeploy { graph }))
+    Ok(TfDeploy { graph })
 }
 
 impl ::TfExecutor for TfDeploy {
