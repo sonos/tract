@@ -218,6 +218,13 @@ mod tests {
 
     #[test]
     #[cfg_attr(rustfmt, rustfmt_skip)]
+    fn testConv2D2x1Filter() {
+        verify(&[1, 2, 3, 3], &[2, 1, 3, 3] , 1, Padding::Valid,
+          &[465.0, 504.0, 543.0, 618.0, 675.0, 732.0, 771.0, 846.0, 921.0]);
+    }
+
+    #[test]
+    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn testConv2D2x2Filter() {
         verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 1, Padding::Valid,
                &[ 2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0 ])
