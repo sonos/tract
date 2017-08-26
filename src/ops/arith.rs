@@ -1,7 +1,7 @@
 use {Matrix, Result};
 use super::Op;
 
-element_map!(Rsqrt, |x:f32| 1.0/(x.sqrt()));
+element_map!(Rsqrt, |x: f32| 1.0 / (x.sqrt()));
 
 #[derive(Debug)]
 pub struct Add {}

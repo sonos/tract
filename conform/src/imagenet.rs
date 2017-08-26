@@ -2,7 +2,9 @@ use std::{fs, path};
 
 use reqwest;
 
-use errors::*;
+use tfdeploy::errors::*;
+
+use std::error::Error;
 
 const INCEPTION_V3: &str = "data/inception-v3-2016_08_28/inception_v3_2016_08_28_frozen.pb";
 
@@ -13,7 +15,7 @@ fn download() -> Result<()> {
     }
     fs::create_dir_all(dir)?;
     let url = "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz";
-    let resp = reqwest::get(url)?;
+    let resp = reqwest::get(url).map_err(|e| format!("reqwest error: {}", e.description()))?;
     if resp.status() != reqwest::StatusCode::Ok {
         Err("Could not download inception v3")?
     }

@@ -21,6 +21,7 @@ maplit="0.1"
 ndarray = "0.10"
 num-traits = "0.1"
 protobuf = "1.4"
+tensorflow = { version = "*", optional = true }
 
 [build-dependencies]
 protoc-rust   = "1.4"
@@ -29,7 +30,6 @@ tempdir = "0.3"
 [dev-dependencies]
 bencher = "0.1"
 proptest = "*"
-tensorflow = "*"
 
 [[bench]]
 harness= false

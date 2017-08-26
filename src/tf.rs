@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{fs, path};
 
 use tensorflow::Graph;
@@ -6,7 +8,7 @@ use tensorflow::StepWithGraph;
 use tensorflow::Tensor;
 
 use ndarray::ArrayD;
-use tfdeploy::Matrix;
+use ::*;
 
 pub struct Tensorflow {
     session: Session,
@@ -20,7 +22,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
     for_slice(&*model)
 }
 
-pub fn for_slice(buf:&[u8]) -> Result<Tensorflow> {
+pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
     let mut graph = Graph::new();
     graph.import_graph_def(
         buf,
@@ -69,8 +71,8 @@ fn tensor_to_matrix<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<A
         .into_shape(shape)?)
 }
 
-impl ::TfExecutor for Tensorflow {
-    fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
+impl Tensorflow {
+    pub fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
         use tensorflow::DataType;
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()

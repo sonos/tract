@@ -3,8 +3,7 @@ use {Matrix, Result};
 use super::Op;
 
 #[derive(Debug)]
-pub struct Identity {
-}
+pub struct Identity {}
 
 impl Identity {
     pub fn build(_: &::tfpb::node_def::NodeDef) -> Result<Identity> {
@@ -63,4 +62,3 @@ impl Op for Const {
         Ok(vec![self.value.clone()])
     }
 }
-

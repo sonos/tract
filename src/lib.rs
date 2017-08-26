@@ -14,7 +14,7 @@ extern crate protobuf;
 #[cfg(test)]
 #[macro_use]
 extern crate proptest;
-#[cfg(test)]
+#[cfg(feature = "tensorflow")]
 extern crate tensorflow;
 
 pub mod errors;
@@ -22,7 +22,7 @@ pub mod tfpb;
 pub mod matrix;
 pub mod ops;
 
-#[cfg(test)]
+#[cfg(feature = "tensorflow")]
 pub mod tf;
 
 use std::{fs, path, rc, str};
@@ -32,7 +32,7 @@ use errors::*;
 
 pub use matrix::Matrix;
 
-#[derive(Debug,Clone,PartialEq,Eq,Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Node(pub rc::Rc<RawNode>);
 
 impl ::std::ops::Deref for Node {
@@ -60,7 +60,7 @@ impl PartialEq for RawNode {
         self.name.eq(&other.name)
     }
 }
-impl Eq for RawNode { }
+impl Eq for RawNode {}
 
 impl Node {
     pub fn dump_eval_tree(&self) -> String {
@@ -77,9 +77,9 @@ impl Node {
     }
 
     pub fn eval_order(&self) -> Result<Vec<Node>> {
-        let mut order:Vec<Node> = Vec::new();
-        let mut done :HashSet<Node>= HashSet::new();
-        let mut needed:HashSet<Node> = HashSet::new();
+        let mut order: Vec<Node> = Vec::new();
+        let mut done: HashSet<Node> = HashSet::new();
+        let mut needed: HashSet<Node> = HashSet::new();
         let mut more: HashSet<Node> = HashSet::new();
         needed.insert(self.clone());
         loop {
@@ -114,8 +114,12 @@ impl Node {
             Err(format!("Could not compute node {}", self.name).into())
         }
     }
-    fn _eval_order<'a: 'b, 'b: 'c, 'c>(&'a self, entered: &'b mut HashSet<Node>, done:&'b mut HashMap<Node, Vec<Node>>) -> Result<&'c Vec<Node>> {
-        let mut result:Vec<Node> = vec![];
+    fn _eval_order<'a: 'b, 'b: 'c, 'c>(
+        &'a self,
+        entered: &'b mut HashSet<Node>,
+        done: &'b mut HashMap<Node, Vec<Node>>,
+    ) -> Result<&'c Vec<Node>> {
+        let mut result: Vec<Node> = vec![];
         if !done.contains_key(&self) {
             entered.insert(self.clone());
             for i in &self.inputs {
@@ -155,11 +159,11 @@ impl GraphAnalyser {
         })
     }
 
-    pub fn from_file<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
-        Self::from_reader(fs::File::open(p)?)
+    pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
+        Self::for_reader(fs::File::open(p)?)
     }
 
-    pub fn from_reader<R: ::std::io::Read>(mut r: R) -> Result<GraphAnalyser> {
+    pub fn for_reader<R: ::std::io::Read>(mut r: R) -> Result<GraphAnalyser> {
         let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)?;
         GraphAnalyser::new(loaded)
     }
@@ -195,20 +199,25 @@ impl GraphAnalyser {
 
     fn make_node(&mut self, name: &str) -> Result<Node> {
         let pbnode = self.get_pbnode(name)?.to_owned();
-        let inputs:Vec<(Node, Option<usize>)> = pbnode.get_input().iter().map(|i|
-            if i.starts_with("^") {
+        let inputs: Vec<(Node, Option<usize>)> = pbnode
+            .get_input()
+            .iter()
+            .map(|i| if i.starts_with("^") {
                 Ok((self.get_node(&*i.replace("^", ""))?, None))
             } else {
                 Ok((self.get_node(i)?, Some(0)))
-            }
-        ).collect::<Result<Vec<_>>>()
-        .map_err(|e| format!("While building node {}, {}", name, e.description()))?;
+            })
+            .collect::<Result<Vec<_>>>()
+            .map_err(|e| {
+                format!("While building node {}, {}", name, e.description())
+            })?;
         Ok(Node(rc::Rc::new(RawNode {
             name: name.to_string(),
             op_name: pbnode.get_op().to_string(),
             inputs: inputs,
-            op: self.op_builder.build(&pbnode)
-                .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
+            op: self.op_builder.build(&pbnode).map_err(|e| {
+                format!("While building node {}, {}", name, e.description())
+            })?,
         })))
     }
 
@@ -237,7 +246,7 @@ impl GraphAnalyser {
             return Ok(());
         }
         let node: Node = self.get_node(name)?;
-        let mut inputs: Vec<Matrix> = vec!();
+        let mut inputs: Vec<Matrix> = vec![];
         for i in &node.inputs {
             self.compute(&*i.0.name)?;
             if let Some(_) = i.1 {
@@ -263,4 +272,15 @@ impl GraphAnalyser {
             format!("{} does not exits", name),
         )?)
     }
+
+    pub fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
+        for input in inputs {
+            self.set_value(input.0, input.1)?;
+        }
+        Ok(self.eval(output_name).map(|v| v.clone())?)
+    }
+}
+
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
+    GraphAnalyser::for_path(p)
 }

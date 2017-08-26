@@ -35,11 +35,11 @@ impl Op for DecodeJpeg {
 
 
 #[derive(Debug)]
-pub struct ResizeBilinear { }
+pub struct ResizeBilinear {}
 
 impl ResizeBilinear {
     pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<ResizeBilinear> {
-        Ok(ResizeBilinear{})
+        Ok(ResizeBilinear {})
     }
 }
 
@@ -56,22 +56,29 @@ impl Op for ResizeBilinear {
         let old_height = images.shape()[1];
         let old_width = images.shape()[2];
         let channels = images.shape()[3];
-        let images = images.into_shape((batches, old_height, old_width, channels))?;
+        let images = images.into_shape(
+            (batches, old_height, old_width, channels),
+        )?;
         let new_height = sizes[0] as usize;
         let new_width = sizes[1] as usize;
         let new_shape = (batches, new_height, new_width, channels);
-        let result = Array4::from_shape_fn(new_shape, |(b,y,x,c)| {
+        let result = Array4::from_shape_fn(new_shape, |(b, y, x, c)| {
             let proj_x = old_width as f32 * x as f32 / new_width as f32;
             let proj_y = old_height as f32 * y as f32 / new_width as f32;
             let old_x = proj_x as usize;
             let old_y = proj_y as usize;
-            let q11 = images[(b,old_y,old_x,c)];
-            let q12 = images[(b,min(old_y+1,old_height-1), old_x ,c)];
-            let q21 = images[(b,old_y,min(old_x+1, old_width-1),c)];
-            let q22 = images[(b,min(old_y+1,old_height-1),min(old_x+1, old_width-1),c)];
+            let q11 = images[(b, old_y, old_x, c)];
+            let q12 = images[(b, min(old_y + 1, old_height - 1), old_x, c)];
+            let q21 = images[(b, old_y, min(old_x + 1, old_width - 1), c)];
+            let q22 = images[(
+                b,
+                min(old_y + 1, old_height - 1),
+                min(old_x + 1, old_width - 1),
+                c,
+            )];
             let dx = proj_x - old_x as f32;
             let dy = proj_y - old_y as f32;
-            (1.0-dy)*((1.0-dx)*q11 + dx*q21) + dy*((1.0-dx)*q12 + dx*q22)
+            (1.0 - dy) * ((1.0 - dx) * q11 + dx * q21) + dy * ((1.0 - dx) * q12 + dx * q22)
         });
         Ok(vec![Matrix::F32(result.into_dyn())])
     }

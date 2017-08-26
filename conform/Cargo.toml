@@ -4,13 +4,11 @@ version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 
 [dependencies]
-error-chain = "*"
 flate2 = "*"
 jpeg-decoder = "*"
 ndarray = "*"
-proptest = "*"
 protobuf = "*"
 reqwest = "*"
 tar = "*"
 tensorflow = "*"
-tfdeploy = { path = ".."}
+tfdeploy = { path = "..", features = [ "tensorflow" ] }

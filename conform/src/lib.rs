@@ -1,28 +1,21 @@
 #![allow(dead_code)]
 
-#[macro_use]
-extern crate error_chain;
 extern crate flate2;
 extern crate jpeg_decoder;
 extern crate ndarray;
-#[macro_use]
-extern crate proptest;
 extern crate protobuf;
 extern crate reqwest;
 extern crate tar;
+#[cfg(features="tensorflow")]
 extern crate tensorflow;
 extern crate tfdeploy;
 
 use std::path;
 
-mod errors;
 mod imagenet;
-mod prop;
-mod tf;
-mod tfd;
 
 use tfdeploy::Matrix;
-use errors::*;
+use tfdeploy::errors::*;
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Default, Debug)]
 pub struct SaneF32(pub f32);
@@ -33,13 +26,9 @@ impl ::std::cmp::Ord for SaneF32 {
     }
 }
 
-pub trait TfExecutor {
-    fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>>;
-}
-
 fn compare(
-    tf: &mut tf::Tensorflow,
-    tfd: &mut tfd::TfDeploy,
+    tf: &mut ::tfdeploy::tf::Tensorflow,
+    tfd: &mut ::tfdeploy::GraphAnalyser,
     inputs: Vec<(&str, Matrix)>,
     output_name: &str,
 ) -> Result<Vec<Matrix>> {
@@ -68,33 +57,7 @@ fn compare(
                 mtfd.shape()
             ))?
         } else {
-            //            println!("comparing {:?} - {:?}", mtf.datatype(), mtfd.datatype());
-            let eq = match (mtf, &mtfd) {
-                (&Matrix::U8(ref tf), &Matrix::U8(ref tfd)) => {
-                    let max = tf.iter()
-                        .zip(tfd.iter())
-                        .map(|(&a, &b)| (a as isize - b as isize).abs())
-                        .max()
-                        .unwrap();
-                    max < 10
-                }
-                (&Matrix::F32(ref tf), &Matrix::F32(ref tfd)) => {
-                    let avg = tf.iter().map(|&a| a.abs()).sum::<f32>() / tf.len() as f32;
-                    let dev = (tf.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() /
-                        tf.len() as f32)
-                        .sqrt();
-                    tf.iter().zip(tfd.iter()).all(|(&a, &b)| {
-                        (b - a).abs() <= dev / 10.0
-                    })
-                }
-                (&Matrix::I32(ref tf), &Matrix::I32(ref tfd)) => {
-                    tf.iter().zip(tfd.iter()).all(|(&a, &b)| {
-                        (a as isize - b as isize).abs() < 10
-                    })
-                }
-                _ => unimplemented!(),
-            };
-            if !eq {
+            if !mtf.close_enough(&mtfd) {
                 println!("\n\n\n#### TENSORFLOW ####\n\n\n{:?}", mtf);
                 println!("\n\n\n#### TFDEPLOY ####\n\n\n{:?}", mtfd);
                 Err("data mismatch")?
@@ -109,8 +72,8 @@ fn compare_one<P: AsRef<path::Path>>(
     inputs: Vec<(&str, Matrix)>,
     output_name: &str,
 ) -> Result<()> {
-    let mut tf = tf::for_path(&model)?;
-    let mut tfd = tfd::for_path(&model)?;
+    let mut tf = ::tfdeploy::tf::for_path(&model)?;
+    let mut tfd = tfdeploy::for_path(&model)?;
     compare(&mut tf, &mut tfd, inputs, output_name)?;
     Ok(())
 }
@@ -120,17 +83,17 @@ fn compare_all<P: AsRef<path::Path>>(
     inputs: Vec<(&str, Matrix)>,
     output_name: &str,
 ) -> Result<()> {
-    let mut tf = tf::for_path(&model)?;
-    let mut tfd = tfd::for_path(&model)?;
-    println!("{:?}", tfd.graph.node_names());
-    let output_node = tfd.graph.get_node(output_name)?;
+    let mut tf = tfdeploy::tf::for_path(&model)?;
+    let mut tfd = tfdeploy::for_path(&model)?;
+    println!("{:?}", tfd.node_names());
+    let output_node = tfd.get_node(output_name)?;
     for node in output_node.eval_order()? {
         if node.op_name == "Placeholder" {
             println!(" * skipping Placeholder `{}'", node.name);
             continue;
         }
         println!(" * comparing outputs for {} ({})", node.name, node.op_name);
-        for (k, v) in tfd.graph.get_pbnode(&*node.name)?.get_attr() {
+        for (k, v) in tfd.get_pbnode(&*node.name)?.get_attr() {
             if v.has_tensor() {
                 println!("     {}:tensor", k);
             } else {
@@ -146,7 +109,7 @@ fn compare_all<P: AsRef<path::Path>>(
                 }
                 Err(e)?
             }
-            Ok(it) => tfd.graph.set_outputs(&*node.name, it)?,
+            Ok(it) => tfd.set_outputs(&*node.name, it)?,
         }
     }
     Ok(())

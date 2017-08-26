@@ -45,10 +45,18 @@ impl OpBuilder {
                 "ResizeBilinear" => Ok(Box::new(image::ResizeBilinear::build(pb)?)),
                 "Sub" => Ok(Box::new(arith::Sub::build(pb)?)),
                 "Squeeze" => Ok(Box::new(shape::Squeeze::build(pb)?)),
-                _ => Ok(Box::new(UnimplementedOp(pb.get_op().to_string(), pb.to_owned()))),
+                _ => Ok(Box::new(
+                    UnimplementedOp(pb.get_op().to_string(), pb.to_owned()),
+                )),
             }
         }
-        build_op(pb).map_err(|e| format!("Error while building a {} op: {}", pb.get_op(), e.description()).into())
+        build_op(pb).map_err(|e| {
+            format!(
+                "Error while building a {} op: {}",
+                pb.get_op(),
+                e.description()
+            ).into()
+        })
     }
 }
 
@@ -59,15 +67,13 @@ impl Op for UnimplementedOp {
     fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
         println!("Unimplemented op: {}", self.0);
         println!(" * attrs:");
-        for (k,v) in self.1.get_attr() {
+        for (k, v) in self.1.get_attr() {
             println!("    - {}: {:?}", k, v);
         }
         println!(" * inputs: {}", inputs.len());
-        for (ix,i) in inputs.iter().enumerate() {
+        for (ix, i) in inputs.iter().enumerate() {
             print!(" #{}\n{}\n", ix, i.partial_dump(true)?);
         }
         Err(format!("unimplemented operation: {}", self.0))?
     }
 }
-
-

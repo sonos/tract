@@ -94,7 +94,7 @@ impl Matrix {
         }
     }
 
-    pub fn partial_dump(&self, single_line:bool) -> ::Result<String> {
+    pub fn partial_dump(&self, single_line: bool) -> ::Result<String> {
         use std::io::Write;
         use std::io::BufRead;
         let mut w = Vec::new();
@@ -107,19 +107,50 @@ impl Matrix {
         let mut lines: Vec<String> = ::std::io::BufReader::new(&*w)
             .lines()
             .collect::<::std::io::Result<Vec<_>>>()?;
-        if lines.len() > 5 {
+        if lines.len() > 10 {
             lines[2] = (if single_line { "..." } else { " : : :" }).into();
-            while lines.len() > 5 {
+            while lines.len() > 10 {
                 lines.remove(3);
             }
         }
-        Ok(lines.iter().map(|s| s.trim().to_string() + if single_line {""} else {"\n"}).collect())
+        Ok(
+            lines
+                .iter()
+                .map(|s| {
+                    s.trim().to_string() + if single_line { "" } else { "\n" }
+                })
+                .collect(),
+        )
+    }
+
+    fn to_f32(&self) -> Matrix {
+        match self {
+            &Matrix::I32(ref data) => Matrix::F32(data.map(|&a| a as f32)),
+            &Matrix::F32(_) => self.clone(),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn close_enough(&self, other: &Self) -> bool {
+        let ma = self.to_f32().take_f32s().unwrap();
+        let mb = other.to_f32().take_f32s().unwrap();
+        let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
+        let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
+        mb.iter().zip(ma.iter()).all(|(&a, &b)| {
+            (b - a).abs() <= dev / 10.0
+        })
     }
 }
 
 impl ::std::fmt::Debug for Matrix {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
-        write!(f, "{}", self.partial_dump(true).map_err(|_| ::std::fmt::Error::default())?)
+        write!(
+            f,
+            "{}",
+            self.partial_dump(true).map_err(
+                |_| ::std::fmt::Error::default(),
+            )?
+        )
     }
 }
 
@@ -144,7 +175,7 @@ where
 }
 
 macro_rules! matrix {
-    ($t:ident,$v:ident,$as:ident,$take:ident) => {
+    ($t:ident,$v:ident,$as:ident,$take:ident,$make:ident) => {
         impl From<ArrayD<$t>> for Matrix {
             fn from(it: ArrayD<$t>) -> Matrix {
                 Matrix::$v(it)
@@ -167,6 +198,10 @@ macro_rules! matrix {
                     None
                 }
             }
+
+            pub fn $make(shape:&[usize], values:&[$t]) -> ::Result<Matrix> {
+                Ok(Array::from_shape_vec(shape, values.to_vec())?.into())
+            }
         }
 
         impl CastFrom<Matrix> for ArrayD<$t> {
@@ -181,7 +216,7 @@ macro_rules! matrix {
     }
 }
 
-matrix!(f32, F32, as_f32s, take_f32s);
-matrix!(i32, I32, as_i32s, take_i32s);
-matrix!(u8, U8, as_u8s, take_u8s);
-matrix!(i8, I8, as_i8s, take_i8s);
+matrix!(f32, F32, as_f32s, take_f32s, f32s);
+matrix!(i32, I32, as_i32s, take_i32s, i32s);
+matrix!(u8, U8, as_u8s, take_u8s, u8s);
+matrix!(i8, I8, as_i8s, take_i8s, i8s);
