@@ -16,7 +16,7 @@ before_install:
 script:
   - cargo build --verbose
   - cargo test --verbose
-  - cargo test --release --verbose --all
+  - cargo test --release --features tensorflow --verbose
 
 matrix:
   allow_failures:
