@@ -14,18 +14,23 @@ pub struct Tensorflow {
     graph: Graph,
 }
 
-pub fn build<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
     use std::io::Read;
-    let mut graph = Graph::new();
     let mut model = vec![];
     fs::File::open(p)?.read_to_end(&mut model)?;
+    for_slice(&*model)
+}
+
+pub fn for_slice(buf:&[u8]) -> Result<Tensorflow> {
+    let mut graph = Graph::new();
     graph.import_graph_def(
-        &*model,
+        buf,
         &::tensorflow::ImportGraphDefOptions::new(),
     )?;
     let session = Session::new(&::tensorflow::SessionOptions::new(), &graph)?;
     Ok(Tensorflow { session, graph })
 }
+
 
 enum TensorHolder {
     F32(Tensor<f32>),

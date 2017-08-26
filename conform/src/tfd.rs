@@ -7,7 +7,12 @@ pub struct TfDeploy {
     pub graph: GraphAnalyser,
 }
 
-pub fn build<P: AsRef<path::Path>>(p: P) -> Result<TfDeploy> {
+pub fn for_slice(slice: &[u8]) -> Result<TfDeploy> {
+    let graph = GraphAnalyser::from_reader(slice)?;
+    Ok(TfDeploy { graph })
+}
+
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<TfDeploy> {
     let graph = GraphAnalyser::from_file(p)?;
     Ok(TfDeploy { graph })
 }

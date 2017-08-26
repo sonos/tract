@@ -184,3 +184,4 @@ macro_rules! matrix {
 matrix!(f32, F32, as_f32s, take_f32s);
 matrix!(i32, I32, as_i32s, take_i32s);
 matrix!(u8, U8, as_u8s, take_u8s);
+matrix!(i8, I8, as_i8s, take_i8s);

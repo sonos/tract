@@ -11,26 +11,26 @@ extern crate log;
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
+#[cfg(test)]
+#[macro_use]
+extern crate proptest;
+#[cfg(test)]
+extern crate tensorflow;
 
+pub mod errors;
 pub mod tfpb;
 pub mod matrix;
 pub mod ops;
 
+#[cfg(test)]
+pub mod tf;
+
 use std::{fs, path, rc, str};
 use std::collections::{HashMap, HashSet};
 use ops::Op;
+use errors::*;
 
 pub use matrix::Matrix;
-
-error_chain!{
-    foreign_links {
-        Image(image::ImageError);
-        Io(::std::io::Error);
-        NdarrayShape(::ndarray::ShapeError);
-        Protobuf(::protobuf::ProtobufError);
-        StrUtf8(::std::str::Utf8Error);
-    }
-}
 
 #[derive(Debug,Clone,PartialEq,Eq,Hash)]
 pub struct Node(pub rc::Rc<RawNode>);

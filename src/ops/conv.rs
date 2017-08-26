@@ -172,6 +172,9 @@ impl Op for Conv2D {
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
+    use proptest::prelude::*;
+    use ndarray::prelude::*;
+
     use Matrix;
     use super::*;
 
@@ -252,37 +255,185 @@ mod tests {
             _data_format: DataFormat::NHWC,
         };
         // NHWC
-        let data:Matrix = ::ndarray::arr3(&[
+        let data: Matrix = ::ndarray::arr3(
+            &[
                 [[1.0, 3.0], [0.0, 2.0], [0.0, 0.0]],
                 [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
                 [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
                 [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
-            ]).into_shape((1,4,3,2)).unwrap().into_dyn().into();
+            ],
+        ).into_shape((1, 4, 3, 2))
+            .unwrap()
+            .into_dyn()
+            .into();
 
-        let filter = ::ndarray::arr3(
-            &[[[1.0],[0.0]], [[0.0],[0.0]]],
-        ).into_shape((1,2,2,1)).unwrap().into_dyn().into();
+        let filter = ::ndarray::arr3(&[[[1.0], [0.0]], [[0.0], [0.0]]])
+            .into_shape((1, 2, 2, 1))
+            .unwrap()
+            .into_dyn()
+            .into();
 
-        let exp:Matrix = ::ndarray::arr3(&[
+        let exp: Matrix = ::ndarray::arr3(
+            &[
                 [[1.0], [0.0], [0.0]],
                 [[0.0], [0.0], [0.0]],
                 [[0.0], [0.0], [0.0]],
                 [[0.0], [0.0], [0.0]],
-            ]).into_shape((1,4,3,1)).unwrap().into_dyn().into();
-        assert_eq!(vec!(exp), conv.eval(vec!(data.clone(), filter)).unwrap());
+            ],
+        ).into_shape((1, 4, 3, 1))
+            .unwrap()
+            .into_dyn()
+            .into();
+        assert_eq!(vec![exp], conv.eval(vec![data.clone(), filter]).unwrap());
 
-        let filter = ::ndarray::arr3(
-            &[[[0.0],[1.0]], [[5.0],[0.0]]],
-        ).into_shape((1,2,2,1)).unwrap().into_dyn().into();
+        let filter = ::ndarray::arr3(&[[[0.0], [1.0]], [[5.0], [0.0]]])
+            .into_shape((1, 2, 2, 1))
+            .unwrap()
+            .into_dyn()
+            .into();
 
-        let exp:Matrix = ::ndarray::arr3(&[
+        let exp: Matrix = ::ndarray::arr3(
+            &[
                 [[3.0], [2.0], [0.0]],
                 [[0.0], [0.0], [0.0]],
                 [[0.0], [0.0], [0.0]],
                 [[0.0], [0.0], [0.0]],
-            ]).into_shape((1,4,3,1)).unwrap().into_dyn().into();
-        assert_eq!(vec!(exp), conv.eval(vec!(data.clone(), filter)).unwrap());
+            ],
+        ).into_shape((1, 4, 3, 1))
+            .unwrap()
+            .into_dyn()
+            .into();
+        assert_eq!(vec![exp], conv.eval(vec![data.clone(), filter]).unwrap());
 
     }
 
+    #[test]
+    fn test_image_2() {
+        let conv = Conv2D {
+            padding: Padding::Same,
+            strides: vec![1, 1, 1, 1],
+            _data_format: DataFormat::NHWC,
+        };
+        // NHWC
+        let data: Matrix = ::ndarray::arr1(&[1f32])
+            .into_shape((1, 1, 1, 1))
+            .unwrap()
+            .into_dyn()
+            .into();
+
+        let filter = ::ndarray::arr1(&[0.0, 1.0, 0.0])
+            .into_shape((3, 1, 1, 1))
+            .unwrap()
+            .into_dyn()
+            .into();
+
+        let exp: Matrix = ::ndarray::arr1(&[1.0])
+            .into_shape((1, 1, 1, 1))
+            .unwrap()
+            .into_dyn()
+            .into();
+        assert_eq!(vec![exp], conv.eval(vec![data.clone(), filter]).unwrap());
+    }
+
+    fn convolution_pb(v_stride: usize, h_stride: usize) -> ::Result<Vec<u8>> {
+        use protobuf::core::Message;
+        use tfpb;
+
+        let mut graph = tfpb::graph::GraphDef::new();
+        let mut dt_float = tfpb::attr_value::AttrValue::new();
+        dt_float.set_field_type(tfpb::types::DataType::DT_FLOAT);
+
+        let mut data = tfpb::node_def::NodeDef::new();
+        data.set_name("data".into());
+        data.set_op("Placeholder".into());
+        data.mut_attr().insert(
+            "dtype".to_string(),
+            dt_float.clone(),
+        );
+        graph.mut_node().push(data);
+
+        let mut kernel = tfpb::node_def::NodeDef::new();
+        kernel.set_name("kernel".into());
+        kernel.set_op("Placeholder".into());
+        kernel.mut_attr().insert(
+            "dtype".to_string(),
+            dt_float.clone(),
+        );
+        graph.mut_node().push(kernel);
+
+        let mut conv = tfpb::node_def::NodeDef::new();
+        conv.set_name("conv".into());
+        conv.set_op("Conv2D".into());
+        conv.mut_input().push("data".into());
+        conv.mut_input().push("kernel".into());
+        let mut strides_list = tfpb::attr_value::AttrValue_ListValue::new();
+        strides_list.set_i(vec![1, v_stride as i64, h_stride as i64, 1]);
+        let mut strides = tfpb::attr_value::AttrValue::new();
+        strides.set_list(strides_list);
+        conv.mut_attr().insert("strides".to_string(), strides);
+        let mut same = tfpb::attr_value::AttrValue::new();
+        same.set_s("SAME".as_bytes().to_vec());
+        conv.mut_attr().insert("padding".to_string(), same);
+        conv.mut_attr().insert("T".to_string(), dt_float.clone());
+        graph.mut_node().push(conv);
+
+        Ok(graph.write_to_bytes()?)
+    }
+
+    fn img_and_ker(
+        ih: usize,
+        iw: usize,
+        ic: usize,
+        kh: usize,
+        kw: usize,
+        kc: usize,
+    ) -> BoxedStrategy<(Matrix, Matrix)> {
+        (1..ih, 1..iw, 1..ic, 1..kh, 1..kw, 1..kc)
+            .prop_flat_map(|(ih, iw, ic, kh, kw, kc)| {
+                let i_size = iw * ih * ic;
+                let k_size = kw * kh * kc * ic;
+                (
+                    Just(ih),
+                    Just(iw),
+                    Just(ic),
+                    Just(kh),
+                    Just(kw),
+                    Just(kc),
+                    ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
+                    ::proptest::collection::vec(-255f32..255f32, k_size..k_size + 1),
+                )
+            })
+            .prop_map(|(ih, iw, ic, kh, kw, kc, img, ker)| {
+                (
+                    Matrix::F32(
+                        Array::from_vec(img)
+                            .into_shape((1, ih, iw, ic))
+                            .unwrap()
+                            .into_dyn(),
+                    ),
+                    Matrix::F32(
+                        Array::from_vec(ker)
+                            .into_shape((kh, kw, ic, kc))
+                            .unwrap()
+                            .into_dyn(),
+                    ),
+                )
+            })
+            .boxed()
+    }
+
+    proptest! {
+        #[test]
+        fn test_image_conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8)) {
+        //    println!("i:{:?} k:{:?}", i.shape(), k.shape());
+            let model = convolution_pb(1,1).unwrap();
+            let mut tf = ::tf::for_slice(&model)?;
+            let mut tfd = ::GraphAnalyser::from_reader(&*model)?;
+            let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
+            tfd.set_value("data", i.clone())?;
+            tfd.set_value("kernel", k.clone())?;
+            let found = tfd.take("conv")?;
+            prop_assert_eq!(expected, found)
+        }
+    }
 }

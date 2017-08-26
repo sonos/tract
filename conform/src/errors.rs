@@ -4,6 +4,7 @@ error_chain! {
         Io(::std::io::Error);
         Reqwest(::reqwest::Error);
         TfDeploy(::tfdeploy::Error);
+        Protobuf(::protobuf::ProtobufError);
     }
 
     errors {

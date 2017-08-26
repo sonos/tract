@@ -28,6 +28,8 @@ tempdir = "0.3"
 
 [dev-dependencies]
 bencher = "0.1"
+proptest = "*"
+tensorflow = "*"
 
 [[bench]]
 harness= false

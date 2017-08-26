@@ -43,8 +43,10 @@ fn test() {
         .unwrap();
     let input = ::tfdeploy::ops::image::decode_one(&*image_buffer).unwrap();
 
-    let input = ::ndarray::Array4::from_shape_fn((1, input.shape()[0], input.shape()[1], 3),
-    |(_,x,y,c)| input[(x,y,c)] as f32).into_dyn();
+    let input = ::ndarray::Array4::from_shape_fn(
+        (1, input.shape()[0], input.shape()[1], 3),
+        |(_, x, y, c)| input[(x, y, c)] as f32,
+    ).into_dyn();
 
     ::compare_all(
         INCEPTION_V3,
