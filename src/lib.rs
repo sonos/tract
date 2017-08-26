@@ -13,6 +13,7 @@ extern crate num_traits;
 extern crate protobuf;
 #[cfg(test)]
 #[macro_use]
+#[allow(unused_imports)]
 extern crate proptest;
 #[cfg(feature = "tensorflow")]
 extern crate tensorflow;

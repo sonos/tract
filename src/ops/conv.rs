@@ -412,7 +412,7 @@ mod tests {
             fn test_image_conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8)) {
                 let model = convolution_pb(1,1).unwrap();
                 let mut tf = ::tf::for_slice(&model)?;
-                let mut tfd = ::GraphAnalyser::from_reader(&*model)?;
+                let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
                 let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
                 tfd.set_value("data", i.clone())?;
                 tfd.set_value("kernel", k.clone())?;
