@@ -27,6 +27,23 @@ impl<'a, T> ImageWrapper<'a, T> {
     }
 }
 
+pub struct BatchImageWrapper<'a, T: 'a>(ArrayView4<'a, T>);
+
+impl<'a, T> BatchImageWrapper<'a, T> {
+    pub fn count(&self) -> usize {
+        self.0.shape()[0]
+    }
+    pub fn height(&self) -> usize {
+        self.0.shape()[1]
+    }
+    pub fn width(&self) -> usize {
+        self.0.shape()[2]
+    }
+    pub fn depth(&self) -> usize {
+        self.0.shape()[3]
+    }
+}
+
 #[derive(Debug)]
 pub struct LocalPatch {
     pub _data_format: DataFormat,
@@ -89,11 +106,16 @@ impl LocalPatch {
         }
     }
 
-    fn pad<T>(&self, data: ArrayView3<T>, shape: (usize, usize)) -> Result<Option<Array3<T>>>
+    fn pad<T>(
+        &self,
+        data: ArrayView4<T>,
+        shape: (usize, usize),
+        item: T,
+    ) -> Result<Option<Array4<T>>>
     where
         T: Copy + ::num_traits::Zero + ::std::fmt::Debug,
     {
-        let img = ImageWrapper(data);
+        let img = BatchImageWrapper(data);
         let stride = self.strides[1];
         let (filter_rows, filter_cols) = shape;
 
@@ -121,20 +143,28 @@ impl LocalPatch {
             let right_padding = h_padding - left_padding;
             let top_padding = v_padding / 2;
             let bottom_padding = v_padding - top_padding;
-            let left_padding =
-                ::ndarray::Array3::<T>::zeros((img.height(), left_padding, img.depth()));
-            let right_padding =
-                ::ndarray::Array3::<T>::zeros((img.height(), right_padding, img.depth()));
+            let left_padding = ::ndarray::Array4::<T>::from_elem(
+                (img.count(), img.height(), left_padding, img.depth()),
+                item,
+            );
+            let right_padding = ::ndarray::Array4::<T>::from_elem(
+                (img.count(), img.height(), right_padding, img.depth()),
+                item,
+            );
             let tmp = ::ndarray::stack(
-                ::ndarray::Axis(1),
+                ::ndarray::Axis(2),
                 &[left_padding.view(), data.view(), right_padding.view()],
             )?;
-            let top_padding =
-                ::ndarray::Array3::<T>::zeros((top_padding, tmp.shape()[1], img.depth()));
-            let bottom_padding =
-                ::ndarray::Array3::<T>::zeros((bottom_padding, tmp.shape()[1], img.depth()));
+            let top_padding = ::ndarray::Array4::<T>::from_elem(
+                (img.count(), top_padding, tmp.shape()[2], img.depth()),
+                item,
+            );
+            let bottom_padding = ::ndarray::Array4::<T>::from_elem(
+                (img.count(), bottom_padding, tmp.shape()[2], img.depth()),
+                item,
+            );
             let a = ::ndarray::stack(
-                ::ndarray::Axis(0),
+                ::ndarray::Axis(1),
                 &[top_padding.view(), tmp.view(), bottom_padding.view()],
             )?;
             Ok(Some(a))
@@ -170,7 +200,8 @@ impl LocalPatch {
         );
 
         let mut patches = unsafe { ::ndarray::Array2::<T>::uninitialized(patches_size) };
-        let padded = self.pad(data, (filter_rows, filter_cols))?;
+        let data = data.into_shape((1, img.height(), img.width(), img.depth()))?;
+        let padded = self.pad(data, (filter_rows, filter_cols), T::zero())?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         for i_x in 0..out_width {
             for i_y in 0..out_height {
@@ -181,7 +212,7 @@ impl LocalPatch {
                             let loc = &mut patch_row[f_y * img.depth() * filter_cols +
                                                          f_x * img.depth() +
                                                          d];
-                            *loc = data[(i_y * stride + f_y, i_x * stride + f_x, d)];
+                            *loc = data[(0, i_y * stride + f_y, i_x * stride + f_x, d)];
                         }
                     }
                 }
@@ -258,17 +289,12 @@ impl MaxPool {
     }
 }
 
-fn f32_cmp(a: &f32, b: &f32) -> ::std::cmp::Ordering {
-    a.partial_cmp(b).unwrap_or(::std::cmp::Ordering::Greater)
-}
-
 impl Op for MaxPool {
     fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
         // [ batch, in_rows, in_cols, in_depth ]
         let data = inputs.remove(0).take_f32s().ok_or(
             "Expect input #0 to be f32",
         )?;
-
         let batches = data.shape()[0];
         let in_rows = data.shape()[1];
         let in_cols = data.shape()[2];
@@ -281,23 +307,27 @@ impl Op for MaxPool {
             (self.1).1,
         );
 
+        let h_stride = self.0.strides[1];
+        let w_stride = self.0.strides[2];
         let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
+        let padded = self.0.pad(data.view(), self.1, ::std::f32::NEG_INFINITY)?;
+        let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
 
-        let transformed: Vec<Array4<f32>> = data.outer_iter()
-            .map(|image| -> Result<Array4<f32>> {
-                let patches = self.0.mk_patches(image, self.1)?;
-                let maxes: Vec<f32> = patches
-                    .outer_iter()
-                    .map(|row| {
-                        row.iter().map(|a| *a).max_by(|a, b| f32_cmp(a, b)).unwrap()
-                    })
-                    .collect();
-                let maxes = Array::from_vec(maxes);
-                Ok(maxes.into_shape((1, out_height, out_width, 1))?)
-            })
-            .collect::<Result<Vec<Array4<f32>>>>()?;
-        let views: Vec<ArrayView4<f32>> = transformed.iter().map(|m| m.view()).collect();
-        Ok(vec![::ndarray::stack(Axis(0), &*views)?.into_dyn().into()])
+        let transformed =
+            Array4::from_shape_fn((batches, out_height, out_width, in_depth), |(b, h, w, d)| {
+                let mut v = ::std::f32::NEG_INFINITY;
+                for y in (h*h_stride)..(h*h_stride) + (self.1).0 {
+                    for x in (w*w_stride)..(w*w_stride) + (self.1).1 {
+                        let v2 = data[(b, y, x, d)];
+                        if v2 > v {
+                            v = v2;
+                        }
+                    }
+                }
+                v
+            });
+
+        Ok(vec![transformed.into_dyn().into()])
     }
 }
 
@@ -377,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn test_image_1() {
+    fn test_conv_1() {
         let conv = Conv2D(LocalPatch {
             padding: Padding::Same,
             strides: vec![1, 1, 1, 1],
@@ -394,7 +424,7 @@ mod tests {
 
 
     #[test]
-    fn test_image_2() {
+    fn test_conv_2() {
         let conv = Conv2D(LocalPatch {
             padding: Padding::Same,
             strides: vec![1, 1, 1, 1],
@@ -414,6 +444,50 @@ mod tests {
         ))
     }
 
+    #[test]
+    fn test_maxpool_1() {
+        let pool = MaxPool(
+            LocalPatch {
+                padding: Padding::Same,
+                strides: vec![1, 1, 1, 1],
+                _data_format: DataFormat::NHWC,
+            },
+            (2, 1),
+        );
+        let data = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
+        let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
+        let found = pool.eval(vec![data.clone()]).unwrap();
+
+        assert!(
+            exp.close_enough(&found[0]),
+            "expected: {:?} found: {:?}",
+            exp,
+            found[0]
+        )
+    }
+
+    #[test]
+    fn test_maxpool_2() {
+        let pool = MaxPool(
+            LocalPatch {
+                padding: Padding::Same,
+                strides: vec![1, 3, 3, 1],
+                _data_format: DataFormat::NHWC,
+            },
+            (3, 3),
+        );
+        let data = Matrix::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
+        let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
+        let found = pool.eval(vec![data.clone()]).unwrap();
+
+        assert!(
+            exp.close_enough(&found[0]),
+            "expected: {:?} found: {:?}",
+            exp,
+            found[0]
+        )
+    }
+
     #[cfg(feature = "tensorflow")]
     mod tensorflow_ref {
         #![allow(non_snake_case)]
@@ -422,7 +496,53 @@ mod tests {
 
         use Matrix;
 
-        fn convolution_pb(v_stride: usize, h_stride: usize) -> ::Result<Vec<u8>> {
+        fn maxpool_pb(
+            v_stride: usize,
+            h_stride: usize,
+            kw: usize,
+            kh: usize,
+            valid: bool,
+        ) -> ::Result<Vec<u8>> {
+            use protobuf::core::Message;
+            use tfpb;
+
+            let mut graph = tfpb::graph::GraphDef::new();
+            let mut dt_float = tfpb::attr_value::AttrValue::new();
+            dt_float.set_field_type(tfpb::types::DataType::DT_FLOAT);
+
+            let mut data = tfpb::node_def::NodeDef::new();
+            data.set_name("data".into());
+            data.set_op("Placeholder".into());
+            data.mut_attr().insert(
+                "dtype".to_string(),
+                dt_float.clone(),
+            );
+            graph.mut_node().push(data);
+
+            let mut pool = tfpb::node_def::NodeDef::new();
+            pool.set_name("pool".into());
+            pool.set_op("MaxPool".into());
+            pool.mut_input().push("data".into());
+            let mut strides_list = tfpb::attr_value::AttrValue_ListValue::new();
+            strides_list.set_i(vec![1, v_stride as i64, h_stride as i64, 1]);
+            let mut strides = tfpb::attr_value::AttrValue::new();
+            strides.set_list(strides_list);
+            pool.mut_attr().insert("strides".to_string(), strides);
+            let mut ksize_list = tfpb::attr_value::AttrValue_ListValue::new();
+            ksize_list.set_i(vec![1, kw as i64, kh as i64, 1]);
+            let mut ksize = tfpb::attr_value::AttrValue::new();
+            ksize.set_list(ksize_list);
+            pool.mut_attr().insert("ksize".to_string(), ksize);
+            let mut padding = tfpb::attr_value::AttrValue::new();
+            padding.set_s((if valid { "VALID" } else { "SAME" }).as_bytes().to_vec());
+            pool.mut_attr().insert("padding".to_string(), padding);
+            pool.mut_attr().insert("T".to_string(), dt_float.clone());
+            graph.mut_node().push(pool);
+
+            Ok(graph.write_to_bytes()?)
+        }
+
+        fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
             use protobuf::core::Message;
             use tfpb;
 
@@ -458,9 +578,9 @@ mod tests {
             let mut strides = tfpb::attr_value::AttrValue::new();
             strides.set_list(strides_list);
             conv.mut_attr().insert("strides".to_string(), strides);
-            let mut same = tfpb::attr_value::AttrValue::new();
-            same.set_s("SAME".as_bytes().to_vec());
-            conv.mut_attr().insert("padding".to_string(), same);
+            let mut padding = tfpb::attr_value::AttrValue::new();
+            padding.set_s((if valid { "VALID" } else { "SAME" }).as_bytes().to_vec());
+            conv.mut_attr().insert("padding".to_string(), padding);
             conv.mut_attr().insert("T".to_string(), dt_float.clone());
             graph.mut_node().push(conv);
 
@@ -509,10 +629,52 @@ mod tests {
                 .boxed()
         }
 
+        fn img_and_pool(
+            ih: usize,
+            iw: usize,
+            ic: usize,
+            kh: usize,
+            kw: usize,
+        ) -> BoxedStrategy<(Matrix, usize, usize)> {
+            (1..ih, 1..iw, 1..ic, 1..kh, 1..kw)
+                .prop_flat_map(|(ih, iw, ic, kh, kw)| {
+                    let i_size = iw * ih * ic;
+                    (
+                        Just(ih),
+                        Just(iw),
+                        Just(ic),
+                        Just(kh),
+                        Just(kw),
+                        ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
+                    )
+                })
+                .prop_map(|(ih, iw, ic, kh, kw, img)| {
+                    (
+                        Matrix::F32(
+                            Array::from_vec(img)
+                                .into_shape((1, ih, iw, ic))
+                                .unwrap()
+                                .into_dyn(),
+                        ),
+                        kw,
+                        kh,
+                    )
+                })
+                .boxed()
+        }
+
         proptest! {
             #[test]
-            fn test_image_conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8)) {
-                let model = convolution_pb(1,1).unwrap();
+            fn test_image_conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8),
+                               valid in ::proptest::bool::ANY,
+                               stride in 1usize..4) {
+                prop_assume!(stride <= k.shape()[0]);
+                prop_assume!(stride <= k.shape()[1]);
+                if valid {
+                    prop_assume!(i.shape()[1] >= k.shape()[0]);
+                    prop_assume!(i.shape()[2] >= k.shape()[1]);
+                }
+                let model = convolution_pb(stride, stride, valid).unwrap();
                 let mut tf = ::tf::for_slice(&model)?;
                 let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
                 let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
@@ -520,6 +682,27 @@ mod tests {
                 tfd.set_value("kernel", k.clone())?;
                 let found = tfd.take("conv")?;
                 prop_assert!(expected[0].close_enough(&found[0]))
+            }
+        }
+
+        proptest! {
+            #[test]
+            fn test_image_maxpool((ref i, kh, kw) in img_and_pool(32, 32, 5, 16, 16),
+                               valid in ::proptest::bool::ANY,
+                               stride in 1usize..4) {
+                prop_assume!(stride <= kh);
+                prop_assume!(stride <= kw);
+                if valid {
+                    prop_assume!(i.shape()[1] >= kh);
+                    prop_assume!(i.shape()[2] >= kw);
+                }
+                let model = maxpool_pb(stride, stride, kh, kw, valid).unwrap();
+                let mut tf = ::tf::for_slice(&model)?;
+                let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
+                let expected = tf.run(vec!(("data", i.clone())), "pool")?;
+                tfd.set_value("data", i.clone())?;
+                let found = tfd.take("pool")?;
+                prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found)
             }
         }
     }

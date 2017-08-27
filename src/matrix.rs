@@ -1,6 +1,6 @@
 use ndarray::prelude::*;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Matrix {
     F32(ArrayD<f32>),
     I32(ArrayD<i32>),
@@ -141,7 +141,7 @@ impl Matrix {
         })
     }
 }
-
+/*
 impl ::std::fmt::Debug for Matrix {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
         write!(
@@ -153,6 +153,7 @@ impl ::std::fmt::Debug for Matrix {
         )
     }
 }
+*/
 
 pub trait CastFrom<T>
 where
