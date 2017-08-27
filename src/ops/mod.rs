@@ -38,6 +38,7 @@ impl OpBuilder {
                 "DecodeJpeg" => Ok((Box::new(image::DecodeJpeg::build(pb)?))),
                 "ExpandDims" => Ok(Box::new(shape::ExpandDims)),
                 "Identity" => Ok((Box::new(trivial::Identity::build(pb)?))),
+                "MaxPool" => Ok(Box::new(conv::MaxPool::build(pb)?)),
                 "Mul" => Ok(Box::new(arith::Mul::build(pb)?)),
                 "Placeholder" => Ok(Box::new(trivial::Placeholder::build(pb)?)),
                 "Relu" => Ok(Box::new(activ::Relu::build(pb)?)),

@@ -1,5 +1,6 @@
 use {Matrix, Result};
 use super::Op;
+use ndarray::prelude::*;
 
 #[derive(Debug)]
 pub enum DataFormat {
@@ -12,15 +13,29 @@ pub enum Padding {
     Same,
 }
 
+pub struct ImageWrapper<'a, T: 'a>(ArrayView3<'a, T>);
+
+impl<'a, T> ImageWrapper<'a, T> {
+    pub fn height(&self) -> usize {
+        self.0.shape()[0]
+    }
+    pub fn width(&self) -> usize {
+        self.0.shape()[1]
+    }
+    pub fn depth(&self) -> usize {
+        self.0.shape()[2]
+    }
+}
+
 #[derive(Debug)]
-pub struct Conv2D {
+pub struct LocalPatch {
     pub _data_format: DataFormat,
     pub padding: Padding,
     pub strides: Vec<usize>,
 }
 
-impl Conv2D {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Conv2D> {
+impl LocalPatch {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<LocalPatch> {
         if let Some(data_format) = pb.get_attr().get("data_format") {
             if data_format.get_s() == b"NCHW" {
                 Err("NCHW data_format not implemented")?
@@ -40,13 +55,148 @@ impl Conv2D {
         let padding = match padding.get_s() {
             b"VALID" => Padding::Valid,
             b"SAME" => Padding::Same,
-            _ => Err("Only VALID padding supported for now on Conv2D")?,
+            s => {
+                Err(format!(
+                    "unsupported Padding {}",
+                    String::from_utf8_lossy(s)
+                ))?
+            }
         };
-        Ok(Conv2D {
+        Ok(LocalPatch {
             _data_format: DataFormat::NHWC,
             padding,
             strides,
         })
+    }
+
+    fn adjusted_dim(
+        &self,
+        in_rows: usize,
+        in_cols: usize,
+        filter_rows: usize,
+        filter_cols: usize,
+    ) -> (usize, usize) {
+        let stride = self.strides[1];
+        match self.padding {
+            Padding::Same => (
+                (in_rows as f32 / stride as f32).ceil() as usize,
+                (in_cols as f32 / stride as f32).ceil() as usize,
+            ),
+            Padding::Valid => (
+                ((in_rows - filter_rows + 1) as f32 / stride as f32).ceil() as usize,
+                ((in_cols - filter_cols + 1) as f32 / stride as f32).ceil() as usize,
+            ),
+        }
+    }
+
+    fn pad<T>(&self, data: ArrayView3<T>, shape: (usize, usize)) -> Result<Option<Array3<T>>>
+    where
+        T: Copy + ::num_traits::Zero + ::std::fmt::Debug,
+    {
+        let img = ImageWrapper(data);
+        let stride = self.strides[1];
+        let (filter_rows, filter_cols) = shape;
+
+        if self.padding == Padding::Same {
+            // https://www.tensorflow.org/api_guides/python/nn#Convolution
+            let v_padding = ::std::cmp::max(
+                0,
+                filter_rows -
+                    if img.height() % stride == 0 {
+                        stride
+                    } else {
+                        img.height() % stride
+                    },
+            );
+            let h_padding = ::std::cmp::max(
+                0,
+                filter_cols -
+                    if img.width() % stride == 0 {
+                        stride
+                    } else {
+                        img.width() % stride
+                    },
+            );
+            let left_padding = h_padding / 2;
+            let right_padding = h_padding - left_padding;
+            let top_padding = v_padding / 2;
+            let bottom_padding = v_padding - top_padding;
+            let left_padding =
+                ::ndarray::Array3::<T>::zeros((img.height(), left_padding, img.depth()));
+            let right_padding =
+                ::ndarray::Array3::<T>::zeros((img.height(), right_padding, img.depth()));
+            let tmp = ::ndarray::stack(
+                ::ndarray::Axis(1),
+                &[left_padding.view(), data.view(), right_padding.view()],
+            )?;
+            let top_padding =
+                ::ndarray::Array3::<T>::zeros((top_padding, tmp.shape()[1], img.depth()));
+            let bottom_padding =
+                ::ndarray::Array3::<T>::zeros((bottom_padding, tmp.shape()[1], img.depth()));
+            let a = ::ndarray::stack(
+                ::ndarray::Axis(0),
+                &[top_padding.view(), tmp.view(), bottom_padding.view()],
+            )?;
+            Ok(Some(a))
+        } else {
+            Ok(None)
+        }
+    }
+
+    // data is expected in HWC
+    fn mk_patches<T: Copy + ::num_traits::Zero + ::std::fmt::Debug>(
+        &self,
+        data: ArrayView<T, Ix3>,
+        shape: (usize, usize),
+    ) -> Result<Array2<T>> {
+        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 ||
+            self.strides[1] != self.strides[2]
+        {
+            Err(format!(
+                "strides must be of the form [1, s, s, 1], found {:?}",
+                self.strides
+            ))?
+        }
+        let img = ImageWrapper(data);
+        let stride = self.strides[1];
+        let (filter_rows, filter_cols) = shape;
+
+        let (out_height, out_width) =
+            self.adjusted_dim(img.height(), img.width(), filter_rows, filter_cols);
+
+        let patches_size = (
+            (out_height * out_width) as usize,
+            filter_rows * filter_cols * img.depth(),
+        );
+
+        let mut patches = unsafe { ::ndarray::Array2::<T>::uninitialized(patches_size) };
+        let padded = self.pad(data, (filter_rows, filter_cols))?;
+        let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
+        for i_x in 0..out_width {
+            for i_y in 0..out_height {
+                let mut patch_row = patches.row_mut(i_y * out_width + i_x);
+                for f_x in 0..filter_cols {
+                    for f_y in 0..filter_rows {
+                        for d in 0..img.depth() {
+                            let loc = &mut patch_row[f_y * img.depth() * filter_cols +
+                                                         f_x * img.depth() +
+                                                         d];
+                            *loc = data[(i_y * stride + f_y, i_x * stride + f_x, d)];
+                        }
+                    }
+                }
+            }
+        }
+        Ok(patches)
+    }
+}
+
+#[derive(Debug)]
+pub struct Conv2D(LocalPatch);
+
+impl Conv2D {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Conv2D> {
+        Ok(Conv2D(LocalPatch::build(pb)?))
     }
 }
 
@@ -60,32 +210,7 @@ impl Op for Conv2D {
         let data = inputs.remove(0).take_f32s().ok_or(
             "Expect input #0 to be f32",
         )?;
-        //        println!("kernel is {:?}", filter.shape());
 
-        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 ||
-            self.strides[1] != self.strides[2]
-        {
-            Err(format!(
-                "strides must be of the form [1, s, s, 1], found {:?}",
-                self.strides
-            ))?
-        }
-        if data.shape().len() != 4 || filter.shape().len() != 4 {
-            Err(format!(
-                "data and filter must be of dimension 4. data is {:?}, filter is {:?}",
-                data.shape(),
-                filter.shape()
-            ))?
-        }
-        if data.shape()[3] != filter.shape()[2] {
-            Err(format!(
-                "data fourth dim (in_depth) must match filter third (data is {:?}, filter is {:?})",
-                data.shape(),
-                filter.shape()
-            ))?
-        }
-
-        let stride = self.strides[1];
         let batches = data.shape()[0];
         let in_rows = data.shape()[1];
         let in_cols = data.shape()[2];
@@ -94,108 +219,85 @@ impl Op for Conv2D {
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
-        let mut data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
+        let (out_height, out_width) = self.0.adjusted_dim(
+            in_rows,
+            in_cols,
+            filter_rows,
+            filter_cols,
+        );
+
+        let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
         let filter = filter.into_shape(
-            (filter_rows, filter_cols, in_depth, out_depth),
+            (filter_rows * filter_cols * in_depth, out_depth),
         )?;
 
-        let (out_height, out_width) = match self.padding {
-            Padding::Same => (
-                (in_rows as f32 / stride as f32).ceil() as usize,
-                (in_cols as f32 / stride as f32).ceil() as usize,
-            ),
-            Padding::Valid => (
-                ((in_rows - filter_rows + 1) as f32 / stride as f32).ceil() as usize,
-                ((in_cols - filter_cols + 1) as f32 / stride as f32).ceil() as usize,
-            ),
-        };
-        let out_shape = (data.shape()[0], out_height, out_width, out_depth);
-        //        println!("data.shape:{:?} out_shape:{:?} stride:{}", data.shape(), out_shape, stride);
-        //        println!("{:?}", data);
-        //        println!("{:?}", filter);
-        let patches_size = (
-            (out_height * out_width) as usize,
-            filter_rows * filter_cols * in_depth,
+        let transformed: Vec<Array4<f32>> = data.outer_iter()
+            .map(|image| -> Result<Array4<f32>> {
+                let patches = self.0.mk_patches(image, (filter_rows, filter_cols))?;
+                let transformed = patches.dot(&filter);
+                Ok(transformed.into_shape(
+                    (1, out_height, out_width, out_depth),
+                )?)
+            })
+            .collect::<Result<Vec<Array4<f32>>>>()?;
+        let views: Vec<ArrayView4<f32>> = transformed.iter().map(|m| m.view()).collect();
+        Ok(vec![::ndarray::stack(Axis(0), &*views)?.into_dyn().into()])
+    }
+}
+
+#[derive(Debug)]
+pub struct MaxPool(LocalPatch, (usize, usize));
+
+impl MaxPool {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<MaxPool> {
+        let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
+        Ok(MaxPool(
+            LocalPatch::build(pb)?,
+            (ksize[1] as usize, ksize[2] as usize),
+        ))
+    }
+}
+
+fn f32_cmp(a: &f32, b: &f32) -> ::std::cmp::Ordering {
+    a.partial_cmp(b).unwrap_or(::std::cmp::Ordering::Greater)
+}
+
+impl Op for MaxPool {
+    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+        // [ batch, in_rows, in_cols, in_depth ]
+        let data = inputs.remove(0).take_f32s().ok_or(
+            "Expect input #0 to be f32",
+        )?;
+
+        let batches = data.shape()[0];
+        let in_rows = data.shape()[1];
+        let in_cols = data.shape()[2];
+        let in_depth = data.shape()[3];
+
+        let (out_height, out_width) = self.0.adjusted_dim(
+            in_rows,
+            in_cols,
+            (self.1).0,
+            (self.1).1,
         );
-        unsafe {
-            let mut results = vec![];
-            let mut patches = ::ndarray::Array2::<f32>::uninitialized(patches_size);
-            //            println!("{:?}", patches);
-            let filters_mat = filter.into_shape((patches_size.1, out_depth))?;
-            if self.padding == Padding::Same {
-                // https://www.tensorflow.org/api_guides/python/nn#Convolution
-                let v_padding = ::std::cmp::max(
-                    0,
-                    filter_rows -
-                        if in_rows % stride == 0 {
-                            stride
-                        } else {
-                            in_rows % stride
-                        },
-                );
-                let h_padding = ::std::cmp::max(
-                    0,
-                    filter_cols -
-                        if in_cols % stride == 0 {
-                            stride
-                        } else {
-                            in_cols % stride
-                        },
-                );
-                let left_padding = h_padding / 2;
-                let right_padding = h_padding - left_padding;
-                let top_padding = v_padding / 2;
-                let bottom_padding = v_padding - top_padding;
-                let left_padding =
-                    ::ndarray::Array4::<f32>::zeros((batches, in_rows, left_padding, in_depth));
-                let right_padding =
-                    ::ndarray::Array4::<f32>::zeros((batches, in_rows, right_padding, in_depth));
-                data = ::ndarray::stack(
-                    ::ndarray::Axis(2),
-                    &[left_padding.view(), data.view(), right_padding.view()],
-                )?;
-                let top_padding = ::ndarray::Array4::<f32>::zeros(
-                    (batches, top_padding, data.shape()[2], in_depth),
-                );
-                let bottom_padding = ::ndarray::Array4::<f32>::zeros(
-                    (batches, bottom_padding, data.shape()[2], in_depth),
-                );
-                data = ::ndarray::stack(
-                    ::ndarray::Axis(1),
-                    &[top_padding.view(), data.view(), bottom_padding.view()],
-                )?;
-                //                println!("padded data:{:?} patches:{:?}", data.shape(), patches.shape());
-            }
-            for b in 0..batches {
-                //                println!("writting patches for id {}", b);
-                for i_x in 0..out_width {
-                    for i_y in 0..out_height {
-                        //                        println!("getting row {}", i_y * out_width + i_x);
-                        let mut patch_row = patches.row_mut(i_y * out_width + i_x);
-                        for f_x in 0..filter_cols {
-                            for f_y in 0..filter_rows {
-                                //                                println!("i_x:{} i_y:{} f_x:{} f_y:{}", i_x, i_y, f_x, f_y);
-                                //                                println!("writting loc: {:?}", (b, i_y * stride + f_y, i_x * stride + f_x));
-                                for d in 0..in_depth {
-                                    let loc = &mut patch_row[f_y * in_depth * filter_cols +
-                                                                 f_x * in_depth +
-                                                                 d];
-                                    *loc = data[(b, i_y * stride + f_y, i_x * stride + f_x, d)];
-                                }
-                            }
-                        }
-                    }
-                }
-                //                println!("doing product");
-                results.push(patches.dot(&filters_mat));
-            }
-            //            println!("building results");
-            let views: Vec<_> = results.iter().map(|m| m.view()).collect();
-            let result = ::ndarray::stack(::ndarray::Axis(0), &*views)?
-                .into_shape(out_shape)?
-                .into_dyn();
-            return Ok(vec![result.into()]);
-        }
+
+        let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
+
+        let transformed: Vec<Array4<f32>> = data.outer_iter()
+            .map(|image| -> Result<Array4<f32>> {
+                let patches = self.0.mk_patches(image, self.1)?;
+                let maxes: Vec<f32> = patches
+                    .outer_iter()
+                    .map(|row| {
+                        row.iter().map(|a| *a).max_by(|a, b| f32_cmp(a, b)).unwrap()
+                    })
+                    .collect();
+                let maxes = Array::from_vec(maxes);
+                Ok(maxes.into_shape((1, out_height, out_width, 1))?)
+            })
+            .collect::<Result<Vec<Array4<f32>>>>()?;
+        let views: Vec<ArrayView4<f32>> = transformed.iter().map(|m| m.view()).collect();
+        Ok(vec![::ndarray::stack(Axis(0), &*views)?.into_dyn().into()])
     }
 }
 
@@ -214,11 +316,11 @@ mod tests {
 
     fn verify(input: &[usize], filter: &[usize], stride: usize, padding: Padding, expect: &[f32]) {
         let strides = vec![1, stride, stride, 1];
-        let result = Conv2D {
+        let result = Conv2D(LocalPatch {
             padding: padding,
             strides: strides,
             _data_format: DataFormat::NHWC,
-        }.eval(vec![mk(input), mk(filter)])
+        }).eval(vec![mk(input), mk(filter)])
             .unwrap()
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
@@ -276,11 +378,11 @@ mod tests {
 
     #[test]
     fn test_image_1() {
-        let conv = Conv2D {
+        let conv = Conv2D(LocalPatch {
             padding: Padding::Same,
             strides: vec![1, 1, 1, 1],
             _data_format: DataFormat::NHWC,
-        };
+        });
         // NHWC
         let data: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[1f32]).unwrap();
         // HWIO
@@ -293,11 +395,11 @@ mod tests {
 
     #[test]
     fn test_image_2() {
-        let conv = Conv2D {
+        let conv = Conv2D(LocalPatch {
             padding: Padding::Same,
             strides: vec![1, 1, 1, 1],
             _data_format: DataFormat::NHWC,
-        };
+        });
         let data = Matrix::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994])
             .unwrap();
         let filter: Matrix = Matrix::f32s(
