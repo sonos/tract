@@ -58,8 +58,8 @@ fn compare(
             ))?
         } else {
             if !mtf.close_enough(&mtfd) {
-                println!("\n\n\n#### TENSORFLOW ####\n\n\n{:?}", mtf);
-                println!("\n\n\n#### TFDEPLOY ####\n\n\n{:?}", mtfd);
+                println!("\n\n\n#### TENSORFLOW ####\n\n\n{:?}", mtf.partial_dump(false));
+                println!("\n\n\n#### TFDEPLOY ####\n\n\n{:?}", mtfd.partial_dump(false));
                 Err("data mismatch")?
             }
         }
@@ -105,7 +105,7 @@ fn compare_all<P: AsRef<path::Path>>(
             Err(e) => {
                 println!("error !");
                 for (ix, &(_, ref i)) in inputs.iter().enumerate() {
-                    println!("input #{}\n{:?}", ix, i);
+                    println!("input #{}\n{:?}", ix, i.partial_dump(true));
                 }
                 Err(e)?
             }
