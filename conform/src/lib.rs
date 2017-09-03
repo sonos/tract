@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 extern crate flate2;
-extern crate jpeg_decoder;
+extern crate image;
+extern crate itertools;
 extern crate ndarray;
 extern crate protobuf;
 extern crate reqwest;

@@ -5,7 +5,8 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 
 [dependencies]
 flate2 = "*"
-jpeg-decoder = "*"
+image = "*"
+itertools = "*"
 ndarray = "*"
 protobuf = "*"
 reqwest = "*"

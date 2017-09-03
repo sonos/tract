@@ -36,10 +36,19 @@ impl<'a, T> BatchImageWrapper<'a, T> {
     pub fn height(&self) -> usize {
         self.0.shape()[1]
     }
+    pub fn h(&self) -> usize {
+        self.0.shape()[1]
+    }
     pub fn width(&self) -> usize {
         self.0.shape()[2]
     }
+    pub fn w(&self) -> usize {
+        self.0.shape()[2]
+    }
     pub fn depth(&self) -> usize {
+        self.0.shape()[3]
+    }
+    pub fn d(&self) -> usize {
         self.0.shape()[3]
     }
 }
@@ -90,8 +99,7 @@ impl LocalPatch {
         &self,
         in_rows: usize,
         in_cols: usize,
-        filter_rows: usize,
-        filter_cols: usize,
+        (filter_rows, filter_cols): (usize, usize),
     ) -> (usize, usize) {
         let stride = self.strides[1];
         match self.padding {
@@ -192,7 +200,7 @@ impl LocalPatch {
         let (filter_rows, filter_cols) = shape;
 
         let (out_height, out_width) =
-            self.adjusted_dim(img.height(), img.width(), filter_rows, filter_cols);
+            self.adjusted_dim(img.height(), img.width(), (filter_rows, filter_cols));
 
         let patches_size = (
             (out_height * out_width) as usize,
@@ -253,8 +261,7 @@ impl Op for Conv2D {
         let (out_height, out_width) = self.0.adjusted_dim(
             in_rows,
             in_cols,
-            filter_rows,
-            filter_cols,
+            (filter_rows, filter_cols),
         );
 
         let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
@@ -276,6 +283,19 @@ impl Op for Conv2D {
     }
 }
 
+fn into_4d<T>(data: ArrayD<T>) -> Result<Array4<T>> {
+    if data.shape().len() != 4 {
+        Err(format!("Expeted 4D shape, found: {:?}", data.shape()))?
+    }
+    let shape = (
+        data.shape()[0],
+        data.shape()[1],
+        data.shape()[2],
+        data.shape()[3],
+    );
+    Ok(data.into_shape(shape)?)
+}
+
 #[derive(Debug)]
 pub struct MaxPool(LocalPatch, (usize, usize));
 
@@ -291,41 +311,80 @@ impl MaxPool {
 
 impl Op for MaxPool {
     fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
-        // [ batch, in_rows, in_cols, in_depth ]
         let data = inputs.remove(0).take_f32s().ok_or(
             "Expect input #0 to be f32",
         )?;
-        let batches = data.shape()[0];
-        let in_rows = data.shape()[1];
-        let in_cols = data.shape()[2];
-        let in_depth = data.shape()[3];
+        let data = into_4d(data)?;
+        let images = BatchImageWrapper(data.view());
 
-        let (out_height, out_width) = self.0.adjusted_dim(
-            in_rows,
-            in_cols,
-            (self.1).0,
-            (self.1).1,
-        );
+        let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
 
         let h_stride = self.0.strides[1];
         let w_stride = self.0.strides[2];
-        let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
         let padded = self.0.pad(data.view(), self.1, ::std::f32::NEG_INFINITY)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
+        let out_shape = (images.count(), out_h, out_w, images.d());
 
-        let transformed =
-            Array4::from_shape_fn((batches, out_height, out_width, in_depth), |(b, h, w, d)| {
-                let mut v = ::std::f32::NEG_INFINITY;
-                for y in (h*h_stride)..(h*h_stride) + (self.1).0 {
-                    for x in (w*w_stride)..(w*w_stride) + (self.1).1 {
-                        let v2 = data[(b, y, x, d)];
-                        if v2 > v {
-                            v = v2;
-                        }
+        let transformed = Array4::from_shape_fn(out_shape, |(b, h, w, d)| {
+            let mut v = ::std::f32::NEG_INFINITY;
+            for y in (h * h_stride)..(h * h_stride) + (self.1).0 {
+                for x in (w * w_stride)..(w * w_stride) + (self.1).1 {
+                    let v2 = data[(b, y, x, d)];
+                    if v2 > v {
+                        v = v2;
                     }
                 }
-                v
-            });
+            }
+            v
+        });
+
+        Ok(vec![transformed.into_dyn().into()])
+    }
+}
+
+#[derive(Debug)]
+pub struct AvgPool(LocalPatch, (usize, usize));
+
+impl AvgPool {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<AvgPool> {
+        let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
+        Ok(AvgPool(
+            LocalPatch::build(pb)?,
+            (ksize[1] as usize, ksize[2] as usize),
+        ))
+    }
+}
+
+impl Op for AvgPool {
+    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+        let data = inputs.remove(0).take_f32s().ok_or(
+            "Expect input #0 to be f32",
+        )?;
+        let data = into_4d(data)?;
+        let images = BatchImageWrapper(data.view());
+
+        let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
+
+        let h_stride = self.0.strides[1];
+        let w_stride = self.0.strides[2];
+        let padded = self.0.pad(data.view(), self.1, ::std::f32::NAN)?;
+        let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
+        let out_shape = (images.count(), out_h, out_w, images.d());
+
+        let transformed = Array4::from_shape_fn(out_shape, |(b, h, w, d)| {
+            let mut count = 0;
+            let mut sum = 0.0;
+            for y in (h * h_stride)..(h * h_stride) + (self.1).0 {
+                for x in (w * w_stride)..(w * w_stride) + (self.1).1 {
+                    let v = data[(b, y, x, d)];
+                    if !v.is_nan() {
+                        count += 1;
+                        sum += v;
+                    }
+                }
+            }
+            sum / count as f32
+        });
 
         Ok(vec![transformed.into_dyn().into()])
     }

@@ -9,6 +9,7 @@ use {Matrix, Result};
 mod macros;
 mod activ;
 mod arith;
+mod array;
 mod cast;
 pub mod conv;
 pub mod image;
@@ -31,8 +32,10 @@ impl OpBuilder {
         fn build_op(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
             match pb.get_op() {
                 "Add" => Ok(Box::new(arith::Add::build(pb)?)),
+                "AvgPool" => Ok(Box::new(conv::AvgPool::build(pb)?)),
                 "BiasAdd" => Ok(Box::new(arith::Add::build(pb)?)),
                 "Cast" => Ok(Box::new(cast::Cast::build(pb)?)),
+                "ConcatV2" => Ok(Box::new(array::ConcatV2::build(pb)?)),
                 "Const" => Ok(Box::new(trivial::Const::build(pb)?)),
                 "Conv2D" => Ok(Box::new(conv::Conv2D::build(pb)?)),
                 "DecodeJpeg" => Ok((Box::new(image::DecodeJpeg::build(pb)?))),
@@ -42,8 +45,10 @@ impl OpBuilder {
                 "Mul" => Ok(Box::new(arith::Mul::build(pb)?)),
                 "Placeholder" => Ok(Box::new(trivial::Placeholder::build(pb)?)),
                 "Relu" => Ok(Box::new(activ::Relu::build(pb)?)),
-                "Rsqrt" => Ok(Box::new(arith::Rsqrt::build(pb)?)),
+                "Reshape" => Ok(Box::new(array::Reshape::build(pb)?)),
                 "ResizeBilinear" => Ok(Box::new(image::ResizeBilinear::build(pb)?)),
+                "Rsqrt" => Ok(Box::new(arith::Rsqrt::build(pb)?)),
+                "Softmax" => Ok(Box::new(activ::Softmax::build(pb)?)),
                 "Sub" => Ok(Box::new(arith::Sub::build(pb)?)),
                 "Squeeze" => Ok(Box::new(shape::Squeeze::build(pb)?)),
                 _ => Ok(Box::new(
