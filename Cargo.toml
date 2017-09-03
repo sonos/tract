@@ -29,6 +29,12 @@ tempdir = "0.3"
 
 [dev-dependencies]
 bencher = "0.1"
+flate2 = "*"
+image = "*"
+itertools = "*"
+reqwest = "*"
+tar = "*"
+tensorflow = "*"
 proptest = "*"
 
 [[bench]]

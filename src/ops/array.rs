@@ -31,7 +31,7 @@ pub struct Reshape {
 }
 
 impl Reshape {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Reshape> {
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Reshape> {
         Ok(Reshape {
         })
     }
