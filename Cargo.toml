@@ -18,7 +18,9 @@ error-chain =  { version = "0.10", default-features=false }
 image = "0.15"
 log = "0.3"
 maplit="0.1"
-ndarray = "0.10"
+ndarray = { version = "0.10", features = [ "blas" ] }
+blas-sys = { version = "0.6", features = [ "openblas" ], default-features=false }
+#blas-sys = { version = "0.6", features = [ "accelerate" ], default-features=false }
 num-traits = "0.1"
 protobuf = "1.4"
 tensorflow = { version = "*", optional = true }
@@ -38,5 +40,9 @@ tensorflow = "*"
 proptest = "*"
 
 [[bench]]
-harness= false
+harness = false
 name = "conv"
+
+[[bench]]
+harness = false
+name = "inceptionv3"

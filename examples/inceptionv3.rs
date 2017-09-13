@@ -12,9 +12,10 @@ use tfdeploy::errors::*;
 
 use std::error::Error;
 
-const INCEPTION_V3: &str = "examples/data/inception-v3-2016_08_28/inception_v3_2016_08_28_frozen.pb";
+pub const INCEPTION_V3: &str = "examples/data/inception-v3-2016_08_28/inception_v3_2016_08_28_frozen.pb";
+pub const HOPPER: &str = "examples/grace_hopper.jpg";
 
-fn download() -> Result<()> {
+pub fn download() -> Result<()> {
     if fs::metadata(INCEPTION_V3).is_ok() {
         return Ok(());
     }
@@ -32,16 +33,18 @@ fn download() -> Result<()> {
     Ok(())
 }
 
-fn load_labels() -> Vec<String> {
+pub fn load_labels() -> Vec<String> {
     use std::io::BufRead;
     io::BufReader::new(
         fs::File::open(
             "examples/data/inception-v3-2016_08_28/imagenet_slim_labels.txt",
         ).unwrap(),
-    ).lines().collect::<::std::io::Result<Vec<String>>>().unwrap()
+    ).lines()
+        .collect::<::std::io::Result<Vec<String>>>()
+        .unwrap()
 }
 
-fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
+pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
     let image = ::image::open(&p).unwrap().to_rgb();
     let resized = ::image::imageops::resize(&image, 299, 299, ::image::FilterType::Triangle);
     let image: ::tfdeploy::Matrix = ::ndarray::Array4::from_shape_fn(
@@ -52,10 +55,11 @@ fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
     image
 }
 
+#[allow(dead_code)]
 fn main() {
     download().unwrap();
     let mut tfd = ::tfdeploy::for_path(INCEPTION_V3).unwrap();
-    let input = load_image("examples/grace_hopper.jpg");
+    let input = load_image(HOPPER);
     let output = tfd.run(vec![("input", input)], "InceptionV3/Predictions/Reshape_1")
         .unwrap();
     let labels = load_labels();

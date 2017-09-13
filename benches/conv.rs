@@ -17,11 +17,11 @@ fn mk(sizes: &[usize]) -> Matrix {
 fn bench(bencher: &mut bencher::Bencher) {
     let stride = 1;
     let strides = vec![1, stride, stride, 1];
-    let conv = Conv2D {
+    let conv = Conv2D::for_patch(LocalPatch {
         padding: Padding::Valid,
         strides: strides,
         _data_format: DataFormat::NHWC,
-    };
+    }).unwrap();
     let inputs = vec![mk(&[1, 82, 1, 40]), mk(&[41, 1, 40, 128])];
     conv.eval(inputs.clone()).unwrap();
     bencher.iter(|| conv.eval(inputs.clone()).unwrap())

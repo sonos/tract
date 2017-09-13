@@ -235,7 +235,11 @@ pub struct Conv2D(LocalPatch);
 
 impl Conv2D {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Conv2D> {
-        Ok(Conv2D(LocalPatch::build(pb)?))
+        Self::for_patch(LocalPatch::build(pb)?)
+    }
+
+    pub fn for_patch(patch: LocalPatch) -> Result<Conv2D> {
+        Ok(Conv2D(patch))
     }
 }
 
