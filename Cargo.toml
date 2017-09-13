@@ -18,12 +18,17 @@ error-chain =  { version = "0.10", default-features=false }
 image = "0.15"
 log = "0.3"
 maplit="0.1"
-ndarray = { version = "0.10", features = [ "blas" ] }
-blas-sys = { version = "0.6", features = [ "openblas" ], default-features=false }
-#blas-sys = { version = "0.6", features = [ "accelerate" ], default-features=false }
+ndarray = { version = "0.10" }
+blas-sys = { version = "0.6", optional = true, default-features=false }
 num-traits = "0.1"
 protobuf = "1.4"
 tensorflow = { version = "*", optional = true }
+
+[features]
+default = []
+blas = ["ndarray/blas", "blas-sys"]
+openblas = ["blas", "blas-sys/openblas"]
+accelerate = ["blas", "blas-sys/accelerate"]
 
 [build-dependencies]
 protoc-rust   = "1.4"
