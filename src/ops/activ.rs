@@ -18,8 +18,8 @@ impl Op for Softmax {
             "Expect input #0 to be f32",
         )?;
         input.map_inplace(|a| *a = a.exp());
-        let norm:f32 = input.iter().sum();
+        let norm: f32 = input.iter().sum();
         input.map_inplace(|a| *a = *a / norm);
-        Ok(vec!(input.into()))
+        Ok(vec![input.into()])
     }
 }
