@@ -38,15 +38,30 @@ operate on f32, a handful on integers).
 Adding an Op is relatively straightforward, adding a data type more
 complicated.
 
+## BLAS backends and performance evaluation
+
+Two features are provided: `accelerate` and `openblas`. They will plug BLAS
+backends into `ndarray`. Execution will be faster, to the price of portability.
+
+This is a highly unscientific bench, performed on one single datapoint. I timed
+Inception v3 running on Grace Hopper image (not that the actual data is
+supposed to make a difference). It was run on my laptop (a mid-2014 MacBook pro).
+
+* tensorflow reference (brew version, generic x86_64): 408ms
+* tensorflow reference (optimized for my laptop): 323ms
+* tensorflow deploy, no BLAS: 890ms
+* tensorflow deploy, OpenBlas: 567ms
+* tensorflow deploy, Accelerate: 544ms
+
 ## Roadmap
 
 One important guiding cross-concern: I want this library to cross-compile as
 easily as practical to small-ish devices (think 30$ boards).
 
-* cleanup and generalize (op-wise and type-wise) basic operators (arithmetic, shape). consider factorizing paramater reading code and datatype switching 
+* cleanup and generalize (op-wise and type-wise) basic operators (arithmetic, shape). consider factorizing paramater reading code and datatype switching
 * find and integrate other TF models to use as example, test and bench
 * investigate alternative impls for Conv2D
-* refactor interpreter: make it stack-based (because it's easy) and stop cloning everything
+* refactor interpreter: make it stack-based (because it's easy), stop cloning everything
 * consider ops accepting borrowed matrixes when it makes sense to avoid more clones
 * consider having a separate set of non-TF mimicking operators
 * optimise some ops combination (mul followed by add -> GEMM for instance)
@@ -62,7 +77,7 @@ covered by the following licence statement.
 All original work licensed under either of
  * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
  * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-at your option.
+     at your option.
 
 ## Contribution
 
