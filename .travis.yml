@@ -10,15 +10,22 @@ before_install:
   - unzip protoc-3.2.0-linux-x86_64.zip -d protoc3
   - sudo mv protoc3/bin/* /usr/local/bin/
   - sudo mv protoc3/include/* /usr/local/include/
+  - pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
     # won't work, this tf is dependent on a more recent libcxx
     #  - curl -OL https://s3.amazonaws.com/snips/tensorflow-deb/libtensorflow_1.2.1-snips-1_amd64.deb
     #  - sudo dpkg -i libtensorflow_1.2.1-snips-1_amd64.deb
 
 script:
-  - cargo build --verbose
-  - cargo test --verbose
+  - |
+      travis-cargo build &&
+      travis-cargo test &&
+      travis-cargo bench &&
+      travis-cargo doc
     # 
     #   - cargo test --release --features tensorflow --verbose
+
+after_success:
+  - travis-cargo --only stable doc-upload
 
 matrix:
   allow_failures:
