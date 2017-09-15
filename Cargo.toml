@@ -8,6 +8,7 @@ repository = "https://github.com/kali/tensorflow-deploy-rust"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 build="build.rs"
 categories = [ "science" ]
+documentation = "http://www.poumeyrol.fr/tensorflow-deploy-rust/tfdeploy/index.html"
 
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
