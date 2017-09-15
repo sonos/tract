@@ -1,3 +1,4 @@
+//! error_chain generated types
 
 error_chain!{
     foreign_links {

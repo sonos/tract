@@ -1,3 +1,5 @@
+//! `Matrix` is the equivalent of Tensorflow Tensor.
+
 use ndarray::prelude::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -177,9 +179,9 @@ where
 
 macro_rules! matrix {
     ($t:ident,$v:ident,$as:ident,$take:ident,$make:ident) => {
-        impl From<ArrayD<$t>> for Matrix {
-            fn from(it: ArrayD<$t>) -> Matrix {
-                Matrix::$v(it)
+        impl<D: ::ndarray::Dimension> From<Array<$t,D>> for Matrix {
+            fn from(it: Array<$t,D>) -> Matrix {
+                Matrix::$v(it.into_dyn())
             }
         }
 

@@ -1,8 +1,7 @@
+//! TensorFlow Ops
+
 use std::fmt::Debug;
 
-//use ndarray::{Array, ArrayD, IxDyn};
-//use num_traits::identities::Zero;
-//use tfpb::types::DataType;
 use {Matrix, Result};
 
 #[macro_use]

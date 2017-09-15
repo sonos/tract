@@ -550,223 +550,182 @@ mod tests {
             found[0]
         )
     }
+}
 
-    #[cfg(feature = "tensorflow")]
-    mod tensorflow_ref {
-        #![allow(non_snake_case)]
-        use proptest::prelude::*;
-        use ndarray::prelude::*;
+#[cfg(all(test, feature = "tensorflow"))]
+mod proptests {
+    #![allow(non_snake_case)]
+    use proptest::prelude::*;
+    use ndarray::prelude::*;
+    use protobuf::core::Message;
+    use tfpb;
+    use tfpb::types::DataType::DT_FLOAT;
 
-        use Matrix;
+    use Matrix;
 
-        fn maxpool_pb(
-            v_stride: usize,
-            h_stride: usize,
-            kw: usize,
-            kh: usize,
-            valid: bool,
-        ) -> ::Result<Vec<u8>> {
-            use protobuf::core::Message;
-            use tfpb;
+    fn placeholder(name: &str) -> tfpb::node_def::NodeDef {
+        tfpb::node().name(name).op("Placeholder").attr(
+            "dtype",
+            DT_FLOAT,
+        )
+    }
 
-            let mut graph = tfpb::graph::GraphDef::new();
-            let mut dt_float = tfpb::attr_value::AttrValue::new();
-            dt_float.set_field_type(tfpb::types::DataType::DT_FLOAT);
+    fn maxpool_pb(
+        v_stride: usize,
+        h_stride: usize,
+        kw: usize,
+        kh: usize,
+        valid: bool,
+    ) -> ::Result<Vec<u8>> {
+        let pool = tfpb::node()
+            .name("pool")
+            .op("MaxPool")
+            .input("data")
+            .attr("T", DT_FLOAT)
+            .attr("strides", vec![1, v_stride as i64, h_stride as i64, 1])
+            .attr("ksize", vec![1, kw as i64, kh as i64, 1])
+            .attr("padding", if valid { "VALID" } else { "SAME" });
 
-            let mut data = tfpb::node_def::NodeDef::new();
-            data.set_name("data".into());
-            data.set_op("Placeholder".into());
-            data.mut_attr().insert(
-                "dtype".to_string(),
-                dt_float.clone(),
-            );
-            graph.mut_node().push(data);
+        let graph = tfpb::graph().node(placeholder("data")).node(pool);
 
-            let mut pool = tfpb::node_def::NodeDef::new();
-            pool.set_name("pool".into());
-            pool.set_op("MaxPool".into());
-            pool.mut_input().push("data".into());
-            let mut strides_list = tfpb::attr_value::AttrValue_ListValue::new();
-            strides_list.set_i(vec![1, v_stride as i64, h_stride as i64, 1]);
-            let mut strides = tfpb::attr_value::AttrValue::new();
-            strides.set_list(strides_list);
-            pool.mut_attr().insert("strides".to_string(), strides);
-            let mut ksize_list = tfpb::attr_value::AttrValue_ListValue::new();
-            ksize_list.set_i(vec![1, kw as i64, kh as i64, 1]);
-            let mut ksize = tfpb::attr_value::AttrValue::new();
-            ksize.set_list(ksize_list);
-            pool.mut_attr().insert("ksize".to_string(), ksize);
-            let mut padding = tfpb::attr_value::AttrValue::new();
-            padding.set_s((if valid { "VALID" } else { "SAME" }).as_bytes().to_vec());
-            pool.mut_attr().insert("padding".to_string(), padding);
-            pool.mut_attr().insert("T".to_string(), dt_float.clone());
-            graph.mut_node().push(pool);
+        Ok(graph.write_to_bytes()?)
+    }
 
-            Ok(graph.write_to_bytes()?)
-        }
+    fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
 
-        fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
-            use protobuf::core::Message;
-            use tfpb;
+        let conv = tfpb::node()
+            .name("conv")
+            .op("Conv2D")
+            .input("data")
+            .input("kernel")
+            .attr("strides", vec![1, v_stride as i64, h_stride as i64, 1])
+            .attr("padding", if valid { "VALID" } else { "SAME" })
+            .attr("T", DT_FLOAT);
 
-            let mut graph = tfpb::graph::GraphDef::new();
-            let mut dt_float = tfpb::attr_value::AttrValue::new();
-            dt_float.set_field_type(tfpb::types::DataType::DT_FLOAT);
+        let graph = tfpb::graph()
+            .node(placeholder("data"))
+            .node(placeholder("kernel"))
+            .node(conv);
 
-            let mut data = tfpb::node_def::NodeDef::new();
-            data.set_name("data".into());
-            data.set_op("Placeholder".into());
-            data.mut_attr().insert(
-                "dtype".to_string(),
-                dt_float.clone(),
-            );
-            graph.mut_node().push(data);
+        Ok(graph.write_to_bytes()?)
+    }
 
-            let mut kernel = tfpb::node_def::NodeDef::new();
-            kernel.set_name("kernel".into());
-            kernel.set_op("Placeholder".into());
-            kernel.mut_attr().insert(
-                "dtype".to_string(),
-                dt_float.clone(),
-            );
-            graph.mut_node().push(kernel);
+    fn img_and_ker(
+        ih: usize,
+        iw: usize,
+        ic: usize,
+        kh: usize,
+        kw: usize,
+        kc: usize,
+    ) -> BoxedStrategy<(Matrix, Matrix)> {
+        (1..ih, 1..iw, 1..ic, 1..kh, 1..kw, 1..kc)
+            .prop_flat_map(|(ih, iw, ic, kh, kw, kc)| {
+                let i_size = iw * ih * ic;
+                let k_size = kw * kh * kc * ic;
+                (
+                    Just(ih),
+                    Just(iw),
+                    Just(ic),
+                    Just(kh),
+                    Just(kw),
+                    Just(kc),
+                    ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
+                    ::proptest::collection::vec(-255f32..255f32, k_size..k_size + 1),
+                )
+            })
+            .prop_map(|(ih, iw, ic, kh, kw, kc, img, ker)| {
+                (
+                    Matrix::F32(
+                        Array::from_vec(img)
+                            .into_shape((1, ih, iw, ic))
+                            .unwrap()
+                            .into_dyn(),
+                    ),
+                    Matrix::F32(
+                        Array::from_vec(ker)
+                            .into_shape((kh, kw, ic, kc))
+                            .unwrap()
+                            .into_dyn(),
+                    ),
+                )
+            })
+            .boxed()
+    }
 
-            let mut conv = tfpb::node_def::NodeDef::new();
-            conv.set_name("conv".into());
-            conv.set_op("Conv2D".into());
-            conv.mut_input().push("data".into());
-            conv.mut_input().push("kernel".into());
-            let mut strides_list = tfpb::attr_value::AttrValue_ListValue::new();
-            strides_list.set_i(vec![1, v_stride as i64, h_stride as i64, 1]);
-            let mut strides = tfpb::attr_value::AttrValue::new();
-            strides.set_list(strides_list);
-            conv.mut_attr().insert("strides".to_string(), strides);
-            let mut padding = tfpb::attr_value::AttrValue::new();
-            padding.set_s((if valid { "VALID" } else { "SAME" }).as_bytes().to_vec());
-            conv.mut_attr().insert("padding".to_string(), padding);
-            conv.mut_attr().insert("T".to_string(), dt_float.clone());
-            graph.mut_node().push(conv);
+    fn img_and_pool(
+        ih: usize,
+        iw: usize,
+        ic: usize,
+        kh: usize,
+        kw: usize,
+    ) -> BoxedStrategy<(Matrix, usize, usize)> {
+        (1..ih, 1..iw, 1..ic, 1..kh, 1..kw)
+            .prop_flat_map(|(ih, iw, ic, kh, kw)| {
+                let i_size = iw * ih * ic;
+                (
+                    Just(ih),
+                    Just(iw),
+                    Just(ic),
+                    Just(kh),
+                    Just(kw),
+                    ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
+                )
+            })
+            .prop_map(|(ih, iw, ic, kh, kw, img)| {
+                (
+                    Matrix::F32(
+                        Array::from_vec(img)
+                            .into_shape((1, ih, iw, ic))
+                            .unwrap()
+                            .into_dyn(),
+                    ),
+                    kw,
+                    kh,
+                )
+            })
+            .boxed()
+    }
 
-            Ok(graph.write_to_bytes()?)
-        }
-
-        fn img_and_ker(
-            ih: usize,
-            iw: usize,
-            ic: usize,
-            kh: usize,
-            kw: usize,
-            kc: usize,
-        ) -> BoxedStrategy<(Matrix, Matrix)> {
-            (1..ih, 1..iw, 1..ic, 1..kh, 1..kw, 1..kc)
-                .prop_flat_map(|(ih, iw, ic, kh, kw, kc)| {
-                    let i_size = iw * ih * ic;
-                    let k_size = kw * kh * kc * ic;
-                    (
-                        Just(ih),
-                        Just(iw),
-                        Just(ic),
-                        Just(kh),
-                        Just(kw),
-                        Just(kc),
-                        ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
-                        ::proptest::collection::vec(-255f32..255f32, k_size..k_size + 1),
-                    )
-                })
-                .prop_map(|(ih, iw, ic, kh, kw, kc, img, ker)| {
-                    (
-                        Matrix::F32(
-                            Array::from_vec(img)
-                                .into_shape((1, ih, iw, ic))
-                                .unwrap()
-                                .into_dyn(),
-                        ),
-                        Matrix::F32(
-                            Array::from_vec(ker)
-                                .into_shape((kh, kw, ic, kc))
-                                .unwrap()
-                                .into_dyn(),
-                        ),
-                    )
-                })
-                .boxed()
-        }
-
-        fn img_and_pool(
-            ih: usize,
-            iw: usize,
-            ic: usize,
-            kh: usize,
-            kw: usize,
-        ) -> BoxedStrategy<(Matrix, usize, usize)> {
-            (1..ih, 1..iw, 1..ic, 1..kh, 1..kw)
-                .prop_flat_map(|(ih, iw, ic, kh, kw)| {
-                    let i_size = iw * ih * ic;
-                    (
-                        Just(ih),
-                        Just(iw),
-                        Just(ic),
-                        Just(kh),
-                        Just(kw),
-                        ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
-                    )
-                })
-                .prop_map(|(ih, iw, ic, kh, kw, img)| {
-                    (
-                        Matrix::F32(
-                            Array::from_vec(img)
-                                .into_shape((1, ih, iw, ic))
-                                .unwrap()
-                                .into_dyn(),
-                        ),
-                        kw,
-                        kh,
-                    )
-                })
-                .boxed()
-        }
-
-        proptest! {
-            #[test]
-            fn test_image_conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8),
-                               valid in ::proptest::bool::ANY,
-                               stride in 1usize..4) {
-                prop_assume!(stride <= k.shape()[0]);
-                prop_assume!(stride <= k.shape()[1]);
-                if valid {
-                    prop_assume!(i.shape()[1] >= k.shape()[0]);
-                    prop_assume!(i.shape()[2] >= k.shape()[1]);
-                }
-                let model = convolution_pb(stride, stride, valid).unwrap();
-                let mut tf = ::tf::for_slice(&model)?;
-                let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
-                let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
-                tfd.set_value("data", i.clone())?;
-                tfd.set_value("kernel", k.clone())?;
-                let found = tfd.take("conv")?;
-                prop_assert!(expected[0].close_enough(&found[0]))
+    proptest! {
+        #[test]
+        fn conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8),
+                           valid in ::proptest::bool::ANY,
+                           stride in 1usize..4) {
+            prop_assume!(stride <= k.shape()[0]);
+            prop_assume!(stride <= k.shape()[1]);
+            if valid {
+                prop_assume!(i.shape()[1] >= k.shape()[0]);
+                prop_assume!(i.shape()[2] >= k.shape()[1]);
             }
+            let model = convolution_pb(stride, stride, valid).unwrap();
+            let mut tf = ::tf::for_slice(&model)?;
+            let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
+            let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
+            tfd.set_value("data", i.clone())?;
+            tfd.set_value("kernel", k.clone())?;
+            let found = tfd.take("conv")?;
+            prop_assert!(expected[0].close_enough(&found[0]))
         }
+    }
 
-        proptest! {
-            #[test]
-            fn test_image_maxpool((ref i, kh, kw) in img_and_pool(32, 32, 5, 16, 16),
-                               valid in ::proptest::bool::ANY,
-                               stride in 1usize..4) {
-                prop_assume!(stride <= kh);
-                prop_assume!(stride <= kw);
-                if valid {
-                    prop_assume!(i.shape()[1] >= kh);
-                    prop_assume!(i.shape()[2] >= kw);
-                }
-                let model = maxpool_pb(stride, stride, kh, kw, valid).unwrap();
-                let mut tf = ::tf::for_slice(&model)?;
-                let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
-                let expected = tf.run(vec!(("data", i.clone())), "pool")?;
-                tfd.set_value("data", i.clone())?;
-                let found = tfd.take("pool")?;
-                prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found)
+    proptest! {
+        #[test]
+        fn maxpool((ref i, kh, kw) in img_and_pool(32, 32, 5, 16, 16),
+                           valid in ::proptest::bool::ANY,
+                           stride in 1usize..4) {
+            prop_assume!(stride <= kh);
+            prop_assume!(stride <= kw);
+            if valid {
+                prop_assume!(i.shape()[1] >= kh);
+                prop_assume!(i.shape()[2] >= kw);
             }
+            let model = maxpool_pb(stride, stride, kh, kw, valid).unwrap();
+            let mut tf = ::tf::for_slice(&model)?;
+            let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
+            let expected = tf.run(vec!(("data", i.clone())), "pool")?;
+            tfd.set_value("data", i.clone())?;
+            let found = tfd.take("pool")?;
+            prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found)
         }
     }
 }

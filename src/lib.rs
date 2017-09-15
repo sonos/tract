@@ -1,3 +1,37 @@
+//! # Tensorflow Deploy
+//!
+//! Tiny, no-nonsense, self contained, portable Tensorflow inference.
+//!
+//! ## Example
+//!
+//! ```
+//! # extern crate tfdeploy;
+//! # extern crate ndarray;
+//! # use tfdeploy::tfpb;
+//! # use tfdeploy::tfpb::types::DataType::DT_FLOAT;
+//! # fn main() {
+//! # let input = tfpb::node().name("input").op("Placeholder").attr("dtype", DT_FLOAT);
+//! # let cons = tfpb::node().name("const").op("Const")
+//! #     .attr("dtype", DT_FLOAT)
+//! #     .attr("value", tfpb::tensor_f32(vec!(1), vec!(3.0)));
+//! # let add = tfpb::node().name("output").op("Add").input("input").input("const");
+//! # tfpb::graph().node(input).node(cons).node(add).save_to("model.pb").unwrap();
+//! #
+//! // load a simple model that just add 3 to each input component
+//! let mut graph = tfdeploy::for_path("model.pb").unwrap();
+//! 
+//! // run the computation. "input" and "output" are tensorflow graph node names.
+//! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
+//! let mut outputs = graph.run(vec![("input",input.into())], "output").unwrap();
+//!
+//! // grab the first (and only) tensor of the result, and unwrap it as array of f32
+//! let output = outputs.remove(0).take_f32s().unwrap();
+//! assert_eq!(output, ndarray::arr1(&[4.0, 5.5, 8.0]).into_dyn());
+//! # }
+//! ```
+//!
+//! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
+
 #[macro_use]
 extern crate downcast_rs;
 #[macro_use]
@@ -143,15 +177,18 @@ impl Node {
     }
 }
 
+/// GraphAnalyser is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
+/// and runs the inference interpreter.
+///
 pub struct GraphAnalyser {
-    graph: tfpb::GraphDef,
+    graph: tfpb::graph::GraphDef,
     op_builder: ops::OpBuilder,
     nodes: HashMap<String, Node>,
     outputs: HashMap<String, Vec<Matrix>>,
 }
 
 impl GraphAnalyser {
-    pub fn new(graph: tfpb::GraphDef) -> Result<GraphAnalyser> {
+    pub fn new(graph: tfpb::graph::GraphDef) -> Result<GraphAnalyser> {
         Ok(GraphAnalyser {
             graph,
             op_builder: ops::OpBuilder::new(),
@@ -160,10 +197,12 @@ impl GraphAnalyser {
         })
     }
 
+    /// Load a Tensorflow protobul model from a file.
     pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
         Self::for_reader(fs::File::open(p)?)
     }
 
+    /// Load a Tensorflow protobul model from a reader.
     pub fn for_reader<R: ::std::io::Read>(mut r: R) -> Result<GraphAnalyser> {
         let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)?;
         GraphAnalyser::new(loaded)
@@ -173,10 +212,12 @@ impl GraphAnalyser {
         self.graph.get_node().iter().map(|n| n.get_name()).collect()
     }
 
+    /// Format the model in protobuf form
     pub fn dump_pbtext(&self) -> String {
         protobuf::text_format::print_to_string(&self.graph)
     }
 
+    /// Build a tfdeploy Node by name.
     pub fn get_node(&mut self, name: &str) -> Result<Node> {
         if !self.nodes.contains_key(name) {
             let node = self.make_node(name)?;
@@ -190,6 +231,7 @@ impl GraphAnalyser {
         )
     }
 
+    /// Access a protobuf Node by name.
     pub fn get_pbnode(&mut self, name: &str) -> Result<&tfpb::node_def::NodeDef> {
         Ok(self.graph
             .get_node()
@@ -222,6 +264,7 @@ impl GraphAnalyser {
         })))
     }
 
+    /// Reset internal state.
     pub fn reset(&mut self) -> Result<()> {
         self.outputs.clear();
         Ok(())
@@ -260,6 +303,7 @@ impl GraphAnalyser {
         Ok(())
     }
 
+    /// Trigger evaluation of the specified node and return the cache value.
     pub fn eval(&mut self, name: &str) -> Result<&Vec<Matrix>> {
         self.compute(name)?;
         Ok(self.outputs.get(name).expect(
@@ -267,6 +311,8 @@ impl GraphAnalyser {
         ))
     }
 
+    /// Trigger evaluation of the specified node and consume the value from the
+    /// cache.
     pub fn take(&mut self, name: &str) -> Result<Vec<Matrix>> {
         self.compute(name)?;
         Ok(self.outputs.remove(name).ok_or(
@@ -274,14 +320,19 @@ impl GraphAnalyser {
         )?)
     }
 
+    /// Main entrypoint for running a network.
+    ///
+    /// Clears the internal state.
     pub fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
+        self.reset()?;
         for input in inputs {
             self.set_value(input.0, input.1)?;
         }
-        Ok(self.eval(output_name).map(|v| v.clone())?)
+        Ok(self.take(output_name)?)
     }
 }
 
+/// Load a Tensorflow protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
     GraphAnalyser::for_path(p)
 }
