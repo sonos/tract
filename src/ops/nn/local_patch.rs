@@ -234,12 +234,12 @@ impl LocalPatch {
 pub struct Conv2D(LocalPatch);
 
 impl Conv2D {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Conv2D> {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Self::for_patch(LocalPatch::build(pb)?)
     }
 
-    pub fn for_patch(patch: LocalPatch) -> Result<Conv2D> {
-        Ok(Conv2D(patch))
+    pub fn for_patch(patch: LocalPatch) -> Result<Box<Op>> {
+        Ok(Box::new(Conv2D(patch)))
     }
 }
 
@@ -304,12 +304,12 @@ fn into_4d<T>(data: ArrayD<T>) -> Result<Array4<T>> {
 pub struct MaxPool(LocalPatch, (usize, usize));
 
 impl MaxPool {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<MaxPool> {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
-        Ok(MaxPool(
+        Ok(Box::new(MaxPool(
             LocalPatch::build(pb)?,
             (ksize[1] as usize, ksize[2] as usize),
-        ))
+        )))
     }
 }
 
@@ -350,12 +350,12 @@ impl Op for MaxPool {
 pub struct AvgPool(LocalPatch, (usize, usize));
 
 impl AvgPool {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<AvgPool> {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
-        Ok(AvgPool(
+        Ok(Box::new(AvgPool(
             LocalPatch::build(pb)?,
             (ksize[1] as usize, ksize[2] as usize),
-        ))
+        )))
     }
 }
 

@@ -1,5 +1,15 @@
 use {Matrix, Result};
-use super::Op;
+use super::{ Op, OpRegister };
+
+mod local_patch;
+
+pub fn register_all_ops(reg: &mut OpRegister) {
+    reg.insert("AvgPool", local_patch::AvgPool::build);
+    reg.insert("Conv2D", local_patch::Conv2D::build);
+    reg.insert("MaxPool", local_patch::MaxPool::build);
+    reg.insert("Relu", Relu::build);
+    reg.insert("Softmax", Softmax::build);
+}
 
 element_map!(Relu, |x| if x < 0.0 { 0.0 } else { x });
 
@@ -7,8 +17,8 @@ element_map!(Relu, |x| if x < 0.0 { 0.0 } else { x });
 pub struct Softmax {}
 
 impl Softmax {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Softmax> {
-        Ok(Softmax {})
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+        Ok(Box::new(Softmax {}))
     }
 }
 

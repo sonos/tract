@@ -267,13 +267,7 @@ impl GraphAnalyser {
     }
 
     pub fn set_value(&mut self, name: &str, value: Matrix) -> Result<()> {
-        let node = self.get_node(name)?;
-        if let Some(ph) = node.op.downcast_ref::<ops::trivial::Placeholder>() {
-            ph.set(value);
-            Ok(())
-        } else {
-            Err(format!("node {} is not a placeholder", name))?
-        }
+        self.set_outputs(name, vec!(value))
     }
 
     fn compute(&mut self, name: &str) -> Result<()> {

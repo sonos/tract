@@ -1,67 +1,45 @@
 //! TensorFlow Ops
 
 use std::fmt::Debug;
+use std::collections::HashMap;
 
 use {Matrix, Result};
 
 #[macro_use]
 mod macros;
-mod activ;
-mod arith;
+
 mod array;
+mod math;
 mod cast;
-pub mod conv;
+pub mod nn;
 pub mod image;
-mod shape;
-pub mod trivial;
+pub mod konst;
 
 pub trait Op: ::downcast_rs::Downcast + Debug {
     fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>>;
 }
 impl_downcast!(Op);
 
-pub struct OpBuilder {}
+type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
+
+pub struct OpBuilder(OpRegister);
 
 impl OpBuilder {
     pub fn new() -> OpBuilder {
-        OpBuilder {}
+        let mut reg = OpRegister::new();
+        array::register_all_ops(&mut reg);
+        cast::register_all_ops(&mut reg);
+        konst::register_all_ops(&mut reg);
+        math::register_all_ops(&mut reg);
+        nn::register_all_ops(&mut reg);
+        OpBuilder(reg)
     }
 
     pub fn build(&self, pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        fn build_op(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-            match pb.get_op() {
-                "Add" => Ok(Box::new(arith::Add::build(pb)?)),
-                "AvgPool" => Ok(Box::new(conv::AvgPool::build(pb)?)),
-                "BiasAdd" => Ok(Box::new(arith::Add::build(pb)?)),
-                "Cast" => Ok(Box::new(cast::Cast::build(pb)?)),
-                "ConcatV2" => Ok(Box::new(array::ConcatV2::build(pb)?)),
-                "Const" => Ok(Box::new(trivial::Const::build(pb)?)),
-                "Conv2D" => Ok(Box::new(conv::Conv2D::build(pb)?)),
-                "DecodeJpeg" => Ok((Box::new(image::DecodeJpeg::build(pb)?))),
-                "ExpandDims" => Ok(Box::new(shape::ExpandDims)),
-                "Identity" => Ok((Box::new(trivial::Identity::build(pb)?))),
-                "MaxPool" => Ok(Box::new(conv::MaxPool::build(pb)?)),
-                "Mul" => Ok(Box::new(arith::Mul::build(pb)?)),
-                "Placeholder" => Ok(Box::new(trivial::Placeholder::build(pb)?)),
-                "Relu" => Ok(Box::new(activ::Relu::build(pb)?)),
-                "Reshape" => Ok(Box::new(array::Reshape::build(pb)?)),
-                "ResizeBilinear" => Ok(Box::new(image::ResizeBilinear::build(pb)?)),
-                "Rsqrt" => Ok(Box::new(arith::Rsqrt::build(pb)?)),
-                "Softmax" => Ok(Box::new(activ::Softmax::build(pb)?)),
-                "Sub" => Ok(Box::new(arith::Sub::build(pb)?)),
-                "Squeeze" => Ok(Box::new(shape::Squeeze::build(pb)?)),
-                _ => Ok(Box::new(
-                    UnimplementedOp(pb.get_op().to_string(), pb.to_owned()),
-                )),
-            }
+        match self.0.get(pb.get_op()) {
+            Some(builder) => builder(pb),
+            None => Ok(Box::new(UnimplementedOp(pb.get_op().to_string(), pb.to_owned())))
         }
-        build_op(pb).map_err(|e| {
-            format!(
-                "Error while building a {} op: {}",
-                pb.get_op(),
-                e.description()
-            ).into()
-        })
     }
 }
 

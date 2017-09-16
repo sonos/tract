@@ -1,12 +1,18 @@
 use matrix::Matrix;
 use Result;
 
+use super::{ Op, OpRegister };
+
+pub fn register_all_ops(reg: &mut OpRegister) {
+    reg.insert("Cast", Cast::build);
+}
+
 #[derive(Debug)]
-pub struct Cast {}
+pub struct Cast;
 
 impl Cast {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Cast> {
-        Ok(Cast {})
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+        Ok(Box::new(Cast {}))
     }
 }
 
