@@ -7,18 +7,9 @@
 //! ```
 //! # extern crate tfdeploy;
 //! # extern crate ndarray;
-//! # use tfdeploy::tfpb;
-//! # use tfdeploy::tfpb::types::DataType::DT_FLOAT;
 //! # fn main() {
-//! # let input = tfpb::node().name("input").op("Placeholder").attr("dtype", DT_FLOAT);
-//! # let cons = tfpb::node().name("const").op("Const")
-//! #     .attr("dtype", DT_FLOAT)
-//! #     .attr("value", tfpb::tensor_f32(vec!(1), vec!(3.0)));
-//! # let add = tfpb::node().name("output").op("Add").input("input").input("const");
-//! # tfpb::graph().node(input).node(cons).node(add).save_to("model.pb").unwrap();
-//! #
 //! // load a simple model that just add 3 to each input component
-//! let mut graph = tfdeploy::for_path("model.pb").unwrap();
+//! let mut graph = tfdeploy::for_path("tests/plus3.pb").unwrap();
 //! 
 //! // run the computation. "input" and "output" are tensorflow graph node names.
 //! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
