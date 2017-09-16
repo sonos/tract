@@ -14,7 +14,7 @@ fn mk(sizes: &[usize]) -> Matrix {
     Matrix::F32(data)
 }
 
-fn bench(bencher: &mut bencher::Bencher) {
+fn conv(bencher: &mut bencher::Bencher) {
     let stride = 1;
     let strides = vec![1, stride, stride, 1];
     let conv = Conv2D::for_patch(LocalPatch {
@@ -27,5 +27,5 @@ fn bench(bencher: &mut bencher::Bencher) {
     bencher.iter(|| conv.eval(inputs.clone()).unwrap())
 }
 
-benchmark_group!(benches, bench);
+benchmark_group!(benches, conv);
 benchmark_main!(benches);
