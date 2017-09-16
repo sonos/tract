@@ -4,7 +4,7 @@ extern crate ndarray;
 extern crate tfdeploy;
 
 use tfdeploy::*;
-use tfdeploy::ops::conv::*;
+use tfdeploy::ops::nn::local_patch::*;
 use tfdeploy::ops::Op;
 
 fn mk(sizes: &[usize]) -> Matrix {

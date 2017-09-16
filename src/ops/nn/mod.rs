@@ -1,7 +1,7 @@
 use {Matrix, Result};
 use super::{ Op, OpRegister };
 
-mod local_patch;
+pub mod local_patch;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AvgPool", local_patch::AvgPool::build);
