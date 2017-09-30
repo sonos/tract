@@ -38,7 +38,9 @@ impl OpBuilder {
     pub fn build(&self, pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         match self.0.get(pb.get_op()) {
             Some(builder) => builder(pb),
-            None => Ok(Box::new(UnimplementedOp(pb.get_op().to_string(), pb.to_owned())))
+            None => Ok(Box::new(
+                UnimplementedOp(pb.get_op().to_string(), pb.to_owned()),
+            )),
         }
     }
 }

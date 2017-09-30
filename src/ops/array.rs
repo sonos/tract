@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 
 use {Matrix, Result};
-use super::{ Op, OpRegister };
+use super::{Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", ConcatV2::build);
@@ -19,7 +19,9 @@ pub struct ConcatV2 {
 
 impl ConcatV2 {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Ok(Box::new(ConcatV2 { n: pb.get_attr().get("N").unwrap().get_i() as _ }))
+        Ok(Box::new(
+            ConcatV2 { n: pb.get_attr().get("N").unwrap().get_i() as _ },
+        ))
     }
 }
 

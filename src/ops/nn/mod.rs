@@ -1,5 +1,5 @@
 use {Matrix, Result};
-use super::{ Op, OpRegister };
+use super::{Op, OpRegister};
 
 pub mod local_patch;
 

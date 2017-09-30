@@ -11,13 +11,13 @@ extern crate tfdeploy;
 #[path = "../examples/inceptionv3.rs"]
 mod inceptionv3;
 
-#[cfg(features="tensorflow")]
+#[cfg(features = "tensorflow")]
 fn dummy(_bencher: &mut bencher::Bencher) {
     inceptionv3::download().unwrap();
     ::tfdeploy::tf::for_path(inceptionv3::INCEPTION_V3).unwrap();
 }
 
-#[cfg(features="tensorflow")]
+#[cfg(features = "tensorflow")]
 fn tf(bencher: &mut bencher::Bencher) {
     inceptionv3::download().unwrap();
     let mut tf = ::tfdeploy::tf::for_path(inceptionv3::INCEPTION_V3).unwrap();
@@ -43,8 +43,8 @@ fn tfd(bencher: &mut bencher::Bencher) {
     });
 }
 
-#[cfg(features="tensorflow")]
+#[cfg(features = "tensorflow")]
 benchmark_group!(benches, dummy, tf, tfd);
-#[cfg(not(features="tensorflow"))]
+#[cfg(not(features = "tensorflow"))]
 benchmark_group!(benches, tfd);
 benchmark_main!(benches);

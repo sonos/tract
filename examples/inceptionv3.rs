@@ -58,7 +58,7 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
 #[allow(dead_code)]
 fn main() {
     download().unwrap();
-    let mut tfd = ::tfdeploy::for_path(INCEPTION_V3).unwrap();
+    let tfd = ::tfdeploy::for_path(INCEPTION_V3).unwrap();
     let input = load_image(HOPPER);
     let output = tfd.run(vec![("input", input)], "InceptionV3/Predictions/Reshape_1")
         .unwrap();

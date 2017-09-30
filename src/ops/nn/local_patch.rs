@@ -699,7 +699,8 @@ mod proptests {
             }
             let model = convolution_pb(stride, stride, valid).unwrap();
             let mut tf = ::tf::for_slice(&model)?;
-            let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
+            let tfd = ::Model::for_reader(&*model)?;
+            let mut tfd = tfd.state();
             let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
             tfd.set_value("data", i.clone())?;
             tfd.set_value("kernel", k.clone())?;
@@ -721,7 +722,8 @@ mod proptests {
             }
             let model = maxpool_pb(stride, stride, kh, kw, valid).unwrap();
             let mut tf = ::tf::for_slice(&model)?;
-            let mut tfd = ::GraphAnalyser::for_reader(&*model)?;
+            let tfd = ::Model::for_reader(&*model)?;
+            let mut tfd = tfd.state();
             let expected = tf.run(vec!(("data", i.clone())), "pool")?;
             tfd.set_value("data", i.clone())?;
             let found = tfd.take("pool")?;

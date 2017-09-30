@@ -29,7 +29,8 @@ impl ::std::cmp::Ord for SaneF32 {
 #[allow(dead_code)]
 fn compare(
     tf: &mut ::tfdeploy::tf::Tensorflow,
-    tfd: &mut ::tfdeploy::GraphAnalyser,
+    tfd: &::tfdeploy::Model,
+    state: &mut ::tfdeploy::ModelState,
     inputs: Vec<(&str, Matrix)>,
     output_name: &str,
 ) -> Result<Vec<Matrix>> {
@@ -41,7 +42,7 @@ fn compare(
         }
     }
     let rtf = rtf?;
-    let rtfd = tfd.run(inputs.clone(), output_name)?;
+    let rtfd = state.run(inputs.clone(), output_name)?;
     if rtf.len() != rtfd.len() {
         Err(format!(
             "number of output differ tf:{} tfd:{}",
@@ -82,7 +83,7 @@ fn compare_one<P: AsRef<path::Path>>(
 ) -> Result<()> {
     let mut tf = ::tfdeploy::tf::for_path(&model)?;
     let mut tfd = tfdeploy::for_path(&model)?;
-    compare(&mut tf, &mut tfd, inputs, output_name)?;
+    compare(&mut tf, &tfd, &mut tfd.state(), inputs, output_name)?;
     Ok(())
 }
 
@@ -93,7 +94,8 @@ fn compare_all<P: AsRef<path::Path>>(
     output_name: &str,
 ) -> Result<()> {
     let mut tf = tfdeploy::tf::for_path(&model)?;
-    let mut tfd = tfdeploy::for_path(&model)?;
+    let tfd = tfdeploy::for_path(&model)?;
+    let mut state = tfd.state();
     println!("{:?}", tfd.node_names());
     let output_node = tfd.get_node(output_name)?;
     for node in output_node.eval_order()? {
@@ -102,14 +104,7 @@ fn compare_all<P: AsRef<path::Path>>(
             continue;
         }
         println!(" * comparing outputs for {} ({})", node.name, node.op_name);
-        for (k, v) in tfd.get_pbnode(&*node.name)?.get_attr() {
-            if v.has_tensor() {
-                println!("     {}:tensor", k);
-            } else {
-                println!("     {}:{:?}", k, v);
-            }
-        }
-        match compare(&mut tf, &mut tfd, inputs.clone(), &*node.name) {
+        match compare(&mut tf, &tfd, &mut state, inputs.clone(), &*node.name) {
             Err(Error(ErrorKind::TFString, _)) => continue,
             Err(e) => {
                 println!("error !");
@@ -118,7 +113,7 @@ fn compare_all<P: AsRef<path::Path>>(
                 }
                 Err(e)?
             }
-            Ok(it) => tfd.set_outputs(&*node.name, it)?,
+            Ok(it) => state.set_outputs(&*node.name, it)?,
         }
     }
     Ok(())

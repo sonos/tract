@@ -1,7 +1,7 @@
 use matrix::Matrix;
 use Result;
 
-use super::{ Op, OpRegister };
+use super::{Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);

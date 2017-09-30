@@ -1,5 +1,5 @@
 use {Matrix, Result};
-use super::{ Op, OpRegister };
+use super::{Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Abs", Abs::build);
@@ -14,7 +14,19 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 element_map!(Rsqrt, |x: f32| 1.0 / (x.sqrt()));
 element_map!(Abs, |x: f32| x.abs());
 
-element_bin!(Add, |mut a,b| { a+=&b ; a });
-element_bin!(Div, |mut a,b| { a/=&b ; a });
-element_bin!(Mul, |mut a,b| { a*=&b ; a });
-element_bin!(Sub, |mut a,b| { a-=&b ; a });
+element_bin!(Add, |mut a, b| {
+    a += &b;
+    a
+});
+element_bin!(Div, |mut a, b| {
+    a /= &b;
+    a
+});
+element_bin!(Mul, |mut a, b| {
+    a *= &b;
+    a
+});
+element_bin!(Sub, |mut a, b| {
+    a -= &b;
+    a
+});

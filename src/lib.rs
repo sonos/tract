@@ -9,8 +9,8 @@
 //! # extern crate ndarray;
 //! # fn main() {
 //! // load a simple model that just add 3 to each input component
-//! let mut graph = tfdeploy::for_path("tests/plus3.pb").unwrap();
-//! 
+//! let graph = tfdeploy::for_path("tests/plus3.pb").unwrap();
+//!
 //! // run the computation. "input" and "output" are tensorflow graph node names.
 //! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
 //! let mut outputs = graph.run(vec![("input",input.into())], "output").unwrap();
@@ -140,6 +140,7 @@ impl Node {
             Err(format!("Could not compute node {}", self.name).into())
         }
     }
+
     fn _eval_order<'a: 'b, 'b: 'c, 'c>(
         &'a self,
         entered: &'b mut HashSet<Node>,
@@ -168,93 +169,103 @@ impl Node {
     }
 }
 
-/// GraphAnalyser is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
-/// and runs the inference interpreter.
-///
-pub struct GraphAnalyser {
-    graph: tfpb::graph::GraphDef,
-    op_builder: ops::OpBuilder,
-    nodes: HashMap<String, Node>,
-    outputs: HashMap<String, Vec<Matrix>>,
+/// Load a Tensorflow protobul model from a file.
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
+    Model::for_path(p)
 }
 
-impl GraphAnalyser {
-    pub fn new(graph: tfpb::graph::GraphDef) -> Result<GraphAnalyser> {
-        Ok(GraphAnalyser {
-            graph,
-            op_builder: ops::OpBuilder::new(),
-            nodes: HashMap::new(),
+/// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
+/// and runs the inference interpreter.
+///
+pub struct Model {
+    nodes: HashMap<String, Node>,
+}
+
+impl Model {
+    pub fn new(graph: tfpb::graph::GraphDef) -> Result<Model> {
+        let mut nodes: HashMap<String, Node> = HashMap::new();
+        let op_builder = ops::OpBuilder::new();
+        for pbnode in graph.get_node().iter() {
+            let name = pbnode.get_name().to_string();
+            let inputs: Vec<(Node, Option<usize>)> = pbnode
+                .get_input()
+                .iter()
+                .map(|i| {
+                    let input: (&Node, Option<usize>) = if i.starts_with("^") {
+                        (
+                            nodes.get(&*i.replace("^", "")).ok_or(format!(
+                                "No node {} found",
+                                i
+                            ))?,
+                            None,
+                        )
+                    } else {
+                        (
+                            nodes.get(&*i.to_string()).ok_or(
+                                format!("No node {} found", i),
+                            )?,
+                            Some(0usize),
+                        )
+                    };
+                    Ok((input.0.clone(), input.1))
+                })
+                .collect::<Result<Vec<_>>>()
+                .map_err(|e| {
+                    format!("While building node {}, {}", name, e.description())
+                })?;
+            let node = Node(rc::Rc::new(RawNode {
+                name: name.to_string(),
+                op_name: pbnode.get_op().to_string(),
+                inputs: inputs,
+                op: op_builder.build(&pbnode).map_err(|e| {
+                    format!("While building node {}, {}", name, e.description())
+                })?,
+            }));
+            nodes.insert(name, node);
+        }
+        Ok(Model { nodes })
+    }
+
+    pub fn state(&self) -> ModelState {
+        ModelState {
+            model: self,
             outputs: HashMap::new(),
-        })
+        }
     }
 
     /// Load a Tensorflow protobul model from a file.
-    pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
+    pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
         Self::for_reader(fs::File::open(p)?)
     }
 
     /// Load a Tensorflow protobul model from a reader.
-    pub fn for_reader<R: ::std::io::Read>(mut r: R) -> Result<GraphAnalyser> {
+    pub fn for_reader<R: ::std::io::Read>(mut r: R) -> Result<Model> {
         let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)?;
-        GraphAnalyser::new(loaded)
+        Model::new(loaded)
     }
 
     pub fn node_names(&self) -> Vec<&str> {
-        self.graph.get_node().iter().map(|n| n.get_name()).collect()
-    }
-
-    /// Format the model in protobuf form
-    pub fn dump_pbtext(&self) -> String {
-        protobuf::text_format::print_to_string(&self.graph)
+        self.nodes.keys().map(|s| &**s).collect()
     }
 
     /// Build a tfdeploy Node by name.
-    pub fn get_node(&mut self, name: &str) -> Result<Node> {
-        if !self.nodes.contains_key(name) {
-            let node = self.make_node(name)?;
-            self.nodes.insert(name.to_string(), node);
-        }
-        Ok(
-            self.nodes
-                .get(name)
-                .ok_or(format!("node {} do not exist", name))?
-                .clone(),
-        )
+    pub fn get_node(&self, name: &str) -> Result<&Node> {
+        Ok(self.nodes.get(name).ok_or(
+            format!("node {} do not exist", name),
+        )?)
     }
 
-    /// Access a protobuf Node by name.
-    pub fn get_pbnode(&mut self, name: &str) -> Result<&tfpb::node_def::NodeDef> {
-        Ok(self.graph
-            .get_node()
-            .iter()
-            .find(|n| n.get_name() == name)
-            .ok_or_else(|| format!("Could not find node {}", name))?)
+    pub fn run(&self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
+        self.state().run(inputs, output_name)
     }
+}
 
-    fn make_node(&mut self, name: &str) -> Result<Node> {
-        let pbnode = self.get_pbnode(name)?.to_owned();
-        let inputs: Vec<(Node, Option<usize>)> = pbnode
-            .get_input()
-            .iter()
-            .map(|i| if i.starts_with("^") {
-                Ok((self.get_node(&*i.replace("^", ""))?, None))
-            } else {
-                Ok((self.get_node(i)?, Some(0)))
-            })
-            .collect::<Result<Vec<_>>>()
-            .map_err(|e| {
-                format!("While building node {}, {}", name, e.description())
-            })?;
-        Ok(Node(rc::Rc::new(RawNode {
-            name: name.to_string(),
-            op_name: pbnode.get_op().to_string(),
-            inputs: inputs,
-            op: self.op_builder.build(&pbnode).map_err(|e| {
-                format!("While building node {}, {}", name, e.description())
-            })?,
-        })))
-    }
+pub struct ModelState<'a> {
+    model: &'a Model,
+    outputs: HashMap<String, Vec<Matrix>>,
+}
 
+impl<'a> ModelState<'a> {
     /// Reset internal state.
     pub fn reset(&mut self) -> Result<()> {
         self.outputs.clear();
@@ -267,14 +278,14 @@ impl GraphAnalyser {
     }
 
     pub fn set_value(&mut self, name: &str, value: Matrix) -> Result<()> {
-        self.set_outputs(name, vec!(value))
+        self.set_outputs(name, vec![value])
     }
 
     fn compute(&mut self, name: &str) -> Result<()> {
         if self.outputs.contains_key(name) {
             return Ok(());
         }
-        let node: Node = self.get_node(name)?;
+        let node: &Node = self.model.get_node(name)?;
         let mut inputs: Vec<Matrix> = vec![];
         for i in &node.inputs {
             self.compute(&*i.0.name)?;
@@ -283,7 +294,6 @@ impl GraphAnalyser {
             }
         }
         let outputs = node.op.eval(inputs)?;
-        // println!("storing {} -> {:?}", name, outputs.iter().map(|m| m.shape()).collect::<Vec<_>>());
         self.outputs.insert(name.to_string(), outputs);
         Ok(())
     }
@@ -315,9 +325,4 @@ impl GraphAnalyser {
         }
         Ok(self.take(output_name)?)
     }
-}
-
-/// Load a Tensorflow protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<GraphAnalyser> {
-    GraphAnalyser::for_path(p)
 }
