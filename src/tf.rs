@@ -42,7 +42,7 @@ enum TensorHolder {
 }
 
 impl TensorHolder {
-    fn to_tensor<T: ::tensorflow::TensorType>(m: ArrayD<T>) -> Tensor<T> {
+    fn to_tensor<T: ::tensorflow::TensorType+Copy>(m: ArrayD<T>) -> Tensor<T> {
         let dims: Vec<u64> = m.shape().iter().map(|d| *d as _).collect();
         let mut tensor = Tensor::<T>::new(&*dims);
         tensor.copy_from_slice(m.as_slice().unwrap());

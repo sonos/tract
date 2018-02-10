@@ -35,7 +35,6 @@ fn tfd(bencher: &mut bencher::Bencher) {
     let mut tfd = ::tfdeploy::for_path(inceptionv3::INCEPTION_V3).unwrap();
     let input = inceptionv3::load_image(inceptionv3::HOPPER);
     bencher.iter(|| {
-        tfd.reset().unwrap();
         tfd.run(
             vec![("input", input.clone())],
             "InceptionV3/Predictions/Reshape_1",
