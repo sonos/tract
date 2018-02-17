@@ -281,20 +281,23 @@ impl<'a> ModelState<'a> {
         self.set_outputs(name, vec![value])
     }
 
-    fn compute(&mut self, name: &str) -> Result<()> {
-        if self.outputs.contains_key(name) {
-            return Ok(());
-        }
-        let node: &Node = self.model.get_node(name)?;
+    fn compute_node(&mut self, node:Node) -> Result<()> {
         let mut inputs: Vec<Matrix> = vec![];
         for i in &node.inputs {
-            self.compute(&*i.0.name)?;
-            if let Some(_) = i.1 {
-                inputs.push(self.outputs.get(&i.0.name).unwrap()[i.1.unwrap()].clone())
-            }
+            inputs.push(self.outputs.get(&i.0.name).ok_or("Unsatisfied node dep")?[i.1.ok_or("no output found")?].clone())
         }
         let outputs = node.op.eval(inputs)?;
-        self.outputs.insert(name.to_string(), outputs);
+        self.outputs.insert(node.name.to_string(), outputs);
+        Ok(())
+    }
+
+    fn compute(&mut self, name: &str) -> Result<()> {
+        let node: &Node = self.model.get_node(name)?;
+        for dep in node.eval_order()? {
+            if !self.outputs.contains_key(&dep.name) {
+                self.compute_node(dep)?;
+            }
+        }
         Ok(())
     }
 
