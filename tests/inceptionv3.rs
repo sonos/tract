@@ -3,7 +3,7 @@ extern crate flate2;
 extern crate image;
 extern crate itertools;
 extern crate ndarray;
-extern crate reqwest;
+extern crate mio_httpc;
 extern crate tar;
 extern crate tfdeploy;
 
@@ -29,7 +29,6 @@ impl ::std::cmp::Ord for SaneF32 {
 #[allow(dead_code)]
 fn compare(
     tf: &mut ::tfdeploy::tf::Tensorflow,
-    tfd: &::tfdeploy::Model,
     state: &mut ::tfdeploy::ModelState,
     inputs: Vec<(&str, Matrix)>,
     output_name: &str,
@@ -82,8 +81,8 @@ fn compare_one<P: AsRef<path::Path>>(
     output_name: &str,
 ) -> Result<()> {
     let mut tf = ::tfdeploy::tf::for_path(&model)?;
-    let mut tfd = tfdeploy::for_path(&model)?;
-    compare(&mut tf, &tfd, &mut tfd.state(), inputs, output_name)?;
+    let tfd = tfdeploy::for_path(&model)?;
+    compare(&mut tf, &mut tfd.state(), inputs, output_name)?;
     Ok(())
 }
 
@@ -104,7 +103,7 @@ fn compare_all<P: AsRef<path::Path>>(
             continue;
         }
         println!(" * comparing outputs for {} ({})", node.name, node.op_name);
-        match compare(&mut tf, &tfd, &mut state, inputs.clone(), &*node.name) {
+        match compare(&mut tf, &mut state, inputs.clone(), &*node.name) {
             Err(Error(ErrorKind::TFString, _)) => continue,
             Err(e) => {
                 println!("error !");

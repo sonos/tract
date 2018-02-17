@@ -5,7 +5,6 @@ extern crate tfdeploy;
 
 use tfdeploy::*;
 use tfdeploy::ops::nn::local_patch::*;
-use tfdeploy::ops::Op;
 
 fn mk(sizes: &[usize]) -> Matrix {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)

@@ -2,15 +2,14 @@ extern crate flate2;
 extern crate image;
 extern crate itertools;
 extern crate ndarray;
-extern crate reqwest;
+extern crate mio_httpc;
 extern crate tar;
 extern crate tfdeploy;
 
 use std::{fs, io, path};
+use mio_httpc::SyncCall;
 
 use tfdeploy::errors::*;
-
-use std::error::Error;
 
 pub const INCEPTION_V3: &str = "examples/data/inception-v3-2016_08_28/inception_v3_2016_08_28_frozen.pb";
 pub const HOPPER: &str = "examples/grace_hopper.jpg";
@@ -22,13 +21,13 @@ pub fn download() -> Result<()> {
     let dir = "examples/data/inception-v3-2016_08_28";
     fs::create_dir_all(dir)?;
     let url = "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz";
-    let resp = reqwest::get(url).map_err(|e| {
-        format!("reqwest error: {}", e.description())
+    let (status, _hdrs, body) = SyncCall::new().timeout_ms(5000).get(url).map_err(|e| {
+        format!("request error: {:?}", e)
     })?;
-    if resp.status() != reqwest::StatusCode::Ok {
+    if status != 200 {
         Err("Could not download inception v3")?
     }
-    let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(resp)?);
+    let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(&body[..]));
     archive.unpack(dir)?;
     Ok(())
 }

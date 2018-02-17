@@ -4,7 +4,7 @@ extern crate image;
 extern crate itertools;
 extern crate flate2;
 extern crate ndarray;
-extern crate reqwest;
+extern crate mio_httpc;
 extern crate tar;
 extern crate tfdeploy;
 
@@ -32,7 +32,7 @@ fn tf(bencher: &mut bencher::Bencher) {
 
 fn tfd(bencher: &mut bencher::Bencher) {
     inceptionv3::download().unwrap();
-    let mut tfd = ::tfdeploy::for_path(inceptionv3::INCEPTION_V3).unwrap();
+    let tfd = ::tfdeploy::for_path(inceptionv3::INCEPTION_V3).unwrap();
     let input = inceptionv3::load_image(inceptionv3::HOPPER);
     bencher.iter(|| {
         tfd.run(
