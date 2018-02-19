@@ -38,6 +38,7 @@ tempdir = "0.3"
 
 [dev-dependencies]
 bencher = "0.1"
+dinghy-test = { git="https://github.com/snipsco/dinghy.git", branch="0.3"}
 flate2 = "1.0"
 itertools = "0.7"
 mio_httpc = { version = "0.4", features = [ "rtls" ] }
@@ -51,3 +52,6 @@ name = "conv"
 [[bench]]
 harness = false
 name = "inceptionv3"
+
+[replace]
+"pkg-config:0.3.9" = { git = "https://github.com/snipsco/pkg-config-rs/", branch = "sysroot_dir" }

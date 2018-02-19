@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate bencher;
+extern crate dinghy_test;
 extern crate image;
 extern crate itertools;
 extern crate flate2;
@@ -13,14 +14,12 @@ mod inceptionv3;
 
 #[cfg(features = "tensorflow")]
 fn dummy(_bencher: &mut bencher::Bencher) {
-    inceptionv3::download().unwrap();
-    ::tfdeploy::tf::for_path(inceptionv3::INCEPTION_V3).unwrap();
+    ::tfdeploy::tf::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
 }
 
 #[cfg(features = "tensorflow")]
 fn tf(bencher: &mut bencher::Bencher) {
-    inceptionv3::download().unwrap();
-    let mut tf = ::tfdeploy::tf::for_path(inceptionv3::INCEPTION_V3).unwrap();
+    let mut tf = ::tfdeploy::tf::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(inceptionv3::HOPPER);
     bencher.iter(|| {
         tf.run(
@@ -31,8 +30,7 @@ fn tf(bencher: &mut bencher::Bencher) {
 }
 
 fn tfd(bencher: &mut bencher::Bencher) {
-    inceptionv3::download().unwrap();
-    let tfd = ::tfdeploy::for_path(inceptionv3::INCEPTION_V3).unwrap();
+    let tfd = ::tfdeploy::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(inceptionv3::HOPPER);
     bencher.iter(|| {
         tfd.run(

@@ -1,3 +1,4 @@
+extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
 extern crate itertools;
@@ -8,18 +9,31 @@ extern crate tfdeploy;
 
 use std::{fs, io, path};
 use mio_httpc::SyncCall;
+use dinghy_test::test_project_path;
 
 use tfdeploy::errors::*;
 
-pub const INCEPTION_V3: &str = "examples/data/inception-v3-2016_08_28/inception_v3_2016_08_28_frozen.pb";
 pub const HOPPER: &str = "examples/grace_hopper.jpg";
 
-pub fn download() -> Result<()> {
-    if fs::metadata(INCEPTION_V3).is_ok() {
+fn download() {
+    use std::sync::{Once, ONCE_INIT};
+    static START: Once = ONCE_INIT;
+
+    START.call_once(|| {
+        do_download().unwrap()
+    });
+}
+
+fn do_download() -> Result<()> {
+    let dir = inception_v3_2016_08_28();
+    let dir_partial = dir.clone().with_extension("partial");
+    if fs::metadata(&dir).is_ok() {
         return Ok(());
     }
-    let dir = "examples/data/inception-v3-2016_08_28";
-    fs::create_dir_all(dir)?;
+    if fs::metadata(&dir_partial).is_ok() {
+        fs::remove_dir_all(&dir_partial).unwrap();
+    }
+    fs::create_dir_all(&dir_partial)?;
     let url = "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz";
     let (status, _hdrs, body) = SyncCall::new().timeout_ms(5000).get(url).map_err(|e| {
         format!("request error: {:?}", e)
@@ -28,16 +42,15 @@ pub fn download() -> Result<()> {
         Err("Could not download inception v3")?
     }
     let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(&body[..]));
-    archive.unpack(dir)?;
+    archive.unpack(&dir_partial)?;
+    fs::rename(dir_partial, dir)?;
     Ok(())
 }
 
 pub fn load_labels() -> Vec<String> {
     use std::io::BufRead;
     io::BufReader::new(
-        fs::File::open(
-            "examples/data/inception-v3-2016_08_28/imagenet_slim_labels.txt",
-        ).unwrap(),
+        fs::File::open(imagenet_slim_labels()).unwrap()
     ).lines()
         .collect::<::std::io::Result<Vec<String>>>()
         .unwrap()
@@ -54,11 +67,25 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
     image
 }
 
+fn inception_v3_2016_08_28() -> path::PathBuf {
+    ::std::env::temp_dir().join("inception-v3-2016_08_28")
+}
+
+pub fn inception_v3_2016_08_28_frozen() -> path::PathBuf {
+    download();
+    inception_v3_2016_08_28().join("inception_v3_2016_08_28_frozen.pb")
+}
+
+pub fn imagenet_slim_labels() -> path::PathBuf {
+    download();
+    inception_v3_2016_08_28().join("imagenet_slim_labels.txt")
+}
+
 #[allow(dead_code)]
 fn main() {
-    download().unwrap();
-    let tfd = ::tfdeploy::for_path(INCEPTION_V3).unwrap();
-    let input = load_image(HOPPER);
+    download();
+    let tfd = ::tfdeploy::for_path(inception_v3_2016_08_28_frozen()).unwrap();
+    let input = load_image(test_project_path().join(HOPPER));
     let output = tfd.run(vec![("input", input)], "InceptionV3/Predictions/Reshape_1")
         .unwrap();
     let labels = load_labels();

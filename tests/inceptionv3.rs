@@ -1,4 +1,5 @@
 #![cfg(feature="tensorflow")]
+extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
 extern crate itertools;
@@ -120,7 +121,7 @@ fn compare_all<P: AsRef<path::Path>>(
 
 #[test]
 fn test_tf() {
-    let mut tf = ::tfdeploy::tf::for_path(inceptionv3::INCEPTION_V3).unwrap();
+    let mut tf = ::tfdeploy::tf::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(inceptionv3::HOPPER);
     let mut output = tf.run(vec![("input", input)], "InceptionV3/Predictions/Reshape_1")
         .unwrap();
@@ -134,10 +135,8 @@ fn test_tf() {
 
 #[test]
 fn test_compare_all() {
-    inceptionv3::download().unwrap();
-
     ::compare_all(
-        inceptionv3::INCEPTION_V3,
+        inceptionv3::inception_v3_2016_08_28_frozen(),
         vec![("input", inceptionv3::load_image(inceptionv3::HOPPER))],
         "InceptionV3/Predictions/Reshape_1",
     ).unwrap();
