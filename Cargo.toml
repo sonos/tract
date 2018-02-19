@@ -16,8 +16,7 @@ travis-ci = { repository = "kali/tensorflow-deploy-rust" }
 [dependencies]
 accelerate-src = { version = "0.3", optional = true, default-features=false }
 openblas-src = { version = "0.5", optional = true, default-features=false }
-cblas = { version = "0.1", optional = true, default-features=false }
-# cblas-src = { version = "0.1", optional = true, default-features=false }
+blas-src = { version = "0.1.2", default-features = false, optional=true }
 downcast-rs = "1.0"
 error-chain =  { version = "0.11", default-features=false }
 image = "0.18"
@@ -29,9 +28,9 @@ tensorflow = { version = "0.7", optional = true }
 
 [features]
 default = []
-blas = ["ndarray/blas", "cblas"]
-openblas = ["cblas", "openblas-src"]
-accelerate = ["cblas", "accelerate-src"]
+blas = ["ndarray/blas", "blas-src"]
+openblas = ["blas", "openblas-src", "blas-src/openblas" ]
+accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 
 [build-dependencies]
 protoc-rust   = "1.4"
