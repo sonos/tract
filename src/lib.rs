@@ -59,7 +59,7 @@ use errors::*;
 pub use matrix::Matrix;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Node(pub rc::Rc<RawNode>);
+pub struct Node(pub std::sync::Arc<RawNode>);
 
 impl ::std::ops::Deref for Node {
     type Target = RawNode;
@@ -213,7 +213,7 @@ impl Model {
                 .map_err(|e| {
                     format!("While building node {}, {}", name, e.description())
                 })?;
-            let node = Node(rc::Rc::new(RawNode {
+            let node = Node(std::sync::Arc::new(RawNode {
                 name: name.to_string(),
                 op_name: pbnode.get_op().to_string(),
                 inputs: inputs,

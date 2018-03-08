@@ -15,7 +15,7 @@ pub mod nn;
 pub mod image;
 pub mod konst;
 
-pub trait Op: ::downcast_rs::Downcast + Debug {
+pub trait Op: ::downcast_rs::Downcast + Debug + Send + Sync + 'static {
     fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>>;
 }
 impl_downcast!(Op);
