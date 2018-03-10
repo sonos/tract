@@ -27,7 +27,7 @@ protobuf = "1.4"
 tensorflow = { version = "0.7", optional = true }
 
 [features]
-default = []
+default = [ "openblas" ]
 blas = ["ndarray/blas", "blas-src"]
 openblas = ["blas", "openblas-src", "blas-src/openblas" ]
 accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
