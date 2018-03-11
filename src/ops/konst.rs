@@ -1,5 +1,6 @@
 use {Matrix, Result};
-use super::{Op, OpRegister};
+use super::{Input, Op, OpRegister};
+use std::sync::Arc;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
@@ -7,18 +8,18 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 
 #[derive(Debug)]
 pub struct Const {
-    value: Matrix,
+    value: Arc<Matrix>,
 }
 
 impl Const {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         let tensor = pb.get_attr().get("value").unwrap().get_tensor();
-        Ok(Box::new(Const { value: Matrix::from_pb(&tensor)? }))
+        Ok(Box::new(Const { value: Arc::new(Matrix::from_pb(&tensor)?) }))
     }
 }
 
 impl Op for Const {
-    fn eval(&self, _inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
-        Ok(vec![self.value.clone()])
+    fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
+        Ok(vec![self.value.clone().into()])
     }
 }

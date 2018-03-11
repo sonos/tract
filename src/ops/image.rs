@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 
 use {Matrix, Result};
-use super::Op;
+use super::{ Input, Op };
 
 #[derive(Debug)]
 pub struct DecodeJpeg {}
@@ -24,12 +24,11 @@ pub fn decode_one(input: &[u8]) -> Result<Array3<u8>> {
 }
 
 impl Op for DecodeJpeg {
-    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
-        let input: ArrayD<u8> = inputs.remove(0).take_u8s().ok_or(
-            "Expect input #0 to be buffers",
-        )?;
+    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let m_input = args_1!(inputs);
+        let input = m_input.as_u8s().ok_or("Expected a string")?;
         let image = decode_one(input.as_slice().unwrap())?;
-        Ok(vec![Matrix::U8(image.into_dyn())])
+        Ok(vec![Matrix::U8(image.into_dyn()).into()])
     }
 }
 
@@ -44,14 +43,11 @@ impl ResizeBilinear {
 }
 
 impl Op for ResizeBilinear {
-    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         use std::cmp::min;
-        let sizes: ArrayD<i32> = inputs.remove(1).take_i32s().ok_or(
-            "Expect input #0 to be images",
-        )?;
-        let images: ArrayD<f32> = inputs.remove(0).take_f32s().ok_or(
-            "Expect input #0 to be images",
-        )?;
+        let (m_images, m_sizes) = args_2!(inputs);
+        let images = m_images.into_matrix().take_f32s().ok_or("Expect input #0 to be images")?;
+        let sizes = m_sizes.as_i32s().ok_or("Expect input #1 to be sizes")?;
         let batches = images.shape()[0];
         let old_height = images.shape()[1];
         let old_width = images.shape()[2];
@@ -80,6 +76,6 @@ impl Op for ResizeBilinear {
             let dy = proj_y - old_y as f32;
             (1.0 - dy) * ((1.0 - dx) * q11 + dx * q21) + dy * ((1.0 - dx) * q12 + dx * q22)
         });
-        Ok(vec![Matrix::F32(result.into_dyn())])
+        Ok(vec![Matrix::F32(result.into_dyn()).into()])
     }
 }

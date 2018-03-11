@@ -2,6 +2,7 @@
 
 use std::fmt::Debug;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use {Matrix, Result};
 
@@ -15,8 +16,45 @@ pub mod nn;
 pub mod image;
 pub mod konst;
 
+#[derive(Debug,Clone)]
+pub enum Input {
+    Owned(Matrix),
+    Shared(Arc<Matrix>),
+}
+
+impl Input {
+    pub fn into_matrix(self) -> Matrix {
+        match self {
+            Input::Owned(m) => m,
+            Input::Shared(m) => m.as_ref().clone(),
+        }
+    }
+}
+
+impl From<Matrix> for Input {
+    fn from(m:Matrix) -> Input {
+        Input::Owned(m)
+    }
+}
+
+impl From<Arc<Matrix>> for Input {
+    fn from(m:Arc<Matrix>) -> Input {
+        Input::Shared(m)
+    }
+}
+
+impl ::std::ops::Deref for Input {
+    type Target = Matrix;
+    fn deref(&self) -> &Matrix {
+        match self {
+            &Input::Owned(ref m) => &m,
+            &Input::Shared(ref m) => m.as_ref(),
+        }
+    }
+}
+
 pub trait Op: ::downcast_rs::Downcast + Debug + Send + Sync + 'static {
-    fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>>;
+    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
 }
 impl_downcast!(Op);
 
@@ -49,7 +87,7 @@ impl OpBuilder {
 pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
-    fn eval(&self, inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
         println!("Unimplemented op: {}", self.0);
         println!(" * attrs:");
         for (k, v) in self.1.get_attr() {

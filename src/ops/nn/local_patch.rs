@@ -1,5 +1,5 @@
 use {Matrix, Result};
-use super::Op;
+use super::{ Input, Op };
 use ndarray::prelude::*;
 
 #[derive(Debug)]
@@ -244,15 +244,10 @@ impl Conv2D {
 }
 
 impl Op for Conv2D {
-    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
-        // [ filter_rows, filter_cols, in_depth, out_depth]
-        let filter = inputs.remove(1).take_f32s().ok_or(
-            "Expect input #1 to be f32",
-        )?;
-        // [ batch, in_rows, in_cols, in_depth ]
-        let data = inputs.remove(0).take_f32s().ok_or(
-            "Expect input #0 to be f32",
-        )?;
+    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let (m_data, m_filter) = args_2!(inputs);
+        let data = m_data.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
+        let filter = m_filter.as_f32s().ok_or("Expected a f32 matrix")?;
 
         let batches = data.shape()[0];
         let in_rows = data.shape()[1];
@@ -269,8 +264,9 @@ impl Op for Conv2D {
         );
 
         let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
-        let filter = filter.into_shape(
+        let filter = ArrayView2::from_shape(
             (filter_rows * filter_cols * in_depth, out_depth),
+            filter.as_slice().unwrap(),
         )?;
 
         let transformed: Vec<Array4<f32>> = data.outer_iter()
@@ -283,7 +279,7 @@ impl Op for Conv2D {
             })
             .collect::<Result<Vec<Array4<f32>>>>()?;
         let views: Vec<ArrayView4<f32>> = transformed.iter().map(|m| m.view()).collect();
-        Ok(vec![::ndarray::stack(Axis(0), &*views)?.into_dyn().into()])
+        Ok(vec![Matrix::from(::ndarray::stack(Axis(0), &*views)?.into_dyn()).into()])
     }
 }
 
@@ -314,10 +310,9 @@ impl MaxPool {
 }
 
 impl Op for MaxPool {
-    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
-        let data = inputs.remove(0).take_f32s().ok_or(
-            "Expect input #0 to be f32",
-        )?;
+    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let m_input = args_1!(inputs);
+        let data = m_input.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
@@ -342,7 +337,7 @@ impl Op for MaxPool {
             v
         });
 
-        Ok(vec![transformed.into_dyn().into()])
+        Ok(vec![Matrix::from(transformed.into_dyn()).into()])
     }
 }
 
@@ -360,10 +355,9 @@ impl AvgPool {
 }
 
 impl Op for AvgPool {
-    fn eval(&self, mut inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
-        let data = inputs.remove(0).take_f32s().ok_or(
-            "Expect input #0 to be f32",
-        )?;
+    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let m_input = args_1!(inputs);
+        let data = m_input.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
@@ -390,7 +384,7 @@ impl Op for AvgPool {
             sum / count as f32
         });
 
-        Ok(vec![transformed.into_dyn().into()])
+        Ok(vec![Matrix::from(transformed.into_dyn()).into()])
     }
 }
 
@@ -413,11 +407,11 @@ mod tests {
             padding: padding,
             strides: strides,
             _data_format: DataFormat::NHWC,
-        }).eval(vec![mk(input), mk(filter)])
+        }).eval(vec![mk(input).into(), mk(filter).into()])
             .unwrap()
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
-        let found = result
+        let found = result.into_matrix()
             .take_f32s()
             .unwrap()
             .into_shape((expect.len()))
@@ -482,7 +476,8 @@ mod tests {
         let filter = Matrix::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        assert_eq!(vec![exp], conv.eval(vec![data.clone(), filter]).unwrap());
+        let result = conv.eval(vec![data.into(), filter.into()]).unwrap().remove(0);
+        assert_eq!(exp, result.into_matrix());
     }
 
 
@@ -503,7 +498,7 @@ mod tests {
             .unwrap();
 
         assert!(exp.close_enough(
-            &conv.eval(vec![data.clone(), filter]).unwrap()[0],
+            &conv.eval(vec![data.into(), filter.into()]).unwrap()[0],
         ))
     }
 
@@ -519,7 +514,7 @@ mod tests {
         );
         let data = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
-        let found = pool.eval(vec![data.clone()]).unwrap();
+        let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(
             exp.close_enough(&found[0]),
@@ -541,7 +536,7 @@ mod tests {
         );
         let data = Matrix::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
-        let found = pool.eval(vec![data.clone()]).unwrap();
+        let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(
             exp.close_enough(&found[0]),

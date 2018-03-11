@@ -1,7 +1,6 @@
-use matrix::Matrix;
 use Result;
 
-use super::{Op, OpRegister};
+use super::{Input, Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);
@@ -17,7 +16,7 @@ impl Cast {
 }
 
 impl ::ops::Op for Cast {
-    fn eval(&self, mut _inputs: Vec<Matrix>) -> Result<Vec<Matrix>> {
+    fn eval(&self, mut _inputs: Vec<Input>) -> Result<Vec<Input>> {
         panic!(
             "nope, fixme. parse two args in build to get src and dst types, then generalize (macro ?)"
         );

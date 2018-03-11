@@ -51,9 +51,9 @@ pub mod ops;
 #[cfg(feature = "tensorflow")]
 pub mod tf;
 
-use std::{fs, path, rc, str};
+use std::{fs, path, str};
 use std::collections::{HashMap, HashSet};
-use ops::Op;
+use ops::{ Input, Op };
 use errors::*;
 
 pub use matrix::Matrix;
@@ -262,7 +262,7 @@ impl Model {
 
 pub struct ModelState<'a> {
     model: &'a Model,
-    outputs: HashMap<String, Vec<Matrix>>,
+    outputs: HashMap<String, Vec<Input>>,
 }
 
 impl<'a> ModelState<'a> {
@@ -273,7 +273,7 @@ impl<'a> ModelState<'a> {
     }
 
     pub fn set_outputs(&mut self, name: &str, values: Vec<Matrix>) -> Result<()> {
-        self.outputs.insert(name.to_string(), values);
+        self.outputs.insert(name.to_string(), values.into_iter().map(Input::Owned).collect());
         Ok(())
     }
 
@@ -282,9 +282,9 @@ impl<'a> ModelState<'a> {
     }
 
     fn compute_node(&mut self, node:Node) -> Result<()> {
-        let mut inputs: Vec<Matrix> = vec![];
+        let mut inputs: Vec<Input> = vec![];
         for i in &node.inputs {
-            inputs.push(self.outputs.get(&i.0.name).ok_or("Unsatisfied node dep")?[i.1.ok_or("no output found")?].clone())
+            inputs.push(self.outputs.get(&i.0.name).ok_or("Unsatisfied node dep")?[i.1.ok_or("no output found")?].clone().into())
         }
         let outputs = node.op.eval(inputs)?;
         self.outputs.insert(node.name.to_string(), outputs);
@@ -301,6 +301,7 @@ impl<'a> ModelState<'a> {
         Ok(())
     }
 
+    /*
     /// Trigger evaluation of the specified node and return the cache value.
     pub fn eval(&mut self, name: &str) -> Result<&Vec<Matrix>> {
         self.compute(name)?;
@@ -308,6 +309,7 @@ impl<'a> ModelState<'a> {
             "node found but was not computed",
         ))
     }
+    */
 
     /// Trigger evaluation of the specified node and consume the value from the
     /// cache.
@@ -315,7 +317,7 @@ impl<'a> ModelState<'a> {
         self.compute(name)?;
         Ok(self.outputs.remove(name).ok_or(
             format!("{} does not exits", name),
-        )?)
+        )?.into_iter().map(Input::into_matrix).collect())
     }
 
     /// Main entrypoint for running a network.
