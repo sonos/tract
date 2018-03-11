@@ -10,10 +10,15 @@
 //! # fn main() {
 //! // load a simple model that just add 3 to each input component
 //! let graph = tfdeploy::for_path("tests/plus3.pb").unwrap();
+//! 
+//! // "input" and "output" are tensorflow graph node names.
+//! // we need to map these names to ids
+//! let input_id = graph.node_id_by_name("input").unwrap();
+//! let output_id = graph.node_id_by_name("output").unwrap();
 //!
-//! // run the computation. "input" and "output" are tensorflow graph node names.
+//! // run the computation.
 //! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
-//! let mut outputs = graph.run(vec![("input",input.into())], "output").unwrap();
+//! let mut outputs = graph.run(vec![(input_id,input.into())], output_id).unwrap();
 //!
 //! // grab the first (and only) tensor of the result, and unwrap it as array of f32
 //! let output = outputs.remove(0).take_f32s().unwrap();
@@ -125,6 +130,65 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
     Model::for_path(p)
 }
 
+pub struct Plan {
+    order: Vec<usize>,
+}
+
+impl Plan {
+    fn for_node(model: &Model, target: usize) -> Result<Plan> {
+        Self::for_nodes(model, &[target])
+    }
+
+    fn for_nodes(model: &Model, targets: &[usize]) -> Result<Plan> {
+        let mut order: Vec<usize> = Vec::new();
+        let mut done = bit_set::BitSet::with_capacity(model.nodes.len());
+        let mut needed = bit_set::BitSet::with_capacity(model.nodes.len());
+        for &t in targets {
+            needed.insert(t);
+        }
+        loop {
+            let mut done_something = false;
+            let mut missing = needed.clone();
+            missing.difference_with(&done);
+            for node_id in missing.iter() {
+                let mut computable = true;
+                let node = &model.nodes[node_id];
+                for i in node.inputs.iter() {
+                    if !done.contains(i.0) {
+                        computable = false;
+                        done_something = true;
+                        needed.insert(i.0.clone());
+                    }
+                }
+                if computable {
+                    done_something = true;
+                    order.push(node_id);
+                    done.insert(node_id);
+                }
+            };
+            if !done_something {
+                break;
+            }
+        }
+        for &t in targets {
+            if !done.contains(t) {
+                let node = &model.nodes[t];
+                Err(format!("Could not plan for node {}", node.name))?
+            }
+        }
+        Ok(Plan { order })
+    }
+
+    pub fn run(&self, state: &mut ModelState) -> Result<()> {
+        for &n in &self.order {
+            if state.outputs[n].is_none() {
+                state.compute_one(n)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
 /// and runs the inference interpreter.
 ///
@@ -181,7 +245,7 @@ impl Model {
         Ok(Model { nodes, nodes_by_name })
     }
 
-    pub fn node_ix_by_name(&self, name:&str) -> Result<usize> {
+    pub fn node_id_by_name(&self, name:&str) -> Result<usize> {
         self.nodes_by_name.get(name).cloned().ok_or(format!("Node named {} not found", name).into())
     }
 
@@ -209,11 +273,15 @@ impl Model {
 
     /// Build a tfdeploy Node by name.
     pub fn get_node(&self, name: &str) -> Result<&Node> {
-        Ok(&self.nodes[self.node_ix_by_name(name)?])
+        Ok(&self.nodes[self.node_id_by_name(name)?])
     }
 
-    pub fn run(&self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
-        self.state().run(inputs, output_name)
+    pub fn plan_for_one(&self, node: usize) -> Result<Plan> {
+        Plan::for_node(&self, node)
+    }
+
+    pub fn run(&self, inputs: Vec<(usize, Matrix)>, output: usize) -> Result<Vec<Matrix>> {
+        self.state().run(inputs, output)
     }
 }
 
@@ -229,14 +297,13 @@ impl<'a> ModelState<'a> {
         Ok(())
     }
 
-    pub fn set_outputs(&mut self, name: &str, values: Vec<Matrix>) -> Result<()> {
-        let id = self.model.node_ix_by_name(name)?;
+    pub fn set_outputs(&mut self, id:usize, values: Vec<Matrix>) -> Result<()> {
         self.outputs[id] = Some(values.into_iter().map(Input::Owned).collect());
         Ok(())
     }
 
-    pub fn set_value(&mut self, name: &str, value: Matrix) -> Result<()> {
-        self.set_outputs(name, vec![value])
+    pub fn set_value(&mut self, id: usize, value: Matrix) -> Result<()> {
+        self.set_outputs(id, vec![value])
     }
 
     fn compute_one(&mut self, node:usize) -> Result<()> {
@@ -251,43 +318,24 @@ impl<'a> ModelState<'a> {
         Ok(())
     }
 
-    fn compute_all(&mut self, node: usize) -> Result<()> {
-        let node: &Node = &self.model.nodes[node];
-        for dep in node.eval_order(self.model)? {
-            if self.outputs[dep].is_none() {
-                self.compute_one(dep)?;
-            }
-        }
-        Ok(())
+    pub fn take_by_name(&mut self, name: &str) -> Result<Vec<Matrix>> {
+        let id = self.model.node_id_by_name(name)?;
+        Self::take(self, id)
     }
 
-    /*
-    /// Trigger evaluation of the specified node and return the cache value.
-    pub fn eval(&mut self, name: &str) -> Result<&Vec<Matrix>> {
-        self.compute(name)?;
-        Ok(self.outputs.get(name).expect(
-            "node found but was not computed",
-        ))
-    }
-    */
-
-    /// Trigger evaluation of the specified node and consume the value from the
-    /// cache.
-    pub fn take(&mut self, name: &str) -> Result<Vec<Matrix>> {
-        let id = self.model.node_ix_by_name(name)?;
-        self.compute_all(id)?;
-        Ok(self.outputs[id].take().ok_or(format!("{} does not exits", name),
-        )?.into_iter().map(Input::into_matrix).collect())
+    pub fn take(&mut self, id: usize) -> Result<Vec<Matrix>> {
+        Ok(self.outputs[id].take().ok_or("Value is not computed")?.into_iter().map(Input::into_matrix).collect())
     }
 
     /// Main entrypoint for running a network.
     ///
     /// Clears the internal state.
-    pub fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
+    pub fn run(&mut self, inputs: Vec<(usize, Matrix)>, output: usize) -> Result<Vec<Matrix>> {
         self.reset()?;
         for input in inputs {
             self.set_value(input.0, input.1)?;
         }
-        Ok(self.take(output_name)?)
+        Plan::for_node(self.model, output)?.run(self)?;
+        Ok(self.take(output)?)
     }
 }

@@ -38,17 +38,13 @@ fn tf(bencher: &mut bencher::Bencher) {
 fn tfd(bencher: &mut bencher::Bencher) {
     let tfd = ::tfdeploy::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(inceptionv3::HOPPER);
+    let input_id = tfd.node_id_by_name("input").unwrap();
+    let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1").unwrap();
     for _ in 0 .. 5 {
-    tfd.run(
-        vec![("input", input.clone())],
-        "InceptionV3/Predictions/Reshape_1",
-    ).unwrap();
+        tfd.run(vec![(input_id, input.clone())], output_id).unwrap();
     }
     bencher.iter(|| {
-        tfd.run(
-            vec![("input", input.clone())],
-            "InceptionV3/Predictions/Reshape_1",
-        ).unwrap();
+        tfd.run(vec![(input_id, input.clone())], output_id).unwrap();
     });
 }
 
