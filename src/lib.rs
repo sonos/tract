@@ -58,36 +58,14 @@ use errors::*;
 
 pub use matrix::Matrix;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Node(pub std::sync::Arc<RawNode>);
-
-impl ::std::ops::Deref for Node {
-    type Target = RawNode;
-    fn deref(&self) -> &RawNode {
-        &*self.0
-    }
-}
-
 #[derive(Debug)]
-pub struct RawNode {
+pub struct Node {
     pub id: usize,
     pub name: String,
     pub op_name: String,
     inputs: Vec<(usize, Option<usize>)>,
     op: Box<Op>,
 }
-
-impl ::std::hash::Hash for RawNode {
-    fn hash<H: ::std::hash::Hasher>(&self, h: &mut H) {
-        self.name.hash(h)
-    }
-}
-impl PartialEq for RawNode {
-    fn eq(&self, other: &RawNode) -> bool {
-        self.name.eq(&other.name)
-    }
-}
-impl Eq for RawNode {}
 
 impl Node {
     pub fn dump_eval_tree(&self, model:&Model) -> String {
@@ -191,7 +169,7 @@ impl Model {
                 .map_err(|e| {
                     format!("While building node {}, {}", name, e.description())
                 })?;
-            let node = Node(std::sync::Arc::new(RawNode {
+            let node = Node {
                 id: nodes.len(),
                 name: name.to_string(),
                 op_name: pbnode.get_op().to_string(),
@@ -199,7 +177,7 @@ impl Model {
                 op: op_builder.build(&pbnode).map_err(|e| {
                     format!("While building node {}, {}", name, e.description())
                 })?,
-            }));
+            };
             nodes_by_name.insert(name, nodes.len());
             nodes.push(node)
         }
