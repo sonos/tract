@@ -70,9 +70,10 @@ impl ::std::ops::Deref for Node {
 
 #[derive(Debug)]
 pub struct RawNode {
+    pub id: usize,
     pub name: String,
     pub op_name: String,
-    inputs: Vec<(Node, Option<usize>)>,
+    inputs: Vec<(usize, Option<usize>)>,
     op: Box<Op>,
 }
 
@@ -89,30 +90,32 @@ impl PartialEq for RawNode {
 impl Eq for RawNode {}
 
 impl Node {
-    pub fn dump_eval_tree(&self) -> String {
-        self._dump_eval_tree(0, &mut HashSet::new())
+    pub fn dump_eval_tree(&self, model:&Model) -> String {
+        self._dump_eval_tree(model, 0, &mut HashSet::new())
     }
 
-    fn _dump_eval_tree(&self, depth: usize, dups: &mut HashSet<String>) -> String {
+    fn _dump_eval_tree(&self, model:&Model, depth: usize, dups: &mut HashSet<String>) -> String {
         let pad: String = ::std::iter::repeat("  ").take(depth).collect();
         let mut s = format!("{}{}\n", pad, self.name);
         for i in &self.inputs {
-            s.push_str(&*format!("{}", i.0._dump_eval_tree(depth + 1, dups)));
+            let node = &model.nodes[i.0];
+            s.push_str(&*format!("{}", node._dump_eval_tree(&model, depth + 1, dups)));
         }
         s
     }
 
-    pub fn eval_order(&self) -> Result<Vec<Node>> {
-        let mut order: Vec<Node> = Vec::new();
-        let mut done: HashSet<Node> = HashSet::new();
-        let mut needed: HashSet<Node> = HashSet::new();
-        let mut more: HashSet<Node> = HashSet::new();
-        needed.insert(self.clone());
+    pub fn eval_order(&self, model: &Model) -> Result<Vec<usize>> {
+        let mut order: Vec<usize> = Vec::new();
+        let mut done: HashSet<usize> = HashSet::new();
+        let mut needed: HashSet<usize> = HashSet::new();
+        let mut more: HashSet<usize> = HashSet::new();
+        needed.insert(self.id);
         loop {
             let mut done_something = false;
             more.clear();
-            needed.retain(|node| {
+            needed.retain(|&node_id| {
                 let mut computable = true;
+                let node = &model.nodes[node_id];
                 for i in node.inputs.iter() {
                     if !done.contains(&i.0) {
                         computable = false;
@@ -122,8 +125,8 @@ impl Node {
                 }
                 if computable {
                     done_something = true;
-                    order.push(node.clone());
-                    done.insert(node.clone());
+                    order.push(node_id);
+                    done.insert(node_id);
                     false
                 } else {
                     true
@@ -134,38 +137,11 @@ impl Node {
                 break;
             }
         }
-        if done.contains(self) {
+        if done.contains(&self.id) {
             Ok(order)
         } else {
             Err(format!("Could not compute node {}", self.name).into())
         }
-    }
-
-    fn _eval_order<'a: 'b, 'b: 'c, 'c>(
-        &'a self,
-        entered: &'b mut HashSet<Node>,
-        done: &'b mut HashMap<Node, Vec<Node>>,
-    ) -> Result<&'c Vec<Node>> {
-        let mut result: Vec<Node> = vec![];
-        if !done.contains_key(&self) {
-            entered.insert(self.clone());
-            for i in &self.inputs {
-                if entered.contains(&i.0) {
-                    Err(format!(
-                        "Loop detected {} - {}! Need more code!",
-                        self.name,
-                        i.0.name,
-                    ))?
-                }
-                let v = i.0._eval_order(entered, done)?;
-                result.extend(v.into_iter().cloned());
-            }
-            result.push(self.clone());
-            entered.remove(&self);
-            println!("Eval order done for {}", self.name);
-            done.insert(self.clone(), result);
-        }
-        Ok(done.get(self).unwrap())
     }
 }
 
@@ -178,32 +154,34 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
 /// and runs the inference interpreter.
 ///
 pub struct Model {
-    nodes: HashMap<String, Node>,
+    nodes: Vec<Node>,
+    nodes_by_name: HashMap<String, usize>,
 }
 
 impl Model {
     pub fn new(graph: tfpb::graph::GraphDef) -> Result<Model> {
-        let mut nodes: HashMap<String, Node> = HashMap::new();
+        let mut nodes = vec!();
+        let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
         let op_builder = ops::OpBuilder::new();
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
-            let inputs: Vec<(Node, Option<usize>)> = pbnode
+            let inputs: Vec<(usize, Option<usize>)> = pbnode
                 .get_input()
                 .iter()
                 .map(|i| {
-                    let input: (&Node, Option<usize>) = if i.starts_with("^") {
+                    let input: (usize, Option<usize>) = if i.starts_with("^") {
                         (
-                            nodes.get(&*i.replace("^", "")).ok_or(format!(
+                            nodes_by_name.get(&*i.replace("^", "")).ok_or(format!(
                                 "No node {} found",
                                 i
-                            ))?,
+                            ))?.clone(),
                             None,
                         )
                     } else {
                         (
-                            nodes.get(&*i.to_string()).ok_or(
+                            nodes_by_name.get(i).ok_or(
                                 format!("No node {} found", i),
-                            )?,
+                            )?.clone(),
                             Some(0usize),
                         )
                     };
@@ -214,6 +192,7 @@ impl Model {
                     format!("While building node {}, {}", name, e.description())
                 })?;
             let node = Node(std::sync::Arc::new(RawNode {
+                id: nodes.len(),
                 name: name.to_string(),
                 op_name: pbnode.get_op().to_string(),
                 inputs: inputs,
@@ -221,15 +200,20 @@ impl Model {
                     format!("While building node {}, {}", name, e.description())
                 })?,
             }));
-            nodes.insert(name, node);
+            nodes_by_name.insert(name, nodes.len());
+            nodes.push(node)
         }
-        Ok(Model { nodes })
+        Ok(Model { nodes, nodes_by_name })
+    }
+
+    pub fn node_ix_by_name(&self, name:&str) -> Result<usize> {
+        self.nodes_by_name.get(name).cloned().ok_or(format!("Node named {} not found", name).into())
     }
 
     pub fn state(&self) -> ModelState {
         ModelState {
             model: self,
-            outputs: HashMap::new(),
+            outputs: vec!(None; self.nodes.len())
         }
     }
 
@@ -245,14 +229,12 @@ impl Model {
     }
 
     pub fn node_names(&self) -> Vec<&str> {
-        self.nodes.keys().map(|s| &**s).collect()
+        self.nodes.iter().map(|s| &*s.name).collect()
     }
 
     /// Build a tfdeploy Node by name.
     pub fn get_node(&self, name: &str) -> Result<&Node> {
-        Ok(self.nodes.get(name).ok_or(
-            format!("node {} do not exist", name),
-        )?)
+        Ok(&self.nodes[self.node_ix_by_name(name)?])
     }
 
     pub fn run(&self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
@@ -262,18 +244,19 @@ impl Model {
 
 pub struct ModelState<'a> {
     model: &'a Model,
-    outputs: HashMap<String, Vec<Input>>,
+    outputs: Vec<Option<Vec<Input>>>,
 }
 
 impl<'a> ModelState<'a> {
     /// Reset internal state.
     pub fn reset(&mut self) -> Result<()> {
-        self.outputs.clear();
+        self.outputs = vec!(None; self.model.nodes.len());
         Ok(())
     }
 
     pub fn set_outputs(&mut self, name: &str, values: Vec<Matrix>) -> Result<()> {
-        self.outputs.insert(name.to_string(), values.into_iter().map(Input::Owned).collect());
+        let id = self.model.node_ix_by_name(name)?;
+        self.outputs[id] = Some(values.into_iter().map(Input::Owned).collect());
         Ok(())
     }
 
@@ -281,21 +264,23 @@ impl<'a> ModelState<'a> {
         self.set_outputs(name, vec![value])
     }
 
-    fn compute_node(&mut self, node:Node) -> Result<()> {
+    fn compute_one(&mut self, node:usize) -> Result<()> {
+        let node: &Node = &self.model.nodes[node];
         let mut inputs: Vec<Input> = vec![];
         for i in &node.inputs {
-            inputs.push(self.outputs.get(&i.0.name).ok_or("Unsatisfied node dep")?[i.1.ok_or("no output found")?].clone().into())
+            let prec = self.outputs[i.0].as_ref().ok_or("Unsatisfied node dep")?;
+            inputs.push(prec[i.1.ok_or("no output found")?].clone().into())
         }
         let outputs = node.op.eval(inputs)?;
-        self.outputs.insert(node.name.to_string(), outputs);
+        self.outputs[node.id] = Some(outputs);
         Ok(())
     }
 
-    fn compute(&mut self, name: &str) -> Result<()> {
-        let node: &Node = self.model.get_node(name)?;
-        for dep in node.eval_order()? {
-            if !self.outputs.contains_key(&dep.name) {
-                self.compute_node(dep)?;
+    fn compute_all(&mut self, node: usize) -> Result<()> {
+        let node: &Node = &self.model.nodes[node];
+        for dep in node.eval_order(self.model)? {
+            if self.outputs[dep].is_none() {
+                self.compute_one(dep)?;
             }
         }
         Ok(())
@@ -314,9 +299,9 @@ impl<'a> ModelState<'a> {
     /// Trigger evaluation of the specified node and consume the value from the
     /// cache.
     pub fn take(&mut self, name: &str) -> Result<Vec<Matrix>> {
-        self.compute(name)?;
-        Ok(self.outputs.remove(name).ok_or(
-            format!("{} does not exits", name),
+        let id = self.model.node_ix_by_name(name)?;
+        self.compute_all(id)?;
+        Ok(self.outputs[id].take().ok_or(format!("{} does not exits", name),
         )?.into_iter().map(Input::into_matrix).collect())
     }
 
