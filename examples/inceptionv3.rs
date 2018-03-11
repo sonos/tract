@@ -30,6 +30,7 @@ fn do_download() -> Result<()> {
     if fs::metadata(&dir).is_ok() {
         return Ok(());
     }
+    println!("Downloading inception_v3 model...");
     if fs::metadata(&dir_partial).is_ok() {
         fs::remove_dir_all(&dir_partial).unwrap();
     }

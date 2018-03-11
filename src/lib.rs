@@ -27,6 +27,7 @@
 extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
+extern crate bit_set;
 extern crate image;
 #[allow(unused_imports)]
 #[macro_use]
@@ -84,38 +85,34 @@ impl Node {
 
     pub fn eval_order(&self, model: &Model) -> Result<Vec<usize>> {
         let mut order: Vec<usize> = Vec::new();
-        let mut done: HashSet<usize> = HashSet::new();
-        let mut needed: HashSet<usize> = HashSet::new();
-        let mut more: HashSet<usize> = HashSet::new();
+        let mut done = bit_set::BitSet::with_capacity(model.nodes.len());
+        let mut needed = bit_set::BitSet::with_capacity(model.nodes.len());
         needed.insert(self.id);
         loop {
             let mut done_something = false;
-            more.clear();
-            needed.retain(|&node_id| {
+            let mut missing = needed.clone();
+            missing.difference_with(&done);
+            for node_id in missing.iter() {
                 let mut computable = true;
                 let node = &model.nodes[node_id];
                 for i in node.inputs.iter() {
-                    if !done.contains(&i.0) {
+                    if !done.contains(i.0) {
                         computable = false;
                         done_something = true;
-                        more.insert(i.0.clone());
+                        needed.insert(i.0.clone());
                     }
                 }
                 if computable {
                     done_something = true;
                     order.push(node_id);
                     done.insert(node_id);
-                    false
-                } else {
-                    true
                 }
-            });
-            needed.extend(more.iter().cloned());
+            };
             if !done_something {
                 break;
             }
         }
-        if done.contains(&self.id) {
+        if done.contains(self.id) {
             Ok(order)
         } else {
             Err(format!("Could not compute node {}", self.name).into())
