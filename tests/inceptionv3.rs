@@ -32,17 +32,19 @@ fn compare(
     tf: &mut ::tfdeploy::tf::Tensorflow,
     state: &mut ::tfdeploy::ModelState,
     inputs: Vec<(&str, Matrix)>,
-    output_name: &str,
+    output: &str,
 ) -> Result<Vec<Matrix>> {
-    let rtf = tf.run(inputs.clone(), output_name);
+    let rtf = tf.run(inputs.clone(), output);
     if let Err(ref e) = rtf {
         if e.description().contains("String vs") {
-            println!("Ignore output named (is a string) {}", output_name);
+            println!("Ignore output named (is a string) {}", output);
             return Err(ErrorKind::TFString.into());
         }
     }
     let rtf = rtf?;
-    let rtfd = state.run(inputs.clone(), output_name)?;
+    let inputs = inputs.into_iter().map(|(s,t)| (state.model().node_id_by_name(s).unwrap(),t) ).collect();
+    let output = state.model().node_id_by_name(output)?;
+    let rtfd = state.run(inputs, output)?;
     if rtf.len() != rtfd.len() {
         Err(format!(
             "number of output differ tf:{} tfd:{}",
@@ -96,9 +98,9 @@ fn compare_all<P: AsRef<path::Path>>(
     let mut tf = tfdeploy::tf::for_path(&model)?;
     let tfd = tfdeploy::for_path(&model)?;
     let mut state = tfd.state();
-    println!("{:?}", tfd.node_names());
     let output_node = tfd.get_node(output_name)?;
-    for node in output_node.eval_order()? {
+    for node in output_node.eval_order(&tfd)? {
+        let node = &tfd.nodes()[node];
         if node.op_name == "Placeholder" {
             println!(" * skipping Placeholder `{}'", node.name);
             continue;
@@ -113,7 +115,7 @@ fn compare_all<P: AsRef<path::Path>>(
                 }
                 Err(e)?
             }
-            Ok(it) => state.set_outputs(&*node.name, it)?,
+            Ok(it) => state.set_outputs(node.id, it)?,
         }
     }
     Ok(())
@@ -122,7 +124,7 @@ fn compare_all<P: AsRef<path::Path>>(
 #[test]
 fn test_tf() {
     let mut tf = ::tfdeploy::tf::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
-    let input = inceptionv3::load_image(inceptionv3::HOPPER);
+    let input = inceptionv3::load_image(inceptionv3::hopper());
     let mut output = tf.run(vec![("input", input)], "InceptionV3/Predictions/Reshape_1")
         .unwrap();
     let labels = inceptionv3::load_labels();
@@ -137,7 +139,7 @@ fn test_tf() {
 fn test_compare_all() {
     ::compare_all(
         inceptionv3::inception_v3_2016_08_28_frozen(),
-        vec![("input", inceptionv3::load_image(inceptionv3::HOPPER))],
+        vec![("input", inceptionv3::load_image(inceptionv3::hopper()))],
         "InceptionV3/Predictions/Reshape_1",
     ).unwrap();
 }

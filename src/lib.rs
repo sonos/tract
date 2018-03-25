@@ -283,6 +283,10 @@ impl Model {
     pub fn run(&self, inputs: Vec<(usize, Matrix)>, output: usize) -> Result<Vec<Matrix>> {
         self.state().run(inputs, output)
     }
+
+    pub fn nodes(&self) -> &[Node] {
+        &*self.nodes
+    }
 }
 
 pub struct ModelState<'a> {
@@ -337,5 +341,9 @@ impl<'a> ModelState<'a> {
         }
         Plan::for_node(self.model, output)?.run(self)?;
         Ok(self.take(output)?)
+    }
+
+    pub fn model(&self) -> &Model {
+        self.model
     }
 }

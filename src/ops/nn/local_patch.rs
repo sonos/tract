@@ -695,11 +695,15 @@ mod proptests {
             let model = convolution_pb(stride, stride, valid).unwrap();
             let mut tf = ::tf::for_slice(&model)?;
             let tfd = ::Model::for_reader(&*model)?;
-            let mut tfd = tfd.state();
+            let data = tfd.node_id_by_name("data").unwrap();
+            let kernel = tfd.node_id_by_name("kernel").unwrap();
+            let conv = tfd.node_id_by_name("conv").unwrap();
+            let mut tfds = tfd.state();
             let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
-            tfd.set_value("data", i.clone())?;
-            tfd.set_value("kernel", k.clone())?;
-            let found = tfd.take("conv")?;
+            tfds.set_value(data, i.clone())?;
+            tfds.set_value(kernel, k.clone())?;
+            tfd.plan_for_one(conv).unwrap().run(&mut tfds).unwrap();
+            let found = tfds.take(conv)?;
             prop_assert!(expected[0].close_enough(&found[0]))
         }
     }
@@ -718,10 +722,13 @@ mod proptests {
             let model = maxpool_pb(stride, stride, kh, kw, valid).unwrap();
             let mut tf = ::tf::for_slice(&model)?;
             let tfd = ::Model::for_reader(&*model)?;
-            let mut tfd = tfd.state();
+            let data = tfd.node_id_by_name("data").unwrap();
+            let pool = tfd.node_id_by_name("pool").unwrap();
+            let mut tfds = tfd.state();
             let expected = tf.run(vec!(("data", i.clone())), "pool")?;
-            tfd.set_value("data", i.clone())?;
-            let found = tfd.take("pool")?;
+            tfds.set_value(data, i.clone())?;
+            tfd.plan_for_one(pool).unwrap().run(&mut tfds).unwrap();
+            let found = tfds.take(pool)?;
             prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found)
         }
     }

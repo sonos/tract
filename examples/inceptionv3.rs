@@ -13,7 +13,7 @@ use dinghy_test::test_project_path;
 
 use tfdeploy::errors::*;
 
-pub const HOPPER: &str = "examples/grace_hopper.jpg";
+const HOPPER: &str = "examples/grace_hopper.jpg";
 
 fn download() {
     use std::sync::{Once, ONCE_INIT};
@@ -82,13 +82,17 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
     inception_v3_2016_08_28().join("imagenet_slim_labels.txt")
 }
 
+pub fn hopper() -> path::PathBuf {
+    test_project_path().join(HOPPER)
+}
+
 #[allow(dead_code)]
 fn main() {
     download();
     let tfd = ::tfdeploy::for_path(inception_v3_2016_08_28_frozen()).unwrap();
     let input_id = tfd.node_id_by_name("input").unwrap();
     let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1").unwrap();
-    let input = load_image(test_project_path().join(HOPPER));
+    let input = load_image(hopper());
     let output = tfd.run(vec![(input_id, input)], output_id).unwrap();
     let labels = load_labels();
     for (ix, output) in output[0].as_f32s().unwrap().iter().enumerate() {

@@ -30,3 +30,20 @@ element_bin!(Sub, |mut a, b| {
     a -= &b;
     a
 });
+
+#[cfg(test)]
+mod tests {
+    use ndarray::arr2;
+    #[test]
+    fn mul() {
+        let a = arr2(&[[1., 2.], [3., 4.]]);
+        let b = arr2(&[[1., 0.], [0., 0.]]);
+        assert_eq!(a*b, arr2(&[[1., 0.], [0., 0.]]));
+    }
+    #[test]
+    fn dot() {
+        let a = arr2(&[[1., 2.], [3., 4.]]);
+        let b = arr2(&[[1., 0.], [0., 0.]]);
+        assert_eq!(a.dot(&b), arr2(&[[1., 0.], [3., 0.]]));
+    }
+}
