@@ -67,3 +67,24 @@ macro_rules! args_2 {
         ($inputs.pop().unwrap(), $inputs.pop().unwrap())
     } }
 }
+
+macro_rules! args_3 {
+    ($inputs:expr) => { {
+        if $inputs.len() != 3 {
+            Err("Expected 3 args")?
+        }
+        $inputs.reverse();
+        ($inputs.pop().unwrap(), $inputs.pop().unwrap(), $inputs.pop().unwrap())
+    } }
+}
+
+macro_rules! args_4 {
+    ($inputs:expr) => { {
+        if $inputs.len() != 4 {
+            Err("Expected 4 args")?
+        }
+        $inputs.reverse();
+        ($inputs.pop().unwrap(), $inputs.pop().unwrap(),
+        $inputs.pop().unwrap(), $inputs.pop().unwrap())
+    } }
+}

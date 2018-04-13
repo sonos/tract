@@ -26,6 +26,7 @@ ndarray = { version = "0.11" }
 num-traits = "0.2"
 protobuf = "1.4"
 tensorflow = { version = "0.7", optional = true }
+rand = "*"
 
 [features]
 default = [ ]
