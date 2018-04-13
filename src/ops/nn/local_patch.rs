@@ -27,7 +27,7 @@ impl<'a, T> ImageWrapper<'a, T> {
     }
 }
 
-pub struct BatchImageWrapper<'a, T: 'a>(ArrayView4<'a, T>);
+pub struct BatchImageWrapper<'a, T: 'a>(pub ArrayView4<'a, T>);
 
 impl<'a, T> BatchImageWrapper<'a, T> {
     pub fn count(&self) -> usize {
@@ -96,7 +96,7 @@ impl LocalPatch {
         })
     }
 
-    fn adjusted_dim(
+    pub fn adjusted_dim(
         &self,
         in_rows: usize,
         in_cols: usize,
@@ -115,7 +115,7 @@ impl LocalPatch {
         }
     }
 
-    fn pad<T>(
+    pub fn pad<T>(
         &self,
         data: ArrayView4<T>,
         shape: (usize, usize),
@@ -277,7 +277,7 @@ impl Op for Conv2D {
     }
 }
 
-fn into_4d<T>(data: ArrayD<T>) -> Result<Array4<T>> {
+pub fn into_4d<T>(data: ArrayD<T>) -> Result<Array4<T>> {
     if data.shape().len() != 4 {
         Err(format!("Expeted 4D shape, found: {:?}", data.shape()))?
     }
@@ -288,104 +288,6 @@ fn into_4d<T>(data: ArrayD<T>) -> Result<Array4<T>> {
         data.shape()[3],
     );
     Ok(data.into_shape(shape)?)
-}
-
-#[derive(Debug)]
-pub struct MaxPool(LocalPatch, (usize, usize));
-
-impl MaxPool {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
-        Ok(Box::new(MaxPool(
-            LocalPatch::build(pb)?,
-            (ksize[1] as usize, ksize[2] as usize),
-        )))
-    }
-}
-
-impl Op for MaxPool {
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
-        let m_input = args_1!(inputs);
-        let data = m_input
-            .into_matrix()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
-        let data = into_4d(data)?;
-        let images = BatchImageWrapper(data.view());
-
-        let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
-
-        let h_stride = self.0.strides[1];
-        let w_stride = self.0.strides[2];
-        let padded = self.0.pad(data.view(), self.1, ::std::f32::NEG_INFINITY)?;
-        let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
-        let out_shape = (images.count(), out_h, out_w, images.d());
-
-        let transformed = Array4::from_shape_fn(out_shape, |(b, h, w, d)| {
-            let mut v = ::std::f32::NEG_INFINITY;
-            for y in (h * h_stride)..(h * h_stride) + (self.1).0 {
-                for x in (w * w_stride)..(w * w_stride) + (self.1).1 {
-                    let v2 = data[(b, y, x, d)];
-                    if v2 > v {
-                        v = v2;
-                    }
-                }
-            }
-            v
-        });
-
-        Ok(vec![Matrix::from(transformed.into_dyn()).into()])
-    }
-}
-
-#[derive(Debug)]
-pub struct AvgPool(LocalPatch, (usize, usize));
-
-impl AvgPool {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
-        Ok(Box::new(AvgPool(
-            LocalPatch::build(pb)?,
-            (ksize[1] as usize, ksize[2] as usize),
-        )))
-    }
-}
-
-impl Op for AvgPool {
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
-        let m_input = args_1!(inputs);
-        let data = m_input
-            .into_matrix()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
-        let data = into_4d(data)?;
-        let images = BatchImageWrapper(data.view());
-
-        let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
-
-        let h_stride = self.0.strides[1];
-        let w_stride = self.0.strides[2];
-        let padded = self.0.pad(data.view(), self.1, ::std::f32::NAN)?;
-        let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
-        let out_shape = (images.count(), out_h, out_w, images.d());
-
-        let transformed = Array4::from_shape_fn(out_shape, |(b, h, w, d)| {
-            let mut count = 0;
-            let mut sum = 0.0;
-            for y in (h * h_stride)..(h * h_stride) + (self.1).0 {
-                for x in (w * w_stride)..(w * w_stride) + (self.1).1 {
-                    let v = data[(b, y, x, d)];
-                    if !v.is_nan() {
-                        count += 1;
-                        sum += v;
-                    }
-                }
-            }
-            sum / count as f32
-        });
-
-        Ok(vec![Matrix::from(transformed.into_dyn()).into()])
-    }
 }
 
 #[cfg(test)]
@@ -502,53 +404,10 @@ mod tests {
         assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0],))
     }
 
-    #[test]
-    fn test_maxpool_1() {
-        let pool = MaxPool(
-            LocalPatch {
-                padding: Padding::Same,
-                strides: vec![1, 1, 1, 1],
-                _data_format: DataFormat::NHWC,
-            },
-            (2, 1),
-        );
-        let data = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
-        let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
-        let found = pool.eval(vec![data.into()]).unwrap();
-
-        assert!(
-            exp.close_enough(&found[0]),
-            "expected: {:?} found: {:?}",
-            exp,
-            found[0]
-        )
-    }
-
-    #[test]
-    fn test_maxpool_2() {
-        let pool = MaxPool(
-            LocalPatch {
-                padding: Padding::Same,
-                strides: vec![1, 3, 3, 1],
-                _data_format: DataFormat::NHWC,
-            },
-            (3, 3),
-        );
-        let data = Matrix::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
-        let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
-        let found = pool.eval(vec![data.into()]).unwrap();
-
-        assert!(
-            exp.close_enough(&found[0]),
-            "expected: {:?} found: {:?}",
-            exp,
-            found[0]
-        )
-    }
 }
 
 #[cfg(all(test, feature = "tensorflow"))]
-mod proptests {
+pub mod proptests {
     #![allow(non_snake_case)]
     use proptest::prelude::*;
     use ndarray::prelude::*;
@@ -558,32 +417,11 @@ mod proptests {
 
     use Matrix;
 
-    fn placeholder(name: &str) -> tfpb::node_def::NodeDef {
+    pub fn placeholder(name: &str) -> tfpb::node_def::NodeDef {
         tfpb::node()
             .name(name)
             .op("Placeholder")
             .attr("dtype", DT_FLOAT)
-    }
-
-    fn maxpool_pb(
-        v_stride: usize,
-        h_stride: usize,
-        kw: usize,
-        kh: usize,
-        valid: bool,
-    ) -> ::Result<Vec<u8>> {
-        let pool = tfpb::node()
-            .name("pool")
-            .op("MaxPool")
-            .input("data")
-            .attr("T", DT_FLOAT)
-            .attr("strides", vec![1, v_stride as i64, h_stride as i64, 1])
-            .attr("ksize", vec![1, kw as i64, kh as i64, 1])
-            .attr("padding", if valid { "VALID" } else { "SAME" });
-
-        let graph = tfpb::graph().node(placeholder("data")).node(pool);
-
-        Ok(graph.write_to_bytes()?)
     }
 
     fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
@@ -632,33 +470,6 @@ mod proptests {
             .boxed()
     }
 
-    fn img_and_pool(
-        ih: usize,
-        iw: usize,
-        ic: usize,
-        kh: usize,
-        kw: usize,
-    ) -> BoxedStrategy<(Matrix, usize, usize)> {
-        (1..ih, 1..iw, 1..ic, 1..kh, 1..kw)
-            .prop_flat_map(|(ih, iw, ic, kh, kw)| {
-                let i_size = iw * ih * ic;
-                (
-                    Just((1, ih, iw, ic)),
-                    Just(kh),
-                    Just(kw),
-                    ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
-                )
-            })
-            .prop_map(|(img_shape, kh, kw, img)| {
-                (
-                    Array::from_vec(img).into_shape(img_shape).unwrap().into(),
-                    kw,
-                    kh,
-                )
-            })
-            .boxed()
-    }
-
     proptest! {
         #[test]
         fn conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8),
@@ -686,28 +497,4 @@ mod proptests {
         }
     }
 
-    proptest! {
-        #[test]
-        fn maxpool((ref i, kh, kw) in img_and_pool(32, 32, 5, 16, 16),
-                           valid in ::proptest::bool::ANY,
-                           stride in 1usize..4) {
-            prop_assume!(stride <= kh);
-            prop_assume!(stride <= kw);
-            if valid {
-                prop_assume!(i.shape()[1] >= kh);
-                prop_assume!(i.shape()[2] >= kw);
-            }
-            let model = maxpool_pb(stride, stride, kh, kw, valid).unwrap();
-            let mut tf = ::tf::for_slice(&model)?;
-            let tfd = ::Model::for_reader(&*model)?;
-            let data = tfd.node_id_by_name("data").unwrap();
-            let pool = tfd.node_id_by_name("pool").unwrap();
-            let mut tfds = tfd.state();
-            let expected = tf.run(vec!(("data", i.clone())), "pool")?;
-            tfds.set_value(data, i.clone())?;
-            tfd.plan_for_one(pool).unwrap().run(&mut tfds).unwrap();
-            let found = tfds.take(pool)?;
-            prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found)
-        }
-    }
 }
