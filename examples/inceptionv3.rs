@@ -2,8 +2,8 @@ extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
 extern crate itertools;
-extern crate ndarray;
 extern crate mio_httpc;
+extern crate ndarray;
 extern crate tar;
 extern crate tfdeploy;
 
@@ -19,9 +19,7 @@ fn download() {
     use std::sync::{Once, ONCE_INIT};
     static START: Once = ONCE_INIT;
 
-    START.call_once(|| {
-        do_download().unwrap()
-    });
+    START.call_once(|| do_download().unwrap());
 }
 
 fn do_download() -> Result<()> {
@@ -36,9 +34,10 @@ fn do_download() -> Result<()> {
     }
     fs::create_dir_all(&dir_partial)?;
     let url = "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz";
-    let (status, _hdrs, body) = SyncCall::new().timeout_ms(5000).get(url).map_err(|e| {
-        format!("request error: {:?}", e)
-    })?;
+    let (status, _hdrs, body) = SyncCall::new()
+        .timeout_ms(5000)
+        .get(url)
+        .map_err(|e| format!("request error: {:?}", e))?;
     if status != 200 {
         Err("Could not download inception v3")?
     }
@@ -50,9 +49,8 @@ fn do_download() -> Result<()> {
 
 pub fn load_labels() -> Vec<String> {
     use std::io::BufRead;
-    io::BufReader::new(
-        fs::File::open(imagenet_slim_labels()).unwrap()
-    ).lines()
+    io::BufReader::new(fs::File::open(imagenet_slim_labels()).unwrap())
+        .lines()
         .collect::<::std::io::Result<Vec<String>>>()
         .unwrap()
 }
@@ -91,7 +89,8 @@ fn main() {
     download();
     let tfd = ::tfdeploy::for_path(inception_v3_2016_08_28_frozen()).unwrap();
     let input_id = tfd.node_id_by_name("input").unwrap();
-    let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1").unwrap();
+    let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1")
+        .unwrap();
     let input = load_image(hopper());
     let output = tfd.run(vec![(input_id, input)], output_id).unwrap();
     let labels = load_labels();

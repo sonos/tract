@@ -10,7 +10,7 @@
 //! # fn main() {
 //! // load a simple model that just add 3 to each input component
 //! let graph = tfdeploy::for_path("tests/plus3.pb").unwrap();
-//! 
+//!
 //! // "input" and "output" are tensorflow graph node names.
 //! // we need to map these names to ids
 //! let input_id = graph.node_id_by_name("input").unwrap();
@@ -28,11 +28,11 @@
 //!
 //! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 
+extern crate bit_set;
 #[macro_use]
 extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
-extern crate bit_set;
 extern crate image;
 #[allow(unused_imports)]
 #[macro_use]
@@ -41,11 +41,11 @@ extern crate log;
 #[macro_use]
 extern crate ndarray;
 extern crate num_traits;
-extern crate protobuf;
 #[cfg(test)]
 #[macro_use]
 #[allow(unused_imports)]
 extern crate proptest;
+extern crate protobuf;
 #[cfg(feature = "tensorflow")]
 extern crate tensorflow;
 
@@ -59,7 +59,7 @@ pub mod tf;
 
 use std::{fs, path, str};
 use std::collections::{HashMap, HashSet};
-use ops::{ Input, Op };
+use ops::{Input, Op};
 use errors::*;
 
 pub use matrix::Matrix;
@@ -74,16 +74,19 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn dump_eval_tree(&self, model:&Model) -> String {
+    pub fn dump_eval_tree(&self, model: &Model) -> String {
         self._dump_eval_tree(model, 0, &mut HashSet::new())
     }
 
-    fn _dump_eval_tree(&self, model:&Model, depth: usize, dups: &mut HashSet<String>) -> String {
+    fn _dump_eval_tree(&self, model: &Model, depth: usize, dups: &mut HashSet<String>) -> String {
         let pad: String = ::std::iter::repeat("  ").take(depth).collect();
         let mut s = format!("{}{}\n", pad, self.name);
         for i in &self.inputs {
             let node = &model.nodes[i.0];
-            s.push_str(&*format!("{}", node._dump_eval_tree(&model, depth + 1, dups)));
+            s.push_str(&*format!(
+                "{}",
+                node._dump_eval_tree(&model, depth + 1, dups)
+            ));
         }
         s
     }
@@ -112,7 +115,7 @@ impl Node {
                     order.push(node_id);
                     done.insert(node_id);
                 }
-            };
+            }
             if !done_something {
                 break;
             }
@@ -165,7 +168,7 @@ impl Plan {
                     order.push(node_id);
                     done.insert(node_id);
                 }
-            };
+            }
             if !done_something {
                 break;
             }
@@ -199,7 +202,7 @@ pub struct Model {
 
 impl Model {
     pub fn new(graph: tfpb::graph::GraphDef) -> Result<Model> {
-        let mut nodes = vec!();
+        let mut nodes = vec![];
         let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
         let op_builder = ops::OpBuilder::new();
         for pbnode in graph.get_node().iter() {
@@ -210,49 +213,54 @@ impl Model {
                 .map(|i| {
                     let input: (usize, Option<usize>) = if i.starts_with("^") {
                         (
-                            nodes_by_name.get(&*i.replace("^", "")).ok_or(format!(
-                                "No node {} found",
-                                i
-                            ))?.clone(),
+                            nodes_by_name
+                                .get(&*i.replace("^", ""))
+                                .ok_or(format!("No node {} found", i))?
+                                .clone(),
                             None,
                         )
                     } else {
                         (
-                            nodes_by_name.get(i).ok_or(
-                                format!("No node {} found", i),
-                            )?.clone(),
+                            nodes_by_name
+                                .get(i)
+                                .ok_or(format!("No node {} found", i))?
+                                .clone(),
                             Some(0usize),
                         )
                     };
                     Ok((input.0.clone(), input.1))
                 })
                 .collect::<Result<Vec<_>>>()
-                .map_err(|e| {
-                    format!("While building node {}, {}", name, e.description())
-                })?;
+                .map_err(|e| format!("While building node {}, {}", name, e.description()))?;
             let node = Node {
                 id: nodes.len(),
                 name: name.to_string(),
                 op_name: pbnode.get_op().to_string(),
                 inputs: inputs,
-                op: op_builder.build(&pbnode).map_err(|e| {
-                    format!("While building node {}, {}", name, e.description())
-                })?,
+                op: op_builder
+                    .build(&pbnode)
+                    .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
             };
             nodes_by_name.insert(name, nodes.len());
             nodes.push(node)
         }
-        Ok(Model { nodes, nodes_by_name })
+        Ok(Model {
+            nodes,
+            nodes_by_name,
+        })
     }
 
-    pub fn node_id_by_name(&self, name:&str) -> Result<usize> {
-        self.nodes_by_name.get(name).cloned().ok_or(format!("Node named {} not found", name).into())
+    pub fn node_id_by_name(&self, name: &str) -> Result<usize> {
+        self.nodes_by_name
+            .get(name)
+            .cloned()
+            .ok_or(format!("Node named {} not found", name).into())
     }
 
     pub fn state(&self) -> ModelState {
         ModelState {
             model: self,
-            outputs: vec!(None; self.nodes.len())
+            outputs: vec![None; self.nodes.len()],
         }
     }
 
@@ -297,11 +305,11 @@ pub struct ModelState<'a> {
 impl<'a> ModelState<'a> {
     /// Reset internal state.
     pub fn reset(&mut self) -> Result<()> {
-        self.outputs = vec!(None; self.model.nodes.len());
+        self.outputs = vec![None; self.model.nodes.len()];
         Ok(())
     }
 
-    pub fn set_outputs(&mut self, id:usize, values: Vec<Matrix>) -> Result<()> {
+    pub fn set_outputs(&mut self, id: usize, values: Vec<Matrix>) -> Result<()> {
         self.outputs[id] = Some(values.into_iter().map(Input::Owned).collect());
         Ok(())
     }
@@ -310,7 +318,7 @@ impl<'a> ModelState<'a> {
         self.set_outputs(id, vec![value])
     }
 
-    fn compute_one(&mut self, node:usize) -> Result<()> {
+    fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.model.nodes[node];
         let mut inputs: Vec<Input> = vec![];
         for i in &node.inputs {
@@ -328,7 +336,12 @@ impl<'a> ModelState<'a> {
     }
 
     pub fn take(&mut self, id: usize) -> Result<Vec<Matrix>> {
-        Ok(self.outputs[id].take().ok_or("Value is not computed")?.into_iter().map(Input::into_matrix).collect())
+        Ok(self.outputs[id]
+            .take()
+            .ok_or("Value is not computed")?
+            .into_iter()
+            .map(Input::into_matrix)
+            .collect())
     }
 
     /// Main entrypoint for running a network.

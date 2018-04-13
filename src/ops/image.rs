@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 
 use {Matrix, Result};
-use super::{ Input, Op };
+use super::{Input, Op};
 
 #[derive(Debug)]
 pub struct DecodeJpeg {}
@@ -16,11 +16,7 @@ pub fn decode_one(input: &[u8]) -> Result<Array3<u8>> {
     use image::GenericImage;
     let image = ::image::load_from_memory(input)?;
     let dim = image.dimensions();
-    Ok(Array1::from_vec(image.raw_pixels()).into_shape((
-        dim.0 as usize,
-        dim.1 as usize,
-        3,
-    ))?)
+    Ok(Array1::from_vec(image.raw_pixels()).into_shape((dim.0 as usize, dim.1 as usize, 3))?)
 }
 
 impl Op for DecodeJpeg {
@@ -31,7 +27,6 @@ impl Op for DecodeJpeg {
         Ok(vec![Matrix::U8(image.into_dyn()).into()])
     }
 }
-
 
 #[derive(Debug)]
 pub struct ResizeBilinear {}
@@ -46,15 +41,16 @@ impl Op for ResizeBilinear {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         use std::cmp::min;
         let (m_images, m_sizes) = args_2!(inputs);
-        let images = m_images.into_matrix().take_f32s().ok_or("Expect input #0 to be images")?;
+        let images = m_images
+            .into_matrix()
+            .take_f32s()
+            .ok_or("Expect input #0 to be images")?;
         let sizes = m_sizes.as_i32s().ok_or("Expect input #1 to be sizes")?;
         let batches = images.shape()[0];
         let old_height = images.shape()[1];
         let old_width = images.shape()[2];
         let channels = images.shape()[3];
-        let images = images.into_shape(
-            (batches, old_height, old_width, channels),
-        )?;
+        let images = images.into_shape((batches, old_height, old_width, channels))?;
         let new_height = sizes[0] as usize;
         let new_width = sizes[1] as usize;
         let new_shape = (batches, new_height, new_width, channels);

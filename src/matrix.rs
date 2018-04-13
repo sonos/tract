@@ -26,23 +26,18 @@ impl Matrix {
         let content = t.get_tensor_content();
         if content.len() == 0 {
             match dtype {
-                DT_INT32 => Ok(
-                    Array1::from_iter(t.get_int_val().iter().cloned())
-                        .into_dyn()
-                        .into(),
-                ),
-                DT_FLOAT => Ok(
-                    Array1::from_iter(t.get_float_val().iter().cloned())
-                        .into_dyn()
-                        .into(),
-                ),
+                DT_INT32 => Ok(Array1::from_iter(t.get_int_val().iter().cloned())
+                    .into_dyn()
+                    .into()),
+                DT_FLOAT => Ok(Array1::from_iter(t.get_float_val().iter().cloned())
+                    .into_dyn()
+                    .into()),
                 DT_STRING => {
                     if t.get_string_val().len() != 1 {
                         Err(format!("Multiple string tensor not supported"))?
                     }
                     Ok(Matrix::U8(
-                        Array1::from_iter(t.get_string_val()[0].iter().cloned())
-                            .into_dyn(),
+                        Array1::from_iter(t.get_string_val()[0].iter().cloned()).into_dyn(),
                     ))
                 }
                 _ => Err(format!("Missing simple tensor parser: type:{:?}", dtype))?,
@@ -51,14 +46,12 @@ impl Matrix {
             match dtype {
                 DT_FLOAT => Ok(Self::from_content::<f32>(dims, content)?.into()),
                 DT_INT32 => Ok(Self::from_content::<i32>(dims, content)?.into()),
-                _ => {
-                    Err(format!(
-                        "Missing tensor parser: dims:{:?} type:{:?}, content.len:{}",
-                        dims,
-                        dtype,
-                        content.len()
-                    ))?
-                }
+                _ => Err(format!(
+                    "Missing tensor parser: dims:{:?} type:{:?}, content.len:{}",
+                    dims,
+                    dtype,
+                    content.len()
+                ))?,
             }
         }
     }
@@ -70,11 +63,9 @@ impl Matrix {
                 content.len() / ::std::mem::size_of::<T>(),
             )
         };
-        Ok(
-            Array1::from_iter(value.iter().cloned())
-                .into_shape(dims)?
-                .into_dyn(),
-        )
+        Ok(Array1::from_iter(value.iter().cloned())
+            .into_shape(dims)?
+            .into_dyn())
     }
 
     pub fn shape(&self) -> &[usize] {
@@ -115,14 +106,10 @@ impl Matrix {
                 lines.remove(3);
             }
         }
-        Ok(
-            lines
-                .iter()
-                .map(|s| {
-                    s.trim().to_string() + if single_line { "" } else { "\n" }
-                })
-                .collect(),
-        )
+        Ok(lines
+            .iter()
+            .map(|s| s.trim().to_string() + if single_line { "" } else { "\n" })
+            .collect())
     }
 
     fn to_f32(&self) -> Matrix {
@@ -138,9 +125,9 @@ impl Matrix {
         let mb = other.to_f32().take_f32s().unwrap();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
-        mb.iter().zip(ma.iter()).all(|(&a, &b)| {
-            (b - a).abs() <= dev / 10.0
-        })
+        mb.iter()
+            .zip(ma.iter())
+            .all(|(&a, &b)| (b - a).abs() <= dev / 10.0)
     }
 }
 /*

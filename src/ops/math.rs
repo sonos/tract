@@ -38,7 +38,7 @@ mod tests {
     fn mul() {
         let a = arr2(&[[1., 2.], [3., 4.]]);
         let b = arr2(&[[1., 0.], [0., 0.]]);
-        assert_eq!(a*b, arr2(&[[1., 0.], [0., 0.]]));
+        assert_eq!(a * b, arr2(&[[1., 0.], [0., 0.]]));
     }
     #[test]
     fn dot() {

@@ -25,9 +25,10 @@ impl Softmax {
 impl Op for Softmax {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
-        let mut input = m_input.into_matrix().take_f32s().ok_or(
-            "Expect input #0 to be f32",
-        )?;
+        let mut input = m_input
+            .into_matrix()
+            .take_f32s()
+            .ok_or("Expect input #0 to be f32")?;
         input.map_inplace(|a| *a = a.exp());
         let norm: f32 = input.iter().sum();
         input.map_inplace(|a| *a = *a / norm);

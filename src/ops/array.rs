@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 
 use {Matrix, Result};
-use super::{Op, OpRegister, Input};
+use super::{Input, Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", ConcatV2::build);
@@ -19,20 +19,22 @@ pub struct ConcatV2 {
 
 impl ConcatV2 {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Ok(Box::new(
-            ConcatV2 { n: pb.get_attr().get("N").unwrap().get_i() as _ },
-        ))
+        Ok(Box::new(ConcatV2 {
+            n: pb.get_attr().get("N").unwrap().get_i() as _,
+        }))
     }
 }
 
 impl Op for ConcatV2 {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
-        let axis: i32 = inputs[self.n].as_i32s()
+        let axis: i32 = inputs[self.n]
+            .as_i32s()
             .ok_or("Expected a i32 matrix")?
             .iter()
             .next()
-            .unwrap().clone();
-        let mats:Vec<_> = inputs[0..self.n]
+            .unwrap()
+            .clone();
+        let mats: Vec<_> = inputs[0..self.n]
             .iter()
             .map(|mat| mat.as_f32s().unwrap().view())
             .collect();
@@ -54,7 +56,9 @@ impl ExpandDims {
 impl Op for ExpandDims {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (data, dims) = args_2!(inputs);
-        let data = data.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
+        let data = data.into_matrix()
+            .take_f32s()
+            .ok_or("Expected a f32 matrix")?;
         let dims = dims.as_i32s().ok_or("Expected a i32 matrix")?;
         let mut shape = data.shape().to_vec();
         for d in dims.iter() {
@@ -110,9 +114,12 @@ impl Reshape {
 impl Op for Reshape {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (input, dims) = args_2!(inputs);
-        let input = input.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
-        let mut dims: Vec<i32> = dims
-            .as_i32s().ok_or("Expected a i32 matrix")?
+        let input = input
+            .into_matrix()
+            .take_f32s()
+            .ok_or("Expected a f32 matrix")?;
+        let mut dims: Vec<i32> = dims.as_i32s()
+            .ok_or("Expected a i32 matrix")?
             .iter()
             .cloned()
             .collect();
@@ -125,7 +132,9 @@ impl Op for Reshape {
             }
         }
         let dims: Vec<usize> = dims.into_iter().map(|a| a as usize).collect();
-        Ok(vec![Matrix::from(input.into_shape(&*dims)?.into_dyn()).into()])
+        Ok(vec![
+            Matrix::from(input.into_shape(&*dims)?.into_dyn()).into(),
+        ])
     }
 }
 
@@ -136,9 +145,9 @@ pub struct Squeeze {
 
 impl Squeeze {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let dims = pb.get_attr().get("squeeze_dims").ok_or(
-            "Squeeze expect squeeze_dims attribute",
-        )?;
+        let dims = pb.get_attr()
+            .get("squeeze_dims")
+            .ok_or("Squeeze expect squeeze_dims attribute")?;
         let mut dims: Vec<isize> = dims.get_list()
             .get_i()
             .into_iter()

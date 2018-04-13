@@ -16,7 +16,7 @@ pub mod nn;
 pub mod image;
 pub mod konst;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum Input {
     Owned(Matrix),
     Shared(Arc<Matrix>),
@@ -32,13 +32,13 @@ impl Input {
 }
 
 impl From<Matrix> for Input {
-    fn from(m:Matrix) -> Input {
+    fn from(m: Matrix) -> Input {
         Input::Owned(m)
     }
 }
 
 impl From<Arc<Matrix>> for Input {
-    fn from(m:Arc<Matrix>) -> Input {
+    fn from(m: Arc<Matrix>) -> Input {
         Input::Shared(m)
     }
 }
@@ -76,9 +76,10 @@ impl OpBuilder {
     pub fn build(&self, pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         match self.0.get(pb.get_op()) {
             Some(builder) => builder(pb),
-            None => Ok(Box::new(
-                UnimplementedOp(pb.get_op().to_string(), pb.to_owned()),
-            )),
+            None => Ok(Box::new(UnimplementedOp(
+                pb.get_op().to_string(),
+                pb.to_owned(),
+            ))),
         }
     }
 }

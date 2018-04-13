@@ -24,14 +24,10 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
 
 pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
     let mut graph = Graph::new();
-    graph.import_graph_def(
-        buf,
-        &::tensorflow::ImportGraphDefOptions::new(),
-    )?;
+    graph.import_graph_def(buf, &::tensorflow::ImportGraphDefOptions::new())?;
     let session = Session::new(&::tensorflow::SessionOptions::new(), &graph)?;
     Ok(Tensorflow { session, graph })
 }
-
 
 enum TensorHolder {
     F32(Tensor<f32>),
@@ -42,7 +38,7 @@ enum TensorHolder {
 }
 
 impl TensorHolder {
-    fn to_tensor<T: ::tensorflow::TensorType+Copy>(m: ArrayD<T>) -> Tensor<T> {
+    fn to_tensor<T: ::tensorflow::TensorType + Copy>(m: ArrayD<T>) -> Tensor<T> {
         let dims: Vec<u64> = m.shape().iter().map(|d| *d as _).collect();
         let mut tensor = Tensor::<T>::new(&*dims);
         tensor.copy_from_slice(m.as_slice().unwrap());
@@ -67,8 +63,7 @@ fn tensor_to_matrix<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<A
     if shape.len() == 0 {
         shape.push(1)
     }
-    Ok(::ndarray::Array::from_iter(tensor.iter().cloned())
-        .into_shape(shape)?)
+    Ok(::ndarray::Array::from_iter(tensor.iter().cloned()).into_shape(shape)?)
 }
 
 impl Tensorflow {

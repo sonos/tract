@@ -1,5 +1,5 @@
 use {Matrix, Result};
-use super::{ Input, Op };
+use super::{Input, Op};
 use ndarray::prelude::*;
 
 #[derive(Debug)]
@@ -31,6 +31,9 @@ pub struct BatchImageWrapper<'a, T: 'a>(ArrayView4<'a, T>);
 
 impl<'a, T> BatchImageWrapper<'a, T> {
     pub fn count(&self) -> usize {
+        self.0.shape()[0]
+    }
+    pub fn n(&self) -> usize {
         self.0.shape()[0]
     }
     pub fn height(&self) -> usize {
@@ -75,18 +78,16 @@ impl LocalPatch {
             .iter()
             .map(|a| *a as usize)
             .collect();
-        let padding = pb.get_attr().get("padding").ok_or(
-            "expect padding in Conv2D args",
-        )?;
+        let padding = pb.get_attr()
+            .get("padding")
+            .ok_or("expect padding in Conv2D args")?;
         let padding = match padding.get_s() {
             b"VALID" => Padding::Valid,
             b"SAME" => Padding::Same,
-            s => {
-                Err(format!(
-                    "unsupported Padding {}",
-                    String::from_utf8_lossy(s)
-                ))?
-            }
+            s => Err(format!(
+                "unsupported Padding {}",
+                String::from_utf8_lossy(s)
+            ))?,
         };
         Ok(LocalPatch {
             _data_format: DataFormat::NHWC,
@@ -131,21 +132,19 @@ impl LocalPatch {
             // https://www.tensorflow.org/api_guides/python/nn#Convolution
             let v_padding = ::std::cmp::max(
                 0,
-                filter_rows -
-                    if img.height() % stride == 0 {
-                        stride
-                    } else {
-                        img.height() % stride
-                    },
+                filter_rows - if img.height() % stride == 0 {
+                    stride
+                } else {
+                    img.height() % stride
+                },
             );
             let h_padding = ::std::cmp::max(
                 0,
-                filter_cols -
-                    if img.width() % stride == 0 {
-                        stride
-                    } else {
-                        img.width() % stride
-                    },
+                filter_cols - if img.width() % stride == 0 {
+                    stride
+                } else {
+                    img.width() % stride
+                },
             );
             let left_padding = h_padding / 2;
             let right_padding = h_padding - left_padding;
@@ -187,8 +186,8 @@ impl LocalPatch {
         data: ArrayView<T, Ix3>,
         shape: (usize, usize),
     ) -> Result<Array2<T>> {
-        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1 ||
-            self.strides[1] != self.strides[2]
+        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1
+            || self.strides[1] != self.strides[2]
         {
             Err(format!(
                 "strides must be of the form [1, s, s, 1], found {:?}",
@@ -217,9 +216,8 @@ impl LocalPatch {
                 for f_x in 0..filter_cols {
                     for f_y in 0..filter_rows {
                         for d in 0..img.depth() {
-                            let loc = &mut patch_row[f_y * img.depth() * filter_cols +
-                                                         f_x * img.depth() +
-                                                         d];
+                            let loc = &mut patch_row
+                                [f_y * img.depth() * filter_cols + f_x * img.depth() + d];
                             *loc = data[(0, i_y * stride + f_y, i_x * stride + f_x, d)];
                         }
                     }
@@ -246,40 +244,37 @@ impl Conv2D {
 impl Op for Conv2D {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (m_data, m_filter) = args_2!(inputs);
-        let data = m_data.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
+        let data = m_data
+            .into_matrix()
+            .take_f32s()
+            .ok_or("Expected a f32 matrix")?;
         let filter = m_filter.as_f32s().ok_or("Expected a f32 matrix")?;
+        let data = into_4d(data)?;
+        let images = BatchImageWrapper(data.view());
 
-        let batches = data.shape()[0];
-        let in_rows = data.shape()[1];
-        let in_cols = data.shape()[2];
-        let in_depth = data.shape()[3];
         let filter_rows = filter.shape()[0];
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
-        let (out_height, out_width) = self.0.adjusted_dim(
-            in_rows,
-            in_cols,
-            (filter_rows, filter_cols),
-        );
+        let (out_height, out_width) =
+            self.0
+                .adjusted_dim(images.h(), images.w(), (filter_rows, filter_cols));
 
-        let data = data.into_shape((batches, in_rows, in_cols, in_depth))?;
-        let filter = ArrayView2::from_shape(
-            (filter_rows * filter_cols * in_depth, out_depth),
-            filter.as_slice().unwrap(),
-        )?;
+        let filter = filter
+            .view()
+            .into_shape((filter_rows * filter_cols * images.d(), out_depth))?;
 
         let transformed: Vec<Array4<f32>> = data.outer_iter()
             .map(|image| -> Result<Array4<f32>> {
                 let patches = self.0.mk_patches(image, (filter_rows, filter_cols))?;
                 let transformed = patches.dot(&filter);
-                Ok(transformed.into_shape(
-                    (1, out_height, out_width, out_depth),
-                )?)
+                Ok(transformed.into_shape((1, out_height, out_width, out_depth))?)
             })
             .collect::<Result<Vec<Array4<f32>>>>()?;
         let views: Vec<ArrayView4<f32>> = transformed.iter().map(|m| m.view()).collect();
-        Ok(vec![Matrix::from(::ndarray::stack(Axis(0), &*views)?.into_dyn()).into()])
+        Ok(vec![
+            Matrix::from(::ndarray::stack(Axis(0), &*views)?.into_dyn()).into(),
+        ])
     }
 }
 
@@ -312,7 +307,10 @@ impl MaxPool {
 impl Op for MaxPool {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
-        let data = m_input.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
+        let data = m_input
+            .into_matrix()
+            .take_f32s()
+            .ok_or("Expected a f32 matrix")?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
@@ -357,7 +355,10 @@ impl AvgPool {
 impl Op for AvgPool {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
-        let data = m_input.into_matrix().take_f32s().ok_or("Expected a f32 matrix")?;
+        let data = m_input
+            .into_matrix()
+            .take_f32s()
+            .ok_or("Expected a f32 matrix")?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
@@ -411,10 +412,11 @@ mod tests {
             .unwrap()
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
-        let found = result.into_matrix()
+        let found = result
+            .into_matrix()
             .take_f32s()
             .unwrap()
-            .into_shape((expect.len()))
+            .into_shape(expect.len())
             .unwrap();
         assert_eq!(expect, found.as_slice().unwrap());
     }
@@ -476,10 +478,11 @@ mod tests {
         let filter = Matrix::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        let result = conv.eval(vec![data.into(), filter.into()]).unwrap().remove(0);
+        let result = conv.eval(vec![data.into(), filter.into()])
+            .unwrap()
+            .remove(0);
         assert_eq!(exp, result.into_matrix());
     }
-
 
     #[test]
     fn test_conv_2() {
@@ -488,18 +491,16 @@ mod tests {
             strides: vec![1, 1, 1, 1],
             _data_format: DataFormat::NHWC,
         });
-        let data = Matrix::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994])
-            .unwrap();
+        let data =
+            Matrix::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994]).unwrap();
         let filter: Matrix = Matrix::f32s(
             &[2, 2, 1, 1],
             &[160.72833, 107.84076, 247.50552, -38.738464],
         ).unwrap();
-        let exp: Matrix = Matrix::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109])
-            .unwrap();
+        let exp: Matrix =
+            Matrix::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
-        assert!(exp.close_enough(
-            &conv.eval(vec![data.into(), filter.into()]).unwrap()[0],
-        ))
+        assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0],))
     }
 
     #[test]
@@ -559,10 +560,10 @@ mod proptests {
     use Matrix;
 
     fn placeholder(name: &str) -> tfpb::node_def::NodeDef {
-        tfpb::node().name(name).op("Placeholder").attr(
-            "dtype",
-            DT_FLOAT,
-        )
+        tfpb::node()
+            .name(name)
+            .op("Placeholder")
+            .attr("dtype", DT_FLOAT)
     }
 
     fn maxpool_pb(
@@ -587,7 +588,6 @@ mod proptests {
     }
 
     fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
-
         let conv = tfpb::node()
             .name("conv")
             .op("Conv2D")
@@ -618,30 +618,16 @@ mod proptests {
                 let i_size = iw * ih * ic;
                 let k_size = kw * kh * kc * ic;
                 (
-                    Just(ih),
-                    Just(iw),
-                    Just(ic),
-                    Just(kh),
-                    Just(kw),
-                    Just(kc),
+                    Just((1, ih, iw, ic)),
+                    Just((kh, kw, ic, kc)),
                     ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
                     ::proptest::collection::vec(-255f32..255f32, k_size..k_size + 1),
                 )
             })
-            .prop_map(|(ih, iw, ic, kh, kw, kc, img, ker)| {
+            .prop_map(|(img_shape, ker_shape, img, ker)| {
                 (
-                    Matrix::F32(
-                        Array::from_vec(img)
-                            .into_shape((1, ih, iw, ic))
-                            .unwrap()
-                            .into_dyn(),
-                    ),
-                    Matrix::F32(
-                        Array::from_vec(ker)
-                            .into_shape((kh, kw, ic, kc))
-                            .unwrap()
-                            .into_dyn(),
-                    ),
+                    Array::from_vec(img).into_shape(img_shape).unwrap().into(),
+                    Array::from_vec(ker).into_shape(ker_shape).unwrap().into(),
                 )
             })
             .boxed()
@@ -658,22 +644,15 @@ mod proptests {
             .prop_flat_map(|(ih, iw, ic, kh, kw)| {
                 let i_size = iw * ih * ic;
                 (
-                    Just(ih),
-                    Just(iw),
-                    Just(ic),
+                    Just((1, ih, iw, ic)),
                     Just(kh),
                     Just(kw),
                     ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
                 )
             })
-            .prop_map(|(ih, iw, ic, kh, kw, img)| {
+            .prop_map(|(img_shape, kh, kw, img)| {
                 (
-                    Matrix::F32(
-                        Array::from_vec(img)
-                            .into_shape((1, ih, iw, ic))
-                            .unwrap()
-                            .into_dyn(),
-                    ),
+                    Array::from_vec(img).into_shape(img_shape).unwrap().into(),
                     kw,
                     kh,
                 )

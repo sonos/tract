@@ -1,10 +1,10 @@
-#![cfg(feature="tensorflow")]
+#![cfg(feature = "tensorflow")]
 extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
 extern crate itertools;
-extern crate ndarray;
 extern crate mio_httpc;
+extern crate ndarray;
 extern crate tar;
 extern crate tfdeploy;
 
@@ -42,7 +42,10 @@ fn compare(
         }
     }
     let rtf = rtf?;
-    let inputs = inputs.into_iter().map(|(s,t)| (state.model().node_id_by_name(s).unwrap(),t) ).collect();
+    let inputs = inputs
+        .into_iter()
+        .map(|(s, t)| (state.model().node_id_by_name(s).unwrap(), t))
+        .collect();
     let output = state.model().node_id_by_name(output)?;
     let rtfd = state.run(inputs, output)?;
     if rtf.len() != rtfd.len() {

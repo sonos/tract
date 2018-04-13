@@ -20,8 +20,8 @@ fn main() {
     }).expect("protoc");
 
     for input in inputs {
-        let mut broken = path::PathBuf::from(std::env::var("OUT_DIR").unwrap())
-            .join(input.file_name().unwrap());
+        let mut broken =
+            path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join(input.file_name().unwrap());
         println!("cargo:rerun-if-changed={}", input.to_str().unwrap());
         let mut fixed = broken.clone();
         fixed.set_extension("rs");

@@ -1,11 +1,11 @@
 #[macro_use]
 extern crate bencher;
 extern crate dinghy_test;
+extern crate flate2;
 extern crate image;
 extern crate itertools;
-extern crate flate2;
-extern crate ndarray;
 extern crate mio_httpc;
+extern crate ndarray;
 extern crate tar;
 extern crate tfdeploy;
 
@@ -33,7 +33,8 @@ fn tfd(bencher: &mut bencher::Bencher) {
     let tfd = ::tfdeploy::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(inceptionv3::hopper());
     let input_id = tfd.node_id_by_name("input").unwrap();
-    let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1").unwrap();
+    let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1")
+        .unwrap();
     bencher.iter(|| {
         tfd.run(vec![(input_id, input.clone())], output_id).unwrap();
     });
