@@ -52,7 +52,6 @@ impl Op for Conv2D {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]

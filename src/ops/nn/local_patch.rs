@@ -254,4 +254,3 @@ pub mod proptests {
             .attr("dtype", DT_FLOAT)
     }
 }
-

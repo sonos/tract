@@ -7,14 +7,14 @@ use super::local_patch::*;
 pub trait Pooler: Send + Sync + ::std::fmt::Debug + 'static {
     type State;
     fn state() -> Self::State;
-    fn ingest(state: &mut Self::State, v:f32);
+    fn ingest(state: &mut Self::State, v: f32);
     fn digest(state: &mut Self::State) -> f32;
 }
 
 #[derive(Debug)]
-pub struct Pool<P:Pooler>(LocalPatch, (usize, usize), PhantomData<P>);
+pub struct Pool<P: Pooler>(LocalPatch, (usize, usize), PhantomData<P>);
 
-pub fn pool<P:Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
     Ok(Box::new(Pool::<P>(
         LocalPatch::build(pb)?,
@@ -23,7 +23,7 @@ pub fn pool<P:Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     )))
 }
 
-impl<P:Pooler+::std::fmt::Debug> Op for Pool<P> {
+impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
         let data = m_input
@@ -60,8 +60,10 @@ impl<P:Pooler+::std::fmt::Debug> Op for Pool<P> {
 pub struct MaxPooler;
 impl Pooler for MaxPooler {
     type State = f32;
-    fn state() -> f32 { ::std::f32::NEG_INFINITY }
-    fn ingest(state: &mut Self::State, v:f32) {
+    fn state() -> f32 {
+        ::std::f32::NEG_INFINITY
+    }
+    fn ingest(state: &mut Self::State, v: f32) {
         if v > *state {
             *state = v
         }
@@ -75,8 +77,10 @@ impl Pooler for MaxPooler {
 pub struct AvgPooler;
 impl Pooler for AvgPooler {
     type State = (f32, usize);
-    fn state() -> (f32, usize) { (0.0, 0) }
-    fn ingest(state: &mut Self::State, v:f32) {
+    fn state() -> (f32, usize) {
+        (0.0, 0)
+    }
+    fn ingest(state: &mut Self::State, v: f32) {
         state.0 += v;
         state.1 += 1;
     }
@@ -100,7 +104,7 @@ mod tests {
                 _data_format: DataFormat::NHWC,
             },
             (2, 1),
-            PhantomData
+            PhantomData,
         );
         let data = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
@@ -123,7 +127,7 @@ mod tests {
                 _data_format: DataFormat::NHWC,
             },
             (3, 3),
-            PhantomData
+            PhantomData,
         );
         let data = Matrix::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();

@@ -176,12 +176,11 @@ impl Op for Squeeze {
 }
 
 #[derive(Debug)]
-pub struct StridedSlice {
-}
+pub struct StridedSlice {}
 
 impl StridedSlice {
     pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Ok(Box::new(StridedSlice{}))
+        Ok(Box::new(StridedSlice {}))
     }
 }
 
@@ -192,20 +191,28 @@ impl Op for StridedSlice {
         let begin = begin.as_i32s().ok_or("Begin expected as I32")?;
         let end = end.as_i32s().ok_or("End expected as I32")?;
         let strides = strides.as_i32s().ok_or("Strides expected as I32")?;
-        let shape:Vec<usize> = (0..input.shape().len()).map(|d| {
-            ((end[d] - begin[d]) / strides[d]) as usize
-        }).collect();
-        println!("shape: {:?}", shape);
+        let shape: Vec<usize> = (0..input.shape().len())
+            .map(|d| ((end[d] - begin[d]) / strides[d]) as usize)
+            .collect();
         let output = Array::from_shape_fn(shape, |coords| {
-            let coord:Vec<_> = coords.slice().iter().enumerate().map(|(d,i)| {
-                let signed = *i as i32 * strides[d] + begin[d];
-                let pos = if signed >= 0 { signed } else { input.shape()[d] as i32 + signed };
-                pos as usize
-            }).collect();
+            let coord: Vec<_> = coords
+                .slice()
+                .iter()
+                .enumerate()
+                .map(|(d, i)| {
+                    let signed = *i as i32 * strides[d] + begin[d];
+                    let pos = if signed >= 0 {
+                        signed
+                    } else {
+                        input.shape()[d] as i32 + signed
+                    };
+                    pos as usize
+                })
+                .collect();
             input[&*coord]
         });
         println!("output: {:?}", output);
-        Ok(vec!(Matrix::I32(output.into()).into()))
+        Ok(vec![Matrix::I32(output.into()).into()])
     }
 }
 
@@ -218,57 +225,69 @@ mod tests {
     // https://www.tensorflow.org/api_docs/python/tf/strided_slice
     #[test]
     fn strided_slice_1() {
-        let input:Matrix = ::ndarray::arr3(&[[[1, 1, 1], [2, 2, 2]],
-                 [[3, 3, 3], [4, 4, 4]],
-                 [[5, 5, 5], [6, 6, 6]]]).into();
-        let begin:Matrix = ::ndarray::arr1(&[1, 0, 0]).into();
-        let end:Matrix = ::ndarray::arr1(&[2, 1, 3]).into();
-        let strides:Matrix = ::ndarray::arr1(&[1, 1, 1]).into();
+        let input: Matrix = ::ndarray::arr3(&[
+            [[1, 1, 1], [2, 2, 2]],
+            [[3, 3, 3], [4, 4, 4]],
+            [[5, 5, 5], [6, 6, 6]],
+        ]).into();
+        let begin: Matrix = ::ndarray::arr1(&[1, 0, 0]).into();
+        let end: Matrix = ::ndarray::arr1(&[2, 1, 3]).into();
+        let strides: Matrix = ::ndarray::arr1(&[1, 1, 1]).into();
         let op = StridedSlice {};
-        let output = op.eval(vec!(input.into(), begin.into(), end.into(), strides.into())).unwrap();
-        let exp:Matrix = ::ndarray::arr3(&[[[ 3, 3, 3 ]]]).into();
+        let output = op.eval(vec![input.into(), begin.into(), end.into(), strides.into()])
+            .unwrap();
+        let exp: Matrix = ::ndarray::arr3(&[[[3, 3, 3]]]).into();
         assert_eq!(exp, *output[0]);
     }
 
     #[test]
     fn strided_slice_2() {
-        let input:Matrix = ::ndarray::arr3(&[[[1, 1, 1], [2, 2, 2]],
-                 [[3, 3, 3], [4, 4, 4]],
-                 [[5, 5, 5], [6, 6, 6]]]).into();
-        let begin:Matrix = ::ndarray::arr1(&[1, 0, 0]).into();
-        let end:Matrix = ::ndarray::arr1(&[2, 2, 3]).into();
-        let strides:Matrix = ::ndarray::arr1(&[1, 1, 1]).into();
+        let input: Matrix = ::ndarray::arr3(&[
+            [[1, 1, 1], [2, 2, 2]],
+            [[3, 3, 3], [4, 4, 4]],
+            [[5, 5, 5], [6, 6, 6]],
+        ]).into();
+        let begin: Matrix = ::ndarray::arr1(&[1, 0, 0]).into();
+        let end: Matrix = ::ndarray::arr1(&[2, 2, 3]).into();
+        let strides: Matrix = ::ndarray::arr1(&[1, 1, 1]).into();
         let op = StridedSlice {};
-        let output = op.eval(vec!(input.into(), begin.into(), end.into(), strides.into())).unwrap();
-        let exp:Matrix = ::ndarray::arr3(&[[[ 3, 3, 3 ], [4, 4, 4]]]).into();
+        let output = op.eval(vec![input.into(), begin.into(), end.into(), strides.into()])
+            .unwrap();
+        let exp: Matrix = ::ndarray::arr3(&[[[3, 3, 3], [4, 4, 4]]]).into();
         assert_eq!(exp, *output[0]);
     }
 
     #[test]
     fn strided_slice_3() {
-        let input:Matrix = ::ndarray::arr3(&[[[1, 1, 1], [2, 2, 2]],
-                 [[3, 3, 3], [4, 4, 4]],
-                 [[5, 5, 5], [6, 6, 6]]]).into();
-        let begin:Matrix = ::ndarray::arr1(&[1, -1, 0]).into();
-        let end:Matrix = ::ndarray::arr1(&[2, -3, 3]).into();
-        let strides:Matrix = ::ndarray::arr1(&[1, -1, 1]).into();
+        let input: Matrix = ::ndarray::arr3(&[
+            [[1, 1, 1], [2, 2, 2]],
+            [[3, 3, 3], [4, 4, 4]],
+            [[5, 5, 5], [6, 6, 6]],
+        ]).into();
+        let begin: Matrix = ::ndarray::arr1(&[1, -1, 0]).into();
+        let end: Matrix = ::ndarray::arr1(&[2, -3, 3]).into();
+        let strides: Matrix = ::ndarray::arr1(&[1, -1, 1]).into();
         let op = StridedSlice {};
-        let output = op.eval(vec!(input.into(), begin.into(), end.into(), strides.into())).unwrap();
-        let exp:Matrix = ::ndarray::arr3(&[[[ 4, 4, 4 ], [ 3, 3, 3 ]]]).into();
+        let output = op.eval(vec![input.into(), begin.into(), end.into(), strides.into()])
+            .unwrap();
+        let exp: Matrix = ::ndarray::arr3(&[[[4, 4, 4], [3, 3, 3]]]).into();
         assert_eq!(exp, *output[0]);
     }
 
     #[test]
     fn strided_slice_4() {
-        let input:Matrix = ::ndarray::arr3(&[[[1, 1, 1], [2, 2, 2]],
-                 [[3, 3, 3], [4, 4, 4]],
-                 [[5, 5, 5], [6, 6, 6]]]).into();
-        let begin:Matrix = ::ndarray::arr1(&[1, 0, 0]).into();
-        let end:Matrix = ::ndarray::arr1(&[2, 2, 4]).into();
-        let strides:Matrix = ::ndarray::arr1(&[1, 1, 2]).into();
+        let input: Matrix = ::ndarray::arr3(&[
+            [[1, 1, 1], [2, 2, 2]],
+            [[3, 3, 3], [4, 4, 4]],
+            [[5, 5, 5], [6, 6, 6]],
+        ]).into();
+        let begin: Matrix = ::ndarray::arr1(&[1, 0, 0]).into();
+        let end: Matrix = ::ndarray::arr1(&[2, 2, 4]).into();
+        let strides: Matrix = ::ndarray::arr1(&[1, 1, 2]).into();
         let op = StridedSlice {};
-        let output = op.eval(vec!(input.into(), begin.into(), end.into(), strides.into())).unwrap();
-        let exp:Matrix = ::ndarray::arr3(&[[[ 3, 3 ], [ 4, 4 ]]]).into();
+        let output = op.eval(vec![input.into(), begin.into(), end.into(), strides.into()])
+            .unwrap();
+        let exp: Matrix = ::ndarray::arr3(&[[[3, 3], [4, 4]]]).into();
         assert_eq!(exp, *output[0]);
     }
 }
