@@ -264,17 +264,16 @@ impl Op for Conv2D {
             .view()
             .into_shape((filter_rows * filter_cols * images.d(), out_depth))?;
 
-        let transformed: Vec<Array4<f32>> = data.outer_iter()
-            .map(|image| -> Result<Array4<f32>> {
-                let patches = self.0.mk_patches(image, (filter_rows, filter_cols))?;
-                let transformed = patches.dot(&filter);
-                Ok(transformed.into_shape((1, out_height, out_width, out_depth))?)
-            })
-            .collect::<Result<Vec<Array4<f32>>>>()?;
-        let views: Vec<ArrayView4<f32>> = transformed.iter().map(|m| m.view()).collect();
-        Ok(vec![
-            Matrix::from(::ndarray::stack(Axis(0), &*views)?.into_dyn()).into(),
-        ])
+        let mut transformed: Vec<f32> = Vec::with_capacity(out_height * out_width * out_depth);
+        for image in data.outer_iter() {
+            let patches = self.0.mk_patches(image, (filter_rows, filter_cols))?;
+            transformed.extend(patches.dot(&filter).into_iter());
+        }
+        let transformed: Matrix = Array::from_vec(transformed)
+            .into_shape((1, out_height, out_width, out_depth))?
+            .into_dyn()
+            .into();
+        Ok(vec![transformed.into()])
     }
 }
 
