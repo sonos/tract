@@ -21,12 +21,6 @@ fn dummy(_bencher: &mut bencher::Bencher) {
 fn tf(bencher: &mut bencher::Bencher) {
     let mut tf = ::tfdeploy::tf::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(inceptionv3::hopper());
-    for _ in 0 .. 5 {
-    tf.run(
-        vec![("input", input.clone())],
-        "InceptionV3/Predictions/Reshape_1",
-    ).unwrap();
-    }
     bencher.iter(|| {
         tf.run(
             vec![("input", input.clone())],
@@ -40,9 +34,6 @@ fn tfd(bencher: &mut bencher::Bencher) {
     let input = inceptionv3::load_image(inceptionv3::hopper());
     let input_id = tfd.node_id_by_name("input").unwrap();
     let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1").unwrap();
-    for _ in 0 .. 5 {
-        tfd.run(vec![(input_id, input.clone())], output_id).unwrap();
-    }
     bencher.iter(|| {
         tfd.run(vec![(input_id, input.clone())], output_id).unwrap();
     });
