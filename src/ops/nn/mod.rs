@@ -2,11 +2,12 @@ use {Matrix, Result};
 use super::{Input, Op, OpRegister};
 
 mod local_patch;
+pub mod conv2d;
 pub mod pools;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AvgPool", pools::pool::<pools::AvgPooler>);
-    reg.insert("Conv2D", local_patch::Conv2D::build);
+    reg.insert("Conv2D", conv2d::Conv2D::build);
     reg.insert("MaxPool", pools::pool::<pools::MaxPooler>);
     reg.insert("Relu", Relu::build);
     reg.insert("Softmax", Softmax::build);
