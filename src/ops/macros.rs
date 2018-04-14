@@ -68,6 +68,7 @@ macro_rules! args_2 {
     } }
 }
 
+#[allow(unused_macros)]
 macro_rules! args_3 {
     ($inputs:expr) => { {
         if $inputs.len() != 3 {

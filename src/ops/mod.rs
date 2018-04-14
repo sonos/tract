@@ -106,12 +106,19 @@ impl Op for UnimplementedOp {
 pub mod proptests {
     #![allow(non_snake_case)]
     use tfpb;
-    use tfpb::types::DataType::DT_FLOAT;
+    use tfpb::types::DataType;
 
-    pub fn placeholder(name: &str) -> tfpb::node_def::NodeDef {
+    pub fn placeholder_f32(name: &str) -> tfpb::node_def::NodeDef {
         tfpb::node()
             .name(name)
             .op("Placeholder")
-            .attr("dtype", DT_FLOAT)
+            .attr("dtype", DataType::DT_FLOAT)
+    }
+
+    pub fn placeholder_i32(name: &str) -> tfpb::node_def::NodeDef {
+        tfpb::node()
+            .name(name)
+            .op("Placeholder")
+            .attr("dtype", DataType::DT_INT32)
     }
 }

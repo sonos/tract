@@ -198,7 +198,7 @@ mod proptests {
             .attr("ksize", vec![1, kw as i64, kh as i64, 1])
             .attr("padding", if valid { "VALID" } else { "SAME" });
 
-        let graph = tfpb::graph().node(placeholder("data")).node(pool);
+        let graph = tfpb::graph().node(placeholder_f32("data")).node(pool);
 
         Ok(graph.write_to_bytes()?)
     }

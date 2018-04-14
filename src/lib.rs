@@ -297,7 +297,12 @@ impl Model {
     }
 
     pub fn run_with_names(&self, inputs: Vec<(&str, Matrix)>, output: &str) -> Result<Vec<Matrix>> {
-        let inputs = inputs.into_iter().map(|(name, mat)| -> Result<(usize, Matrix)> { Ok((self.node_id_by_name(name)?, mat))} ).collect::<Result<_>>()?;
+        let inputs = inputs
+            .into_iter()
+            .map(|(name, mat)| -> Result<(usize, Matrix)> {
+                Ok((self.node_id_by_name(name)?, mat))
+            })
+            .collect::<Result<_>>()?;
         self.run(inputs, self.node_id_by_name(output)?)
     }
 }

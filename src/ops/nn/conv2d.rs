@@ -190,8 +190,8 @@ pub mod proptests {
             .attr("T", DT_FLOAT);
 
         let graph = tfpb::graph()
-            .node(placeholder("data"))
-            .node(placeholder("kernel"))
+            .node(placeholder_f32("data"))
+            .node(placeholder_f32("kernel"))
             .node(conv);
 
         Ok(graph.write_to_bytes()?)
