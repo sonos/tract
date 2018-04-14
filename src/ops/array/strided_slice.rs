@@ -256,11 +256,7 @@ pub mod proptests {
                 ).write_to_bytes().unwrap();
 
             let inputs = vec!(("input", i.clone()),("begin", b.clone()), ("end", e.clone()), ("stride", s.clone()));
-            let expected = ::tf::for_slice(&graph)?.run(inputs.clone(), "op");
-            prop_assume!(expected.is_ok());
-            let expected = expected.unwrap();
-            let found = ::Model::for_reader(&*graph)?.run_with_names(inputs, "op").unwrap();
-            prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found)
+            compare(&graph, inputs, "op")?
         }
     }
 }
