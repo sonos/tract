@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate bencher;
+extern crate colored;
 extern crate dinghy_test;
 extern crate flate2;
 extern crate image;

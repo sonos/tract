@@ -39,6 +39,7 @@ protoc-rust   = "1.4"
 tempdir = "0.3"
 
 [dev-dependencies]
+colored = "1"
 bencher = { git = "https://github.com/snipsco/bencher" }
 dinghy-test = { git="https://github.com/snipsco/dinghy.git", branch="0.3"}
 flate2 = "1.0"

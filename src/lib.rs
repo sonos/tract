@@ -69,8 +69,8 @@ pub struct Node {
     pub id: usize,
     pub name: String,
     pub op_name: String,
-    inputs: Vec<(usize, Option<usize>)>,
-    op: Box<Op>,
+    pub inputs: Vec<(usize, Option<usize>)>,
+    pub op: Box<Op>,
 }
 
 impl Node {
@@ -269,10 +269,19 @@ impl Model {
         Self::for_reader(fs::File::open(p)?)
     }
 
-    /// Load a Tensorflow protobul model from a reader.
-    pub fn for_reader<R: ::std::io::Read>(mut r: R) -> Result<Model> {
-        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)?;
-        Model::new(loaded)
+    /// Load a Tfdeploy model from a reader.
+    pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
+        Model::new(Self::graphdef_for_reader(r)?)
+    }
+
+    /// Load a Tensorflow protobuf graph def from a reader.
+    pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph::GraphDef> {
+        Ok(::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)?)
+    }
+
+    /// Load a Tensorflow protobuf graph def from a path
+    pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<::tfpb::graph::GraphDef> {
+        Self::graphdef_for_reader(fs::File::open(p)?)
     }
 
     pub fn node_names(&self) -> Vec<&str> {
@@ -309,7 +318,7 @@ impl Model {
 
 pub struct ModelState<'a> {
     model: &'a Model,
-    outputs: Vec<Option<Vec<Input>>>,
+    pub outputs: Vec<Option<Vec<Input>>>,
 }
 
 impl<'a> ModelState<'a> {

@@ -1,4 +1,5 @@
 #![cfg(feature = "tensorflow")]
+extern crate colored;
 extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
