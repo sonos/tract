@@ -101,3 +101,17 @@ impl Op for UnimplementedOp {
         Err(format!("unimplemented operation: {}", self.0))?
     }
 }
+
+#[cfg(all(test, feature = "tensorflow"))]
+pub mod proptests {
+    #![allow(non_snake_case)]
+    use tfpb;
+    use tfpb::types::DataType::DT_FLOAT;
+
+    pub fn placeholder(name: &str) -> tfpb::node_def::NodeDef {
+        tfpb::node()
+            .name(name)
+            .op("Placeholder")
+            .attr("dtype", DT_FLOAT)
+    }
+}

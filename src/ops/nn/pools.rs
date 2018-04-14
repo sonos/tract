@@ -151,7 +151,7 @@ mod proptests {
     use protobuf::core::Message;
     use tfpb;
     use tfpb::types::DataType::DT_FLOAT;
-    use ops::nn::local_patch::proptests::*;
+    use ops::proptests::*;
 
     use Matrix;
 

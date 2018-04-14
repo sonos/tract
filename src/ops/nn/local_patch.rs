@@ -240,17 +240,3 @@ pub fn into_4d<T>(data: ArrayD<T>) -> Result<Array4<T>> {
     );
     Ok(data.into_shape(shape)?)
 }
-
-#[cfg(all(test, feature = "tensorflow"))]
-pub mod proptests {
-    #![allow(non_snake_case)]
-    use tfpb;
-    use tfpb::types::DataType::DT_FLOAT;
-
-    pub fn placeholder(name: &str) -> tfpb::node_def::NodeDef {
-        tfpb::node()
-            .name(name)
-            .op("Placeholder")
-            .attr("dtype", DT_FLOAT)
-    }
-}

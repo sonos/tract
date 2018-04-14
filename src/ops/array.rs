@@ -291,3 +291,55 @@ mod tests {
         assert_eq!(exp, *output[0]);
     }
 }
+
+#[cfg(all(test, feature = "tensorflow"))]
+pub mod proptests {
+    #![allow(non_snake_case)]
+    use proptest::prelude::*;
+    use ndarray::prelude::*;
+    use protobuf::core::Message;
+    use tfpb;
+    use tfpb::types::DataType::DT_FLOAT;
+    use ops::proptests::*;
+    use Matrix;
+
+    fn strided_slice_strat() -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix)> {
+        ::proptest::collection::vec(0usize..10, 1usize..8)
+            .prop_flat_map(|shape| {
+                let dims = shape.len();
+                let items:usize = shape.iter().product();
+                (Just(shape),
+                 ::proptest::collection::vec(-100i32..100, items..items+1),
+                 ::proptest::collection::vec(-10i32..10, dims..dims+1),
+                 ::proptest::collection::vec(-10i32..10, dims..dims+1),
+                 ::proptest::collection::vec(-10i32..10, dims..dims+1),
+                )
+            }).prop_map(|(shape, input, begin, end, stride)| {
+                let shape = shape.into_iter().map(|s| s as usize).collect::<Vec<_>>();
+                (Array::from_vec(input).into_shape(&*shape).unwrap().into(),
+                Array::from_vec(begin).into(),
+                Array::from_vec(end).into(),
+                Array::from_vec(stride).into())
+            }).boxed()
+    }
+
+    proptest! {
+        #[test]
+        fn strided_slice((ref i, ref b, ref e, ref s) in strided_slice_strat()) {
+            let graph = tfpb::graph()
+                .node(placeholder("input"))
+                .node(placeholder("begin"))
+                .node(placeholder("end"))
+                .node(placeholder("stride"))
+                .node(tfpb::node().name("op").input("input").input("begin").input("end").input("stride").op("StridedSlice")
+                ).write_to_bytes().unwrap();
+
+            let inputs = vec!(("input", i.clone()),("begin", b.clone()), ("end", e.clone()), ("stride", s.clone()));
+            let expected = ::tf::for_slice(&graph)?.run(inputs.clone(), "op");
+            prop_assume!(expected.is_ok());
+            let expected = expected.unwrap();
+            let found = ::Model::for_reader(&*graph)?.run_with_names(inputs, "op").unwrap();
+            prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found)
+        }
+    }
+}
