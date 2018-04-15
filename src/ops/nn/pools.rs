@@ -190,9 +190,12 @@ mod proptests {
         kw: usize,
     ) -> BoxedStrategy<(Matrix, (usize, usize), String, usize)> {
         (1..ih, 1..iw, 1..ic)
-            .prop_flat_map(move |(ih,iw,ic)|
-               (Just((ih, iw, ic)),
-                (1..kh.min(ih+1).max(2), 1..kw.min(iw+1).max(2))))
+            .prop_flat_map(move |(ih, iw, ic)| {
+                (
+                    Just((ih, iw, ic)),
+                    (1..kh.min(ih + 1).max(2), 1..kw.min(iw + 1).max(2)),
+                )
+            })
             .prop_flat_map(|((ih, iw, ic), k)| {
                 let i_size = iw * ih * ic;
                 (

@@ -30,7 +30,7 @@ pub fn run_both(
     Ok((rtf, rtfd))
 }
 
-pub fn compare_outputs(rtf:&Vec<Matrix>, rtfd:&Vec<Matrix>) -> Result<()> {
+pub fn compare_outputs(rtf: &Vec<Matrix>, rtfd: &Vec<Matrix>) -> Result<()> {
     if rtf.len() != rtfd.len() {
         Err(format!(
             "number of output differ tf:{} tfd:{}",
@@ -72,14 +72,18 @@ pub fn compare_all<P: AsRef<path::Path>>(
             println!(" * skipping Placeholder `{}'", node.name);
             continue;
         }
-        let (rtf, rtfd) = run_both(&mut tf, &mut state, inputs.clone(), &* node.name)?;
+        let (rtf, rtfd) = run_both(&mut tf, &mut state, inputs.clone(), &*node.name)?;
         match compare_outputs(&rtf, &rtfd) {
             Err(Error(ErrorKind::TFString, _)) => continue,
             Err(e) => {
                 println!("name: {}", node.name.red());
                 println!("op: {}", node.op_name);
                 let graph = tfdeploy::Model::graphdef_for_path(&model)?;
-                let gnode = graph.get_node().iter().find(|n| n.get_name() == node.name).unwrap();
+                let gnode = graph
+                    .get_node()
+                    .iter()
+                    .find(|n| n.get_name() == node.name)
+                    .unwrap();
                 for attr in gnode.get_attr() {
                     println!("- attr:{} {:?}", attr.0, attr.1);
                 }
@@ -91,16 +95,22 @@ pub fn compare_all<P: AsRef<path::Path>>(
                 }
                 for (ix, pair) in rtf.iter().zip_longest(rtfd.iter()).enumerate() {
                     match pair {
-                        ::itertools::EitherOrBoth::Both(mtf,mtfd) => {
+                        ::itertools::EitherOrBoth::Both(mtf, mtfd) => {
                             println!("{}", format!("OUTPUT {}", ix).bold());
-                            let tfd = if mtf.shape() != mtfd.shape() {"TFD".red()} else if mtf.close_enough(mtfd) { "TFD".green() } else { "TFD".yellow() };
+                            let tfd = if mtf.shape() != mtfd.shape() {
+                                "TFD".red()
+                            } else if mtf.close_enough(mtfd) {
+                                "TFD".green()
+                            } else {
+                                "TFD".yellow()
+                            };
                             println!("  TF {}", mtf.partial_dump(true).unwrap());
                             println!("  {} {}", tfd, mtfd.partial_dump(true).unwrap());
-                        },
+                        }
                         ::itertools::EitherOrBoth::Left(mtf) => {
                             println!("  TF {}", mtf.partial_dump(true).unwrap());
                             println!("{}", "  TFD MISSING".red());
-                        },
+                        }
                         ::itertools::EitherOrBoth::Right(mtfd) => {
                             println!("  TF UNEXPECTED {}", mtfd.partial_dump(true).unwrap());
                         }
@@ -116,4 +126,3 @@ pub fn compare_all<P: AsRef<path::Path>>(
     }
     Ok(())
 }
-

@@ -3,18 +3,30 @@ use {Matrix, Result};
 use ops::{Input, Op};
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let begin_mask = pb.get_attr().get("begin_mask").map(|a| a.get_i()).unwrap_or(0);
-    let end_mask = pb.get_attr().get("end_mask").map(|a| a.get_i()).unwrap_or(0);
+    let begin_mask = pb.get_attr()
+        .get("begin_mask")
+        .map(|a| a.get_i())
+        .unwrap_or(0);
+    let end_mask = pb.get_attr()
+        .get("end_mask")
+        .map(|a| a.get_i())
+        .unwrap_or(0);
+    let shrink_axis_mask = pb.get_attr()
+        .get("shrink_axis_mask")
+        .map(|a| a.get_i())
+        .unwrap_or(0);
     Ok(Box::new(StridedSlice {
         begin_mask,
         end_mask,
+        shrink_axis_mask,
     }))
 }
 
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct StridedSlice {
     begin_mask: i64,
     end_mask: i64,
+    shrink_axis_mask: i64,
 }
 
 impl Op for StridedSlice {
@@ -24,39 +36,48 @@ impl Op for StridedSlice {
         let begin = begin.as_i32s().ok_or("Begin expected as I32")?;
         let end = end.as_i32s().ok_or("End expected as I32")?;
         let strides = strides.as_i32s().ok_or("Strides expected as I32")?;
-        let bounds: Vec<(isize, isize)> = (0..input.shape().len())
+        struct Dim {
+            begin: i32,
+            stride: i32,
+            len: usize,
+        };
+        let bounds: Vec<Dim> = (0..input.shape().len())
             .map(|d| {
+                let max = input.shape()[d] as i32;
+                // deal with negative indexing
+                let b = if begin[d] >= 0 { begin[d] } else { max + begin[d] };
+                let e = if end[d] >= 0 { end[d] } else { max + end[d] };
+
+                // deal with shrinking
+                if self.shrink_axis_mask & 1 << d != 0 {
+                    return Dim { begin: b, stride: 1, len: 1}
+                }
+
+                // deal with begin and end masks
+                let s = strides[d];
                 let b = if (self.begin_mask >> d) & 1 == 1 {
-                    if strides[d].signum() > 0 { 0 } else { input.shape()[d] as isize - 1 }
-                } else if begin[d] >= 0 {
-                    begin[d] as isize
+                    if s.signum() > 0 { 0 } else { max - 1 }
                 } else {
-                    (input.shape()[d] as i32 + begin[d]) as isize
+                    b
                 };
                 let e = if (self.end_mask >> d) & 1 == 1 {
-                    if strides[d].signum() < 0 { -1 } else { input.shape()[d] as isize }
-                } else if end[d] >= 0 {
-                    end[d] as isize
+                    if s.signum() < 0 { -1 } else { max }
                 } else {
-                    (input.shape()[d] as i32 + end[d]) as isize
+                    e
                 };
-                (b, e)
-            }).collect();
-        println!("input shape: {:?}, bounds: {:?}", input.shape(), bounds);
-        let shape: Vec<usize> = (0..input.shape().len())
-            .map(|d| {
-                (((strides[d].abs() as i32 - 1) + (bounds[d].1 as i32 - bounds[d].0 as i32).abs()) / strides[d].abs()) as usize
+                let len = (((s.abs() as i32 - 1) + (e - b).abs()) / s.abs()) as usize;
+                Dim { begin:b, stride:s, len }
             })
             .collect();
-        println!("output shape: {:?}", shape);
+//        println!("input shape: {:?}, bounds: {:?}", input.shape(), bounds);
+        let shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
+//        println!("output shape: {:?}", shape);
         let output = Array::from_shape_fn(shape, |coords| {
             let coord: Vec<_> = coords
                 .slice()
                 .iter()
                 .enumerate()
-                .map(|(d, i)| {
-                    (*i as i32 * strides[d] + bounds[d].0 as i32) as usize
-                })
+                .map(|(d, i)| (*i as i32 * bounds[d].stride + bounds[d].begin) as usize)
                 .collect();
             input[&*coord]
         });
@@ -94,7 +115,8 @@ mod tests {
     #[test]
     fn strided_slice_1() {
         assert_eq!(
-            run(StridedSlice::default(),
+            run(
+                StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
                     [[3, 3, 3], [4, 4, 4]],
@@ -111,7 +133,8 @@ mod tests {
     #[test]
     fn strided_slice_2() {
         assert_eq!(
-            run(StridedSlice::default(),
+            run(
+                StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
                     [[3, 3, 3], [4, 4, 4]],
@@ -128,7 +151,8 @@ mod tests {
     #[test]
     fn strided_slice_3() {
         assert_eq!(
-            run(StridedSlice::default(),
+            run(
+                StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
                     [[3, 3, 3], [4, 4, 4]],
@@ -145,7 +169,8 @@ mod tests {
     #[test]
     fn strided_slice_4() {
         assert_eq!(
-            run(StridedSlice::default(),
+            run(
+                StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
                     [[3, 3, 3], [4, 4, 4]],
@@ -161,8 +186,14 @@ mod tests {
 
     #[test]
     fn strided_slice_5() {
-        assert_eq!(run(StridedSlice::default(),
-            arr1(&[0, 0]), arr1(&[0]), arr1(&[-1]), arr1(&[1])),
+        assert_eq!(
+            run(
+                StridedSlice::default(),
+                arr1(&[0, 0]),
+                arr1(&[0]),
+                arr1(&[-1]),
+                arr1(&[1])
+            ),
             Matrix::from(arr1(&[0]))
         )
     }
@@ -170,7 +201,8 @@ mod tests {
     #[test]
     fn strided_slice_6() {
         assert_eq!(
-            run(StridedSlice::default(),
+            run(
+                StridedSlice::default(),
                 arr2(&[[1, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]]),
                 arr1(&[-3, -4]),
                 arr1(&[-1, -1]),
@@ -185,30 +217,22 @@ mod tests {
         let mut op = StridedSlice::default();
         op.begin_mask = 1;
         assert_eq!(
-            run(op,
-                arr1(&[0, 1]),
-                arr1(&[1]),
-                arr1(&[1]),
-                arr1(&[1])
-            ),
+            run(op, arr1(&[0, 1]), arr1(&[1]), arr1(&[1]), arr1(&[1])),
             Matrix::from(arr1(&[0]))
         )
     }
-/*
+
     #[test]
-    fn strided_slice_end_mask_1() {
+    fn strided_slice_shrink_1() {
         let mut op = StridedSlice::default();
+        op.begin_mask = 1;
+        op.end_mask = 1;
+        op.shrink_axis_mask = 1;
         assert_eq!(
-            run(op,
-                arr1(&[0, 0]),
-                arr1(&[0]),
-                arr1(&[2]),
-                arr1(&[1])
-            ),
-            Matrix::from(arr1(&[0]))
+            run(op, arr1(&[0, 1]), arr1(&[-1]), arr1(&[-2]), arr1(&[1])),
+            Matrix::from(arr1(&[1]))
         )
     }
-*/
 }
 
 #[cfg(all(test, feature = "tensorflow"))]
@@ -222,27 +246,29 @@ pub mod proptests {
     use ops::proptests::*;
     use Matrix;
 
-    fn strided_slice_strat() -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32))> {
+    fn strided_slice_strat(
+) -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
         ::proptest::collection::vec(
             (1..10).prop_flat_map(|n| {
                 (
-                    Just(n),
-                    0..n,
-                    0..n,
-                    if n <= 2 { 1..2 } else { (1..n) },
-                    any::<bool>(),
-                    any::<bool>(),
+                    Just(n),    // input size
+                    0..n,       // begin
+                    0..n,       // end
+                    if n <= 2 { 1..2 } else { (1..n) }, // stride, abs
+                    any::<bool>(),  // make begin negative
+                    any::<bool>(),  // make end negative
                 )
             }),
             1..4,
-        ).prop_flat_map(|dims| {
+        )
+            .prop_flat_map(|dims| {
             let n = dims.iter().len();
             let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
             let items: usize = shape.iter().product();
             (
                 Just(dims),
                 ::proptest::collection::vec(-100i32..100, items..items + 1),
-                (0..(1<<n), 0..(1<<n)),
+                (0..(1 << n), 0..(1 << n), Just(0), Just(0), 0..(1 << n)),
             )
         })
             .prop_map(|(dims, input, masks)| {
@@ -272,9 +298,9 @@ pub mod proptests {
                             .collect(),
                     ).into(),
                     Array::from_vec(
-                        dims.iter()
-                            .map(|d| {
-                                if d.2 == d.1 {
+                        dims.iter().enumerate()
+                            .map(|(ix,d)| {
+                                if d.2 == d.1 || masks.4 & (1<<ix) != 0 {
                                     1
                                 } else {
                                     d.3 as i32 * (d.2 as i32 - d.1 as i32).signum()
@@ -282,7 +308,7 @@ pub mod proptests {
                             })
                             .collect(),
                     ).into(),
-                    masks
+                    masks,
                 )
             })
             .boxed()
@@ -301,6 +327,7 @@ pub mod proptests {
                       .attr("Index", DT_INT32)
                       .attr("begin_mask", masks.0 as i64)
                       .attr("end_mask", masks.1 as i64)
+                      .attr("shrink_axis_mask", masks.4 as i64)
                       .input("input").input("begin")
                       .input("end").input("stride")
                       .op("StridedSlice")
@@ -319,17 +346,29 @@ pub mod proptests {
             .node(placeholder_i32("begin"))
             .node(placeholder_i32("end"))
             .node(placeholder_i32("stride"))
-            .node(tfpb::node().name("op")
-                  .attr("T", DT_INT32)
-                  .attr("Index", DT_INT32)
-                  .attr("begin_mask", 1)
-                  .attr("end_mask", 0)
-                  .input("input").input("begin")
-                  .input("end").input("stride")
-                  .op("StridedSlice")
-            ).write_to_bytes().unwrap();
+            .node(
+                tfpb::node()
+                    .name("op")
+                    .attr("T", DT_INT32)
+                    .attr("Index", DT_INT32)
+                    .attr("begin_mask", 1)
+                    .attr("end_mask", 1)
+                    .attr("shrink_axis_mask", 1)
+                    .input("input")
+                    .input("begin")
+                    .input("end")
+                    .input("stride")
+                    .op("StridedSlice"),
+            )
+            .write_to_bytes()
+            .unwrap();
 
-        let inputs = vec!(("input", arr1(&[1,2,3,4]).into()),("begin", arr1(&[ 1 ]).into()), ("end", arr1(&[ 3 ]).into()), ("stride", arr1(&[ 1 ]).into()));
+        let inputs = vec![
+            ("input", arr1(&[1, 2, 3, 4]).into()),
+            ("begin", arr1(&[2]).into()),
+            ("end", arr1(&[-2]).into()),
+            ("stride", arr1(&[1]).into()),
+        ];
         compare(&graph, inputs, "op").unwrap();
     }
 }

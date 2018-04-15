@@ -122,10 +122,19 @@ pub mod proptests {
             .attr("dtype", DataType::DT_INT32)
     }
 
-    pub fn compare(graph:&[u8], inputs: Vec<(&str, ::ops::Matrix)>, output:&str) -> Result<(), ::proptest::test_runner::TestCaseError> {
+    pub fn compare(
+        graph: &[u8],
+        inputs: Vec<(&str, ::ops::Matrix)>,
+        output: &str,
+    ) -> Result<(), ::proptest::test_runner::TestCaseError> {
         let expected = ::tf::for_slice(&graph)?.run(inputs.clone(), output)?;
         let found = ::Model::for_reader(&*graph)?.run_with_names(inputs, output)?;
-        prop_assert!(expected[0].close_enough(&found[0]), "expected: {:?} found: {:?}", expected, found);
+        prop_assert!(
+            expected[0].close_enough(&found[0]),
+            "expected: {:?} found: {:?}",
+            expected,
+            found
+        );
         Ok(())
     }
 
