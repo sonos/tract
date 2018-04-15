@@ -130,7 +130,7 @@ pub mod proptests {
         let expected = ::tf::for_slice(&graph)?.run(inputs.clone(), output)?;
         let found = ::Model::for_reader(&*graph)?.run_with_names(inputs, output)?;
         prop_assert!(
-            expected[0].close_enough(&found[0]),
+            expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0]),
             "expected: {:?} found: {:?}",
             expected,
             found

@@ -40,6 +40,7 @@ impl Op for StridedSlice {
             begin: i32,
             stride: i32,
             len: usize,
+            shrink: bool,
         };
         let bounds: Vec<Dim> = (0..input.shape().len())
             .map(|d| {
@@ -58,6 +59,7 @@ impl Op for StridedSlice {
                         begin: b,
                         stride: 1,
                         len: 1,
+                        shrink: true,
                     };
                 }
 
@@ -86,11 +88,13 @@ impl Op for StridedSlice {
                     begin: b,
                     stride: s,
                     len,
+                    shrink: false,
                 }
             })
             .collect();
         //        println!("input shape: {:?}, bounds: {:?}", input.shape(), bounds);
         let shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
+        let reshape: Vec<usize> = bounds.iter().filter(|d| !d.shrink).map(|d| d.len).collect();
         //        println!("output shape: {:?}", shape);
         let output = Array::from_shape_fn(shape, |coords| {
             let coord: Vec<_> = coords
@@ -101,7 +105,11 @@ impl Op for StridedSlice {
                 .collect();
             input[&*coord]
         });
-        println!("output: {:?}", output);
+        let mut output = output.into_shape(reshape)?;
+        if output.shape().len() == 0 {
+            output = output.into_shape((1))?.into_dyn();
+        }
+        // println!("output: {:?}", output);
         Ok(vec![Matrix::I32(output.into()).into()])
     }
 }
@@ -245,12 +253,10 @@ mod tests {
     #[test]
     fn strided_slice_shrink_1() {
         let mut op = StridedSlice::default();
-        op.begin_mask = 1;
-        op.end_mask = 1;
         op.shrink_axis_mask = 1;
         assert_eq!(
-            run(op, arr1(&[0, 1]), arr1(&[-1]), arr1(&[-2]), arr1(&[1])),
-            Matrix::from(arr1(&[1]))
+            run(op, arr2(&[[0]]), arr1(&[0, 0]), arr1(&[0, 0]), arr1(&[1,1])),
+            Matrix::I32(arr1(&[]).into_dyn())
         )
     }
 }
@@ -269,38 +275,36 @@ pub mod proptests {
     fn strided_slice_strat(
 ) -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
         ::proptest::collection::vec(
-            (1..10).prop_flat_map(|n| {
+            (1..5).prop_flat_map(|n| { // each dim max
                 (
-                    Just(n),                            // input size
-                    0..n,                               // begin
-                    0..n,                               // end
-                    if n <= 2 { 1..2 } else { (1..n) }, // stride, abs
-                    any::<bool>(),                      // make begin negative
-                    any::<bool>(),                      // make end negative
+                    Just(n),       // input size
+                    0..n,          // begin
+                    0..n,          // end
+                    1..2.max(n),   // stride, abs
+                    any::<bool>(), // make begin negative
+                    any::<bool>(), // make end negative
                 )
             }),
-            1..4,
+            1..4, // rank
         ).prop_flat_map(|dims| {
-            let n = dims.iter().len();
-            let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
-            let items: usize = shape.iter().product();
+            let rank = dims.iter().len();
             (
                 Just(dims),
-                ::proptest::collection::vec(-100i32..100, items..items + 1),
-                (0..(1 << n), 0..(1 << n), Just(0), Just(0), 0..(1 << n)),
+                (0..(1 << rank), 0..(1 << rank), Just(0), Just(0), 0..(1<<rank)),
             )
         })
-            .prop_map(|(dims, input, masks)| {
+            .prop_map(|(dims, masks)| {
                 let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
+                let size:i32 = shape.iter().map(|d| *d as i32).product();
                 (
-                    Array::from_vec(input).into_shape(&*shape).unwrap().into(),
+                    Matrix::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
                     Array::from_vec(
                         dims.iter()
                             .map(|d| {
                                 if d.4 {
-                                    d.1
-                                } else {
                                     d.1 - d.0
+                                } else {
+                                    d.1
                                 }
                             })
                             .collect(),
@@ -309,9 +313,9 @@ pub mod proptests {
                         dims.iter()
                             .map(|d| {
                                 if d.5 {
-                                    d.2
-                                } else {
                                     d.2 - d.0
+                                } else {
+                                    d.2
                                 }
                             })
                             .collect(),
@@ -337,6 +341,7 @@ pub mod proptests {
     proptest! {
         #[test]
         fn strided_slice((ref i, ref b, ref e, ref s, ref masks) in strided_slice_strat()) {
+            // println!("trying {:?}", (i,b,e,s,masks));
             let graph = tfpb::graph()
                 .node(placeholder_i32("input"))
                 .node(placeholder_i32("begin"))
