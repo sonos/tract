@@ -122,6 +122,14 @@ impl<'a> From<&'a str> for AttrValue {
     }
 }
 
+impl From<i64> for AttrValue {
+    fn from(t: i64) -> AttrValue {
+        let mut value = attr_value::AttrValue::new();
+        value.set_i(t);
+        value
+    }
+}
+
 impl From<Vec<i64>> for AttrValue {
     fn from(t: Vec<i64>) -> AttrValue {
         let mut list = attr_value::AttrValue_ListValue::new();
