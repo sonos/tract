@@ -72,27 +72,17 @@ pub fn compare_all<P: AsRef<path::Path>>(
             println!(" * skipping Placeholder `{}'", node.name);
             continue;
         }
-        let (rtf, rtfd) = run_both(&mut tf, &mut state, inputs.clone(), &*node.name)?;
+        let (rtf, rtfd) = match run_both(&mut tf, &mut state, inputs.clone(), &*node.name) {
+            Ok((a,b)) => (a,b),
+            Err(e) => {
+                dump_node(node, &model, &state)?;
+                Err(e)?
+            }
+        };
         match compare_outputs(&rtf, &rtfd) {
             Err(Error(ErrorKind::TFString, _)) => continue,
             Err(e) => {
-                println!("name: {}", node.name.red());
-                println!("op: {}", node.op_name);
-                let graph = tfdeploy::Model::graphdef_for_path(&model)?;
-                let gnode = graph
-                    .get_node()
-                    .iter()
-                    .find(|n| n.get_name() == node.name)
-                    .unwrap();
-                for attr in gnode.get_attr() {
-                    println!("- attr:{} {:?}", attr.0, attr.1);
-                }
-                println!("");
-                for (ix, &(n, i)) in node.inputs.iter().enumerate() {
-                    let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
-                    println!("{}", format!("INPUT {}", ix).bold());
-                    println!("  {}", data.partial_dump(true).unwrap());
-                }
+                dump_node(node, &model, &state)?;
                 for (ix, pair) in rtf.iter().zip_longest(rtfd.iter()).enumerate() {
                     match pair {
                         ::itertools::EitherOrBoth::Both(mtf, mtfd) => {
@@ -123,6 +113,28 @@ pub fn compare_all<P: AsRef<path::Path>>(
                 state.set_outputs(node.id, rtf)?
             }
         }
+    }
+    Ok(())
+}
+
+fn dump_node<P: AsRef<path::Path>>(node: &tfdeploy::Node, model:P, state: &::tfdeploy::ModelState) -> Result<()> {
+    use colored::Colorize;
+    println!("name: {}", node.name.yellow());
+    println!("op: {}", node.op_name);
+    let graph = tfdeploy::Model::graphdef_for_path(model)?;
+    let gnode = graph
+        .get_node()
+        .iter()
+        .find(|n| n.get_name() == node.name)
+        .unwrap();
+    for attr in gnode.get_attr() {
+        println!("- attr:{} {:?}", attr.0, attr.1);
+    }
+    println!("");
+    for (ix, &(n, i)) in node.inputs.iter().enumerate() {
+        let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
+        println!("{}", format!("INPUT {}", ix).bold());
+        println!("  {}", data.partial_dump(true).unwrap());
     }
     Ok(())
 }

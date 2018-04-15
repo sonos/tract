@@ -1,10 +1,21 @@
 //! `Matrix` is the equivalent of Tensorflow Tensor.
 
+use std::fmt::Debug;
 use ndarray::prelude::*;
+pub trait Datum: Copy+Clone+Send+Sync+Debug+'static
+    + ::std::ops::AddAssign + ::std::ops::MulAssign
+    + ::std::ops::DivAssign + ::std::ops::SubAssign 
+    + ::std::ops::RemAssign {
+    fn name() -> &'static str;
+    fn mat_into_array(m: Matrix) -> ::Result<ArrayD<Self>>;
+    fn mat_to_view(m: &Matrix) -> ::Result<ArrayViewD<Self>>;
+    fn array_into_mat(m: ArrayD<Self>) -> Matrix;
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Matrix {
     F32(ArrayD<f32>),
+    F64(ArrayD<f64>),
     I32(ArrayD<i32>),
     I8(ArrayD<i8>),
     U8(ArrayD<u8>),
@@ -130,19 +141,6 @@ impl Matrix {
             .all(|(&a, &b)| (b - a).abs() <= dev / 10.0)
     }
 }
-/*
-impl ::std::fmt::Debug for Matrix {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::result::Result<(), ::std::fmt::Error> {
-        write!(
-            f,
-            "{}",
-            self.partial_dump(true).map_err(
-                |_| ::std::fmt::Error::default(),
-            )?
-        )
-    }
-}
-*/
 
 pub trait CastFrom<T>
 where
@@ -203,9 +201,28 @@ macro_rules! matrix {
                 }
             }
         }
+
+        impl Datum for $t {
+            fn name() -> &'static str {
+                stringify!($t)
+            }
+            fn mat_into_array(m: Matrix) -> ::Result<ArrayD<Self>> {
+                m.$take().ok_or("unmatched data type".into())
+            }
+
+            fn mat_to_view(m: &Matrix) -> ::Result<ArrayViewD<Self>> {
+                m.$as().map(|m| m.view()).ok_or("unmatched data type".into())
+            }
+
+            fn array_into_mat(m: ArrayD<Self>) -> Matrix {
+                Matrix::from(m)
+            }
+
+        }
     }
 }
 
+matrix!(f64, F64, as_f64s, take_f64s, f64s);
 matrix!(f32, F32, as_f32s, take_f32s, f32s);
 matrix!(i32, I32, as_i32s, take_i32s, i32s);
 matrix!(u8, U8, as_u8s, take_u8s, u8s);

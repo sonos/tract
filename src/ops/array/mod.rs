@@ -2,14 +2,21 @@ use ndarray::prelude::*;
 
 mod strided_slice;
 
+use std::marker::PhantomData;
+
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
+use tfpb::types::DataType;
+use matrix::Datum;
+
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", ConcatV2::build);
     reg.insert("ExpandDims", ExpandDims::build);
     reg.insert("Identity", Identity::build);
+    reg.insert("Pack", stack);
     reg.insert("Placeholder", Placeholder::build);
+    reg.insert("Shape", Shape::build);
     reg.insert("Reshape", Reshape::build);
     reg.insert("Squeeze", Squeeze::build);
     reg.insert("StridedSlice", strided_slice::build);
@@ -142,6 +149,52 @@ impl Op for Reshape {
 }
 
 #[derive(Debug)]
+pub struct Shape;
+
+impl Shape {
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+        Ok(Box::new(Shape))
+    }
+}
+
+impl Op for Shape {
+    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
+        let shape:Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
+        Ok(vec![Matrix::from(Array1::from_vec(shape)).into()])
+    }
+}
+
+#[derive(Debug,Default,new)]
+pub struct Stack<T:Datum> {
+    axis: usize,
+    _phantom: PhantomData<T>
+}
+
+pub fn stack(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    let dtype:DataType = pb.get_attr().get("T")
+        .ok_or("Stack expect T attribute")?
+        .get_field_type();
+    let axis = pb.get_attr()
+        .get("axis")
+        .ok_or("Stack expect axis attribute")?
+        .get_i() as usize;
+    Ok(boxed_new!(Stack(dtype)(axis)))
+}
+
+impl<T> Op for Stack<T>
+where T: Datum {
+    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let views = inputs.iter().map(|m|
+            T::mat_to_view(&*m)
+        ).collect::<Result<Vec<_>>>()?;
+        let array = ::ndarray::stack(::ndarray::Axis(self.axis), &*views)?;
+        Ok(vec![T::array_into_mat(array).into()])
+    }
+
+}
+
+#[derive(Debug)]
 pub struct Squeeze {
     dims: Vec<isize>,
 }
@@ -176,3 +229,4 @@ impl Op for Squeeze {
         Ok(vec![Matrix::from(data.clone().into_shape(shape)?).into()])
     }
 }
+

@@ -3,31 +3,36 @@ use super::{Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Abs", Abs::build);
-    reg.insert("Add", Add::build);
-    reg.insert("BiasAdd", Add::build);
-    reg.insert("Div", Div::build);
-    reg.insert("Mul", Mul::build);
+    reg.insert("Add", add);
+    reg.insert("BiasAdd", add);
+    reg.insert("Div", div);
+    reg.insert("Mul", mul);
+    reg.insert("FloorMod", rem);
     reg.insert("Rsqrt", Rsqrt::build);
-    reg.insert("Sub", Sub::build);
+    reg.insert("Sub", sub);
 }
 
 element_map!(Rsqrt, |x: f32| 1.0 / (x.sqrt()));
 element_map!(Abs, |x: f32| x.abs());
 
-element_bin!(Add, |mut a, b| {
+element_bin!(Add, add, |mut a, b| {
     a += &b;
     a
 });
-element_bin!(Div, |mut a, b| {
+element_bin!(Div, div, |mut a, b| {
     a /= &b;
     a
 });
-element_bin!(Mul, |mut a, b| {
+element_bin!(Mul, mul, |mut a, b| {
     a *= &b;
     a
 });
-element_bin!(Sub, |mut a, b| {
+element_bin!(Sub, sub, |mut a, b| {
     a -= &b;
+    a
+});
+element_bin!(Rem, rem, |mut a, b| {
+    a %= &b;
     a
 });
 
