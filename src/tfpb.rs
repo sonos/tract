@@ -130,6 +130,14 @@ impl From<i64> for AttrValue {
     }
 }
 
+impl From<f32> for AttrValue {
+    fn from(t: f32) -> AttrValue {
+        let mut value = attr_value::AttrValue::new();
+        value.set_f(t);
+        value
+    }
+}
+
 impl From<Vec<i64>> for AttrValue {
     fn from(t: Vec<i64>) -> AttrValue {
         let mut list = attr_value::AttrValue_ListValue::new();

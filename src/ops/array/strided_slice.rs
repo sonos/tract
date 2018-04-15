@@ -255,7 +255,13 @@ mod tests {
         let mut op = StridedSlice::default();
         op.shrink_axis_mask = 1;
         assert_eq!(
-            run(op, arr2(&[[0]]), arr1(&[0, 0]), arr1(&[0, 0]), arr1(&[1,1])),
+            run(
+                op,
+                arr2(&[[0]]),
+                arr1(&[0, 0]),
+                arr1(&[0, 0]),
+                arr1(&[1, 1])
+            ),
             Matrix::I32(arr1(&[]).into_dyn())
         )
     }
@@ -275,7 +281,8 @@ pub mod proptests {
     fn strided_slice_strat(
 ) -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
         ::proptest::collection::vec(
-            (1..5).prop_flat_map(|n| { // each dim max
+            (1..5).prop_flat_map(|n| {
+                // each dim max
                 (
                     Just(n),       // input size
                     0..n,          // begin
@@ -290,12 +297,18 @@ pub mod proptests {
             let rank = dims.iter().len();
             (
                 Just(dims),
-                (0..(1 << rank), 0..(1 << rank), Just(0), Just(0), 0..(1<<rank)),
+                (
+                    0..(1 << rank),
+                    0..(1 << rank),
+                    Just(0),
+                    Just(0),
+                    0..(1 << rank),
+                ),
             )
         })
             .prop_map(|(dims, masks)| {
                 let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
-                let size:i32 = shape.iter().map(|d| *d as i32).product();
+                let size: i32 = shape.iter().map(|d| *d as i32).product();
                 (
                     Matrix::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
                     Array::from_vec(

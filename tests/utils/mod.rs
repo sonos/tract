@@ -73,7 +73,7 @@ pub fn compare_all<P: AsRef<path::Path>>(
             continue;
         }
         let (rtf, rtfd) = match run_both(&mut tf, &mut state, inputs.clone(), &*node.name) {
-            Ok((a,b)) => (a,b),
+            Ok((a, b)) => (a, b),
             Err(e) => {
                 dump_node(node, &model, &state)?;
                 Err(e)?
@@ -117,7 +117,11 @@ pub fn compare_all<P: AsRef<path::Path>>(
     Ok(())
 }
 
-fn dump_node<P: AsRef<path::Path>>(node: &tfdeploy::Node, model:P, state: &::tfdeploy::ModelState) -> Result<()> {
+fn dump_node<P: AsRef<path::Path>>(
+    node: &tfdeploy::Node,
+    model: P,
+    state: &::tfdeploy::ModelState,
+) -> Result<()> {
     use colored::Colorize;
     println!("name: {}", node.name.yellow());
     println!("op: {}", node.op_name);

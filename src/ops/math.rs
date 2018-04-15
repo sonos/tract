@@ -1,4 +1,4 @@
-use {Matrix, Result};
+use Result;
 use super::{Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {

@@ -2,9 +2,18 @@
 
 use std::fmt::Debug;
 use ndarray::prelude::*;
-pub trait Datum: Copy+Clone+Send+Sync+Debug+'static
-    + ::std::ops::AddAssign + ::std::ops::MulAssign
-    + ::std::ops::DivAssign + ::std::ops::SubAssign 
+use tfpb::types::DataType;
+pub trait Datum
+    : Copy
+    + Clone
+    + Send
+    + Sync
+    + Debug
+    + 'static
+    + ::std::ops::AddAssign
+    + ::std::ops::MulAssign
+    + ::std::ops::DivAssign
+    + ::std::ops::SubAssign
     + ::std::ops::RemAssign {
     fn name() -> &'static str;
     fn mat_into_array(m: Matrix) -> ::Result<ArrayD<Self>>;
@@ -77,6 +86,25 @@ impl Matrix {
         Ok(Array1::from_iter(value.iter().cloned())
             .into_shape(dims)?
             .into_dyn())
+    }
+
+    pub fn to_pb(&self) -> ::Result<::tfpb::tensor::TensorProto> {
+        let mut shape = ::tfpb::tensor_shape::TensorShapeProto::new();
+        let dims = self.shape().iter().map(|d| {
+            let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
+            dim.size = *d as _;
+            dim } ).collect();
+        shape.set_dim(::protobuf::repeated::RepeatedField::from_vec(dims));
+        let mut tensor = ::tfpb::tensor::TensorProto::new();
+        tensor.set_tensor_shape(shape);
+        match self {
+            &Matrix::F32(ref it) => {
+                tensor.set_dtype(DataType::DT_FLOAT);
+                tensor.set_float_val(it.iter().cloned().collect());
+            },
+            _ => unimplemented!()
+        }
+        Ok(tensor)
     }
 
     pub fn shape(&self) -> &[usize] {
