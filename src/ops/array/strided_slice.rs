@@ -45,33 +45,53 @@ impl Op for StridedSlice {
             .map(|d| {
                 let max = input.shape()[d] as i32;
                 // deal with negative indexing
-                let b = if begin[d] >= 0 { begin[d] } else { max + begin[d] };
+                let b = if begin[d] >= 0 {
+                    begin[d]
+                } else {
+                    max + begin[d]
+                };
                 let e = if end[d] >= 0 { end[d] } else { max + end[d] };
 
                 // deal with shrinking
                 if self.shrink_axis_mask & 1 << d != 0 {
-                    return Dim { begin: b, stride: 1, len: 1}
+                    return Dim {
+                        begin: b,
+                        stride: 1,
+                        len: 1,
+                    };
                 }
 
                 // deal with begin and end masks
                 let s = strides[d];
                 let b = if (self.begin_mask >> d) & 1 == 1 {
-                    if s.signum() > 0 { 0 } else { max - 1 }
+                    if s.signum() > 0 {
+                        0
+                    } else {
+                        max - 1
+                    }
                 } else {
                     b
                 };
                 let e = if (self.end_mask >> d) & 1 == 1 {
-                    if s.signum() < 0 { -1 } else { max }
+                    if s.signum() < 0 {
+                        -1
+                    } else {
+                        max
+                    }
                 } else {
                     e
                 };
                 let len = (((s.abs() as i32 - 1) + (e - b).abs()) / s.abs()) as usize;
-                Dim { begin:b, stride:s, len }
+                Dim {
+                    begin: b,
+                    stride: s,
+                    len,
+                }
             })
             .collect();
-//        println!("input shape: {:?}, bounds: {:?}", input.shape(), bounds);
+        //        println!("input shape: {:?}, bounds: {:?}", input.shape(), bounds);
         let shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
-//        println!("output shape: {:?}", shape);
+        //        println!("output shape: {:?}", shape);
         let output = Array::from_shape_fn(shape, |coords| {
             let coord: Vec<_> = coords
                 .slice()
@@ -251,17 +271,16 @@ pub mod proptests {
         ::proptest::collection::vec(
             (1..10).prop_flat_map(|n| {
                 (
-                    Just(n),    // input size
-                    0..n,       // begin
-                    0..n,       // end
+                    Just(n),                            // input size
+                    0..n,                               // begin
+                    0..n,                               // end
                     if n <= 2 { 1..2 } else { (1..n) }, // stride, abs
-                    any::<bool>(),  // make begin negative
-                    any::<bool>(),  // make end negative
+                    any::<bool>(),                      // make begin negative
+                    any::<bool>(),                      // make end negative
                 )
             }),
             1..4,
-        )
-            .prop_flat_map(|dims| {
+        ).prop_flat_map(|dims| {
             let n = dims.iter().len();
             let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
             let items: usize = shape.iter().product();
@@ -298,9 +317,10 @@ pub mod proptests {
                             .collect(),
                     ).into(),
                     Array::from_vec(
-                        dims.iter().enumerate()
-                            .map(|(ix,d)| {
-                                if d.2 == d.1 || masks.4 & (1<<ix) != 0 {
+                        dims.iter()
+                            .enumerate()
+                            .map(|(ix, d)| {
+                                if d.2 == d.1 || masks.4 & (1 << ix) != 0 {
                                     1
                                 } else {
                                     d.3 as i32 * (d.2 as i32 - d.1 as i32).signum()
