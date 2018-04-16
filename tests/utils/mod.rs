@@ -66,8 +66,9 @@ pub fn compare_all<P: AsRef<path::Path>>(
     let tfd = tfdeploy::for_path(&model)?;
     let mut state = tfd.state();
     let output_node = tfd.get_node(output_name)?;
-    for node in output_node.eval_order(&tfd)? {
-        let node = &tfd.nodes()[node];
+    let mut errors = 0;
+    for ix in output_node.eval_order(&tfd)? {
+        let node = &tfd.nodes()[ix];
         if node.op_name == "Placeholder" {
             println!(" * skipping Placeholder `{}'", node.name);
             continue;
@@ -75,56 +76,51 @@ pub fn compare_all<P: AsRef<path::Path>>(
         let (rtf, rtfd) = match run_both(&mut tf, &mut state, inputs.clone(), &*node.name) {
             Ok((a, b)) => (a, b),
             Err(e) => {
-                dump_node(node, &model, &state)?;
+                println!("{:3} {}", ix, node.name.red());
+                dump_node(node, &model, &state, &[])?;
                 Err(e)?
             }
         };
         match compare_outputs(&rtf, &rtfd) {
             Err(Error(ErrorKind::TFString, _)) => continue,
             Err(e) => {
-                dump_node(node, &model, &state)?;
-                for (ix, pair) in rtf.iter().zip_longest(rtfd.iter()).enumerate() {
-                    match pair {
-                        ::itertools::EitherOrBoth::Both(mtf, mtfd) => {
-                            println!("{}", format!("OUTPUT {}", ix).bold());
-                            let tfd = if mtf.shape() != mtfd.shape() {
-                                "TFD".red()
-                            } else if mtf.close_enough(mtfd) {
-                                "TFD".green()
-                            } else {
-                                "TFD".yellow()
-                            };
-                            println!("  TF {}", mtf.partial_dump(true).unwrap());
-                            println!("  {} {}", tfd, mtfd.partial_dump(true).unwrap());
-                        }
-                        ::itertools::EitherOrBoth::Left(mtf) => {
-                            println!("  TF {}", mtf.partial_dump(true).unwrap());
-                            println!("{}", "  TFD MISSING".red());
-                        }
-                        ::itertools::EitherOrBoth::Right(mtfd) => {
-                            println!("  TF UNEXPECTED {}", mtfd.partial_dump(true).unwrap());
+                println!("{:3} {}", ix, node.name.yellow());
+                dump_node(node, &model, &state, &rtf)?;
+                for (ix, data) in rtfd.iter().enumerate() {
+                    if ix >= rtf.len() {
+                        println!("{} {}", format!("   TFD {}", ix).red().bold(), data.partial_dump(true).unwrap())
+                    } else {
+                        if rtf[ix].shape() != data.shape() {
+                            println!("{} {}", format!("   TFD {}", ix).red().bold(), data.partial_dump(true).unwrap())
+                        } else if !rtf[ix].close_enough(data) {
+                            println!("{} {}", format!("   TFD {}", ix).yellow(), data.partial_dump(true).unwrap())
+                        } else {
+                            println!("{} {}", format!("   TFD {}", ix).green().yellow(), data.partial_dump(true).unwrap())
                         }
                     }
                 }
-                Err(e)?
+                panic!("KABOUM");
+                errors += 1
             }
             Ok(_) => {
-                println!(" * {} ({})", node.name.green(), node.op_name);
-                state.set_outputs(node.id, rtf)?
+                println!("{:3} {}", ix, node.name.green());
+                dump_node(node, &model, &state, &*rtf);
             }
         }
+        state.set_outputs(node.id, rtf)?;
+        println!("");
     }
-    Ok(())
+    if errors != 0 { Err(format!("{} errors", errors).into()) } else { Ok(()) }
 }
 
 fn dump_node<P: AsRef<path::Path>>(
     node: &tfdeploy::Node,
     model: P,
     state: &::tfdeploy::ModelState,
+    output: &[Matrix],
 ) -> Result<()> {
     use colored::Colorize;
-    println!("name: {}", node.name.yellow());
-    println!("op: {}", node.op_name);
+    println!("  {}  ", node.op_name.blue().bold());
     let graph = tfdeploy::Model::graphdef_for_path(model)?;
     let gnode = graph
         .get_node()
@@ -132,13 +128,18 @@ fn dump_node<P: AsRef<path::Path>>(
         .find(|n| n.get_name() == node.name)
         .unwrap();
     for attr in gnode.get_attr() {
-        println!("- attr:{} {:?}", attr.0, attr.1);
+        if attr.1.has_tensor() {
+            println!("    {} -> {:?}", attr.0.bold(), attr.1.get_shape())
+        } else {
+            println!("    {} -> {:?}", attr.0.bold(), attr.1)
+        }
     }
-    println!("");
     for (ix, &(n, i)) in node.inputs.iter().enumerate() {
         let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
-        println!("{}", format!("INPUT {}", ix).bold());
-        println!("  {}", data.partial_dump(true).unwrap());
+        println!("{} {}/{} {}", format!(" INPUT {}", ix).bold(), n, i.unwrap_or(0), data.partial_dump(true).unwrap());
+    }
+    for (ix, data) in output.iter().enumerate() {
+        println!("{} {}", format!("OUTPUT {}", ix).bold(), data.partial_dump(true).unwrap());
     }
     Ok(())
 }

@@ -105,11 +105,7 @@ impl Op for StridedSlice {
                 .collect();
             input[&*coord]
         });
-        let mut output = output.into_shape(reshape)?;
-        if output.shape().len() == 0 {
-            output = output.into_shape(1)?.into_dyn();
-        }
-        // println!("output: {:?}", output);
+        let output = output.into_shape(reshape)?;
         Ok(vec![Matrix::I32(output.into()).into()])
     }
 }
@@ -374,39 +370,5 @@ pub mod proptests {
             let inputs = vec!(("input", i.clone()),("begin", b.clone()), ("end", e.clone()), ("stride", s.clone()));
             compare(&graph, inputs, "op")?
         }
-    }
-
-    #[test]
-    fn kali() {
-        use ndarray::*;
-        let graph = tfpb::graph()
-            .node(placeholder_i32("input"))
-            .node(placeholder_i32("begin"))
-            .node(placeholder_i32("end"))
-            .node(placeholder_i32("stride"))
-            .node(
-                tfpb::node()
-                    .name("op")
-                    .attr("T", DT_INT32)
-                    .attr("Index", DT_INT32)
-                    .attr("begin_mask", 1)
-                    .attr("end_mask", 1)
-                    .attr("shrink_axis_mask", 1)
-                    .input("input")
-                    .input("begin")
-                    .input("end")
-                    .input("stride")
-                    .op("StridedSlice"),
-            )
-            .write_to_bytes()
-            .unwrap();
-
-        let inputs = vec![
-            ("input", arr1(&[1, 2, 3, 4]).into()),
-            ("begin", arr1(&[2]).into()),
-            ("end", arr1(&[-2]).into()),
-            ("stride", arr1(&[1]).into()),
-        ];
-        compare(&graph, inputs, "op").unwrap();
     }
 }

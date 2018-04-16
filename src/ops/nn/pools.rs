@@ -80,13 +80,11 @@ pub struct AvgPooler;
 impl Pooler for AvgPooler {
     type State = (f32, usize);
     fn state() -> (f32, usize) {
-        println!("new state");
         (0.0, 0)
     }
     fn ingest(state: &mut Self::State, v: f32) {
         state.0 += v;
         state.1 += 1;
-        println!("ingested: {} -> {:?}", v, state);
     }
     fn digest(state: &mut Self::State) -> f32 {
         state.0 / state.1 as f32

@@ -34,53 +34,33 @@ pub enum Matrix {
 impl Matrix {
     pub fn from_pb(t: &::tfpb::tensor::TensorProto) -> ::Result<Matrix> {
         use tfpb::types::DataType::*;
-        use ndarray::*;
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
-        let dims = shape.get_dim();
-        let dims = if dims.len() == 0 {
-            vec![1]
-        } else {
-            dims.iter().map(|d| d.size as usize).collect()
-        };
+        let dims = shape.get_dim().iter().map(|d| d.size as usize).collect::<Vec<_>>();
+        let rank = dims.len();
         let content = t.get_tensor_content();
-        if content.len() == 0 {
+        let mat:Matrix = if content.len() != 0 {
             match dtype {
-                DT_INT32 => Ok(Array1::from_iter(t.get_int_val().iter().cloned())
-                    .into_dyn()
-                    .into()),
-                DT_FLOAT => Ok(Array1::from_iter(t.get_float_val().iter().cloned())
-                    .into_dyn()
-                    .into()),
-                DT_STRING => {
-                    if t.get_string_val().len() != 1 {
-                        Err(format!("Multiple string tensor not supported"))?
-                    }
-                    Ok(Matrix::U8(
-                        Array1::from_iter(t.get_string_val()[0].iter().cloned()).into_dyn(),
-                    ))
-                }
-                _ => Err(format!("Missing simple tensor parser: type:{:?}", dtype))?,
+                DT_FLOAT => Self::from_content::<f32,u8>(dims, content)?.into(),
+                DT_INT32 => Self::from_content::<i32,u8>(dims, content)?.into(),
+                _ => unimplemented!()
             }
         } else {
             match dtype {
-                DT_FLOAT => Ok(Self::from_content::<f32>(dims, content)?.into()),
-                DT_INT32 => Ok(Self::from_content::<i32>(dims, content)?.into()),
-                _ => Err(format!(
-                    "Missing tensor parser: dims:{:?} type:{:?}, content.len:{}",
-                    dims,
-                    dtype,
-                    content.len()
-                ))?,
+                DT_INT32 => Self::from_content::<i32,i32>(dims, t.get_int_val())?.into(),
+                DT_FLOAT => Self::from_content::<f32,f32>(dims, t.get_float_val())?.into(),
+                _ => unimplemented!()
             }
-        }
+        };
+        assert_eq!(rank, mat.shape().len());
+        Ok(mat)
     }
 
-    pub fn from_content<T: Copy>(dims: Vec<usize>, content: &[u8]) -> ::Result<ArrayD<T>> {
+    pub fn from_content<T: Copy, V:Copy>(dims: Vec<usize>, content: &[V]) -> ::Result<ArrayD<T>> {
         let value: &[T] = unsafe {
             ::std::slice::from_raw_parts(
                 content.as_ptr() as _,
-                content.len() / ::std::mem::size_of::<T>(),
+                content.len() * ::std::mem::size_of::<V>() / ::std::mem::size_of::<T>(),
             )
         };
         Ok(Array1::from_iter(value.iter().cloned())
@@ -127,28 +107,16 @@ impl Matrix {
     }
 
     pub fn partial_dump(&self, single_line: bool) -> ::Result<String> {
-        use std::io::Write;
-        use std::io::BufRead;
-        let mut w = Vec::new();
-        match self {
-            &Matrix::I32(ref a) => writeln!(&mut w, "I32 {:?}", a),
-            &Matrix::F32(ref a) => writeln!(&mut w, "F32 {:?}", a),
-            &Matrix::U8(ref a) => writeln!(&mut w, "U8 {:?}", a),
-            _ => unimplemented!(),
-        }?;
-        let mut lines: Vec<String> = ::std::io::BufReader::new(&*w)
-            .lines()
-            .collect::<::std::io::Result<Vec<_>>>()?;
-        if lines.len() > 10 {
-            lines[2] = (if single_line { "..." } else { " : : :" }).into();
-            while lines.len() > 10 {
-                lines.remove(3);
-            }
+        if self.shape().iter().product::<usize>() > 25 {
+            Ok(format!("{:?} {:?}", self.datatype(), self.shape()))
+        } else {
+            Ok(match self {
+                &Matrix::I32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
+                &Matrix::F32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
+                &Matrix::U8(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
+                _ => unimplemented!(),
+            })
         }
-        Ok(lines
-            .iter()
-            .map(|s| s.trim().to_string() + if single_line { "" } else { "\n" })
-            .collect())
     }
 
     fn to_f32(&self) -> Matrix {
@@ -164,6 +132,7 @@ impl Matrix {
         let mb = other.to_f32().take_f32s().unwrap();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
+        ma.shape() == mb.shape() &&
         mb.iter()
             .zip(ma.iter())
             .all(|(&a, &b)| (b - a).abs() <= dev / 10.0)

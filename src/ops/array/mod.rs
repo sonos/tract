@@ -1,6 +1,6 @@
 use ndarray::prelude::*;
 
-mod stack;
+mod pack;
 mod strided_slice;
 
 use {Matrix, Result};
@@ -10,10 +10,10 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", ConcatV2::build);
     reg.insert("ExpandDims", ExpandDims::build);
     reg.insert("Identity", Identity::build);
-    reg.insert("Pack", stack::build);
+    reg.insert("Pack", pack::pack);
     reg.insert("Placeholder", Placeholder::build);
-    reg.insert("Shape", Shape::build);
     reg.insert("Reshape", Reshape::build);
+    reg.insert("Shape", Shape::build);
     reg.insert("Squeeze", Squeeze::build);
     reg.insert("StridedSlice", strided_slice::build);
 }
