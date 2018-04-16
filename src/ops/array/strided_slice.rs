@@ -237,6 +237,19 @@ mod tests {
     }
 
     #[test]
+    fn strided_slice_7() {
+        assert_eq!(
+            run(StridedSlice::default(),
+                arr2(&[[0, 6], [0, 0]]),
+                arr1(&[0]),
+                arr1(&[2]),
+                arr1(&[1])
+            ),
+            Matrix::from(arr2(&[[0, 6], [0, 0]]))
+        )
+    }
+
+    #[test]
     fn strided_slice_begin_mask_1() {
         let mut op = StridedSlice::default();
         op.begin_mask = 1;

@@ -341,11 +341,12 @@ impl<'a> ModelState<'a> {
         self.set_outputs(id, vec![value])
     }
 
-    fn compute_one(&mut self, node: usize) -> Result<()> {
+    pub fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.model.nodes[node];
         let mut inputs: Vec<Input> = vec![];
         for i in &node.inputs {
-            let prec = self.outputs[i.0].as_ref().ok_or("Unsatisfied node dep")?;
+            let prec_node = &self.model.nodes[i.0];
+            let prec = self.outputs[i.0].as_ref().ok_or(format!("Computing {}, precursor {} not done:", node.name, prec_node.name))?;
             inputs.push(prec[i.1.ok_or("no output found")?].clone().into())
         }
         let outputs = node.op.eval(inputs)?;
