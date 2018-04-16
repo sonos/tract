@@ -107,7 +107,7 @@ impl Op for StridedSlice {
         });
         let mut output = output.into_shape(reshape)?;
         if output.shape().len() == 0 {
-            output = output.into_shape((1))?.into_dyn();
+            output = output.into_shape(1)?.into_dyn();
         }
         // println!("output: {:?}", output);
         Ok(vec![Matrix::I32(output.into()).into()])
