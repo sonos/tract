@@ -89,15 +89,6 @@ pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
-        println!("Unimplemented op: {}", self.0);
-        println!(" * attrs:");
-        for (k, v) in self.1.get_attr() {
-            println!("    - {}: {:?}", k, v);
-        }
-        println!(" * inputs: {}", inputs.len());
-        for (ix, i) in inputs.iter().enumerate() {
-            print!(" #{}\n{}\n", ix, i.partial_dump(true)?);
-        }
         Err(format!("unimplemented operation: {}", self.0))?
     }
 }

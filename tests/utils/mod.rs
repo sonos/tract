@@ -63,8 +63,10 @@ pub fn compare_all<P: AsRef<path::Path>>(
         }
         let rtf = rtf?;
         dump_output(&rtf)?;
-        state.compute_one(ix)?;
-        {
+        if let Err(e) = state.compute_one(ix) {
+            println!("\n{} {:?}\n", "ERROR".red().bold(), e);
+            errors += 1
+        } else {
             let rtfd = state.outputs[ix].as_ref().unwrap();
             let views = rtfd.iter().map(|m| &**m).collect::<Vec<&Matrix>>();
             match compare_outputs(&rtf, &views) {
@@ -84,7 +86,6 @@ pub fn compare_all<P: AsRef<path::Path>>(
                         }
                     }
                     println!("\n{}", "MISMATCH".red().bold());
-                    panic!("KABOUM");
                     errors += 1
                 }
                 Ok(_) => {
