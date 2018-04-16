@@ -45,6 +45,16 @@ impl Op for StridedSlice {
         let bounds: Vec<Dim> = (0..input.shape().len())
             .map(|d| {
                 let max = input.shape()[d] as i32;
+                // deal with too small dim begin/end/stride for input rank
+                if d >= begin.len() {
+                    return Dim {
+                        begin: 0,
+                        stride: 1,
+                        len: max as usize,
+                        shrink: false,
+                    };
+                }
+
                 // deal with negative indexing
                 let b = if begin[d] >= 0 {
                     begin[d]
@@ -363,7 +373,6 @@ pub mod proptests {
     proptest! {
         #[test]
         fn strided_slice((ref i, ref b, ref e, ref s, ref masks) in strided_slice_strat()) {
-            // println!("trying {:?}", (i,b,e,s,masks));
             let graph = tfpb::graph()
                 .node(placeholder_i32("input"))
                 .node(placeholder_i32("begin"))
@@ -383,5 +392,28 @@ pub mod proptests {
             let inputs = vec!(("input", i.clone()),("begin", b.clone()), ("end", e.clone()), ("stride", s.clone()));
             compare(&graph, inputs, "op")?
         }
+    }
+
+    #[test]
+    fn strided_slice_1() {
+        let graph = tfpb::graph()
+            .node(placeholder_i32("input"))
+            .node(placeholder_i32("begin"))
+            .node(placeholder_i32("end"))
+            .node(placeholder_i32("stride"))
+            .node(tfpb::node().name("op")
+                  .attr("T", DT_INT32)
+                  .attr("Index", DT_INT32)
+                  .input("input").input("begin")
+                  .input("end").input("stride")
+                  .op("StridedSlice")
+            ).write_to_bytes().unwrap();
+
+        let inputs = vec!(
+                ("input", arr2(&[[0,6],[0,0]]).into()),
+                ("begin", arr1(&[0]).into()),
+                ("end", arr1(&[2]).into()),
+                ("stride", arr1(&[1]).into()));
+        compare(&graph, inputs, "op").unwrap()
     }
 }
