@@ -10,6 +10,9 @@ pub trait Datum
     + Sync
     + Debug
     + 'static
+    + ::num_traits::Zero
+    + ::num_traits::One
+    + ::ndarray::LinalgScalar
     + ::std::ops::AddAssign
     + ::std::ops::MulAssign
     + ::std::ops::DivAssign
@@ -106,7 +109,7 @@ impl Matrix {
         }
     }
 
-    pub fn partial_dump(&self, single_line: bool) -> ::Result<String> {
+    pub fn partial_dump(&self, _single_line: bool) -> ::Result<String> {
         if self.shape().iter().product::<usize>() > 25 {
             Ok(format!("{:?} {:?}", self.datatype(), self.shape()))
         } else {

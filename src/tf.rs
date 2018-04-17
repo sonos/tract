@@ -61,12 +61,7 @@ impl From<Matrix> for TensorHolder {
 }
 
 fn tensor_to_matrix<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<ArrayD<T>> {
-    let mut shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
-    /*
-    if shape.len() == 0 {
-        shape.push(1)
-    }
-    */
+    let shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
     Ok(::ndarray::Array::from_iter(tensor.iter().cloned()).into_shape(shape)?)
 }
 

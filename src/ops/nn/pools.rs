@@ -35,16 +35,14 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 
         let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
 
-        let h_stride = self.0.strides[1];
-        let w_stride = self.0.strides[2];
         let padded = self.0.pad(data.view(), self.1, ::std::f32::NAN)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         let out_shape = (images.count(), out_h, out_w, images.d());
 
         let transformed = Array4::from_shape_fn(out_shape, |(b, h, w, d)| {
             let mut state = P::state();
-            for y in (h * h_stride)..(h * h_stride) + (self.1).0 {
-                for x in (w * w_stride)..(w * w_stride) + (self.1).1 {
+            for y in (h * self.0.v_stride)..(h * self.0.v_stride) + (self.1).0 {
+                for x in (w * self.0.h_stride)..(w * self.0.h_stride) + (self.1).1 {
                     let v = data[(b, y, x, d)];
                     if !v.is_nan() {
                         P::ingest(&mut state, v);
@@ -100,11 +98,7 @@ mod tests {
     #[test]
     fn test_maxpool_1() {
         let pool = Pool::<MaxPooler>(
-            LocalPatch {
-                padding: Padding::Same,
-                strides: vec![1, 1, 1, 1],
-                _data_format: DataFormat::NHWC,
-            },
+            LocalPatch::same(1,1),
             (2, 1),
             PhantomData,
         );
@@ -123,11 +117,7 @@ mod tests {
     #[test]
     fn test_maxpool_2() {
         let pool = Pool::<MaxPooler>(
-            LocalPatch {
-                padding: Padding::Same,
-                strides: vec![1, 3, 3, 1],
-                _data_format: DataFormat::NHWC,
-            },
+            LocalPatch::same(3,3),
             (3, 3),
             PhantomData,
         );
@@ -146,11 +136,7 @@ mod tests {
     #[test]
     fn test_avgpool_1() {
         let pool = Pool::<AvgPooler>(
-            LocalPatch {
-                padding: Padding::Same,
-                strides: vec![1, 1, 1, 1],
-                _data_format: DataFormat::NHWC,
-            },
+            LocalPatch::same(1,1),
             (1, 2),
             PhantomData,
         );

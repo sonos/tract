@@ -88,7 +88,7 @@ impl OpBuilder {
 pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
 }

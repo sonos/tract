@@ -56,21 +56,30 @@ impl<'a, T> BatchImageWrapper<'a, T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,new)]
 pub struct LocalPatch {
     pub _data_format: DataFormat,
     pub padding: Padding,
-    pub strides: Vec<usize>,
+    pub h_stride: usize,
+    pub v_stride: usize,
 }
 
 impl LocalPatch {
+    pub fn same(v_stride:usize, h_stride:usize) -> LocalPatch {
+        LocalPatch { _data_format: DataFormat::NHWC, h_stride, v_stride, padding: Padding::Same }
+    }
+
+    pub fn valid(v_stride:usize, h_stride:usize) -> LocalPatch {
+        LocalPatch { _data_format: DataFormat::NHWC, h_stride, v_stride, padding: Padding::Valid }
+    }
+
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<LocalPatch> {
         if let Some(data_format) = pb.get_attr().get("data_format") {
             if data_format.get_s() == b"NCHW" {
                 Err("NCHW data_format not implemented")?
             }
         }
-        let strides = pb.get_attr()
+        let strides:Vec<_> = pb.get_attr()
             .get("strides")
             .ok_or("expect strides in Conv2D args")?
             .get_list()
@@ -78,6 +87,14 @@ impl LocalPatch {
             .iter()
             .map(|a| *a as usize)
             .collect();
+        if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
+            Err(format!(
+                "strides must be of the form [1, h, v, 1], found {:?}",
+                strides
+            ))?
+        };
+        let v_stride = strides[1];
+        let h_stride = strides[2];
         let padding = pb.get_attr()
             .get("padding")
             .ok_or("expect padding in Conv2D args")?;
@@ -92,7 +109,8 @@ impl LocalPatch {
         Ok(LocalPatch {
             _data_format: DataFormat::NHWC,
             padding,
-            strides,
+            h_stride,
+            v_stride
         })
     }
 
@@ -102,15 +120,14 @@ impl LocalPatch {
         in_cols: usize,
         (filter_rows, filter_cols): (usize, usize),
     ) -> (usize, usize) {
-        let stride = self.strides[1];
         match self.padding {
             Padding::Same => (
-                (in_rows as f32 / stride as f32).ceil() as usize,
-                (in_cols as f32 / stride as f32).ceil() as usize,
+                (in_rows as f32 / self.v_stride as f32).ceil() as usize,
+                (in_cols as f32 / self.h_stride as f32).ceil() as usize,
             ),
             Padding::Valid => (
-                ((in_rows - filter_rows + 1) as f32 / stride as f32).ceil() as usize,
-                ((in_cols - filter_cols + 1) as f32 / stride as f32).ceil() as usize,
+                ((in_rows - filter_rows + 1) as f32 / self.v_stride as f32).ceil() as usize,
+                ((in_cols - filter_cols + 1) as f32 / self.h_stride as f32).ceil() as usize,
             ),
         }
     }
@@ -125,25 +142,24 @@ impl LocalPatch {
         T: Copy + ::num_traits::Zero + ::std::fmt::Debug,
     {
         let img = BatchImageWrapper(data);
-        let stride = self.strides[1];
         let (filter_rows, filter_cols) = shape;
 
         if self.padding == Padding::Same {
             // https://www.tensorflow.org/api_guides/python/nn#Convolution
             let v_padding = ::std::cmp::max(
                 0,
-                filter_rows - if img.height() % stride == 0 {
-                    stride
+                filter_rows - if img.height() % self.v_stride == 0 {
+                    self.v_stride
                 } else {
-                    img.height() % stride
+                    img.height() % self.v_stride
                 },
             );
             let h_padding = ::std::cmp::max(
                 0,
-                filter_cols - if img.width() % stride == 0 {
-                    stride
+                filter_cols - if img.width() % self.h_stride == 0 {
+                    self.h_stride
                 } else {
-                    img.width() % stride
+                    img.width() % self.h_stride
                 },
             );
             let left_padding = h_padding / 2;
@@ -186,16 +202,7 @@ impl LocalPatch {
         data: ArrayView<T, Ix3>,
         shape: (usize, usize),
     ) -> Result<Array2<T>> {
-        if self.strides.len() != 4 || self.strides[0] != 1 && self.strides[3] != 1
-            || self.strides[1] != self.strides[2]
-        {
-            Err(format!(
-                "strides must be of the form [1, s, s, 1], found {:?}",
-                self.strides
-            ))?
-        }
         let img = ImageWrapper(data);
-        let stride = self.strides[1];
         let (filter_rows, filter_cols) = shape;
 
         let (out_height, out_width) =
@@ -218,7 +225,7 @@ impl LocalPatch {
                         for d in 0..img.depth() {
                             let loc = &mut patch_row
                                 [f_y * img.depth() * filter_cols + f_x * img.depth() + d];
-                            *loc = data[(0, i_y * stride + f_y, i_x * stride + f_x, d)];
+                            *loc = data[(0, i_y * self.v_stride + f_y, i_x * self.h_stride + f_x, d)];
                         }
                     }
                 }

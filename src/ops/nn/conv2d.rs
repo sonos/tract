@@ -1,29 +1,27 @@
-use {Matrix, Result};
+use std::marker::PhantomData;
+
+use Result;
 use super::{Input, Op};
 use ndarray::prelude::*;
 use super::local_patch::*;
+use matrix::Datum;
 
-#[derive(Debug)]
-pub struct Conv2D(LocalPatch);
+#[derive(Debug,new)]
+pub struct Conv2D<T:Datum>(LocalPatch, PhantomData<T>);
 
-impl Conv2D {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Self::for_patch(LocalPatch::build(pb)?)
-    }
-
-    pub fn for_patch(patch: LocalPatch) -> Result<Box<Op>> {
-        Ok(Box::new(Conv2D(patch)))
-    }
+pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    let dtype = pb.get_attr().get("T")
+        .ok_or(format!("{} expect T attribute", stringify!($Name)))?
+        .get_field_type();
+    let patch = LocalPatch::build(pb)?;
+    Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
 
-impl Op for Conv2D {
+impl<T:Datum> Op for Conv2D<T> {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (m_data, m_filter) = args_2!(inputs);
-        let data = m_data
-            .into_matrix()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
-        let filter = m_filter.as_f32s().ok_or("Expected a f32 matrix")?;
+        let data = T::mat_into_array(m_data.into_matrix())?;
+        let filter = T::mat_to_view(&*m_filter)?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
@@ -39,16 +37,15 @@ impl Op for Conv2D {
             .view()
             .into_shape((filter_rows * filter_cols * images.d(), out_depth))?;
 
-        let mut transformed: Vec<f32> = Vec::with_capacity(out_height * out_width * out_depth);
+        let mut transformed: Vec<T> = Vec::with_capacity(out_height * out_width * out_depth);
         for image in data.outer_iter() {
             let patches = self.0.mk_patches(image, (filter_rows, filter_cols))?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
-        let transformed: Matrix = Array::from_vec(transformed)
-            .into_shape((1, out_height, out_width, out_depth))?
-            .into_dyn()
-            .into();
-        Ok(vec![transformed.into()])
+        let transformed = Array::from_vec(transformed)
+            .into_shape((images.n(), out_height, out_width, out_depth))?
+            .into_dyn();
+        Ok(vec![T::array_into_mat(transformed).into()])
     }
 }
 
@@ -66,10 +63,10 @@ mod tests {
     }
 
     fn verify(input: &[usize], filter: &[usize], stride: usize, padding: Padding, expect: &[f32]) {
-        let strides = vec![1, stride, stride, 1];
-        let result = Conv2D(LocalPatch {
+        let result = Conv2D::<f32>::new(LocalPatch {
             padding: padding,
-            strides: strides,
+            h_stride: stride,
+            v_stride: stride,
             _data_format: DataFormat::NHWC,
         }).eval(vec![mk(input).into(), mk(filter).into()])
             .unwrap()
@@ -130,9 +127,10 @@ mod tests {
 
     #[test]
     fn test_conv_1() {
-        let conv = Conv2D(LocalPatch {
+        let conv = Conv2D::<f32>::new(LocalPatch {
             padding: Padding::Same,
-            strides: vec![1, 1, 1, 1],
+            h_stride: 1,
+            v_stride: 1,
             _data_format: DataFormat::NHWC,
         });
         // NHWC
@@ -149,9 +147,10 @@ mod tests {
 
     #[test]
     fn test_conv_2() {
-        let conv = Conv2D(LocalPatch {
+        let conv = Conv2D::<f32>::new(LocalPatch {
             padding: Padding::Same,
-            strides: vec![1, 1, 1, 1],
+            h_stride: 1,
+            v_stride: 1,
             _data_format: DataFormat::NHWC,
         });
         let data =
@@ -197,29 +196,25 @@ pub mod proptests {
         Ok(graph.write_to_bytes()?)
     }
 
-    fn img_and_ker(
-        ih: usize,
-        iw: usize,
-        ic: usize,
-        kh: usize,
-        kw: usize,
-        kc: usize,
-    ) -> BoxedStrategy<(Matrix, Matrix)> {
-        (1..ih, 1..iw, 1..ic, 1..kh, 1..kw, 1..kc)
-            .prop_flat_map(|(ih, iw, ic, kh, kw, kc)| {
-                let i_size = iw * ih * ic;
+    fn img_and_ker() -> BoxedStrategy<(Matrix, Matrix, (usize,usize))> {
+        (1usize..8, 1usize..8, 1usize..8, 1usize..8)
+            .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic,kh,kw,kc))))
+            .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, kc))| {
+                let i_size = ib * iw * ih * ic;
                 let k_size = kw * kh * kc * ic;
                 (
-                    Just((1, ih, iw, ic)),
+                    Just((ib, ih, iw, ic)),
                     Just((kh, kw, ic, kc)),
-                    ::proptest::collection::vec(-255f32..255f32, i_size..i_size + 1),
-                    ::proptest::collection::vec(-255f32..255f32, k_size..k_size + 1),
+                    ::proptest::collection::vec(-9i32..9, i_size..i_size + 1),
+                    ::proptest::collection::vec(-9i32..9, k_size..k_size + 1),
+                    (1..(kh+1),1..(kw+1))
                 )
             })
-            .prop_map(|(img_shape, ker_shape, img, ker)| {
+            .prop_map(|(img_shape, ker_shape, img, ker, strides)| {
                 (
-                    Array::from_vec(img).into_shape(img_shape).unwrap().into(),
-                    Array::from_vec(ker).into_shape(ker_shape).unwrap().into(),
+                    Array::from_vec(img.into_iter().map(|i| i as f32).collect()).into_shape(img_shape).unwrap().into(),
+                    Array::from_vec(ker.into_iter().map(|i| i as f32).collect()).into_shape(ker_shape).unwrap().into(),
+                    strides,
                 )
             })
             .boxed()
@@ -227,29 +222,14 @@ pub mod proptests {
 
     proptest! {
         #[test]
-        fn conv((ref i, ref k) in img_and_ker(32, 32, 5, 16, 16, 8),
-                           valid in ::proptest::bool::ANY,
-                           stride in 1usize..4) {
-            prop_assume!(stride <= k.shape()[0]);
-            prop_assume!(stride <= k.shape()[1]);
+        fn conv((ref i, ref k, ref strides) in img_and_ker(),
+                           valid in ::proptest::bool::ANY) {
             if valid {
                 prop_assume!(i.shape()[1] >= k.shape()[0]);
                 prop_assume!(i.shape()[2] >= k.shape()[1]);
             }
-            let model = convolution_pb(stride, stride, valid).unwrap();
-            let mut tf = ::tf::for_slice(&model)?;
-            let tfd = ::Model::for_reader(&*model)?;
-            let data = tfd.node_id_by_name("data").unwrap();
-            let kernel = tfd.node_id_by_name("kernel").unwrap();
-            let conv = tfd.node_id_by_name("conv").unwrap();
-            let mut tfds = tfd.state();
-            let expected = tf.run(vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
-            tfds.set_value(data, i.clone())?;
-            tfds.set_value(kernel, k.clone())?;
-            tfd.plan_for_one(conv).unwrap().run(&mut tfds).unwrap();
-            let found = tfds.take(conv)?;
-            prop_assert!(expected[0].close_enough(&found[0]))
+            let model = convolution_pb(strides.0, strides.1, valid).unwrap();
+            compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
         }
     }
-
 }
