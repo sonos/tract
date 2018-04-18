@@ -74,19 +74,11 @@ impl LocalPatch {
     }
 
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<LocalPatch> {
-        if let Some(data_format) = pb.get_attr().get("data_format") {
-            if data_format.get_s() == b"NCHW" {
-                Err("NCHW data_format not implemented")?
-            }
+        let data_format = pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC");
+        if data_format == b"NCHW" {
+            Err("NCHW data_format not implemented")?
         }
-        let strides:Vec<_> = pb.get_attr()
-            .get("strides")
-            .ok_or("expect strides in Conv2D args")?
-            .get_list()
-            .get_i()
-            .iter()
-            .map(|a| *a as usize)
-            .collect();
+        let strides:Vec<usize> = pb.get_attr_list_int("strides")?;
         if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
             Err(format!(
                 "strides must be of the form [1, h, v, 1], found {:?}",
@@ -95,10 +87,8 @@ impl LocalPatch {
         };
         let v_stride = strides[1];
         let h_stride = strides[2];
-        let padding = pb.get_attr()
-            .get("padding")
-            .ok_or("expect padding in Conv2D args")?;
-        let padding = match padding.get_s() {
+        let padding = pb.get_attr_raw_str("padding")?;
+        let padding = match padding {
             b"VALID" => Padding::Valid,
             b"SAME" => Padding::Same,
             s => Err(format!(

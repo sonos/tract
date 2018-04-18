@@ -4,6 +4,7 @@ use super::{Input, Op, OpRegister};
 mod local_patch;
 pub mod conv2d;
 pub mod pools;
+pub mod space_to_batch;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AvgPool", pools::pool::<pools::AvgPooler>);

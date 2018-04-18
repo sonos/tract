@@ -3,18 +3,9 @@ use {Matrix, Result};
 use ops::{Input, Op};
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let begin_mask = pb.get_attr()
-        .get("begin_mask")
-        .map(|a| a.get_i())
-        .unwrap_or(0);
-    let end_mask = pb.get_attr()
-        .get("end_mask")
-        .map(|a| a.get_i())
-        .unwrap_or(0);
-    let shrink_axis_mask = pb.get_attr()
-        .get("shrink_axis_mask")
-        .map(|a| a.get_i())
-        .unwrap_or(0);
+    let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
+    let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
+    let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
     Ok(Box::new(StridedSlice {
         begin_mask,
         end_mask,

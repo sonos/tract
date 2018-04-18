@@ -15,10 +15,10 @@ pub trait Pooler: Send + Sync + ::std::fmt::Debug + 'static {
 pub struct Pool<P: Pooler>(LocalPatch, (usize, usize), PhantomData<P>);
 
 pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let ksize = pb.get_attr().get("ksize").unwrap().get_list().get_i();
+    let ksize:Vec<usize> = pb.get_attr_list_int("ksize")?;
     Ok(Box::new(Pool::<P>(
         LocalPatch::build(pb)?,
-        (ksize[1] as usize, ksize[2] as usize),
+        (ksize[1], ksize[2]),
         PhantomData,
     )))
 }

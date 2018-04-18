@@ -12,14 +12,8 @@ pub struct Pack<T: Datum> {
 }
 
 pub fn pack(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype: DataType = pb.get_attr()
-        .get("T")
-        .ok_or("Pack expect T attribute")?
-        .get_field_type();
-    let axis = pb.get_attr()
-        .get("axis")
-        .ok_or("Pack expect axis attribute")?
-        .get_i() as usize;
+    let dtype = pb.get_attr_datatype("T")?;
+    let axis = pb.get_attr_int("axis")?;
     Ok(boxed_new!(Pack(dtype)(axis)))
 }
 

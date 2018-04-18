@@ -10,9 +10,7 @@ use matrix::Datum;
 pub struct Conv2D<T:Datum>(LocalPatch, PhantomData<T>);
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr().get("T")
-        .ok_or(format!("{} expect T attribute", stringify!($Name)))?
-        .get_field_type();
+    let dtype = pb.get_attr_datatype("T")?;
     let patch = LocalPatch::build(pb)?;
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }

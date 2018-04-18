@@ -29,9 +29,7 @@ macro_rules! element_bin {
         pub struct $Name<T: ::matrix::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-            let dtype = pb.get_attr().get("T")
-                .ok_or(format!("{} expect T attribute", stringify!($Name)))?
-                .get_field_type();
+            let dtype = pb.get_attr_datatype("T")?;
             Ok(boxed_new!($Name(dtype)()))
         }
 

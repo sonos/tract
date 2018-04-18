@@ -26,7 +26,7 @@ pub struct ConcatV2 {
 impl ConcatV2 {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(ConcatV2 {
-            n: pb.get_attr().get("N").unwrap().get_i() as _,
+            n: pb.get_attr_int("N")?
         }))
     }
 }
@@ -168,14 +168,7 @@ pub struct Squeeze {
 
 impl Squeeze {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let dims = pb.get_attr()
-            .get("squeeze_dims")
-            .ok_or("Squeeze expect squeeze_dims attribute")?;
-        let mut dims: Vec<isize> = dims.get_list()
-            .get_i()
-            .into_iter()
-            .map(|x| *x as isize)
-            .collect();
+        let mut dims = pb.get_attr_list_int("squeeze_dims")?;
         dims.sort();
         dims.reverse();
         Ok(Box::new(Squeeze { dims }))
