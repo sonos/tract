@@ -29,11 +29,18 @@ impl Input {
             Input::Shared(m) => m.as_ref().clone(),
         }
     }
+    pub fn as_matrix(&self) -> &Matrix {
+        match self {
+            &Input::Owned(ref m) => &m,
+            &Input::Shared(ref m) => m.as_ref(),
+        }
+    }
+
 }
 
-impl From<Matrix> for Input {
-    fn from(m: Matrix) -> Input {
-        Input::Owned(m)
+impl<M> From<M> for Input where Matrix: From<M> {
+    fn from(m: M) -> Input {
+        Input::Owned(m.into())
     }
 }
 
@@ -50,6 +57,12 @@ impl ::std::ops::Deref for Input {
             &Input::Owned(ref m) => &m,
             &Input::Shared(ref m) => m.as_ref(),
         }
+    }
+}
+
+impl PartialEq for Input {
+    fn eq(&self, other: &Input) -> bool {
+        self.as_matrix() == other.as_matrix()
     }
 }
 

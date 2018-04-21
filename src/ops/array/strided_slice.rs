@@ -288,8 +288,7 @@ pub mod proptests {
     use ops::proptests::*;
     use Matrix;
 
-    fn strided_slice_strat(
-) -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
+    fn strided_slice_strat() -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
         ::proptest::collection::vec(
             (1..5).prop_flat_map(|n| {
                 // each dim max

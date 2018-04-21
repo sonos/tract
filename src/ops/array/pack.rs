@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 
 use Result;
 use super::{Input, Op};
-use tfpb::types::DataType;
 use matrix::Datum;
 
 #[derive(Debug, Default, new)]
