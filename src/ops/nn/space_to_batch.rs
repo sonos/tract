@@ -2,10 +2,9 @@ use std::marker::PhantomData;
 
 use Result;
 use super::{Input, Op};
-use ndarray::prelude::*;
 use matrix::Datum;
 
-pub fn space_to_batch(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datatype = pb.get_attr_datatype("T")?;
     Ok(boxed_new!(SpaceToBatch(datatype)()))
 }
@@ -15,43 +14,54 @@ pub struct SpaceToBatch<T:Datum>(PhantomData<T>);
 
 impl<T:Datum> Op for SpaceToBatch<T> {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
-        println!("");
         let (input, block_shape, paddings) = args_3!(inputs);
-        println!("input_shape: {:?}", input.shape());
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let paddings = paddings.as_i32s().ok_or("paddings expected as I32")?;
+        let mut data = T::mat_into_array(input.into_matrix())?;
 
-        let data = T::mat_to_view(&input)?;
-        let block_size = block_shape.iter().map(|a| *a as usize).product::<usize>();
-        println!("block_shape: {:?} -> {}", block_shape, block_size);
-        let mut output_shape = vec!(input.shape()[0] * block_size);
-        for (m,block_shape_dim) in block_shape.iter().enumerate() {
-            output_shape.push(input.shape()[m+1] / block_shape[m] as usize);
-        }
-        output_shape.extend(&input.shape()[block_shape.len()+1..]);
-        let output = unsafe { Array::zeros(output_shape) };
-
-        /*
-        // input batch
-        for n in 0..input.shape()[0] {
-        }
-            println!("indexes: {:?}", indexes);
-            let first_coord = indexes[0];
-            indexes[0] /= block_size;
-            let mut remaining = first_coord % block_size;
-            for (m,bdim) in block_shape.to_vec().iter().enumerate().rev() {
+        for (ix, pad) in paddings.outer_iter().enumerate() {
+            if pad[0] != 0 {
+                let mut pad_shape = data.shape().to_vec();
+                pad_shape[ix+1] = pad[0] as usize;
+                let tmp = ::ndarray::stack(::ndarray::Axis(ix+1),
+                    &[::ndarray::ArrayD::zeros(pad_shape).view(), data.view()])?;
+                data = tmp;
             }
-            0
-        });
-        */
-        Ok(vec!(output.into()))
+            if pad[1] != 0 {
+                let mut pad_shape = data.shape().to_vec();
+                pad_shape[ix+1] = pad[1] as usize;
+                let tmp = ::ndarray::stack(::ndarray::Axis(ix+1),
+                    &[data.view(), ::ndarray::ArrayD::zeros(pad_shape).view()])?;
+                data = tmp;
+            }
+        }
+        let mut reshaped = vec!(data.shape()[0]);
+        let block_size = block_shape.iter().map(|a| *a as usize).product::<usize>();
+        let mut final_shape = vec!(block_size*data.shape()[0]);
+        for (m, &block_shape_dim) in block_shape.iter().enumerate() {
+            reshaped.push(data.shape()[m+1] / block_shape_dim as usize);
+            reshaped.push(block_shape_dim as usize);
+            final_shape.push(data.shape()[m+1] / block_shape_dim as usize);
+        }
+        reshaped.extend(&data.shape()[block_shape.len()+1..]);
+        final_shape.extend(&data.shape()[block_shape.len()+1..]);
+        let data = data.into_shape(reshaped)?;
+
+        let mut permuted_axis:Vec<_> = (0..block_shape.len()).map(|x| 2*x+2).collect();
+        permuted_axis.push(0);
+        permuted_axis.extend((0..block_shape.len()).map(|x| 2*x+1));
+        permuted_axis.extend((block_shape.len()*2+1)..data.ndim());
+        let data = data.permuted_axes(permuted_axis);
+        let data:Vec<T> = data.into_iter().map(|x| *x).collect();
+        let data = ::ndarray::ArrayD::from_shape_vec(final_shape, data)?;
+
+        Ok(vec!(T::array_into_mat(data).into()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Matrix;
     use super::*;
     use ndarray::*;
 
@@ -92,7 +102,59 @@ mod tests {
             ).unwrap(),
             vec!(arr4(&[[[[1i32]]], [[[2]]], [[[3]]], [[[4]]]]).into()),
         )
+    }
 
+    #[test]
+    fn space_to_batch_nd_2() {
+        assert_eq!(
+            SpaceToBatch::<i32>::new().eval(vec!(
+                arr4(&[[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).into(),
+                arr1(&[2, 2]).into(),
+                arr2(&[[0, 0],[0, 0]]).into())
+            ).unwrap(),
+            vec!(arr4(&[[[[1i32, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]]]).into()),
+        )
+    }
+
+    #[test]
+    fn space_to_batch_nd_3() {
+        assert_eq!(
+            SpaceToBatch::<i32>::new().eval(vec!(
+                arr4(&[[[[1], [2], [3], [4]],
+                        [[5], [6], [7], [8]],
+                        [[9], [10], [11], [12]],
+                        [[13], [14], [15], [16]]]]).into(),
+                arr1(&[2, 2]).into(),
+                arr2(&[[0, 0],[0, 0]]).into())
+            ).unwrap(),
+            vec!(arr4(&[[[[1], [3]], [[9], [11]]],
+                        [[[2], [4]], [[10], [12]]],
+                        [[[5], [7]], [[13], [15]]],
+                        [[[6], [8]], [[14], [16]]]]).into()),
+        )
+    }
+
+    #[test]
+    fn space_to_batch_nd_4() {
+        assert_eq!(
+            SpaceToBatch::<i32>::new().eval(vec!(
+                arr4(&[[[[1], [2], [3], [4]],
+                        [[5], [6], [7], [8]]],
+                        [[[9], [10], [11], [12]],
+                        [[13], [14], [15], [16]]]]
+                        ).into(),
+                arr1(&[2, 2]).into(),
+                arr2(&[[0, 0],[2, 0]]).into())
+            ).unwrap(),
+            vec!(arr4(&[[[[0], [1], [3]]],
+                        [[[0], [9], [11]]],
+                        [[[0], [2], [4]]],
+                        [[[0], [10], [12]]],
+                        [[[0], [5], [7]]],
+                        [[[0], [13], [15]]],
+                        [[[0], [6], [8]]],
+                        [[[0], [14], [16]]]]).into()),
+        )
     }
 }
 

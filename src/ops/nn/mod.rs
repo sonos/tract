@@ -12,6 +12,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("MaxPool", pools::pool::<pools::MaxPooler>);
     reg.insert("Relu", Relu::build);
     reg.insert("Softmax", Softmax::build);
+    reg.insert("SpaceToBatchND", space_to_batch::space_to_batch_nd);
 }
 
 element_map!(Relu, |x| if x < 0.0 { 0.0 } else { x });
