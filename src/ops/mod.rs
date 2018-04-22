@@ -111,19 +111,34 @@ pub mod proptests {
     #![allow(non_snake_case)]
     use tfpb;
     use tfpb::types::DataType;
+    use tfpb::tensor_shape::TensorShapeProto;
+
+    pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(name: &str, t: DataType, shape:Shape) -> tfpb::node_def::NodeDef {
+        let mut node = tfpb::node().name(name).op("Placeholder").attr("dtype", t);
+        if let Some(shape) = shape.into() {
+            node = node.attr("shape", shape)
+        }
+        node
+    }
+
+    pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
+        use tfpb::tensor_shape::*;
+        let mut shape = TensorShapeProto::new();
+        shape.set_dim(dims.iter().map(|&d| {
+            let mut dim = TensorShapeProto_Dim::new();
+            dim.set_size(d as i64);
+            dim
+        }).collect());
+        shape
+    }
+
 
     pub fn placeholder_f32(name: &str) -> tfpb::node_def::NodeDef {
-        tfpb::node()
-            .name(name)
-            .op("Placeholder")
-            .attr("dtype", DataType::DT_FLOAT)
+        placeholder(name, DataType::DT_FLOAT, None)
     }
 
     pub fn placeholder_i32(name: &str) -> tfpb::node_def::NodeDef {
-        tfpb::node()
-            .name(name)
-            .op("Placeholder")
-            .attr("dtype", DataType::DT_INT32)
+        placeholder(name, DataType::DT_INT32, None)
     }
 
     pub fn compare<S:AsRef<str>>(

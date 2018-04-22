@@ -235,3 +235,11 @@ impl<'a> From<tensor::TensorProto> for AttrValue {
     }
 }
 
+impl<'a> From<tensor_shape::TensorShapeProto> for AttrValue {
+    fn from(t: tensor_shape::TensorShapeProto) -> AttrValue {
+        let mut value = attr_value::AttrValue::new();
+        value.set_shape(t);
+        value
+    }
+}
+
