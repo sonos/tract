@@ -17,6 +17,7 @@ travis-ci = { repository = "kali/tensorflow-deploy-rust" }
 accelerate-src = { version = "0.3", optional = true, default-features=false }
 openblas-src = { version = "0.5", optional = true, default-features=false, features = [ "static" ] }
 blas-src = { version = "0.1.2", default-features = false, optional=true }
+derive-new = "0.5"
 downcast-rs = "1.0"
 error-chain =  { version = "0.11", default-features=false }
 bit-set="0.4"
@@ -26,6 +27,7 @@ ndarray = { version = "0.11" }
 num-traits = "0.2"
 protobuf = "1.4"
 tensorflow = { version = "0.7", optional = true }
+rand = "*"
 
 [features]
 default = [ ]
@@ -38,6 +40,7 @@ protoc-rust   = "1.4"
 tempdir = "0.3"
 
 [dev-dependencies]
+colored = "1"
 bencher = { git = "https://github.com/snipsco/bencher" }
 dinghy-test = { git="https://github.com/snipsco/dinghy.git", branch="0.3"}
 flate2 = "1.0"

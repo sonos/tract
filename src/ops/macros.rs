@@ -23,27 +23,22 @@ macro_rules! element_map {
 }
 
 macro_rules! element_bin {
-    ($Name:ident, $expr: expr) =>
+    ($Name:ident, $name:ident, $expr: expr) =>
     {
-        #[derive(Debug)]
-        pub struct $Name;
+        #[derive(Debug,new)]
+        pub struct $Name<T: ::matrix::Datum>(::std::marker::PhantomData<T>);
 
-        impl $Name {
-            pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-                Ok(Box::new($Name))
-            }
+        pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+            let dtype = pb.get_attr_datatype("T")?;
+            Ok(boxed_new!($Name(dtype)()))
         }
 
-        impl Op for $Name {
+        impl<T: ::matrix::Datum> Op for $Name<T> {
             fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> Result<Vec<$crate::ops::Input>> {
                 let (a, b) = args_2!(inputs);
-                let a = a.into_matrix().take_f32s().ok_or(
-                    "Expect input #0 to be f32",
-                )?;
-                let b = b.as_f32s().ok_or(
-                    "Expect input #1 to be f32",
-                )?;
-                Ok(vec!(Matrix::from($expr(a,b.view())).into()))
+                let a = T::mat_into_array(a.into_matrix())?;
+                let b = T::mat_to_view(&*b)?;
+                Ok(vec!(T::array_into_mat($expr(a,b)).into()))
             }
         }
     }
@@ -65,5 +60,39 @@ macro_rules! args_2 {
         }
         $inputs.reverse();
         ($inputs.pop().unwrap(), $inputs.pop().unwrap())
+    } }
+}
+
+#[allow(unused_macros)]
+macro_rules! args_3 {
+    ($inputs:expr) => { {
+        if $inputs.len() != 3 {
+            Err("Expected 3 args")?
+        }
+        $inputs.reverse();
+        ($inputs.pop().unwrap(), $inputs.pop().unwrap(), $inputs.pop().unwrap())
+    } }
+}
+
+macro_rules! args_4 {
+    ($inputs:expr) => { {
+        if $inputs.len() != 4 {
+            Err("Expected 4 args")?
+        }
+        $inputs.reverse();
+        ($inputs.pop().unwrap(), $inputs.pop().unwrap(),
+        $inputs.pop().unwrap(), $inputs.pop().unwrap())
+    } }
+}
+
+macro_rules! boxed_new {
+    ($op:tt($dtype:expr)($($arg:expr),*)) => { {
+        use tfpb::types::DataType;
+        match $dtype {
+            DataType::DT_INT32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
+            DataType::DT_FLOAT => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
+            DataType::DT_DOUBLE => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
+            _ => unimplemented!()
+        }
     } }
 }

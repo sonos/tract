@@ -1,5 +1,8 @@
 use ndarray::prelude::*;
 
+mod pack;
+mod strided_slice;
+
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
 
@@ -7,9 +10,12 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", ConcatV2::build);
     reg.insert("ExpandDims", ExpandDims::build);
     reg.insert("Identity", Identity::build);
+    reg.insert("Pack", pack::pack);
     reg.insert("Placeholder", Placeholder::build);
-    reg.insert("Squeeze", Squeeze::build);
     reg.insert("Reshape", Reshape::build);
+    reg.insert("Shape", Shape::build);
+    reg.insert("Squeeze", Squeeze::build);
+    reg.insert("StridedSlice", strided_slice::build);
 }
 
 #[derive(Debug)]
@@ -20,7 +26,7 @@ pub struct ConcatV2 {
 impl ConcatV2 {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(ConcatV2 {
-            n: pb.get_attr().get("N").unwrap().get_i() as _,
+            n: pb.get_attr_int("N")?
         }))
     }
 }
@@ -139,20 +145,30 @@ impl Op for Reshape {
 }
 
 #[derive(Debug)]
+pub struct Shape;
+
+impl Shape {
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+        Ok(Box::new(Shape))
+    }
+}
+
+impl Op for Shape {
+    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
+        let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
+        Ok(vec![Matrix::from(Array1::from_vec(shape)).into()])
+    }
+}
+
+#[derive(Debug)]
 pub struct Squeeze {
     dims: Vec<isize>,
 }
 
 impl Squeeze {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let dims = pb.get_attr()
-            .get("squeeze_dims")
-            .ok_or("Squeeze expect squeeze_dims attribute")?;
-        let mut dims: Vec<isize> = dims.get_list()
-            .get_i()
-            .into_iter()
-            .map(|x| *x as isize)
-            .collect();
+        let mut dims = pb.get_attr_list_int("squeeze_dims")?;
         dims.sort();
         dims.reverse();
         Ok(Box::new(Squeeze { dims }))

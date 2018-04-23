@@ -30,6 +30,7 @@ pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
 }
 
 enum TensorHolder {
+    F64(Tensor<f64>),
     F32(Tensor<f32>),
     I32(Tensor<i32>),
     U8(Tensor<u8>),
@@ -49,6 +50,7 @@ impl TensorHolder {
 impl From<Matrix> for TensorHolder {
     fn from(m: Matrix) -> TensorHolder {
         match m {
+            Matrix::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
             Matrix::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
             Matrix::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
             Matrix::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
@@ -59,10 +61,7 @@ impl From<Matrix> for TensorHolder {
 }
 
 fn tensor_to_matrix<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<ArrayD<T>> {
-    let mut shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
-    if shape.len() == 0 {
-        shape.push(1)
-    }
+    let shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
     Ok(::ndarray::Array::from_iter(tensor.iter().cloned()).into_shape(shape)?)
 }
 
@@ -77,6 +76,7 @@ impl Tensorflow {
         for t in &tensors {
             let op = self.graph.operation_by_name_required(t.0)?;
             match t.1 {
+                TensorHolder::F64(ref it) => step.add_input(&op, 0, &it),
                 TensorHolder::F32(ref it) => step.add_input(&op, 0, &it),
                 TensorHolder::I32(ref it) => step.add_input(&op, 0, &it),
                 TensorHolder::U8(ref it) => step.add_input(&op, 0, &it),

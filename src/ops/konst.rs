@@ -13,10 +13,8 @@ pub struct Const {
 
 impl Const {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let tensor = pb.get_attr().get("value").unwrap().get_tensor();
-        Ok(Box::new(Const {
-            value: Arc::new(Matrix::from_pb(&tensor)?),
-        }))
+        let mat = pb.get_attr_tensor("value")?;
+        Ok(Box::new(Const { value: Arc::new(mat) }))
     }
 }
 

@@ -30,6 +30,8 @@
 
 extern crate bit_set;
 #[macro_use]
+extern crate derive_new;
+#[macro_use]
 extern crate downcast_rs;
 #[macro_use]
 extern crate error_chain;
@@ -69,8 +71,8 @@ pub struct Node {
     pub id: usize,
     pub name: String,
     pub op_name: String,
-    inputs: Vec<(usize, Option<usize>)>,
-    op: Box<Op>,
+    pub inputs: Vec<(usize, Option<usize>)>,
+    pub op: Box<Op>,
 }
 
 impl Node {
@@ -269,10 +271,21 @@ impl Model {
         Self::for_reader(fs::File::open(p)?)
     }
 
-    /// Load a Tensorflow protobul model from a reader.
-    pub fn for_reader<R: ::std::io::Read>(mut r: R) -> Result<Model> {
-        let loaded = ::protobuf::core::parse_from_reader::<::tfpb::graph::GraphDef>(&mut r)?;
-        Model::new(loaded)
+    /// Load a Tfdeploy model from a reader.
+    pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
+        Model::new(Self::graphdef_for_reader(r)?)
+    }
+
+    /// Load a Tensorflow protobuf graph def from a reader.
+    pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph::GraphDef> {
+        Ok(::protobuf::core::parse_from_reader::<
+            ::tfpb::graph::GraphDef,
+        >(&mut r)?)
+    }
+
+    /// Load a Tensorflow protobuf graph def from a path
+    pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<::tfpb::graph::GraphDef> {
+        Self::graphdef_for_reader(fs::File::open(p)?)
     }
 
     pub fn node_names(&self) -> Vec<&str> {
@@ -295,11 +308,21 @@ impl Model {
     pub fn nodes(&self) -> &[Node] {
         &*self.nodes
     }
+
+    pub fn run_with_names(&self, inputs: Vec<(&str, Matrix)>, output: &str) -> Result<Vec<Matrix>> {
+        let inputs = inputs
+            .into_iter()
+            .map(|(name, mat)| -> Result<(usize, Matrix)> {
+                Ok((self.node_id_by_name(name)?, mat))
+            })
+            .collect::<Result<_>>()?;
+        self.run(inputs, self.node_id_by_name(output)?)
+    }
 }
 
 pub struct ModelState<'a> {
     model: &'a Model,
-    outputs: Vec<Option<Vec<Input>>>,
+    pub outputs: Vec<Option<Vec<Input>>>,
 }
 
 impl<'a> ModelState<'a> {
@@ -318,11 +341,12 @@ impl<'a> ModelState<'a> {
         self.set_outputs(id, vec![value])
     }
 
-    fn compute_one(&mut self, node: usize) -> Result<()> {
+    pub fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.model.nodes[node];
         let mut inputs: Vec<Input> = vec![];
         for i in &node.inputs {
-            let prec = self.outputs[i.0].as_ref().ok_or("Unsatisfied node dep")?;
+            let prec_node = &self.model.nodes[i.0];
+            let prec = self.outputs[i.0].as_ref().ok_or(format!("Computing {}, precursor {} not done:", node.name, prec_node.name))?;
             inputs.push(prec[i.1.ok_or("no output found")?].clone().into())
         }
         let outputs = node.op.eval(inputs)?;
