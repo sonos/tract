@@ -8,6 +8,10 @@ pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datatype = pb.get_attr_datatype("T")?;
     Ok(boxed_new!(SpaceToBatch(datatype)()))
 }
+pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    let datatype = pb.get_attr_datatype("T")?;
+    Ok(boxed_new!(BatchToSpace(datatype)()))
+}
 
 #[derive(Debug,new)]
 pub struct SpaceToBatch<T:Datum>(PhantomData<T>);
@@ -59,57 +63,58 @@ impl<T:Datum> Op for SpaceToBatch<T> {
     }
 }
 
-/*
 #[derive(Debug,new)]
 pub struct BatchToSpace<T:Datum>(PhantomData<T>);
 
 impl<T:Datum> Op for BatchToSpace<T> {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
-        let (input, block_shape, paddings) = args_3!(inputs);
+        use ndarray::*;
+        let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
-        let paddings = paddings.as_i32s().ok_or("paddings expected as I32")?;
-        let mut data = T::mat_into_array(input.into_matrix())?;
+        let crops = crops.as_i32s().ok_or("crops expected as I32")?;
+        let data = T::mat_into_array(input.into_matrix())?;
+        let input_shape = data.shape().to_vec();
+        let crops = crops.clone().into_shape((block_shape.len(), 2))?;
 
-        for (ix, pad) in paddings.outer_iter().enumerate() {
-            if pad[0] != 0 {
-                let mut pad_shape = data.shape().to_vec();
-                pad_shape[ix+1] = pad[0] as usize;
-                let tmp = ::ndarray::stack(::ndarray::Axis(ix+1),
-                    &[::ndarray::ArrayD::zeros(pad_shape).view(), data.view()])?;
-                data = tmp;
-            }
-            if pad[1] != 0 {
-                let mut pad_shape = data.shape().to_vec();
-                pad_shape[ix+1] = pad[1] as usize;
-                let tmp = ::ndarray::stack(::ndarray::Axis(ix+1),
-                    &[data.view(), ::ndarray::ArrayD::zeros(pad_shape).view()])?;
-                data = tmp;
-            }
-        }
-        let mut reshaped = vec!(data.shape()[0]);
         let block_size = block_shape.iter().map(|a| *a as usize).product::<usize>();
-        let mut final_shape = vec!(block_size*data.shape()[0]);
-        for (m, &block_shape_dim) in block_shape.iter().enumerate() {
-            reshaped.push(data.shape()[m+1] / block_shape_dim as usize);
-            reshaped.push(block_shape_dim as usize);
-            final_shape.push(data.shape()[m+1] / block_shape_dim as usize);
+        let mut unflatten_blocked_shape = vec!(data.shape()[0]/block_size);
+        unflatten_blocked_shape.extend(block_shape.iter().map(|a| *a as usize));
+        unflatten_blocked_shape.extend(&data.shape()[1..]);
+        let data = data.into_shape(&*unflatten_blocked_shape)?;
+        let mut permuted_axes = vec!(0);
+        let mut padded_shape = vec!(unflatten_blocked_shape[0]);
+        let mut final_shape = vec!(unflatten_blocked_shape[0]);
+        for i in 0..block_shape.shape()[0] {
+            permuted_axes.push(2*i+1+block_shape.shape()[0]);
+            permuted_axes.push(1+i);
+            padded_shape.push(block_shape[i] as usize *input_shape[i+1]);
+            final_shape.push(block_shape[i] as usize *input_shape[i+1] - crops[(i,0)] as usize  - crops[(i,1)] as usize);
         }
-        reshaped.extend(&data.shape()[block_shape.len()+1..]);
-        final_shape.extend(&data.shape()[block_shape.len()+1..]);
-        let data = data.into_shape(reshaped)?;
+        permuted_axes.extend((1+block_shape.shape()[0]*2)..data.ndim());
+        let data = data.permuted_axes(permuted_axes);
+        let data = data.into_shape(padded_shape)?;
+        /*
+        let mut slice_info:Vec<SliceOrIndex> = vec!(SliceOrIndex::from(..));
+        for (i, crop) in crops.outer_iter().enumerate() {
+            let end = data.shape()[1+i] as usize;
+            let range = (crop[0] as usize)..(end-crop[1] as usize);
+            slice_info.push(range.into());
+        }
+        let slice_info = ArrayD::SliceArg::new(slice_info)?;
+        let data = data.slice(&slice_info);
+        */
+        let mut data = data;
+        for (i, crop) in crops.outer_iter().enumerate() {
+            let end = data.shape()[1+i] as usize;
+            let range = (crop[0] as usize)..(end-crop[1] as usize);
+            data = data.slice_axis(Axis(i+1), range.into()).map(|x| *x).to_owned();
+        }
 
-        let mut permuted_axis:Vec<_> = (0..block_shape.len()).map(|x| 2*x+2).collect();
-        permuted_axis.push(0);
-        permuted_axis.extend((0..block_shape.len()).map(|x| 2*x+1));
-        permuted_axis.extend((block_shape.len()*2+1)..data.ndim());
-        let data = data.permuted_axes(permuted_axis);
         let data:Vec<T> = data.into_iter().map(|x| *x).collect();
         let data = ::ndarray::ArrayD::from_shape_vec(final_shape, data)?;
-
         Ok(vec!(T::array_into_mat(data).into()))
     }
 }
-*/
 
 #[cfg(test)]
 mod tests {
@@ -199,11 +204,11 @@ pub mod proptests {
 
     fn space_to_batch_strat() -> BoxedStrategy<(Matrix, Matrix, Matrix)> {
         use proptest::collection::vec;
-        (1usize..8, vec(1usize..32, 1usize..5), vec(1usize..32, 1usize..5))
+        (1usize..4, vec(1usize..8, 1usize..4), vec(1usize..8, 1usize..4))
             .prop_flat_map(|(b, spatial_dims, non_spatial_dims)| {
             (Just(b), Just(spatial_dims.clone()), Just(non_spatial_dims),
-            vec(1usize..32, spatial_dims.len()..spatial_dims.len()+1),
-            vec(0usize..32, spatial_dims.len()..spatial_dims.len()+1),
+            vec(1usize..4, spatial_dims.len()..spatial_dims.len()+1),
+            vec(0usize..4, spatial_dims.len()..spatial_dims.len()+1),
             )
         })
         .prop_filter("block < input", |&(_, ref sd, _, ref bs, _)|

@@ -13,6 +13,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Relu", Relu::build);
     reg.insert("Softmax", Softmax::build);
     reg.insert("SpaceToBatchND", space_to_batch::space_to_batch_nd);
+    reg.insert("BatchToSpaceND", space_to_batch::batch_to_space_nd);
 }
 
 element_map!(Relu, |x| if x < 0.0 { 0.0 } else { x });
