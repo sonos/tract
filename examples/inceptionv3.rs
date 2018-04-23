@@ -9,7 +9,7 @@ extern crate tar;
 extern crate tfdeploy;
 
 use std::{fs, io, path};
-use mio_httpc::SyncCall;
+use mio_httpc::CallBuilder;
 use dinghy_test::test_project_path;
 
 use tfdeploy::errors::*;
@@ -35,11 +35,13 @@ fn do_download() -> Result<()> {
     }
     fs::create_dir_all(&dir_partial)?;
     let url = "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz";
-    let (status, _hdrs, body) = SyncCall::new()
+    let (resp, body) = CallBuilder::get()
         .timeout_ms(5000)
-        .get(url)
+        .url(url)
+        .map_err(|e| format!("request error: {:?}", e))?
+        .exec()
         .map_err(|e| format!("request error: {:?}", e))?;
-    if status != 200 {
+    if resp.status != 200 {
         Err("Could not download inception v3")?
     }
     let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(&body[..]));

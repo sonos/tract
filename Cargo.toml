@@ -20,13 +20,13 @@ blas-src = { version = "0.1.2", default-features = false, optional=true }
 derive-new = "0.5"
 downcast-rs = "1.0"
 error-chain =  { version = "0.11", default-features=false }
-bit-set="0.4"
+bit-set="0.5"
 image = "0.18"
 log = "0.4"
 ndarray = { version = "0.11" }
 num-traits = "0.2"
 protobuf = "1.4"
-tensorflow = { version = "0.7", optional = true }
+tensorflow = { version = "0.8", optional = true }
 rand = "*"
 
 [features]
@@ -45,9 +45,9 @@ bencher = { git = "https://github.com/snipsco/bencher" }
 dinghy-test = { git="https://github.com/snipsco/dinghy.git", branch="0.3"}
 flate2 = "1.0"
 itertools = "0.7"
-mio_httpc = { version = "0.4", features = [ "rtls" ] }
+mio_httpc = { version = "0.6", features = [ "rtls" ] }
 tar = "0.4"
-proptest = "0.5"
+proptest = "0.6"
 
 [[bench]]
 harness = false
