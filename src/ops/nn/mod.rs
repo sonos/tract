@@ -1,7 +1,7 @@
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
 
-mod local_patch;
+pub mod local_patch;
 pub mod conv2d;
 pub mod pools;
 pub mod space_to_batch;
