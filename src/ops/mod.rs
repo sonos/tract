@@ -66,10 +66,9 @@ impl PartialEq for Input {
     }
 }
 
-pub trait Op: ::downcast_rs::Downcast + Debug + Send + Sync + 'static {
+pub trait Op: Debug + Send + Sync + 'static {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
 }
-impl_downcast!(Op);
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
 

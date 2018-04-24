@@ -32,8 +32,6 @@ extern crate bit_set;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
-extern crate downcast_rs;
-#[macro_use]
 extern crate error_chain;
 extern crate image;
 #[allow(unused_imports)]
