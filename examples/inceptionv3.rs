@@ -36,7 +36,7 @@ fn do_download() -> Result<()> {
     fs::create_dir_all(&dir_partial)?;
     let url = "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz";
     let (resp, body) = CallBuilder::get()
-        .timeout_ms(5000)
+        .timeout_ms(50000)
         .url(url)
         .map_err(|e| format!("request error: {:?}", e))?
         .exec()
