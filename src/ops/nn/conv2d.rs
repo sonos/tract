@@ -6,8 +6,8 @@ use ndarray::prelude::*;
 use super::local_patch::*;
 use matrix::Datum;
 
-#[derive(Debug,new)]
-pub struct Conv2D<T:Datum>(LocalPatch, PhantomData<T>);
+#[derive(Debug, new)]
+pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datatype("T")?;
@@ -15,7 +15,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
 
-impl<T:Datum> Op for Conv2D<T> {
+impl<T: Datum> Op for Conv2D<T> {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = T::mat_into_array(m_data.into_matrix())?;
@@ -194,9 +194,9 @@ pub mod proptests {
         Ok(graph.write_to_bytes()?)
     }
 
-    fn img_and_ker() -> BoxedStrategy<(Matrix, Matrix, (usize,usize))> {
+    fn img_and_ker() -> BoxedStrategy<(Matrix, Matrix, (usize, usize))> {
         (1usize..8, 1usize..8, 1usize..8, 1usize..8)
-            .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic,kh,kw,kc))))
+            .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic, kh, kw, kc))))
             .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, kc))| {
                 let i_size = ib * iw * ih * ic;
                 let k_size = kw * kh * kc * ic;
@@ -205,13 +205,19 @@ pub mod proptests {
                     Just((kh, kw, ic, kc)),
                     ::proptest::collection::vec(-9i32..9, i_size..i_size + 1),
                     ::proptest::collection::vec(-9i32..9, k_size..k_size + 1),
-                    (1..(kh+1),1..(kw+1))
+                    (1..(kh + 1), 1..(kw + 1)),
                 )
             })
             .prop_map(|(img_shape, ker_shape, img, ker, strides)| {
                 (
-                    Array::from_vec(img.into_iter().map(|i| i as f32).collect()).into_shape(img_shape).unwrap().into(),
-                    Array::from_vec(ker.into_iter().map(|i| i as f32).collect()).into_shape(ker_shape).unwrap().into(),
+                    Array::from_vec(img.into_iter().map(|i| i as f32).collect())
+                        .into_shape(img_shape)
+                        .unwrap()
+                        .into(),
+                    Array::from_vec(ker.into_iter().map(|i| i as f32).collect())
+                        .into_shape(ker_shape)
+                        .unwrap()
+                        .into(),
                     strides,
                 )
             })

@@ -56,7 +56,7 @@ impl<'a, T> BatchImageWrapper<'a, T> {
     }
 }
 
-#[derive(Debug,new)]
+#[derive(Debug, new)]
 pub struct LocalPatch {
     pub _data_format: DataFormat,
     pub padding: Padding,
@@ -65,12 +65,22 @@ pub struct LocalPatch {
 }
 
 impl LocalPatch {
-    pub fn same(v_stride:usize, h_stride:usize) -> LocalPatch {
-        LocalPatch { _data_format: DataFormat::NHWC, h_stride, v_stride, padding: Padding::Same }
+    pub fn same(v_stride: usize, h_stride: usize) -> LocalPatch {
+        LocalPatch {
+            _data_format: DataFormat::NHWC,
+            h_stride,
+            v_stride,
+            padding: Padding::Same,
+        }
     }
 
-    pub fn valid(v_stride:usize, h_stride:usize) -> LocalPatch {
-        LocalPatch { _data_format: DataFormat::NHWC, h_stride, v_stride, padding: Padding::Valid }
+    pub fn valid(v_stride: usize, h_stride: usize) -> LocalPatch {
+        LocalPatch {
+            _data_format: DataFormat::NHWC,
+            h_stride,
+            v_stride,
+            padding: Padding::Valid,
+        }
     }
 
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<LocalPatch> {
@@ -78,7 +88,7 @@ impl LocalPatch {
         if data_format == b"NCHW" {
             Err("NCHW data_format not implemented")?
         }
-        let strides:Vec<usize> = pb.get_attr_list_int("strides")?;
+        let strides: Vec<usize> = pb.get_attr_list_int("strides")?;
         if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
             Err(format!(
                 "strides must be of the form [1, h, v, 1], found {:?}",
@@ -100,7 +110,7 @@ impl LocalPatch {
             _data_format: DataFormat::NHWC,
             padding,
             h_stride,
-            v_stride
+            v_stride,
         })
     }
 
@@ -215,7 +225,8 @@ impl LocalPatch {
                         for d in 0..img.depth() {
                             let loc = &mut patch_row
                                 [f_y * img.depth() * filter_cols + f_x * img.depth() + d];
-                            *loc = data[(0, i_y * self.v_stride + f_y, i_x * self.h_stride + f_x, d)];
+                            *loc =
+                                data[(0, i_y * self.v_stride + f_y, i_x * self.h_stride + f_x, d)];
                         }
                     }
                 }

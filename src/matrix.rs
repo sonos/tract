@@ -39,27 +39,31 @@ impl Matrix {
         use tfpb::types::DataType::*;
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
-        let dims = shape.get_dim().iter().map(|d| d.size as usize).collect::<Vec<_>>();
+        let dims = shape
+            .get_dim()
+            .iter()
+            .map(|d| d.size as usize)
+            .collect::<Vec<_>>();
         let rank = dims.len();
         let content = t.get_tensor_content();
-        let mat:Matrix = if content.len() != 0 {
+        let mat: Matrix = if content.len() != 0 {
             match dtype {
-                DT_FLOAT => Self::from_content::<f32,u8>(dims, content)?.into(),
-                DT_INT32 => Self::from_content::<i32,u8>(dims, content)?.into(),
-                _ => unimplemented!()
+                DT_FLOAT => Self::from_content::<f32, u8>(dims, content)?.into(),
+                DT_INT32 => Self::from_content::<i32, u8>(dims, content)?.into(),
+                _ => unimplemented!(),
             }
         } else {
             match dtype {
-                DT_INT32 => Self::from_content::<i32,i32>(dims, t.get_int_val())?.into(),
-                DT_FLOAT => Self::from_content::<f32,f32>(dims, t.get_float_val())?.into(),
-                _ => unimplemented!()
+                DT_INT32 => Self::from_content::<i32, i32>(dims, t.get_int_val())?.into(),
+                DT_FLOAT => Self::from_content::<f32, f32>(dims, t.get_float_val())?.into(),
+                _ => unimplemented!(),
             }
         };
         assert_eq!(rank, mat.shape().len());
         Ok(mat)
     }
 
-    pub fn from_content<T: Copy, V:Copy>(dims: Vec<usize>, content: &[V]) -> ::Result<ArrayD<T>> {
+    pub fn from_content<T: Copy, V: Copy>(dims: Vec<usize>, content: &[V]) -> ::Result<ArrayD<T>> {
         let value: &[T] = unsafe {
             ::std::slice::from_raw_parts(
                 content.as_ptr() as _,
@@ -73,10 +77,14 @@ impl Matrix {
 
     pub fn to_pb(&self) -> ::Result<::tfpb::tensor::TensorProto> {
         let mut shape = ::tfpb::tensor_shape::TensorShapeProto::new();
-        let dims = self.shape().iter().map(|d| {
-            let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
-            dim.size = *d as _;
-            dim } ).collect();
+        let dims = self.shape()
+            .iter()
+            .map(|d| {
+                let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
+                dim.size = *d as _;
+                dim
+            })
+            .collect();
         shape.set_dim(::protobuf::repeated::RepeatedField::from_vec(dims));
         let mut tensor = ::tfpb::tensor::TensorProto::new();
         tensor.set_tensor_shape(shape);
@@ -84,8 +92,8 @@ impl Matrix {
             &Matrix::F32(ref it) => {
                 tensor.set_dtype(DataType::DT_FLOAT);
                 tensor.set_float_val(it.iter().cloned().collect());
-            },
-            _ => unimplemented!()
+            }
+            _ => unimplemented!(),
         }
         Ok(tensor)
     }
@@ -135,10 +143,10 @@ impl Matrix {
         let mb = other.to_f32().take_f32s().unwrap();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
-        ma.shape() == mb.shape() &&
-        mb.iter()
-            .zip(ma.iter())
-            .all(|(&a, &b)| (b - a).abs() <= dev / 10.0)
+        ma.shape() == mb.shape()
+            && mb.iter()
+                .zip(ma.iter())
+                .all(|(&a, &b)| (b - a).abs() <= dev / 10.0)
     }
 }
 

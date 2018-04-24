@@ -240,7 +240,8 @@ mod tests {
     #[test]
     fn strided_slice_7() {
         assert_eq!(
-            run(StridedSlice::default(),
+            run(
+                StridedSlice::default(),
                 arr2(&[[0, 6], [0, 0]]),
                 arr1(&[0]),
                 arr1(&[2]),
@@ -288,7 +289,8 @@ pub mod proptests {
     use ops::proptests::*;
     use Matrix;
 
-    fn strided_slice_strat() -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
+    fn strided_slice_strat(
+) -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
         ::proptest::collection::vec(
             (1..5).prop_flat_map(|n| {
                 // each dim max
@@ -391,19 +393,26 @@ pub mod proptests {
             .node(placeholder_i32("begin"))
             .node(placeholder_i32("end"))
             .node(placeholder_i32("stride"))
-            .node(tfpb::node().name("op")
-                  .attr("T", DT_INT32)
-                  .attr("Index", DT_INT32)
-                  .input("input").input("begin")
-                  .input("end").input("stride")
-                  .op("StridedSlice")
-            ).write_to_bytes().unwrap();
+            .node(
+                tfpb::node()
+                    .name("op")
+                    .attr("T", DT_INT32)
+                    .attr("Index", DT_INT32)
+                    .input("input")
+                    .input("begin")
+                    .input("end")
+                    .input("stride")
+                    .op("StridedSlice"),
+            )
+            .write_to_bytes()
+            .unwrap();
 
-        let inputs = vec!(
-                ("input", arr2(&[[0,6],[0,0]]).into()),
-                ("begin", arr1(&[0]).into()),
-                ("end", arr1(&[2]).into()),
-                ("stride", arr1(&[1]).into()));
+        let inputs = vec![
+            ("input", arr2(&[[0, 6], [0, 0]]).into()),
+            ("begin", arr1(&[0]).into()),
+            ("end", arr1(&[2]).into()),
+            ("stride", arr1(&[1]).into()),
+        ];
         compare(&graph, inputs, "op").unwrap()
     }
 }

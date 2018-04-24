@@ -42,11 +42,12 @@ impl Op for Softmax {
     }
 }
 
-pub fn arr4<A,V,U,T>(xs: &[V]) -> ::ndarray::Array4<A>
-    where V: ::ndarray::FixedInitializer<Elem=U> + Clone,
-           U: ::ndarray::FixedInitializer<Elem=T> + Clone,
-           T: ::ndarray::FixedInitializer<Elem=A> + Clone,
-           A: Clone,
+pub fn arr4<A, V, U, T>(xs: &[V]) -> ::ndarray::Array4<A>
+where
+    V: ::ndarray::FixedInitializer<Elem = U> + Clone,
+    U: ::ndarray::FixedInitializer<Elem = T> + Clone,
+    T: ::ndarray::FixedInitializer<Elem = A> + Clone,
+    A: Clone,
 {
     use ndarray::*;
     let mut xs = xs.to_vec();

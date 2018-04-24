@@ -14,7 +14,12 @@ fn main() {
         .op("Const")
         .name("three")
         .attr("dtype", DT_FLOAT)
-        .attr("value", tfdeploy::matrix::Matrix::from(::ndarray::arr1(&[3.0f32])).to_pb().unwrap());
+        .attr(
+            "value",
+            tfdeploy::matrix::Matrix::from(::ndarray::arr1(&[3.0f32]))
+                .to_pb()
+                .unwrap(),
+        );
     let input = tfpb::node()
         .op("Placeholder")
         .name("input")

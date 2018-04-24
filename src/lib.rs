@@ -344,7 +344,10 @@ impl<'a> ModelState<'a> {
         let mut inputs: Vec<Input> = vec![];
         for i in &node.inputs {
             let prec_node = &self.model.nodes[i.0];
-            let prec = self.outputs[i.0].as_ref().ok_or(format!("Computing {}, precursor {} not done:", node.name, prec_node.name))?;
+            let prec = self.outputs[i.0].as_ref().ok_or(format!(
+                "Computing {}, precursor {} not done:",
+                node.name, prec_node.name
+            ))?;
             inputs.push(prec[i.1.ok_or("no output found")?].clone().into())
         }
         let outputs = node.op.eval(inputs)?;

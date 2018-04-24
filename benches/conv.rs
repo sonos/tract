@@ -18,7 +18,7 @@ fn mk(sizes: &[usize]) -> Matrix {
 
 fn conv(bencher: &mut bencher::Bencher) {
     let stride = 1;
-    let conv = Conv2D::<f32>::new(LocalPatch::valid(stride,stride));
+    let conv = Conv2D::<f32>::new(LocalPatch::valid(stride, stride));
     let inputs = vec![mk(&[1, 82, 1, 40]).into(), mk(&[41, 1, 40, 128]).into()];
     conv.eval(inputs.clone()).unwrap();
     bencher.iter(|| conv.eval(inputs.clone()).unwrap())

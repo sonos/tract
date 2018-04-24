@@ -26,7 +26,7 @@ where
             .iter()
             .map(|m| {
                 Ok(T::mat_to_view(&*m)?.insert_axis(Axis(self.axis)))
-//                Ok(T::mat_to_view(&*m)?)
+                //                Ok(T::mat_to_view(&*m)?)
             })
             .collect::<Result<Vec<_>>>()?;
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
@@ -43,15 +43,27 @@ mod tests {
 
     #[test]
     fn pack_0() {
-        let inputs = vec!(
-                Matrix::i32s(&[2], &[1,4]).unwrap().into(),
-                Matrix::i32s(&[2], &[2,5]).unwrap().into(),
-                Matrix::i32s(&[2], &[3,6]).unwrap().into(),
+        let inputs = vec![
+            Matrix::i32s(&[2], &[1, 4]).unwrap().into(),
+            Matrix::i32s(&[2], &[2, 5]).unwrap().into(),
+            Matrix::i32s(&[2], &[3, 6]).unwrap().into(),
+        ];
+        assert_eq!(
+            Pack::<i32>::new(0)
+                .eval(inputs.clone())
+                .unwrap()
+                .remove(0)
+                .into_matrix(),
+            Matrix::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
         );
-        assert_eq!(Pack::<i32>::new(0).eval(inputs.clone()).unwrap().remove(0).into_matrix(),
-                   Matrix::from(arr2(&[[1, 4], [2, 5], [3, 6]])));
-        assert_eq!(Pack::<i32>::new(1).eval(inputs.clone()).unwrap().remove(0).into_matrix(),
-                   Matrix::from(arr2(&[[1, 2, 3], [4, 5, 6]])));
+        assert_eq!(
+            Pack::<i32>::new(1)
+                .eval(inputs.clone())
+                .unwrap()
+                .remove(0)
+                .into_matrix(),
+            Matrix::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
+        );
     }
 
     #[test]

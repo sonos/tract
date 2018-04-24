@@ -14,7 +14,9 @@ pub struct Const {
 impl Const {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         let mat = pb.get_attr_tensor("value")?;
-        Ok(Box::new(Const { value: Arc::new(mat) }))
+        Ok(Box::new(Const {
+            value: Arc::new(mat),
+        }))
     }
 }
 

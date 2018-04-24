@@ -35,10 +35,12 @@ impl Input {
             &Input::Shared(ref m) => m.as_ref(),
         }
     }
-
 }
 
-impl<M> From<M> for Input where Matrix: From<M> {
+impl<M> From<M> for Input
+where
+    Matrix: From<M>,
+{
     fn from(m: M) -> Input {
         Input::Owned(m.into())
     }
@@ -112,7 +114,11 @@ pub mod proptests {
     use tfpb::types::DataType;
     use tfpb::tensor_shape::TensorShapeProto;
 
-    pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(name: &str, t: DataType, shape:Shape) -> tfpb::node_def::NodeDef {
+    pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
+        name: &str,
+        t: DataType,
+        shape: Shape,
+    ) -> tfpb::node_def::NodeDef {
         let mut node = tfpb::node().name(name).op("Placeholder").attr("dtype", t);
         if let Some(shape) = shape.into() {
             node = node.attr("shape", shape)
@@ -123,14 +129,17 @@ pub mod proptests {
     pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
         use tfpb::tensor_shape::*;
         let mut shape = TensorShapeProto::new();
-        shape.set_dim(dims.iter().map(|&d| {
-            let mut dim = TensorShapeProto_Dim::new();
-            dim.set_size(d as i64);
-            dim
-        }).collect());
+        shape.set_dim(
+            dims.iter()
+                .map(|&d| {
+                    let mut dim = TensorShapeProto_Dim::new();
+                    dim.set_size(d as i64);
+                    dim
+                })
+                .collect(),
+        );
         shape
     }
-
 
     pub fn placeholder_f32(name: &str) -> tfpb::node_def::NodeDef {
         placeholder(name, DataType::DT_FLOAT, None)
@@ -140,13 +149,17 @@ pub mod proptests {
         placeholder(name, DataType::DT_INT32, None)
     }
 
-    pub fn compare<S:AsRef<str>>(
+    pub fn compare<S: AsRef<str>>(
         graph: &[u8],
         inputs: Vec<(S, ::ops::Matrix)>,
         output: &str,
     ) -> Result<(), ::proptest::test_runner::TestCaseError> {
-        let owned_names:Vec<String> = inputs.iter().map(|s| s.0.as_ref().to_string()).collect();
-        let inputs:Vec<(&str, ::ops::Matrix)> = inputs.into_iter().zip(owned_names.iter()).map(|((_,m),s)| (&**s, m)).collect();
+        let owned_names: Vec<String> = inputs.iter().map(|s| s.0.as_ref().to_string()).collect();
+        let inputs: Vec<(&str, ::ops::Matrix)> = inputs
+            .into_iter()
+            .zip(owned_names.iter())
+            .map(|((_, m), s)| (&**s, m))
+            .collect();
         let expected = ::tf::for_slice(&graph)?.run(inputs.clone(), output)?;
         let found = ::Model::for_reader(&*graph)?.run_with_names(inputs, output)?;
         prop_assert!(

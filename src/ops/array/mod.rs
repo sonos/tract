@@ -26,7 +26,7 @@ pub struct ConcatV2 {
 impl ConcatV2 {
     pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(ConcatV2 {
-            n: pb.get_attr_int("N")?
+            n: pb.get_attr_int("N")?,
         }))
     }
 }

@@ -15,7 +15,7 @@ pub trait Pooler: Send + Sync + ::std::fmt::Debug + 'static {
 pub struct Pool<P: Pooler>(LocalPatch, (usize, usize), PhantomData<P>);
 
 pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let ksize:Vec<usize> = pb.get_attr_list_int("ksize")?;
+    let ksize: Vec<usize> = pb.get_attr_list_int("ksize")?;
     Ok(Box::new(Pool::<P>(
         LocalPatch::build(pb)?,
         (ksize[1], ksize[2]),
@@ -97,11 +97,7 @@ mod tests {
 
     #[test]
     fn test_maxpool_1() {
-        let pool = Pool::<MaxPooler>(
-            LocalPatch::same(1,1),
-            (2, 1),
-            PhantomData,
-        );
+        let pool = Pool::<MaxPooler>(LocalPatch::same(1, 1), (2, 1), PhantomData);
         let data = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
         let found = pool.eval(vec![data.into()]).unwrap();
@@ -116,11 +112,7 @@ mod tests {
 
     #[test]
     fn test_maxpool_2() {
-        let pool = Pool::<MaxPooler>(
-            LocalPatch::same(3,3),
-            (3, 3),
-            PhantomData,
-        );
+        let pool = Pool::<MaxPooler>(LocalPatch::same(3, 3), (3, 3), PhantomData);
         let data = Matrix::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
         let found = pool.eval(vec![data.into()]).unwrap();
@@ -135,11 +127,7 @@ mod tests {
 
     #[test]
     fn test_avgpool_1() {
-        let pool = Pool::<AvgPooler>(
-            LocalPatch::same(1,1),
-            (1, 2),
-            PhantomData,
-        );
+        let pool = Pool::<AvgPooler>(LocalPatch::same(1, 1), (1, 2), PhantomData);
         let data = Matrix::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
         let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
         let found = pool.eval(vec![data.into()]).unwrap();
