@@ -60,7 +60,7 @@ pub mod tf;
 use std::{fs, path, str};
 use std::collections::{HashMap, HashSet};
 use ops::{Input, Op};
-use errors::*;
+pub use errors::*;
 
 pub use matrix::Matrix;
 
