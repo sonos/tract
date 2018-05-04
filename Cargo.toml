@@ -6,7 +6,6 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow inference"
 repository = "https://github.com/kali/tensorflow-deploy-rust"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
-build="build.rs"
 categories = [ "science" ]
 documentation = "http://www.poumeyrol.fr/tensorflow-deploy-rust/tfdeploy/index.html"
 
@@ -33,10 +32,6 @@ default = [ ]
 blas = ["ndarray/blas", "blas-src"]
 openblas = ["blas", "openblas-src", "blas-src/openblas" ]
 accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
-
-[build-dependencies]
-protoc-rust   = "1.4"
-tempdir = "0.3"
 
 [dev-dependencies]
 colored = "1"

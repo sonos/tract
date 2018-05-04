@@ -17,36 +17,16 @@
 #![allow(unused_imports)]
 #![allow(unused_results)]
 
-pub mod attr_value {
-    include!(concat!(env!("OUT_DIR"), "/attr_value.rs"));
-}
-pub mod function {
-    include!(concat!(env!("OUT_DIR"), "/function.rs"));
-}
-pub mod graph {
-    include!(concat!(env!("OUT_DIR"), "/graph.rs"));
-}
-pub mod node_def {
-    include!(concat!(env!("OUT_DIR"), "/node_def.rs"));
-}
-pub mod op_def {
-    include!(concat!(env!("OUT_DIR"), "/op_def.rs"));
-}
-pub mod resource_handle {
-    include!(concat!(env!("OUT_DIR"), "/resource_handle.rs"));
-}
-pub mod tensor {
-    include!(concat!(env!("OUT_DIR"), "/tensor.rs"));
-}
-pub mod tensor_shape {
-    include!(concat!(env!("OUT_DIR"), "/tensor_shape.rs"));
-}
-pub mod types {
-    include!(concat!(env!("OUT_DIR"), "/types.rs"));
-}
-pub mod versions {
-    include!(concat!(env!("OUT_DIR"), "/versions.rs"));
-}
+pub mod attr_value;
+pub mod function;
+pub mod graph;
+pub mod node_def;
+pub mod op_def;
+pub mod resource_handle;
+pub mod tensor;
+pub mod tensor_shape;
+pub mod types;
+pub mod versions;
 
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;

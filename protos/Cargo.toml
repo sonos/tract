@@ -1,0 +1,7 @@
+[package]
+name = "protos"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+
+[dependencies]
+protoc-rust = "1.5"
