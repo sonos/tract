@@ -13,11 +13,10 @@ before_install:
 - sudo mv protoc3/bin/* /usr/local/bin/
 - sudo mv protoc3/include/* /usr/local/include/
 script:
-- |
-  cargo build &&
-  cargo test &&
-  cargo bench &&
-  cargo doc
+-  cargo build
+-  cargo test
+-  cargo bench
+-  cargo doc
 matrix:
   allow_failures:
   - rust: nightly
