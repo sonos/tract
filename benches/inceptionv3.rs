@@ -5,7 +5,7 @@ extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
 extern crate itertools;
-extern crate mio_httpc;
+extern crate reqwest;
 extern crate ndarray;
 extern crate tar;
 extern crate tfdeploy;
