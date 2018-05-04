@@ -3,7 +3,7 @@ language: rust
 cache:
   - cargo
   - directories:
-    - $TMP/inception-v3-2016_08_28
+    - inception-v3-2016_08_28
 
 rust:
 - stable
