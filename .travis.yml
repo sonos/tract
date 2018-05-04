@@ -1,6 +1,10 @@
 sudo: true
 language: rust
-cache: cargo
+cache:
+  - cargo
+  - directories:
+    - $TMP/inception-v3-2016_08_28
+
 rust:
 - stable
 - beta
