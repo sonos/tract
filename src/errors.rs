@@ -12,10 +12,3 @@ error_chain!{
         TFString {}
     }
 }
-
-#[cfg(feature = "tensorflow")]
-impl ::std::convert::From<::tensorflow::Status> for Error {
-    fn from(tfs: ::tensorflow::Status) -> Error {
-        format!("Tensorflow error: {:?}", tfs).into()
-    }
-}

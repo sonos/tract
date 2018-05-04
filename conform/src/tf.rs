@@ -7,8 +7,11 @@ use tensorflow::Session;
 use tensorflow::StepWithGraph;
 use tensorflow::Tensor;
 
+use tfdeploy::Matrix;
+
 use ndarray::ArrayD;
-use ::*;
+
+use ::Result;
 
 pub struct Tensorflow {
     session: Session,

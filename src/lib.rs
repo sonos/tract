@@ -41,21 +41,12 @@ extern crate log;
 #[macro_use]
 extern crate ndarray;
 extern crate num_traits;
-#[cfg(test)]
-#[macro_use]
-#[allow(unused_imports)]
-extern crate proptest;
 extern crate protobuf;
-#[cfg(feature = "tensorflow")]
-extern crate tensorflow;
 
 pub mod errors;
 pub mod tfpb;
 pub mod matrix;
 pub mod ops;
-
-#[cfg(feature = "tensorflow")]
-pub mod tf;
 
 use std::{fs, path, str};
 use std::collections::{HashMap, HashSet};
