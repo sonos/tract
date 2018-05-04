@@ -25,7 +25,6 @@ ndarray = { version = "0.11" }
 num-traits = "0.2"
 protobuf = "1.4"
 tensorflow = { version = "0.8", optional = true }
-rand = "*"
 
 [features]
 default = [ ]
@@ -36,7 +35,7 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 [dev-dependencies]
 colored = "1"
 bencher = { git = "https://github.com/snipsco/bencher" }
-dinghy-test = { git="https://github.com/snipsco/dinghy.git", branch="0.3"}
+dinghy-test = "0.3"
 flate2 = "1.0"
 itertools = "0.7"
 tar = "0.4"
