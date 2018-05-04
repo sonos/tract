@@ -62,7 +62,7 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
 
 fn inception_v3_2016_08_28() -> path::PathBuf {
     match ::std::env::var("TRAVIS_BUILD_DIR") {
-        Ok(t) => path::Path::new(&t).join("inception-v3-2016_08_28"),
+        Ok(t) => path::Path::new(&t).join("cached").join("inception-v3-2016_08_28"),
         _ => ::std::env::temp_dir().join("inception-v3-2016_08_28")
     }
 }
