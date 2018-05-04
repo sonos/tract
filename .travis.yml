@@ -1,27 +1,21 @@
 sudo: true
 language: rust
+cache:
+  - cargo
+  - directories:
+    - cached
+
 rust:
 - stable
 - beta
 - nightly
-before_install:
-- curl -OL https://github.com/google/protobuf/releases/download/v3.2.0/protoc-3.2.0-linux-x86_64.zip
-- unzip protoc-3.2.0-linux-x86_64.zip -d protoc3
-- sudo mv protoc3/bin/* /usr/local/bin/
-- sudo mv protoc3/include/* /usr/local/include/
-- pip install 'travis-cargo<0.2' --user && export PATH=$HOME/.local/bin:$PATH
+env:
+- RUST_BACKTRACE=1
 script:
-- |
-  travis-cargo build &&
-  travis-cargo test &&
-  travis-cargo bench &&
-  travis-cargo doc
-after_success:
-- travis-cargo --only stable doc-upload
+-  cargo build
+-  cargo test
+-  cargo bench
+-  cargo doc
 matrix:
   allow_failures:
   - rust: nightly
-env:
-  global:
-    - TRAVIS_CARGO_NIGHTLY_FEATURE=""
-    - secure: CpygK2eVbhJ0XBb6ABfoaoEdGGzKeUrv8MXHtMPMsVJjdLSfvcpdqehULeq6AXXvdHPy6Z7RWPpX8KU3S/TCHVD9MpeUvsdzduv4bi0uKTXoOqVSmQvkDihy30FOyQvvs+9floHiMeuOuFao8UVCNgpXDbRV76i/P/qYCJiYGVi1XCVV4dy+ELyo2eC5AxdEcq6TlCkiBTYDpjYqxHAoFdPQAfT3ueCNibG/W0yhDSPvp9NpeN0/CS6o/PoQPtq02b9LOJv8ktDyTt5o+hsIXqHW7uksxpNVtJSkX3gLNFZti4Ya2u3jywP3NUDbP9PoK9z429YdCaknigzvvdXggpzg3IV+F9ym/8NeSvHb8CWu8+RNM8mwIlMEfTjffNYJnuGQZ/+T390a2dyYotwKBJQARrGitbsuaTVH7NR2JjBhNwJwQCdxpUCwmMCN0byn3w9FN4OliKM4zWuKM1NJ4ex7x/p9ry3JdF0iaSRc698vTY69S+8/sogGiy2B1ew8G4+qybUiB9mH5rK69qr7o4C55GUHgYInkXmNzMkK25ljElatnac9OVUKOhBGVkScEZIn9ZXkWuXefeGBlXJVwhKdfhOA+OzKx/da3Cmjh48wIRUpSBE+015ywWKUPhnJEHYgOa57afBbhmC9akSUTkQPmeOtLJHRUXT0W2Q0R5g=

@@ -3,13 +3,12 @@ extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
 extern crate itertools;
-extern crate mio_httpc;
+extern crate reqwest;
 extern crate ndarray;
 extern crate tar;
 extern crate tfdeploy;
 
 use std::{fs, io, path};
-use mio_httpc::CallBuilder;
 use dinghy_test::test_project_path;
 
 use tfdeploy::errors::*;
@@ -34,17 +33,9 @@ fn do_download() -> Result<()> {
         fs::remove_dir_all(&dir_partial).unwrap();
     }
     fs::create_dir_all(&dir_partial)?;
-    let url = "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz";
-    let (resp, body) = CallBuilder::get()
-        .timeout_ms(50000)
-        .url(url)
-        .map_err(|e| format!("request error: {:?}", e))?
-        .exec()
-        .map_err(|e| format!("request error: {:?}", e))?;
-    if resp.status != 200 {
-        Err("Could not download inception v3")?
-    }
-    let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(&body[..]));
+    let resp = reqwest::get("https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz")
+        .map_err(|e| format!("Http error: {:?}", e))?;
+    let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(resp));
     archive.unpack(&dir_partial)?;
     fs::rename(dir_partial, dir)?;
     Ok(())
@@ -70,7 +61,10 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
 }
 
 fn inception_v3_2016_08_28() -> path::PathBuf {
-    ::std::env::temp_dir().join("inception-v3-2016_08_28")
+    match ::std::env::var("TRAVIS_BUILD_DIR") {
+        Ok(t) => path::Path::new(&t).join("cached").join("inception-v3-2016_08_28"),
+        _ => ::std::env::temp_dir().join("inception-v3-2016_08_28")
+    }
 }
 
 pub fn inception_v3_2016_08_28_frozen() -> path::PathBuf {

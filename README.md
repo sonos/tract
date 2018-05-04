@@ -68,7 +68,7 @@ easily as practical to small-ish devices (think 30$ boards).
 
 # License
 
-Note: files in the `protos` directory are copied from the
+Note: files in the `protos/tensorflow` directory are copied from the
 [TensorFlow](https://github.com/tensorflow/tensorflow) project and are not
 covered by the following licence statement.
 

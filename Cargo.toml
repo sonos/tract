@@ -6,7 +6,6 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow inference"
 repository = "https://github.com/kali/tensorflow-deploy-rust"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
-build="build.rs"
 categories = [ "science" ]
 documentation = "http://www.poumeyrol.fr/tensorflow-deploy-rust/tfdeploy/index.html"
 
@@ -26,7 +25,6 @@ ndarray = { version = "0.11" }
 num-traits = "0.2"
 protobuf = "1.4"
 tensorflow = { version = "0.8", optional = true }
-rand = "*"
 
 [features]
 default = [ ]
@@ -34,19 +32,15 @@ blas = ["ndarray/blas", "blas-src"]
 openblas = ["blas", "openblas-src", "blas-src/openblas" ]
 accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 
-[build-dependencies]
-protoc-rust   = "1.4"
-tempdir = "0.3"
-
 [dev-dependencies]
 colored = "1"
 bencher = { git = "https://github.com/snipsco/bencher" }
-dinghy-test = { git="https://github.com/snipsco/dinghy.git", branch="0.3"}
+dinghy-test = "0.3"
 flate2 = "1.0"
 itertools = "0.7"
-mio_httpc = { version = "0.6", features = [ "rtls" ] }
 tar = "0.4"
 proptest = "0.6"
+reqwest = "0.8.5"
 
 [[bench]]
 harness = false
