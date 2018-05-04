@@ -13,8 +13,7 @@ env:
 - RUST_BACKTRACE=1
 script:
 -  cargo build
--  cargo test
--  cd conform ; cargo test
+-  cargo test --all
 -  cargo bench
 -  cargo doc
 matrix:

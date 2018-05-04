@@ -8,6 +8,10 @@ repository = "https://github.com/kali/tensorflow-deploy-rust"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 
+[workspace]
+members = [ "conform", ]
+
+
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
 
