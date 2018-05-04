@@ -7,7 +7,6 @@ description = "Tiny, no-nonsense, self contained, TensorFlow inference"
 repository = "https://github.com/kali/tensorflow-deploy-rust"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
-documentation = "http://www.poumeyrol.fr/tensorflow-deploy-rust/tfdeploy/index.html"
 
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
@@ -34,7 +33,7 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 
 [dev-dependencies]
 colored = "1"
-bencher = { git = "https://github.com/snipsco/bencher" }
+bencher = "0.1"
 dinghy-test = "0.3"
 flate2 = "1.0"
 itertools = "0.7"
