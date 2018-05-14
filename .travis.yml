@@ -17,11 +17,9 @@ script:
 -  cargo bench
 -  cargo doc
 -  (cd conform ; cargo test --release)
--  |
-    cd exs/inceptionv3
-    cargo test --release)
-    # too long for travis
-    cargo bench
+-  cd exs/inceptionv3 ; cargo test --release
+# too long for travis
+# - cd exs/inceptionv3 ; cargo bench
 matrix:
   allow_failures:
   - rust: nightly

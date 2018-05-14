@@ -79,7 +79,6 @@ mod tests {
     use super::*;
 
     const HOPPER: &str = "grace_hopper.jpg";
-
     pub fn hopper() -> path::PathBuf {
         test_project_path().join(HOPPER)
     }
