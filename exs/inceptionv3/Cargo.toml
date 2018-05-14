@@ -3,9 +3,6 @@ name = "inceptionv3"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 
-[workspace]
-members = []
-
 [dependencies]
 flate2 = "*"
 image = "*"

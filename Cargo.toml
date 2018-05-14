@@ -9,8 +9,7 @@ keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 
 [workspace]
-members = [ "conform", ]
-
+members = [ "conform", "exs/inceptionv3" ]
 
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
