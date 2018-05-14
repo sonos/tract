@@ -85,7 +85,7 @@ impl Matrix {
                 dim
             })
             .collect();
-        shape.set_dim(::protobuf::repeated::RepeatedField::from_vec(dims));
+        shape.set_dim(::protobuf::RepeatedField::from_vec(dims));
         let mut tensor = ::tfpb::tensor::TensorProto::new();
         tensor.set_tensor_shape(shape);
         match self {

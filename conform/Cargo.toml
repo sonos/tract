@@ -1,0 +1,12 @@
+[package]
+name = "conform"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+
+[dependencies]
+error-chain =  "0"
+ndarray = "0"
+proptest = "0.6"
+protobuf = "~1.6"
+tensorflow = "0"
+tfdeploy = { path = ".." }

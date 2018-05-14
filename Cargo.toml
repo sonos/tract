@@ -8,6 +8,10 @@ repository = "https://github.com/kali/tensorflow-deploy-rust"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 
+[workspace]
+members = [ "conform", ]
+
+
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
 
@@ -22,8 +26,7 @@ image = "0.18"
 log = "0.4"
 ndarray = { version = "0.11" }
 num-traits = "0.2"
-protobuf = "1.4"
-tensorflow = { version = "0.8", optional = true }
+protobuf = "~1.6"
 
 [features]
 default = [ ]
@@ -38,7 +41,6 @@ dinghy-test = "0.3"
 flate2 = "1.0"
 itertools = "0.7"
 tar = "0.4"
-proptest = "0.6"
 reqwest = "0.8.5"
 
 [[bench]]
