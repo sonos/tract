@@ -9,7 +9,6 @@ use std::{fs, io, path};
 
 use tfdeploy::errors::*;
 
-
 fn download() {
     use std::sync::{Once, ONCE_INIT};
     static START: Once = ONCE_INIT;

@@ -15,4 +15,9 @@ tar = "*"
 tfdeploy = { path = "../.." }
 
 [dev-dependencies]
+bencher = "0.1"
 dinghy-test = "0.3"
+
+[[bench]]
+harness = false
+name = "inceptionv3"
