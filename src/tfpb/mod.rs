@@ -40,7 +40,6 @@ pub fn node() -> NodeDef {
 }
 
 pub fn tensor_f32(dim:Vec<usize>, values:Vec<f32>) -> tensor::TensorProto {
-    use protobuf::singular::SingularPtrField;
     let mut tensor = tensor::TensorProto::new();
     tensor.set_dtype(types::DataType::DT_FLOAT);
     let mut shape = tensor_shape::TensorShapeProto::new();

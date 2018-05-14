@@ -267,7 +267,7 @@ impl Model {
 
     /// Load a Tensorflow protobuf graph def from a reader.
     pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph::GraphDef> {
-        Ok(::protobuf::core::parse_from_reader::<
+        Ok(::protobuf::parse_from_reader::<
             ::tfpb::graph::GraphDef,
         >(&mut r)?)
     }

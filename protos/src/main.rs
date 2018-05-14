@@ -19,6 +19,7 @@ fn main() {
             .map(|a| a.to_str().unwrap())
             .collect::<Vec<&str>>(),
         includes: &["."],
+        ..protoc_rust::Args::default()
     }).expect("protoc");
 
     for input in inputs {
