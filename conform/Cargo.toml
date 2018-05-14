@@ -7,6 +7,6 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 error-chain =  "0"
 ndarray = "0"
 proptest = "0.6"
-protobuf = "1"
+protobuf = "~1.6"
 tensorflow = "0"
 tfdeploy = { path = ".." }

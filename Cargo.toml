@@ -26,7 +26,7 @@ image = "0.18"
 log = "0.4"
 ndarray = { version = "0.11" }
 num-traits = "0.2"
-protobuf = "1.4"
+protobuf = "~1.6"
 
 [features]
 default = [ ]
