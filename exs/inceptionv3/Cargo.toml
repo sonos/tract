@@ -1,0 +1,18 @@
+[package]
+name = "inceptionv3"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+
+[workspace]
+members = []
+
+[dependencies]
+flate2 = "*"
+image = "*"
+ndarray = "*"
+reqwest = "*"
+tar = "*"
+tfdeploy = { path = "../.." }
+
+[dev-dependencies]
+dinghy-test = "0.3"

@@ -16,6 +16,8 @@ script:
 -  cargo test --all
 -  cargo bench
 -  cargo doc
+-  (cd exs/inceptionv3 ; cargo test --release)
+-  (cd conform ; cargo test --release)
 matrix:
   allow_failures:
   - rust: nightly

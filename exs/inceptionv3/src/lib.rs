@@ -1,19 +1,14 @@
-extern crate colored;
-extern crate dinghy_test;
 extern crate flate2;
 extern crate image;
-extern crate itertools;
 extern crate reqwest;
 extern crate ndarray;
 extern crate tar;
 extern crate tfdeploy;
 
 use std::{fs, io, path};
-use dinghy_test::test_project_path;
 
 use tfdeploy::errors::*;
 
-const HOPPER: &str = "examples/grace_hopper.jpg";
 
 fn download() {
     use std::sync::{Once, ONCE_INIT};
@@ -49,17 +44,6 @@ pub fn load_labels() -> Vec<String> {
         .unwrap()
 }
 
-pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
-    let image = ::image::open(&p).unwrap().to_rgb();
-    let resized = ::image::imageops::resize(&image, 299, 299, ::image::FilterType::Triangle);
-    let image: ::tfdeploy::Matrix = ::ndarray::Array4::from_shape_fn(
-        (1, 299, 299, 3),
-        |(_, y, x, c)| resized[(x as _, y as _)][c] as f32 / 255.0,
-    ).into_dyn()
-        .into();
-    image
-}
-
 fn inception_v3_2016_08_28() -> path::PathBuf {
     match ::std::env::var("TRAVIS_BUILD_DIR") {
         Ok(t) => path::Path::new(&t).join("cached").join("inception-v3-2016_08_28"),
@@ -77,23 +61,45 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
     inception_v3_2016_08_28().join("imagenet_slim_labels.txt")
 }
 
-pub fn hopper() -> path::PathBuf {
-    test_project_path().join(HOPPER)
+pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Matrix {
+    let image = ::image::open(&p).unwrap().to_rgb();
+    let resized = ::image::imageops::resize(&image, 299, 299, ::image::FilterType::Triangle);
+    let image: ::tfdeploy::Matrix = ::ndarray::Array4::from_shape_fn(
+        (1, 299, 299, 3),
+        |(_, y, x, c)| resized[(x as _, y as _)][c] as f32 / 255.0,
+    ).into_dyn()
+        .into();
+    image
 }
 
-#[allow(dead_code)]
-fn main() {
-    download();
-    let tfd = ::tfdeploy::for_path(inception_v3_2016_08_28_frozen()).unwrap();
-    let input_id = tfd.node_id_by_name("input").unwrap();
-    let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1")
-        .unwrap();
-    let input = load_image(hopper());
-    let output = tfd.run(vec![(input_id, input)], output_id).unwrap();
-    let labels = load_labels();
-    for (ix, output) in output[0].as_f32s().unwrap().iter().enumerate() {
-        if *output > 0.4 {
-            println!("{:0.05} {}", output, labels[ix]);
-        }
+#[cfg(test)]
+mod tests {
+    extern crate dinghy_test;
+    use std::path;
+    use self::dinghy_test::test_project_path;
+    use super::*;
+
+    const HOPPER: &str = "grace_hopper.jpg";
+
+    pub fn hopper() -> path::PathBuf {
+        test_project_path().join(HOPPER)
+    }
+
+    #[test]
+    fn grace_hopper_is_a_military_uniform() {
+        download();
+        let tfd = ::tfdeploy::for_path(inception_v3_2016_08_28_frozen()).unwrap();
+        let input_id = tfd.node_id_by_name("input").unwrap();
+        let output_id = tfd.node_id_by_name("InceptionV3/Predictions/Reshape_1")
+            .unwrap();
+        let input = load_image(hopper());
+        let output = tfd.run(vec![(input_id, input)], output_id).unwrap();
+        let labels = load_labels();
+        let label_id = output[0].as_f32s().unwrap().iter().enumerate()
+            .max_by(|a,b| a.1.partial_cmp(b.1).unwrap_or(0u32.cmp(&1)))
+            .unwrap()
+            .0;
+        let label = &labels[label_id];
+        assert_eq!(label, "military uniform");
     }
 }

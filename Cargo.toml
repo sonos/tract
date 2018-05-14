@@ -38,10 +38,7 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 colored = "1"
 bencher = "0.1"
 dinghy-test = "0.3"
-flate2 = "1.0"
 itertools = "0.7"
-tar = "0.4"
-reqwest = "0.8.5"
 
 [[bench]]
 harness = false
