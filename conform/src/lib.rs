@@ -29,7 +29,7 @@ impl ::std::convert::From<::tensorflow::Status> for Error {
 
 mod tf;
 
-pub use protobuf::core::Message;
+pub use protobuf::Message;
 
 use tfdeploy::tfpb;
 use tfpb::types::DataType;
