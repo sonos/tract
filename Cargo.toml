@@ -43,7 +43,3 @@ itertools = "0.7"
 [[bench]]
 harness = false
 name = "conv"
-
-[[bench]]
-harness = false
-name = "inceptionv3"
