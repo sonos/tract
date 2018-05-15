@@ -2,7 +2,7 @@
 
 error_chain!{
     foreign_links {
-        Image(::image::ImageError);
+        Image(::image::ImageError) #[cfg(features="image_ops")];
         Io(::std::io::Error);
         NdarrayShape(::ndarray::ShapeError);
         Protobuf(::protobuf::ProtobufError);
