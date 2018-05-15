@@ -35,7 +35,7 @@ openblas = ["blas", "openblas-src", "blas-src/openblas" ]
 accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 
 [dev-dependencies]
-bencher = "0.1"
+criterion = "0.2"
 
 [[bench]]
 harness = false
