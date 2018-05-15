@@ -10,10 +10,14 @@ ndarray = "*"
 reqwest = "*"
 tar = "*"
 tfdeploy = { path = "../.." }
+conform = { path = "../../conform", optional=true }
 
 [dev-dependencies]
-bencher = "0.1"
+criterion = "0.2"
 dinghy-test = "0.3"
+
+[features]
+tensorflow = [ "conform" ]
 
 [[bench]]
 harness = false

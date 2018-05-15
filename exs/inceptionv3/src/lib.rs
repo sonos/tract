@@ -1,3 +1,5 @@
+#[cfg(features="conform")]
+extern crate conform;
 extern crate flate2;
 extern crate image;
 extern crate reqwest;

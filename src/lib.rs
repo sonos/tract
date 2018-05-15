@@ -84,39 +84,7 @@ impl Node {
     }
 
     pub fn eval_order(&self, model: &Model) -> Result<Vec<usize>> {
-        let mut order: Vec<usize> = Vec::new();
-        let mut done = bit_set::BitSet::with_capacity(model.nodes.len());
-        let mut needed = bit_set::BitSet::with_capacity(model.nodes.len());
-        needed.insert(self.id);
-        loop {
-            let mut done_something = false;
-            let mut missing = needed.clone();
-            missing.difference_with(&done);
-            for node_id in missing.iter() {
-                let mut computable = true;
-                let node = &model.nodes[node_id];
-                for i in node.inputs.iter() {
-                    if !done.contains(i.0) {
-                        computable = false;
-                        done_something = true;
-                        needed.insert(i.0.clone());
-                    }
-                }
-                if computable {
-                    done_something = true;
-                    order.push(node_id);
-                    done.insert(node_id);
-                }
-            }
-            if !done_something {
-                break;
-            }
-        }
-        if done.contains(self.id) {
-            Ok(order)
-        } else {
-            Err(format!("Could not compute node {}", self.name).into())
-        }
+        Ok(Plan::for_nodes(model, &[self.id])?.order)
     }
 }
 

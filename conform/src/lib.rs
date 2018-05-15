@@ -27,7 +27,7 @@ impl ::std::convert::From<::tensorflow::Status> for Error {
     }
 }
 
-mod tf;
+pub mod tf;
 
 pub use protobuf::Message;
 
