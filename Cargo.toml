@@ -9,8 +9,7 @@ keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 
 [workspace]
-members = [ "conform", ]
-
+members = [ "conform", "exs/inceptionv3" ]
 
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
@@ -22,7 +21,7 @@ blas-src = { version = "0.1.2", default-features = false, optional=true }
 derive-new = "0.5"
 error-chain =  { version = "0.11", default-features=false }
 bit-set="0.5"
-image = "0.18"
+image = { version = "0.18", optional=true }
 log = "0.4"
 ndarray = { version = "0.11" }
 num-traits = "0.2"
@@ -30,6 +29,7 @@ protobuf = "~1.6"
 
 [features]
 default = [ ]
+image_ops = [ "image" ]
 blas = ["ndarray/blas", "blas-src"]
 openblas = ["blas", "openblas-src", "blas-src/openblas" ]
 accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
@@ -38,15 +38,8 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 colored = "1"
 bencher = "0.1"
 dinghy-test = "0.3"
-flate2 = "1.0"
 itertools = "0.7"
-tar = "0.4"
-reqwest = "0.8.5"
 
 [[bench]]
 harness = false
 name = "conv"
-
-[[bench]]
-harness = false
-name = "inceptionv3"

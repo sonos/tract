@@ -33,6 +33,7 @@ extern crate bit_set;
 extern crate derive_new;
 #[macro_use]
 extern crate error_chain;
+#[cfg(features="image_ops")]
 extern crate image;
 #[allow(unused_imports)]
 #[macro_use]

@@ -13,6 +13,7 @@ mod array;
 mod math;
 mod cast;
 pub mod nn;
+#[cfg(features="image_ops")]
 pub mod image;
 pub mod konst;
 

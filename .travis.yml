@@ -13,9 +13,13 @@ env:
 - RUST_BACKTRACE=1
 script:
 -  cargo build
--  cargo test --all
+-  cargo test
 -  cargo bench
 -  cargo doc
+-  (cd conform ; cargo test --release)
+-  cd exs/inceptionv3 ; cargo test --release
+# too long for travis
+# - cd exs/inceptionv3 ; cargo bench
 matrix:
   allow_failures:
   - rust: nightly
