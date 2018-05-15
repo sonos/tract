@@ -83,6 +83,7 @@ impl Node {
         s
     }
 
+    #[deprecated(since="0.0.9-alpha.1", note="please use `Plan::for_nodes` instead")]
     pub fn eval_order(&self, model: &Model) -> Result<Vec<usize>> {
         let mut order: Vec<usize> = Vec::new();
         let mut done = bit_set::BitSet::with_capacity(model.nodes.len());
