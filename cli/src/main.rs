@@ -19,7 +19,7 @@ use tfdeploy::tfpb;
 use tfpb::types::DataType;
 
 
-/// Configures error handling for this crate.
+/// Configures error handling for this module.
 error_chain! {
     links {
         Conform(conform::Error, conform::ErrorKind);
@@ -48,7 +48,7 @@ fn main() {
     let app = clap_app!(("tfdeploy-cli") =>
         (version: "1.0")
         (author: "Romain Liautaud <romain.liautaud@snips.ai>")
-        (about: "A few tools to compare tfdeploy with tensorflow.")
+        (about: "A set of tools to compare tfdeploy with tensorflow.")
 
         (@setting UnifiedHelpMessage)
         (@setting SubcommandRequired)
@@ -120,7 +120,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         .collect();
 
     if sizes.len() < 3 {
-        bail!("Argument size should be formatted as {size}x{size}x{type}.");
+        bail!("Size should be formatted as {size}x{size}x{type}.");
     }
 
     let size_x = sizes[0].parse::<usize>()?;
