@@ -192,12 +192,11 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
 /// Handles the `profile` subcommand.
 fn handle_profile(params: Parameters) -> Result<()> {
-    let iters = 5; // todo(romain)
+    let iters = 100000; // todo(romain)
 
     let model = params.tfd_model;
     let input = model.get_node(params.input.as_str())?;
-    let _output = model.get_node(params.output.as_str())?;
-    let plan = input.eval_order(&model)?;
+    let output = model.get_node(params.output.as_str())?;
 
     let mut state = model.state();
 
@@ -207,20 +206,24 @@ fn handle_profile(params: Parameters) -> Result<()> {
         random_matrix(params.size_x, params.size_y, params.size_d)
     )?;
 
+    let plan = output.eval_order(&model)?;
+    println!("Execution plan: {:?}", plan);
+
     // Then execute the plan while profiling each step.
-    println!("{:?}", plan);
     for n in plan {
         if n == input.id {
             continue;
         }
 
+        let node = model.get_node_by_id(n)?;
         let start = PreciseTime::now();
         for _ in 0..iters { state.compute_one(n)?; }
         let end = PreciseTime::now();
 
+        let header = format!("{} ({}, {}):", n, node.name, node.op_name);
         println!(
-            "Node {}: {} ms on average.", n,
-            start.to(end).num_milliseconds() / iters
+            "- Node {:<20} {} ms on average.", header,
+            start.to(end).num_milliseconds() as f64 / iters as f64
         );
     }
 
