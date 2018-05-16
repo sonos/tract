@@ -451,33 +451,34 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
     let output = model.get_node(params.output.as_str())?;
     let mut state = model.state();
 
-    // First fill the input with randomly generated values.
+    // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        let input = model.get_node(s.as_str())?;
         state.set_value(
-            input.id,
+            model.node_id_by_name(s.as_str())?,
             random_matrix(params.size_x, params.size_y, params.size_d)
         )?;
     }
 
     let plan = output.eval_order(&model)?;
-    info!("Using execution plan: {:?}.", plan);
-    info!("Running {} iterations at each step.", iters);
+    info!("Using execution plan: {:?}", plan);
+    info!("Running {} iterations at each step", iters);
 
     // Then execute the plan while profiling each step.
     for n in plan {
-        if !state.outputs[n].is_none() {
+        let node = model.get_node_by_id(n)?;
+
+        if node.op_name == "Placeholder" {
+            println!(" * Skipping placeholder: {}", node.name);
             continue;
         }
 
-        let node = model.get_node_by_id(n)?;
         let start = PreciseTime::now();
         for _ in 0..iters { state.compute_one(n)?; }
         let end = PreciseTime::now();
 
         let header = format!("{} ({}, {}):", n, node.name, node.op_name);
         println!(
-            "- Node {:<20} {} ms on average.", header,
+            " * Node {:<25} {} ms on average", header,
             start.to(end).num_milliseconds() as f64 / iters as f64
         );
     }
