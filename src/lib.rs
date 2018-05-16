@@ -340,6 +340,14 @@ impl<'a> ModelState<'a> {
         self.set_outputs(id, vec![value])
     }
 
+    pub fn set_values(&mut self, values: Vec<(&str, Matrix)>) -> Result<()> {
+        for (name, mat) in values {
+            self.set_value(self.model.node_id_by_name(name)?, mat)?;
+        }
+
+        Ok(())
+    }
+
     pub fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.model.nodes[node];
         let mut inputs: Vec<Input> = vec![];
