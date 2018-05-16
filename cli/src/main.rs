@@ -46,6 +46,7 @@ error_chain! {
 /// Structure holding the parsed parameters.
 #[allow(dead_code)]
 struct Parameters {
+    graph: tfpb::graph::GraphDef,
     tfd_model: tfdeploy::Model,
 
     #[cfg(feature="tensorflow")]
@@ -137,6 +138,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 /// Parses the command-line arguments.
 fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     let path = Path::new(matches.value_of("model").unwrap());
+    let graph = tfdeploy::Model::graphdef_for_path(&path)?;
     let tfd_model = tfdeploy::for_path(&path)?;
 
     #[cfg(feature="tensorflow")]
@@ -174,10 +176,10 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     };
 
     #[cfg(feature="tensorflow")]
-    return Ok(Parameters { tfd_model, tf_model, inputs, output, size_x, size_y, size_d });
+    return Ok(Parameters { graph, tfd_model, tf_model, inputs, output, size_x, size_y, size_d });
 
     #[cfg(not(feature="tensorflow"))]
-    return Ok(Parameters { tfd_model, inputs, output, size_x, size_y, size_d });
+    return Ok(Parameters { graph, tfd_model, inputs, output, size_x, size_y, size_d });
 }
 
 
