@@ -46,7 +46,7 @@ struct Parameters {
     #[cfg(feature="tensorflow")]
     tf_model: conform::tf::Tensorflow,
 
-    input: String,
+    inputs: Vec<String>,
     output: String,
     size_x: usize,
     size_y: usize,
@@ -66,26 +66,26 @@ fn main() {
         (@setting DeriveDisplayOrder)
 
         (@arg model: +required +takes_value
-            "Sets the TensorFlow model to use (in Protobuf format)")
+            "Sets the TensorFlow model to use (in Protobuf format).")
 
-        (@arg input: -i --input [input]
-            "Sets the input node name")
+        (@arg inputs: -i --input ... [input]
+            "Sets the input nodes names (auto-detects otherwise).")
 
         (@arg output: -o --output [output]
-            "Sets the output node name")
+            "Sets the output node name (auto-detects otherwise).")
 
         (@arg size: -s --size <size>
-            "Sets the input size, e.g. 32x64xf32")
+            "Sets the input size, e.g. 32x64xf32.")
 
-        (@arg debug: -d ... "Sets the level of debugging information")
+        (@arg debug: -d ... "Sets the level of debugging information.")
 
         (@subcommand compare =>
-            (about: "Compares the output of tfdeploy and tensorflow on randomly generated input"))
+            (about: "Compares the output of tfdeploy and tensorflow on randomly generated input."))
 
         (@subcommand profile =>
-            (about: "Benchmarks tfdeploy on randomly generated input")
+            (about: "Benchmarks tfdeploy on randomly generated input.")
             (@arg iters: -n [iters]
-                "Sets the number of iterations for the average [default: 100000]"))
+                "Sets the number of iterations for the average [default: 100000]."))
     );
 
     let matches = app.get_matches();
@@ -158,9 +158,9 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         _ => bail!("Type of the input should be f64, f32, i32, i8 or u8.")
     };
 
-    let input = match matches.value_of("input") {
-        Some(name) => name.to_string(),
-        None => detect_input(&tfd_model)?
+    let inputs = match matches.values_of("inputs") {
+        Some(names) => names.map(|s| s.to_string()).collect(),
+        None => detect_inputs(&tfd_model)?
     };
 
     let output = match matches.value_of("output") {
@@ -169,16 +169,16 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     };
 
     #[cfg(feature="tensorflow")]
-    return Ok(Parameters { tfd_model, tf_model, input, output, size_x, size_y, size_d });
+    return Ok(Parameters { tfd_model, tf_model, inputs, output, size_x, size_y, size_d });
 
     #[cfg(not(feature="tensorflow"))]
-    return Ok(Parameters { tfd_model, input, output, size_x, size_y, size_d });
+    return Ok(Parameters { tfd_model, inputs, output, size_x, size_y, size_d });
 }
 
 
-/// Tries to autodetect the name of the input node.
+/// Tries to autodetect the names of the input nodes.
 #[allow(unused_variables)]
-fn detect_input(model: &tfdeploy::Model) -> Result<String> {
+fn detect_inputs(model: &tfdeploy::Model) -> Result<Vec<String>> {
     unimplemented!()
 }
 
@@ -207,23 +207,24 @@ fn handle_compare(params: Parameters) -> Result<()> {
 /// Handles the `profile` subcommand.
 fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
     let model = params.tfd_model;
-    let input = model.get_node(params.input.as_str())?;
     let output = model.get_node(params.output.as_str())?;
-
     let mut state = model.state();
 
     // First fill the input with randomly generated values.
-    state.set_value(
-        input.id,
-        random_matrix(params.size_x, params.size_y, params.size_d)
-    )?;
+    for s in params.inputs {
+        let input = model.get_node(s.as_str())?;
+        state.set_value(
+            input.id,
+            random_matrix(params.size_x, params.size_y, params.size_d)
+        )?;
+    }
 
     let plan = output.eval_order(&model)?;
     println!("Execution plan: {:?}", plan);
 
     // Then execute the plan while profiling each step.
     for n in plan {
-        if n == input.id {
+        if !state.outputs[n].is_none() {
             continue;
         }
 
