@@ -23,6 +23,8 @@ use tfpb::types::DataType;
 use time::PreciseTime;
 use rand::Rng;
 
+use tfdeploy::Matrix;
+
 
 /// The default number of iterations for the profiler.
 const DEFAULT_ITERS: usize = 100000;
@@ -224,6 +226,64 @@ fn detect_output(model: &tfdeploy::Model) -> Result<String> {
 }
 
 
+/// Prints information about a node.
+fn dump_node(
+    node: &tfdeploy::Node,
+    graph: &tfpb::graph::GraphDef,
+    state: &::tfdeploy::ModelState,
+) -> Result<()> {
+    use colored::Colorize;
+    println!(
+        "{:3} {:20} {}\n",
+        format!("{:3}", node.id).bold(),
+        node.op_name.blue().bold(),
+        node.name.bold()
+    );
+    let gnode = graph
+        .get_node()
+        .iter()
+        .find(|n| n.get_name() == node.name)
+        .unwrap();
+    for attr in gnode.get_attr() {
+        if attr.1.has_tensor() {
+            println!(
+                "{:>20} Tensor of shape {:?}",
+                attr.0.bold(),
+                attr.1.get_shape()
+            )
+        } else {
+            println!("{:>20} {:?}", attr.0.bold(), attr.1)
+        }
+    }
+    println!("");
+    for (ix, &(n, i)) in node.inputs.iter().enumerate() {
+        let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
+        println!(
+            "{} <{}/{}> {}",
+            format!(" INPUT {}", ix).bold(),
+            n,
+            i.unwrap_or(0),
+            data.partial_dump(true).unwrap()
+        );
+    }
+    Ok(())
+}
+
+
+/// Print a colored dump of a Matrix.
+fn dump_output(output: &[Matrix]) -> Result<()> {
+    use colored::Colorize;
+    for (ix, data) in output.iter().enumerate() {
+        println!(
+            "{} {}",
+            format!("OUTPUT {}", ix).bold(),
+            data.partial_dump(true).unwrap()
+        );
+    }
+    Ok(())
+}
+
+
 /// Handles the `compare` subcommand.
 #[allow(unused_variables)]
 #[cfg(not(feature="tensorflow"))]
@@ -231,10 +291,155 @@ fn handle_compare(params: Parameters) -> Result<()> {
     bail!("Comparison requires the `tensorflow` feature.")
 }
 
+#[allow(unused_mut)]
+#[allow(unused_imports)]
 #[allow(unused_variables)]
 #[cfg(feature="tensorflow")]
 fn handle_compare(params: Parameters) -> Result<()> {
-    unimplemented!()
+    use colored::Colorize;
+
+    let tfd = params.tfd_model;
+    let mut tf = params.tf_model;
+
+    let output = tfd.get_node(params.output.as_str())?;
+    let mut state = tfd.state();
+    let mut errors = 0;
+
+    // First generate random values for the inputs.
+    let mut generated = Vec::new();
+    for s in &params.inputs {
+        generated.push((
+            s.as_str(),
+            random_matrix(params.size_x, params.size_y, params.size_d)
+        ));
+    }
+
+    // Execute the model on tensorflow first.
+    info!("Running the model on tensorflow.");
+    let mut tf_outputs = tf.run_get_all(generated.clone())?;
+
+    // Execute the model step-by-step on tfdeploy.
+    state.set_values(generated)?;
+    let plan = output.eval_order(&tfd)?;
+    info!("Using execution plan: {:?}", plan);
+
+    for n in plan {
+        let node = tfd.get_node_by_id(n)?;
+
+        if node.op_name == "Placeholder" {
+            println!(" * Skipping placeholder: {}", node.name);
+            continue;
+        }
+
+        dump_node(node, &params.graph, &state)?;
+
+        let rtf = tf_outputs
+            .remove(&node.name.to_string())
+            .expect(format!("No node with name {} was computed by tensorflow.", node.name).as_str());
+
+        // if let Err(ref e) = rtf {
+        //     if e.description().contains("String vs") {
+        //         println!(" * Skipping string: {}", node.name);
+        //         continue;
+        //     }
+        // }
+        // let rtf = rtf?;
+
+        dump_output(&rtf)?;
+
+        if let Err(e) = state.compute_one(n) {
+            println!("\n{} {:?}\n", "ERROR".red().bold(), e);
+            errors += 1;
+        } else {
+            let rtfd = state.outputs[n].as_ref().unwrap();
+            let views = rtfd.iter().map(|m| &**m).collect::<Vec<&Matrix>>();
+            match compare_outputs(&rtf, &views) {
+                Err(e) => {
+                    for (n, data) in rtfd.iter().enumerate() {
+                        if n >= rtf.len() {
+                            println!(
+                                "{} {}",
+                                format!("   TFD {}", n).red().bold(),
+                                data.partial_dump(true).unwrap()
+                            )
+                        } else {
+                            if rtf[n].shape() != data.shape() {
+                                println!(
+                                    "{} {}",
+                                    format!("   TFD {}", n).red().bold(),
+                                    data.partial_dump(true).unwrap()
+                                )
+                            } else if !rtf[n].close_enough(data) {
+                                println!(
+                                    "{} {}",
+                                    format!("   TFD {}", n).yellow(),
+                                    data.partial_dump(true).unwrap()
+                                )
+                            } else {
+                                println!(
+                                    "{} {}",
+                                    format!("   TFD {}", n).green().yellow(),
+                                    data.partial_dump(true).unwrap()
+                                )
+                            }
+                        }
+                    }
+                    println!("\n{}", "MISMATCH".red().bold());
+                    errors += 1
+                }
+                Ok(_) => {
+                    println!("\n{}", "OK".green().bold());
+                }
+            }
+        }
+
+        // Re-use the output from tensorflow to keep tfdeploy from drifting.
+        state.set_outputs(node.id, rtf)?;
+        println!("");
+    }
+
+    if errors != 0 {
+        bail!("{} errors", errors)
+    } else {
+        Ok(())
+    }
+}
+
+
+/// Compares the outputs of a node in tfdeploy and tensorflow.
+#[cfg(feature="tensorflow")]
+fn compare_outputs<M2: ::std::borrow::Borrow<Matrix>>(
+    rtf: &Vec<Matrix>,
+    rtfd: &[M2],
+) -> Result<()> {
+    if rtf.len() != rtfd.len() {
+        bail!(
+            "Number of output differ: tf={}, tfd={}",
+            rtf.len(),
+            rtfd.len()
+        )
+    }
+
+    for (ix, (mtf, mtfd)) in rtf.iter().zip(rtfd.iter()).enumerate() {
+        if mtf.shape().len() != 0 && mtf.shape() != mtfd.borrow().shape() {
+            bail!(
+                "Shape mismatch for output {}: tf={:?}, tfd={:?}",
+                ix,
+                mtf.shape(),
+                mtfd.borrow().shape()
+            )
+        } else {
+            if !mtf.close_enough(mtfd.borrow()) {
+                bail!(
+                    "Data mismatch: tf={:?}, tfd={:?}",
+                    mtf,
+                    mtfd.borrow()
+                )
+            }
+        }
+    }
+
+    Ok(())
 }
 
 
@@ -280,7 +485,7 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
 
 
 /// Generates a random matrix of a given size and type.
-fn random_matrix(x: usize, y: usize, d: DataType) -> tfdeploy::Matrix {
+fn random_matrix(x: usize, y: usize, d: DataType) -> Matrix {
     macro_rules! for_type {
         ($t:ty) => (
             ndarray::Array::from_shape_fn(
