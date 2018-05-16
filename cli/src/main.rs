@@ -12,40 +12,37 @@ extern crate simplelog;
 extern crate tfdeploy;
 extern crate time;
 extern crate rand;
-extern crate ndarray;
 extern crate colored;
+
+mod format;
+mod utils;
+mod errors;
+
+use errors::*;
+use utils::detect_inputs;
+use utils::detect_output;
+#[cfg(feature="tensorflow")]
+use utils::compare_outputs;
+use utils::random_matrix;
 
 use std::process::exit;
 use std::path::Path;
 use simplelog::{TermLogger, LevelFilter, Config};
 use tfdeploy::tfpb;
+#[cfg(feature="tensorflow")]
+use tfdeploy::Matrix;
 use tfpb::types::DataType;
 use time::PreciseTime;
-use rand::Rng;
-
-use tfdeploy::Matrix;
 
 
 /// The default number of iterations for the profiler.
-const DEFAULT_ITERS: usize = 100000;
+const DEFAULT_ITERS: usize = 10000;
 
-
-/// Configures error handling for this module.
-error_chain! {
-    links {
-        Conform(conform::Error, conform::ErrorKind) #[cfg(feature="tensorflow")];
-        Tfdeploy(tfdeploy::Error, tfdeploy::ErrorKind);
-    }
-
-    foreign_links {
-        Io(std::io::Error);
-        Int(std::num::ParseIntError);
-    }
-}
 
 /// Structure holding the parsed parameters.
 #[allow(dead_code)]
 struct Parameters {
+    path: String,
     graph: tfpb::graph::GraphDef,
     tfd_model: tfdeploy::Model,
 
@@ -91,7 +88,7 @@ fn main() {
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input.")
             (@arg iters: -n [iters]
-                "Sets the number of iterations for the average [default: 100000]."))
+                "Sets the number of iterations for the average [default: 10000]."))
     );
 
     let matches = app.get_matches();
@@ -137,8 +134,8 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
 /// Parses the command-line arguments.
 fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
-    let path = Path::new(matches.value_of("model").unwrap());
-    let graph = tfdeploy::Model::graphdef_for_path(&path)?;
+    let path = matches.value_of("model").unwrap();
+    let graph = tfdeploy::Model::graphdef_for_path(&Path::new(path))?;
     let tfd_model = tfdeploy::for_path(&path)?;
 
     #[cfg(feature="tensorflow")]
@@ -176,113 +173,18 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     };
 
     #[cfg(feature="tensorflow")]
-    return Ok(Parameters { graph, tfd_model, tf_model, inputs, output, size_x, size_y, size_d });
+    return Ok(Parameters {
+        path: path.to_string(),
+        graph, tfd_model, tf_model,
+        inputs, output, size_x, size_y, size_d
+    });
 
     #[cfg(not(feature="tensorflow"))]
-    return Ok(Parameters { graph, tfd_model, inputs, output, size_x, size_y, size_d });
-}
-
-
-/// Tries to autodetect the names of the input nodes.
-#[allow(unused_variables)]
-fn detect_inputs(model: &tfdeploy::Model) -> Result<Vec<String>> {
-    let mut inputs = Vec::new();
-
-    for node in model.nodes() {
-        if node.op_name == "Placeholder" {
-            inputs.push(node.name.clone());
-        }
-    }
-
-    if inputs.len() > 0 {
-        info!("Autodetecting input nodes: {:?}.", inputs);
-        Ok(inputs)
-    } else {
-        bail!("Impossible to auto-detect input nodes: no placeholder.");
-    }
-}
-
-
-/// Tries to autodetect the name of the output node.
-#[allow(unused_variables)]
-fn detect_output(model: &tfdeploy::Model) -> Result<String> {
-    // We search for the only node in the graph with no successor.
-    let mut succs: Vec<Vec<usize>> = vec![Vec::new();  model.nodes().len()];
-
-    for node in model.nodes() {
-        for &link in &node.inputs {
-            succs[link.0].push(node.id);
-        }
-    }
-
-    for (i, s) in succs.iter().enumerate() {
-        if s.len() == 0 {
-            let output = model.get_node_by_id(i)?.name.clone();
-            info!("Autodetecting output node: {:?}.", output);
-
-            return Ok(output);
-        }
-    }
-
-    bail!("Impossible to auto-detect output nodes.")
-}
-
-
-/// Prints information about a node.
-fn dump_node(
-    node: &tfdeploy::Node,
-    graph: &tfpb::graph::GraphDef,
-    state: &::tfdeploy::ModelState,
-) -> Result<()> {
-    use colored::Colorize;
-    println!(
-        "{:3} {:20} {}\n",
-        format!("{:3}", node.id).bold(),
-        node.op_name.blue().bold(),
-        node.name.bold()
-    );
-    let gnode = graph
-        .get_node()
-        .iter()
-        .find(|n| n.get_name() == node.name)
-        .unwrap();
-    for attr in gnode.get_attr() {
-        if attr.1.has_tensor() {
-            println!(
-                "{:>20} Tensor of shape {:?}",
-                attr.0.bold(),
-                attr.1.get_shape()
-            )
-        } else {
-            println!("{:>20} {:?}", attr.0.bold(), attr.1)
-        }
-    }
-    println!("");
-    for (ix, &(n, i)) in node.inputs.iter().enumerate() {
-        let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
-        println!(
-            "{} <{}/{}> {}",
-            format!(" INPUT {}", ix).bold(),
-            n,
-            i.unwrap_or(0),
-            data.partial_dump(true).unwrap()
-        );
-    }
-    Ok(())
-}
-
-
-/// Print a colored dump of a Matrix.
-fn dump_output(output: &[Matrix]) -> Result<()> {
-    use colored::Colorize;
-    for (ix, data) in output.iter().enumerate() {
-        println!(
-            "{} {}",
-            format!("OUTPUT {}", ix).bold(),
-            data.partial_dump(true).unwrap()
-        );
-    }
-    Ok(())
+    return Ok(Parameters {
+        path: path.to_string(),
+        graph, tfd_model,
+        inputs, output, size_x, size_y, size_d
+    });
 }
 
 
@@ -325,128 +227,123 @@ fn handle_compare(params: Parameters) -> Result<()> {
     let plan = output.eval_order(&tfd)?;
     info!("Using execution plan: {:?}", plan);
 
+    println!();
+    println!("Comparing the execution of {}:", params.path);
+
     for n in plan {
         let node = tfd.get_node_by_id(n)?;
 
         if node.op_name == "Placeholder" {
-            println!(" * Skipping placeholder: {}", node.name);
+            format::print_box(
+                node.id.to_string(),
+                node.op_name.to_string(),
+                node.name.to_string(),
+                "SKIP".yellow().to_string(),
+                format::node_info(node, &params.graph, &state)?
+            );
+
             continue;
         }
 
-        dump_node(node, &params.graph, &state)?;
-
-        let rtf = tf_outputs
+        let tf_output = tf_outputs
             .remove(&node.name.to_string())
             .expect(format!("No node with name {} was computed by tensorflow.", node.name).as_str());
 
-        // if let Err(ref e) = rtf {
-        //     if e.description().contains("String vs") {
-        //         println!(" * Skipping string: {}", node.name);
-        //         continue;
-        //     }
-        // }
-        // let rtf = rtf?;
 
-        dump_output(&rtf)?;
+        let (status, mismatches) = match state.compute_one(n) {
+            Err(e) => ("ERROR".red(), vec![]),
 
-        if let Err(e) = state.compute_one(n) {
-            println!("\n{} {:?}\n", "ERROR".red().bold(), e);
-            errors += 1;
-        } else {
-            let rtfd = state.outputs[n].as_ref().unwrap();
-            let views = rtfd.iter().map(|m| &**m).collect::<Vec<&Matrix>>();
-            match compare_outputs(&rtf, &views) {
-                Err(e) => {
-                    for (n, data) in rtfd.iter().enumerate() {
-                        if n >= rtf.len() {
-                            println!(
-                                "{} {}",
-                                format!("   TFD {}", n).red().bold(),
-                                data.partial_dump(true).unwrap()
-                            )
-                        } else {
-                            if rtf[n].shape() != data.shape() {
-                                println!(
-                                    "{} {}",
-                                    format!("   TFD {}", n).red().bold(),
-                                    data.partial_dump(true).unwrap()
-                                )
-                            } else if !rtf[n].close_enough(data) {
-                                println!(
-                                    "{} {}",
-                                    format!("   TFD {}", n).yellow(),
-                                    data.partial_dump(true).unwrap()
-                                )
+            _ => {
+                let tfd_output = state.outputs[n].as_ref().unwrap();
+                let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Matrix>>();
+
+                match compare_outputs(&tf_output, &views) {
+                    Err(e) => {
+                        let mut mismatches = vec![];
+
+                        for (n, data) in tfd_output.iter().enumerate() {
+                            let header = format!(
+                                "{} (TFD):",
+                                format!("Output {}", n).bold(),
+                            );
+
+                            let reason = if n >= tf_output.len() {
+                                "Too many outputs"
+                            } else if tf_output[n].shape() != data.shape() {
+                                "Wrong shape"
+                            } else if !tf_output[n].close_enough(data) {
+                                "Too far away"
                             } else {
-                                println!(
-                                    "{} {}",
-                                    format!("   TFD {}", n).green().yellow(),
-                                    data.partial_dump(true).unwrap()
+                                "Other error"
+                            };
+
+                            mismatches.extend(
+                                format::with_header(header.clone(), reason.yellow().to_string(), 80)
+                            );
+
+                            mismatches.extend(
+                                format::with_header(
+                                    format!("{:1$}", "", header.len() - format::hidden_len(&header)),
+                                    data.partial_dump(false).unwrap(),
+                                    80
                                 )
-                            }
+                            );
                         }
-                    }
-                    println!("\n{}", "MISMATCH".red().bold());
-                    errors += 1
-                }
-                Ok(_) => {
-                    println!("\n{}", "OK".green().bold());
+
+                        ("MISM.".red(), mismatches)
+                    },
+
+                    _ => ("OK".green(), vec![])
                 }
             }
+        };
+
+        let mut information = format::node_info(node, &params.graph, &state)?;
+
+        let mut outputs = Vec::new();
+        for (ix, data) in tf_output.iter().enumerate() {
+            outputs.extend(
+                format::with_header(
+                    format!(
+                        "{} (TF):",
+                        format!("Output {}", ix).bold(),
+                    ),
+                    data.partial_dump(false).unwrap(),
+                    80
+                )
+            );
         }
 
+        information.push(outputs);
+        information.push(mismatches);
+
+        // Print the results for the node.
+        format::print_box(
+            node.id.to_string(),
+            node.op_name.to_string(),
+            node.name.to_string(),
+            status.to_string(),
+            information
+        );
+
         // Re-use the output from tensorflow to keep tfdeploy from drifting.
-        state.set_outputs(node.id, rtf)?;
-        println!("");
+        state.set_outputs(node.id, tf_output)?;
     }
 
+    println!();
+
     if errors != 0 {
-        bail!("{} errors", errors)
+        bail!("Found {} errors.", errors)
     } else {
         Ok(())
     }
 }
 
 
-/// Compares the outputs of a node in tfdeploy and tensorflow.
-#[cfg(feature="tensorflow")]
-fn compare_outputs<M2: ::std::borrow::Borrow<Matrix>>(
-    rtf: &Vec<Matrix>,
-    rtfd: &[M2],
-) -> Result<()> {
-    if rtf.len() != rtfd.len() {
-        bail!(
-            "Number of output differ: tf={}, tfd={}",
-            rtf.len(),
-            rtfd.len()
-        )
-    }
-
-    for (ix, (mtf, mtfd)) in rtf.iter().zip(rtfd.iter()).enumerate() {
-        if mtf.shape().len() != 0 && mtf.shape() != mtfd.borrow().shape() {
-            bail!(
-                "Shape mismatch for output {}: tf={:?}, tfd={:?}",
-                ix,
-                mtf.shape(),
-                mtfd.borrow().shape()
-            )
-        } else {
-            if !mtf.close_enough(mtfd.borrow()) {
-                bail!(
-                    "Data mismatch: tf={:?}, tfd={:?}",
-                    mtf,
-                    mtfd.borrow()
-                )
-            }
-        }
-    }
-
-    Ok(())
-}
-
-
 /// Handles the `profile` subcommand.
 fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
+    use colored::Colorize;
+
     let model = params.tfd_model;
     let output = model.get_node(params.output.as_str())?;
     let mut state = model.state();
@@ -463,12 +360,22 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
     info!("Using execution plan: {:?}", plan);
     info!("Running {} iterations at each step", iters);
 
+    println!();
+    println!("Profiling the execution of {}:", params.path);
+
     // Then execute the plan while profiling each step.
     for n in plan {
         let node = model.get_node_by_id(n)?;
 
         if node.op_name == "Placeholder" {
-            println!(" * Skipping placeholder: {}", node.name);
+            format::print_box(
+                node.id.to_string(),
+                node.op_name.to_string(),
+                node.name.to_string(),
+                "SKIP".yellow().to_string(),
+                format::node_info(node, &params.graph, &state)?
+            );
+
             continue;
         }
 
@@ -476,34 +383,20 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
         for _ in 0..iters { state.compute_one(n)?; }
         let end = PreciseTime::now();
 
-        let header = format!("{} ({}, {}):", n, node.name, node.op_name);
-        println!(
-            " * Node {:<25} {} ms on average", header,
-            start.to(end).num_milliseconds() as f64 / iters as f64
+        // Print the results for the node.
+        format::print_box(
+            node.id.to_string(),
+            node.op_name.to_string(),
+            node.name.to_string(),
+            format!(
+                "{} ms",
+                start.to(end).num_milliseconds() as f64 / iters as f64
+            ).white().to_string(),
+            format::node_info(node, &params.graph, &state)?
         );
     }
 
+    println!();
+
     Ok(())
-}
-
-
-/// Generates a random matrix of a given size and type.
-fn random_matrix(x: usize, y: usize, d: DataType) -> Matrix {
-    macro_rules! for_type {
-        ($t:ty) => (
-            ndarray::Array::from_shape_fn(
-                (x, y),
-                |_| rand::thread_rng().gen()
-            ) as ndarray::Array2<$t>
-        )
-    }
-
-    match d {
-        DataType::DT_DOUBLE => for_type!(f64).into(),
-        DataType::DT_FLOAT => for_type!(f32).into(),
-        DataType::DT_INT32 => for_type!(i32).into(),
-        DataType::DT_INT8 => for_type!(i8).into(),
-        DataType::DT_UINT8 => for_type!(u8).into(),
-        _ => unimplemented!()
-    }
 }

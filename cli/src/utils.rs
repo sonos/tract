@@ -1,0 +1,112 @@
+extern crate tfdeploy;
+extern crate rand;
+extern crate ndarray;
+
+use errors::*;
+
+use rand::Rng;
+
+use tfdeploy::Matrix;
+use tfdeploy::tfpb::types::DataType;
+
+
+/// Tries to autodetect the names of the input nodes.
+pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Vec<String>> {
+    let mut inputs = Vec::new();
+
+    for node in model.nodes() {
+        if node.op_name == "Placeholder" {
+            inputs.push(node.name.clone());
+        }
+    }
+
+    if inputs.len() > 0 {
+        info!("Autodetecting input nodes: {:?}.", inputs);
+        Ok(inputs)
+    } else {
+        bail!("Impossible to auto-detect input nodes: no placeholder.");
+    }
+}
+
+
+/// Tries to autodetect the name of the output node.
+pub fn detect_output(model: &tfdeploy::Model) -> Result<String> {
+    // We search for the only node in the graph with no successor.
+    let mut succs: Vec<Vec<usize>> = vec![Vec::new();  model.nodes().len()];
+
+    for node in model.nodes() {
+        for &link in &node.inputs {
+            succs[link.0].push(node.id);
+        }
+    }
+
+    for (i, s) in succs.iter().enumerate() {
+        if s.len() == 0 {
+            let output = model.get_node_by_id(i)?.name.clone();
+            info!("Autodetecting output node: {:?}.", output);
+
+            return Ok(output);
+        }
+    }
+
+    bail!("Impossible to auto-detect output nodes.")
+}
+
+
+/// Compares the outputs of a node in tfdeploy and tensorflow.
+#[cfg(feature="tensorflow")]
+pub fn compare_outputs<M2: ::std::borrow::Borrow<Matrix>>(
+    rtf: &Vec<Matrix>,
+    rtfd: &[M2],
+) -> Result<()> {
+    if rtf.len() != rtfd.len() {
+        bail!(
+            "Number of output differ: tf={}, tfd={}",
+            rtf.len(),
+            rtfd.len()
+        )
+    }
+
+    for (ix, (mtf, mtfd)) in rtf.iter().zip(rtfd.iter()).enumerate() {
+        if mtf.shape().len() != 0 && mtf.shape() != mtfd.borrow().shape() {
+            bail!(
+                "Shape mismatch for output {}: tf={:?}, tfd={:?}",
+                ix,
+                mtf.shape(),
+                mtfd.borrow().shape()
+            )
+        } else {
+            if !mtf.close_enough(mtfd.borrow()) {
+                bail!(
+                    "Data mismatch: tf={:?}, tfd={:?}",
+                    mtf,
+                    mtfd.borrow()
+                )
+            }
+        }
+    }
+
+    Ok(())
+}
+
+
+/// Generates a random matrix of a given size and type.
+pub fn random_matrix(x: usize, y: usize, d: DataType) -> Matrix {
+    macro_rules! for_type {
+        ($t:ty) => (
+            ndarray::Array::from_shape_fn(
+                (x, y),
+                |_| rand::thread_rng().gen()
+            ) as ndarray::Array2<$t>
+        )
+    }
+
+    match d {
+        DataType::DT_DOUBLE => for_type!(f64).into(),
+        DataType::DT_FLOAT => for_type!(f32).into(),
+        DataType::DT_INT32 => for_type!(i32).into(),
+        DataType::DT_INT8 => for_type!(i8).into(),
+        DataType::DT_UINT8 => for_type!(u8).into(),
+        _ => unimplemented!()
+    }
+}
