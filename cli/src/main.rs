@@ -4,13 +4,16 @@ extern crate clap;
 extern crate log;
 #[macro_use]
 extern crate error_chain;
-extern crate simplelog;
-extern crate tfdeploy;
+
 #[cfg(feature="tensorflow")]
 extern crate conform;
+
+extern crate simplelog;
+extern crate tfdeploy;
 extern crate time;
 extern crate rand;
 extern crate ndarray;
+extern crate colored;
 
 use std::process::exit;
 use std::path::Path;
