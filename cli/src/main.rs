@@ -179,14 +179,45 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
 /// Tries to autodetect the names of the input nodes.
 #[allow(unused_variables)]
 fn detect_inputs(model: &tfdeploy::Model) -> Result<Vec<String>> {
-    unimplemented!()
+    let mut inputs = Vec::new();
+
+    for node in model.nodes() {
+        if node.op_name == "Placeholder" {
+            inputs.push(node.name.clone());
+        }
+    }
+
+    if inputs.len() > 0 {
+        info!("Autodetecting input nodes: {:?}.", inputs);
+        Ok(inputs)
+    } else {
+        bail!("Impossible to auto-detect input nodes: no placeholder.");
+    }
 }
 
 
 /// Tries to autodetect the name of the output node.
 #[allow(unused_variables)]
 fn detect_output(model: &tfdeploy::Model) -> Result<String> {
-    unimplemented!()
+    // We search for the only node in the graph with no successor.
+    let mut succs: Vec<Vec<usize>> = vec![Vec::new();  model.nodes().len()];
+
+    for node in model.nodes() {
+        for &link in &node.inputs {
+            succs[link.0].push(node.id);
+        }
+    }
+
+    for (i, s) in succs.iter().enumerate() {
+        if s.len() == 0 {
+            let output = model.get_node_by_id(i)?.name.clone();
+            info!("Autodetecting output node: {:?}.", output);
+
+            return Ok(output);
+        }
+    }
+
+    bail!("Impossible to auto-detect output nodes.")
 }
 
 
@@ -220,7 +251,8 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
     }
 
     let plan = output.eval_order(&model)?;
-    println!("Execution plan: {:?}", plan);
+    info!("Using execution plan: {:?}.", plan);
+    info!("Running {} iterations at each step.", iters);
 
     // Then execute the plan while profiling each step.
     for n in plan {
