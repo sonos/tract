@@ -21,6 +21,10 @@ use time::PreciseTime;
 use rand::Rng;
 
 
+/// The default number of iterations for the profiler.
+const DEFAULT_ITERS: usize = 100000;
+
+
 /// Configures error handling for this module.
 error_chain! {
     links {
@@ -81,7 +85,7 @@ fn main() {
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input")
             (@arg iters: -n [iters]
-                "Sets the number of iterations for the average [default: 5]"))
+                "Sets the number of iterations for the average [default: 100000]"))
     );
 
     let matches = app.get_matches();
@@ -108,8 +112,18 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     let params = parse(&matches)?;
 
     match matches.subcommand() {
-        ("compare", _) => handle_compare(params),
-        ("profile", _) => handle_profile(params),
+        ("compare", _) =>
+            handle_compare(params),
+
+        ("profile", None) =>
+            handle_profile(params, DEFAULT_ITERS),
+
+        ("profile", Some(m)) =>
+            handle_profile(params, match m.value_of("iters") {
+                None => DEFAULT_ITERS,
+                Some(s) => s.parse::<usize>()?
+            }),
+
         (s, _) => bail!("Unknown subcommand {}.", s)
     }
 }
@@ -191,9 +205,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
 
 /// Handles the `profile` subcommand.
-fn handle_profile(params: Parameters) -> Result<()> {
-    let iters = 100000; // todo(romain)
-
+fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
     let model = params.tfd_model;
     let input = model.get_node(params.input.as_str())?;
     let output = model.get_node(params.output.as_str())?;
