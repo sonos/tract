@@ -20,7 +20,7 @@ use simplelog::{TermLogger, LevelFilter, Config};
 use tfdeploy::Matrix;
 use tfdeploy::tfpb;
 use tfpb::types::DataType;
-use time::PreciseTime;
+use time::PreciseTime as Time;
 
 use errors::*;
 #[cfg(feature="tensorflow")]
@@ -34,8 +34,9 @@ mod utils;
 mod errors;
 
 
-/// The default number of iterations for the profiler.
-const DEFAULT_ITERS: usize = 10000;
+/// The default maximum for iterations and time.
+const DEFAULT_MAX_ITERS: i64 = 10000;
+const DEFAULT_MAX_TIME: i64 = 10;
 
 
 /// Structure holding the parsed parameters.
@@ -85,8 +86,10 @@ fn main() {
 
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input.")
-            (@arg iters: -n [iters]
-                "Sets the number of iterations for the average [default: 10000]."))
+            (@arg max_iters: -n [max_iters]
+                "Sets the maximum number of iterations for each node [default: 10000].")
+            (@arg max_time: -t [max_time]
+                "Sets the maximum execution time for each node (in ms) [default: 10]."))
     );
 
     let matches = app.get_matches();
@@ -117,13 +120,24 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
             handle_compare(params),
 
         ("profile", None) =>
-            handle_profile(params, DEFAULT_ITERS),
+            handle_profile(
+                params,
+                DEFAULT_MAX_ITERS,
+                DEFAULT_MAX_TIME
+            ),
 
         ("profile", Some(m)) =>
-            handle_profile(params, match m.value_of("iters") {
-                None => DEFAULT_ITERS,
-                Some(s) => s.parse::<usize>()?
-            }),
+            handle_profile(
+                params,
+                match m.value_of("max_iters") {
+                    None => DEFAULT_MAX_ITERS,
+                    Some(s) => s.parse::<i64>()?
+                },
+                match m.value_of("max_time") {
+                    None => DEFAULT_MAX_TIME,
+                    Some(s) => s.parse::<i64>()?
+                }
+            ),
 
         (s, _) => bail!("Unknown subcommand {}.", s)
     }
@@ -336,7 +350,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
 
 /// Handles the `profile` subcommand.
-fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
+fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<()> {
     use colored::Colorize;
 
     let model = params.tfd_model;
@@ -353,7 +367,8 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
 
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
-    info!("Running {} iterations at each step", iters);
+    info!("Running {} iterations max. for each node.", max_iters);
+    info!("Running for {} ms max. for each node.", max_time);
 
     println!();
     println!("Profiling the execution of {}:", params.path);
@@ -374,9 +389,15 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
             continue;
         }
 
-        let start = PreciseTime::now();
-        for _ in 0..iters { state.compute_one(n)?; }
-        let end = PreciseTime::now();
+        let mut iters = 0;
+        let start = Time::now();
+
+        while iters < max_iters && start.to(Time::now()).num_milliseconds() < max_time {
+            state.compute_one(n)?;
+            iters += 1;
+        }
+
+        let time = start.to(Time::now()).num_milliseconds();
 
         // Print the results for the node.
         format::print_box(
@@ -384,8 +405,8 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
             node.op_name.to_string(),
             node.name.to_string(),
             format!(
-                "{} ms",
-                start.to(end).num_milliseconds() as f64 / iters as f64
+                "{:.*} ms", 6,
+                time as f64 / iters as f64
             ).white().to_string(),
             format::node_info(node, &params.graph, &state)?
         );
