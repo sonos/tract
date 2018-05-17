@@ -4,16 +4,16 @@ version = "1.0.0"
 authors = ["Romain Liautaud <romain.liautaud@snips.ai>"]
 
 [dependencies]
-tfdeploy = { path = ".." }
-conform = { path = "../conform" }
 clap = "2.31"
-log = "0.4"
-error-chain = "0"
-simplelog = "0.5"
-rand = "0.4"
-ndarray = { version = "0.11" }
-time = "0.1"
 colored = "1.6"
+conform = { path = "../conform" }
+error-chain = "0"
+log = "0.4"
+ndarray = { version = "0.11" }
+rand = "0.4"
+simplelog = "0.5"
+tfdeploy = { path = ".." }
+time = "0.1"
 
 [features]
 default = []
