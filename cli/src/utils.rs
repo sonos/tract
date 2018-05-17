@@ -54,10 +54,8 @@ pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<String>> {
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature="tensorflow")]
-pub fn compare_outputs<M2: ::std::borrow::Borrow<Matrix>>(
-    rtf: &Vec<Matrix>,
-    rtfd: &[M2],
-) -> Result<()> {
+pub fn compare_outputs<Matrix1, Matrix2>(rtf: &[Matrix1], rtfd: &[Matrix2]) -> Result<()>
+where Matrix1: ::std::borrow::Borrow<Matrix>, Matrix2: ::std::borrow::Borrow<Matrix> {
     if rtf.len() != rtfd.len() {
         bail!(
             "Number of output differ: tf={}, tfd={}",
@@ -67,18 +65,18 @@ pub fn compare_outputs<M2: ::std::borrow::Borrow<Matrix>>(
     }
 
     for (ix, (mtf, mtfd)) in rtf.iter().zip(rtfd.iter()).enumerate() {
-        if mtf.shape().len() != 0 && mtf.shape() != mtfd.borrow().shape() {
+        if mtf.borrow().shape().len() != 0 && mtf.borrow().shape() != mtfd.borrow().shape() {
             bail!(
                 "Shape mismatch for output {}: tf={:?}, tfd={:?}",
                 ix,
-                mtf.shape(),
+                mtf.borrow().shape(),
                 mtfd.borrow().shape()
             )
         } else {
-            if !mtf.close_enough(mtfd.borrow()) {
+            if !mtf.borrow().close_enough(mtfd.borrow()) {
                 bail!(
                     "Data mismatch: tf={:?}, tfd={:?}",
-                    mtf,
+                    mtf.borrow(),
                     mtfd.borrow()
                 )
             }
