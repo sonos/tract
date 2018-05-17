@@ -39,7 +39,6 @@ const DEFAULT_ITERS: usize = 10000;
 
 
 /// Structure holding the parsed parameters.
-#[allow(dead_code)]
 struct Parameters {
     path: String,
     graph: tfpb::graph::GraphDef,
@@ -190,15 +189,11 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
 
 
 /// Handles the `compare` subcommand.
-#[allow(unused_variables)]
 #[cfg(not(feature="tensorflow"))]
-fn handle_compare(params: Parameters) -> Result<()> {
+fn handle_compare(_params: Parameters) -> Result<()> {
     bail!("Comparison requires the `tensorflow` feature.")
 }
 
-#[allow(unused_mut)]
-#[allow(unused_imports)]
-#[allow(unused_variables)]
 #[cfg(feature="tensorflow")]
 fn handle_compare(params: Parameters) -> Result<()> {
     use colored::Colorize;
@@ -208,7 +203,6 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
     let output = tfd.get_node(params.output.as_str())?;
     let mut state = tfd.state();
-    let mut errors = 0;
 
     // First generate random values for the inputs.
     let mut generated = Vec::new();
@@ -252,14 +246,14 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
 
         let (status, mismatches) = match state.compute_one(n) {
-            Err(e) => ("ERROR".red(), vec![]),
+            Err(e) => ("ERROR".red(), vec![format!("Error message: {:?}", e)]),
 
             _ => {
                 let tfd_output = state.outputs[n].as_ref().unwrap();
                 let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Matrix>>();
 
                 match compare_outputs(&tf_output, &views) {
-                    Err(e) => {
+                    Err(_) => {
                         let mut mismatches = vec![];
 
                         for (n, data) in tfd_output.iter().enumerate() {
@@ -332,12 +326,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     }
 
     println!();
-
-    if errors != 0 {
-        bail!("Found {} errors.", errors)
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
 
 
