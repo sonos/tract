@@ -7,7 +7,6 @@ use tfdeploy::tfpb;
 use errors::*;
 use format;
 
-
 /// Returns the number of hidden escape codes in the string.
 pub fn hidden_len(s: &String) -> usize {
     let mut step = 0;
@@ -19,7 +18,7 @@ pub fn hidden_len(s: &String) -> usize {
             (1, '[') => 2,
             (1, _) => 0,
             (2, 'm') => 3,
-            _ => step
+            _ => step,
         };
 
         if step > 0 {
@@ -34,7 +33,6 @@ pub fn hidden_len(s: &String) -> usize {
     hidden
 }
 
-
 /// Prints a box containing arbitrary information about a node.
 pub fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<String>>) {
     use colored::Colorize;
@@ -45,7 +43,10 @@ pub fn print_box(id: String, op: String, name: String, status: String, sections:
     let tiny = 13;
     let total = small + large + tiny + 2;
 
-    println!("┌─────┬{:─>3$}┬{:─>4$}┬{:─>5$}┐", "", "", "", small, large, tiny);
+    println!(
+        "┌─────┬{:─>3$}┬{:─>4$}┬{:─>5$}┐",
+        "", "", "", small, large, tiny
+    );
 
     println!(
         "│{:^5}│ Operation: {:4$} │ Name: {:5$} │ {:^6$} │",
@@ -58,16 +59,18 @@ pub fn print_box(id: String, op: String, name: String, status: String, sections:
         tiny - 2 + 13
     );
 
-    let sections: Vec<Vec<String>> = sections
-        .into_iter()
-        .filter(|s| s.len() > 0)
-        .collect();
+    let sections: Vec<Vec<String>> = sections.into_iter().filter(|s| s.len() > 0).collect();
 
     if sections.len() == 0 {
-        println!("└─────┴{:─>3$}┴{:─>4$}┴{:─>5$}┘", "", "", "", small, large, tiny);
+        println!(
+            "└─────┴{:─>3$}┴{:─>4$}┴{:─>5$}┘",
+            "", "", "", small, large, tiny
+        );
     } else {
-        println!("└─────┼{:─>3$}┴{:─>4$}┴{:─>5$}┤", "", "", "", small, large, tiny);
-
+        println!(
+            "└─────┼{:─>3$}┴{:─>4$}┴{:─>5$}┤",
+            "", "", "", small, large, tiny
+        );
 
         for (i, section) in sections.iter().enumerate() {
             if i > 0 {
@@ -78,11 +81,10 @@ pub fn print_box(id: String, op: String, name: String, status: String, sections:
                 println!("{:6}│ {:2$} │", "", line, total - 2 + hidden_len(line));
             }
         }
-        
+
         println!("{:6}└{:─>2$}┘", "", "", total);
     }
 }
-
 
 /// Splits a line into multiple lines to respect a two-column layout.
 pub fn with_header(header: String, content: String, length: usize) -> Vec<String> {
@@ -94,7 +96,7 @@ pub fn with_header(header: String, content: String, length: usize) -> Vec<String
 
     while !cur.is_empty() {
         let (chunk, rest) = cur.split_at(cmp::min(length, cur.len()));
-    
+
         if first {
             lines.push(format!("{} {}", header, chunk));
             first = false;
@@ -104,16 +106,15 @@ pub fn with_header(header: String, content: String, length: usize) -> Vec<String
 
         cur = rest;
     }
-    
+
     lines
 }
-
 
 /// Returns information about a node.
 pub fn node_info(
     node: &tfdeploy::Node,
     graph: &tfpb::graph::GraphDef,
-    state: &::tfdeploy::ModelState
+    state: &::tfdeploy::ModelState,
 ) -> Result<Vec<Vec<String>>> {
     use colored::Colorize;
 
@@ -126,31 +127,27 @@ pub fn node_info(
         .unwrap();
 
     for attr in proto_node.get_attr() {
-        attributes.extend(
-            format::with_header(
-                format!("Attribute {}:", attr.0.bold()),
-                format!("{:?}", attr.1),
-                80
-            )
-        );
+        attributes.extend(format::with_header(
+            format!("Attribute {}:", attr.0.bold()),
+            format!("{:?}", attr.1),
+            80,
+        ));
     }
 
     let mut inputs = Vec::new();
 
     for (ix, &(n, i)) in node.inputs.iter().enumerate() {
         let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
-        inputs.extend(
-            format::with_header(
-                format!(
-                    "{} ({}/{}):",
-                    format!("Input {}", ix).bold(),
-                    n,
-                    i.unwrap_or(0),
-                ),
-                data.partial_dump(false).unwrap(),
-                80
-            )
-        );
+        inputs.extend(format::with_header(
+            format!(
+                "{} ({}/{}):",
+                format!("Input {}", ix).bold(),
+                n,
+                i.unwrap_or(0),
+            ),
+            data.partial_dump(false).unwrap(),
+            80,
+        ));
     }
 
     Ok(vec![attributes, inputs])

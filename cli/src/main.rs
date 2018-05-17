@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate clap;
 extern crate colored;
-#[cfg(feature="tensorflow")]
+#[cfg(feature = "tensorflow")]
 extern crate conform;
 #[macro_use]
 extern crate error_chain;
@@ -15,29 +15,27 @@ extern crate time;
 use std::path;
 use std::process;
 
-use simplelog::{TermLogger, LevelFilter, Config};
-#[cfg(feature="tensorflow")]
-use tfdeploy::Matrix;
+use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
+#[cfg(feature = "tensorflow")]
+use tfdeploy::Matrix;
 use tfpb::types::DataType;
 use time::PreciseTime as Time;
 
 use errors::*;
-#[cfg(feature="tensorflow")]
+#[cfg(feature = "tensorflow")]
 use utils::compare_outputs;
 use utils::detect_inputs;
 use utils::detect_output;
 use utils::random_matrix;
 
+mod errors;
 mod format;
 mod utils;
-mod errors;
-
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: i64 = 10000;
 const DEFAULT_MAX_TIME: i64 = 10;
-
 
 /// Structure holding the parsed parameters.
 struct Parameters {
@@ -45,16 +43,15 @@ struct Parameters {
     graph: tfpb::graph::GraphDef,
     tfd_model: tfdeploy::Model,
 
-    #[cfg(feature="tensorflow")]
+    #[cfg(feature = "tensorflow")]
     tf_model: conform::tf::Tensorflow,
 
     inputs: Vec<String>,
     output: String,
 
     sizes: Vec<usize>,
-    datatype: DataType
+    datatype: DataType,
 }
-
 
 /// Entrypoint for the command-line interface.
 fn main() {
@@ -99,7 +96,7 @@ fn main() {
         0 => LevelFilter::Warn,
         1 => LevelFilter::Info,
         2 => LevelFilter::Debug,
-        _ => LevelFilter::Trace
+        _ => LevelFilter::Trace,
     };
 
     TermLogger::init(level, Config::default()).unwrap();
@@ -110,39 +107,30 @@ fn main() {
     }
 }
 
-
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> Result<()> {
     let params = parse(&matches)?;
 
     match matches.subcommand() {
-        ("compare", _) =>
-            handle_compare(params),
+        ("compare", _) => handle_compare(params),
 
-        ("profile", None) =>
-            handle_profile(
-                params,
-                DEFAULT_MAX_ITERS,
-                DEFAULT_MAX_TIME
-            ),
+        ("profile", None) => handle_profile(params, DEFAULT_MAX_ITERS, DEFAULT_MAX_TIME),
 
-        ("profile", Some(m)) =>
-            handle_profile(
-                params,
-                match m.value_of("max_iters") {
-                    None => DEFAULT_MAX_ITERS,
-                    Some(s) => s.parse::<i64>()?
-                },
-                match m.value_of("max_time") {
-                    None => DEFAULT_MAX_TIME,
-                    Some(s) => s.parse::<i64>()?
-                }
-            ),
+        ("profile", Some(m)) => handle_profile(
+            params,
+            match m.value_of("max_iters") {
+                None => DEFAULT_MAX_ITERS,
+                Some(s) => s.parse::<i64>()?,
+            },
+            match m.value_of("max_time") {
+                None => DEFAULT_MAX_TIME,
+                Some(s) => s.parse::<i64>()?,
+            },
+        ),
 
-        (s, _) => bail!("Unknown subcommand {}.", s)
+        (s, _) => bail!("Unknown subcommand {}.", s),
     }
 }
-
 
 /// Parses the command-line arguments.
 fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
@@ -150,14 +138,10 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     let graph = tfdeploy::Model::graphdef_for_path(&path::Path::new(path))?;
     let tfd_model = tfdeploy::for_path(&path)?;
 
-    #[cfg(feature="tensorflow")]
+    #[cfg(feature = "tensorflow")]
     let tf_model = conform::tf::for_path(&path)?;
 
-    let splits: Vec<&str> = matches
-        .value_of("size")
-        .unwrap()
-        .split("x")
-        .collect();
+    let splits: Vec<&str> = matches.value_of("size").unwrap().split("x").collect();
 
     if splits.len() < 2 {
         bail!("Size should be formatted as {size}x{...}x{type}.");
@@ -165,10 +149,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
 
     let (datatype, sizes) = splits.split_last().unwrap();
 
-    let sizes: Vec<usize> = sizes
-        .iter()
-        .map(|s| Ok(s.parse()?))
-        .collect::<Result<_>>()?;
+    let sizes: Vec<usize> = sizes.iter().map(|s| Ok(s.parse()?)).collect::<Result<_>>()?;
 
     let datatype = match datatype.to_lowercase().as_str() {
         "f64" => DataType::DT_DOUBLE,
@@ -176,44 +157,51 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         "i32" => DataType::DT_INT32,
         "i8" => DataType::DT_INT8,
         "u8" => DataType::DT_UINT8,
-        _ => bail!("Type of the input should be f64, f32, i32, i8 or u8.")
+        _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
     };
 
     let inputs = match matches.values_of("inputs") {
         Some(names) => names.map(|s| s.to_string()).collect(),
         None => detect_inputs(&tfd_model)?
-            .ok_or("Impossible to auto-detect input nodes: no placeholder.")?
+            .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
     };
 
     let output = match matches.value_of("output") {
         Some(name) => name.to_string(),
-        None => detect_output(&tfd_model)?
-            .ok_or("Impossible to auto-detect output nodes.")?
+        None => detect_output(&tfd_model)?.ok_or("Impossible to auto-detect output nodes.")?,
     };
 
-    #[cfg(feature="tensorflow")]
+    #[cfg(feature = "tensorflow")]
     return Ok(Parameters {
         path: path.to_string(),
-        graph, tfd_model, tf_model,
-        inputs, output, sizes, datatype
+        graph,
+        tfd_model,
+        tf_model,
+        inputs,
+        output,
+        sizes,
+        datatype,
     });
 
-    #[cfg(not(feature="tensorflow"))]
+    #[cfg(not(feature = "tensorflow"))]
     return Ok(Parameters {
         path: path.to_string(),
-        graph, tfd_model,
-        inputs, output, sizes, datatype
+        graph,
+        tfd_model,
+        inputs,
+        output,
+        sizes,
+        datatype,
     });
 }
 
-
 /// Handles the `compare` subcommand.
-#[cfg(not(feature="tensorflow"))]
+#[cfg(not(feature = "tensorflow"))]
 fn handle_compare(_params: Parameters) -> Result<()> {
     bail!("Comparison requires the `tensorflow` feature.")
 }
 
-#[cfg(feature="tensorflow")]
+#[cfg(feature = "tensorflow")]
 fn handle_compare(params: Parameters) -> Result<()> {
     use colored::Colorize;
 
@@ -228,7 +216,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     for s in &params.inputs {
         generated.push((
             s.as_str(),
-            random_matrix(params.sizes.clone(), params.datatype)
+            random_matrix(params.sizes.clone(), params.datatype),
         ));
     }
 
@@ -253,16 +241,18 @@ fn handle_compare(params: Parameters) -> Result<()> {
                 node.op_name.to_string(),
                 node.name.to_string(),
                 "SKIP".yellow().to_string(),
-                format::node_info(node, &params.graph, &state)?
+                format::node_info(node, &params.graph, &state)?,
             );
 
             continue;
         }
 
-        let tf_output = tf_outputs
-            .remove(&node.name.to_string())
-            .expect(format!("No node with name {} was computed by tensorflow.", node.name).as_str());
-
+        let tf_output = tf_outputs.remove(&node.name.to_string()).expect(
+            format!(
+                "No node with name {} was computed by tensorflow.",
+                node.name
+            ).as_str(),
+        );
 
         let (status, mismatches) = match state.compute_one(n) {
             Err(e) => ("ERROR".red(), vec![format!("Error message: {:?}", e)]),
@@ -276,10 +266,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
                         let mut mismatches = vec![];
 
                         for (n, data) in tfd_output.iter().enumerate() {
-                            let header = format!(
-                                "{} (TFD):",
-                                format!("Output {}", n).bold(),
-                            );
+                            let header = format!("{} (TFD):", format!("Output {}", n).bold(),);
 
                             let reason = if n >= tf_output.len() {
                                 "Too many outputs"
@@ -291,23 +278,23 @@ fn handle_compare(params: Parameters) -> Result<()> {
                                 "Other error"
                             };
 
-                            mismatches.extend(
-                                format::with_header(header.clone(), reason.yellow().to_string(), 80)
-                            );
+                            mismatches.extend(format::with_header(
+                                header.clone(),
+                                reason.yellow().to_string(),
+                                80,
+                            ));
 
-                            mismatches.extend(
-                                format::with_header(
-                                    format!("{:1$}", "", header.len() - format::hidden_len(&header)),
-                                    data.partial_dump(false).unwrap(),
-                                    80
-                                )
-                            );
+                            mismatches.extend(format::with_header(
+                                format!("{:1$}", "", header.len() - format::hidden_len(&header)),
+                                data.partial_dump(false).unwrap(),
+                                80,
+                            ));
                         }
 
                         ("MISM.".red(), mismatches)
-                    },
+                    }
 
-                    _ => ("OK".green(), vec![])
+                    _ => ("OK".green(), vec![]),
                 }
             }
         };
@@ -316,16 +303,11 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
         let mut outputs = Vec::new();
         for (ix, data) in tf_output.iter().enumerate() {
-            outputs.extend(
-                format::with_header(
-                    format!(
-                        "{} (TF):",
-                        format!("Output {}", ix).bold(),
-                    ),
-                    data.partial_dump(false).unwrap(),
-                    80
-                )
-            );
+            outputs.extend(format::with_header(
+                format!("{} (TF):", format!("Output {}", ix).bold(),),
+                data.partial_dump(false).unwrap(),
+                80,
+            ));
         }
 
         information.push(outputs);
@@ -337,7 +319,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
             node.op_name.to_string(),
             node.name.to_string(),
             status.to_string(),
-            information
+            information,
         );
 
         // Re-use the output from tensorflow to keep tfdeploy from drifting.
@@ -347,7 +329,6 @@ fn handle_compare(params: Parameters) -> Result<()> {
     println!();
     Ok(())
 }
-
 
 /// Handles the `profile` subcommand.
 fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<()> {
@@ -361,7 +342,7 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
     for s in params.inputs {
         state.set_value(
             model.node_id_by_name(s.as_str())?,
-            random_matrix(params.sizes.clone(), params.datatype)
+            random_matrix(params.sizes.clone(), params.datatype),
         )?;
     }
 
@@ -383,7 +364,7 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
                 node.op_name.to_string(),
                 node.name.to_string(),
                 "SKIP".yellow().to_string(),
-                format::node_info(node, &params.graph, &state)?
+                format::node_info(node, &params.graph, &state)?,
             );
 
             continue;
@@ -404,11 +385,10 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
             node.id.to_string(),
             node.op_name.to_string(),
             node.name.to_string(),
-            format!(
-                "{:.*} ms", 6,
-                time as f64 / iters as f64
-            ).white().to_string(),
-            format::node_info(node, &params.graph, &state)?
+            format!("{:.*} ms", 6, time as f64 / iters as f64)
+                .white()
+                .to_string(),
+            format::node_info(node, &params.graph, &state)?,
         );
     }
 
