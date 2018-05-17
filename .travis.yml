@@ -16,8 +16,9 @@ script:
 -  cargo test
 -  cargo bench
 -  cargo doc
--  (cd conform ; cargo test --release)
+-  cd conform ; cargo test --release
 -  cd exs/inceptionv3 ; cargo test --release
+-  cd cli ; cargo test --release
 # too long for travis
 # - cd exs/inceptionv3 ; cargo bench
 matrix:
