@@ -10,7 +10,7 @@ use errors::*;
 
 
 /// Tries to autodetect the names of the input nodes.
-pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Vec<String>> {
+pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Option<Vec<String>>> {
     let mut inputs = Vec::new();
 
     for node in model.nodes() {
@@ -21,15 +21,15 @@ pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Vec<String>> {
 
     if inputs.len() > 0 {
         info!("Autodetecting input nodes: {:?}.", inputs);
-        Ok(inputs)
+        Ok(Some(inputs))
     } else {
-        bail!("Impossible to auto-detect input nodes: no placeholder.");
+        Ok(None)
     }
 }
 
 
 /// Tries to autodetect the name of the output node.
-pub fn detect_output(model: &tfdeploy::Model) -> Result<String> {
+pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<String>> {
     // We search for the only node in the graph with no successor.
     let mut succs: Vec<Vec<usize>> = vec![Vec::new();  model.nodes().len()];
 
@@ -44,11 +44,11 @@ pub fn detect_output(model: &tfdeploy::Model) -> Result<String> {
             let output = model.get_node_by_id(i)?.name.clone();
             info!("Autodetecting output node: {:?}.", output);
 
-            return Ok(output);
+            return Ok(Some(output));
         }
     }
 
-    bail!("Impossible to auto-detect output nodes.")
+    Ok(None)
 }
 
 

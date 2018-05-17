@@ -164,11 +164,13 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     let inputs = match matches.values_of("inputs") {
         Some(names) => names.map(|s| s.to_string()).collect(),
         None => detect_inputs(&tfd_model)?
+            .ok_or("Impossible to auto-detect input nodes: no placeholder.")?
     };
 
     let output = match matches.value_of("output") {
         Some(name) => name.to_string(),
         None => detect_output(&tfd_model)?
+            .ok_or("Impossible to auto-detect output nodes.")?
     };
 
     #[cfg(feature="tensorflow")]
