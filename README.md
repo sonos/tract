@@ -36,6 +36,7 @@ easily as practical to small-ish devices (think 30$ boards).
 * consider having a separate set of non-TF mimicking operators
     * optimise some ops combination (mul followed by add -> GEMM for instance)
     * support kaldi
+* RNN
 
 # License
 
