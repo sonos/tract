@@ -1,38 +1,37 @@
 #[macro_use]
 extern crate clap;
-#[macro_use]
-extern crate log;
-#[macro_use]
-extern crate error_chain;
-
+extern crate colored;
 #[cfg(feature="tensorflow")]
 extern crate conform;
-
+#[macro_use]
+extern crate error_chain;
+#[macro_use]
+extern crate log;
+extern crate rand;
 extern crate simplelog;
 extern crate tfdeploy;
 extern crate time;
-extern crate rand;
-extern crate colored;
+
+use std::path;
+use std::process;
+
+use simplelog::{TermLogger, LevelFilter, Config};
+#[cfg(feature="tensorflow")]
+use tfdeploy::Matrix;
+use tfdeploy::tfpb;
+use tfpb::types::DataType;
+use time::PreciseTime;
+
+use errors::*;
+#[cfg(feature="tensorflow")]
+use utils::compare_outputs;
+use utils::detect_inputs;
+use utils::detect_output;
+use utils::random_matrix;
 
 mod format;
 mod utils;
 mod errors;
-
-use errors::*;
-use utils::detect_inputs;
-use utils::detect_output;
-#[cfg(feature="tensorflow")]
-use utils::compare_outputs;
-use utils::random_matrix;
-
-use std::process::exit;
-use std::path::Path;
-use simplelog::{TermLogger, LevelFilter, Config};
-use tfdeploy::tfpb;
-#[cfg(feature="tensorflow")]
-use tfdeploy::Matrix;
-use tfpb::types::DataType;
-use time::PreciseTime;
 
 
 /// The default number of iterations for the profiler.
@@ -105,7 +104,7 @@ fn main() {
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());
-        exit(1)
+        process::exit(1)
     }
 }
 
@@ -135,7 +134,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 /// Parses the command-line arguments.
 fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     let path = matches.value_of("model").unwrap();
-    let graph = tfdeploy::Model::graphdef_for_path(&Path::new(path))?;
+    let graph = tfdeploy::Model::graphdef_for_path(&path::Path::new(path))?;
     let tfd_model = tfdeploy::for_path(&path)?;
 
     #[cfg(feature="tensorflow")]

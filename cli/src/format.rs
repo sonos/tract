@@ -1,11 +1,11 @@
 extern crate tfdeploy;
 
-use errors::*;
-use format;
-
 use std::cmp;
 
 use tfdeploy::tfpb;
+
+use errors::*;
+use format;
 
 
 /// Returns the number of hidden escape codes in the string.

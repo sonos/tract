@@ -1,13 +1,12 @@
-extern crate tfdeploy;
-extern crate rand;
 extern crate ndarray;
-
-use errors::*;
+extern crate rand;
+extern crate tfdeploy;
 
 use rand::Rng;
-
 use tfdeploy::Matrix;
 use tfdeploy::tfpb::types::DataType;
+
+use errors::*;
 
 
 /// Tries to autodetect the names of the input nodes.

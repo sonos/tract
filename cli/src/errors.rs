@@ -2,8 +2,6 @@
 extern crate conform;
 extern crate tfdeploy;
 
-use std;
-
 
 /// Configures error handling for this crate.
 error_chain! {
@@ -13,7 +11,7 @@ error_chain! {
     }
 
     foreign_links {
-        Io(std::io::Error);
-        Int(std::num::ParseIntError);
+        Io(::std::io::Error);
+        NumParseInt(::std::num::ParseIntError);
     }
 }
