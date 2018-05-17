@@ -7,6 +7,8 @@ extern crate conform;
 extern crate error_chain;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate prettytable;
 extern crate rand;
 extern crate simplelog;
 extern crate tfdeploy;
@@ -187,7 +189,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
 
     #[cfg(not(feature = "tensorflow"))]
     return Ok(Parameters {
-        path: path.to_string(),
+        file: file.to_string(),
         graph,
         tfd_model,
         inputs,
