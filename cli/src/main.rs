@@ -18,10 +18,13 @@ use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Matrix;
+use tfpb::graph::GraphDef;
 use tfpb::types::DataType;
 use time::PreciseTime as Time;
 
 use errors::*;
+use format::print_node;
+use format::Row;
 #[cfg(feature = "tensorflow")]
 use utils::compare_outputs;
 use utils::detect_inputs;
@@ -39,7 +42,7 @@ const DEFAULT_MAX_TIME: i64 = 10;
 /// Structure holding the parsed parameters.
 struct Parameters {
     file: String,
-    graph: tfpb::graph::GraphDef,
+    graph: GraphDef,
     tfd_model: tfdeploy::Model,
 
     #[cfg(feature = "tensorflow")]
@@ -158,15 +161,16 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     };
 
     let inputs = match matches.values_of("inputs") {
-        Some(names) => names.map(|s| Ok(tfd_model.node_id_by_name(s)?)).collect::<Result<_>>()?,
+        Some(names) => names
+            .map(|s| Ok(tfd_model.node_id_by_name(s)?))
+            .collect::<Result<_>>()?,
         None => detect_inputs(&tfd_model)?
             .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
     };
 
     let output = match matches.value_of("output") {
         Some(name) => tfd_model.node_id_by_name(name)?,
-        None => detect_output(&tfd_model)?
-            .ok_or("Impossible to auto-detect output nodes.")?,
+        None => detect_output(&tfd_model)?.ok_or("Impossible to auto-detect output nodes.")?,
     };
 
     #[cfg(feature = "tensorflow")]
@@ -234,12 +238,12 @@ fn handle_compare(params: Parameters) -> Result<()> {
         let node = tfd.get_node_by_id(n)?;
 
         if node.op_name == "Placeholder" {
-            format::print_box(
-                node.id.to_string(),
-                node.op_name.to_string(),
-                node.name.to_string(),
+            print_node(
+                node,
+                &params.graph,
+                &state,
                 "SKIP".yellow().to_string(),
-                format::node_info(node, &params.graph, &state)?,
+                vec![],
             );
 
             continue;
@@ -253,7 +257,10 @@ fn handle_compare(params: Parameters) -> Result<()> {
         );
 
         let (status, mismatches) = match state.compute_one(n) {
-            Err(e) => ("ERROR".red(), vec![format!("Error message: {:?}", e)]),
+            Err(e) => (
+                "ERROR".red(),
+                vec![Row::Simple(format!("Error message: {:?}", e))],
+            ),
 
             _ => {
                 let tfd_output = state.outputs[n].as_ref().unwrap();
@@ -261,33 +268,27 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
                 match compare_outputs(&tf_output, &views) {
                     Err(_) => {
-                        let mut mismatches = vec![];
+                        let mismatches: Vec<_> = tfd_output
+                            .iter()
+                            .enumerate()
+                            .map(|(n, data)| {
+                                let header = format!("{} (TFD):", format!("Output {}", n).bold(),);
 
-                        for (n, data) in tfd_output.iter().enumerate() {
-                            let header = format!("{} (TFD):", format!("Output {}", n).bold(),);
+                                let reason = if n >= tf_output.len() {
+                                    "Too many outputs"
+                                } else if tf_output[n].shape() != data.shape() {
+                                    "Wrong shape"
+                                } else if !tf_output[n].close_enough(data) {
+                                    "Too far away"
+                                } else {
+                                    "Other error"
+                                };
 
-                            let reason = if n >= tf_output.len() {
-                                "Too many outputs"
-                            } else if tf_output[n].shape() != data.shape() {
-                                "Wrong shape"
-                            } else if !tf_output[n].close_enough(data) {
-                                "Too far away"
-                            } else {
-                                "Other error"
-                            };
+                                let infos = data.partial_dump(false).unwrap();
 
-                            mismatches.extend(format::with_header(
-                                header.clone(),
-                                reason.yellow().to_string(),
-                                80,
-                            ));
-
-                            mismatches.extend(format::with_header(
-                                format!("{:1$}", "", header.len() - format::hidden_len(&header)),
-                                data.partial_dump(false).unwrap(),
-                                80,
-                            ));
-                        }
+                                Row::Double(header, format!("{}\n{}", reason.to_string(), infos))
+                            })
+                            .collect();
 
                         ("MISM.".red(), mismatches)
                     }
@@ -297,27 +298,22 @@ fn handle_compare(params: Parameters) -> Result<()> {
             }
         };
 
-        let mut information = format::node_info(node, &params.graph, &state)?;
-
-        let mut outputs = Vec::new();
-        for (ix, data) in tf_output.iter().enumerate() {
-            outputs.extend(format::with_header(
-                format!("{} (TF):", format!("Output {}", ix).bold(),),
+        let outputs: Vec<_> = tf_output
+            .iter()
+            .enumerate()
+            .map(|(n, data)| Row::Double(
+                format!("{} (TF):", format!("Output {}", n).bold()),
                 data.partial_dump(false).unwrap(),
-                80,
-            ));
-        }
-
-        information.push(outputs);
-        information.push(mismatches);
+            ))
+            .collect();
 
         // Print the results for the node.
-        format::print_box(
-            node.id.to_string(),
-            node.op_name.to_string(),
-            node.name.to_string(),
+        print_node(
+            node,
+            &params.graph,
+            &state,
             status.to_string(),
-            information,
+            vec![outputs, mismatches],
         );
 
         // Re-use the output from tensorflow to keep tfdeploy from drifting.
@@ -354,12 +350,12 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
         let node = model.get_node_by_id(n)?;
 
         if node.op_name == "Placeholder" {
-            format::print_box(
-                node.id.to_string(),
-                node.op_name.to_string(),
-                node.name.to_string(),
+            print_node(
+                node,
+                &params.graph,
+                &state,
                 "SKIP".yellow().to_string(),
-                format::node_info(node, &params.graph, &state)?,
+                vec![],
             );
 
             continue;
@@ -376,14 +372,14 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
         let time = start.to(Time::now()).num_milliseconds();
 
         // Print the results for the node.
-        format::print_box(
-            node.id.to_string(),
-            node.op_name.to_string(),
-            node.name.to_string(),
+        print_node(
+            node,
+            &params.graph,
+            &state,
             format!("{:.*} ms", 6, time as f64 / iters as f64)
                 .white()
                 .to_string(),
-            format::node_info(node, &params.graph, &state)?,
+            vec![],
         );
     }
 

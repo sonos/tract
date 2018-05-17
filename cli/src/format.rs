@@ -3,12 +3,22 @@ extern crate tfdeploy;
 use std::cmp;
 
 use tfdeploy::tfpb;
+use tfdeploy::tfpb::graph::GraphDef;
+use tfdeploy::ModelState;
+use tfdeploy::Node;
 
-use errors::*;
 use format;
 
+/// A single row, which has either one or two columns.
+/// The two-column layout is usually used when displaying a header and some content.
+#[derive(Debug, Clone)]
+pub enum Row {
+    Simple(String),
+    Double(String, String),
+}
+
 /// Returns the number of hidden escape codes in the string.
-pub fn hidden_len(s: &String) -> usize {
+fn hidden_len(s: &String) -> usize {
     let mut step = 0;
     let mut hidden = 0;
 
@@ -33,8 +43,8 @@ pub fn hidden_len(s: &String) -> usize {
     hidden
 }
 
-/// Prints a box containing arbitrary information about a node.
-pub fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<String>>) {
+/// Prints a box containing arbitrary information.
+fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<Row>>) {
     use colored::Colorize;
 
     // Box size configuration.
@@ -59,7 +69,7 @@ pub fn print_box(id: String, op: String, name: String, status: String, sections:
         tiny - 2 + 13
     );
 
-    let sections: Vec<Vec<String>> = sections.into_iter().filter(|s| s.len() > 0).collect();
+    let sections: Vec<Vec<Row>> = sections.into_iter().filter(|s| s.len() > 0).collect();
 
     if sections.len() == 0 {
         println!(
@@ -77,8 +87,8 @@ pub fn print_box(id: String, op: String, name: String, status: String, sections:
                 println!("{:6}├{:─>2$}┤", "", "", total);
             }
 
-            for line in section {
-                println!("{:6}│ {:2$} │", "", line, total - 2 + hidden_len(line));
+            for row in section {
+                // println!("{:6}│ {:2$} │", "", line, total - 2 + hidden_len(line));
             }
         }
 
@@ -87,7 +97,7 @@ pub fn print_box(id: String, op: String, name: String, status: String, sections:
 }
 
 /// Splits a line into multiple lines to respect a two-column layout.
-pub fn with_header(header: String, content: String, length: usize) -> Vec<String> {
+fn with_header(header: String, content: String, length: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut cur = content.as_str();
     let mut first = true;
@@ -111,11 +121,11 @@ pub fn with_header(header: String, content: String, length: usize) -> Vec<String
 }
 
 /// Returns information about a node.
-pub fn node_info(
+fn node_info(
     node: &tfdeploy::Node,
     graph: &tfpb::graph::GraphDef,
     state: &::tfdeploy::ModelState,
-) -> Result<Vec<Vec<String>>> {
+) -> Vec<Vec<Row>> {
     use colored::Colorize;
 
     // First section: node attributes.
@@ -127,10 +137,9 @@ pub fn node_info(
         .unwrap();
 
     for attr in proto_node.get_attr() {
-        attributes.extend(format::with_header(
+        attributes.push(Row::Double(
             format!("Attribute {}:", attr.0.bold()),
             format!("{:?}", attr.1),
-            80,
         ));
     }
 
@@ -138,7 +147,7 @@ pub fn node_info(
 
     for (ix, &(n, i)) in node.inputs.iter().enumerate() {
         let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
-        inputs.extend(format::with_header(
+        inputs.push(Row::Double(
             format!(
                 "{} ({}/{}):",
                 format!("Input {}", ix).bold(),
@@ -146,9 +155,25 @@ pub fn node_info(
                 i.unwrap_or(0),
             ),
             data.partial_dump(false).unwrap(),
-            80,
         ));
     }
 
-    Ok(vec![attributes, inputs])
+    vec![attributes, inputs]
+}
+
+/// Prints information about a node.
+pub fn print_node(
+    node: &Node,
+    graph: &GraphDef,
+    state: &ModelState,
+    status: String,
+    sections: Vec<Vec<Row>>,
+) {
+    format::print_box(
+        node.id.to_string(),
+        node.op_name.to_string(),
+        node.name.to_string(),
+        status,
+        [format::node_info(&node, &graph, &state), sections].concat(),
+    );
 }
