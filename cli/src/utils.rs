@@ -9,14 +9,13 @@ use tfdeploy::Matrix;
 use errors::*;
 
 /// Tries to autodetect the names of the input nodes.
-pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Option<Vec<String>>> {
-    let mut inputs = Vec::new();
-
-    for node in model.nodes() {
-        if node.op_name == "Placeholder" {
-            inputs.push(node.name.clone());
-        }
-    }
+pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Option<Vec<usize>>> {
+    let inputs: Vec<usize> = model
+        .nodes()
+        .iter()
+        .filter(|n| n.op_name == "Placeholder")
+        .map(|n| n.id)
+        .collect();
 
     if inputs.len() > 0 {
         info!("Autodetecting input nodes: {:?}.", inputs);
@@ -27,7 +26,7 @@ pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Option<Vec<String>>> {
 }
 
 /// Tries to autodetect the name of the output node.
-pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<String>> {
+pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<usize>> {
     // We search for the only node in the graph with no successor.
     let mut succs: Vec<Vec<usize>> = vec![Vec::new(); model.nodes().len()];
 
@@ -39,10 +38,8 @@ pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<String>> {
 
     for (i, s) in succs.iter().enumerate() {
         if s.len() == 0 {
-            let output = model.get_node_by_id(i)?.name.clone();
-            info!("Autodetecting output node: {:?}.", output);
-
-            return Ok(Some(output));
+            info!("Autodetecting output node: {:?}.", model.get_node_by_id(i)?.name);
+            return Ok(Some(i));
         }
     }
 

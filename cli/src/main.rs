@@ -12,7 +12,6 @@ extern crate simplelog;
 extern crate tfdeploy;
 extern crate time;
 
-use std::path;
 use std::process;
 
 use simplelog::{Config, LevelFilter, TermLogger};
@@ -39,15 +38,15 @@ const DEFAULT_MAX_TIME: i64 = 10;
 
 /// Structure holding the parsed parameters.
 struct Parameters {
-    path: String,
+    file: String,
     graph: tfpb::graph::GraphDef,
     tfd_model: tfdeploy::Model,
 
     #[cfg(feature = "tensorflow")]
     tf_model: conform::tf::Tensorflow,
 
-    inputs: Vec<String>,
-    output: String,
+    inputs: Vec<usize>,
+    output: usize,
 
     sizes: Vec<usize>,
     datatype: DataType,
@@ -134,12 +133,12 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
 /// Parses the command-line arguments.
 fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
-    let path = matches.value_of("model").unwrap();
-    let graph = tfdeploy::Model::graphdef_for_path(&path::Path::new(path))?;
-    let tfd_model = tfdeploy::for_path(&path)?;
+    let file = matches.value_of("model").unwrap();
+    let graph = tfdeploy::Model::graphdef_for_path(&file)?;
+    let tfd_model = tfdeploy::for_path(&file)?;
 
     #[cfg(feature = "tensorflow")]
-    let tf_model = conform::tf::for_path(&path)?;
+    let tf_model = conform::tf::for_path(&file)?;
 
     let splits: Vec<&str> = matches.value_of("size").unwrap().split("x").collect();
 
@@ -148,9 +147,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     }
 
     let (datatype, sizes) = splits.split_last().unwrap();
-
     let sizes: Vec<usize> = sizes.iter().map(|s| Ok(s.parse()?)).collect::<Result<_>>()?;
-
     let datatype = match datatype.to_lowercase().as_str() {
         "f64" => DataType::DT_DOUBLE,
         "f32" => DataType::DT_FLOAT,
@@ -161,19 +158,20 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     };
 
     let inputs = match matches.values_of("inputs") {
-        Some(names) => names.map(|s| s.to_string()).collect(),
+        Some(names) => names.map(|s| Ok(tfd_model.node_id_by_name(s)?)).collect::<Result<_>>()?,
         None => detect_inputs(&tfd_model)?
             .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
     };
 
     let output = match matches.value_of("output") {
-        Some(name) => name.to_string(),
-        None => detect_output(&tfd_model)?.ok_or("Impossible to auto-detect output nodes.")?,
+        Some(name) => tfd_model.node_id_by_name(name)?,
+        None => detect_output(&tfd_model)?
+            .ok_or("Impossible to auto-detect output nodes.")?,
     };
 
     #[cfg(feature = "tensorflow")]
     return Ok(Parameters {
-        path: path.to_string(),
+        file: file.to_string(),
         graph,
         tfd_model,
         tf_model,
@@ -208,14 +206,14 @@ fn handle_compare(params: Parameters) -> Result<()> {
     let tfd = params.tfd_model;
     let mut tf = params.tf_model;
 
-    let output = tfd.get_node(params.output.as_str())?;
+    let output = tfd.get_node_by_id(params.output)?;
     let mut state = tfd.state();
 
     // First generate random values for the inputs.
     let mut generated = Vec::new();
-    for s in &params.inputs {
+    for i in params.inputs {
         generated.push((
-            s.as_str(),
+            tfd.get_node_by_id(i)?.name.as_str(),
             random_matrix(params.sizes.clone(), params.datatype),
         ));
     }
@@ -230,7 +228,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     info!("Using execution plan: {:?}", plan);
 
     println!();
-    println!("Comparing the execution of {}:", params.path);
+    println!("Comparing the execution of {}:", params.file);
 
     for n in plan {
         let node = tfd.get_node_by_id(n)?;
@@ -335,15 +333,12 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
     use colored::Colorize;
 
     let model = params.tfd_model;
-    let output = model.get_node(params.output.as_str())?;
+    let output = model.get_node_by_id(params.output)?;
     let mut state = model.state();
 
     // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        state.set_value(
-            model.node_id_by_name(s.as_str())?,
-            random_matrix(params.sizes.clone(), params.datatype),
-        )?;
+        state.set_value(s, random_matrix(params.sizes.clone(), params.datatype))?;
     }
 
     let plan = output.eval_order(&model)?;
@@ -352,7 +347,7 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
     info!("Running for {} ms max. for each node.", max_time);
 
     println!();
-    println!("Profiling the execution of {}:", params.path);
+    println!("Profiling the execution of {}:", params.file);
 
     // Then execute the plan while profiling each step.
     for n in plan {
