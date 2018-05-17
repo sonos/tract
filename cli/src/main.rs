@@ -49,9 +49,9 @@ struct Parameters {
 
     inputs: Vec<String>,
     output: String,
-    size_x: usize,
-    size_y: usize,
-    size_d: DataType,
+
+    sizes: Vec<usize>,
+    datatype: DataType
 }
 
 
@@ -139,19 +139,24 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     #[cfg(feature="tensorflow")]
     let tf_model = conform::tf::for_path(&path)?;
 
-    let sizes: Vec<&str> = matches
+    let splits: Vec<&str> = matches
         .value_of("size")
         .unwrap()
-        .splitn(3, "x")
+        .split("x")
         .collect();
 
-    if sizes.len() < 3 {
-        bail!("Size should be formatted as {size}x{size}x{type}.");
+    if splits.len() < 2 {
+        bail!("Size should be formatted as {size}x{...}x{type}.");
     }
 
-    let size_x = sizes[0].parse::<usize>()?;
-    let size_y = sizes[1].parse::<usize>()?;
-    let size_d = match sizes[2].to_lowercase().as_str() {
+    let (datatype, sizes) = splits.split_last().unwrap();
+
+    let sizes: Vec<usize> = sizes
+        .iter()
+        .map(|s| Ok(s.parse()?))
+        .collect::<Result<_>>()?;
+
+    let datatype = match datatype.to_lowercase().as_str() {
         "f64" => DataType::DT_DOUBLE,
         "f32" => DataType::DT_FLOAT,
         "i32" => DataType::DT_INT32,
@@ -176,14 +181,14 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     return Ok(Parameters {
         path: path.to_string(),
         graph, tfd_model, tf_model,
-        inputs, output, size_x, size_y, size_d
+        inputs, output, sizes, datatype
     });
 
     #[cfg(not(feature="tensorflow"))]
     return Ok(Parameters {
         path: path.to_string(),
         graph, tfd_model,
-        inputs, output, size_x, size_y, size_d
+        inputs, output, sizes, datatype
     });
 }
 
@@ -209,7 +214,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     for s in &params.inputs {
         generated.push((
             s.as_str(),
-            random_matrix(params.size_x, params.size_y, params.size_d)
+            random_matrix(params.sizes.clone(), params.datatype)
         ));
     }
 
@@ -342,7 +347,7 @@ fn handle_profile(params: Parameters, iters: usize) -> Result<()> {
     for s in params.inputs {
         state.set_value(
             model.node_id_by_name(s.as_str())?,
-            random_matrix(params.size_x, params.size_y, params.size_d)
+            random_matrix(params.sizes.clone(), params.datatype)
         )?;
     }
 

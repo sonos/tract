@@ -90,17 +90,17 @@ pub fn compare_outputs<M2: ::std::borrow::Borrow<Matrix>>(
 
 
 /// Generates a random matrix of a given size and type.
-pub fn random_matrix(x: usize, y: usize, d: DataType) -> Matrix {
+pub fn random_matrix(sizes: Vec<usize>, datatype: DataType) -> Matrix {
     macro_rules! for_type {
         ($t:ty) => (
             ndarray::Array::from_shape_fn(
-                (x, y),
+                sizes,
                 |_| rand::thread_rng().gen()
-            ) as ndarray::Array2<$t>
+            ) as ndarray::ArrayD<$t>
         )
     }
 
-    match d {
+    match datatype {
         DataType::DT_DOUBLE => for_type!(f64).into(),
         DataType::DT_FLOAT => for_type!(f32).into(),
         DataType::DT_INT32 => for_type!(i32).into(),
