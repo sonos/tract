@@ -46,7 +46,7 @@ fn tfd(bencher: &mut Criterion) {
 }
 
 pub fn benches() {
-    let mut criterion: Criterion = Criterion::default().sample_size(10).configure_from_args();
+    let mut criterion: Criterion = Criterion::default().sample_size(3).configure_from_args();
     #[cfg(feature = "tensorflow")] {
         dummy(&mut criterion);
         tf(&mut criterion);

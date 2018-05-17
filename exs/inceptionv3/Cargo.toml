@@ -7,7 +7,7 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 flate2 = "*"
 image = "*"
 ndarray = "*"
-reqwest = "*"
+mio_httpc = "*"
 tar = "*"
 tfdeploy = { path = "../.." }
 conform = { path = "../../conform", optional=true }
