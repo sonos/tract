@@ -38,7 +38,10 @@ pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<usize>> {
 
     for (i, s) in succs.iter().enumerate() {
         if s.len() == 0 {
-            info!("Autodetecting output node: {:?}.", model.get_node_by_id(i)?.name);
+            info!(
+                "Autodetecting output node: {:?}.",
+                model.get_node_by_id(i)?.name
+            );
             return Ok(Some(i));
         }
     }
