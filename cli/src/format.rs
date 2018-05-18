@@ -49,7 +49,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     // Node name
     let mut name_table = table!([
         "Name: ",
-        format!("{:75}", textwrap::fill(name.as_str(), 75))
+        format!("{:65}", textwrap::fill(name.as_str(), 65))
     ]);
 
     name_table.set_format(*FORMAT_NONE);
@@ -77,11 +77,11 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         for row in section {
             let mut inner = match row {
                 Row::Simple(content) => table!([
-                    textwrap::fill(content.as_str(), 110)
+                    textwrap::fill(content.as_str(), 100)
                 ]),
                 Row::Double(header, content) => table!([
                     format!("{} ", header),
-                    textwrap::fill(content.as_str(), 110)
+                    textwrap::fill(content.as_str(), 100)
                 ])
             };
 
@@ -118,7 +118,13 @@ fn node_info(
     for attr in proto_node.get_attr() {
         attributes.push(Row::Double(
             format!("Attribute {}:", attr.0.bold()),
-            format!("{:?}", attr.1),
+
+            if attr.1.has_tensor() {
+                let tensor = attr.1.get_tensor();
+                format!("Tensor: {:?} {:?}", tensor.get_dtype(), tensor.get_tensor_shape().get_dim())
+            } else {
+                format!("{:?}", attr.1)
+            }
         ));
     }
 
