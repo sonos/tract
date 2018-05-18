@@ -10,10 +10,12 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("FloorMod", rem);
     reg.insert("Rsqrt", Rsqrt::build);
     reg.insert("Sub", sub);
+    reg.insert("Neg", Neg::build);
 }
 
 element_map!(Rsqrt, |x: f32| 1.0 / (x.sqrt()));
 element_map!(Abs, |x: f32| x.abs());
+element_map!(Neg, |x| -1. * x);
 
 element_bin!(Add, add, |mut a, b| {
     a += &b;
