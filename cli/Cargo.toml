@@ -11,7 +11,7 @@ error-chain = "0"
 lazy_static = "1.0"
 log = "0.4"
 ndarray = "0.11"
-prettytable-rs = "0.7.0"
+prettytable-rs = { git = "https://github.com/liautaud/prettytable-rs" }
 rand = "0.4"
 simplelog = "0.5"
 textwrap = "0.10"
