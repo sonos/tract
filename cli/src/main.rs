@@ -48,7 +48,7 @@ const DEFAULT_MAX_TIME: i64 = 10;
 
 /// Structure holding the parsed parameters.
 struct Parameters {
-    file: String,
+    name: String,
     graph: GraphDef,
     tfd_model: tfdeploy::Model,
 
@@ -143,12 +143,12 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
 /// Parses the command-line arguments.
 fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
-    let file = matches.value_of("model").unwrap();
-    let graph = tfdeploy::Model::graphdef_for_path(&file)?;
-    let tfd_model = tfdeploy::for_path(&file)?;
+    let name = matches.value_of("model").unwrap();
+    let graph = tfdeploy::Model::graphdef_for_path(&name)?;
+    let tfd_model = tfdeploy::for_path(&name)?;
 
     #[cfg(feature = "tensorflow")]
-    let tf_model = conform::tf::for_path(&file)?;
+    let tf_model = conform::tf::for_path(&name)?;
 
     let splits: Vec<&str> = matches.value_of("size").unwrap().split("x").collect();
 
@@ -182,7 +182,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
 
     #[cfg(feature = "tensorflow")]
     return Ok(Parameters {
-        file: file.to_string(),
+        name: name.to_string(),
         graph,
         tfd_model,
         tf_model,
@@ -194,7 +194,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
 
     #[cfg(not(feature = "tensorflow"))]
     return Ok(Parameters {
-        file: file.to_string(),
+        name: name.to_string(),
         graph,
         tfd_model,
         inputs,
@@ -239,7 +239,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     info!("Using execution plan: {:?}", plan);
 
     println!();
-    println!("Comparing the execution of {}:", params.file);
+    println!("Comparing the execution of {}:", params.name);
 
     for n in plan {
         let node = tfd.get_node_by_id(n)?;
@@ -350,7 +350,7 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
     info!("Running for {} ms max. for each node.", max_time);
 
     println!();
-    println!("Profiling the execution of {}:", params.file);
+    println!("Profiling the execution of {}:", params.name);
 
     // Then execute the plan while profiling each step.
     for n in plan {
