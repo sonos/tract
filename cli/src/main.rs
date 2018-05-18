@@ -15,10 +15,12 @@ extern crate simplelog;
 extern crate textwrap;
 extern crate tfdeploy;
 
+use std::collections::HashMap;
 use std::process;
 use std::time::Instant;
 
 use simplelog::{Config, LevelFilter, TermLogger};
+use simplelog::Level::Info;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Matrix;
@@ -26,6 +28,7 @@ use tfpb::graph::GraphDef;
 use tfpb::types::DataType;
 
 use errors::*;
+use format::print_header;
 use format::print_node;
 #[allow(unused_imports)]
 use format::Row;
@@ -82,7 +85,7 @@ fn main() {
         (@arg size: -s --size <size>
             "Sets the input size, e.g. 32x64xf32.")
 
-        (@arg debug: -d ... "Sets the level of debugging information.")
+        (@arg verbosity: -v ... "Sets the level of verbosity.")
 
         (@subcommand compare =>
             (about: "Compares the output of tfdeploy and tensorflow on randomly generated input."))
@@ -98,7 +101,7 @@ fn main() {
     let matches = app.get_matches();
 
     // Configure the logging level.
-    let level = match matches.occurrences_of("debug") {
+    let level = match matches.occurrences_of("verbosity") {
         0 => LevelFilter::Warn,
         1 => LevelFilter::Info,
         2 => LevelFilter::Debug,
@@ -235,20 +238,25 @@ fn handle_compare(params: Parameters) -> Result<()> {
     let plan = output.eval_order(&tfd)?;
     info!("Using execution plan: {:?}", plan);
 
-    println!();
-    println!("Comparing the execution of {}:", params.name);
+    if log_enabled!(Info) {
+        print_header(format!("Detailed comparison for {}:", params.name), "white");
+    }
+
+    let mut failures = vec![];
 
     for n in plan {
         let node = tfd.get_node_by_id(n)?;
 
         if node.op_name == "Placeholder" {
-            print_node(
-                node,
-                &params.graph,
-                &state,
-                "SKIP".yellow().to_string(),
-                vec![],
-            );
+            if log_enabled!(Info) {
+                print_node(
+                    node,
+                    &params.graph,
+                    &state,
+                    "SKIP".yellow().to_string(),
+                    vec![],
+                );
+            }
 
             continue;
         }
@@ -260,8 +268,9 @@ fn handle_compare(params: Parameters) -> Result<()> {
             ).as_str(),
         );
 
-        let (status, mismatches) = match state.compute_one(n) {
+        let (failure, status, mismatches) = match state.compute_one(n) {
             Err(e) => (
+                true,
                 "ERROR".red(),
                 vec![Row::Simple(format!("Error message: {:?}", e))],
             ),
@@ -294,10 +303,10 @@ fn handle_compare(params: Parameters) -> Result<()> {
                             })
                             .collect();
 
-                        ("MISM.".red(), mismatches)
+                        (true, "MISM.".red(), mismatches)
                     }
 
-                    _ => ("OK".green(), vec![]),
+                    _ => (false, "OK".green(), vec![]),
                 }
             }
         };
@@ -311,20 +320,45 @@ fn handle_compare(params: Parameters) -> Result<()> {
             ))
             .collect();
 
-        // Print the results for the node.
-        print_node(
-            node,
-            &params.graph,
-            &state,
-            status.to_string(),
-            vec![outputs, mismatches],
-        );
+        if log_enabled!(Info) {
+            // Print the results for the node.
+            print_node(
+                node,
+                &params.graph,
+                &state,
+                status.to_string(),
+                vec![outputs.clone(), mismatches.clone()],
+            );
+        }
+
+        if failure {
+            failures.push((node, status, outputs, mismatches));
+        }
 
         // Re-use the output from tensorflow to keep tfdeploy from drifting.
         state.set_outputs(node.id, tf_output)?;
     }
 
-    println!();
+    if log_enabled!(Info) {
+        println!();
+    }
+
+    if failures.len() > 0 {
+        print_header(format!("There were {} errors:", failures.len()), "red");
+
+        for (node, status, outputs, mismatches) in failures {
+            print_node(
+                node,
+                &params.graph,
+                &state,
+                status.to_string(),
+                vec![outputs, mismatches],
+            );
+        }
+    } else {
+        println!("{}", "Each node passed the comparison.".bold().green());
+    }
+
     Ok(())
 }
 
@@ -354,21 +388,27 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
 
-    println!();
-    println!("Profiling the execution of {}:", params.name);
+    if log_enabled!(Info) {
+        print_header(format!("Detailed profiling for {}:", params.name), "white");
+    }
+
+    let mut nodes = vec![];
+    let mut operations = HashMap::new();
 
     // Then execute the plan while profiling each step.
     for n in plan {
         let node = model.get_node_by_id(n)?;
 
         if node.op_name == "Placeholder" {
-            print_node(
-                node,
-                &params.graph,
-                &state,
-                "SKIP".yellow().to_string(),
-                vec![],
-            );
+            if log_enabled!(Info) {
+                print_node(
+                    node,
+                    &params.graph,
+                    &state,
+                    "SKIP".yellow().to_string(),
+                    vec![],
+                );
+            }
 
             continue;
         }
@@ -381,21 +421,62 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
             iters += 1;
         }
 
-        let time = elapsed_ns!(start);
+        let elapsed = elapsed_ns!(start);
+        let time = elapsed as f64 / iters as f64 * 1e-6;
+        let status = format!("{:.3} ms", time).white();
 
         // Print the results for the node.
+        if log_enabled!(Info) {
+            print_node(
+                node,
+                &params.graph,
+                &state,
+                status.to_string(),
+                vec![],
+            );
+        }
+
+        nodes.push((node, time, status));
+        let mut pair = operations
+            .entry(node.op_name.as_str())
+            .or_insert((0., 0));
+        pair.0 += time;
+        pair.1 += 1;
+    }
+
+    if log_enabled!(Info) {
+        println!();
+    }
+
+    print_header(format!("Summary for {}:", params.name), "white");
+
+    println!();
+    println!("Most time consuming nodes:");
+    nodes.sort_by(
+        |(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse()
+    );
+    for (node, _, status) in nodes.iter().take(5) {
         print_node(
             node,
             &params.graph,
             &state,
-            format!("{:.3} ms", time as f64 / iters as f64 * 1e-3)
-                .white()
-                .to_string(),
+            status.to_string(),
             vec![],
         );
     }
 
     println!();
+    println!("Most time consuming operations:");
+    let mut operations: Vec<_> = operations
+        .iter()
+        .map(|(o, (t, c))| (o, t, c))
+        .collect();
+    operations.sort_by(
+        |(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse()
+    );
+    for (operation, time, count) in operations.iter().take(5) {
+        println!("- {}: {:.3} ms (for {} nodes).", operation.blue().bold(), time, count);
+    }
 
     Ok(())
 }

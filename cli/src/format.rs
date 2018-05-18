@@ -44,7 +44,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     // Node name
     let mut name_table = table!([
         "Name: ",
-        format!("{:65}", textwrap::fill(name.as_str(), 65))
+        format!("{:67}", textwrap::fill(name.as_str(), 67))
     ]);
 
     name_table.set_format(format_none);
@@ -53,7 +53,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     let mut header = table!([
         format!("Operation: {:15}", op.bold().blue()),
         name_table,
-        format!(" {:^22}", status.bold())
+        format!(" {:^26}", status.bold())
     ]);
 
     header.set_format(*FORMAT_NO_BORDER);
@@ -72,11 +72,11 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         for row in section {
             let mut inner = match row {
                 Row::Simple(content) => table!([
-                    textwrap::fill(content.as_str(), 100)
+                    textwrap::fill(content.as_str(), 105)
                 ]),
                 Row::Double(header, content) => table!([
                     format!("{} ", header),
-                    textwrap::fill(content.as_str(), 100)
+                    textwrap::fill(content.as_str(), 105)
                 ])
             };
 
@@ -156,4 +156,13 @@ pub fn print_node(
         status,
         [format::node_info(&node, &graph, &state), sections].concat(),
     );
+}
+
+
+/// Prints some text with a line underneath.
+pub fn print_header(text: String, color: &str) {
+    use colored::Colorize;
+
+    println!("{}", text.bold().color(color));
+    println!("{}", format!("{:=<1$}", "", text.len()).bold().color(color));
 }
