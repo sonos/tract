@@ -39,18 +39,26 @@ lazy_static! {
 fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<Row>>) {
     use colored::Colorize;
 
-    // Node counter
+    // Node identifier
     let mut count = table!([
         format!("{:^5}", id.bold())
     ]);
 
     count.set_format(*FORMAT_NO_RIGHT_BORDER);
 
+    // Node name
+    let mut name_table = table!([
+        "Name: ",
+        format!("{:75}", textwrap::fill(name.as_str(), 75))
+    ]);
+
+    name_table.set_format(*FORMAT_NONE);
+
     // Table header
     let mut header = table!([
-        format!("Operation: {:40}", op.bold().blue()),
-        format!("Name: {:40}", name.bold()),
-        format!("{:^24}", status.bold())
+        format!("Operation: {:15}", op.bold().blue()),
+        name_table,
+        format!(" {:^24}", status.bold())
     ]);
 
     header.set_format(*FORMAT_NO_BORDER);
@@ -69,11 +77,11 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         for row in section {
             let mut inner = match row {
                 Row::Simple(content) => table!([
-                    textwrap::fill(content.as_str(), 100)
+                    textwrap::fill(content.as_str(), 110)
                 ]),
                 Row::Double(header, content) => table!([
                     format!("{} ", header),
-                    textwrap::fill(content.as_str(), 100)
+                    textwrap::fill(content.as_str(), 110)
                 ])
             };
 
