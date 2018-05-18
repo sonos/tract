@@ -14,6 +14,7 @@ use format;
 /// A single row, which has either one or two columns.
 /// The two-column layout is usually used when displaying a header and some content.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Row {
     Simple(String),
     Double(String, String),

@@ -30,6 +30,7 @@ use time::PreciseTime as Time;
 
 use errors::*;
 use format::print_node;
+#[allow(unused_imports)]
 use format::Row;
 #[cfg(feature = "tensorflow")]
 use utils::compare_outputs;
