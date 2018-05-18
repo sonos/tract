@@ -9,10 +9,12 @@ extern crate error_chain;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate ndarray;
 #[macro_use]
 extern crate prettytable;
 extern crate rand;
 extern crate simplelog;
+extern crate textwrap;
 extern crate tfdeploy;
 extern crate time;
 

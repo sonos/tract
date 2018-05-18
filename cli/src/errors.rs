@@ -1,6 +1,5 @@
-#[cfg(feature = "tensorflow")]
-extern crate conform;
-extern crate tfdeploy;
+use conform;
+use tfdeploy;
 
 /// Configures error handling for this crate.
 error_chain! {

@@ -1,8 +1,7 @@
-extern crate ndarray;
-extern crate rand;
-extern crate tfdeploy;
-
+use ndarray;
+use rand;
 use rand::Rng;
+use tfdeploy;
 use tfdeploy::tfpb::types::DataType;
 use tfdeploy::Matrix;
 

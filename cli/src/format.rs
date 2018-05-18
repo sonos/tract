@@ -1,11 +1,9 @@
-extern crate prettytable;
-extern crate textwrap;
-extern crate tfdeploy;
-
 use prettytable as pt;
 use prettytable::format::consts::*;
 use prettytable::format::FormatBuilder;
 use prettytable::format::TableFormat;
+use textwrap;
+use tfdeploy;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::graph::GraphDef;
 use tfdeploy::ModelState;
