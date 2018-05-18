@@ -97,7 +97,7 @@ impl Tensorflow {
         let token = step.request_output(&self.graph.operation_by_name_required(output_name)?, 0);
         self.session.run(&mut step)?;
 
-        let output_type = step.output_data_type(0).unwrap();
+        let output_type = &self.graph.operation_by_name_required(&output_name)?.output_type(0);
         convert_output(&mut step, output_type, token)
     }
 
@@ -140,9 +140,9 @@ impl Tensorflow {
         self.session.run(&mut step)?;
 
         // Return the output for every node.
-        let output_type = step.output_data_type(0).unwrap();
         let mut outputs = HashMap::new();
         for (name, token) in tokens {
+            let output_type = &self.graph.operation_by_name_required(&name)?.output_type(0);
             outputs.insert(name, convert_output(&mut step, output_type, token)?);
         }
 
@@ -151,7 +151,7 @@ impl Tensorflow {
 }
 
 /// Converts the output of a Tensorflow node into a Vec<Matrix>.
-fn convert_output(step: &mut StepWithGraph, output_type: DataType, output: OutputToken) -> Result<Vec<Matrix>> {
+fn convert_output(step: &mut StepWithGraph, output_type: &DataType, output: OutputToken) -> Result<Vec<Matrix>> {
     macro_rules! convert {
         ($dt:ident) => (Matrix::$dt(tensor_to_matrix(&step.take_output(output)?)?))
     };
