@@ -1,3 +1,4 @@
+#[cfg(feature = "tensorflow")]
 use conform;
 use tfdeploy;
 
