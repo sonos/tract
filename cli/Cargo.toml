@@ -8,10 +8,13 @@ clap = "2.31"
 colored = "1.6"
 conform = { path = "../conform" }
 error-chain = "0"
+lazy_static = "1.0"
 log = "0.4"
-ndarray = { version = "0.11" }
+ndarray = "0.11"
+prettytable-rs = "0.7.0"
 rand = "0.4"
 simplelog = "0.5"
+textwrap = "0.10"
 tfdeploy = { path = ".." }
 time = "0.1"
 

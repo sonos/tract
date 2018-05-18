@@ -1,7 +1,11 @@
+extern crate prettytable;
+extern crate textwrap;
 extern crate tfdeploy;
 
-use std::cmp;
-
+use prettytable as pt;
+use prettytable::format::consts::*;
+use prettytable::format::FormatBuilder;
+use prettytable::format::TableFormat;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::graph::GraphDef;
 use tfdeploy::ModelState;
@@ -17,107 +21,75 @@ pub enum Row {
     Double(String, String),
 }
 
-/// Returns the number of hidden escape codes in the string.
-fn hidden_len(s: &String) -> usize {
-    let mut step = 0;
-    let mut hidden = 0;
+/// A few table formatting rules.
+lazy_static! {
+    static ref FORMAT_NONE: TableFormat = FormatBuilder::new()
+        .build();
 
-    for c in s.chars() {
-        step = match (step, c) {
-            (0, '\u{1b}') => 1,
-            (1, '[') => 2,
-            (1, _) => 0,
-            (2, 'm') => 3,
-            _ => step,
-        };
-
-        if step > 0 {
-            hidden += 1;
-        }
-
-        if step == 3 {
-            step = 0;
-        }
-    }
-
-    hidden
+    static ref FORMAT_NO_RIGHT_BORDER: TableFormat = FormatBuilder::new()
+        .column_separator('|')
+        .left_border('|')
+        .separators(&[pt::format::LinePosition::Top,
+                      pt::format::LinePosition::Bottom],
+                    pt::format::LineSeparator::new('-', '+', '+', '+'))
+        .padding(1, 1)
+        .build();
 }
 
 /// Prints a box containing arbitrary information.
 fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<Row>>) {
     use colored::Colorize;
 
-    // Box size configuration.
-    let small = 42;
-    let large = 43;
-    let tiny = 13;
-    let total = small + large + tiny + 2;
+    // Node counter
+    let mut count = table!([
+        format!("{:^5}", id.bold())
+    ]);
 
-    println!(
-        "┌─────┬{:─>3$}┬{:─>4$}┬{:─>5$}┐",
-        "", "", "", small, large, tiny
-    );
+    count.set_format(*FORMAT_NO_RIGHT_BORDER);
 
-    println!(
-        "│{:^5}│ Operation: {:4$} │ Name: {:5$} │ {:^6$} │",
-        id.bold(),
-        op.bold().blue(),
-        name.bold(),
-        status.bold(),
-        small - 13,
-        large - 8,
-        tiny - 2 + 13
-    );
+    // Table header
+    let mut header = table!([
+        format!("Operation: {:40}", op.bold().blue()),
+        format!("Name: {:40}", name.bold()),
+        format!("{:^24}", status.bold())
+    ]);
 
-    let sections: Vec<Vec<Row>> = sections.into_iter().filter(|s| s.len() > 0).collect();
+    header.set_format(*FORMAT_NO_BORDER);
 
-    if sections.len() == 0 {
-        println!(
-            "└─────┴{:─>3$}┴{:─>4$}┴{:─>5$}┘",
-            "", "", "", small, large, tiny
-        );
-    } else {
-        println!(
-            "└─────┼{:─>3$}┴{:─>4$}┴{:─>5$}┤",
-            "", "", "", small, large, tiny
-        );
+    // Content of the table
+    let mut right = table![[header]];
 
-        for (i, section) in sections.iter().enumerate() {
-            if i > 0 {
-                println!("{:6}├{:─>2$}┤", "", "", total);
-            }
-
-            for row in section {
-                // println!("{:6}│ {:2$} │", "", line, total - 2 + hidden_len(line));
-            }
+    for section in sections {
+        if section.len() < 1 {
+            continue;
         }
 
-        println!("{:6}└{:─>2$}┘", "", "", total);
-    }
-}
+        let mut outer = table!();
+        outer.set_format(*FORMAT_NONE);
 
-/// Splits a line into multiple lines to respect a two-column layout.
-fn with_header(header: String, content: String, length: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut cur = content.as_str();
-    let mut first = true;
+        for row in section {
+            let mut inner = match row {
+                Row::Simple(content) => table!([
+                    textwrap::fill(content.as_str(), 100)
+                ]),
+                Row::Double(header, content) => table!([
+                    format!("{} ", header),
+                    textwrap::fill(content.as_str(), 100)
+                ])
+            };
 
-    let pad = header.len() - hidden_len(&header);
-
-    while !cur.is_empty() {
-        let (chunk, rest) = cur.split_at(cmp::min(length, cur.len()));
-
-        if first {
-            lines.push(format!("{} {}", header, chunk));
-            first = false;
-        } else {
-            lines.push(format!("{:2$} {}", "", chunk, pad));
+            inner.set_format(*FORMAT_NONE);
+            outer.add_row(row![inner]);
         }
 
-        cur = rest;
+        right.add_row(row![outer]);
     }
 
-    lines
+    // Whole table
+    let mut table = table!();
+    table.set_format(*FORMAT_NONE);
+    table.add_row(row![count, right]);
+    table.printstd();
 }
 
 /// Returns information about a node.
