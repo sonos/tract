@@ -58,7 +58,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     let mut header = table!([
         format!("Operation: {:15}", op.bold().blue()),
         name_table,
-        format!(" {:^24}", status.bold())
+        format!(" {:^22}", status.bold())
     ]);
 
     header.set_format(*FORMAT_NO_BORDER);

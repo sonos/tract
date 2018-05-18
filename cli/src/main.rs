@@ -16,9 +16,9 @@ extern crate rand;
 extern crate simplelog;
 extern crate textwrap;
 extern crate tfdeploy;
-extern crate time;
 
 use std::process;
+use std::time::Instant;
 
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
@@ -26,7 +26,6 @@ use tfdeploy::tfpb;
 use tfdeploy::Matrix;
 use tfpb::graph::GraphDef;
 use tfpb::types::DataType;
-use time::PreciseTime as Time;
 
 use errors::*;
 use format::print_node;
@@ -43,8 +42,8 @@ mod format;
 mod utils;
 
 /// The default maximum for iterations and time.
-const DEFAULT_MAX_ITERS: i64 = 10000;
-const DEFAULT_MAX_TIME: i64 = 10;
+const DEFAULT_MAX_ITERS: u32 = 10_000;
+const DEFAULT_MAX_TIME: u32 = 10_000;
 
 /// Structure holding the parsed parameters.
 struct Parameters {
@@ -93,9 +92,9 @@ fn main() {
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input.")
             (@arg max_iters: -n [max_iters]
-                "Sets the maximum number of iterations for each node [default: 10000].")
+                "Sets the maximum number of iterations for each node [default: 10_000].")
             (@arg max_time: -t [max_time]
-                "Sets the maximum execution time for each node (in ms) [default: 10]."))
+                "Sets the maximum execution time for each node (in ns) [default: 10_000]."))
     );
 
     let matches = app.get_matches();
@@ -129,11 +128,11 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
             params,
             match m.value_of("max_iters") {
                 None => DEFAULT_MAX_ITERS,
-                Some(s) => s.parse::<i64>()?,
+                Some(s) => s.parse::<u32>()?,
             },
             match m.value_of("max_time") {
                 None => DEFAULT_MAX_TIME,
-                Some(s) => s.parse::<i64>()?,
+                Some(s) => s.parse::<u32>()?,
             },
         ),
 
@@ -332,8 +331,16 @@ fn handle_compare(params: Parameters) -> Result<()> {
 }
 
 /// Handles the `profile` subcommand.
-fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<()> {
+fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<()> {
     use colored::Colorize;
+
+    // The number of nanoseconds since a start time as an u32.
+    macro_rules! elapsed_ns {
+        ($start:ident) => ({
+            let duration = $start.elapsed();
+            duration.as_secs() as u32 * 1_000_000 + duration.subsec_nanos()
+        })
+    }
 
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?;
@@ -369,21 +376,21 @@ fn handle_profile(params: Parameters, max_iters: i64, max_time: i64) -> Result<(
         }
 
         let mut iters = 0;
-        let start = Time::now();
+        let start = Instant::now();
 
-        while iters < max_iters && start.to(Time::now()).num_milliseconds() < max_time {
+        while iters < max_iters && elapsed_ns!(start) < max_time {
             state.compute_one(n)?;
             iters += 1;
         }
 
-        let time = start.to(Time::now()).num_milliseconds();
+        let time = elapsed_ns!(start);
 
         // Print the results for the node.
         print_node(
             node,
             &params.graph,
             &state,
-            format!("{:.*} ms", 6, time as f64 / iters as f64)
+            format!("{:.3} ms", time as f64 / iters as f64 * 1e-3)
                 .white()
                 .to_string(),
             vec![],

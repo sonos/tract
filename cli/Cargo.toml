@@ -16,7 +16,6 @@ rand = "0.4"
 simplelog = "0.5"
 textwrap = "0.10"
 tfdeploy = { path = ".." }
-time = "0.1"
 
 [features]
 default = []
