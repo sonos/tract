@@ -152,7 +152,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
 
     let splits: Vec<&str> = matches.value_of("size").unwrap().split("x").collect();
 
-    if splits.len() < 2 {
+    if splits.len() < 1 {
         bail!("Size should be formatted as {size}x{...}x{type}.");
     }
 
