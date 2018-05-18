@@ -1,7 +1,6 @@
 use prettytable as pt;
 use prettytable::format::consts::*;
 use prettytable::format::FormatBuilder;
-use prettytable::format::TableFormat;
 use textwrap;
 use tfdeploy;
 use tfdeploy::tfpb;
@@ -20,12 +19,13 @@ pub enum Row {
     Double(String, String),
 }
 
-/// A few table formatting rules.
-lazy_static! {
-    static ref FORMAT_NONE: TableFormat = FormatBuilder::new()
-        .build();
+/// Prints a box containing arbitrary information.
+fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<Row>>) {
+    use colored::Colorize;
 
-    static ref FORMAT_NO_RIGHT_BORDER: TableFormat = FormatBuilder::new()
+    // Common formats
+    let format_none = FormatBuilder::new().build();
+    let format_no_right_border = FormatBuilder::new()
         .column_separator('|')
         .left_border('|')
         .separators(&[pt::format::LinePosition::Top,
@@ -33,18 +33,13 @@ lazy_static! {
                     pt::format::LineSeparator::new('-', '+', '+', '+'))
         .padding(1, 1)
         .build();
-}
-
-/// Prints a box containing arbitrary information.
-fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<Row>>) {
-    use colored::Colorize;
 
     // Node identifier
     let mut count = table!([
         format!("{:^5}", id.bold())
     ]);
 
-    count.set_format(*FORMAT_NO_RIGHT_BORDER);
+    count.set_format(format_no_right_border);
 
     // Node name
     let mut name_table = table!([
@@ -52,7 +47,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         format!("{:65}", textwrap::fill(name.as_str(), 65))
     ]);
 
-    name_table.set_format(*FORMAT_NONE);
+    name_table.set_format(format_none);
 
     // Table header
     let mut header = table!([
@@ -72,7 +67,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         }
 
         let mut outer = table!();
-        outer.set_format(*FORMAT_NONE);
+        outer.set_format(format_none);
 
         for row in section {
             let mut inner = match row {
@@ -85,7 +80,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
                 ])
             };
 
-            inner.set_format(*FORMAT_NONE);
+            inner.set_format(format_none);
             outer.add_row(row![inner]);
         }
 
@@ -94,7 +89,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
 
     // Whole table
     let mut table = table!();
-    table.set_format(*FORMAT_NONE);
+    table.set_format(format_none);
     table.add_row(row![count, right]);
     table.printstd();
 }
