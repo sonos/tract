@@ -29,11 +29,13 @@
 //! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 
 extern crate bit_set;
+#[cfg(feature="blis")]
+extern crate blis_src;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
 extern crate error_chain;
-#[cfg(features="image_ops")]
+#[cfg(feature="image_ops")]
 extern crate image;
 #[allow(unused_imports)]
 #[macro_use]
