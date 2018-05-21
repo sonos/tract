@@ -5,11 +5,16 @@ use std::{fs, path};
 use tensorflow::Graph;
 use tensorflow::Session;
 use tensorflow::StepWithGraph;
+use tensorflow::OutputToken;
+use tensorflow::DataType;
 use tensorflow::Tensor;
 
 use tfdeploy::Matrix;
 
 use ndarray::ArrayD;
+
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 use ::Result;
 
@@ -69,12 +74,13 @@ fn tensor_to_matrix<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<A
 }
 
 impl Tensorflow {
+    /// Executes the graph in one batch.
     pub fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
-        use tensorflow::DataType;
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()
             .map(|(name, mat)| (name, mat.into()))
             .collect();
+
         let mut step = StepWithGraph::new();
         for t in &tensors {
             let op = self.graph.operation_by_name_required(t.0)?;
@@ -87,20 +93,77 @@ impl Tensorflow {
                 TensorHolder::String(ref it) => step.add_input(&op, 0, &it),
             }
         }
-        let output = step.request_output(&self.graph.operation_by_name_required(output_name)?, 0);
+
+        let token = step.request_output(&self.graph.operation_by_name_required(output_name)?, 0);
         self.session.run(&mut step)?;
-        let matrix = match step.output_data_type(0).unwrap() {
-            DataType::Float => Matrix::F32(tensor_to_matrix(&step.take_output(output)?)?),
-            DataType::UInt8 => Matrix::U8(tensor_to_matrix(&step.take_output(output)?)?),
-            DataType::Int8 => Matrix::I8(tensor_to_matrix(&step.take_output(output)?)?),
-            DataType::String => Matrix::String(tensor_to_matrix(&step.take_output(output)?)?),
-            /*
-            DataType::String => {
-                let strings:Tensor<i8> = step.take_output(output)?;
-            }*/
-            DataType::Int32 => Matrix::I32(tensor_to_matrix(&step.take_output(output)?)?),
-            t => Err(format!("Missing tensor to matrix for type {:?}", t))?,
-        };
-        Ok(vec![matrix])
+
+        let output_type = &self.graph.operation_by_name_required(&output_name)?.output_type(0);
+        convert_output(&mut step, output_type, token)
     }
+
+    /// Executes the graph in one batch, and returns the output for every node but the inputs.
+    pub fn run_get_all(&mut self, inputs: Vec<(&str, Matrix)>) -> Result<HashMap<String, Vec<Matrix>>> {
+        let mut tensors: Vec<(&str, TensorHolder)> = Vec::new();
+        let mut excluded = HashSet::new();
+
+        for (name, mat) in inputs {
+            tensors.push((name, mat.into()));
+            excluded.insert(name.to_string());
+        }
+
+        let mut step = StepWithGraph::new();
+        for t in &tensors {
+            let op = self.graph.operation_by_name_required(t.0)?;
+            match t.1 {
+                TensorHolder::F64(ref it) => step.add_input(&op, 0, &it),
+                TensorHolder::F32(ref it) => step.add_input(&op, 0, &it),
+                TensorHolder::I32(ref it) => step.add_input(&op, 0, &it),
+                TensorHolder::U8(ref it) => step.add_input(&op, 0, &it),
+                TensorHolder::I8(ref it) => step.add_input(&op, 0, &it),
+                TensorHolder::String(ref it) => step.add_input(&op, 0, &it),
+            }
+        }
+
+        // Request the output of every node that's not an input.
+        let mut tokens = HashMap::new();
+        for operation in self.graph.operation_iter() {
+            let name = operation.name()?;
+
+            if excluded.contains(&name) {
+                continue;
+            }
+
+            tokens.insert(name, step.request_output(&operation, 0));
+        }
+
+        // Execute the graph using tensorflow.
+        self.session.run(&mut step)?;
+
+        // Return the output for every node.
+        let mut outputs = HashMap::new();
+        for (name, token) in tokens {
+            let output_type = &self.graph.operation_by_name_required(&name)?.output_type(0);
+            outputs.insert(name, convert_output(&mut step, output_type, token)?);
+        }
+
+        Ok(outputs)
+    }
+}
+
+/// Converts the output of a Tensorflow node into a Vec<Matrix>.
+fn convert_output(step: &mut StepWithGraph, output_type: &DataType, output: OutputToken) -> Result<Vec<Matrix>> {
+    macro_rules! convert {
+        ($dt:ident) => (Matrix::$dt(tensor_to_matrix(&step.take_output(output)?)?))
+    };
+
+    let matrix = match output_type {
+        DataType::Float => convert!(F32),
+        DataType::UInt8 => convert!(U8),
+        DataType::Int8 => convert!(I8),
+        DataType::String => convert!(String),
+        DataType::Int32 => convert!(I32),
+        t => bail!("Missing tensor to matrix for type {:?}", t),
+    };
+
+    Ok(vec![matrix])
 }

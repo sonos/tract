@@ -23,7 +23,7 @@ fn main() {
     let input = tfpb::node()
         .op("Placeholder")
         .name("input")
-        .attr("T", DT_FLOAT);
+        .attr("dtype", DT_FLOAT);
     let graph = tfpb::graph().node(input).node(konst).node(plus3);
     graph.save_to("tests/plus3.pb").unwrap();
 }

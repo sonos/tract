@@ -252,9 +252,18 @@ impl Model {
         self.nodes.iter().map(|s| &*s.name).collect()
     }
 
-    /// Build a tfdeploy Node by name.
+    /// Get a tfdeploy Node by name.
     pub fn get_node(&self, name: &str) -> Result<&Node> {
         Ok(&self.nodes[self.node_id_by_name(name)?])
+    }
+
+    /// Get a tfdeploy Node by id.
+    pub fn get_node_by_id(&self, id: usize) -> Result<&Node> {
+        if id >= self.nodes.len() {
+            Err(format!("Invalid node id {}", id))?
+        } else {
+            Ok(&self.nodes[id])
+        }
     }
 
     pub fn plan_for_one(&self, node: usize) -> Result<Plan> {
@@ -299,6 +308,14 @@ impl<'a> ModelState<'a> {
 
     pub fn set_value(&mut self, id: usize, value: Matrix) -> Result<()> {
         self.set_outputs(id, vec![value])
+    }
+
+    pub fn set_values(&mut self, values: Vec<(&str, Matrix)>) -> Result<()> {
+        for (name, mat) in values {
+            self.set_value(self.model.node_id_by_name(name)?, mat)?;
+        }
+
+        Ok(())
     }
 
     pub fn compute_one(&mut self, node: usize) -> Result<()> {

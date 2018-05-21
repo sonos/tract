@@ -1,0 +1,22 @@
+[package]
+name = "cli"
+version = "1.0.0"
+authors = ["Romain Liautaud <romain.liautaud@snips.ai>"]
+
+[dependencies]
+clap = "2.31"
+colored = "1.6"
+conform = { path = "../conform" }
+error-chain = "0"
+lazy_static = "1.0"
+log = "0.4"
+ndarray = "0.11"
+prettytable-rs = { git = "https://github.com/liautaud/prettytable-rs" }
+rand = "0.4"
+simplelog = "0.5"
+textwrap = "0.10"
+tfdeploy = { path = ".." }
+
+[features]
+default = []
+tensorflow = []
