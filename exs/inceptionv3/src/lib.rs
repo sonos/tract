@@ -1,6 +1,8 @@
+#[cfg(features="conform")]
+extern crate conform;
 extern crate flate2;
 extern crate image;
-extern crate reqwest;
+extern crate mio_httpc;
 extern crate ndarray;
 extern crate tar;
 extern crate tfdeploy;
@@ -20,16 +22,20 @@ fn do_download() -> Result<()> {
     let dir = inception_v3_2016_08_28();
     let dir_partial = dir.clone().with_extension("partial");
     if fs::metadata(&dir).is_ok() {
+        println!("Found inception_v3 model to {:?}", dir);
         return Ok(());
     }
-    println!("Downloading inception_v3 model...");
+    println!("Downloading inception_v3 model in {:?}", dir);
     if fs::metadata(&dir_partial).is_ok() {
         fs::remove_dir_all(&dir_partial).unwrap();
     }
     fs::create_dir_all(&dir_partial)?;
-    let resp = reqwest::get("https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz")
-        .map_err(|e| format!("Http error: {:?}", e))?;
-    let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(resp));
+    let resp = mio_httpc::CallBuilder::get()
+        .max_response(200_000_000)
+        .url("http://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz")
+        .and_then(|r| r.exec())
+        .map_err(|e| format!("http error {:?}", e))?;
+    let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(&*resp.1));
     archive.unpack(&dir_partial)?;
     fs::rename(dir_partial, dir)?;
     Ok(())

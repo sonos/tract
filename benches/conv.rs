@@ -1,7 +1,9 @@
 #[macro_use]
-extern crate bencher;
+extern crate criterion;
 extern crate ndarray;
 extern crate tfdeploy;
+
+use criterion::Criterion;
 
 use tfdeploy::*;
 use tfdeploy::ops::nn::conv2d::*;
@@ -16,13 +18,16 @@ fn mk(sizes: &[usize]) -> Matrix {
     Matrix::F32(data)
 }
 
-fn conv(bencher: &mut bencher::Bencher) {
+fn conv(bencher: &mut Criterion) {
     let stride = 1;
     let conv = Conv2D::<f32>::new(LocalPatch::valid(stride, stride));
     let inputs = vec![mk(&[1, 82, 1, 40]).into(), mk(&[41, 1, 40, 128]).into()];
     conv.eval(inputs.clone()).unwrap();
-    bencher.iter(|| conv.eval(inputs.clone()).unwrap())
+    bencher.bench_function(
+        "Conv2D<f32>(1x82x1x40 41x1x40x128)",
+        move |b| b.iter(|| conv.eval(inputs.clone()).unwrap())
+    );
 }
 
-benchmark_group!(benches, conv);
-benchmark_main!(benches);
+criterion_group!(benches, conv);
+criterion_main!(benches);
