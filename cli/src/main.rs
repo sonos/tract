@@ -12,6 +12,7 @@ extern crate ndarray;
 extern crate prettytable;
 extern crate rand;
 extern crate simplelog;
+extern crate terminal_size;
 extern crate textwrap;
 extern crate tfdeploy;
 
@@ -383,20 +384,22 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
         state.set_value(s, random_matrix(params.sizes.clone(), params.datatype))?;
     }
 
+    info!("Running {} iterations max. for each node.", max_iters);
+    info!("Running for {} ms max. for each node.", max_time);
+
+    let mut total = 0.;
+    let mut total_avg = 0.;
+    let capacity = model.nodes().len();
+    let mut nodes = Vec::with_capacity(capacity);
+    let mut operations = HashMap::with_capacity(capacity);
+
     let global_start = Instant::now();
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
-    info!("Running {} iterations max. for each node.", max_iters);
-    info!("Running for {} ms max. for each node.", max_time);
 
     if log_enabled!(Info) {
         print_header(format!("Detailed profiling for {}:", params.name), "white");
     }
-
-    let mut total = 0.;
-    let mut total_avg = 0.;
-    let mut nodes = vec![];
-    let mut operations = HashMap::new();
 
     // Then execute the plan while profiling each step.
     for n in plan {
