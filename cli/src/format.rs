@@ -1,6 +1,8 @@
+use std::cmp::min;
+
 use prettytable as pt;
-use prettytable::format::consts::*;
 use prettytable::format::FormatBuilder;
+use terminal_size::{Width, terminal_size};
 use textwrap;
 use tfdeploy;
 use tfdeploy::tfpb;
@@ -33,6 +35,15 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
                     pt::format::LineSeparator::new('-', '+', '+', '+'))
         .padding(1, 1)
         .build();
+    let format_only_columns = FormatBuilder::new()
+        .column_separator('|')
+        .build();
+
+    // Terminal size
+    let cols = match terminal_size() {
+        Some((Width(w), _)) => min(w as usize, 120),
+        None => 80
+    };
 
     // Node identifier
     let mut count = table!([
@@ -43,8 +54,8 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
 
     // Node name
     let mut name_table = table!([
-        "Name: ",
-        format!("{:67}", textwrap::fill(name.as_str(), 67))
+        " Name: ",
+        format!("{:1$}", textwrap::fill(name.as_str(), cols - 61), cols - 61)
     ]);
 
     name_table.set_format(format_none);
@@ -56,7 +67,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         format!(" {:^26}", status.bold())
     ]);
 
-    header.set_format(*FORMAT_NO_BORDER);
+    header.set_format(format_only_columns);
 
     // Content of the table
     let mut right = table![[header]];
@@ -72,11 +83,11 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         for row in section {
             let mut inner = match row {
                 Row::Simple(content) => table!([
-                    textwrap::fill(content.as_str(), 105)
+                    textwrap::fill(content.as_str(), cols - 30)
                 ]),
                 Row::Double(header, content) => table!([
                     format!("{} ", header),
-                    textwrap::fill(content.as_str(), 105)
+                    textwrap::fill(content.as_str(), cols - 30)
                 ])
             };
 

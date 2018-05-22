@@ -12,6 +12,7 @@ extern crate ndarray;
 extern crate prettytable;
 extern crate rand;
 extern crate simplelog;
+extern crate terminal_size;
 extern crate textwrap;
 extern crate tfdeploy;
 
@@ -383,17 +384,22 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
         state.set_value(s, random_matrix(params.sizes.clone(), params.datatype))?;
     }
 
-    let plan = output.eval_order(&model)?;
-    info!("Using execution plan: {:?}", plan);
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
+
+    let mut total = 0.;
+    let mut total_avg = 0.;
+    let capacity = model.nodes().len();
+    let mut nodes = Vec::with_capacity(capacity);
+    let mut operations = HashMap::with_capacity(capacity);
+
+    let global_start = Instant::now();
+    let plan = output.eval_order(&model)?;
+    info!("Using execution plan: {:?}", plan);
 
     if log_enabled!(Info) {
         print_header(format!("Detailed profiling for {}:", params.name), "white");
     }
-
-    let mut nodes = vec![];
-    let mut operations = HashMap::new();
 
     // Then execute the plan while profiling each step.
     for n in plan {
@@ -422,8 +428,9 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
         }
 
         let elapsed = elapsed_ns!(start);
-        let time = elapsed as f64 / iters as f64 * 1e-6;
-        let status = format!("{:.3} ms", time).white();
+        let time = elapsed as f64 * 1e-6;
+        let time_avg = elapsed as f64 / iters as f64 * 1e-6;
+        let status = format!("{:.3} ms", time_avg).white();
 
         // Print the results for the node.
         if log_enabled!(Info) {
@@ -436,6 +443,8 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
             );
         }
 
+        total += time;
+        total_avg += time_avg;
         nodes.push((node, time, status));
         let mut pair = operations
             .entry(node.op_name.as_str())
@@ -443,6 +452,9 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
         pair.0 += time;
         pair.1 += 1;
     }
+
+    let global_elapsed = elapsed_ns!(global_start);
+    let global_time = global_elapsed as f64 * 1e-6;
 
     if log_enabled!(Info) {
         println!();
@@ -463,6 +475,21 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
             status.to_string(),
             vec![],
         );
+    }
+
+    println!();
+    println!("Total execution time:");
+    println!("{} (for {} nodes).", format!("{:.3} ms", global_time).yellow().bold(), nodes.len());
+
+    println!();
+    println!("Total node execution time:");
+    println!("- {} in total.", format!("{:.3} ms", total).purple().bold());
+    println!("- {} averaged.", format!("{:.3} ms", total_avg).purple().bold());
+
+    // We don't display this when verbose logging is enabled, because the results
+    // are skewed by the time it takes to call `print_node` for each node.
+    if !log_enabled!(Info) {
+        println!("- {} of total execution time.", format!("{:.0}%", total / global_time * 100.).purple().bold());
     }
 
     println!();

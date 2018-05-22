@@ -14,6 +14,7 @@ ndarray = "0.11"
 prettytable-rs = { git = "https://github.com/liautaud/prettytable-rs" }
 rand = "0.4"
 simplelog = "0.5"
+terminal_size = "0.1.7"
 textwrap = "0.10"
 tfdeploy = { path = ".." }
 
