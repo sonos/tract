@@ -44,7 +44,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     // Node name
     let mut name_table = table!([
         "Name: ",
-        format!("{:67}", textwrap::fill(name.as_str(), 67))
+        format!("{:57}", textwrap::fill(name.as_str(), 57))
     ]);
 
     name_table.set_format(format_none);
@@ -72,11 +72,11 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         for row in section {
             let mut inner = match row {
                 Row::Simple(content) => table!([
-                    textwrap::fill(content.as_str(), 105)
+                    textwrap::fill(content.as_str(), 95)
                 ]),
                 Row::Double(header, content) => table!([
                     format!("{} ", header),
-                    textwrap::fill(content.as_str(), 105)
+                    textwrap::fill(content.as_str(), 95)
                 ])
             };
 
