@@ -37,6 +37,7 @@ extern crate derive_new;
 extern crate error_chain;
 #[cfg(feature="image_ops")]
 extern crate image;
+extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
@@ -46,6 +47,7 @@ extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
 
+pub mod analyser;
 pub mod errors;
 pub mod tfpb;
 pub mod matrix;
