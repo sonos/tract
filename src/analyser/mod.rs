@@ -49,6 +49,11 @@ pub enum AShape {
 }
 
 impl AShape {
+    /// Returns the most general abstract shape possible.
+    pub fn any() -> AShape {
+        AShape::Open(vec![])
+    }
+
     /// Returns whether the abstract shape is open.
     pub fn is_open(self: &AShape) -> bool {
         match self {
@@ -84,7 +89,7 @@ impl ATensor {
     pub fn new() -> ATensor {
         ATensor {
             datatype: AType::Any,
-            shape: AShape::Closed(vec![]),
+            shape: AShape::any(),
             value: AValue::Any,
         }
     }

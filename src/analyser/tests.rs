@@ -6,7 +6,7 @@ fn new_abstract_tensor() {
         ATensor::new(),
         ATensor {
             datatype: AType::Any,
-            shape: AShape::Closed(vec![]),
+            shape: AShape::any(),
             value: AValue::Any,
         }
     );
