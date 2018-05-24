@@ -1,3 +1,5 @@
+use std::iter::FromIterator;
+
 use errors::*;
 use tfpb::types::DataType;
 use Matrix;
@@ -101,6 +103,26 @@ impl AShape {
                 })
                 .collect::<Result<Vec<usize>>>()
         }
+    }
+}
+
+impl FromIterator<usize> for AShape {
+    /// Converts a Vec<usize> into a closed shape.
+    fn from_iter<I: IntoIterator<Item=usize>>(iter: I) -> AShape {
+        AShape::Closed(iter
+            .into_iter()
+            .map(|d| ADimension::Only(d))
+            .collect())
+    }
+}
+
+impl<'a> FromIterator<&'a usize> for AShape {
+    /// Converts a Vec<usize> into a closed shape.
+    fn from_iter<I: IntoIterator<Item=&'a usize>>(iter: I) -> AShape {
+        AShape::Closed(iter
+            .into_iter()
+            .map(|d| ADimension::Only(*d))
+            .collect())
     }
 }
 

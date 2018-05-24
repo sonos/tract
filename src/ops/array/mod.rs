@@ -3,7 +3,7 @@ use ndarray::prelude::*;
 mod pack;
 mod strided_slice;
 
-use analyser::{ATensor, AType, AShape, AValue};
+use analyser::{ATensor, AShape, AValue};
 use tfpb::types::DataType;
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
@@ -244,14 +244,14 @@ impl Op for Shape {
             bail!("Shape operation only supports one output.");
         }
 
-        let dimensions = match &outputs[0].value {
+        let dimensions: AShape = match &outputs[0].value {
             // If we know the output value, we can infer the shape of the input.
             AValue::Only(v) => v
                 .as_i32s()
                 .ok_or("Shape operation should produce a 1-D integer tensor.")?
                 .into_dimensionality::<Ix1>()?
                 .into_iter()
-                .map(|d| adimension!(*d as usize))
+                .map(|d| *d as usize)
                 .collect(),
 
             // Otherwise, we can only infer the rank of the input.
@@ -262,16 +262,18 @@ impl Op for Shape {
                     bail!("Shape operation should produce a 1-D integer tensor.");
                 }
 
-                repeat(adimension!(_))
-                .take(shape[0])
-                .collect()
+                AShape::Closed(
+                    repeat(adimension!(_))
+                    .take(shape[0])
+                    .collect()
+                )
             }
         };
 
 
         Ok(vec![ATensor {
             datatype: atype!(_),
-            shape: AShape::Closed(dimensions),
+            shape: dimensions,
             value: avalue!(_)
         }])
     }
