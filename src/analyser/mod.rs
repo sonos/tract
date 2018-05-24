@@ -78,6 +78,26 @@ impl AShape {
     }
 }
 
+#[macro_export]
+macro_rules! adimension {
+    (_) =>
+        ($crate::analyser::ADimension::Any);
+    ($arg:expr) =>
+        ($crate::analyser::ADimension::Only($arg));
+}
+
+#[macro_export]
+macro_rules! ashape {
+    () =>
+        ($crate::analyser::AShape::Closed(vec![]));
+    (..) =>
+        ($crate::analyser::AShape::Open(vec![]));
+    ($($arg:tt),+; ..) =>
+        ($crate::analyser::AShape::Open(vec![$(adimension!($arg)),+]));
+    ($($arg:tt),+) =>
+        ($crate::analyser::AShape::Closed(vec![$(adimension!($arg)),+]));
+}
+
 /// An abstract dimension.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ADimension {
@@ -92,24 +112,12 @@ pub enum AValue {
     Only(Matrix),
 }
 
-#[allow(unused_macros)]
-macro_rules! ashape_contents {
-    (_) =>
-        ($crate::analyser::ADimension::Any);
-    ($arg:expr) =>
-        ($crate::analyser::ADimension::Only($arg));
-}
-
 #[macro_export]
-macro_rules! ashape {
-    () =>
-        ($crate::analyser::AShape::Closed(vec![]));
-    (..) =>
-        ($crate::analyser::AShape::Open(vec![]));
-    ($($arg:tt),+; ..) =>
-        ($crate::analyser::AShape::Open(vec![$(ashape_contents!($arg)),+]));
-    ($($arg:tt),+) =>
-        ($crate::analyser::AShape::Closed(vec![$(ashape_contents!($arg)),+]));
+macro_rules! avalue {
+    (_) =>
+        ($crate::analyser::AValue::Any);
+    ($arg:expr) =>
+        ($crate::analyser::AValue::Only($arg));
 }
 
 /// Attempts to unify two abstract tensors into a more specialized one.
