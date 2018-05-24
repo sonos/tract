@@ -76,6 +76,24 @@ impl AShape {
             AShape::Open(v) | AShape::Closed(v) => v,
         }
     }
+
+    /// Tries to transform the abstract shape into a Vec<usize>, or returns
+    /// an Err if some of the dimensions are unknown.
+    pub fn concretize(self: &AShape) -> Result<Vec<usize>> {
+        match self {
+            AShape::Open(_) =>
+                bail!("Impossible to concretize an open shape."),
+            AShape::Closed(v) => v
+                .iter()
+                .map(|d| match d {
+                    ADimension::Any =>
+                        bail!("Impossible to concretize a shape with an unknown dimension."),
+                    ADimension::Only(i) =>
+                        Ok(i.clone())
+                })
+                .collect::<Result<Vec<usize>>>()
+        }
+    }
 }
 
 #[macro_export]

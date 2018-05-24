@@ -97,7 +97,7 @@ impl Op for Identity {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if inputs.len() > 1 {
+        if inputs.len() != 1 {
             bail!("Identity operation only supports one input.");
         }
 
@@ -109,7 +109,7 @@ impl Op for Identity {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if outputs.len() > 1 {
+        if outputs.len() != 1 {
             bail!("Identity operation only supports one output.");
         }
 
@@ -147,8 +147,8 @@ impl Op for Placeholder {
     fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
         let output = ATensor {
             datatype: AType::Only(self.datatype),
-            shape: AShape::any(),
-            value: AValue::Any,
+            shape: ashape![..],
+            value: avalue!(_),
         };
 
         Ok(vec![output])
@@ -206,10 +206,74 @@ impl Shape {
 }
 
 impl Op for Shape {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
         Ok(vec![Matrix::from(Array1::from_vec(shape)).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 1 {
+            bail!("Shape operation only supports one input.");
+        }
+
+        let shape: Vec<_> = inputs[0].shape
+            .concretize()?
+            .into_iter()
+            .map(|d| d as i32)
+            .collect();
+        let rank = shape.len();
+        let value = Matrix::from(Array1::from_vec(shape)).into();
+
+        // The output is the shape of the input.
+        // The shape of the output is the rank of the input.
+        Ok(vec![ATensor {
+            datatype: AType::Only(DataType::DT_INT32),
+            shape: ashape![rank],
+            value: avalue!(value)
+        }])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        use std::iter::repeat;
+
+        if outputs.len() != 1 {
+            bail!("Shape operation only supports one output.");
+        }
+
+        let dimensions = match &outputs[0].value {
+            // If we know the output value, we can infer the shape of the input.
+            AValue::Only(v) => v
+                .as_i32s()
+                .ok_or("Shape operation should produce a 1-D integer tensor.")?
+                .into_dimensionality::<Ix1>()?
+                .into_iter()
+                .map(|d| adimension!(*d as usize))
+                .collect(),
+
+            // Otherwise, we can only infer the rank of the input.
+            AValue::Any => {
+                let shape = outputs[0].shape.concretize()?;
+
+                if shape.len() != 1 {
+                    bail!("Shape operation should produce a 1-D integer tensor.");
+                }
+
+                repeat(adimension!(_))
+                .take(shape[0])
+                .collect()
+            }
+        };
+
+
+        Ok(vec![ATensor {
+            datatype: AType::Any,
+            shape: AShape::Closed(dimensions),
+            value: avalue!(_)
+        }])
     }
 }
 
