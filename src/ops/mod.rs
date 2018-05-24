@@ -4,6 +4,8 @@ use std::fmt::Debug;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use analyser::{ATensor, AShape};
+
 use {Matrix, Result};
 
 #[macro_use]
@@ -70,7 +72,62 @@ impl PartialEq for Input {
 }
 
 pub trait Op: Debug + Send + Sync + 'static {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        let input_shapes = inputs
+            .iter()
+            .map(|t| &t.shape)
+            .collect::<Vec<_>>();
+
+        let outputs = self
+            .infer_shape_forward(input_shapes)?
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| ATensor {
+                datatype: inputs[i].datatype.clone(),
+                value: inputs[i].value.clone(),
+                shape: s,
+            })
+            .collect::<Vec<_>>();
+
+        Ok(outputs)
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        let output_shapes = outputs
+            .iter()
+            .map(|t| &t.shape)
+            .collect::<Vec<_>>();
+
+        let inputs = self
+            .infer_shape_backward(output_shapes)?
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| ATensor {
+                datatype: outputs[i].datatype.clone(),
+                value: outputs[i].value.clone(),
+                shape: s,
+            })
+            .collect::<Vec<_>>();
+
+        Ok(inputs)
+    }
+
+    /// Infers properties about the shapes of the input tensors from the shapes
+    /// of the output tensors.
+    fn infer_shape_forward(&self, _input_shapes: Vec<&AShape>) -> Result<Vec<AShape>> {
+        unimplemented!()
+    }
+
+    /// Infers properties about the shapes of the input tensors from the shapes
+    /// of the output tensors.
+    fn infer_shape_backward(&self, _output_shapes: Vec<&AShape>) -> Result<Vec<AShape>> {
+        unimplemented!()
+    }
 }
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
@@ -103,6 +160,7 @@ impl OpBuilder {
 pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }

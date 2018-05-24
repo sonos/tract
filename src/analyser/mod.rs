@@ -21,9 +21,9 @@ mod tests;
 /// point that will hopefully contain enough information for us to work with.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ATensor {
-    datatype: AType,
-    shape: AShape,
-    value: AValue,
+    pub datatype: AType,
+    pub shape: AShape,
+    pub value: AValue,
 }
 
 /// An abstract type.
