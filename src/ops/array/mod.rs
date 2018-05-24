@@ -247,7 +247,8 @@ impl Op for Shape {
         let dimensions: AShape = match &outputs[0].value {
             // If we know the output value, we can infer the shape of the input.
             AValue::Only(v) => v
-                .as_i32s()
+                .clone()
+                .take_i32s()
                 .ok_or("Shape operation should produce a 1-D integer tensor.")?
                 .into_dimensionality::<Ix1>()?
                 .into_iter()
