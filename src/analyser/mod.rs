@@ -41,6 +41,14 @@ pub enum AType {
     Only(DataType),
 }
 
+#[macro_export]
+macro_rules! atype {
+    (_) =>
+        ($crate::analyser::AType::Any);
+    ($arg:expr) =>
+        ($crate::analyser::AType::Only($arg));
+}
+
 /// An abstract shape.
 /// They are used to represent partial information about the shapes of tensors.
 ///
@@ -97,14 +105,6 @@ impl AShape {
 }
 
 #[macro_export]
-macro_rules! adimension {
-    (_) =>
-        ($crate::analyser::ADimension::Any);
-    ($arg:expr) =>
-        ($crate::analyser::ADimension::Only($arg));
-}
-
-#[macro_export]
 macro_rules! ashape {
     () =>
         ($crate::analyser::AShape::Closed(vec![]));
@@ -121,6 +121,14 @@ macro_rules! ashape {
 pub enum ADimension {
     Any,
     Only(usize),
+}
+
+#[macro_export]
+macro_rules! adimension {
+    (_) =>
+        ($crate::analyser::ADimension::Any);
+    ($arg:expr) =>
+        ($crate::analyser::ADimension::Only($arg));
 }
 
 /// An abstract value.

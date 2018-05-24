@@ -146,7 +146,7 @@ impl Op for Placeholder {
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
         let output = ATensor {
-            datatype: AType::Only(self.datatype),
+            datatype: atype!(self.datatype),
             shape: ashape![..],
             value: avalue!(_),
         };
@@ -230,7 +230,7 @@ impl Op for Shape {
         // The output is the shape of the input.
         // The shape of the output is the rank of the input.
         Ok(vec![ATensor {
-            datatype: AType::Only(DataType::DT_INT32),
+            datatype: atype!(DataType::DT_INT32),
             shape: ashape![rank],
             value: avalue!(value)
         }])
@@ -270,7 +270,7 @@ impl Op for Shape {
 
 
         Ok(vec![ATensor {
-            datatype: AType::Any,
+            datatype: atype!(_),
             shape: AShape::Closed(dimensions),
             value: avalue!(_)
         }])
