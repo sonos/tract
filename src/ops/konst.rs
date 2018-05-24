@@ -1,5 +1,5 @@
 use tfpb::types::DataType;
-use analyser::{ATensor, AShape};
+use analyser::ATensor;
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
 use std::sync::Arc;
