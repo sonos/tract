@@ -3,6 +3,7 @@ use ndarray::prelude::*;
 mod pack;
 mod strided_slice;
 
+use analyser::ATensor;
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
 
@@ -88,8 +89,33 @@ impl Identity {
 }
 
 impl Op for Identity {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
         Ok(inputs)
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() > 1 {
+            bail!("Identity operation only supports one input.");
+        }
+
+        Ok(inputs
+            .into_iter()
+            .map(|t| t.clone())
+            .collect())
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() > 1 {
+            bail!("Identity operation only supports one output.");
+        }
+
+        Ok(outputs
+            .into_iter()
+            .map(|t| t.clone())
+            .collect())
     }
 }
 
