@@ -22,25 +22,32 @@ macro_rules! element_map {
 
             /// Infers properties about the output tensors from the input tensors.
             fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+                use $crate::analyser::ATensor;
+                use $crate::analyser::AValue::*;
+
                 if inputs.len() != 1 {
                     bail!("{} operation only supports one input.", stringify!($Struct));
                 }
 
                 let output = match &inputs[0].value {
-                    // If we don't know the value of the input, we can only
-                    // deduce the type and shape of the output.
-                    $crate::analyser::AValue::Any => $crate::analyser::ATensor {
+                    // If we know the value of the input, we can deduce everything.
+                    Only(v) => {
+                        let input_values = vec![v.clone().into()];
+                        let output_value = self.eval(input_values)?.pop().unwrap();
+
+                        ATensor {
+                            datatype: inputs[0].datatype.clone(),
+                            shape: v.shape().into(),
+                            value: avalue!(output_value.into_matrix())
+                        }
+                    },
+
+                    // Otherwise we can only deduce the type and shape of the output.
+                    _ => ATensor {
                         datatype: inputs[0].datatype.clone(),
                         shape: inputs[0].shape.clone(),
                         value: avalue!(_)
                     },
-
-                    // Otherwise, we can deduce everything.
-                    $crate::analyser::AValue::Only(v) => $crate::analyser::ATensor {
-                        datatype: inputs[0].datatype.clone(),
-                        shape: v.shape().into(),
-                        value: avalue!(v.clone())
-                    }
                 };
 
                 Ok(vec![output])
