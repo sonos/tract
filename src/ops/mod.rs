@@ -1,10 +1,10 @@
 //! TensorFlow Ops
 
-use std::fmt::Debug;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 
-use analyser::{ATensor, AShape};
+use analyser::ATensor;
 
 use {Matrix, Result};
 
@@ -12,12 +12,12 @@ use {Matrix, Result};
 mod macros;
 
 mod array;
-mod math;
 mod cast;
-pub mod nn;
-#[cfg(features="image_ops")]
+#[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;
+mod math;
+pub mod nn;
 
 #[derive(Debug, Clone)]
 pub enum Input {
@@ -76,58 +76,10 @@ pub trait Op: Debug + Send + Sync + 'static {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        let input_shapes = inputs
-            .iter()
-            .map(|t| &t.shape)
-            .collect::<Vec<_>>();
-
-        let outputs = self
-            .infer_shape_forward(input_shapes)?
-            .into_iter()
-            .enumerate()
-            .map(|(i, s)| ATensor {
-                datatype: inputs[i].datatype.clone(),
-                value: inputs[i].value.clone(),
-                shape: s,
-            })
-            .collect::<Vec<_>>();
-
-        Ok(outputs)
-    }
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>>;
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        let output_shapes = outputs
-            .iter()
-            .map(|t| &t.shape)
-            .collect::<Vec<_>>();
-
-        let inputs = self
-            .infer_shape_backward(output_shapes)?
-            .into_iter()
-            .enumerate()
-            .map(|(i, s)| ATensor {
-                datatype: outputs[i].datatype.clone(),
-                value: outputs[i].value.clone(),
-                shape: s,
-            })
-            .collect::<Vec<_>>();
-
-        Ok(inputs)
-    }
-
-    /// Infers properties about the shapes of the input tensors from the shapes
-    /// of the output tensors.
-    fn infer_shape_forward(&self, _input_shapes: Vec<&AShape>) -> Result<Vec<AShape>> {
-        unimplemented!()
-    }
-
-    /// Infers properties about the shapes of the input tensors from the shapes
-    /// of the output tensors.
-    fn infer_shape_backward(&self, _output_shapes: Vec<&AShape>) -> Result<Vec<AShape>> {
-        unimplemented!()
-    }
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>>;
 }
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
@@ -164,5 +116,14 @@ impl Op for UnimplementedOp {
     fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
-}
 
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        unimplemented!()
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        unimplemented!()
+    }
+}
