@@ -83,11 +83,71 @@ macro_rules! element_bin {
         }
 
         impl<T: ::matrix::Datum> Op for $Name<T> {
+            /// Evaluates the operation given the input tensors.
             fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> Result<Vec<$crate::ops::Input>> {
                 let (a, b) = args_2!(inputs);
                 let a = T::mat_into_array(a.into_matrix())?;
                 let b = T::mat_to_view(&*b)?;
                 Ok(vec!(T::array_into_mat($expr(a,b)).into()))
+            }
+
+            /// Infers properties about the output tensors from the input tensors.
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+                use $crate::analyser::ATensor;
+                use $crate::analyser::AValue::*;
+
+                if inputs.len() != 2 {
+                    bail!("{} operation only supports two inputs.", stringify!($Struct));
+                }
+
+                let output = match (&inputs[0].value, &inputs[1].value) {
+                    // If we know the value of the input, we can deduce everything.
+                    (Only(_), Only(_)) => {
+                        let input_values: Vec<_> = inputs
+                            .iter()
+                            .map(|t| t.value.concretize().unwrap().clone().into())
+                            .collect();
+
+                        let output_value = self.eval(input_values)?.pop().unwrap();
+
+                        ATensor {
+                            datatype: inputs[0].datatype.clone(),
+                            shape: output_value.shape().into(),
+                            value: avalue!(output_value.into_matrix())
+                        }
+                    },
+
+                    // Otherwise we can only deduce the type and shape of the output.
+                    _ => {
+                        if inputs[0].datatype != inputs[1].datatype {
+                            bail!("{} operation doesn't support inputs of different types.", stringify!($Struct));
+                        }
+
+                        ATensor {
+                            datatype: inputs[0].datatype.clone(),
+                            shape: ashape![..], // todo(romain): Find a way to deal with broadcasting.
+                            value: avalue!(_)
+                        }
+                    }
+                };
+
+
+                Ok(vec![output])
+            }
+
+            /// Infers properties about the input tensors from the output tensors.
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+                if outputs.len() != 1 {
+                    bail!("{} operation only supports one output.", stringify!($Struct));
+                }
+
+                let input = $crate::analyser::ATensor {
+                    datatype: outputs[0].datatype.clone(),
+                    shape: ashape![..], // todo(romain): Find a way to deal with broadcasting.
+                    value: avalue!(_)
+                };
+
+                Ok(vec![input.clone(), input])
             }
         }
     }
