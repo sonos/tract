@@ -3,7 +3,8 @@ use ndarray::prelude::*;
 mod pack;
 mod strided_slice;
 
-use analyser::ATensor;
+use analyser::{ATensor, AType, AShape, AValue};
+use tfpb::types::DataType;
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
 
@@ -120,17 +121,42 @@ impl Op for Identity {
 }
 
 #[derive(Debug)]
-pub struct Placeholder;
+pub struct Placeholder {
+    datatype: DataType
+}
 
 impl Placeholder {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Ok(Box::new(Placeholder))
+    pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+        Ok(Box::new(Placeholder {
+            datatype: node
+                .get_attr()
+                .get("dtype")
+                .unwrap()
+                .get_field_type()
+        }))
     }
 }
 
 impl Op for Placeholder {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
         panic!("Placeholder should not get evaluated")
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        let output = ATensor {
+            datatype: AType::Only(self.datatype),
+            shape: AShape::any(),
+            value: AValue::Any,
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        bail!("Placeholder operation is a leaf, nothing to infer backwards.");
     }
 }
 
