@@ -81,7 +81,7 @@ impl AShape {
     }
 
     /// Returns the vector of dimensions defining the abstract shape.
-    pub fn unwrap(self: &AShape) -> &Vec<ADimension> {
+    pub fn inner(self: &AShape) -> &Vec<ADimension> {
         match self {
             AShape::Open(v) | AShape::Closed(v) => v,
         }
@@ -89,7 +89,7 @@ impl AShape {
 
     /// Tries to transform the abstract shape into a Vec<usize>, or returns
     /// an Err if some of the dimensions are unknown.
-    pub fn concretize(self: &AShape) -> Result<Vec<usize>> {
+    pub fn concretize(self: &AShape) -> Result<Vec<&usize>> {
         match self {
             AShape::Open(_) =>
                 bail!("Impossible to concretize an open shape."),
@@ -99,9 +99,9 @@ impl AShape {
                     ADimension::Any =>
                         bail!("Impossible to concretize a shape with an unknown dimension."),
                     ADimension::Only(i) =>
-                        Ok(i.clone())
+                        Ok(i)
                 })
-                .collect::<Result<Vec<usize>>>()
+                .collect()
         }
     }
 }
@@ -123,6 +123,13 @@ impl<'a> FromIterator<&'a usize> for AShape {
             .into_iter()
             .map(|d| ADimension::Only(*d))
             .collect())
+    }
+}
+
+impl<'a> From<&'a[usize]> for AShape {
+    /// Converts an usize slice into a closed shape.
+    fn from(slice: &'a[usize]) -> AShape {
+        slice.iter().collect()
     }
 }
 
@@ -158,6 +165,18 @@ macro_rules! adimension {
 pub enum AValue {
     Any,
     Only(Matrix),
+}
+
+impl AValue {
+    // Tries to transform the abstract value into a Matrix, or returns an Err.
+    pub fn concretize(self: &AValue) -> Result<&Matrix> {
+        match self {
+            AValue::Any =>
+                bail!("Impossible to concretize an Any value."),
+            AValue::Only(m) =>
+                Ok(m)
+        }
+    }
 }
 
 #[macro_export]
@@ -203,8 +222,8 @@ fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
     use itertools::EitherOrBoth::{Both, Left, Right};
     use itertools::Itertools;
 
-    let xi = x.unwrap().iter();
-    let yi = y.unwrap().iter();
+    let xi = x.inner().iter();
+    let yi = y.inner().iter();
 
     let dimensions: Vec<_> = xi.zip_longest(yi)
         .map(|r| match r {

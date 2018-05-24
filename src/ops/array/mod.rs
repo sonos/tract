@@ -222,7 +222,7 @@ impl Op for Shape {
         let shape: Vec<_> = inputs[0].shape
             .concretize()?
             .into_iter()
-            .map(|d| d as i32)
+            .map(|d| *d as i32)
             .collect();
         let rank = shape.len();
         let value = Matrix::from(Array1::from_vec(shape)).into();
@@ -265,7 +265,7 @@ impl Op for Shape {
 
                 AShape::Closed(
                     repeat(adimension!(_))
-                    .take(shape[0])
+                    .take(*shape[0])
                     .collect()
                 )
             }

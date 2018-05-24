@@ -44,7 +44,7 @@ impl Op for Const {
     fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
         let output = ATensor {
             datatype: atype!(self.datatype),
-            shape: self.value.shape().iter().collect(),
+            shape: self.value.shape().into(),
             value: avalue!(self.value.as_ref().clone())
         };
 
