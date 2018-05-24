@@ -47,6 +47,7 @@ extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
 
+#[macro_use]
 pub mod analyser;
 pub mod errors;
 pub mod tfpb;

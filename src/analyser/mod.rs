@@ -2,9 +2,6 @@ use errors::*;
 use tfpb::types::DataType;
 use Matrix;
 
-#[cfg(test)]
-mod tests;
-
 /// An abstract tensor.
 ///
 /// The task of the analyser is to tag every edge in the graph with information
@@ -24,6 +21,17 @@ pub struct ATensor {
     pub datatype: AType,
     pub shape: AShape,
     pub value: AValue,
+}
+
+impl ATensor {
+    /// Constructs a new abstract tensor, which is as general as possible.
+    pub fn new() -> ATensor {
+        ATensor {
+            datatype: AType::Any,
+            shape: AShape::any(),
+            value: AValue::Any,
+        }
+    }
 }
 
 /// An abstract type.
@@ -84,15 +92,24 @@ pub enum AValue {
     Only(Matrix),
 }
 
-impl ATensor {
-    /// Constructs a new abstract tensor, which is as general as possible.
-    pub fn new() -> ATensor {
-        ATensor {
-            datatype: AType::Any,
-            shape: AShape::any(),
-            value: AValue::Any,
-        }
-    }
+#[allow(unused_macros)]
+macro_rules! ashape_contents {
+    (_) =>
+        ($crate::analyser::ADimension::Any);
+    ($arg:expr) =>
+        ($crate::analyser::ADimension::Only($arg));
+}
+
+#[macro_export]
+macro_rules! ashape {
+    () =>
+        ($crate::analyser::AShape::Closed(vec![]));
+    (..) =>
+        ($crate::analyser::AShape::Open(vec![]));
+    ($($arg:tt),+; ..) =>
+        ($crate::analyser::AShape::Open(vec![$(ashape_contents!($arg)),+]));
+    ($($arg:tt),+) =>
+        ($crate::analyser::AShape::Closed(vec![$(ashape_contents!($arg)),+]));
 }
 
 /// Attempts to unify two abstract tensors into a more specialized one.
@@ -168,3 +185,6 @@ fn unify_value(x: &AValue, y: &AValue) -> Result<AValue> {
 
     Ok(value)
 }
+
+#[cfg(test)]
+mod tests;

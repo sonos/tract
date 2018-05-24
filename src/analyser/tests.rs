@@ -13,6 +13,82 @@ fn new_abstract_tensor() {
 }
 
 #[test]
+fn shape_macro_closed_1() {
+    assert_eq!(ashape![], AShape::Closed(vec![]));
+}
+
+#[test]
+fn shape_macro_closed_2() {
+    assert_eq!(ashape![1], AShape::Closed(vec![ADimension::Only(1)]));
+}
+
+#[test]
+fn shape_macro_closed_3() {
+    assert_eq!(ashape![(1 + 1)], AShape::Closed(vec![ADimension::Only(2)]));
+}
+
+#[test]
+fn shape_macro_closed_4() {
+    assert_eq!(
+        ashape![_, 2],
+        AShape::Closed(vec![
+            ADimension::Any,
+            ADimension::Only(2)
+        ])
+    );
+}
+
+#[test]
+fn shape_macro_closed_5() {
+    assert_eq!(
+        ashape![(1 + 1), _, 2],
+        AShape::Closed(vec![
+            ADimension::Only(2),
+            ADimension::Any,
+            ADimension::Only(2)
+        ])
+    );
+}
+
+#[test]
+fn shape_macro_open_1() {
+    assert_eq!(ashape![..], AShape::Open(vec![]));
+}
+
+#[test]
+fn shape_macro_open_2() {
+    assert_eq!(ashape![1; ..], AShape::Open(vec![ADimension::Only(1)]));
+}
+
+#[test]
+fn shape_macro_open_3() {
+    assert_eq!(ashape![(1 + 1); ..], AShape::Open(vec![ADimension::Only(2)]));
+}
+
+#[test]
+fn shape_macro_open_4() {
+    assert_eq!(
+        ashape![_, 2; ..],
+        AShape::Open(vec![
+            ADimension::Any,
+            ADimension::Only(2)
+        ])
+    );
+}
+
+#[test]
+fn shape_macro_open_5() {
+    assert_eq!(
+        ashape![(1 + 1), _, 2; ..],
+        AShape::Open(vec![
+            ADimension::Only(2),
+            ADimension::Any,
+            ADimension::Only(2)
+        ])
+    );
+}
+
+#[test]
 fn unify_same_datatype() {
     let dt = AType::Only(DataType::DT_FLOAT);
     assert_eq!(unify_datatype(&dt, &dt).unwrap(), dt);
