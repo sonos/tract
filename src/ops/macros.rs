@@ -10,6 +10,7 @@ macro_rules! element_map {
         }
 
         impl ::ops::Op for $Struct {
+            /// Evaluates the operation given the input tensors.
             fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> $crate::Result<Vec<$crate::ops::Input>> {
                 let a = args_1!(inputs);
                 let mut a = a.into_matrix().take_f32s().ok_or(
@@ -17,6 +18,47 @@ macro_rules! element_map {
                 )?;
                 a.mapv_inplace($expr);
                 Ok(vec![$crate::matrix::Matrix::F32(a).into()])
+            }
+
+            /// Infers properties about the output tensors from the input tensors.
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+                if inputs.len() != 1 {
+                    bail!("{} operation only supports one input.", stringify!($Struct));
+                }
+
+                let output = match &inputs[0].value {
+                    // If we don't know the value of the input, we can only
+                    // deduce the type and shape of the output.
+                    $crate::analyser::AValue::Any => $crate::analyser::ATensor {
+                        datatype: inputs[0].datatype.clone(),
+                        shape: inputs[0].shape.clone(),
+                        value: avalue!(_)
+                    },
+
+                    // Otherwise, we can deduce everything.
+                    $crate::analyser::AValue::Only(v) => $crate::analyser::ATensor {
+                        datatype: inputs[0].datatype.clone(),
+                        shape: v.shape().into(),
+                        value: avalue!(v.clone())
+                    }
+                };
+
+                Ok(vec![output])
+            }
+
+            /// Infers properties about the input tensors from the output tensors.
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+                if outputs.len() != 1 {
+                    bail!("{} operation only supports one output.", stringify!($Struct));
+                }
+
+                let input = $crate::analyser::ATensor {
+                    datatype: outputs[0].datatype.clone(),
+                    shape: outputs[0].shape.clone(),
+                    value: avalue!(_)
+                };
+
+                Ok(vec![input])
             }
         }
     }
