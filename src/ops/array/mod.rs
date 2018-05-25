@@ -101,10 +101,7 @@ impl Op for Identity {
             bail!("Identity operation only supports one input.");
         }
 
-        Ok(inputs
-            .into_iter()
-            .map(|t| t.clone())
-            .collect())
+        Ok(inputs.into_iter().cloned().collect())
     }
 
     /// Infers properties about the input tensors from the output tensors.
@@ -113,10 +110,7 @@ impl Op for Identity {
             bail!("Identity operation only supports one output.");
         }
 
-        Ok(outputs
-            .into_iter()
-            .map(|t| t.clone())
-            .collect())
+        Ok(outputs.into_iter().cloned().collect())
     }
 }
 
@@ -167,32 +161,118 @@ impl Reshape {
     pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Reshape {}))
     }
-}
 
-impl Op for Reshape {
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
-        let (input, dims) = args_2!(inputs);
-        let input = input
-            .into_matrix()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
-        let mut dims: Vec<i32> = dims.as_i32s()
-            .ok_or("Expected a i32 matrix")?
-            .iter()
-            .cloned()
-            .collect();
+    /// Computes a vector of dimensions from the `dims` input.
+    /// This is needed because `dims` might contain some -1 indices, in which
+    /// case we need to infer the value for that index.
+    fn true_dims(mut dims: Vec<i32>, input_length: usize) -> Vec<usize>{
         if dims.contains(&-1) {
             let prod: i32 = dims.iter().map(|a| *a).filter(|a| *a != -1i32).product();
             for a in dims.iter_mut() {
                 if *a == -1 {
-                    *a = input.len() as i32 / prod;
+                    *a = input_length as i32 / prod;
                 }
             }
         }
-        let dims: Vec<usize> = dims.into_iter().map(|a| a as usize).collect();
+
+        dims.into_iter().map(|a| a as usize).collect()
+    }
+}
+
+impl Op for Reshape {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let (input, dims) = args_2!(inputs);
+
+        let input = input
+            .into_matrix()
+            .take_f32s()
+            .ok_or("Expected a f32 matrix")?;
+
+        let dims = Reshape::true_dims(
+            dims.as_i32s()
+                .ok_or("Expected a i32 matrix")?
+                .iter()
+                .cloned()
+                .collect(),
+            input.len());
         Ok(vec![
             Matrix::from(input.into_shape(&*dims)?.into_dyn()).into(),
         ])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 2 {
+            bail!("Reshape operation only supports two inputs.");
+        }
+
+        let dims = inputs[1].value.concretize()?;
+        let output = match &inputs[0].value {
+            // If we already know the input value, we can just compute the result.
+            AValue::Only(input) => {
+                let input_values = vec![input.clone().into(), dims.clone().into()];
+                let output_value = self.eval(input_values)?.pop().unwrap();
+
+                ATensor {
+                    datatype: inputs[0].datatype.clone(),
+                    shape: output_value.shape().into(),
+                    value: avalue!(output_value.into_matrix()),
+                }
+            },
+
+            _ => {
+                let dims: Vec<_> = dims.as_i32s()
+                    .ok_or("Expected a i32 matrix")?
+                    .iter()
+                    .cloned()
+                    .collect();
+
+                match &inputs[0].shape.concretize() {
+                    // If we know the concrete shape of the input, we get the output shape.
+                    Ok(shape) => ATensor {
+                        datatype: inputs[0].datatype.clone(),
+                        shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
+                        value: avalue!(_)
+                    },
+
+                    // If we don't know anything about the output, but know the value of
+                    // dims and it doesn't contain -1 (e.g. we don't have to guess some
+                    // of the output dimensions), we can also compute the output shape.
+                    _ if !dims.contains(&-1) => ATensor {
+                        datatype: inputs[0].datatype.clone(),
+                        shape: dims.into_iter().map(|d| d as usize).collect(),
+                        value: avalue!(_)
+                    },
+
+                    _ => bail!("Can't infer the shape of the output for Reshape.")
+                }
+            }
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("Reshape operation only supports one output.");
+        }
+
+        let input = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![..],
+            value: avalue!(_)
+        };
+
+        let shape = ATensor {
+            datatype: atype!(DataType::DT_INT32),
+            shape: ashape![..],
+            value: avalue!(_)
+        };
+
+        Ok(vec![input, shape])
+
     }
 }
 
