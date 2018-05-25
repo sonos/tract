@@ -37,3 +37,51 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&ATensor>) -> Result<Vec<ATensor
 
     Ok(vec![output])
 }
+
+/// Infers basic shape properties in the case of broadcasting operators.
+pub fn infer_shape_broadcasting(shapes: Vec<&AShape>) -> Result<AShape> {
+    if shapes.iter().any(|s| s.is_open()) {
+        bail!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
+    }
+
+    let shapes: Vec<_> = shapes.iter()
+        .map(|s| s.inner())
+        .collect();
+    let bound = shapes.iter()
+        .map(|s| s.len())
+        .max()
+        .unwrap();
+
+    let mut output_shape = vec![];
+
+    for i in 1..bound {
+        let mut previous = None;
+        let mut unknown = 0;
+
+        for shape in &shapes {
+            if shape.len() < i {
+                continue;
+            }
+
+            match &shape[shape.len() - i] {
+                ADimension::Any => unknown += 1,
+                ADimension::Only(j) => match previous {
+                    Some(k) if k != j => bail!("Invalid shape (broadcasting): {} is not compatible with {}.", j, k),
+                    _ => previous = Some(j)
+                }
+            };
+        }
+
+        if unknown > 1 {
+            bail!("Can't infer shape (broadcasting): there are multiple unknown values at same index.");
+        } else if unknown == 1 && previous != None {
+            bail!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
+        } else if unknown == 1 && previous == None {
+            output_shape.push(ADimension::Any);
+        } else {
+            output_shape.push(ADimension::Only(*previous.unwrap()));
+        }
+    }
+
+    Ok(AShape::Closed(output_shape))
+}
