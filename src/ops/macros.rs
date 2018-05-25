@@ -26,7 +26,7 @@ macro_rules! element_map {
                     bail!("{} operation only supports one input.", stringify!($Struct));
                 }
 
-                $crate::analyser::infer_forward_basic(self, inputs)
+                $crate::analyser::helpers::infer_forward_basic(self, inputs)
             }
 
             /// Infers properties about the input tensors from the output tensors.
@@ -77,7 +77,7 @@ macro_rules! element_bin {
                     bail!("{} operation doesn't support inputs of different types.", stringify!($Struct));
                 }
 
-                $crate::analyser::infer_forward_basic(self, inputs)
+                $crate::analyser::helpers::infer_forward_basic(self, inputs)
             }
 
             /// Infers properties about the input tensors from the output tensors.
@@ -88,7 +88,7 @@ macro_rules! element_bin {
 
                 let input = $crate::analyser::ATensor {
                     datatype: outputs[0].datatype.clone(),
-                    shape: ashape![..], // todo(romain): Find a way to deal with broadcasting.
+                    shape: ashape![..],
                     value: avalue!(_)
                 };
 

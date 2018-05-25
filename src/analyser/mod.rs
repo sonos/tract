@@ -5,6 +5,13 @@ use ops::Op;
 use tfpb::types::DataType;
 use Matrix;
 
+#[macro_use]
+pub mod macros;
+pub mod helpers;
+
+#[cfg(test)]
+mod tests;
+
 /// An abstract tensor.
 ///
 /// The task of the analyser is to tag every edge in the graph with information
@@ -42,14 +49,6 @@ impl ATensor {
 pub enum AType {
     Any,
     Only(DataType),
-}
-
-#[macro_export]
-macro_rules! atype {
-    (_) =>
-        ($crate::analyser::AType::Any);
-    ($arg:expr) =>
-        ($crate::analyser::AType::Only($arg));
 }
 
 /// An abstract shape.
@@ -134,31 +133,11 @@ impl<'a> From<&'a[usize]> for AShape {
     }
 }
 
-#[macro_export]
-macro_rules! ashape {
-    () =>
-        ($crate::analyser::AShape::Closed(vec![]));
-    (..) =>
-        ($crate::analyser::AShape::Open(vec![]));
-    ($($arg:tt),+; ..) =>
-        ($crate::analyser::AShape::Open(vec![$(adimension!($arg)),+]));
-    ($($arg:tt),+) =>
-        ($crate::analyser::AShape::Closed(vec![$(adimension!($arg)),+]));
-}
-
 /// An abstract dimension.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ADimension {
     Any,
     Only(usize),
-}
-
-#[macro_export]
-macro_rules! adimension {
-    (_) =>
-        ($crate::analyser::ADimension::Any);
-    ($arg:expr) =>
-        ($crate::analyser::ADimension::Only($arg));
 }
 
 /// An abstract value.
@@ -178,14 +157,6 @@ impl AValue {
                 Ok(m)
         }
     }
-}
-
-#[macro_export]
-macro_rules! avalue {
-    (_) =>
-        ($crate::analyser::AValue::Any);
-    ($arg:expr) =>
-        ($crate::analyser::AValue::Only($arg));
 }
 
 /// Attempts to unify two abstract tensors into a more specialized one.
@@ -261,43 +232,3 @@ fn unify_value(x: &AValue, y: &AValue) -> Result<AValue> {
 
     Ok(value)
 }
-
-/// Infers basic properties about the output tensors from the input tensors.
-pub fn infer_forward_basic(op: &Op, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-    let input_values: Result<Vec<_>> = inputs
-        .iter()
-        .map(|t| t.value.concretize())
-        .collect();
-
-    let output = match input_values {
-        // If we know the value of all the inputs, we can deduce everything.
-        Ok(v) => {
-            let input_inputs: Vec<_> = v
-                .into_iter()
-                .map(|v| v.clone().into())
-                .collect();
-
-            let output_value = op.eval(input_inputs)?.pop().unwrap();
-
-            ATensor {
-                datatype: inputs[0].datatype.clone(),
-                shape: output_value.shape().into(),
-                value: avalue!(output_value.into_matrix())
-            }
-        }
-
-        // Otherwise we can only deduce the type and shape of the output.
-        _ => {
-            ATensor {
-                datatype: inputs[0].datatype.clone(),
-                shape: ashape![..], // todo(romain): Find a way to deal with broadcasting.
-                value: avalue!(_)
-            }
-        }
-    };
-
-    Ok(vec![output])
-}
-
-#[cfg(test)]
-mod tests;
