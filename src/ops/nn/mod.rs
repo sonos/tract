@@ -1,8 +1,10 @@
-use {Matrix, Result};
 use super::{Input, Op, OpRegister};
+use analyser::ATensor;
+use tfpb::types::DataType;
+use {Matrix, Result};
 
-pub mod local_patch;
 pub mod conv2d;
+pub mod local_patch;
 pub mod pools;
 pub mod space_to_batch;
 
@@ -28,6 +30,7 @@ impl Softmax {
 }
 
 impl Op for Softmax {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
@@ -39,6 +42,53 @@ impl Op for Softmax {
         input.map_inplace(|a| *a = *a / norm);
         let result = Matrix::from(input);
         Ok(vec![result.into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 1 {
+            bail!("Softmax operation only supports one input.");
+        }
+
+        let output = ATensor {
+            datatype: atype!(DataType::DT_FLOAT),
+
+            shape: match &inputs[0].shape.concretize() {
+                Ok(v) if v.len() == 2 => v.iter().collect(),
+                Ok(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
+                _ => ashape![_, _],
+            },
+
+            value: inputs[0].value.map_err(|v: &Matrix| {
+                let input_values = vec![v.clone().into()];
+                let output_value = self.eval(input_values)?.pop().unwrap();
+
+                Ok(output_value.into_matrix())
+            })?
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("Softmax operation only supports one output.");
+        }
+
+        let input = ATensor {
+            datatype: atype!(DataType::DT_FLOAT),
+
+            shape: match &outputs[0].shape.concretize() {
+                Ok(v) if v.len() == 2 => v.iter().collect(),
+                Ok(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
+                _ => ashape![_, _],
+            },
+
+            value: avalue!(_)
+        };
+
+        Ok(vec![input])
     }
 }
 
