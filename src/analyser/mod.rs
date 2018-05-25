@@ -89,7 +89,7 @@ impl AShape {
 
     /// Tries to transform the abstract shape into a Vec<usize>, or returns
     /// an Err if some of the dimensions are unknown.
-    pub fn concretize(self: &AShape) -> Result<Vec<&usize>> {
+    pub fn concretize(self: &AShape) -> Result<Vec<usize>> {
         match self {
             AShape::Open(_) =>
                 bail!("Impossible to concretize an open shape."),
@@ -99,7 +99,7 @@ impl AShape {
                     ADimension::Any =>
                         bail!("Impossible to concretize a shape with an unknown dimension."),
                     ADimension::Only(i) =>
-                        Ok(i)
+                        Ok(*i)
                 })
                 .collect()
         }
@@ -117,7 +117,7 @@ impl FromIterator<usize> for AShape {
 }
 
 impl<'a> FromIterator<&'a usize> for AShape {
-    /// Converts a Vec<usize> into a closed shape.
+    /// Converts a Vec<&usize> into a closed shape.
     fn from_iter<I: IntoIterator<Item=&'a usize>>(iter: I) -> AShape {
         AShape::Closed(iter
             .into_iter()
@@ -155,6 +155,16 @@ impl AValue {
                 bail!("Impossible to concretize an Any value."),
             AValue::Only(m) =>
                 Ok(m)
+        }
+    }
+
+    // Applies fn to a defined value, and leaves an unknown value untouched.
+    // Returns an Err if something went wrong during the transformation.
+    pub fn map_err<F>(self: &AValue, f: F) -> Result<AValue>
+    where F: Fn(&Matrix) -> Result<Matrix> {
+        match self {
+            AValue::Any => Ok(AValue::Any),
+            AValue::Only(m) => Ok(AValue::Only(f(m)?))
         }
     }
 }
