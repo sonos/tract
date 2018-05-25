@@ -1,6 +1,7 @@
 use std::iter::FromIterator;
 
 use errors::*;
+use ops::Op;
 use tfpb::types::DataType;
 use Matrix;
 
@@ -259,6 +260,43 @@ fn unify_value(x: &AValue, y: &AValue) -> Result<AValue> {
     };
 
     Ok(value)
+}
+
+/// Infers basic properties about the output tensors from the input tensors.
+pub fn infer_forward_basic(op: &Op, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    let input_values: Result<Vec<_>> = inputs
+        .iter()
+        .map(|t| t.value.concretize())
+        .collect();
+
+    let output = match input_values {
+        // If we know the value of all the inputs, we can deduce everything.
+        Ok(v) => {
+            let input_inputs: Vec<_> = v
+                .into_iter()
+                .map(|v| v.clone().into())
+                .collect();
+
+            let output_value = op.eval(input_inputs)?.pop().unwrap();
+
+            ATensor {
+                datatype: inputs[0].datatype.clone(),
+                shape: output_value.shape().into(),
+                value: avalue!(output_value.into_matrix())
+            }
+        }
+
+        // Otherwise we can only deduce the type and shape of the output.
+        _ => {
+            ATensor {
+                datatype: inputs[0].datatype.clone(),
+                shape: ashape![..], // todo(romain): Find a way to deal with broadcasting.
+                value: avalue!(_)
+            }
+        }
+    };
+
+    Ok(vec![output])
 }
 
 #[cfg(test)]

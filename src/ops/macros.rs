@@ -22,35 +22,11 @@ macro_rules! element_map {
 
             /// Infers properties about the output tensors from the input tensors.
             fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
-                use $crate::analyser::ATensor;
-                use $crate::analyser::AValue::*;
-
                 if inputs.len() != 1 {
                     bail!("{} operation only supports one input.", stringify!($Struct));
                 }
 
-                let output = match &inputs[0].value {
-                    // If we know the value of the input, we can deduce everything.
-                    Only(v) => {
-                        let input_values = vec![v.clone().into()];
-                        let output_value = self.eval(input_values)?.pop().unwrap();
-
-                        ATensor {
-                            datatype: inputs[0].datatype.clone(),
-                            shape: v.shape().into(),
-                            value: avalue!(output_value.into_matrix())
-                        }
-                    },
-
-                    // Otherwise we can only deduce the type and shape of the output.
-                    _ => ATensor {
-                        datatype: inputs[0].datatype.clone(),
-                        shape: inputs[0].shape.clone(),
-                        value: avalue!(_)
-                    },
-                };
-
-                Ok(vec![output])
+                $crate::analyser::infer_forward_basic(self, inputs)
             }
 
             /// Infers properties about the input tensors from the output tensors.
@@ -93,46 +69,15 @@ macro_rules! element_bin {
 
             /// Infers properties about the output tensors from the input tensors.
             fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
-                use $crate::analyser::ATensor;
-                use $crate::analyser::AValue::*;
-
                 if inputs.len() != 2 {
                     bail!("{} operation only supports two inputs.", stringify!($Struct));
                 }
 
-                let output = match (&inputs[0].value, &inputs[1].value) {
-                    // If we know the value of the input, we can deduce everything.
-                    (Only(_), Only(_)) => {
-                        let input_values: Vec<_> = inputs
-                            .iter()
-                            .map(|t| t.value.concretize().unwrap().clone().into())
-                            .collect();
+                if inputs[0].datatype != inputs[1].datatype {
+                    bail!("{} operation doesn't support inputs of different types.", stringify!($Struct));
+                }
 
-                        let output_value = self.eval(input_values)?.pop().unwrap();
-
-                        ATensor {
-                            datatype: inputs[0].datatype.clone(),
-                            shape: output_value.shape().into(),
-                            value: avalue!(output_value.into_matrix())
-                        }
-                    },
-
-                    // Otherwise we can only deduce the type and shape of the output.
-                    _ => {
-                        if inputs[0].datatype != inputs[1].datatype {
-                            bail!("{} operation doesn't support inputs of different types.", stringify!($Struct));
-                        }
-
-                        ATensor {
-                            datatype: inputs[0].datatype.clone(),
-                            shape: ashape![..], // todo(romain): Find a way to deal with broadcasting.
-                            value: avalue!(_)
-                        }
-                    }
-                };
-
-
-                Ok(vec![output])
+                $crate::analyser::infer_forward_basic(self, inputs)
             }
 
             /// Infers properties about the input tensors from the output tensors.
