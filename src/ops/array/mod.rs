@@ -57,7 +57,7 @@ impl Op for ConcatV2 {
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
         if inputs.len() < 2 {
-            bail!("Concat operation needs at least two outputs.");
+            bail!("Concat operation needs at least two inputs.");
         }
 
         try_infer_forward_concrete!(self, &inputs);
@@ -94,8 +94,8 @@ impl Op for ConcatV2 {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if outputs.len() < 2 {
-            bail!("Concat operation needs at least two outputs.");
+        if outputs.len() != 1 {
+            bail!("Concat operation only supports one output.");
         }
 
         Ok(vec![ATensor {
@@ -136,7 +136,7 @@ impl Op for ExpandDims {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if inputs.len() != 1 {
+        if inputs.len() != 2 {
             bail!("ExpandDims operation only supports two inputs.");
         }
 
@@ -150,6 +150,7 @@ impl Op for ExpandDims {
             .iter()
             .map(|i| *i as usize)
             .collect();
+
         dims.sort();
 
         let mut output_shape = vec![];
