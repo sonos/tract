@@ -108,7 +108,7 @@ impl AShape {
 }
 
 impl FromIterator<usize> for AShape {
-    /// Converts a Vec<usize> into a closed shape.
+    /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item=usize>>(iter: I) -> AShape {
         AShape::Closed(iter
             .into_iter()
@@ -118,7 +118,7 @@ impl FromIterator<usize> for AShape {
 }
 
 impl<'a> FromIterator<&'a usize> for AShape {
-    /// Converts a Vec<&usize> into a closed shape.
+    /// Converts an iterator over &usize into a closed shape.
     fn from_iter<I: IntoIterator<Item=&'a usize>>(iter: I) -> AShape {
         AShape::Closed(iter
             .into_iter()
@@ -139,6 +139,16 @@ impl<'a> From<&'a[usize]> for AShape {
 pub enum ADimension {
     Any,
     Only(usize),
+}
+
+impl ADimension {
+    /// Returns whether the dimension is concrete.
+    pub fn is_concrete(&self) -> bool {
+        match self {
+            ADimension::Any => false,
+            ADimension::Only(_) => true
+        }
+    }
 }
 
 /// An abstract value.

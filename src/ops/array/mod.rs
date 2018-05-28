@@ -5,6 +5,7 @@ mod pack;
 mod strided_slice;
 
 use analyser::{ATensor, AShape, AValue};
+use analyser::helpers::most_specific_shape;
 use tfpb::types::DataType;
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
@@ -35,6 +36,7 @@ impl ConcatV2 {
 }
 
 impl Op for ConcatV2 {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
         let axis: i32 = inputs[self.n]
             .as_i32s()
@@ -50,6 +52,57 @@ impl Op for ConcatV2 {
         let result = ::ndarray::stack(Axis(axis as usize), &*mats)?;
         let result = Matrix::from(result);
         Ok(vec![result.into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() < 2 {
+            bail!("Concat operation needs at least two outputs.");
+        }
+
+        try_infer_forward_concrete!(self, &inputs);
+
+        // If we don't know the actual value, we can still compute the shape.
+        let axis: i32 = inputs[self.n].value
+            .concretize()?
+            .as_i32s()
+            .ok_or("Expected a i32 matrix")?
+            .iter()
+            .next()
+            .unwrap()
+            .clone();
+
+        let shapes = inputs[0..self.n]
+            .iter()
+            .map(|t| &t.shape);
+
+        // We get the most specific shape, and replace the axis with an unknown.
+        // TODO(liautaud): Improve this to check whether the shapes actually match,
+        //                 and sum the dimension over all the vectors instead of
+        //                 just returning an unknown when possible.
+        let mut shape = most_specific_shape(shapes)?.inner().clone();
+        shape[axis as usize] = adimension!(_);
+
+        let output = ATensor {
+            datatype: inputs[0].datatype.clone(),
+            shape: AShape::Closed(shape),
+            value: avalue!(_),
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() < 2 {
+            bail!("Concat operation needs at least two outputs.");
+        }
+
+        Ok(vec![ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![..],
+            value: avalue!(_)
+        }])
     }
 }
 

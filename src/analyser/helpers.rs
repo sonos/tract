@@ -104,3 +104,34 @@ pub fn infer_shape_broadcasting(shapes: Vec<&AShape>) -> Result<AShape> {
 
     Ok(AShape::Closed(output_shape))
 }
+
+/// Returns the most specific closed shape out of an iterator.
+pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a AShape>>(iter: I) -> Result<&'a AShape> {
+    let mut prev_rank = None;
+    let mut prev_concrete = None;
+    let mut best = None;
+
+    for shape in iter {
+        match shape {
+            AShape::Open(_) => continue,
+            AShape::Closed(s) => {
+                let rank = s.len();
+
+                if prev_rank.is_some() && rank != prev_rank.unwrap() {
+                    bail!("Rank mismatch between different shapes.");
+                } else {
+                    prev_rank = Some(rank);
+                }
+
+                let concrete = s.iter().filter(|d| d.is_concrete()).count();
+
+                if prev_concrete.is_none() || concrete > prev_concrete.unwrap() {
+                    prev_concrete = Some(concrete);
+                    best = Some(shape)
+                }
+            }
+        };
+    }
+
+    Ok(best.unwrap())
+}
