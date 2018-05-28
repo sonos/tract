@@ -372,12 +372,9 @@ impl Squeeze {
         dims.reverse();
         Ok(Box::new(Squeeze { dims }))
     }
-}
 
-impl Op for Squeeze {
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
-        let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
-        let mut shape = data.shape().to_vec();
+    /// Removes the dimensions of size 1 from the given shape vector.
+    fn squeeze_shape(&self, mut shape: Vec<usize>) -> Result<Vec<usize>> {
         for d in &self.dims {
             if *d >= 0 {
                 shape.remove(*d as usize);
@@ -385,6 +382,59 @@ impl Op for Squeeze {
                 Err(format!("unimplemented Squeeze with negative parameter"))?
             }
         }
+
+        Ok(shape)
+    }
+}
+
+impl Op for Squeeze {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+        let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
+        let shape = self.squeeze_shape(data.shape().to_vec())?;
         Ok(vec![Matrix::from(data.clone().into_shape(shape)?).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 1 {
+            bail!("Squeeze operation only supports one input.");
+        }
+
+        let output = if let AValue::Only(input) = &inputs[0].value {
+            // If we already know the input value, we can just compute the result.
+            let input_values = vec![input.clone().into()];
+            let output_value = self.eval(input_values)?.pop().unwrap();
+
+            ATensor {
+                datatype: inputs[0].datatype.clone(),
+                shape: output_value.shape().into(),
+                value: avalue!(output_value.into_matrix()),
+            }
+        } else if let Ok(shape) = inputs[0].shape.concretize() {
+            // We can also compute the shape if we know the concrete shape of the input.
+            ATensor {
+                datatype: inputs[0].datatype.clone(),
+                shape: self.squeeze_shape(shape)?.iter().collect(),
+                value: avalue!(_)
+            }
+        } else {
+            bail!("Can't infer for Squeeze without a concrete shape.");
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("Squeeze operation only supports one output.");
+        }
+
+        Ok(vec![ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![..],
+            value: avalue!(_)
+        }])
     }
 }
