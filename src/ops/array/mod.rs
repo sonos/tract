@@ -87,40 +87,30 @@ impl Op for ExpandDims {
             bail!("ExpandDims operation only supports two inputs.");
         }
 
-        let dims = inputs[1].value.concretize()?;
-        let output = match &inputs[0].value {
-            AValue::Only(input) => {
-                let input_values = vec![input.clone().into(), dims.clone().into()];
-                let output_value = self.eval(input_values)?.pop().unwrap();
+        try_infer_forward_concrete!(self, &inputs);
 
-                ATensor {
-                    datatype: inputs[0].datatype.clone(),
-                    shape: output_value.shape().into(),
-                    value: avalue!(output_value.into_matrix()),
-                }
-            },
+        // If we don't know the actual value, we can still compute the shape.
+        let mut dims: Vec<_> = inputs[1].value
+            .concretize()?
+            .as_i32s()
+            .ok_or("Expected a i32 matrix")?
+            .iter()
+            .map(|i| *i as usize)
+            .collect();
+        dims.sort();
 
-            _ => {
-                let mut dims: Vec<_> = dims.as_i32s()
-                    .ok_or("Expected a i32 matrix")?
-                    .iter()
-                    .map(|i| *i as usize)
-                    .collect();
-                dims.sort();
+        let mut output_shape = vec![];
+        let mut previous_dim = 0;
+        for dim in dims {
+            output_shape.extend(repeat(adimension!(_)).take(dim - previous_dim));
+            output_shape.push(adimension!(1));
+            previous_dim = dim;
+        }
 
-                let mut output_shape = vec![];
-                let mut previous_dim = 0;
-                for dim in dims {
-                    output_shape.extend(repeat(adimension!(_)).take(dim - previous_dim));
-                    output_shape.push(adimension!(1));
-                }
-
-                ATensor {
-                    datatype: inputs[0].datatype.clone(),
-                    shape: AShape::Open(output_shape),
-                    value: avalue!(_),
-                }
-            }
+        let output = ATensor {
+            datatype: inputs[0].datatype.clone(),
+            shape: AShape::Open(output_shape),
+            value: avalue!(_),
         };
 
         Ok(vec![output])
@@ -267,47 +257,35 @@ impl Op for Reshape {
             bail!("Reshape operation only supports two inputs.");
         }
 
-        let dims = inputs[1].value.concretize()?;
-        let output = match &inputs[0].value {
-            // If we already know the input value, we can just compute the result.
-            AValue::Only(input) => {
-                let input_values = vec![input.clone().into(), dims.clone().into()];
-                let output_value = self.eval(input_values)?.pop().unwrap();
+        try_infer_forward_concrete!(self, &inputs);
 
-                ATensor {
-                    datatype: inputs[0].datatype.clone(),
-                    shape: output_value.shape().into(),
-                    value: avalue!(output_value.into_matrix()),
-                }
+        // If we don't know the actual value, we can still compute the shape.
+        let dims: Vec<_> = inputs[1].value
+            .concretize()?
+            .as_i32s()
+            .ok_or("Expected a i32 matrix")?
+            .iter()
+            .cloned()
+            .collect();
+
+        let output = match &inputs[0].shape.concretize() {
+            // If we know the concrete shape of the input, we get the output shape.
+            Ok(shape) => ATensor {
+                datatype: inputs[0].datatype.clone(),
+                shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
+                value: avalue!(_)
             },
 
-            _ => {
-                let dims: Vec<_> = dims.as_i32s()
-                    .ok_or("Expected a i32 matrix")?
-                    .iter()
-                    .cloned()
-                    .collect();
+            // If we don't know anything about the output, but know the value of
+            // dims and it doesn't contain -1 (e.g. we don't have to guess some
+            // of the output dimensions), we can also compute the output shape.
+            _ if !dims.contains(&-1) => ATensor {
+                datatype: inputs[0].datatype.clone(),
+                shape: dims.into_iter().map(|d| d as usize).collect(),
+                value: avalue!(_)
+            },
 
-                match &inputs[0].shape.concretize() {
-                    // If we know the concrete shape of the input, we get the output shape.
-                    Ok(shape) => ATensor {
-                        datatype: inputs[0].datatype.clone(),
-                        shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
-                        value: avalue!(_)
-                    },
-
-                    // If we don't know anything about the output, but know the value of
-                    // dims and it doesn't contain -1 (e.g. we don't have to guess some
-                    // of the output dimensions), we can also compute the output shape.
-                    _ if !dims.contains(&-1) => ATensor {
-                        datatype: inputs[0].datatype.clone(),
-                        shape: dims.into_iter().map(|d| d as usize).collect(),
-                        value: avalue!(_)
-                    },
-
-                    _ => bail!("Can't infer the shape of the output for Reshape.")
-                }
-            }
+            _ => bail!("Can't infer the shape of the output for Reshape.")
         };
 
         Ok(vec![output])
@@ -359,6 +337,7 @@ impl Op for Shape {
             bail!("Shape operation only supports one input.");
         }
 
+        // We don't care about the concrete value, just the shape.
         let shape: Vec<_> = inputs[0].shape
             .concretize()?
             .into_iter()
@@ -461,25 +440,16 @@ impl Op for Squeeze {
             bail!("Squeeze operation only supports one input.");
         }
 
-        let output = if let AValue::Only(input) = &inputs[0].value {
-            // If we already know the input value, we can just compute the result.
-            let input_values = vec![input.clone().into()];
-            let output_value = self.eval(input_values)?.pop().unwrap();
+        try_infer_forward_concrete!(self, &inputs);
 
-            ATensor {
-                datatype: inputs[0].datatype.clone(),
-                shape: output_value.shape().into(),
-                value: avalue!(output_value.into_matrix()),
-            }
-        } else if let Ok(shape) = inputs[0].shape.concretize() {
-            // We can also compute the shape if we know the concrete shape of the input.
-            ATensor {
+        let output = match inputs[0].shape.concretize() {
+            Ok(shape) => ATensor {
                 datatype: inputs[0].datatype.clone(),
                 shape: self.squeeze_shape(shape)?.iter().collect(),
                 value: avalue!(_)
-            }
-        } else {
-            bail!("Can't infer for Squeeze without a concrete shape.");
+            },
+
+            _ => bail!("Can't infer for Squeeze without a concrete shape.")
         };
 
         Ok(vec![output])

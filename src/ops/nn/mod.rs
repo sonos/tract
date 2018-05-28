@@ -50,21 +50,16 @@ impl Op for Softmax {
             bail!("Softmax operation only supports one input.");
         }
 
+        try_infer_forward_concrete!(self, &inputs);
+
         let output = ATensor {
             datatype: atype!(DataType::DT_FLOAT),
-
             shape: match &inputs[0].shape.concretize() {
                 Ok(v) if v.len() == 2 => v.iter().collect(),
                 Ok(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
                 _ => ashape![_, _],
             },
-
-            value: inputs[0].value.map_err(|v: &Matrix| {
-                let input_values = vec![v.clone().into()];
-                let output_value = self.eval(input_values)?.pop().unwrap();
-
-                Ok(output_value.into_matrix())
-            })?
+            value: avalue!(_)
         };
 
         Ok(vec![output])
@@ -78,13 +73,11 @@ impl Op for Softmax {
 
         let input = ATensor {
             datatype: atype!(DataType::DT_FLOAT),
-
             shape: match &outputs[0].shape.concretize() {
                 Ok(v) if v.len() == 2 => v.iter().collect(),
                 Ok(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
                 _ => ashape![_, _],
             },
-
             value: avalue!(_)
         };
 
