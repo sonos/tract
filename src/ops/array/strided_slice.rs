@@ -1,6 +1,8 @@
+use analyser::ATensor;
 use ndarray::prelude::*;
 use {Matrix, Result};
 use ops::{Input, Op};
+use tfpb::types::DataType;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
@@ -21,6 +23,7 @@ pub struct StridedSlice {
 }
 
 impl Op for StridedSlice {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let input = input.as_i32s().ok_or("Input expected as I32")?;
@@ -108,6 +111,51 @@ impl Op for StridedSlice {
         });
         let output = output.into_shape(reshape)?;
         Ok(vec![Matrix::I32(output.into()).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 4 {
+            bail!("StridedSlice operation only supports four inputs.");
+        }
+
+        try_infer_forward_concrete!(self, &inputs);
+
+        // TODO(liautaud): It will be fun implementing this, I promess.
+        unimplemented!()
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("StridedSlice operation only supports one output.");
+        }
+
+        let input = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![..],
+            value: avalue!(_)
+        };
+
+        let begin = ATensor {
+            datatype: atype!(DataType::DT_INT32),
+            shape: ashape![_],
+            value: avalue!(_)
+        };
+
+        let end = ATensor {
+            datatype: atype!(DataType::DT_INT32),
+            shape: ashape![_],
+            value: avalue!(_)
+        };
+
+        let strides = ATensor {
+            datatype: atype!(DataType::DT_INT32),
+            shape: ashape![_],
+            value: avalue!(_)
+        };
+
+        Ok(vec![input, begin, end, strides])
     }
 }
 
