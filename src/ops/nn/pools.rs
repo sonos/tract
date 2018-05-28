@@ -1,3 +1,4 @@
+use analyser::ATensor;
 use {Matrix, Result};
 use super::{Input, Op};
 use ndarray::prelude::*;
@@ -24,6 +25,7 @@ pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 }
 
 impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
         let data = m_input
@@ -53,6 +55,56 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         });
 
         Ok(vec![Matrix::from(transformed.into_dyn()).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 2 {
+            bail!("Pool operations only supports one input.");
+        }
+
+        try_infer_forward_concrete!(self, &inputs);
+
+        // If we don't know the actual value, we can still compute the shape.
+        let shape = match inputs[0].shape.concretize()?.as_slice() {
+            // TODO(liautaud): Take the data_format parameter into account.
+            [batch, in_height, in_width, in_channels] => {
+                let (height, width) = self.0.adjusted_dim(*in_height, *in_width, self.1);
+                ashape![(*batch), height, width, (*in_channels)]
+            },
+
+            _ => bail!("The input dimensions are invalid.")
+        };
+
+        let output = ATensor {
+            datatype: inputs[0].datatype.clone(),
+            shape,
+            value: avalue!(_),
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("Pool operations only supports one output.");
+        }
+
+        let shape = match outputs[0].shape.concretize()?.as_slice() {
+            // TODO(liautaud): Take the data_format parameter into account.
+            [batch, _, _, out_channels] =>
+                ashape![(*batch), _, _, (*out_channels)],
+            _ => bail!("The output dimensions are invalid.")
+        };
+
+        let input = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape,
+            value: avalue!(_)
+        };
+
+        Ok(vec![input])
     }
 }
 
