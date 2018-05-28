@@ -59,7 +59,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if inputs.len() != 2 {
+        if inputs.len() != 1 {
             bail!("Pool operations only supports one input.");
         }
 

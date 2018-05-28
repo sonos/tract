@@ -64,7 +64,7 @@ where
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if outputs.len() < 1 {
+        if outputs.len() != 1 {
             bail!("Pack operation only supports one output.");
         }
 

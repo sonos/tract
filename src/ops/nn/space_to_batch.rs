@@ -70,7 +70,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if inputs.len() != 2 {
+        if inputs.len() != 3 {
             bail!("SpaceToBatchND operation only supports three inputs.");
         }
 
@@ -158,7 +158,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        if inputs.len() != 2 {
+        if inputs.len() != 3 {
             bail!("BatchToSpaceND operation only supports three inputs.");
         }
 
