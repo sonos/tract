@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use analyser::ATensor;
 use Result;
 use super::{Input, Op};
 use matrix::Datum;
@@ -17,6 +18,7 @@ pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 pub struct SpaceToBatch<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for SpaceToBatch<T> {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
@@ -65,12 +67,52 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
         Ok(vec![T::array_into_mat(data).into()])
     }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 2 {
+            bail!("SpaceToBatchND operation only supports three inputs.");
+        }
+
+        try_infer_forward_concrete!(self, &inputs);
+
+        // TODO(liautaud): It will be fun implementing this, I promess.
+        unimplemented!()
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("SpaceToBatchND operation only supports one output.");
+        }
+
+        let input = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![_; ..],
+            value: avalue!(_)
+        };
+
+        let block_shape = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![_],
+            value: avalue!(_)
+        };
+
+        let paddings = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![_, 2],
+            value: avalue!(_)
+        };
+
+        Ok(vec![input, block_shape, paddings])
+    }
 }
 
 #[derive(Debug, new)]
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         use ndarray::*;
         let (input, block_shape, crops) = args_3!(inputs);
@@ -112,6 +154,45 @@ impl<T: Datum> Op for BatchToSpace<T> {
             }
         }
         Ok(vec![T::array_into_mat(data).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 2 {
+            bail!("BatchToSpaceND operation only supports three inputs.");
+        }
+
+        try_infer_forward_concrete!(self, &inputs);
+
+        // TODO(liautaud): It will be fun implementing this, I promess.
+        unimplemented!()
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("BatchToSpaceND operation only supports one output.");
+        }
+
+        let input = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![_; ..],
+            value: avalue!(_)
+        };
+
+        let block_shape = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![_],
+            value: avalue!(_)
+        };
+
+        let crops = ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![_, 2],
+            value: avalue!(_)
+        };
+
+        Ok(vec![input, block_shape, crops])
     }
 }
 
