@@ -1,3 +1,4 @@
+use std::iter::repeat;
 use ndarray::prelude::*;
 
 mod pack;
@@ -62,6 +63,7 @@ impl ExpandDims {
 }
 
 impl Op for ExpandDims {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (data, dims) = args_2!(inputs);
         let data = data.into_matrix()
@@ -77,6 +79,64 @@ impl Op for ExpandDims {
             }
         }
         Ok(vec![Matrix::from(data.into_shape(shape)?).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 1 {
+            bail!("ExpandDims operation only supports two inputs.");
+        }
+
+        let dims = inputs[1].value.concretize()?;
+        let output = match &inputs[0].value {
+            AValue::Only(input) => {
+                let input_values = vec![input.clone().into(), dims.clone().into()];
+                let output_value = self.eval(input_values)?.pop().unwrap();
+
+                ATensor {
+                    datatype: inputs[0].datatype.clone(),
+                    shape: output_value.shape().into(),
+                    value: avalue!(output_value.into_matrix()),
+                }
+            },
+
+            _ => {
+                let mut dims: Vec<_> = dims.as_i32s()
+                    .ok_or("Expected a i32 matrix")?
+                    .iter()
+                    .map(|i| *i as usize)
+                    .collect();
+                dims.sort();
+
+                let mut output_shape = vec![];
+                let mut previous_dim = 0;
+                for dim in dims {
+                    output_shape.extend(repeat(adimension!(_)).take(dim - previous_dim));
+                    output_shape.push(adimension!(1));
+                }
+
+                ATensor {
+                    datatype: inputs[0].datatype.clone(),
+                    shape: AShape::Open(output_shape),
+                    value: avalue!(_),
+                }
+            }
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("ExpandDims operation only supports one output.");
+        }
+
+        Ok(vec![ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape: ashape![..],
+            value: avalue!(_)
+        }])
     }
 }
 
