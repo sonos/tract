@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use analyser::ATensor;
 use Result;
 use super::{Input, Op};
 use ndarray::prelude::*;
@@ -16,6 +17,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 }
 
 impl<T: Datum> Op for Conv2D<T> {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = T::mat_into_array(m_data.into_matrix())?;
@@ -44,6 +46,70 @@ impl<T: Datum> Op for Conv2D<T> {
             .into_shape((images.n(), out_height, out_width, out_depth))?
             .into_dyn();
         Ok(vec![T::array_into_mat(transformed).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() != 2 {
+            bail!("Conv2D operation only supports two inputs.");
+        }
+
+        try_infer_forward_concrete!(self, &inputs);
+
+        // If we don't know the actual value, we can still compute the shape.
+        let input_shape = inputs[0].shape.concretize()?;
+        let filter_shape = inputs[1].shape.concretize()?;
+
+        let shape = match (input_shape.as_slice(), filter_shape.as_slice()) {
+            ([batch, in_height, in_width, in_channels],
+             [filter_height, filter_width, in_channels_2, out_channels])
+             if in_channels == in_channels_2 => {
+                let (height, width) = self.0.adjusted_dim(
+                    *in_height, *in_width,
+                    (*filter_height, *filter_width)
+                );
+
+                // TODO(liautaud): Take the data_format parameter into account.
+                ashape![(*batch), height, width, (*out_channels)]
+            },
+
+            _ => bail!("The input and filter dimensions are invalid.")
+        };
+
+        let output = ATensor {
+            datatype: inputs[0].datatype.clone(),
+            shape,
+            value: avalue!(_),
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() != 1 {
+            bail!("Conv2D operation only supports one output.");
+        }
+
+        match outputs[0].shape.concretize()?.as_slice() {
+            [batch, _, _, out_channels] => {
+                let input = ATensor {
+                    datatype: outputs[0].datatype.clone(),
+                    shape: ashape![(*batch), _, _, _],
+                    value: avalue!(_)
+                };
+
+                let filter = ATensor {
+                    datatype: outputs[0].datatype.clone(),
+                    shape: ashape![_, _, _, (*out_channels)],
+                    value: avalue!(_)
+                };
+
+                Ok(vec![input, filter])
+            },
+
+            _ => bail!("The output dimensions are invalid.")
+        }
     }
 }
 
