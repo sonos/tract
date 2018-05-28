@@ -76,14 +76,10 @@ pub trait Op: Debug + Send + Sync + 'static {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        unimplemented!()
-    }
+    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>>;
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        unimplemented!()
-    }
+    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>>;
 }
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
