@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use analyser::{ATensor, AShape};
+use analyser::helpers::most_specific_shape;
 use Result;
 use super::{Input, Op};
 use matrix::Datum;
@@ -20,17 +22,76 @@ impl<T> Op for Pack<T>
 where
     T: Datum,
 {
+    /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
         use ndarray::Axis;
         let views = inputs
             .iter()
             .map(|m| {
                 Ok(T::mat_to_view(&*m)?.insert_axis(Axis(self.axis)))
-                //                Ok(T::mat_to_view(&*m)?)
             })
             .collect::<Result<Vec<_>>>()?;
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
         Ok(vec![T::array_into_mat(array).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if inputs.len() < 1 {
+            bail!("Pack operation needs at least one input.");
+        }
+
+        try_infer_forward_concrete!(self, &inputs);
+
+        // If we don't know the actual value, we can still compute the shape.
+        let n = inputs.len();
+        let shapes = inputs
+            .iter()
+            .map(|t| &t.shape);
+
+        // We get the most specific shape, and replace the axis with an unknown.
+        let mut shape = most_specific_shape(shapes)?.inner().clone();
+        shape.insert(self.axis, adimension!(n));
+
+        let output = ATensor {
+            datatype: inputs[0].datatype.clone(),
+            shape: AShape::Closed(shape),
+            value: avalue!(_),
+        };
+
+        Ok(vec![output])
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        if outputs.len() < 1 {
+            bail!("Pack operation only supports one output.");
+        }
+
+        // The operation adds a dimension, so all we have to do is remove it.
+        let shape = match &outputs[0].shape {
+            AShape::Open(v) => {
+                let mut inner = v.clone();
+                if self.axis > inner.len() {
+                    inner.remove(self.axis);
+                }
+
+                AShape::Open(inner)
+            },
+
+            AShape::Closed(v) => {
+                let mut inner = v.clone();
+                inner.remove(self.axis);
+
+                AShape::Closed(inner)
+            }
+        };
+
+        Ok(vec![ATensor {
+            datatype: outputs[0].datatype.clone(),
+            shape,
+            value: avalue!(_)
+        }])
     }
 }
 
