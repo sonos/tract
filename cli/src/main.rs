@@ -97,6 +97,9 @@ fn main() {
                 "Sets the maximum number of iterations for each node [default: 10_000].")
             (@arg max_time: -t [max_time]
                 "Sets the maximum execution time for each node (in ns) [default: 10_000]."))
+
+        (@subcommand analyse =>
+            (about: "Analyses the graph to infer properties about tensors (experimental)."))
     );
 
     let matches = app.get_matches();
@@ -137,6 +140,8 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
                 Some(s) => s.parse::<u32>()?,
             },
         ),
+
+        ("analyse", _) => handle_analyse(params),
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
@@ -503,6 +508,25 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
     );
     for (operation, time, count) in operations.iter().take(5) {
         println!("- {}: {:.3} ms (for {} nodes).", operation.blue().bold(), time, count);
+    }
+
+    Ok(())
+}
+
+/// Handles the `analyse` subcommand.
+fn handle_analyse(params: Parameters) -> Result<()> {
+    use tfdeploy::analyser::analyse;
+
+    let model = params.tfd_model;
+    let output = model.get_node_by_id(params.output)?;
+
+    info!("Starting the analysis.");
+    let edges = analyse(&model, output.id)?;
+
+    print_header(format!("Results of the analysis for {}:", params.name), "white");
+
+    for e in edges {
+        println!("{:?}", e);
     }
 
     Ok(())
