@@ -10,6 +10,7 @@ type Ed = Edge;
 
 struct Graph<'a> {
     name: String,
+    forward: bool,
     nodes: &'a [Nd],
     edges: &'a [Ed],
 }
@@ -51,7 +52,9 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
         dot::LabelText::LabelStr(label.into())
     }
     fn edge_color<'b>(&'b self, e: &Ed) -> Option<dot::LabelText<'b>> {
-        if self.nodes[e.from_node].2 {
+        if self.forward && self.nodes[e.from_node].2 {
+            Some(dot::LabelText::LabelStr("crimson".into()))
+        } else if !self.forward && self.nodes[e.to_node].2 {
             Some(dot::LabelText::LabelStr("crimson".into()))
         } else {
             None
@@ -81,6 +84,7 @@ pub fn render_dot<W: Write>(
     model: &Model,
     edges: &Vec<Edge>,
     highlighted: &Vec<usize>,
+    forward: bool,
     writer: &mut W,
 ) -> Result<()> {
     let nodes = model
@@ -97,6 +101,7 @@ pub fn render_dot<W: Write>(
 
     let graph = Graph {
         name,
+        forward,
         nodes: nodes.as_slice(),
         edges: edges.as_slice(),
     };
@@ -112,8 +117,9 @@ pub fn display_dot(
     model: &Model,
     edges: &Vec<Edge>,
     highlighted: &Vec<usize>,
+    forward: bool,
 ) -> Result<()> {
-    render_dot(name, model, edges, highlighted, &mut io::stdout())
+    render_dot(name, model, edges, highlighted, forward, &mut io::stdout())
 }
 
 /// Displays a render of the analysed graph using the `dot` command.
@@ -122,6 +128,7 @@ pub fn display_graph(
     model: &Model,
     edges: &Vec<Edge>,
     highlighted: &Vec<usize>,
+    forward: bool,
 ) -> Result<()> {
     use std::process::{Command, Stdio};
 
@@ -138,6 +145,7 @@ pub fn display_graph(
         model,
         edges,
         highlighted,
+        forward,
         &mut renderer.stdin.unwrap(),
     )?;
 

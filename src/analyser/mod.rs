@@ -156,7 +156,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
                     if inferred.is_err() {
                         // TODO(liautaud): Remove this.
                         if debug {
-                            println!("- {} ({}): {}", n, node.op_name, inferred.unwrap_err());
+                            println!("[{}] ({}): {}", n, node.op_name, inferred.unwrap_err());
                         }
                         continue;
                     }
@@ -175,19 +175,14 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
                     if debug {
                         let node_name = format!("[{}] ({})", n, model.get_node_by_id(n)?.op_name);
                         let mut inferred_display = format!("{:?}", inferred);
-                        let mut unified_display = format!("{:?}", edges[j].tensor);
                         inferred_display.truncate(150);
-                        unified_display.truncate(150);
-                        println!(
-                            "{}\n- Inferred: {}\n- Unified: {}",
-                            node_name, inferred_display, unified_display,
-                        );
+                        println!("{} Inferred: {}", node_name, inferred_display);
                     }
                 }
 
                 // TODO(liautaud): Remove this.
                 if debug && model.get_node_by_id(n)?.op_name != "Const" {
-                    graphviz::display_graph("debug".to_string(), &model, &edges, &vec![n])?;
+                    graphviz::display_graph("debug".to_string(), &model, &edges, &vec![n], forward)?;
                 }
             }
         }};
@@ -195,7 +190,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
 
     // TODO(liautaud): Remove this.
     if debug {
-        graphviz::display_graph("debug".to_string(), &model, &edges, &vec![])?;
+        graphviz::display_graph("debug".to_string(), &model, &edges, &vec![], true)?;
     }
 
     loop {
