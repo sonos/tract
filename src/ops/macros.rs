@@ -23,7 +23,7 @@ macro_rules! element_map {
             /// Infers properties about the output tensors from the input tensors.
             fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
                 if inputs.len() != 1 {
-                    bail!("{} operation only supports one input.", stringify!($Struct));
+                    bail!("Unary operations only supports one input.");
                 }
 
                 $crate::analyser::helpers::infer_forward_basic(self, inputs)
@@ -32,7 +32,7 @@ macro_rules! element_map {
             /// Infers properties about the input tensors from the output tensors.
             fn infer_backward(&self, outputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
                 if outputs.len() != 1 {
-                    bail!("{} operation only supports one output.", stringify!($Struct));
+                    bail!("Unary operations only supports one output.");
                 }
 
                 let input = $crate::analyser::ATensor {
@@ -70,11 +70,11 @@ macro_rules! element_bin {
             /// Infers properties about the output tensors from the input tensors.
             fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
                 if inputs.len() != 2 {
-                    bail!("{} operation only supports two inputs.", stringify!($Struct));
+                    bail!("Binary operations only supports two inputs.");
                 }
 
                 if inputs[0].datatype != inputs[1].datatype {
-                    bail!("{} operation doesn't support inputs of different types.", stringify!($Struct));
+                    bail!("Binary operations don't support inputs of different types.");
                 }
 
                 $crate::analyser::helpers::infer_forward_basic(self, inputs)
@@ -83,7 +83,7 @@ macro_rules! element_bin {
             /// Infers properties about the input tensors from the output tensors.
             fn infer_backward(&self, outputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
                 if outputs.len() != 1 {
-                    bail!("{} operation only supports one output.", stringify!($Struct));
+                    bail!("Binary operations only supports one output.");
                 }
 
                 let input = $crate::analyser::ATensor {
