@@ -1,3 +1,5 @@
+extern crate dot;
+
 use Model;
 use errors::*;
 use ops::Op;
@@ -66,7 +68,7 @@ fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
             Left(d) if y.is_open() => Ok(d.clone()),
             Right(d) if x.is_open() => Ok(d.clone()),
 
-            Left(_) | Right(_) => bail!("Impossible to unify closed shapes of different rank."),
+            Left(_) | Right(_) => bail!("Impossible to unify closed shapes of different rank (found {:?} and {:?}).", x, y),
         })
         .collect::<Result<_>>()?;
 
@@ -90,13 +92,13 @@ fn unify_value(x: &AValue, y: &AValue) -> Result<AValue> {
     Ok(value)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
-    id: usize,
-    from_node: usize,
-    from_out: usize,
-    to_node: usize,
-    tensor: ATensor
+    pub id: usize,
+    pub from_node: usize,
+    pub from_out: usize,
+    pub to_node: usize,
+    pub tensor: ATensor
 }
 
 /// Runs the analyser on the given graph.
@@ -152,11 +154,11 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
                     inferred.unwrap()
                 };
 
-                println!("---");
-                println!("Inferred for {} ({}).", n, model.get_node_by_id(n)?.op_name);
-                println!("{:?}", $target[n]);
-                println!("{:?}", inferred);
-                println!("---");
+                // println!("---");
+                // println!("Inferred for {} ({}).", n, model.get_node_by_id(n)?.op_name);
+                // println!("{:?}", $target[n]);
+                // println!("{:?}", inferred);
+                // println!("---");
 
                 for (i, &j) in $target[n].iter().enumerate() {
                     let unified = unify(&inferred[i], &edges[j].tensor)?;
@@ -173,8 +175,10 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
         changed = false;
 
         if forward {
+            println!("[Forward pass]");
             one_pass!(prev_edges, next_edges, infer_forward);
         } else {
+            println!("[Backward pass]");
             one_pass!(next_edges, prev_edges, infer_backward);
         }
 

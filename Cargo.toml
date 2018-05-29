@@ -20,6 +20,7 @@ openblas-src = { version = "0.5", optional = true, default-features=false, featu
 blis-src = { version = "0.1.0", optional=true }
 blas-src = { version = "0.1.2", default-features = false, optional=true }
 derive-new = "0.5"
+dot = "0.1.4"
 error-chain =  { version = "0.11", default-features=false }
 bit-set="0.5"
 image = { version = "0.18", optional=true }

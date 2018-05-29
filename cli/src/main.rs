@@ -3,6 +3,7 @@ extern crate clap;
 extern crate colored;
 #[cfg(feature = "tensorflow")]
 extern crate conform;
+extern crate dot;
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
@@ -22,6 +23,7 @@ use std::time::Instant;
 
 use simplelog::{Config, LevelFilter, TermLogger};
 use simplelog::Level::Info;
+use tfdeploy::analyser;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Matrix;
@@ -515,19 +517,64 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 
 /// Handles the `analyse` subcommand.
 fn handle_analyse(params: Parameters) -> Result<()> {
-    use tfdeploy::analyser::analyse;
-
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?;
 
     info!("Starting the analysis.");
-    let edges = analyse(&model, output.id)?;
+    let edges = analyser::analyse(&model, output.id)?;
+    let nodes = model
+        .nodes()
+        .iter()
+        .map(|n| (n.name.clone(), n.op_name.clone()))
+        .collect::<Vec<_>>();
+
+    let graph = Graph {
+        name: params.name.clone(),
+        nodes: nodes.as_slice(),
+        edges: edges.as_slice()
+    };
 
     print_header(format!("Results of the analysis for {}:", params.name), "white");
-
-    for e in edges {
-        println!("{:?}", e);
-    }
-
+    dot::render(&graph, &mut std::io::stdout())?;
     Ok(())
+}
+
+// TODO(liautaud): Move that somewhere else.
+type Nd = (String, String);
+type Ed = analyser::Edge;
+struct Graph<'a> {
+    name: String,
+    nodes: &'a[Nd],
+    edges: &'a[Ed],
+}
+
+fn slugify(text: &String) -> String {
+    text.replace("/", "")
+        .replace(".", "")
+        .replace(" ", "_")
+}
+
+impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
+    fn graph_id(&'a self) -> dot::Id<'a> {
+        dot::Id::new(format!("graph_{}", slugify(&self.name))).unwrap()
+    }
+    fn node_id(&'a self, n: &Nd) -> dot::Id<'a> {
+        dot::Id::new(format!("node_{}", slugify(&n.0))).unwrap()
+    }
+    fn node_label<'b>(&'b self, n: &Nd) -> dot::LabelText<'b> {
+        dot::LabelText::LabelStr(format!("{} ({})", n.0, n.1).into())
+    }
+    fn edge_label<'b>(&'b self, e: &Ed) -> dot::LabelText<'b> {
+        let mut label = format!("{:?}\n{:?}", e.tensor.datatype, e.tensor.shape);
+        label.truncate(150);
+
+        dot::LabelText::LabelStr(label.into())
+    }
+}
+
+impl<'a> dot::GraphWalk<'a, Nd, Ed> for Graph<'a> {
+    fn nodes(&self) -> dot::Nodes<'a, Nd> { self.nodes.into() }
+    fn edges(&'a self) -> dot::Edges<'a, Ed> { self.edges.into() }
+    fn source(&self, e: &Ed) -> Nd { self.nodes[e.from_node].clone() }
+    fn target(&self, e: &Ed) -> Nd { self.nodes[e.to_node].clone() }
 }
