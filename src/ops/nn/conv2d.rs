@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use analyser::ATensor;
+use analyser::{ATensor, AShape};
 use Result;
 use super::{Input, Op};
 use ndarray::prelude::*;
@@ -57,28 +57,32 @@ impl<T: Datum> Op for Conv2D<T> {
         try_infer_forward_concrete!(self, &inputs);
 
         // If we don't know the actual value, we can still compute the shape.
-        let input_shape = inputs[0].shape.concretize()?;
-        let filter_shape = inputs[1].shape.concretize()?;
+        fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&ATensor>) -> Result<AShape> where T: Datum {
+            let input_shape = inputs[0].shape.concretize()?;
+            let filter_shape = inputs[1].shape.concretize()?;
 
-        let shape = match (input_shape.as_slice(), filter_shape.as_slice()) {
-            ([batch, in_height, in_width, in_channels],
-             [filter_height, filter_width, in_channels_2, out_channels])
-             if in_channels == in_channels_2 => {
-                let (height, width) = self.0.adjusted_dim(
-                    *in_height, *in_width,
-                    (*filter_height, *filter_width)
-                );
+            let shape = match (input_shape.as_slice(), filter_shape.as_slice()) {
+                ([batch, in_height, in_width, in_channels],
+                 [filter_height, filter_width, in_channels_2, out_channels])
+                 if in_channels == in_channels_2 => {
+                    let (height, width) = op.0.adjusted_dim(
+                        *in_height, *in_width,
+                        (*filter_height, *filter_width)
+                    );
 
-                // TODO(liautaud): Take the data_format parameter into account.
-                ashape![(*batch), height, width, (*out_channels)]
-            },
+                    // TODO(liautaud): Take the data_format parameter into account.
+                    ashape![(*batch), height, width, (*out_channels)]
+                },
 
-            _ => bail!("The input and filter dimensions are invalid.")
+                _ => bail!("The input and filter dimensions are invalid.")
+            };
+
+            Ok(shape)
         };
 
         let output = ATensor {
             datatype: inputs[0].datatype.clone(),
-            shape,
+            shape: try_infer_forward_concrete_shape(self, inputs).unwrap_or(ashape![_, _, _, _]),
             value: avalue!(_),
         };
 
