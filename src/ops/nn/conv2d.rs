@@ -91,24 +91,44 @@ impl<T: Datum> Op for Conv2D<T> {
             bail!("Conv2D operation only supports one output.");
         }
 
-        match outputs[0].shape.concretize()?.as_slice() {
-            [batch, _, _, out_channels] => {
+        match outputs[0].shape.concretize() {
+            Ok(shape) => match shape.as_slice() {
+                [batch, _, _, out_channels] => {
+                    let input = ATensor {
+                        datatype: outputs[0].datatype.clone(),
+                        shape: ashape![(*batch), _, _, _],
+                        value: avalue!(_)
+                    };
+
+                    let filter = ATensor {
+                        datatype: outputs[0].datatype.clone(),
+                        shape: ashape![_, _, _, (*out_channels)],
+                        value: avalue!(_)
+                    };
+
+                    Ok(vec![input, filter])
+                },
+
+                _ => bail!("The output dimensions are invalid.")
+            },
+
+            // If we don't have concrete dimensions yet, we can still
+            // give the shape that we want.
+            Err(_) => {
                 let input = ATensor {
                     datatype: outputs[0].datatype.clone(),
-                    shape: ashape![(*batch), _, _, _],
+                    shape: ashape![_, _, _, _],
                     value: avalue!(_)
                 };
 
                 let filter = ATensor {
                     datatype: outputs[0].datatype.clone(),
-                    shape: ashape![_, _, _, (*out_channels)],
+                    shape: ashape![_, _, _, _],
                     value: avalue!(_)
                 };
 
                 Ok(vec![input, filter])
-            },
-
-            _ => bail!("The output dimensions are invalid.")
+            }
         }
     }
 }
