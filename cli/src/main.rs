@@ -516,15 +516,11 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 
 /// Handles the `analyse` subcommand.
 fn handle_analyse(params: Parameters) -> Result<()> {
-    use analyser::graphviz::display;
-
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?;
 
     info!("Starting the analysis.");
-    let edges = analyser::analyse(&model, output.id)?;
+    analyser::analyse(&model, output.id, true)?;
 
-    print_header(format!("Results of the analysis for {}:", params.name), "white");
-    display_graph(params.name.clone(), &model, &edges)?;
     Ok(())
 }

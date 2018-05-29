@@ -1,6 +1,6 @@
-use Model;
 use errors::*;
 use ops::Op;
+use Model;
 use Plan;
 
 mod types;
@@ -64,7 +64,11 @@ fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
             Left(d) if y.is_open() => Ok(d.clone()),
             Right(d) if x.is_open() => Ok(d.clone()),
 
-            Left(_) | Right(_) => bail!("Impossible to unify closed shapes of different rank (found {:?} and {:?}).", x, y),
+            Left(_) | Right(_) => bail!(
+                "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",
+                x,
+                y
+            ),
         })
         .collect::<Result<_>>()?;
 
@@ -94,7 +98,7 @@ pub struct Edge {
     pub from_node: usize,
     pub from_out: usize,
     pub to_node: usize,
-    pub tensor: ATensor
+    pub tensor: ATensor,
 }
 
 /// Runs the analyser on the given graph.
@@ -102,7 +106,7 @@ pub struct Edge {
 /// The output argument is used to infer an execution plan for the graph.
 /// Changing it won't alter the correctness of the analysis, but it might
 /// take much longer to complete.
-pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
+pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<Edge>> {
     // We first give an identity to each edge of the graph.
     let mut edges = vec![];
     let mut prev_edges = vec![Vec::new(); model.nodes().len()];
@@ -117,7 +121,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
                 from_node: input.0,
                 from_out: input.1.unwrap_or(0),
                 to_node: node.id,
-                tensor: ATensor::new()
+                tensor: ATensor::new(),
             });
 
             prev_edges[node.id].push(id);
@@ -125,16 +129,19 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
         }
     }
 
-    println!("{:?}", prev_edges);
-    println!("{:?}", next_edges);
-
     // Compute and run an execution plan for the graph.
     let plan = Plan::for_node(model, output)?;
     let mut changed;
     let mut forward = true;
 
     macro_rules! one_pass {
-        ($source:ident, $target:ident, $fn:ident) => ({
+        ($source:ident, $target:ident, $fn:ident) => {{
+            // TODO(liautaud): Remove this.
+            if debug {
+                println!("");
+                println!("Starting a round of {}.", stringify!($fn));
+            }
+
             for &n in &plan.order {
                 let inferred = {
                     let sources: Vec<_> = $source[n].iter().map(|&i| &edges[i].tensor).collect();
@@ -143,18 +150,15 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
                     let inferred = node.op.$fn(sources);
 
                     if inferred.is_err() {
-                        println!("Impossible to infer for {} ({}): {}", n, node.op_name, inferred.unwrap_err());
+                        // TODO(liautaud): Remove this.
+                        if debug {
+                            println!("- {} ({}): {}", n, node.op_name, inferred.unwrap_err());
+                        }
                         continue;
                     }
 
                     inferred.unwrap()
                 };
-
-                // println!("---");
-                // println!("Inferred for {} ({}).", n, model.get_node_by_id(n)?.op_name);
-                // println!("{:?}", $target[n]);
-                // println!("{:?}", inferred);
-                // println!("---");
 
                 for (i, &j) in $target[n].iter().enumerate() {
                     let unified = unify(&inferred[i], &edges[j].tensor)?;
@@ -162,19 +166,40 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
                         edges[j].tensor = unified;
                         changed = true;
                     }
+
+                    // TODO(liautaud): Remove this.
+                    if debug {
+                        let node_name = format!("[{}] ({})", n, model.get_node_by_id(n)?.op_name);
+                        let mut inferred_display = format!("{:?}", inferred);
+                        let mut unified_display = format!("{:?}", edges[j].tensor);
+                        inferred_display.truncate(150);
+                        unified_display.truncate(150);
+                        println!(
+                            "{}\n- Inferred: {}\n- Unified: {}",
+                            node_name, inferred_display, unified_display,
+                        );
+                    }
+                }
+
+                // TODO(liautaud): Remove this.
+                if debug {
+                    graphviz::display_graph("debug".to_string(), &model, &edges, &vec![n])?;
                 }
             }
-        })
+        }};
     };
+
+    // TODO(liautaud): Remove this.
+    if debug {
+        graphviz::display_graph("debug".to_string(), &model, &edges, &vec![])?;
+    }
 
     loop {
         changed = false;
 
         if forward {
-            println!("[Forward pass]");
             one_pass!(prev_edges, next_edges, infer_forward);
         } else {
-            println!("[Backward pass]");
             one_pass!(next_edges, prev_edges, infer_backward);
         }
 
