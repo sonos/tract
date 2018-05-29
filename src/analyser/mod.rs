@@ -107,8 +107,8 @@ pub struct Edge {
 pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
     // We first give an identity to each edge of the graph.
     let mut edges = vec![];
-    let mut prev_edges = vec![vec![]; model.nodes().len()];
-    let mut next_edges = vec![vec![]; model.nodes().len()];
+    let mut prev_edges = vec![Vec::new(); model.nodes().len()];
+    let mut next_edges = vec![Vec::new(); model.nodes().len()];
 
     for node in model.nodes() {
         for input in &node.inputs {
@@ -127,9 +127,13 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
         }
     }
 
+    println!("{:?}", prev_edges);
+    println!("{:?}", next_edges);
+
     // Compute and run an execution plan for the graph.
     let plan = Plan::for_node(model, output)?;
     let mut changed;
+    let mut forward = true;
 
     macro_rules! one_pass {
         ($source:ident, $target:ident, $fn:ident) => ({
@@ -137,18 +141,25 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
                 let inferred = {
                     let sources: Vec<_> = $source[n].iter().map(|&i| &edges[i].tensor).collect();
 
-                    let inferred = model.get_node_by_id(n)?.op.$fn(sources);
+                    let node = model.get_node_by_id(n)?;
+                    let inferred = node.op.$fn(sources);
 
                     if inferred.is_err() {
-                        println!("Error while inferring for {}: {}", n, inferred.unwrap_err());
+                        println!("Impossible to infer for {} ({}): {}", n, node.op_name, inferred.unwrap_err());
                         continue;
                     }
 
                     inferred.unwrap()
                 };
 
-                for &j in &$target[n] {
-                    let unified = unify(&inferred[j], &edges[j].tensor)?;
+                println!("---");
+                println!("Inferred for {} ({}).", n, model.get_node_by_id(n)?.op_name);
+                println!("{:?}", $target[n]);
+                println!("{:?}", inferred);
+                println!("---");
+
+                for (i, &j) in $target[n].iter().enumerate() {
+                    let unified = unify(&inferred[i], &edges[j].tensor)?;
                     if unified != edges[j].tensor {
                         edges[j].tensor = unified;
                         changed = true;
@@ -161,8 +172,13 @@ pub fn analyse<'a>(model: &'a Model, output: usize) -> Result<Vec<Edge>> {
     loop {
         changed = false;
 
-        one_pass!(prev_edges, next_edges, infer_forward);
-        one_pass!(next_edges, prev_edges, infer_backward);
+        if forward {
+            one_pass!(prev_edges, next_edges, infer_forward);
+        } else {
+            one_pass!(next_edges, prev_edges, infer_backward);
+        }
+
+        forward = !forward;
 
         if !changed {
             break;
