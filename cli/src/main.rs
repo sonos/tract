@@ -520,7 +520,7 @@ fn handle_analyse(params: Parameters) -> Result<()> {
     let output = model.get_node_by_id(params.output)?;
 
     info!("Starting the analysis.");
-    analyser::analyse(&model, output.id, true)?;
+    analyser::analyse(&model, output.id, false)?;
 
     Ok(())
 }

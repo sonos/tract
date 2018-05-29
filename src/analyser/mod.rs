@@ -112,9 +112,10 @@ pub struct Edge {
 /// take much longer to complete.
 pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<Edge>> {
     // We first give an identity to each edge of the graph.
+    let mut nodes = vec![];
     let mut edges = vec![];
-    let mut prev_edges = vec![Vec::new(); model.nodes().len()];
-    let mut next_edges = vec![Vec::new(); model.nodes().len()];
+    let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
+    let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
 
     for node in model.nodes() {
         for input in &node.inputs {
@@ -131,7 +132,28 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
             prev_edges[node.id].push(id);
             next_edges[input.0].push(id);
         }
+
+        nodes.push((
+            node.id,
+            node.name.clone(),
+            node.op_name.clone(),
+        ));
     }
+
+    // Add a special output node.
+    let special_node_id = nodes.len();
+    let special_edge_id = edges.len();
+    nodes.push((special_node_id, "output".to_string(), "output".to_string()));
+    edges.push(Edge {
+        id: special_edge_id,
+        from_node: output,
+        from_out: 0,
+        to_node: nodes.len() - 1,
+        tensor: ATensor::new(),
+    });
+
+    next_edges[output].push(special_edge_id);
+    prev_edges[special_node_id].push(special_edge_id);
 
     // Compute and run an execution plan for the graph.
     let plan = Plan::for_node(model, output)?;
@@ -149,6 +171,11 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
             for &n in &plan.order {
                 let inferred = {
                     let sources: Vec<_> = $source[n].iter().map(|&i| &edges[i].tensor).collect();
+
+                    // Don't do anything on the output node.
+                    if n == special_node_id {
+                        continue;
+                    }
 
                     let node = model.get_node_by_id(n)?;
                     let inferred = node.op.$fn(sources);
@@ -182,7 +209,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
 
                 // TODO(liautaud): Remove this.
                 if debug && model.get_node_by_id(n)?.op_name != "Const" {
-                    graphviz::display_graph("debug".to_string(), &model, &edges, &vec![n], forward)?;
+                    graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![n], forward)?;
                 }
             }
         }};
@@ -190,7 +217,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
 
     // TODO(liautaud): Remove this.
     if debug {
-        graphviz::display_graph("debug".to_string(), &model, &edges, &vec![], true)?;
+        graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![], true)?;
     }
 
     loop {
@@ -208,6 +235,9 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
             break;
         }
     }
+
+    // TODO(liautaud): This is not a great idea if we ship it as a library.
+    graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![], true)?;
 
     Ok(edges)
 }

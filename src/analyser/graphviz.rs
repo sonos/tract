@@ -3,7 +3,6 @@ use dot;
 use errors::*;
 use std::io;
 use std::io::Write;
-use Model;
 
 type Nd = (String, String, bool);
 type Ed = Edge;
@@ -81,23 +80,16 @@ impl<'a> dot::GraphWalk<'a, Nd, Ed> for Graph<'a> {
 /// Writes a DOT export of the analysed graph to a given Writer.
 pub fn render_dot<W: Write>(
     name: String,
-    model: &Model,
+    nodes: &Vec<(usize, String, String)>,
     edges: &Vec<Edge>,
     highlighted: &Vec<usize>,
     forward: bool,
     writer: &mut W,
 ) -> Result<()> {
-    let nodes = model
-        .nodes()
+    let nodes: Vec<_> = nodes
         .iter()
-        .map(|n| {
-            (
-                n.name.clone(),
-                n.op_name.clone(),
-                highlighted.contains(&n.id),
-            )
-        })
-        .collect::<Vec<_>>();
+        .map(|(id, name, op)| (name.clone(), op.clone(), highlighted.contains(id)))
+        .collect();
 
     let graph = Graph {
         name,
@@ -114,18 +106,18 @@ pub fn render_dot<W: Write>(
 /// Displays a DOT export of the analysed graph on the standard output.
 pub fn display_dot(
     name: String,
-    model: &Model,
+    nodes: &Vec<(usize, String, String)>,
     edges: &Vec<Edge>,
     highlighted: &Vec<usize>,
     forward: bool,
 ) -> Result<()> {
-    render_dot(name, model, edges, highlighted, forward, &mut io::stdout())
+    render_dot(name, nodes, edges, highlighted, forward, &mut io::stdout())
 }
 
 /// Displays a render of the analysed graph using the `dot` command.
 pub fn display_graph(
     name: String,
-    model: &Model,
+    nodes: &Vec<(usize, String, String)>,
     edges: &Vec<Edge>,
     highlighted: &Vec<usize>,
     forward: bool,
@@ -142,7 +134,7 @@ pub fn display_graph(
 
     render_dot(
         name,
-        model,
+        nodes,
         edges,
         highlighted,
         forward,
