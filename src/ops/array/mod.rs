@@ -98,11 +98,7 @@ impl Op for ConcatV2 {
             bail!("Concat operation only supports one output.");
         }
 
-        Ok(vec![ATensor {
-            datatype: outputs[0].datatype.clone(),
-            shape: ashape![..],
-            value: avalue!(_)
-        }])
+        unimplemented!()
     }
 }
 
@@ -176,11 +172,19 @@ impl Op for ExpandDims {
             bail!("ExpandDims operation only supports one output.");
         }
 
-        Ok(vec![ATensor {
+        let data = ATensor {
             datatype: outputs[0].datatype.clone(),
             shape: ashape![..],
             value: avalue!(_)
-        }])
+        };
+
+        let dims = ATensor {
+            datatype: atype!(DataType::DT_INT32),
+            shape: ashape![..],
+            value: avalue!(_)
+        };
+
+        Ok(vec![data, dims])
     }
 }
 
@@ -359,7 +363,7 @@ impl Op for Reshape {
 
         let shape = ATensor {
             datatype: atype!(DataType::DT_INT32),
-            shape: ashape![..],
+            shape: ashape![_],
             value: avalue!(_)
         };
 
