@@ -1,5 +1,3 @@
-extern crate dot;
-
 use Model;
 use errors::*;
 use ops::Op;
@@ -10,13 +8,11 @@ pub use self::types::*;
 
 #[macro_use]
 pub mod macros;
-
 #[macro_use]
 pub mod helpers;
-
+pub mod graphviz;
 #[cfg(test)]
 mod tests;
-
 
 /// Attempts to unify two abstract tensors into a more specialized one.
 pub fn unify(x: &ATensor, y: &ATensor) -> Result<ATensor> {
