@@ -99,7 +99,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
 }
 
 pub struct Plan {
-    order: Vec<usize>,
+    pub order: Vec<usize>,
 }
 
 impl Plan {
