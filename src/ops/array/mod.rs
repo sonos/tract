@@ -132,6 +132,8 @@ impl Op for ExpandDims {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+        use analyser::unify_shape;
+
         if inputs.len() != 2 {
             bail!("ExpandDims operation only supports two inputs.");
         }
@@ -139,6 +141,7 @@ impl Op for ExpandDims {
         try_infer_forward_concrete!(self, &inputs);
 
         // If we don't know the actual value, we can still compute the shape.
+        let input_shape = &inputs[0].shape;
         let mut dims: Vec<_> = inputs[1].value
             .concretize()?
             .as_i32s()
@@ -151,6 +154,7 @@ impl Op for ExpandDims {
 
         let mut output_shape = vec![];
         let mut previous_dim = 0;
+
         for dim in dims {
             output_shape.extend(repeat(adimension!(_)).take(dim - previous_dim));
             output_shape.push(adimension!(1));
@@ -159,7 +163,7 @@ impl Op for ExpandDims {
 
         let output = ATensor {
             datatype: inputs[0].datatype.clone(),
-            shape: AShape::Open(output_shape),
+            shape: unify_shape(input_shape, &AShape::Open(output_shape))?,
             value: avalue!(_),
         };
 

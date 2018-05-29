@@ -26,7 +26,7 @@ pub fn unify(x: &ATensor, y: &ATensor) -> Result<ATensor> {
 }
 
 /// Attempts to unify two abstract datatypes.
-fn unify_datatype(x: &AType, y: &AType) -> Result<AType> {
+pub fn unify_datatype(x: &AType, y: &AType) -> Result<AType> {
     use self::AType::*;
 
     let datatype = match (x, y) {
@@ -43,7 +43,7 @@ fn unify_datatype(x: &AType, y: &AType) -> Result<AType> {
 }
 
 /// Attempts to unify two abstract shapes.
-fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
+pub fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
     use self::ADimension::*;
     use self::AShape::*;
     use itertools::EitherOrBoth::{Both, Left, Right};
@@ -72,11 +72,15 @@ fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
         })
         .collect::<Result<_>>()?;
 
-    Ok(Closed(dimensions))
+    if x.is_open() && y.is_open() {
+        Ok(Open(dimensions))
+    } else {
+        Ok(Closed(dimensions))
+    }
 }
 
 /// Attempts to unify two abstract values.
-fn unify_value(x: &AValue, y: &AValue) -> Result<AValue> {
+pub fn unify_value(x: &AValue, y: &AValue) -> Result<AValue> {
     use self::AValue::*;
 
     let value = match (x, y) {
@@ -182,7 +186,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
                 }
 
                 // TODO(liautaud): Remove this.
-                if debug {
+                if debug && model.get_node_by_id(n)?.op_name != "Const" {
                     graphviz::display_graph("debug".to_string(), &model, &edges, &vec![n])?;
                 }
             }
