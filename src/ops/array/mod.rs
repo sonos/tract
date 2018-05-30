@@ -83,12 +83,12 @@ impl Op for ConcatV2 {
         // TODO(liautaud): Improve this to check whether the shapes actually match,
         //                 and sum the dimension over all the vectors instead of
         //                 just returning an unknown when possible.
-        let mut shape = most_specific_shape(shapes)?.inner().clone();
+        let mut shape = most_specific_shape(shapes)?.dims.clone();
         shape[axis as usize] = dimfact!(_);
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: ShapeFact::Closed(shape),
+            shape: ShapeFact::closed(shape),
             value: valuefact!(_),
         };
 
@@ -168,7 +168,7 @@ impl Op for ExpandDims {
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: unify_shape(input_shape, &ShapeFact::Open(output_shape))?,
+            shape: unify_shape(input_shape, &ShapeFact::open(output_shape))?,
             value: valuefact!(_),
         };
 
@@ -426,8 +426,6 @@ impl Op for Shape {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
-        use std::iter::repeat;
-
         if outputs.len() != 1 {
             bail!("Shape operation only supports one output.");
         }
@@ -451,11 +449,7 @@ impl Op for Shape {
                     bail!("Shape operation should produce a 1-D integer tensor.");
                 }
 
-                ShapeFact::Closed(
-                    repeat(dimfact!(_))
-                    .take(shape[0])
-                    .collect()
-                )
+                ShapeFact::closed(vec![dimfact!(_); shape[0]])
             }
         };
 

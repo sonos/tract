@@ -53,39 +53,34 @@ pub enum TypeFact {
 /// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
 /// `shapefact![..]` matches any shape.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ShapeFact {
-    Open(Vec<DimFact>),
-    Closed(Vec<DimFact>),
+pub struct ShapeFact {
+    pub open: bool,
+    pub dims: Vec<DimFact>
 }
 
 impl ShapeFact {
     /// Returns the most general shape fact possible.
     pub fn any() -> ShapeFact {
-        ShapeFact::Open(vec![])
+        ShapeFact::open(vec![])
     }
 
-    /// Returns whether the fact is open.
-    pub fn is_open(self: &ShapeFact) -> bool {
-        match self {
-            ShapeFact::Open(_) => true,
-            ShapeFact::Closed(_) => false,
-        }
+    /// Constructs an open shape fact.
+    pub fn open(dims: Vec<DimFact>) -> ShapeFact {
+        ShapeFact { open: true, dims }
     }
 
-    /// Returns the vector of dimensions defining the fact.
-    pub fn inner(self: &ShapeFact) -> &Vec<DimFact> {
-        match self {
-            ShapeFact::Open(v) | ShapeFact::Closed(v) => v,
-        }
+    /// Constructs a closed shape fact.
+    pub fn closed(dims: Vec<DimFact>) -> ShapeFact {
+        ShapeFact { open: false, dims }
     }
 
     /// Tries to transform the fact into a Vec<usize>, or returns
     /// an Err if some of the dimensions are unknown.
     pub fn concretize(self: &ShapeFact) -> Result<Vec<usize>> {
-        match self {
-            ShapeFact::Open(_) =>
-                bail!("Impossible to concretize an open shape."),
-            ShapeFact::Closed(v) => v
+        if self.open {
+            bail!("Impossible to concretize an open shape.")
+        } else {
+            self.dims
                 .iter()
                 .map(|d| match d {
                     DimFact::Any =>
@@ -101,7 +96,7 @@ impl ShapeFact {
 impl FromIterator<usize> for ShapeFact {
     /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item=usize>>(iter: I) -> ShapeFact {
-        ShapeFact::Closed(iter
+        ShapeFact::closed(iter
             .into_iter()
             .map(|d| DimFact::Only(d))
             .collect())
@@ -111,7 +106,7 @@ impl FromIterator<usize> for ShapeFact {
 impl<'a> FromIterator<&'a usize> for ShapeFact {
     /// Converts an iterator over &usize into a closed shape.
     fn from_iter<I: IntoIterator<Item=&'a usize>>(iter: I) -> ShapeFact {
-        ShapeFact::Closed(iter
+        ShapeFact::closed(iter
             .into_iter()
             .map(|d| DimFact::Only(*d))
             .collect())

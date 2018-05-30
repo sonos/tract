@@ -53,12 +53,12 @@ where
             .map(|t| &t.shape);
 
         // We get the most specific shape, and replace the axis with an unknown.
-        let mut shape = most_specific_shape(shapes)?.inner().clone();
+        let mut shape = most_specific_shape(shapes)?.dims.clone();
         shape.insert(self.axis, dimfact!(n));
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: ShapeFact::Closed(shape),
+            shape: ShapeFact::closed(shape),
             value: valuefact!(_),
         };
 
@@ -72,22 +72,16 @@ where
         }
 
         // The operation adds a dimension, so all we have to do is remove it.
-        let shape = match &outputs[0].shape {
-            ShapeFact::Open(v) => {
-                let mut inner = v.clone();
-                if self.axis > inner.len() {
-                    inner.remove(self.axis);
-                }
-
-                ShapeFact::Open(inner)
-            },
-
-            ShapeFact::Closed(v) => {
-                let mut inner = v.clone();
+        let mut inner = outputs[0].shape.dims.clone();
+        let shape = if outputs[0].shape.open {
+            if self.axis > inner.len() {
                 inner.remove(self.axis);
-
-                ShapeFact::Closed(inner)
             }
+
+            ShapeFact::open(inner)
+        } else {
+            inner.remove(self.axis);
+            ShapeFact::closed(inner)
         };
 
         Ok(vec![TensorFact {

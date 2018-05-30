@@ -52,14 +52,14 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Vec<Tens
 
 /// Infers basic shape properties in the case of broadcasting operators.
 pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<ShapeFact> {
-    if shapes.iter().any(|s| s.is_open()) {
+    if shapes.iter().any(|s| s.open) {
         bail!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
     }
 
-    let shapes: Vec<_> = shapes.iter()
-        .map(|s| s.inner())
+    let dims: Vec<_> = shapes.iter()
+        .map(|s| &s.dims)
         .collect();
-    let bound = shapes.iter()
+    let bound = dims.iter()
         .map(|s| s.len())
         .max()
         .unwrap();
@@ -70,7 +70,7 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<ShapeFact> {
         let mut previous = None;
         let mut unknown = 0;
 
-        for shape in &shapes {
+        for shape in &dims {
             if shape.len() < i {
                 continue;
             }
@@ -95,7 +95,7 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<ShapeFact> {
         }
     }
 
-    Ok(ShapeFact::Closed(output_shape))
+    Ok(ShapeFact::closed(output_shape))
 }
 
 /// Returns the most specific closed shape out of an iterator.
@@ -105,25 +105,22 @@ pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a ShapeFact>>(iter: I) -> 
     let mut best = None;
 
     for shape in iter {
-        match shape {
-            ShapeFact::Open(_) => continue,
-            ShapeFact::Closed(s) => {
-                let rank = s.len();
+        if !shape.open {
+            let rank = shape.dims.len();
 
-                if prev_rank.is_some() && rank != prev_rank.unwrap() {
-                    bail!("Rank mismatch between different shapes.");
-                } else {
-                    prev_rank = Some(rank);
-                }
-
-                let concrete = s.iter().filter(|d| d.is_concrete()).count();
-
-                if prev_concrete.is_none() || concrete > prev_concrete.unwrap() {
-                    prev_concrete = Some(concrete);
-                    best = Some(shape)
-                }
+            if prev_rank.is_some() && rank != prev_rank.unwrap() {
+                bail!("Rank mismatch between different shapes.");
+            } else {
+                prev_rank = Some(rank);
             }
-        };
+
+            let concrete = shape.dims.iter().filter(|d| d.is_concrete()).count();
+
+            if prev_concrete.is_none() || concrete > prev_concrete.unwrap() {
+                prev_concrete = Some(concrete);
+                best = Some(shape)
+            }
+        }
     }
 
     Ok(best.unwrap())

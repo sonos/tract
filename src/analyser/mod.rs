@@ -40,12 +40,11 @@ pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
 /// Attempts to unify two shape facts.
 pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
     use self::DimFact::*;
-    use self::ShapeFact::*;
     use itertools::EitherOrBoth::{Both, Left, Right};
     use itertools::Itertools;
 
-    let xi = x.inner().iter();
-    let yi = y.inner().iter();
+    let xi = x.dims.iter();
+    let yi = y.dims.iter();
 
     let dimensions: Vec<_> = xi.zip_longest(yi)
         .map(|r| match r {
@@ -56,8 +55,8 @@ pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
             Both(Only(i), Only(j)) if i == j => Ok(Only(*i)),
             Both(Only(i), Only(j)) => bail!("Impossible to unify dimensions {:?} and {:?}.", i, j),
 
-            Left(d) if y.is_open() => Ok(*d),
-            Right(d) if x.is_open() => Ok(*d),
+            Left(d) if y.open => Ok(*d),
+            Right(d) if x.open => Ok(*d),
 
             Left(_) | Right(_) => bail!(
                 "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",
@@ -67,10 +66,10 @@ pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
         })
         .collect::<Result<_>>()?;
 
-    if x.is_open() && y.is_open() {
-        Ok(Open(dimensions))
+    if x.open && y.open {
+        Ok(ShapeFact::open(dimensions))
     } else {
-        Ok(Closed(dimensions))
+        Ok(ShapeFact::closed(dimensions))
     }
 }
 
@@ -263,81 +262,81 @@ mod tests {
 
     #[test]
     fn unify_same_shape_1() {
-        let s = ShapeFact::Closed(vec![]);
+        let s = ShapeFact::closed(vec![]);
         assert_eq!(unify_shape(&s, &s).unwrap(), s);
     }
 
     #[test]
     fn unify_same_shape_2() {
         use super::DimFact::*;
-        let s = ShapeFact::Closed(vec![Any]);
+        let s = ShapeFact::closed(vec![Any]);
         assert_eq!(unify_shape(&s, &s).unwrap(), s);
     }
 
     #[test]
     fn unify_same_shape_3() {
         use super::DimFact::*;
-        let s = ShapeFact::Closed(vec![Only(1), Only(2)]);
+        let s = ShapeFact::closed(vec![Only(1), Only(2)]);
         assert_eq!(unify_shape(&s, &s).unwrap(), s);
     }
 
     #[test]
     fn unify_different_shapes_1() {
         use super::DimFact::*;
-        let s1 = ShapeFact::Closed(vec![Only(1), Only(2)]);
-        let s2 = ShapeFact::Closed(vec![Only(1)]);
+        let s1 = ShapeFact::closed(vec![Only(1), Only(2)]);
+        let s2 = ShapeFact::closed(vec![Only(1)]);
         assert!(unify_shape(&s1, &s2).is_err());
     }
 
     #[test]
     fn unify_different_shapes_2() {
         use super::DimFact::*;
-        let s1 = ShapeFact::Closed(vec![Only(1), Only(2)]);
-        let s2 = ShapeFact::Closed(vec![Any]);
+        let s1 = ShapeFact::closed(vec![Only(1), Only(2)]);
+        let s2 = ShapeFact::closed(vec![Any]);
         assert!(unify_shape(&s1, &s2).is_err());
     }
 
     #[test]
     fn unify_different_shapes_3() {
         use super::DimFact::*;
-        let s1 = ShapeFact::Open(vec![Only(1), Only(2)]);
-        let s2 = ShapeFact::Closed(vec![Any]);
+        let s1 = ShapeFact::open(vec![Only(1), Only(2)]);
+        let s2 = ShapeFact::closed(vec![Any]);
         assert!(unify_shape(&s1, &s2).is_err());
     }
 
     #[test]
     fn unify_different_shapes_4() {
         use super::DimFact::*;
-        let s1 = ShapeFact::Closed(vec![Any]);
-        let s2 = ShapeFact::Closed(vec![Any]);
-        let sr = ShapeFact::Closed(vec![Any]);
+        let s1 = ShapeFact::closed(vec![Any]);
+        let s2 = ShapeFact::closed(vec![Any]);
+        let sr = ShapeFact::closed(vec![Any]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 
     #[test]
     fn unify_different_shapes_5() {
         use super::DimFact::*;
-        let s1 = ShapeFact::Closed(vec![Any]);
-        let s2 = ShapeFact::Closed(vec![Only(1)]);
-        let sr = ShapeFact::Closed(vec![Only(1)]);
+        let s1 = ShapeFact::closed(vec![Any]);
+        let s2 = ShapeFact::closed(vec![Only(1)]);
+        let sr = ShapeFact::closed(vec![Only(1)]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 
     #[test]
     fn unify_different_shapes_6() {
         use super::DimFact::*;
-        let s1 = ShapeFact::Open(vec![]);
-        let s2 = ShapeFact::Closed(vec![Only(1)]);
-        let sr = ShapeFact::Closed(vec![Only(1)]);
+        let s1 = ShapeFact::open(vec![]);
+        let s2 = ShapeFact::closed(vec![Only(1)]);
+        let sr = ShapeFact::closed(vec![Only(1)]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 
     #[test]
     fn unify_different_shapes_7() {
         use super::DimFact::*;
-        let s1 = ShapeFact::Open(vec![Any, Only(2)]);
-        let s2 = ShapeFact::Closed(vec![Only(1), Any, Any]);
-        let sr = ShapeFact::Closed(vec![Only(1), Only(2), Any]);
+        let s1 = ShapeFact::open(vec![Any, Only(2)]);
+        let s2 = ShapeFact::closed(vec![Only(1), Any, Any]);
+        let sr = ShapeFact::closed(vec![Only(1), Only(2), Any]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 

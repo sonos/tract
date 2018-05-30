@@ -12,13 +12,13 @@ macro_rules! typefact {
 #[macro_export]
 macro_rules! shapefact {
     () =>
-        ($crate::analyser::ShapeFact::Closed(vec![]));
+        ($crate::analyser::ShapeFact::closed(vec![]));
     (..) =>
-        ($crate::analyser::ShapeFact::Open(vec![]));
+        ($crate::analyser::ShapeFact::open(vec![]));
     ($($arg:tt),+; ..) =>
-        ($crate::analyser::ShapeFact::Open(vec![$(dimfact!($arg)),+]));
+        ($crate::analyser::ShapeFact::open(vec![$(dimfact!($arg)),+]));
     ($($arg:tt),+) =>
-        ($crate::analyser::ShapeFact::Closed(vec![$(dimfact!($arg)),+]));
+        ($crate::analyser::ShapeFact::closed(vec![$(dimfact!($arg)),+]));
 }
 
 /// Constructs a dimension fact.
@@ -43,24 +43,24 @@ macro_rules! valuefact {
 mod tests {
     #[test]
     fn shape_macro_closed_1() {
-        assert_eq!(shapefact![], ShapeFact::Closed(vec![]));
+        assert_eq!(shapefact![], ShapeFact::closed(vec![]));
     }
 
     #[test]
     fn shape_macro_closed_2() {
-        assert_eq!(shapefact![1], ShapeFact::Closed(vec![DimFact::Only(1)]));
+        assert_eq!(shapefact![1], ShapeFact::closed(vec![DimFact::Only(1)]));
     }
 
     #[test]
     fn shape_macro_closed_3() {
-        assert_eq!(shapefact![(1 + 1)], ShapeFact::Closed(vec![DimFact::Only(2)]));
+        assert_eq!(shapefact![(1 + 1)], ShapeFact::closed(vec![DimFact::Only(2)]));
     }
 
     #[test]
     fn shape_macro_closed_4() {
         assert_eq!(
             shapefact![_, 2],
-            ShapeFact::Closed(vec![
+            ShapeFact::closed(vec![
                 DimFact::Any,
                 DimFact::Only(2)
             ])
@@ -71,7 +71,7 @@ mod tests {
     fn shape_macro_closed_5() {
         assert_eq!(
             shapefact![(1 + 1), _, 2],
-            ShapeFact::Closed(vec![
+            ShapeFact::closed(vec![
                 DimFact::Only(2),
                 DimFact::Any,
                 DimFact::Only(2)
@@ -81,24 +81,24 @@ mod tests {
 
     #[test]
     fn shape_macro_open_1() {
-        assert_eq!(shapefact![..], ShapeFact::Open(vec![]));
+        assert_eq!(shapefact![..], ShapeFact::open(vec![]));
     }
 
     #[test]
     fn shape_macro_open_2() {
-        assert_eq!(shapefact![1; ..], ShapeFact::Open(vec![DimFact::Only(1)]));
+        assert_eq!(shapefact![1; ..], ShapeFact::open(vec![DimFact::Only(1)]));
     }
 
     #[test]
     fn shape_macro_open_3() {
-        assert_eq!(shapefact![(1 + 1); ..], ShapeFact::Open(vec![DimFact::Only(2)]));
+        assert_eq!(shapefact![(1 + 1); ..], ShapeFact::open(vec![DimFact::Only(2)]));
     }
 
     #[test]
     fn shape_macro_open_4() {
         assert_eq!(
             shapefact![_, 2; ..],
-            ShapeFact::Open(vec![
+            ShapeFact::open(vec![
                 DimFact::Any,
                 DimFact::Only(2)
             ])
@@ -109,7 +109,7 @@ mod tests {
     fn shape_macro_open_5() {
         assert_eq!(
             shapefact![(1 + 1), _, 2; ..],
-            ShapeFact::Open(vec![
+            ShapeFact::open(vec![
                 DimFact::Only(2),
                 DimFact::Any,
                 DimFact::Only(2)
