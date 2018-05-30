@@ -29,18 +29,11 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&ATensor>) -> Result<Vec<ATe
     }
 }
 
-#[macro_export]
-macro_rules! try_infer_forward_concrete {
-    ($op:expr, $inputs:expr) => ({
-        if let Ok(output) = $crate::analyser::helpers::infer_forward_concrete($op, $inputs) {
-            return Ok(output);
-        }
-    })
-}
-
 /// Infers basic properties in the case of unary or binary operators.
 pub fn infer_forward_basic(op: &Op, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-    try_infer_forward_concrete!(op, &inputs);
+    if let Ok(output) = infer_forward_concrete(op, &inputs) {
+        return Ok(output);
+    }
 
     // Otherwise we can only deduce the type and shape of the output.
     let input_shapes: Vec<_> = inputs

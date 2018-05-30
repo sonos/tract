@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use analyser::{ATensor, AShape};
 use analyser::helpers::most_specific_shape;
+use analyser::helpers::infer_forward_concrete;
 use Result;
 use super::{Input, Op};
 use matrix::Datum;
@@ -41,7 +42,9 @@ where
             bail!("Pack operation needs at least one input.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // If we don't know the actual value, we can still compute the shape.
         let n = inputs.len();

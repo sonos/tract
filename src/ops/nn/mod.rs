@@ -1,5 +1,6 @@
 use super::{Input, Op, OpRegister};
 use analyser::ATensor;
+use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
 use {Matrix, Result};
 
@@ -50,7 +51,9 @@ impl Op for Softmax {
             bail!("Softmax operation only supports one input.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         let output = ATensor {
             datatype: atype!(DataType::DT_FLOAT),

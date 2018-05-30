@@ -6,6 +6,7 @@ mod strided_slice;
 
 use analyser::{ATensor, AShape, AValue};
 use analyser::helpers::most_specific_shape;
+use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
@@ -60,7 +61,9 @@ impl Op for ConcatV2 {
             bail!("Concat operation needs at least two inputs.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // If we don't know the actual value, we can still compute the shape.
         let axis: i32 = inputs[self.n].value
@@ -138,7 +141,9 @@ impl Op for ExpandDims {
             bail!("ExpandDims operation only supports two inputs.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // If we don't know the actual value, we can still compute the shape.
         let input_shape = &inputs[0].shape;
@@ -319,7 +324,9 @@ impl Op for Reshape {
             bail!("Reshape operation only supports two inputs.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // If we don't know the actual value, we can still compute the shape.
         let dims: Vec<_> = inputs[1].value
@@ -502,7 +509,9 @@ impl Op for Squeeze {
             bail!("Squeeze operation only supports one input.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         let output = match inputs[0].shape.concretize() {
             Ok(shape) => ATensor {

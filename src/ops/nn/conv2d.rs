@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use analyser::{ATensor, AShape};
+use analyser::helpers::infer_forward_concrete;
 use Result;
 use super::{Input, Op};
 use ndarray::prelude::*;
@@ -54,7 +55,9 @@ impl<T: Datum> Op for Conv2D<T> {
             bail!("Conv2D operation only supports two inputs.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // If we don't know the actual value, we can still compute the shape.
         fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&ATensor>) -> Result<AShape> where T: Datum {

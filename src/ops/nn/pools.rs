@@ -1,4 +1,5 @@
 use analyser::ATensor;
+use analyser::helpers::infer_forward_concrete;
 use {Matrix, Result};
 use super::{Input, Op};
 use ndarray::prelude::*;
@@ -63,7 +64,9 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
             bail!("Pool operations only supports one input.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // If we don't know the actual value, we can still compute the shape.
         let shape = match inputs[0].shape.concretize()?.as_slice() {

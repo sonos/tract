@@ -1,4 +1,5 @@
 use analyser::ATensor;
+use analyser::helpers::infer_forward_concrete;
 use ndarray::prelude::*;
 use {Matrix, Result};
 use ops::{Input, Op};
@@ -119,7 +120,9 @@ impl Op for StridedSlice {
             bail!("StridedSlice operation only supports four inputs.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // TODO(liautaud): It will be fun implementing this, I promess.
         unimplemented!()

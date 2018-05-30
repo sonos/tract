@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use analyser::ATensor;
+use analyser::helpers::infer_forward_concrete;
 use Result;
 use super::{Input, Op};
 use matrix::Datum;
@@ -74,7 +75,9 @@ impl<T: Datum> Op for SpaceToBatch<T> {
             bail!("SpaceToBatchND operation only supports three inputs.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // TODO(liautaud): It will be fun implementing this, I promess.
         unimplemented!()
@@ -162,7 +165,9 @@ impl<T: Datum> Op for BatchToSpace<T> {
             bail!("BatchToSpaceND operation only supports three inputs.");
         }
 
-        try_infer_forward_concrete!(self, &inputs);
+        if let Ok(output) = infer_forward_concrete(self, &inputs) {
+            return Ok(output);
+        }
 
         // TODO(liautaud): It will be fun implementing this, I promess.
         unimplemented!()
