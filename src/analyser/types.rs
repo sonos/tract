@@ -171,3 +171,18 @@ impl AValue {
         }
     }
 }
+
+#[cfg(tests)]
+mod tests {
+    #[test]
+    fn new_abstract_tensor() {
+        assert_eq!(
+            ATensor::new(),
+            ATensor {
+                datatype: AType::Any,
+                shape: AShape::any(),
+                value: AValue::Any,
+            }
+        );
+    }
+}
