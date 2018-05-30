@@ -1,6 +1,7 @@
 use errors::*;
 use ops::Op;
 use Model;
+use Node;
 use Plan;
 
 mod types;
@@ -90,147 +91,173 @@ pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
     Ok(value)
 }
 
+/// An edge of the analysed graph, annotated by a fact.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
     pub id: usize,
     pub from_node: usize,
     pub from_out: usize,
     pub to_node: usize,
-    pub tensor: TensorFact,
+    pub fact: TensorFact,
 }
 
-/// Runs the analyser on the given graph.
-///
-/// The output argument is used to infer an execution plan for the graph.
-/// Changing it won't alter the correctness of the analysis, but it might
-/// take much longer to complete.
-pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<(Vec<(usize, String, String)>, Vec<Edge>)> {
-    // We first give an identity to each edge of the graph.
-    let mut nodes = vec![];
-    let mut edges = vec![];
-    let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
-    let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
+/// A graph analyser, along with its current state.
+#[derive(Debug)]
+pub struct Analyser<'n> {
+    // The graph being analysed.
+    nodes: Vec<Option<&'n Node>>,
+    edges: Vec<Edge>,
+    prev_edges: Vec<Vec<usize>>,
+    next_edges: Vec<Vec<usize>>,
 
-    for node in model.nodes() {
-        for input in &node.inputs {
-            let id = edges.len();
+    // The execution plan for this graph.
+    plan: Vec<usize>,
 
-            edges.push(Edge {
-                id,
-                from_node: input.0,
-                from_out: input.1.unwrap_or(0),
-                to_node: node.id,
-                tensor: TensorFact::new(),
-            });
+    // The current state of the algorithm.
+    current_pass: usize,
+    current_step: usize,
+    current_direction: bool,
+}
 
-            prev_edges[node.id].push(id);
-            next_edges[input.0].push(id);
+impl<'n> Analyser<'n> {
+    /// Constructs an analyser for the given graph.
+    ///
+    /// The output argument is used to infer an execution plan for the graph.
+    /// Changing it won't alter the correctness of the analysis, but it might
+    /// take much longer to complete.
+    pub fn new<'a>(model: &'a Model, output: usize) -> Result<Analyser> {
+        let mut nodes = vec![];
+        let mut edges = vec![];
+        let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
+        let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
+
+        for node in model.nodes() {
+            for input in &node.inputs {
+                let id = edges.len();
+
+                edges.push(Edge {
+                    id,
+                    from_node: input.0,
+                    from_out: input.1.unwrap_or(0),
+                    to_node: node.id,
+                    fact: TensorFact::new(),
+                });
+
+                prev_edges[node.id].push(id);
+                next_edges[input.0].push(id);
+            }
+
+            nodes.push(Some(node));
         }
 
-        nodes.push((
-            node.id,
-            node.name.clone(),
-            node.op_name.clone(),
-        ));
+        // Add a special output node.
+        let special_node_id = nodes.len();
+        let special_edge_id = edges.len();
+        nodes.push(None);
+        edges.push(Edge {
+            id: special_edge_id,
+            from_node: output,
+            from_out: 0,
+            to_node: nodes.len() - 1,
+            fact: TensorFact::new(),
+        });
+
+        next_edges[output].push(special_edge_id);
+        prev_edges[special_node_id].push(special_edge_id);
+
+        // Compute an execution plan for the graph.
+        let plan = Plan::for_node(model, output)?.order;
+        let current_pass = 0;
+        let current_step = 0;
+        let current_direction = true;
+
+        Ok(Analyser {
+            nodes, edges, prev_edges, next_edges, plan,
+            current_pass, current_step, current_direction
+        })
     }
 
-    // Add a special output node.
-    let special_node_id = nodes.len();
-    let special_edge_id = edges.len();
-    nodes.push((special_node_id, "output".to_string(), "output".to_string()));
-    edges.push(Edge {
-        id: special_edge_id,
-        from_node: output,
-        from_out: 0,
-        to_node: nodes.len() - 1,
-        tensor: TensorFact::new(),
-    });
+    /// Runs the entire analysis at once.
+    pub fn run(&mut self) -> Result<()> {
+        self.current_pass = 0;
 
-    next_edges[output].push(special_edge_id);
-    prev_edges[special_node_id].push(special_edge_id);
-
-    // Compute and run an execution plan for the graph.
-    let plan = Plan::for_node(model, output)?;
-    let mut changed;
-    let mut forward = true;
-
-    macro_rules! one_pass {
-        ($source:ident, $target:ident, $fn:ident) => {{
-            // TODO(liautaud): Remove this.
-            if debug {
-                println!("");
-                println!("Starting a round of {}.", stringify!($fn));
+        loop {
+            if !self.run_pass()? {
+                return Ok(());
             }
-
-            for &n in &plan.order {
-                let inferred = {
-                    let sources: Vec<_> = $source[n].iter().map(|&i| &edges[i].tensor).collect();
-
-                    // Don't do anything on the output node.
-                    if n == special_node_id {
-                        continue;
-                    }
-
-                    let node = model.get_node_by_id(n)?;
-                    let inferred = node.op.$fn(sources);
-
-                    if inferred.is_err() {
-                        // TODO(liautaud): Remove this.
-                        if debug {
-                            println!("[{}] ({}): {}", n, node.op_name, inferred.unwrap_err());
-                        }
-                        continue;
-                    }
-
-                    inferred.unwrap()
-                };
-
-                for (i, &j) in $target[n].iter().enumerate() {
-                    let unified = unify(&inferred[i], &edges[j].tensor)?;
-                    if unified != edges[j].tensor {
-                        edges[j].tensor = unified;
-                        changed = true;
-                    }
-
-                    // TODO(liautaud): Remove this.
-                    if debug {
-                        let node_name = format!("[{}] ({})", n, model.get_node_by_id(n)?.op_name);
-                        let mut inferred_display = format!("{:?}", inferred);
-                        inferred_display.truncate(150);
-                        println!("{} Inferred: {}", node_name, inferred_display);
-                    }
-                }
-
-                // TODO(liautaud): Remove this.
-                if debug && model.get_node_by_id(n)?.op_name != "Const" {
-                    graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![n], forward)?;
-                }
-            }
-        }};
-    };
-
-    // TODO(liautaud): Remove this.
-    if debug {
-        graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![], true)?;
+        }
     }
 
-    loop {
-        changed = false;
+    /// Runs a single pass of the analysis.
+    pub fn run_pass(&mut self) -> Result<bool> {
+        self.current_step = 0;
+        let mut changed = false;
 
-        if forward {
-            one_pass!(prev_edges, next_edges, infer_forward);
+        for _ in 0..self.plan.len() {
+            if self.run_step()? {
+                changed = true;
+            }
+        }
+
+        Ok(changed)
+    }
+
+    /// Runs a single step of the analysis.
+    pub fn run_step(&mut self) -> Result<bool> {
+        let node = self.nodes[self.plan[self.current_step]];
+
+        // The node is a special node, don't do anything with it.
+        if node.is_none() {
+            return Ok(false);
+        }
+
+        let (source, target) = if self.current_direction {
+            (&self.prev_edges, &self.next_edges)
         } else {
-            one_pass!(next_edges, prev_edges, infer_backward);
+            (&self.next_edges, &self.prev_edges)
+        };
+
+        let node = node.unwrap();
+
+        let inferred = {
+            let sources: Vec<_> = source[node.id].iter()
+                .map(|&i| &self.edges[i].fact)
+                .collect();
+
+            let inferred = if self.current_direction {
+                node.op.infer_forward(sources)
+            } else {
+                node.op.infer_backward(sources)
+            };
+
+            // TODO(liautaud): Change this to Option<_>.
+            if inferred.is_err() {
+                return Ok(false);
+            }
+
+            inferred.unwrap()
+        };
+
+        let mut changed = false;
+
+        for (i, &j) in target[node.id].iter().enumerate() {
+            let unified = unify(&inferred[i], &self.edges[j].fact)?;
+            if unified != self.edges[j].fact {
+                self.edges[j].fact = unified;
+                changed = true;
+            }
         }
 
-        forward = !forward;
-
-        if !changed {
-            break;
+        // Switch to the next step.
+        self.current_step += 1;
+        if self.current_step == self.plan.len() {
+            self.current_step = 0;
+            self.current_pass += 1;
+            self.current_direction = !self.current_direction;
         }
+
+        Ok(changed)
     }
-
-    Ok((nodes, edges))
 }
 
 #[cfg(tests)]

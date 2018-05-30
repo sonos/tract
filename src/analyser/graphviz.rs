@@ -42,9 +42,9 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
 
         let mut label = format!(
             "{:?}\n{:?}\n{}",
-            e.tensor.datatype,
-            e.tensor.shape,
-            match e.tensor.value { Any => "Any", Only(_) => "Only(_)" }
+            e.fact.datatype,
+            e.fact.shape,
+            match e.fact.value { Any => "Any", Only(_) => "Only(_)" }
         );
         label.truncate(150);
 
