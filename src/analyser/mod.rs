@@ -11,7 +11,6 @@ pub use self::types::*;
 pub mod macros;
 #[macro_use]
 pub mod helpers;
-pub mod graphviz;
 
 /// Attempts to unify two tensor facts into a more specialized one.
 pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
@@ -105,8 +104,8 @@ pub struct Edge {
 #[derive(Debug)]
 pub struct Analyser<'n> {
     // The graph being analysed.
-    nodes: Vec<Option<&'n Node>>,
-    edges: Vec<Edge>,
+    pub nodes: Vec<Option<&'n Node>>,
+    pub edges: Vec<Edge>,
     prev_edges: Vec<Vec<usize>>,
     next_edges: Vec<Vec<usize>>,
 
@@ -116,7 +115,7 @@ pub struct Analyser<'n> {
     // The current state of the algorithm.
     current_pass: usize,
     current_step: usize,
-    current_direction: bool,
+    pub current_direction: bool,
 }
 
 impl<'n> Analyser<'n> {

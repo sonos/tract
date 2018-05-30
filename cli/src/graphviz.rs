@@ -1,14 +1,12 @@
-use analyser::Edge;
 use dot;
 use errors::*;
-use std::io;
 use std::io::Write;
+use tfdeploy::analyser::*;
 
 type Nd = (String, String, bool);
 type Ed = Edge;
 
 struct Graph<'a> {
-    name: String,
     forward: bool,
     nodes: &'a [Nd],
     edges: &'a [Ed],
@@ -22,7 +20,7 @@ fn slugify(text: &String) -> String {
 /// An implementation of dot::Labeller for the analyser.
 impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
     fn graph_id(&'a self) -> dot::Id<'a> {
-        dot::Id::new(format!("graph_{}", slugify(&self.name))).unwrap()
+        dot::Id::new("analysed_graph").unwrap()
     }
     fn node_id(&'a self, n: &Nd) -> dot::Id<'a> {
         dot::Id::new(format!("node_{}", slugify(&n.0))).unwrap()
@@ -38,7 +36,7 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
         }
     }
     fn edge_label<'b>(&'b self, e: &Ed) -> dot::LabelText<'b> {
-        use analyser::ValueFact::*;
+        use self::ValueFact::*;
 
         let mut label = format!(
             "{:?}\n{:?}\n{}",
@@ -79,23 +77,26 @@ impl<'a> dot::GraphWalk<'a, Nd, Ed> for Graph<'a> {
 
 /// Writes a DOT export of the analysed graph to a given Writer.
 pub fn render_dot<W: Write>(
-    name: String,
-    nodes: &Vec<(usize, String, String)>,
-    edges: &Vec<Edge>,
+    analyser: &Analyser,
     highlighted: &Vec<usize>,
-    forward: bool,
-    writer: &mut W,
+    writer: &mut W
 ) -> Result<()> {
-    let nodes: Vec<_> = nodes
+    let nodes: Vec<_> = analyser.nodes
         .iter()
-        .map(|(id, name, op)| (name.clone(), op.clone(), highlighted.contains(id)))
+        .map(|n| match n {
+            Some(n) => (
+                n.name.clone(),
+                n.op_name.clone(),
+                highlighted.contains(&n.id)
+            ),
+            None => ("output".to_string(), "output".to_string(), false)
+        })
         .collect();
 
     let graph = Graph {
-        name,
-        forward,
+        forward: analyser.current_direction,
         nodes: nodes.as_slice(),
-        edges: edges.as_slice(),
+        edges: analyser.edges.as_slice(),
     };
 
     dot::render(&graph, writer)?;
@@ -103,25 +104,13 @@ pub fn render_dot<W: Write>(
     Ok(())
 }
 
-/// Displays a DOT export of the analysed graph on the standard output.
-pub fn display_dot(
-    name: String,
-    nodes: &Vec<(usize, String, String)>,
-    edges: &Vec<Edge>,
-    highlighted: &Vec<usize>,
-    forward: bool,
-) -> Result<()> {
-    render_dot(name, nodes, edges, highlighted, forward, &mut io::stdout())
-}
+// /// Displays a DOT export of the analysed graph on the standard output.
+// pub fn display_dot(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()> {
+//     render_dot(analyser, highlighted, &mut io::stdout())
+// }
 
 /// Displays a render of the analysed graph using the `dot` command.
-pub fn display_graph(
-    name: String,
-    nodes: &Vec<(usize, String, String)>,
-    edges: &Vec<Edge>,
-    highlighted: &Vec<usize>,
-    forward: bool,
-) -> Result<()> {
+pub fn display_graph(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()> {
     use std::process::{Command, Stdio};
 
     let renderer = Command::new("dot")
@@ -132,14 +121,7 @@ pub fn display_graph(
         .stdout(Stdio::piped())
         .spawn()?;
 
-    render_dot(
-        name,
-        nodes,
-        edges,
-        highlighted,
-        forward,
-        &mut renderer.stdin.unwrap(),
-    )?;
+    render_dot(analyser, highlighted, &mut renderer.stdin.unwrap())?;
 
     let _ = Command::new("eog")
         .arg("--fullscreen")

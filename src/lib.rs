@@ -33,7 +33,6 @@ extern crate bit_set;
 extern crate blis_src;
 #[macro_use]
 extern crate derive_new;
-extern crate dot;
 #[macro_use]
 extern crate error_chain;
 #[cfg(feature="image_ops")]

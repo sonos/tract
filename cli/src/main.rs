@@ -3,6 +3,7 @@ extern crate clap;
 extern crate colored;
 #[cfg(feature = "tensorflow")]
 extern crate conform;
+extern crate dot;
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
@@ -22,7 +23,7 @@ use std::time::Instant;
 
 use simplelog::{Config, LevelFilter, TermLogger};
 use simplelog::Level::Info;
-use tfdeploy::analyser;
+use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Matrix;
@@ -43,6 +44,7 @@ use utils::random_matrix;
 mod errors;
 mod format;
 mod utils;
+mod graphviz;
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u32 = 10_000;
@@ -521,8 +523,9 @@ fn handle_analyse(params: Parameters) -> Result<()> {
 
     info!("Starting the analysis.");
 
-    let (nodes, edges) = analyser::analyse(&model, output.id, false)?;
-    analyser::graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![], true)?;
+    let mut analyser = Analyser::new(&model, output.id)?;
+    analyser.run()?;
+    graphviz::display_graph(&analyser, &vec![])?;
 
     Ok(())
 }
