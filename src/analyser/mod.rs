@@ -110,7 +110,7 @@ pub struct Edge {
 /// The output argument is used to infer an execution plan for the graph.
 /// Changing it won't alter the correctness of the analysis, but it might
 /// take much longer to complete.
-pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<Edge>> {
+pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<(Vec<(usize, String, String)>, Vec<Edge>)> {
     // We first give an identity to each edge of the graph.
     let mut nodes = vec![];
     let mut edges = vec![];
@@ -236,8 +236,5 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<Vec<E
         }
     }
 
-    // TODO(liautaud): This is not a great idea if we ship it as a library.
-    graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![], true)?;
-
-    Ok(edges)
+    Ok((nodes, edges))
 }

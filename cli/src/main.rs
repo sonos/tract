@@ -520,7 +520,9 @@ fn handle_analyse(params: Parameters) -> Result<()> {
     let output = model.get_node_by_id(params.output)?;
 
     info!("Starting the analysis.");
-    analyser::analyse(&model, output.id, false)?;
+
+    let (nodes, edges) = analyser::analyse(&model, output.id, false)?;
+    analyser::graphviz::display_graph("debug".to_string(), &nodes, &edges, &vec![], true)?;
 
     Ok(())
 }
