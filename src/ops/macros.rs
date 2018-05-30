@@ -36,7 +36,7 @@ macro_rules! element_map {
                 }
 
                 let input = $crate::analyser::TensorFact {
-                    datatype: outputs[0].datatype.clone(),
+                    datatype: outputs[0].datatype,
                     shape: outputs[0].shape.clone(),
                     value: valuefact!(_)
                 };
@@ -87,7 +87,7 @@ macro_rules! element_bin {
                 }
 
                 let input = $crate::analyser::TensorFact {
-                    datatype: outputs[0].datatype.clone(),
+                    datatype: outputs[0].datatype,
                     shape: shapefact![..],
                     value: valuefact!(_)
                 };

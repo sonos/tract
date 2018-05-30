@@ -28,16 +28,13 @@ pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
     use self::TypeFact::*;
 
     let datatype = match (x, y) {
-        (_, Any) => x.clone(),
-        (Any, _) => y.clone(),
-        (Only(a), Only(b)) => if a == b {
-            x.clone()
-        } else {
-            bail!("Impossible to unify datatypes {:?} and {:?}.", x, y);
-        },
+        (_, Any) => x,
+        (Any, _) => y,
+        (Only(a), Only(b)) if a == b => x,
+        _ => bail!("Impossible to unify datatypes {:?} and {:?}.", x, y)
     };
 
-    Ok(datatype)
+    Ok(*datatype)
 }
 
 /// Attempts to unify two shape facts.
@@ -59,8 +56,8 @@ pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
             Both(Only(i), Only(j)) if i == j => Ok(Only(*i)),
             Both(Only(i), Only(j)) => bail!("Impossible to unify dimensions {:?} and {:?}.", i, j),
 
-            Left(d) if y.is_open() => Ok(d.clone()),
-            Right(d) if x.is_open() => Ok(d.clone()),
+            Left(d) if y.is_open() => Ok(*d),
+            Right(d) if x.is_open() => Ok(*d),
 
             Left(_) | Right(_) => bail!(
                 "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",

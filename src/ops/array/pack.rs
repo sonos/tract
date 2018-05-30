@@ -57,7 +57,7 @@ where
         shape.insert(self.axis, dimfact!(n));
 
         let output = TensorFact {
-            datatype: inputs[0].datatype.clone(),
+            datatype: inputs[0].datatype,
             shape: ShapeFact::Closed(shape),
             value: valuefact!(_),
         };
@@ -91,7 +91,7 @@ where
         };
 
         Ok(vec![TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape,
             value: valuefact!(_)
         }])

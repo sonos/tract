@@ -135,7 +135,7 @@ impl Op for StridedSlice {
         }
 
         let input = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![..],
             value: valuefact!(_)
         };

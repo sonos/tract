@@ -90,19 +90,19 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         }
 
         let input = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![_; ..],
             value: valuefact!(_)
         };
 
         let block_shape = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![_],
             value: valuefact!(_)
         };
 
         let paddings = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![_, 2],
             value: valuefact!(_)
         };
@@ -180,19 +180,19 @@ impl<T: Datum> Op for BatchToSpace<T> {
         }
 
         let input = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![_; ..],
             value: valuefact!(_)
         };
 
         let block_shape = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![_],
             value: valuefact!(_)
         };
 
         let crops = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![_, 2],
             value: valuefact!(_)
         };

@@ -87,7 +87,7 @@ impl Op for ConcatV2 {
         shape[axis as usize] = dimfact!(_);
 
         let output = TensorFact {
-            datatype: inputs[0].datatype.clone(),
+            datatype: inputs[0].datatype,
             shape: ShapeFact::Closed(shape),
             value: valuefact!(_),
         };
@@ -167,7 +167,7 @@ impl Op for ExpandDims {
         }
 
         let output = TensorFact {
-            datatype: inputs[0].datatype.clone(),
+            datatype: inputs[0].datatype,
             shape: unify_shape(input_shape, &ShapeFact::Open(output_shape))?,
             value: valuefact!(_),
         };
@@ -182,7 +182,7 @@ impl Op for ExpandDims {
         }
 
         let data = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![..],
             value: valuefact!(_)
         };
@@ -340,7 +340,7 @@ impl Op for Reshape {
         let output = match &inputs[0].shape.concretize() {
             // If we know the concrete shape of the input, we get the output shape.
             Ok(shape) => TensorFact {
-                datatype: inputs[0].datatype.clone(),
+                datatype: inputs[0].datatype,
                 shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
                 value: valuefact!(_)
             },
@@ -349,7 +349,7 @@ impl Op for Reshape {
             // dims and it doesn't contain -1 (e.g. we don't have to guess some
             // of the output dimensions), we can also compute the output shape.
             _ if !dims.contains(&-1) => TensorFact {
-                datatype: inputs[0].datatype.clone(),
+                datatype: inputs[0].datatype,
                 shape: dims.into_iter().map(|d| d as usize).collect(),
                 value: valuefact!(_)
             },
@@ -367,7 +367,7 @@ impl Op for Reshape {
         }
 
         let input = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![..],
             value: valuefact!(_)
         };
@@ -515,7 +515,7 @@ impl Op for Squeeze {
 
         let output = match inputs[0].shape.concretize() {
             Ok(shape) => TensorFact {
-                datatype: inputs[0].datatype.clone(),
+                datatype: inputs[0].datatype,
                 shape: self.squeeze_shape(shape)?.iter().collect(),
                 value: valuefact!(_)
             },
@@ -533,7 +533,7 @@ impl Op for Squeeze {
         }
 
         Ok(vec![TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape: shapefact![..],
             value: valuefact!(_)
         }])

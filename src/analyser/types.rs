@@ -37,7 +37,7 @@ impl TensorFact {
 }
 
 /// Partial information about a type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum TypeFact {
     Any,
     Only(DataType),
@@ -126,7 +126,7 @@ impl<'a> From<&'a[usize]> for ShapeFact {
 }
 
 /// Partial information about a dimension.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum DimFact {
     Any,
     Only(usize),

@@ -17,7 +17,7 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Vec<
 
             let output_value = op.eval(input_inputs)?.pop().unwrap();
             let output = TensorFact {
-                datatype: inputs[0].datatype.clone(),
+                datatype: inputs[0].datatype,
                 shape: output_value.shape().into(),
                 value: valuefact!(output_value.into_matrix())
             };
@@ -42,7 +42,7 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Vec<Tens
         .collect();
 
     let output = TensorFact {
-        datatype: inputs[0].datatype.clone(),
+        datatype: inputs[0].datatype,
         shape: infer_shape_broadcasting(input_shapes)?,
         value: valuefact!(_)
     };

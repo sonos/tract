@@ -80,7 +80,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         };
 
         let output = TensorFact {
-            datatype: inputs[0].datatype.clone(),
+            datatype: inputs[0].datatype,
             shape,
             value: valuefact!(_),
         };
@@ -102,7 +102,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         };
 
         let input = TensorFact {
-            datatype: outputs[0].datatype.clone(),
+            datatype: outputs[0].datatype,
             shape,
             value: valuefact!(_)
         };

@@ -84,7 +84,7 @@ impl<T: Datum> Op for Conv2D<T> {
         };
 
         let output = TensorFact {
-            datatype: inputs[0].datatype.clone(),
+            datatype: inputs[0].datatype,
             shape: try_infer_forward_concrete_shape(self, inputs).unwrap_or(shapefact![_, _, _, _]),
             value: valuefact!(_),
         };
@@ -102,13 +102,13 @@ impl<T: Datum> Op for Conv2D<T> {
             Ok(shape) => match shape.as_slice() {
                 [batch, _, _, out_channels] => {
                     let input = TensorFact {
-                        datatype: outputs[0].datatype.clone(),
+                        datatype: outputs[0].datatype,
                         shape: shapefact![(*batch), _, _, _],
                         value: valuefact!(_)
                     };
 
                     let filter = TensorFact {
-                        datatype: outputs[0].datatype.clone(),
+                        datatype: outputs[0].datatype,
                         shape: shapefact![_, _, _, (*out_channels)],
                         value: valuefact!(_)
                     };
@@ -123,13 +123,13 @@ impl<T: Datum> Op for Conv2D<T> {
             // give the shape that we want.
             Err(_) => {
                 let input = TensorFact {
-                    datatype: outputs[0].datatype.clone(),
+                    datatype: outputs[0].datatype,
                     shape: shapefact![_, _, _, _],
                     value: valuefact!(_)
                 };
 
                 let filter = TensorFact {
-                    datatype: outputs[0].datatype.clone(),
+                    datatype: outputs[0].datatype,
                     shape: shapefact![_, _, _, _],
                     value: valuefact!(_)
                 };
