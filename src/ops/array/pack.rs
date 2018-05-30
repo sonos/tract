@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use analyser::{ATensor, AShape};
+use analyser::{TensorFact, ShapeFact};
 use analyser::helpers::most_specific_shape;
 use analyser::helpers::infer_forward_concrete;
 use Result;
@@ -37,7 +37,7 @@ where
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() < 1 {
             bail!("Pack operation needs at least one input.");
         }
@@ -54,46 +54,46 @@ where
 
         // We get the most specific shape, and replace the axis with an unknown.
         let mut shape = most_specific_shape(shapes)?.inner().clone();
-        shape.insert(self.axis, adimension!(n));
+        shape.insert(self.axis, dimfact!(n));
 
-        let output = ATensor {
+        let output = TensorFact {
             datatype: inputs[0].datatype.clone(),
-            shape: AShape::Closed(shape),
-            value: avalue!(_),
+            shape: ShapeFact::Closed(shape),
+            value: valuefact!(_),
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Pack operation only supports one output.");
         }
 
         // The operation adds a dimension, so all we have to do is remove it.
         let shape = match &outputs[0].shape {
-            AShape::Open(v) => {
+            ShapeFact::Open(v) => {
                 let mut inner = v.clone();
                 if self.axis > inner.len() {
                     inner.remove(self.axis);
                 }
 
-                AShape::Open(inner)
+                ShapeFact::Open(inner)
             },
 
-            AShape::Closed(v) => {
+            ShapeFact::Closed(v) => {
                 let mut inner = v.clone();
                 inner.remove(self.axis);
 
-                AShape::Closed(inner)
+                ShapeFact::Closed(inner)
             }
         };
 
-        Ok(vec![ATensor {
+        Ok(vec![TensorFact {
             datatype: outputs[0].datatype.clone(),
             shape,
-            value: avalue!(_)
+            value: valuefact!(_)
         }])
     }
 }

@@ -1,7 +1,7 @@
 use super::*;
 
 /// Infers every property when all the values are concrete.
-pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&ATensor>) -> Result<Vec<ATensor>> {
+pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
     let input_values: Result<Vec<_>> = inputs
         .iter()
         .map(|t| t.value.concretize())
@@ -16,10 +16,10 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&ATensor>) -> Result<Vec<ATe
                 .collect();
 
             let output_value = op.eval(input_inputs)?.pop().unwrap();
-            let output = ATensor {
+            let output = TensorFact {
                 datatype: inputs[0].datatype.clone(),
                 shape: output_value.shape().into(),
-                value: avalue!(output_value.into_matrix())
+                value: valuefact!(output_value.into_matrix())
             };
 
             Ok(vec![output])
@@ -30,7 +30,7 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&ATensor>) -> Result<Vec<ATe
 }
 
 /// Infers basic properties in the case of unary or binary operators.
-pub fn infer_forward_basic(op: &Op, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
     if let Ok(output) = infer_forward_concrete(op, &inputs) {
         return Ok(output);
     }
@@ -41,17 +41,17 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&ATensor>) -> Result<Vec<ATensor
         .map(|t| &t.shape)
         .collect();
 
-    let output = ATensor {
+    let output = TensorFact {
         datatype: inputs[0].datatype.clone(),
         shape: infer_shape_broadcasting(input_shapes)?,
-        value: avalue!(_)
+        value: valuefact!(_)
     };
 
     Ok(vec![output])
 }
 
 /// Infers basic shape properties in the case of broadcasting operators.
-pub fn infer_shape_broadcasting(shapes: Vec<&AShape>) -> Result<AShape> {
+pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<ShapeFact> {
     if shapes.iter().any(|s| s.is_open()) {
         bail!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
     }
@@ -76,8 +76,8 @@ pub fn infer_shape_broadcasting(shapes: Vec<&AShape>) -> Result<AShape> {
             }
 
             match &shape[shape.len() - i] {
-                ADimension::Any => unknown += 1,
-                ADimension::Only(j) => match previous {
+                DimFact::Any => unknown += 1,
+                DimFact::Only(j) => match previous {
                     Some(k) if k != j => bail!("Invalid shape (broadcasting): {} is not compatible with {}.", j, k),
                     _ => previous = Some(j)
                 }
@@ -89,25 +89,25 @@ pub fn infer_shape_broadcasting(shapes: Vec<&AShape>) -> Result<AShape> {
         } else if unknown == 1 && previous != None {
             bail!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
         } else if unknown == 1 && previous == None {
-            output_shape.push(ADimension::Any);
+            output_shape.push(DimFact::Any);
         } else {
-            output_shape.push(ADimension::Only(*previous.unwrap()));
+            output_shape.push(DimFact::Only(*previous.unwrap()));
         }
     }
 
-    Ok(AShape::Closed(output_shape))
+    Ok(ShapeFact::Closed(output_shape))
 }
 
 /// Returns the most specific closed shape out of an iterator.
-pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a AShape>>(iter: I) -> Result<&'a AShape> {
+pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a ShapeFact>>(iter: I) -> Result<&'a ShapeFact> {
     let mut prev_rank = None;
     let mut prev_concrete = None;
     let mut best = None;
 
     for shape in iter {
         match shape {
-            AShape::Open(_) => continue,
-            AShape::Closed(s) => {
+            ShapeFact::Open(_) => continue,
+            ShapeFact::Closed(s) => {
                 let rank = s.len();
 
                 if prev_rank.is_some() && rank != prev_rank.unwrap() {

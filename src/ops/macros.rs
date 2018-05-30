@@ -21,7 +21,7 @@ macro_rules! element_map {
             }
 
             /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
                 if inputs.len() != 1 {
                     bail!("Unary operations only supports one input.");
                 }
@@ -30,15 +30,15 @@ macro_rules! element_map {
             }
 
             /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(&self, outputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
                 if outputs.len() != 1 {
                     bail!("Unary operations only supports one output.");
                 }
 
-                let input = $crate::analyser::ATensor {
+                let input = $crate::analyser::TensorFact {
                     datatype: outputs[0].datatype.clone(),
                     shape: outputs[0].shape.clone(),
-                    value: avalue!(_)
+                    value: valuefact!(_)
                 };
 
                 Ok(vec![input])
@@ -68,7 +68,7 @@ macro_rules! element_bin {
             }
 
             /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(&self, inputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
                 if inputs.len() != 2 {
                     bail!("Binary operations only supports two inputs.");
                 }
@@ -81,15 +81,15 @@ macro_rules! element_bin {
             }
 
             /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(&self, outputs: Vec<&$crate::analyser::ATensor>) -> Result<Vec<$crate::analyser::ATensor>> {
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
                 if outputs.len() != 1 {
                     bail!("Binary operations only supports one output.");
                 }
 
-                let input = $crate::analyser::ATensor {
+                let input = $crate::analyser::TensorFact {
                     datatype: outputs[0].datatype.clone(),
-                    shape: ashape![..],
-                    value: avalue!(_)
+                    shape: shapefact![..],
+                    value: valuefact!(_)
                 };
 
                 Ok(vec![input.clone(), input])

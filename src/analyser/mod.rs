@@ -12,9 +12,9 @@ pub mod macros;
 pub mod helpers;
 pub mod graphviz;
 
-/// Attempts to unify two abstract tensors into a more specialized one.
-pub fn unify(x: &ATensor, y: &ATensor) -> Result<ATensor> {
-    let tensor = ATensor {
+/// Attempts to unify two tensor facts into a more specialized one.
+pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
+    let tensor = TensorFact {
         datatype: unify_datatype(&x.datatype, &y.datatype)?,
         shape: unify_shape(&x.shape, &y.shape)?,
         value: unify_value(&x.value, &y.value)?,
@@ -23,9 +23,9 @@ pub fn unify(x: &ATensor, y: &ATensor) -> Result<ATensor> {
     Ok(tensor)
 }
 
-/// Attempts to unify two abstract datatypes.
-pub fn unify_datatype(x: &AType, y: &AType) -> Result<AType> {
-    use self::AType::*;
+/// Attempts to unify two datatype facts.
+pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
+    use self::TypeFact::*;
 
     let datatype = match (x, y) {
         (_, Any) => x.clone(),
@@ -40,10 +40,10 @@ pub fn unify_datatype(x: &AType, y: &AType) -> Result<AType> {
     Ok(datatype)
 }
 
-/// Attempts to unify two abstract shapes.
-pub fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
-    use self::ADimension::*;
-    use self::AShape::*;
+/// Attempts to unify two shape facts.
+pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
+    use self::DimFact::*;
+    use self::ShapeFact::*;
     use itertools::EitherOrBoth::{Both, Left, Right};
     use itertools::Itertools;
 
@@ -77,9 +77,9 @@ pub fn unify_shape(x: &AShape, y: &AShape) -> Result<AShape> {
     }
 }
 
-/// Attempts to unify two abstract values.
-pub fn unify_value(x: &AValue, y: &AValue) -> Result<AValue> {
-    use self::AValue::*;
+/// Attempts to unify two value facts.
+pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
+    use self::ValueFact::*;
 
     let value = match (x, y) {
         (_, Any) => x.clone(),
@@ -100,7 +100,7 @@ pub struct Edge {
     pub from_node: usize,
     pub from_out: usize,
     pub to_node: usize,
-    pub tensor: ATensor,
+    pub tensor: TensorFact,
 }
 
 /// Runs the analyser on the given graph.
@@ -124,7 +124,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<(Vec<
                 from_node: input.0,
                 from_out: input.1.unwrap_or(0),
                 to_node: node.id,
-                tensor: ATensor::new(),
+                tensor: TensorFact::new(),
             });
 
             prev_edges[node.id].push(id);
@@ -147,7 +147,7 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<(Vec<
         from_node: output,
         from_out: 0,
         to_node: nodes.len() - 1,
-        tensor: ATensor::new(),
+        tensor: TensorFact::new(),
     });
 
     next_edges[output].push(special_edge_id);
@@ -241,135 +241,135 @@ pub fn analyse<'a>(model: &'a Model, output: usize, debug: bool) -> Result<(Vec<
 mod tests {
     #[test]
     fn unify_same_datatype() {
-        let dt = AType::Only(DataType::DT_FLOAT);
+        let dt = TypeFact::Only(DataType::DT_FLOAT);
         assert_eq!(unify_datatype(&dt, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_datatypes_only() {
-        let dt1 = AType::Only(DataType::DT_FLOAT);
-        let dt2 = AType::Only(DataType::DT_DOUBLE);
+        let dt1 = TypeFact::Only(DataType::DT_FLOAT);
+        let dt2 = TypeFact::Only(DataType::DT_DOUBLE);
         assert!(unify_datatype(&dt1, &dt2).is_err());
     }
 
     #[test]
     fn unify_different_datatypes_any_left() {
-        let dt = AType::Only(DataType::DT_FLOAT);
-        assert_eq!(unify_datatype(&AType::Any, &dt).unwrap(), dt);
+        let dt = TypeFact::Only(DataType::DT_FLOAT);
+        assert_eq!(unify_datatype(&TypeFact::Any, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_datatypes_any_right() {
-        let dt = AType::Only(DataType::DT_FLOAT);
-        assert_eq!(unify_datatype(&dt, &AType::Any).unwrap(), dt);
+        let dt = TypeFact::Only(DataType::DT_FLOAT);
+        assert_eq!(unify_datatype(&dt, &TypeFact::Any).unwrap(), dt);
     }
 
     #[test]
     fn unify_same_shape_1() {
-        let s = AShape::Closed(vec![]);
+        let s = ShapeFact::Closed(vec![]);
         assert_eq!(unify_shape(&s, &s).unwrap(), s);
     }
 
     #[test]
     fn unify_same_shape_2() {
-        use super::ADimension::*;
-        let s = AShape::Closed(vec![Any]);
+        use super::DimFact::*;
+        let s = ShapeFact::Closed(vec![Any]);
         assert_eq!(unify_shape(&s, &s).unwrap(), s);
     }
 
     #[test]
     fn unify_same_shape_3() {
-        use super::ADimension::*;
-        let s = AShape::Closed(vec![Only(1), Only(2)]);
+        use super::DimFact::*;
+        let s = ShapeFact::Closed(vec![Only(1), Only(2)]);
         assert_eq!(unify_shape(&s, &s).unwrap(), s);
     }
 
     #[test]
     fn unify_different_shapes_1() {
-        use super::ADimension::*;
-        let s1 = AShape::Closed(vec![Only(1), Only(2)]);
-        let s2 = AShape::Closed(vec![Only(1)]);
+        use super::DimFact::*;
+        let s1 = ShapeFact::Closed(vec![Only(1), Only(2)]);
+        let s2 = ShapeFact::Closed(vec![Only(1)]);
         assert!(unify_shape(&s1, &s2).is_err());
     }
 
     #[test]
     fn unify_different_shapes_2() {
-        use super::ADimension::*;
-        let s1 = AShape::Closed(vec![Only(1), Only(2)]);
-        let s2 = AShape::Closed(vec![Any]);
+        use super::DimFact::*;
+        let s1 = ShapeFact::Closed(vec![Only(1), Only(2)]);
+        let s2 = ShapeFact::Closed(vec![Any]);
         assert!(unify_shape(&s1, &s2).is_err());
     }
 
     #[test]
     fn unify_different_shapes_3() {
-        use super::ADimension::*;
-        let s1 = AShape::Open(vec![Only(1), Only(2)]);
-        let s2 = AShape::Closed(vec![Any]);
+        use super::DimFact::*;
+        let s1 = ShapeFact::Open(vec![Only(1), Only(2)]);
+        let s2 = ShapeFact::Closed(vec![Any]);
         assert!(unify_shape(&s1, &s2).is_err());
     }
 
     #[test]
     fn unify_different_shapes_4() {
-        use super::ADimension::*;
-        let s1 = AShape::Closed(vec![Any]);
-        let s2 = AShape::Closed(vec![Any]);
-        let sr = AShape::Closed(vec![Any]);
+        use super::DimFact::*;
+        let s1 = ShapeFact::Closed(vec![Any]);
+        let s2 = ShapeFact::Closed(vec![Any]);
+        let sr = ShapeFact::Closed(vec![Any]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 
     #[test]
     fn unify_different_shapes_5() {
-        use super::ADimension::*;
-        let s1 = AShape::Closed(vec![Any]);
-        let s2 = AShape::Closed(vec![Only(1)]);
-        let sr = AShape::Closed(vec![Only(1)]);
+        use super::DimFact::*;
+        let s1 = ShapeFact::Closed(vec![Any]);
+        let s2 = ShapeFact::Closed(vec![Only(1)]);
+        let sr = ShapeFact::Closed(vec![Only(1)]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 
     #[test]
     fn unify_different_shapes_6() {
-        use super::ADimension::*;
-        let s1 = AShape::Open(vec![]);
-        let s2 = AShape::Closed(vec![Only(1)]);
-        let sr = AShape::Closed(vec![Only(1)]);
+        use super::DimFact::*;
+        let s1 = ShapeFact::Open(vec![]);
+        let s2 = ShapeFact::Closed(vec![Only(1)]);
+        let sr = ShapeFact::Closed(vec![Only(1)]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 
     #[test]
     fn unify_different_shapes_7() {
-        use super::ADimension::*;
-        let s1 = AShape::Open(vec![Any, Only(2)]);
-        let s2 = AShape::Closed(vec![Only(1), Any, Any]);
-        let sr = AShape::Closed(vec![Only(1), Only(2), Any]);
+        use super::DimFact::*;
+        let s1 = ShapeFact::Open(vec![Any, Only(2)]);
+        let s2 = ShapeFact::Closed(vec![Only(1), Any, Any]);
+        let sr = ShapeFact::Closed(vec![Only(1), Only(2), Any]);
         assert_eq!(unify_shape(&s1, &s2).unwrap(), sr);
     }
 
     #[test]
     fn unify_same_value() {
         use ndarray::prelude::*;
-        let dt = AValue::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
+        let dt = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
         assert_eq!(unify_value(&dt, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_values_only() {
         use ndarray::prelude::*;
-        let dt1 = AValue::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
-        let dt2 = AValue::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[2]))));
+        let dt1 = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
+        let dt2 = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[2]))));
         assert!(unify_value(&dt1, &dt2).is_err());
     }
 
     #[test]
     fn unify_different_values_any_left() {
         use ndarray::prelude::*;
-        let dt = AValue::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
-        assert_eq!(unify_value(&AValue::Any, &dt).unwrap(), dt);
+        let dt = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
+        assert_eq!(unify_value(&ValueFact::Any, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_values_any_right() {
         use ndarray::prelude::*;
-        let dt = AValue::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
-        assert_eq!(unify_value(&dt, &AValue::Any).unwrap(), dt);
+        let dt = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
+        assert_eq!(unify_value(&dt, &ValueFact::Any).unwrap(), dt);
     }
 }

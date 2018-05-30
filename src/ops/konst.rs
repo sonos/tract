@@ -1,5 +1,5 @@
 use tfpb::types::DataType;
-use analyser::ATensor;
+use analyser::TensorFact;
 use {Matrix, Result};
 use super::{Input, Op, OpRegister};
 use std::sync::Arc;
@@ -41,18 +41,18 @@ impl Op for Const {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        let output = ATensor {
-            datatype: atype!(self.datatype),
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+        let output = TensorFact {
+            datatype: typefact!(self.datatype),
             shape: self.value.shape().into(),
-            value: avalue!(self.value.as_ref().clone())
+            value: valuefact!(self.value.as_ref().clone())
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         bail!("Const operation is a leaf, nothing to infer backwards.");
     }
 }

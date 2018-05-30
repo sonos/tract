@@ -1,4 +1,4 @@
-use analyser::ATensor;
+use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use {Matrix, Result};
 use super::{Input, Op};
@@ -59,7 +59,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 1 {
             bail!("Pool operations only supports one input.");
         }
@@ -73,23 +73,23 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
             // TODO(liautaud): Take the data_format parameter into account.
             [batch, in_height, in_width, in_channels] => {
                 let (height, width) = self.0.adjusted_dim(*in_height, *in_width, self.1);
-                ashape![(*batch), height, width, (*in_channels)]
+                shapefact![(*batch), height, width, (*in_channels)]
             },
 
             _ => bail!("The input dimensions are invalid.")
         };
 
-        let output = ATensor {
+        let output = TensorFact {
             datatype: inputs[0].datatype.clone(),
             shape,
-            value: avalue!(_),
+            value: valuefact!(_),
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Pool operations only supports one output.");
         }
@@ -97,14 +97,14 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         let shape = match outputs[0].shape.concretize()?.as_slice() {
             // TODO(liautaud): Take the data_format parameter into account.
             [batch, _, _, out_channels] =>
-                ashape![(*batch), _, _, (*out_channels)],
+                shapefact![(*batch), _, _, (*out_channels)],
             _ => bail!("The output dimensions are invalid.")
         };
 
-        let input = ATensor {
+        let input = TensorFact {
             datatype: outputs[0].datatype.clone(),
             shape,
-            value: avalue!(_)
+            value: valuefact!(_)
         };
 
         Ok(vec![input])

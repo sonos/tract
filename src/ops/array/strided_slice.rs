@@ -1,4 +1,4 @@
-use analyser::ATensor;
+use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use ndarray::prelude::*;
 use {Matrix, Result};
@@ -115,7 +115,7 @@ impl Op for StridedSlice {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 4 {
             bail!("StridedSlice operation only supports four inputs.");
         }
@@ -129,33 +129,33 @@ impl Op for StridedSlice {
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("StridedSlice operation only supports one output.");
         }
 
-        let input = ATensor {
+        let input = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![..],
-            value: avalue!(_)
+            shape: shapefact![..],
+            value: valuefact!(_)
         };
 
-        let begin = ATensor {
-            datatype: atype!(DataType::DT_INT32),
-            shape: ashape![_],
-            value: avalue!(_)
+        let begin = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![_],
+            value: valuefact!(_)
         };
 
-        let end = ATensor {
-            datatype: atype!(DataType::DT_INT32),
-            shape: ashape![_],
-            value: avalue!(_)
+        let end = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![_],
+            value: valuefact!(_)
         };
 
-        let strides = ATensor {
-            datatype: atype!(DataType::DT_INT32),
-            shape: ashape![_],
-            value: avalue!(_)
+        let strides = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![_],
+            value: valuefact!(_)
         };
 
         Ok(vec![input, begin, end, strides])

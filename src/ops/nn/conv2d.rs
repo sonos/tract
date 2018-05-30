@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use analyser::{ATensor, AShape};
+use analyser::{TensorFact, ShapeFact};
 use analyser::helpers::infer_forward_concrete;
 use Result;
 use super::{Input, Op};
@@ -50,7 +50,7 @@ impl<T: Datum> Op for Conv2D<T> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 2 {
             bail!("Conv2D operation only supports two inputs.");
         }
@@ -60,7 +60,7 @@ impl<T: Datum> Op for Conv2D<T> {
         }
 
         // If we don't know the actual value, we can still compute the shape.
-        fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&ATensor>) -> Result<AShape> where T: Datum {
+        fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&TensorFact>) -> Result<ShapeFact> where T: Datum {
             let input_shape = inputs[0].shape.concretize()?;
             let filter_shape = inputs[1].shape.concretize()?;
 
@@ -74,7 +74,7 @@ impl<T: Datum> Op for Conv2D<T> {
                     );
 
                     // TODO(liautaud): Take the data_format parameter into account.
-                    ashape![(*batch), height, width, (*out_channels)]
+                    shapefact![(*batch), height, width, (*out_channels)]
                 },
 
                 _ => bail!("The input and filter dimensions are invalid.")
@@ -83,17 +83,17 @@ impl<T: Datum> Op for Conv2D<T> {
             Ok(shape)
         };
 
-        let output = ATensor {
+        let output = TensorFact {
             datatype: inputs[0].datatype.clone(),
-            shape: try_infer_forward_concrete_shape(self, inputs).unwrap_or(ashape![_, _, _, _]),
-            value: avalue!(_),
+            shape: try_infer_forward_concrete_shape(self, inputs).unwrap_or(shapefact![_, _, _, _]),
+            value: valuefact!(_),
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Conv2D operation only supports one output.");
         }
@@ -101,16 +101,16 @@ impl<T: Datum> Op for Conv2D<T> {
         match outputs[0].shape.concretize() {
             Ok(shape) => match shape.as_slice() {
                 [batch, _, _, out_channels] => {
-                    let input = ATensor {
+                    let input = TensorFact {
                         datatype: outputs[0].datatype.clone(),
-                        shape: ashape![(*batch), _, _, _],
-                        value: avalue!(_)
+                        shape: shapefact![(*batch), _, _, _],
+                        value: valuefact!(_)
                     };
 
-                    let filter = ATensor {
+                    let filter = TensorFact {
                         datatype: outputs[0].datatype.clone(),
-                        shape: ashape![_, _, _, (*out_channels)],
-                        value: avalue!(_)
+                        shape: shapefact![_, _, _, (*out_channels)],
+                        value: valuefact!(_)
                     };
 
                     Ok(vec![input, filter])
@@ -122,16 +122,16 @@ impl<T: Datum> Op for Conv2D<T> {
             // If we don't have concrete dimensions yet, we can still
             // give the shape that we want.
             Err(_) => {
-                let input = ATensor {
+                let input = TensorFact {
                     datatype: outputs[0].datatype.clone(),
-                    shape: ashape![_, _, _, _],
-                    value: avalue!(_)
+                    shape: shapefact![_, _, _, _],
+                    value: valuefact!(_)
                 };
 
-                let filter = ATensor {
+                let filter = TensorFact {
                     datatype: outputs[0].datatype.clone(),
-                    shape: ashape![_, _, _, _],
-                    value: avalue!(_)
+                    shape: shapefact![_, _, _, _],
+                    value: valuefact!(_)
                 };
 
                 Ok(vec![input, filter])

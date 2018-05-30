@@ -1,6 +1,6 @@
 use Result;
 
-use analyser::ATensor;
+use analyser::TensorFact;
 use super::{Input, Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -31,12 +31,12 @@ impl ::ops::Op for Cast {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         unimplemented!()
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         unimplemented!()
     }
 }

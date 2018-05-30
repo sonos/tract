@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use analyser::ATensor;
+use analyser::TensorFact;
 
 use {Matrix, Result};
 
@@ -76,10 +76,10 @@ pub trait Op: Debug + Send + Sync + 'static {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>>;
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>>;
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>>;
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>>;
 }
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
@@ -118,12 +118,12 @@ impl Op for UnimplementedOp {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         unimplemented!()
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         unimplemented!()
     }
 }

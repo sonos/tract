@@ -5,7 +5,7 @@ use tfpb::types::DataType;
 use Matrix;
 
 
-/// An abstract tensor.
+/// Partial information about a tensor.
 ///
 /// The task of the analyser is to tag every edge in the graph with information
 /// about the tensors that flow through it - specifically their datatype, their
@@ -13,85 +13,84 @@ use Matrix;
 /// know some of that information (say, for instance, that an edge only carries
 /// tensors of rank 4, but without knowing their precise dimension).
 ///
-/// This is where abstract tensors come in: they hold partial information about
-/// the datatype, shape and value of tensors that might flow through an edge of
-/// the graph. The analyser will first tag each edge of the graph with the most
-/// general abstract tensor possible, and after each iteration of the analysis,
-/// the tensors will become more and more specialized - until reaching a fixed
-/// point that will hopefully contain enough information for us to work with.
+/// This is where tensor facts come in: they hold partial information about the
+/// datatype, shape and value of tensors that might flow through an edge of the
+/// graph. The analyser will first tag each edge with a fact, starting with the
+/// most general one and specializing it at each iteration. Eventually, it will
+/// reach a fixed point that - hopefully - holds enough information.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ATensor {
-    pub datatype: AType,
-    pub shape: AShape,
-    pub value: AValue,
+pub struct TensorFact {
+    pub datatype: TypeFact,
+    pub shape: ShapeFact,
+    pub value: ValueFact,
 }
 
-impl ATensor {
-    /// Constructs a new abstract tensor, which is as general as possible.
-    pub fn new() -> ATensor {
-        ATensor {
-            datatype: AType::Any,
-            shape: AShape::any(),
-            value: AValue::Any,
+impl TensorFact {
+    /// Constructs the most general tensor fact possible.
+    pub fn new() -> TensorFact {
+        TensorFact {
+            datatype: TypeFact::Any,
+            shape: ShapeFact::any(),
+            value: ValueFact::Any,
         }
     }
 }
 
-/// An abstract type.
+/// Partial information about a type.
 #[derive(Debug, Clone, PartialEq)]
-pub enum AType {
+pub enum TypeFact {
     Any,
     Only(DataType),
 }
 
-/// An abstract shape.
-/// They are used to represent partial information about the shapes of tensors.
+/// Partial information about a shape.
 ///
-/// A basic example of abstract shape is `ashape![1, 2]` - which corresponds to
-/// the shape `[1, 2]` in Tensorflow. We can use unknown dimensions in abstract
-/// shapes: `ashape![1, 2, _]` corresponds to any shape `[1, 2, k]`, with `k` a
-/// nonnegative integer. We can also use `..` to only describe the beginning of
-/// a shape, so `ashape![1; ..]` matches any shape that starts with `[1]` (e.g.
-/// `[1]`, `[1, k]`, etc.), and `ashape![..]` matches any shape.
+/// A basic example of a shape fact is `shapefact![1, 2]`, which corresponds to
+/// the shape `[1, 2]` in Tensorflow. We can use `_` in facts to denote unknown
+/// dimensions (e.g. `shapefact![1, 2, _]` corresponds to any shape `[1, 2, k]`
+/// with `k` a non-negative integer). We can also use `..` at the end of a fact
+/// to only specify its first dimensions, so `shapefact![1, 2; ..]` matches any
+/// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
+/// `shapefact![..]` matches any shape.
 #[derive(Debug, Clone, PartialEq)]
-pub enum AShape {
-    Open(Vec<ADimension>),
-    Closed(Vec<ADimension>),
+pub enum ShapeFact {
+    Open(Vec<DimFact>),
+    Closed(Vec<DimFact>),
 }
 
-impl AShape {
-    /// Returns the most general abstract shape possible.
-    pub fn any() -> AShape {
-        AShape::Open(vec![])
+impl ShapeFact {
+    /// Returns the most general shape fact possible.
+    pub fn any() -> ShapeFact {
+        ShapeFact::Open(vec![])
     }
 
-    /// Returns whether the abstract shape is open.
-    pub fn is_open(self: &AShape) -> bool {
+    /// Returns whether the fact is open.
+    pub fn is_open(self: &ShapeFact) -> bool {
         match self {
-            AShape::Open(_) => true,
-            AShape::Closed(_) => false,
+            ShapeFact::Open(_) => true,
+            ShapeFact::Closed(_) => false,
         }
     }
 
-    /// Returns the vector of dimensions defining the abstract shape.
-    pub fn inner(self: &AShape) -> &Vec<ADimension> {
+    /// Returns the vector of dimensions defining the fact.
+    pub fn inner(self: &ShapeFact) -> &Vec<DimFact> {
         match self {
-            AShape::Open(v) | AShape::Closed(v) => v,
+            ShapeFact::Open(v) | ShapeFact::Closed(v) => v,
         }
     }
 
-    /// Tries to transform the abstract shape into a Vec<usize>, or returns
+    /// Tries to transform the fact into a Vec<usize>, or returns
     /// an Err if some of the dimensions are unknown.
-    pub fn concretize(self: &AShape) -> Result<Vec<usize>> {
+    pub fn concretize(self: &ShapeFact) -> Result<Vec<usize>> {
         match self {
-            AShape::Open(_) =>
+            ShapeFact::Open(_) =>
                 bail!("Impossible to concretize an open shape."),
-            AShape::Closed(v) => v
+            ShapeFact::Closed(v) => v
                 .iter()
                 .map(|d| match d {
-                    ADimension::Any =>
+                    DimFact::Any =>
                         bail!("Impossible to concretize a shape with an unknown dimension."),
-                    ADimension::Only(i) =>
+                    DimFact::Only(i) =>
                         Ok(*i)
                 })
                 .collect()
@@ -99,75 +98,75 @@ impl AShape {
     }
 }
 
-impl FromIterator<usize> for AShape {
+impl FromIterator<usize> for ShapeFact {
     /// Converts an iterator over usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item=usize>>(iter: I) -> AShape {
-        AShape::Closed(iter
+    fn from_iter<I: IntoIterator<Item=usize>>(iter: I) -> ShapeFact {
+        ShapeFact::Closed(iter
             .into_iter()
-            .map(|d| ADimension::Only(d))
+            .map(|d| DimFact::Only(d))
             .collect())
     }
 }
 
-impl<'a> FromIterator<&'a usize> for AShape {
+impl<'a> FromIterator<&'a usize> for ShapeFact {
     /// Converts an iterator over &usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item=&'a usize>>(iter: I) -> AShape {
-        AShape::Closed(iter
+    fn from_iter<I: IntoIterator<Item=&'a usize>>(iter: I) -> ShapeFact {
+        ShapeFact::Closed(iter
             .into_iter()
-            .map(|d| ADimension::Only(*d))
+            .map(|d| DimFact::Only(*d))
             .collect())
     }
 }
 
-impl<'a> From<&'a[usize]> for AShape {
+impl<'a> From<&'a[usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
-    fn from(slice: &'a[usize]) -> AShape {
+    fn from(slice: &'a[usize]) -> ShapeFact {
         slice.iter().collect()
     }
 }
 
-/// An abstract dimension.
+/// Partial information about a dimension.
 #[derive(Debug, Clone, PartialEq)]
-pub enum ADimension {
+pub enum DimFact {
     Any,
     Only(usize),
 }
 
-impl ADimension {
-    /// Returns whether the dimension is concrete.
+impl DimFact {
+    /// Returns whether the dimension is known.
     pub fn is_concrete(&self) -> bool {
         match self {
-            ADimension::Any => false,
-            ADimension::Only(_) => true
+            DimFact::Any => false,
+            DimFact::Only(_) => true
         }
     }
 }
 
-/// An abstract value.
+/// Partial information about a value.
 #[derive(Debug, Clone, PartialEq)]
-pub enum AValue {
+pub enum ValueFact {
     Any,
     Only(Matrix),
 }
 
-impl AValue {
-    // Tries to transform the abstract value into a Matrix, or returns an Err.
-    pub fn concretize(self: &AValue) -> Result<&Matrix> {
+impl ValueFact {
+    // Tries to transform the value fact into a Matrix, or returns an Err.
+    pub fn concretize(self: &ValueFact) -> Result<&Matrix> {
         match self {
-            AValue::Any =>
+            ValueFact::Any =>
                 bail!("Impossible to concretize an Any value."),
-            AValue::Only(m) =>
+            ValueFact::Only(m) =>
                 Ok(m)
         }
     }
 
     // Applies fn to a defined value, and leaves an unknown value untouched.
     // Returns an Err if something went wrong during the transformation.
-    pub fn map_err<F>(self: &AValue, f: F) -> Result<AValue>
+    pub fn map_err<F>(self: &ValueFact, f: F) -> Result<ValueFact>
     where F: Fn(&Matrix) -> Result<Matrix> {
         match self {
-            AValue::Any => Ok(AValue::Any),
-            AValue::Only(m) => Ok(AValue::Only(f(m)?))
+            ValueFact::Any => Ok(ValueFact::Any),
+            ValueFact::Only(m) => Ok(ValueFact::Only(f(m)?))
         }
     }
 }
@@ -175,13 +174,13 @@ impl AValue {
 #[cfg(tests)]
 mod tests {
     #[test]
-    fn new_abstract_tensor() {
+    fn new_tensor_fact() {
         assert_eq!(
-            ATensor::new(),
-            ATensor {
-                datatype: AType::Any,
-                shape: AShape::any(),
-                value: AValue::Any,
+            TensorFact::new(),
+            TensorFact {
+                datatype: TypeFact::Any,
+                shape: ShapeFact::any(),
+                value: ValueFact::Any,
             }
         );
     }

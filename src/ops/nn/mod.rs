@@ -1,5 +1,5 @@
 use super::{Input, Op, OpRegister};
-use analyser::ATensor;
+use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
 use {Matrix, Result};
@@ -46,7 +46,7 @@ impl Op for Softmax {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 1 {
             bail!("Softmax operation only supports one input.");
         }
@@ -55,33 +55,33 @@ impl Op for Softmax {
             return Ok(output);
         }
 
-        let output = ATensor {
-            datatype: atype!(DataType::DT_FLOAT),
+        let output = TensorFact {
+            datatype: typefact!(DataType::DT_FLOAT),
             shape: match &inputs[0].shape.concretize() {
                 Ok(v) if v.len() == 2 => v.iter().collect(),
                 Ok(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
-                _ => ashape![_, _],
+                _ => shapefact![_, _],
             },
-            value: avalue!(_)
+            value: valuefact!(_)
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Softmax operation only supports one output.");
         }
 
-        let input = ATensor {
-            datatype: atype!(DataType::DT_FLOAT),
+        let input = TensorFact {
+            datatype: typefact!(DataType::DT_FLOAT),
             shape: match &outputs[0].shape.concretize() {
                 Ok(v) if v.len() == 2 => v.iter().collect(),
                 Ok(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
-                _ => ashape![_, _],
+                _ => shapefact![_, _],
             },
-            value: avalue!(_)
+            value: valuefact!(_)
         };
 
         Ok(vec![input])

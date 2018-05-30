@@ -38,7 +38,7 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
         }
     }
     fn edge_label<'b>(&'b self, e: &Ed) -> dot::LabelText<'b> {
-        use analyser::AValue::*;
+        use analyser::ValueFact::*;
 
         let mut label = format!(
             "{:?}\n{:?}\n{}",

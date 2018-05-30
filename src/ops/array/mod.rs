@@ -4,7 +4,7 @@ use ndarray::prelude::*;
 mod pack;
 mod strided_slice;
 
-use analyser::{ATensor, AShape, AValue};
+use analyser::{TensorFact, ShapeFact, ValueFact};
 use analyser::helpers::most_specific_shape;
 use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
@@ -56,7 +56,7 @@ impl Op for ConcatV2 {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() < 2 {
             bail!("Concat operation needs at least two inputs.");
         }
@@ -84,19 +84,19 @@ impl Op for ConcatV2 {
         //                 and sum the dimension over all the vectors instead of
         //                 just returning an unknown when possible.
         let mut shape = most_specific_shape(shapes)?.inner().clone();
-        shape[axis as usize] = adimension!(_);
+        shape[axis as usize] = dimfact!(_);
 
-        let output = ATensor {
+        let output = TensorFact {
             datatype: inputs[0].datatype.clone(),
-            shape: AShape::Closed(shape),
-            value: avalue!(_),
+            shape: ShapeFact::Closed(shape),
+            value: valuefact!(_),
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Concat operation only supports one output.");
         }
@@ -134,7 +134,7 @@ impl Op for ExpandDims {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         use analyser::unify_shape;
 
         if inputs.len() != 2 {
@@ -161,36 +161,36 @@ impl Op for ExpandDims {
         let mut previous_dim = 0;
 
         for dim in dims {
-            output_shape.extend(repeat(adimension!(_)).take(dim - previous_dim));
-            output_shape.push(adimension!(1));
+            output_shape.extend(repeat(dimfact!(_)).take(dim - previous_dim));
+            output_shape.push(dimfact!(1));
             previous_dim = dim;
         }
 
-        let output = ATensor {
+        let output = TensorFact {
             datatype: inputs[0].datatype.clone(),
-            shape: unify_shape(input_shape, &AShape::Open(output_shape))?,
-            value: avalue!(_),
+            shape: unify_shape(input_shape, &ShapeFact::Open(output_shape))?,
+            value: valuefact!(_),
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("ExpandDims operation only supports one output.");
         }
 
-        let data = ATensor {
+        let data = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![..],
-            value: avalue!(_)
+            shape: shapefact![..],
+            value: valuefact!(_)
         };
 
-        let dims = ATensor {
-            datatype: atype!(DataType::DT_INT32),
-            shape: ashape![..],
-            value: avalue!(_)
+        let dims = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![..],
+            value: valuefact!(_)
         };
 
         Ok(vec![data, dims])
@@ -213,7 +213,7 @@ impl Op for Identity {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 1 {
             bail!("Identity operation only supports one input.");
         }
@@ -222,7 +222,7 @@ impl Op for Identity {
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Identity operation only supports one output.");
         }
@@ -255,18 +255,18 @@ impl Op for Placeholder {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
-        let output = ATensor {
-            datatype: atype!(self.datatype),
-            shape: ashape![..],
-            value: avalue!(_),
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+        let output = TensorFact {
+            datatype: typefact!(self.datatype),
+            shape: shapefact![..],
+            value: valuefact!(_),
         };
 
         Ok(vec![output])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         bail!("Placeholder operation is a leaf, nothing to infer backwards.");
     }
 }
@@ -319,7 +319,7 @@ impl Op for Reshape {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 2 {
             bail!("Reshape operation only supports two inputs.");
         }
@@ -339,19 +339,19 @@ impl Op for Reshape {
 
         let output = match &inputs[0].shape.concretize() {
             // If we know the concrete shape of the input, we get the output shape.
-            Ok(shape) => ATensor {
+            Ok(shape) => TensorFact {
                 datatype: inputs[0].datatype.clone(),
                 shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
-                value: avalue!(_)
+                value: valuefact!(_)
             },
 
             // If we don't know anything about the output, but know the value of
             // dims and it doesn't contain -1 (e.g. we don't have to guess some
             // of the output dimensions), we can also compute the output shape.
-            _ if !dims.contains(&-1) => ATensor {
+            _ if !dims.contains(&-1) => TensorFact {
                 datatype: inputs[0].datatype.clone(),
                 shape: dims.into_iter().map(|d| d as usize).collect(),
-                value: avalue!(_)
+                value: valuefact!(_)
             },
 
             _ => bail!("Can't infer the shape of the output for Reshape.")
@@ -361,21 +361,21 @@ impl Op for Reshape {
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Reshape operation only supports one output.");
         }
 
-        let input = ATensor {
+        let input = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![..],
-            value: avalue!(_)
+            shape: shapefact![..],
+            value: valuefact!(_)
         };
 
-        let shape = ATensor {
-            datatype: atype!(DataType::DT_INT32),
-            shape: ashape![_],
-            value: avalue!(_)
+        let shape = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![_],
+            value: valuefact!(_)
         };
 
         Ok(vec![input, shape])
@@ -401,7 +401,7 @@ impl Op for Shape {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 1 {
             bail!("Shape operation only supports one input.");
         }
@@ -417,24 +417,24 @@ impl Op for Shape {
 
         // The output is the shape of the input.
         // The shape of the output is the rank of the input.
-        Ok(vec![ATensor {
-            datatype: atype!(DataType::DT_INT32),
-            shape: ashape![rank],
-            value: avalue!(value)
+        Ok(vec![TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![rank],
+            value: valuefact!(value)
         }])
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         use std::iter::repeat;
 
         if outputs.len() != 1 {
             bail!("Shape operation only supports one output.");
         }
 
-        let dimensions: AShape = match &outputs[0].value {
+        let dimensions: ShapeFact = match &outputs[0].value {
             // If we know the output value, we can infer the shape of the input.
-            AValue::Only(v) => v
+            ValueFact::Only(v) => v
                 .clone()
                 .take_i32s()
                 .ok_or("Shape operation should produce a 1-D integer tensor.")?
@@ -444,15 +444,15 @@ impl Op for Shape {
                 .collect(),
 
             // Otherwise, we can only infer the rank of the input.
-            AValue::Any => {
+            ValueFact::Any => {
                 let shape = outputs[0].shape.concretize()?;
 
                 if shape.len() != 1 {
                     bail!("Shape operation should produce a 1-D integer tensor.");
                 }
 
-                AShape::Closed(
-                    repeat(adimension!(_))
+                ShapeFact::Closed(
+                    repeat(dimfact!(_))
                     .take(shape[0])
                     .collect()
                 )
@@ -460,10 +460,10 @@ impl Op for Shape {
         };
 
 
-        Ok(vec![ATensor {
-            datatype: atype!(_),
+        Ok(vec![TensorFact {
+            datatype: typefact!(_),
             shape: dimensions,
-            value: avalue!(_)
+            value: valuefact!(_)
         }])
     }
 }
@@ -504,7 +504,7 @@ impl Op for Squeeze {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 1 {
             bail!("Squeeze operation only supports one input.");
         }
@@ -514,10 +514,10 @@ impl Op for Squeeze {
         }
 
         let output = match inputs[0].shape.concretize() {
-            Ok(shape) => ATensor {
+            Ok(shape) => TensorFact {
                 datatype: inputs[0].datatype.clone(),
                 shape: self.squeeze_shape(shape)?.iter().collect(),
-                value: avalue!(_)
+                value: valuefact!(_)
             },
 
             _ => bail!("Can't infer for Squeeze without a concrete shape.")
@@ -527,15 +527,15 @@ impl Op for Squeeze {
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("Squeeze operation only supports one output.");
         }
 
-        Ok(vec![ATensor {
+        Ok(vec![TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![..],
-            value: avalue!(_)
+            shape: shapefact![..],
+            value: valuefact!(_)
         }])
     }
 }

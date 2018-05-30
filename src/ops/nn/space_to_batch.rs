@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use analyser::ATensor;
+use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use Result;
 use super::{Input, Op};
@@ -70,7 +70,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 3 {
             bail!("SpaceToBatchND operation only supports three inputs.");
         }
@@ -84,27 +84,27 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("SpaceToBatchND operation only supports one output.");
         }
 
-        let input = ATensor {
+        let input = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![_; ..],
-            value: avalue!(_)
+            shape: shapefact![_; ..],
+            value: valuefact!(_)
         };
 
-        let block_shape = ATensor {
+        let block_shape = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![_],
-            value: avalue!(_)
+            shape: shapefact![_],
+            value: valuefact!(_)
         };
 
-        let paddings = ATensor {
+        let paddings = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![_, 2],
-            value: avalue!(_)
+            shape: shapefact![_, 2],
+            value: valuefact!(_)
         };
 
         Ok(vec![input, block_shape, paddings])
@@ -160,7 +160,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if inputs.len() != 3 {
             bail!("BatchToSpaceND operation only supports three inputs.");
         }
@@ -174,27 +174,27 @@ impl<T: Datum> Op for BatchToSpace<T> {
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&ATensor>) -> Result<Vec<ATensor>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
         if outputs.len() != 1 {
             bail!("BatchToSpaceND operation only supports one output.");
         }
 
-        let input = ATensor {
+        let input = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![_; ..],
-            value: avalue!(_)
+            shape: shapefact![_; ..],
+            value: valuefact!(_)
         };
 
-        let block_shape = ATensor {
+        let block_shape = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![_],
-            value: avalue!(_)
+            shape: shapefact![_],
+            value: valuefact!(_)
         };
 
-        let crops = ATensor {
+        let crops = TensorFact {
             datatype: outputs[0].datatype.clone(),
-            shape: ashape![_, 2],
-            value: avalue!(_)
+            shape: shapefact![_, 2],
+            value: valuefact!(_)
         };
 
         Ok(vec![input, block_shape, crops])
