@@ -183,26 +183,38 @@ impl<'n> Analyser<'n> {
         self.current_pass = 0;
 
         loop {
-            // TODO(liautaud): Not quite sure about that.
-            // Maybe we should check that there was no change during
-            // a sequence of forward AND backward passes?
-            if !self.run_pass()? {
+            if !self.run_two_passes()? {
                 return Ok(());
             }
         }
     }
 
-    /// Runs a single pass of the analysis.
-    pub fn run_pass(&mut self) -> Result<bool> {
+    /// Runs two passes of the analysis.
+    pub fn run_two_passes(&mut self) -> Result<bool> {
+        let mut changed = false;
+
         info!(
             "Starting pass [pass={:?}, direction={:?}].",
             self.current_pass,
             self.current_direction,
         );
 
+        // We first run a forward pass.
         self.current_step = 0;
-        let mut changed = false;
+        for _ in 0..self.plan.len() {
+            if self.run_step()? {
+                changed = true;
+            }
+        }
 
+        info!(
+            "Starting pass [pass={:?}, direction={:?}].",
+            self.current_pass,
+            self.current_direction,
+        );
+
+        // We then run a backward pass.
+        self.current_step = 0;
         for _ in 0..self.plan.len() {
             if self.run_step()? {
                 changed = true;
