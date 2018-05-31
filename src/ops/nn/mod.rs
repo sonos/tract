@@ -2,7 +2,7 @@ use super::{Input, Op, OpRegister};
 use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
-use {Matrix, Result};
+use {Tensor, Result};
 
 pub mod conv2d;
 pub mod local_patch;
@@ -35,13 +35,13 @@ impl Op for Softmax {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
-            .into_matrix()
+            .into_tensor()
             .take_f32s()
             .ok_or("Expect input #0 to be f32")?;
         input.map_inplace(|a| *a = a.exp());
         let norm: f32 = input.iter().sum();
         input.map_inplace(|a| *a = *a / norm);
-        let result = Matrix::from(input);
+        let result = Tensor::from(input);
         Ok(vec![result.into()])
     }
 

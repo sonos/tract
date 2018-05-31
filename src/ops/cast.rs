@@ -26,7 +26,7 @@ impl ::ops::Op for Cast {
         let input = inputs.remove(0).take_f32s().ok_or(
             "Expect input #0 to be f32",
         )?;
-        Ok(vec![Matrix::F32(input.mapv(|i| i as _))])
+        Ok(vec![Tensor::F32(input.mapv(|i| i as _))])
         */
     }
 

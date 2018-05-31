@@ -1,6 +1,6 @@
 use tfpb::types::DataType;
 use analyser::TensorFact;
-use {Matrix, Result};
+use {Tensor, Result};
 use super::{Input, Op, OpRegister};
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 #[derive(Debug)]
 pub struct Const {
     datatype: DataType,
-    value: Arc<Matrix>,
+    value: Arc<Tensor>,
 }
 
 impl Const {

@@ -51,7 +51,7 @@ extern crate protobuf;
 pub mod analyser;
 pub mod errors;
 pub mod tfpb;
-pub mod matrix;
+pub mod tensor;
 pub mod ops;
 
 use std::{fs, path, str};
@@ -59,7 +59,7 @@ use std::collections::{HashMap, HashSet};
 use ops::{Input, Op};
 pub use errors::*;
 
-pub use matrix::Matrix;
+pub use tensor::Tensor;
 
 #[derive(Debug)]
 pub struct Node {
@@ -274,7 +274,7 @@ impl Model {
         Plan::for_node(&self, node)
     }
 
-    pub fn run(&self, inputs: Vec<(usize, Matrix)>, output: usize) -> Result<Vec<Matrix>> {
+    pub fn run(&self, inputs: Vec<(usize, Tensor)>, output: usize) -> Result<Vec<Tensor>> {
         self.state().run(inputs, output)
     }
 
@@ -282,10 +282,10 @@ impl Model {
         &*self.nodes
     }
 
-    pub fn run_with_names(&self, inputs: Vec<(&str, Matrix)>, output: &str) -> Result<Vec<Matrix>> {
+    pub fn run_with_names(&self, inputs: Vec<(&str, Tensor)>, output: &str) -> Result<Vec<Tensor>> {
         let inputs = inputs
             .into_iter()
-            .map(|(name, mat)| -> Result<(usize, Matrix)> {
+            .map(|(name, mat)| -> Result<(usize, Tensor)> {
                 Ok((self.node_id_by_name(name)?, mat))
             })
             .collect::<Result<_>>()?;
@@ -305,16 +305,16 @@ impl<'a> ModelState<'a> {
         Ok(())
     }
 
-    pub fn set_outputs(&mut self, id: usize, values: Vec<Matrix>) -> Result<()> {
+    pub fn set_outputs(&mut self, id: usize, values: Vec<Tensor>) -> Result<()> {
         self.outputs[id] = Some(values.into_iter().map(Input::Owned).collect());
         Ok(())
     }
 
-    pub fn set_value(&mut self, id: usize, value: Matrix) -> Result<()> {
+    pub fn set_value(&mut self, id: usize, value: Tensor) -> Result<()> {
         self.set_outputs(id, vec![value])
     }
 
-    pub fn set_values(&mut self, values: Vec<(&str, Matrix)>) -> Result<()> {
+    pub fn set_values(&mut self, values: Vec<(&str, Tensor)>) -> Result<()> {
         for (name, mat) in values {
             self.set_value(self.model.node_id_by_name(name)?, mat)?;
         }
@@ -338,24 +338,24 @@ impl<'a> ModelState<'a> {
         Ok(())
     }
 
-    pub fn take_by_name(&mut self, name: &str) -> Result<Vec<Matrix>> {
+    pub fn take_by_name(&mut self, name: &str) -> Result<Vec<Tensor>> {
         let id = self.model.node_id_by_name(name)?;
         Self::take(self, id)
     }
 
-    pub fn take(&mut self, id: usize) -> Result<Vec<Matrix>> {
+    pub fn take(&mut self, id: usize) -> Result<Vec<Tensor>> {
         Ok(self.outputs[id]
             .take()
             .ok_or("Value is not computed")?
             .into_iter()
-            .map(Input::into_matrix)
+            .map(Input::into_tensor)
             .collect())
     }
 
     /// Main entrypoint for running a network.
     ///
     /// Clears the internal state.
-    pub fn run(&mut self, inputs: Vec<(usize, Matrix)>, output: usize) -> Result<Vec<Matrix>> {
+    pub fn run(&mut self, inputs: Vec<(usize, Tensor)>, output: usize) -> Result<Vec<Tensor>> {
         self.reset()?;
         for input in inputs {
             self.set_value(input.0, input.1)?;

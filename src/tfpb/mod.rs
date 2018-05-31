@@ -122,14 +122,14 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> ::Result<::matrix::Matrix> {
+    pub fn get_attr_tensor(&self, name: &str) -> ::Result<::tensor::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?
             .ok_or_else(|| format!("Node {} ({}) expected tensor attr {}", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> ::Result<Option<::matrix::Matrix>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> ::Result<Option<::tensor::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
-            Ok(Some(::matrix::Matrix::from_pb(&t)?))
+            Ok(Some(::tensor::Tensor::from_pb(&t)?))
         } else {
             Ok(None)
         }

@@ -426,29 +426,29 @@ mod tests {
     #[test]
     fn unify_same_value() {
         use ndarray::prelude::*;
-        let dt = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
+        let dt = ValueFact::Only(Tensor::F32(ArrayD::zeros(IxDyn(&[1]))));
         assert_eq!(unify_value(&dt, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_values_only() {
         use ndarray::prelude::*;
-        let dt1 = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
-        let dt2 = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[2]))));
+        let dt1 = ValueFact::Only(Tensor::F32(ArrayD::zeros(IxDyn(&[1]))));
+        let dt2 = ValueFact::Only(Tensor::F32(ArrayD::zeros(IxDyn(&[2]))));
         assert!(unify_value(&dt1, &dt2).is_err());
     }
 
     #[test]
     fn unify_different_values_any_left() {
         use ndarray::prelude::*;
-        let dt = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
+        let dt = ValueFact::Only(Tensor::F32(ArrayD::zeros(IxDyn(&[1]))));
         assert_eq!(unify_value(&ValueFact::Any, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_values_any_right() {
         use ndarray::prelude::*;
-        let dt = ValueFact::Only(Matrix::F32(ArrayD::zeros(IxDyn(&[1]))));
+        let dt = ValueFact::Only(Tensor::F32(ArrayD::zeros(IxDyn(&[1]))));
         assert_eq!(unify_value(&dt, &ValueFact::Any).unwrap(), dt);
     }
 }

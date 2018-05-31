@@ -8,7 +8,7 @@ use analyser::{TensorFact, ShapeFact, ValueFact};
 use analyser::helpers::most_specific_shape;
 use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
-use {Matrix, Result};
+use {Tensor, Result};
 use super::{Input, Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -51,7 +51,7 @@ impl Op for ConcatV2 {
             .map(|mat| mat.as_f32s().unwrap().view())
             .collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats)?;
-        let result = Matrix::from(result);
+        let result = Tensor::from(result);
 
         Ok(vec![result.into()])
     }
@@ -126,7 +126,7 @@ impl Op for ExpandDims {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let (data, dims) = args_2!(inputs);
-        let data = data.into_matrix()
+        let data = data.into_tensor()
             .take_f32s()
             .ok_or("Expected a f32 matrix")?;
         let dims = dims.as_i32s().ok_or("Expected a i32 matrix")?;
@@ -138,7 +138,7 @@ impl Op for ExpandDims {
                 Err(format!("unimplemented ExpandDims with negative parameter"))?
             }
         }
-        Ok(vec![Matrix::from(data.into_shape(shape)?).into()])
+        Ok(vec![Tensor::from(data.into_shape(shape)?).into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -310,7 +310,7 @@ impl Op for Reshape {
         let (input, dims) = args_2!(inputs);
 
         let input = input
-            .into_matrix()
+            .into_tensor()
             .take_f32s()
             .ok_or("Expected a f32 matrix")?;
 
@@ -323,7 +323,7 @@ impl Op for Reshape {
             input.len());
 
         Ok(vec![
-            Matrix::from(input.into_shape(&*dims)?.into_dyn()).into(),
+            Tensor::from(input.into_shape(&*dims)?.into_dyn()).into(),
         ])
     }
 
@@ -406,7 +406,7 @@ impl Op for Shape {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
-        Ok(vec![Matrix::from(Array1::from_vec(shape)).into()])
+        Ok(vec![Tensor::from(Array1::from_vec(shape)).into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -421,7 +421,7 @@ impl Op for Shape {
             .map(|d| d as i32)
             .collect();
         let rank = shape.len();
-        let value = Matrix::from(Array1::from_vec(shape)).into();
+        let value = Tensor::from(Array1::from_vec(shape)).into();
 
         // The output is the shape of the input.
         // The shape of the output is the rank of the input.
@@ -504,7 +504,7 @@ impl Op for Squeeze {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape = self.squeeze_shape(data.shape().to_vec())?;
-        Ok(vec![Matrix::from(data.clone().into_shape(shape)?).into()])
+        Ok(vec![Tensor::from(data.clone().into_shape(shape)?).into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.

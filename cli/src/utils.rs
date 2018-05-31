@@ -3,7 +3,7 @@ use rand;
 use rand::Rng;
 use tfdeploy;
 use tfdeploy::tfpb::types::DataType;
-use tfdeploy::Matrix;
+use tfdeploy::Tensor;
 
 use errors::*;
 
@@ -50,10 +50,10 @@ pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<usize>> {
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]
-pub fn compare_outputs<Matrix1, Matrix2>(rtf: &[Matrix1], rtfd: &[Matrix2]) -> Result<()>
+pub fn compare_outputs<Tensor1, Tensor2>(rtf: &[Tensor1], rtfd: &[Tensor2]) -> Result<()>
 where
-    Matrix1: ::std::borrow::Borrow<Matrix>,
-    Matrix2: ::std::borrow::Borrow<Matrix>,
+    Tensor1: ::std::borrow::Borrow<Tensor>,
+    Tensor2: ::std::borrow::Borrow<Tensor>,
 {
     if rtf.len() != rtfd.len() {
         bail!(
@@ -85,8 +85,8 @@ where
     Ok(())
 }
 
-/// Generates a random matrix of a given size and type.
-pub fn random_matrix(sizes: Vec<usize>, datatype: DataType) -> Matrix {
+/// Generates a random tensor of a given size and type.
+pub fn random_tensor(sizes: Vec<usize>, datatype: DataType) -> Tensor {
     macro_rules! for_type {
         ($t:ty) => {
             ndarray::Array::from_shape_fn(sizes, |_| rand::thread_rng().gen())

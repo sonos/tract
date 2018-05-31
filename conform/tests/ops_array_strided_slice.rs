@@ -11,10 +11,10 @@ use proptest::prelude::*;
 use ndarray::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_INT32;
-use tfdeploy::Matrix;
+use tfdeploy::Tensor as TfdTensor;
 
 fn strided_slice_strat(
-) -> BoxedStrategy<(Matrix, Matrix, Matrix, Matrix, (i32, i32, i32, i32, i32))> {
+) -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor, TfdTensor, (i32, i32, i32, i32, i32))> {
     ::proptest::collection::vec(
         (1..5).prop_flat_map(|n| {
             // each dim max
@@ -45,7 +45,7 @@ fn strided_slice_strat(
             let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
             let size: i32 = shape.iter().map(|d| *d as i32).product();
             (
-                Matrix::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
+                TfdTensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
                 Array::from_vec(
                     dims.iter()
                         .map(|d| {

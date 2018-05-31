@@ -11,7 +11,7 @@ use proptest::prelude::*;
 use ndarray::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_FLOAT;
-use tfdeploy::Matrix;
+use tfdeploy::Tensor as TfdTensor;
 
 fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
     let conv = tfpb::node()
@@ -31,7 +31,7 @@ fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec
     Ok(graph.write_to_bytes()?)
 }
 
-fn img_and_ker() -> BoxedStrategy<(Matrix, Matrix, (usize, usize))> {
+fn img_and_ker() -> BoxedStrategy<(TfdTensor, TfdTensor, (usize, usize))> {
     (1usize..8, 1usize..8, 1usize..8, 1usize..8)
         .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic, kh, kw, kc))))
         .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, kc))| {

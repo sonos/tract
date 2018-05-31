@@ -5,7 +5,7 @@ use analyser::helpers::most_specific_shape;
 use analyser::helpers::infer_forward_concrete;
 use Result;
 use super::{Input, Op};
-use matrix::Datum;
+use tensor::Datum;
 
 #[derive(Debug, Default, new)]
 pub struct Pack<T: Datum> {
@@ -36,7 +36,7 @@ where
             })
             .collect::<Result<Vec<_>>>()?;
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
-        Ok(vec![T::array_into_mat(array).into()])
+        Ok(vec![T::array_into_tensor(array).into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -107,40 +107,40 @@ where
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Matrix;
+    use Tensor;
     use super::*;
     use ndarray::arr2;
 
     #[test]
     fn pack_0() {
         let inputs = vec![
-            Matrix::i32s(&[2], &[1, 4]).unwrap().into(),
-            Matrix::i32s(&[2], &[2, 5]).unwrap().into(),
-            Matrix::i32s(&[2], &[3, 6]).unwrap().into(),
+            Tensor::i32s(&[2], &[1, 4]).unwrap().into(),
+            Tensor::i32s(&[2], &[2, 5]).unwrap().into(),
+            Tensor::i32s(&[2], &[3, 6]).unwrap().into(),
         ];
         assert_eq!(
             Pack::<i32>::new(3, 0)
                 .eval(inputs.clone())
                 .unwrap()
                 .remove(0)
-                .into_matrix(),
-            Matrix::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
+                .into_tensor(),
+            Tensor::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
         );
         assert_eq!(
             Pack::<i32>::new(3, 1)
                 .eval(inputs.clone())
                 .unwrap()
                 .remove(0)
-                .into_matrix(),
-            Matrix::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
+                .into_tensor(),
+            Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
         );
     }
 
     #[test]
     fn pack_1() {
         let pack = Pack::<i32>::new(3, 0);
-        let input = Matrix::i32s(&[0], &[]).unwrap();
-        let exp: Matrix = Matrix::i32s(&[1, 0], &[]).unwrap();
+        let input = Tensor::i32s(&[0], &[]).unwrap();
+        let exp: Tensor = Tensor::i32s(&[1, 0], &[]).unwrap();
         let found = pack.eval(vec![input.into()]).unwrap();
 
         assert!(

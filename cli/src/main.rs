@@ -26,7 +26,7 @@ use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
-use tfdeploy::Matrix;
+use tfdeploy::Tensor;
 use tfpb::graph::GraphDef;
 use tfpb::types::DataType;
 
@@ -39,7 +39,7 @@ use format::Row;
 use utils::compare_outputs;
 use utils::detect_inputs;
 use utils::detect_output;
-use utils::random_matrix;
+use utils::random_tensor;
 
 mod errors;
 mod format;
@@ -240,7 +240,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     for i in params.inputs {
         generated.push((
             tfd.get_node_by_id(i)?.name.as_str(),
-            random_matrix(params.sizes.clone(), params.datatype),
+            random_tensor(params.sizes.clone(), params.datatype),
         ));
     }
 
@@ -292,7 +292,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
             _ => {
                 let tfd_output = state.outputs[n].as_ref().unwrap();
-                let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Matrix>>();
+                let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Tensor>>();
 
                 match compare_outputs(&tf_output, &views) {
                     Err(_) => {
@@ -395,7 +395,7 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 
     // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        state.set_value(s, random_matrix(params.sizes.clone(), params.datatype))?;
+        state.set_value(s, random_tensor(params.sizes.clone(), params.datatype))?;
     }
 
     info!("Running {} iterations max. for each node.", max_iters);

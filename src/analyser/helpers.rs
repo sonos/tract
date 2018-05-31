@@ -17,7 +17,7 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Opti
     let output = TensorFact {
         datatype: inputs[0].datatype,
         shape: output_value.shape().into(),
-        value: valuefact!(output_value.into_matrix())
+        value: valuefact!(output_value.into_tensor())
     };
 
     Ok(Some(vec![output]))

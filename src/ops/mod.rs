@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use analyser::TensorFact;
 
-use {Matrix, Result};
+use {Tensor, Result};
 
 #[macro_use]
 mod macros;
@@ -21,18 +21,18 @@ pub mod nn;
 
 #[derive(Debug, Clone)]
 pub enum Input {
-    Owned(Matrix),
-    Shared(Arc<Matrix>),
+    Owned(Tensor),
+    Shared(Arc<Tensor>),
 }
 
 impl Input {
-    pub fn into_matrix(self) -> Matrix {
+    pub fn into_tensor(self) -> Tensor {
         match self {
             Input::Owned(m) => m,
             Input::Shared(m) => m.as_ref().clone(),
         }
     }
-    pub fn as_matrix(&self) -> &Matrix {
+    pub fn as_tensor(&self) -> &Tensor {
         match self {
             &Input::Owned(ref m) => &m,
             &Input::Shared(ref m) => m.as_ref(),
@@ -42,22 +42,22 @@ impl Input {
 
 impl<M> From<M> for Input
 where
-    Matrix: From<M>,
+    Tensor: From<M>,
 {
     fn from(m: M) -> Input {
         Input::Owned(m.into())
     }
 }
 
-impl From<Arc<Matrix>> for Input {
-    fn from(m: Arc<Matrix>) -> Input {
+impl From<Arc<Tensor>> for Input {
+    fn from(m: Arc<Tensor>) -> Input {
         Input::Shared(m)
     }
 }
 
 impl ::std::ops::Deref for Input {
-    type Target = Matrix;
-    fn deref(&self) -> &Matrix {
+    type Target = Tensor;
+    fn deref(&self) -> &Tensor {
         match self {
             &Input::Owned(ref m) => &m,
             &Input::Shared(ref m) => m.as_ref(),
@@ -67,7 +67,7 @@ impl ::std::ops::Deref for Input {
 
 impl PartialEq for Input {
     fn eq(&self, other: &Input) -> bool {
-        self.as_matrix() == other.as_matrix()
+        self.as_tensor() == other.as_tensor()
     }
 }
 

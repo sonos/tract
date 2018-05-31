@@ -1,7 +1,7 @@
 use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use ndarray::prelude::*;
-use {Matrix, Result};
+use {Tensor, Result};
 use ops::{Input, Op};
 use tfpb::types::DataType;
 
@@ -112,7 +112,7 @@ impl Op for StridedSlice {
         });
         let output = output.into_shape(reshape)?;
 
-        Ok(vec![Matrix::I32(output.into()).into()])
+        Ok(vec![Tensor::I32(output.into()).into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -166,16 +166,16 @@ impl Op for StridedSlice {
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Matrix;
+    use Tensor;
     use super::*;
     use ndarray::*;
 
-    fn run<I, B, E, S>(op: StridedSlice, input: I, begin: B, end: E, strides: S) -> Matrix
+    fn run<I, B, E, S>(op: StridedSlice, input: I, begin: B, end: E, strides: S) -> Tensor
     where
-        I: Into<Matrix>,
-        B: Into<Matrix>,
-        E: Into<Matrix>,
-        S: Into<Matrix>,
+        I: Into<Tensor>,
+        B: Into<Tensor>,
+        E: Into<Tensor>,
+        S: Into<Tensor>,
     {
         op.eval(vec![
             input.into().into(),
@@ -185,7 +185,7 @@ mod tests {
         ]).unwrap()
             .pop()
             .unwrap()
-            .into_matrix()
+            .into_tensor()
     }
 
     // https://www.tensorflow.org/api_docs/python/tf/strided_slice
@@ -203,7 +203,7 @@ mod tests {
                 arr1(&[2, 1, 3]),
                 arr1(&[1, 1, 1])
             ),
-            Matrix::from(arr3(&[[[3, 3, 3]]])),
+            Tensor::from(arr3(&[[[3, 3, 3]]])),
         );
     }
 
@@ -221,7 +221,7 @@ mod tests {
                 arr1(&[2, 2, 3]),
                 arr1(&[1, 1, 1])
             ),
-            Matrix::from(arr3(&[[[3, 3, 3], [4, 4, 4]]])),
+            Tensor::from(arr3(&[[[3, 3, 3], [4, 4, 4]]])),
         );
     }
 
@@ -239,7 +239,7 @@ mod tests {
                 arr1(&[2, -3, 3]),
                 arr1(&[1, -1, 1])
             ),
-            Matrix::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
+            Tensor::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
         );
     }
 
@@ -257,7 +257,7 @@ mod tests {
                 arr1(&[2, 2, 4]),
                 arr1(&[1, 1, 2])
             ),
-            Matrix::from(arr3(&[[[3, 3], [4, 4]]])),
+            Tensor::from(arr3(&[[[3, 3], [4, 4]]])),
         );
     }
 
@@ -271,7 +271,7 @@ mod tests {
                 arr1(&[-1]),
                 arr1(&[1])
             ),
-            Matrix::from(arr1(&[0]))
+            Tensor::from(arr1(&[0]))
         )
     }
 
@@ -285,7 +285,7 @@ mod tests {
                 arr1(&[-1, -1]),
                 arr1(&[1, 2])
             ),
-            Matrix::from(arr2(&[[1, 0], [3, 0]]))
+            Tensor::from(arr2(&[[1, 0], [3, 0]]))
         )
     }
 
@@ -299,7 +299,7 @@ mod tests {
                 arr1(&[2]),
                 arr1(&[1])
             ),
-            Matrix::from(arr2(&[[0, 6], [0, 0]]))
+            Tensor::from(arr2(&[[0, 6], [0, 0]]))
         )
     }
 
@@ -309,7 +309,7 @@ mod tests {
         op.begin_mask = 1;
         assert_eq!(
             run(op, arr1(&[0, 1]), arr1(&[1]), arr1(&[1]), arr1(&[1])),
-            Matrix::from(arr1(&[0]))
+            Tensor::from(arr1(&[0]))
         )
     }
 
@@ -325,7 +325,7 @@ mod tests {
                 arr1(&[0, 0]),
                 arr1(&[1, 1])
             ),
-            Matrix::I32(arr1(&[]).into_dyn())
+            Tensor::I32(arr1(&[]).into_dyn())
         )
     }
 }

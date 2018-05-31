@@ -1,6 +1,6 @@
 use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
-use {Matrix, Result};
+use {Tensor, Result};
 use super::{Input, Op};
 use ndarray::prelude::*;
 use std::marker::PhantomData;
@@ -30,7 +30,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
         let m_input = args_1!(inputs);
         let data = m_input
-            .into_matrix()
+            .into_tensor()
             .take_f32s()
             .ok_or("Expected a f32 matrix")?;
         let data = into_4d(data)?;
@@ -55,7 +55,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
             P::digest(&mut state)
         });
 
-        Ok(vec![Matrix::from(transformed.into_dyn()).into()])
+        Ok(vec![Tensor::from(transformed.into_dyn()).into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -147,14 +147,14 @@ impl Pooler for AvgPooler {
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Matrix;
+    use Tensor;
     use super::*;
 
     #[test]
     fn test_maxpool_1() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(1, 1), (2, 1), PhantomData);
-        let data = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
-        let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
+        let data = Tensor::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
+        let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
         let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(
@@ -168,8 +168,8 @@ mod tests {
     #[test]
     fn test_maxpool_2() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(3, 3), (3, 3), PhantomData);
-        let data = Matrix::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
-        let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
+        let data = Tensor::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
+        let exp: Tensor = Tensor::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
         let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(
@@ -183,8 +183,8 @@ mod tests {
     #[test]
     fn test_avgpool_1() {
         let pool = Pool::<AvgPooler>(LocalPatch::same(1, 1), (1, 2), PhantomData);
-        let data = Matrix::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
-        let exp: Matrix = Matrix::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
+        let data = Tensor::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
+        let exp: Tensor = Tensor::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
         let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(

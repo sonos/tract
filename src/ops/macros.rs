@@ -13,11 +13,11 @@ macro_rules! element_map {
             /// Evaluates the operation given the input tensors.
             fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> $crate::Result<Vec<$crate::ops::Input>> {
                 let a = args_1!(inputs);
-                let mut a = a.into_matrix().take_f32s().ok_or(
+                let mut a = a.into_tensor().take_f32s().ok_or(
                     "Expect input #0 to be f32",
                 )?;
                 a.mapv_inplace($expr);
-                Ok(vec![$crate::matrix::Matrix::F32(a).into()])
+                Ok(vec![$crate::tensor::Tensor::F32(a).into()])
             }
 
             /// Infers properties about the output tensors from the input tensors.
@@ -51,20 +51,20 @@ macro_rules! element_bin {
     ($Name:ident, $name:ident, $expr: expr) =>
     {
         #[derive(Debug,new)]
-        pub struct $Name<T: ::matrix::Datum>(::std::marker::PhantomData<T>);
+        pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
             let dtype = pb.get_attr_datatype("T")?;
             Ok(boxed_new!($Name(dtype)()))
         }
 
-        impl<T: ::matrix::Datum> Op for $Name<T> {
+        impl<T: ::tensor::Datum> Op for $Name<T> {
             /// Evaluates the operation given the input tensors.
             fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> Result<Vec<$crate::ops::Input>> {
                 let (a, b) = args_2!(inputs);
-                let a = T::mat_into_array(a.into_matrix())?;
+                let a = T::mat_into_array(a.into_tensor())?;
                 let b = T::mat_to_view(&*b)?;
-                Ok(vec!(T::array_into_mat($expr(a,b)).into()))
+                Ok(vec!(T::array_into_tensor($expr(a,b)).into()))
             }
 
             /// Infers properties about the output tensors from the input tensors.

@@ -2,7 +2,7 @@ use std::iter::FromIterator;
 
 use errors::*;
 use tfpb::types::DataType;
-use Matrix;
+use Tensor;
 
 
 /// Partial information about a tensor.
@@ -157,12 +157,12 @@ impl DimFact {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValueFact {
     Any,
-    Only(Matrix),
+    Only(Tensor),
 }
 
 impl ValueFact {
-    // Tries to transform the value fact into a Matrix, or returns None.
-    pub fn concretize(self: &ValueFact) -> Option<&Matrix> {
+    // Tries to transform the value fact into a Tensor, or returns None.
+    pub fn concretize(self: &ValueFact) -> Option<&Tensor> {
         match self {
             ValueFact::Any => {
                 debug!("Impossible to concretize an Any value.");
@@ -176,7 +176,7 @@ impl ValueFact {
     // Applies fn to a defined value, and leaves an unknown value untouched.
     // Returns an Err if something went wrong during the transformation.
     pub fn map_err<F>(self: &ValueFact, f: F) -> Result<ValueFact>
-    where F: Fn(&Matrix) -> Result<Matrix> {
+    where F: Fn(&Tensor) -> Result<Tensor> {
         match self {
             ValueFact::Any => Ok(ValueFact::Any),
             ValueFact::Only(m) => Ok(ValueFact::Only(f(m)?))
