@@ -96,13 +96,13 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         };
 
         let block_shape = TensorFact {
-            datatype: outputs[0].datatype,
+            datatype: typefact!(_),
             shape: shapefact![_],
             value: valuefact!(_)
         };
 
         let paddings = TensorFact {
-            datatype: outputs[0].datatype,
+            datatype: typefact!(_),
             shape: shapefact![_, 2],
             value: valuefact!(_)
         };
@@ -186,13 +186,13 @@ impl<T: Datum> Op for BatchToSpace<T> {
         };
 
         let block_shape = TensorFact {
-            datatype: outputs[0].datatype,
+            datatype: typefact!(_),
             shape: shapefact![_],
             value: valuefact!(_)
         };
 
         let crops = TensorFact {
-            datatype: outputs[0].datatype,
+            datatype: typefact!(_),
             shape: shapefact![_, 2],
             value: valuefact!(_)
         };
