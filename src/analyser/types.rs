@@ -43,6 +43,16 @@ pub enum TypeFact {
     Only(DataType),
 }
 
+impl TypeFact {
+    /// Tries to transform the type fact into a DataType, or returns None.
+    pub fn concretize(&self) -> Option<DataType> {
+        match self {
+            TypeFact::Any => None,
+            TypeFact::Only(d) => Some(*d)
+        }
+    }
+}
+
 /// Partial information about a shape.
 ///
 /// A basic example of a shape fact is `shapefact![1, 2]`, which corresponds to
@@ -129,7 +139,7 @@ pub enum DimFact {
 }
 
 impl DimFact {
-    /// Tries to transform the dimension into an usize, or returns None.
+    /// Tries to transform the dimension fact into an usize, or returns None.
     pub fn concretize(&self) -> Option<usize> {
         match self {
             DimFact::Any => None,

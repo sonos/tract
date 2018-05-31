@@ -86,8 +86,14 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<V
         .map(|t| &t.shape)
         .collect();
 
+    let datatype = inputs.iter()
+        .filter_map(|i| i.datatype.concretize())
+        .next()
+        .map(|t| typefact!(t))
+        .unwrap_or(typefact!(_));
+
     let output = TensorFact {
-        datatype: inputs[0].datatype,
+        datatype,
         shape: infer_shape_broadcasting(input_shapes)?.unwrap_or(shapefact![..]),
         value: valuefact!(_)
     };

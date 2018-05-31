@@ -69,13 +69,16 @@ macro_rules! element_bin {
 
             /// Infers properties about the output tensors from the input tensors.
             fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+                use $crate::analyser::TypeFact::*;
+
                 if inputs.len() != 2 {
                     bail!("Binary operations only supports two inputs.");
                 }
 
-                if inputs[0].datatype != $crate::analyser::TypeFact::Any &&
-                   inputs[0].datatype != inputs[1].datatype {
-                    bail!("Binary operations don't support inputs of different types.");
+                if let (Only(i), Only(j)) = (inputs[0].datatype, inputs[1].datatype) {
+                    if i != j {
+                        bail!("Binary operations don't support inputs of different types.");
+                    }
                 }
 
                 $crate::analyser::helpers::infer_forward_basic(self, inputs)
