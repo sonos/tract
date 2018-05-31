@@ -40,7 +40,7 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
 
     let mut output_shape = vec![];
 
-    for i in 1..bound {
+    for i in 1..(bound + 1) {
         let mut previous = None;
         let mut unknown = 0;
 
