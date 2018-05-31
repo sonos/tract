@@ -290,8 +290,22 @@ impl<'n> Analyser<'n> {
 
         let mut changed = false;
 
+        // TODO(liautaud): For now, we will assume that forward inference only
+        // produces a single output. We need to know this because several nodes
+        // might want to consume that single output, so we must copy it instead
+        // of expecting the node to produce several copies itself.
         for (i, &j) in target[node.id].iter().enumerate() {
-            let unified = unify(&inferred[i], &self.edges[j].fact)?;
+            let fact = if self.current_direction {
+                if inferred.len() > 1 {
+                    panic!("Forward inference should not produce more than one output.");
+                }
+
+                &inferred[0]
+            } else {
+                &inferred[i]
+            };
+
+            let unified = unify(fact, &self.edges[j].fact)?;
             if unified != self.edges[j].fact {
                 self.edges[j].fact = unified;
                 changed = true;
