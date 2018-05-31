@@ -73,7 +73,8 @@ macro_rules! element_bin {
                     bail!("Binary operations only supports two inputs.");
                 }
 
-                if inputs[0].datatype != inputs[1].datatype {
+                if inputs[0].datatype != $crate::analyser::TypeFact::Any &&
+                   inputs[0].datatype != inputs[1].datatype {
                     bail!("Binary operations don't support inputs of different types.");
                 }
 

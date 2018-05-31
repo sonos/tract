@@ -227,7 +227,11 @@ impl<'n> Analyser<'n> {
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
     fn try_step(&mut self) -> Result<bool> {
-        let node = self.nodes[self.plan[self.current_step]];
+        let node = if self.current_direction {
+            self.nodes[self.plan[self.current_step]]
+        } else {
+            self.nodes[self.plan[self.plan.len() - 1 - self.current_step]]
+        };
 
         // The node is a special node, don't do anything with it.
         if node.is_none() {
