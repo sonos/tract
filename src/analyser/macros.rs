@@ -39,6 +39,12 @@ macro_rules! valuefact {
         ($crate::analyser::ValueFact::Only($arg));
 }
 
+/// Tries to unwrap an option, or returns Ok(None) otherwise.
+#[macro_export]
+macro_rules! unwrap_or_none {
+    ($e:expr) => ({ let e = $e; if e.is_none() { return Ok(None); } else { e.unwrap() }})
+}
+
 #[cfg(tests)]
 mod tests {
     #[test]

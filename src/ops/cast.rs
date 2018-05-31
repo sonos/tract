@@ -31,12 +31,12 @@ impl ::ops::Op for Cast {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         unimplemented!()
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         unimplemented!()
     }
 }

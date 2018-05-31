@@ -37,13 +37,13 @@ where
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() < 1 {
             bail!("Pack operation needs at least one input.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // If we don't know the actual value, we can still compute the shape.
@@ -62,11 +62,11 @@ where
             value: valuefact!(_),
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Pack operation only supports one output.");
         }
@@ -84,11 +84,11 @@ where
             ShapeFact::closed(inner)
         };
 
-        Ok(vec![TensorFact {
+        Ok(Some(vec![TensorFact {
             datatype: outputs[0].datatype,
             shape,
             value: valuefact!(_)
-        }])
+        }]))
     }
 }
 

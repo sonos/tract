@@ -21,7 +21,7 @@ macro_rules! element_map {
             }
 
             /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 if inputs.len() != 1 {
                     bail!("Unary operations only supports one input.");
                 }
@@ -30,7 +30,7 @@ macro_rules! element_map {
             }
 
             /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 if outputs.len() != 1 {
                     bail!("Unary operations only supports one output.");
                 }
@@ -41,7 +41,7 @@ macro_rules! element_map {
                     value: valuefact!(_)
                 };
 
-                Ok(vec![input])
+                Ok(Some(vec![input]))
             }
         }
     }
@@ -68,7 +68,7 @@ macro_rules! element_bin {
             }
 
             /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 if inputs.len() != 2 {
                     bail!("Binary operations only supports two inputs.");
                 }
@@ -81,7 +81,7 @@ macro_rules! element_bin {
             }
 
             /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Vec<$crate::analyser::TensorFact>> {
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 if outputs.len() != 1 {
                     bail!("Binary operations only supports one output.");
                 }
@@ -92,7 +92,7 @@ macro_rules! element_bin {
                     value: valuefact!(_)
                 };
 
-                Ok(vec![input.clone(), input])
+                Ok(Some(vec![input.clone(), input]))
             }
         }
     }

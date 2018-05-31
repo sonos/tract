@@ -74,21 +74,22 @@ impl ShapeFact {
         ShapeFact { open: false, dims }
     }
 
-    /// Tries to transform the fact into a Vec<usize>, or returns
-    /// an Err if some of the dimensions are unknown.
-    pub fn concretize(self: &ShapeFact) -> Result<Vec<usize>> {
+    /// Tries to transform the fact into a Vec<usize>, or returns None.
+    pub fn concretize(self: &ShapeFact) -> Option<Vec<usize>> {
         if self.open {
-            bail!("Impossible to concretize an open shape.")
+            info!("Impossible to concretize an open shape.");
+            return None;
+        }
+
+        let dims: Vec<_> = self.dims.iter()
+            .filter_map(|d| d.concretize())
+            .collect();
+
+        if dims.len() < self.dims.len() {
+            info!("Impossible to concretize a shape with unknown dimensions.");
+            None
         } else {
-            self.dims
-                .iter()
-                .map(|d| match d {
-                    DimFact::Any =>
-                        bail!("Impossible to concretize a shape with an unknown dimension."),
-                    DimFact::Only(i) =>
-                        Ok(*i)
-                })
-                .collect()
+            Some(dims)
         }
     }
 }
@@ -128,12 +129,17 @@ pub enum DimFact {
 }
 
 impl DimFact {
-    /// Returns whether the dimension is known.
-    pub fn is_concrete(&self) -> bool {
+    /// Tries to transform the dimension into an usize, or returns None.
+    pub fn concretize(&self) -> Option<usize> {
         match self {
-            DimFact::Any => false,
-            DimFact::Only(_) => true
+            DimFact::Any => None,
+            DimFact::Only(i) => Some(*i)
         }
+    }
+
+    /// Returns whether the dimension is fully determined.
+    pub fn is_concrete(&self) -> bool {
+        self.concretize().is_some()
     }
 }
 
@@ -145,13 +151,15 @@ pub enum ValueFact {
 }
 
 impl ValueFact {
-    // Tries to transform the value fact into a Matrix, or returns an Err.
-    pub fn concretize(self: &ValueFact) -> Result<&Matrix> {
+    // Tries to transform the value fact into a Matrix, or returns None.
+    pub fn concretize(self: &ValueFact) -> Option<&Matrix> {
         match self {
-            ValueFact::Any =>
-                bail!("Impossible to concretize an Any value."),
-            ValueFact::Only(m) =>
-                Ok(m)
+            ValueFact::Any => {
+                info!("Impossible to concretize an Any value.");
+                None
+            },
+
+            ValueFact::Only(m) => Some(m)
         }
     }
 

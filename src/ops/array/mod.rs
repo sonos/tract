@@ -52,22 +52,22 @@ impl Op for ConcatV2 {
             .collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats)?;
         let result = Matrix::from(result);
+
         Ok(vec![result.into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() < 2 {
             bail!("Concat operation needs at least two inputs.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // If we don't know the actual value, we can still compute the shape.
-        let axis: i32 = inputs[self.n].value
-            .concretize()?
+        let axis: i32 = unwrap_or_none!(inputs[self.n].value.concretize())
             .as_i32s()
             .ok_or("Expected a i32 matrix")?
             .iter()
@@ -92,16 +92,17 @@ impl Op for ConcatV2 {
             value: valuefact!(_),
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Concat operation only supports one output.");
         }
 
-        unimplemented!()
+        // TODO(liautaud): Implement something here.
+        Ok(None)
     }
 }
 
@@ -134,21 +135,20 @@ impl Op for ExpandDims {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         use analyser::unify_shape;
 
         if inputs.len() != 2 {
             bail!("ExpandDims operation only supports two inputs.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // If we don't know the actual value, we can still compute the shape.
         let input_shape = &inputs[0].shape;
-        let mut dims: Vec<_> = inputs[1].value
-            .concretize()?
+        let mut dims: Vec<_> = unwrap_or_none!(inputs[1].value.concretize())
             .as_i32s()
             .ok_or("Expected a i32 matrix")?
             .iter()
@@ -172,11 +172,11 @@ impl Op for ExpandDims {
             value: valuefact!(_),
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("ExpandDims operation only supports one output.");
         }
@@ -193,7 +193,7 @@ impl Op for ExpandDims {
             value: valuefact!(_)
         };
 
-        Ok(vec![data, dims])
+        Ok(Some(vec![data, dims]))
     }
 }
 
@@ -213,21 +213,21 @@ impl Op for Identity {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 1 {
             bail!("Identity operation only supports one input.");
         }
 
-        Ok(inputs.into_iter().cloned().collect())
+        Ok(Some(inputs.into_iter().cloned().collect()))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Identity operation only supports one output.");
         }
 
-        Ok(outputs.into_iter().cloned().collect())
+        Ok(Some(outputs.into_iter().cloned().collect()))
     }
 }
 
@@ -255,19 +255,20 @@ impl Op for Placeholder {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         let output = TensorFact {
             datatype: typefact!(self.datatype),
             shape: shapefact![..],
             value: valuefact!(_),
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
-        bail!("Placeholder operation is a leaf, nothing to infer backwards.");
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        info!("Placeholder operation is a leaf, nothing to infer backwards.");
+        Ok(None)
     }
 }
 
@@ -313,24 +314,24 @@ impl Op for Reshape {
                 .cloned()
                 .collect(),
             input.len());
+
         Ok(vec![
             Matrix::from(input.into_shape(&*dims)?.into_dyn()).into(),
         ])
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 2 {
             bail!("Reshape operation only supports two inputs.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // If we don't know the actual value, we can still compute the shape.
-        let dims: Vec<_> = inputs[1].value
-            .concretize()?
+        let dims: Vec<_> = unwrap_or_none!(inputs[1].value.concretize())
             .as_i32s()
             .ok_or("Expected a i32 matrix")?
             .iter()
@@ -339,7 +340,7 @@ impl Op for Reshape {
 
         let output = match &inputs[0].shape.concretize() {
             // If we know the concrete shape of the input, we get the output shape.
-            Ok(shape) => TensorFact {
+            Some(shape) => TensorFact {
                 datatype: inputs[0].datatype,
                 shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
                 value: valuefact!(_)
@@ -354,14 +355,16 @@ impl Op for Reshape {
                 value: valuefact!(_)
             },
 
-            _ => bail!("Can't infer the shape of the output for Reshape.")
+            _ => {
+                return Ok(None);
+            }
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Reshape operation only supports one output.");
         }
@@ -378,8 +381,7 @@ impl Op for Reshape {
             value: valuefact!(_)
         };
 
-        Ok(vec![input, shape])
-
+        Ok(Some(vec![input, shape]))
     }
 }
 
@@ -401,14 +403,13 @@ impl Op for Shape {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 1 {
             bail!("Shape operation only supports one input.");
         }
 
         // We don't care about the concrete value, just the shape.
-        let shape: Vec<_> = inputs[0].shape
-            .concretize()?
+        let shape: Vec<_> = unwrap_or_none!(inputs[0].shape.concretize())
             .into_iter()
             .map(|d| d as i32)
             .collect();
@@ -417,15 +418,17 @@ impl Op for Shape {
 
         // The output is the shape of the input.
         // The shape of the output is the rank of the input.
-        Ok(vec![TensorFact {
+        let output = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![rank],
             value: valuefact!(value)
-        }])
+        };
+
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Shape operation only supports one output.");
         }
@@ -443,7 +446,7 @@ impl Op for Shape {
 
             // Otherwise, we can only infer the rank of the input.
             ValueFact::Any => {
-                let shape = outputs[0].shape.concretize()?;
+                let shape = unwrap_or_none!(outputs[0].shape.concretize());
 
                 if shape.len() != 1 {
                     bail!("Shape operation should produce a 1-D integer tensor.");
@@ -454,11 +457,11 @@ impl Op for Shape {
         };
 
 
-        Ok(vec![TensorFact {
+        Ok(Some(vec![TensorFact {
             datatype: typefact!(_),
             shape: dimensions,
             value: valuefact!(_)
-        }])
+        }]))
     }
 }
 
@@ -498,38 +501,35 @@ impl Op for Squeeze {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 1 {
             bail!("Squeeze operation only supports one input.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
-        let output = match inputs[0].shape.concretize() {
-            Ok(shape) => TensorFact {
-                datatype: inputs[0].datatype,
-                shape: self.squeeze_shape(shape)?.iter().collect(),
-                value: valuefact!(_)
-            },
-
-            _ => bail!("Can't infer for Squeeze without a concrete shape.")
+        let shape = unwrap_or_none!(inputs[0].shape.concretize());
+        let output = TensorFact {
+            datatype: inputs[0].datatype,
+            shape: self.squeeze_shape(shape)?.iter().collect(),
+            value: valuefact!(_)
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Squeeze operation only supports one output.");
         }
 
-        Ok(vec![TensorFact {
+        Ok(Some(vec![TensorFact {
             datatype: outputs[0].datatype,
             shape: shapefact![..],
             value: valuefact!(_)
-        }])
+        }]))
     }
 }

@@ -70,21 +70,21 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 3 {
             bail!("SpaceToBatchND operation only supports three inputs.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // TODO(liautaud): It will be fun implementing this, I promess.
-        unimplemented!()
+        Ok(None)
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("SpaceToBatchND operation only supports one output.");
         }
@@ -107,7 +107,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
             value: valuefact!(_)
         };
 
-        Ok(vec![input, block_shape, paddings])
+        Ok(Some(vec![input, block_shape, paddings]))
     }
 }
 
@@ -160,21 +160,21 @@ impl<T: Datum> Op for BatchToSpace<T> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 3 {
             bail!("BatchToSpaceND operation only supports three inputs.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // TODO(liautaud): It will be fun implementing this, I promess.
-        unimplemented!()
+        Ok(None)
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("BatchToSpaceND operation only supports one output.");
         }
@@ -197,7 +197,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
             value: valuefact!(_)
         };
 
-        Ok(vec![input, block_shape, crops])
+        Ok(Some(vec![input, block_shape, crops]))
     }
 }
 

@@ -76,10 +76,14 @@ pub trait Op: Debug + Send + Sync + 'static {
     fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>>;
+    /// Returns Err in case of an unrecoverable error during the inference,
+    /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>>;
+    /// Returns Err in case of an unrecoverable error during the inference,
+    /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
 }
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
@@ -118,12 +122,12 @@ impl Op for UnimplementedOp {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         unimplemented!()
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         unimplemented!()
     }
 }

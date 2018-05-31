@@ -111,25 +111,26 @@ impl Op for StridedSlice {
             input[&*coord]
         });
         let output = output.into_shape(reshape)?;
+
         Ok(vec![Matrix::I32(output.into()).into()])
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 4 {
             bail!("StridedSlice operation only supports four inputs.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // TODO(liautaud): It will be fun implementing this, I promess.
-        unimplemented!()
+        Ok(None)
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("StridedSlice operation only supports one output.");
         }
@@ -158,7 +159,7 @@ impl Op for StridedSlice {
             value: valuefact!(_)
         };
 
-        Ok(vec![input, begin, end, strides])
+        Ok(Some(vec![input, begin, end, strides]))
     }
 }
 

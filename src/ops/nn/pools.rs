@@ -59,17 +59,17 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 1 {
             bail!("Pool operations only supports one input.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // If we don't know the actual value, we can still compute the shape.
-        let shape = match inputs[0].shape.concretize()?.as_slice() {
+        let shape = match unwrap_or_none!(inputs[0].shape.concretize()).as_slice() {
             // TODO(liautaud): Take the data_format parameter into account.
             [batch, in_height, in_width, in_channels] => {
                 let (height, width) = self.0.adjusted_dim(*in_height, *in_width, self.1);
@@ -85,16 +85,16 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
             value: valuefact!(_),
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Pool operations only supports one output.");
         }
 
-        let shape = match outputs[0].shape.concretize()?.as_slice() {
+        let shape = match unwrap_or_none!(outputs[0].shape.concretize()).as_slice() {
             // TODO(liautaud): Take the data_format parameter into account.
             [batch, _, _, out_channels] =>
                 shapefact![(*batch), _, _, (*out_channels)],
@@ -107,7 +107,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
             value: valuefact!(_)
         };
 
-        Ok(vec![input])
+        Ok(Some(vec![input]))
     }
 }
 

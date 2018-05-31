@@ -46,30 +46,30 @@ impl Op for Softmax {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 1 {
             bail!("Softmax operation only supports one input.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         let output = TensorFact {
             datatype: typefact!(DataType::DT_FLOAT),
             shape: match &inputs[0].shape.concretize() {
-                Ok(v) if v.len() == 2 => v.iter().collect(),
-                Ok(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
+                Some(v) if v.len() == 2 => v.iter().collect(),
+                Some(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
                 _ => shapefact![_, _],
             },
             value: valuefact!(_)
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Softmax operation only supports one output.");
         }
@@ -77,14 +77,14 @@ impl Op for Softmax {
         let input = TensorFact {
             datatype: typefact!(DataType::DT_FLOAT),
             shape: match &outputs[0].shape.concretize() {
-                Ok(v) if v.len() == 2 => v.iter().collect(),
-                Ok(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
+                Some(v) if v.len() == 2 => v.iter().collect(),
+                Some(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
                 _ => shapefact![_, _],
             },
             value: valuefact!(_)
         };
 
-        Ok(vec![input])
+        Ok(Some(vec![input]))
     }
 }
 

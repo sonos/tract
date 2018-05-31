@@ -1,59 +1,33 @@
 use super::*;
 
 /// Infers every property when all the values are concrete.
-pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
-    let input_values: Result<Vec<_>> = inputs
-        .iter()
-        .map(|t| t.value.concretize())
+pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+    let input_values: Vec<_> = inputs.iter()
+        .filter_map(|t| t.value.concretize())
+        .map(|v| v.clone().into())
         .collect();
 
-    match input_values {
-        Ok(v) => {
-            // If we know the value of all the inputs, we can deduce everything.
-            let input_inputs: Vec<_> = v
-                .into_iter()
-                .map(|v| v.clone().into())
-                .collect();
-
-            let output_value = op.eval(input_inputs)?.pop().unwrap();
-            let output = TensorFact {
-                datatype: inputs[0].datatype,
-                shape: output_value.shape().into(),
-                value: valuefact!(output_value.into_matrix())
-            };
-
-            Ok(vec![output])
-        },
-
-        _ => bail!("Can't infer value: some inputs are not concrete.")
-    }
-}
-
-/// Infers basic properties in the case of unary or binary operators.
-pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
-    if let Ok(output) = infer_forward_concrete(op, &inputs) {
-        return Ok(output);
+    if input_values.len() < inputs.len() {
+        info!("Can't infer value: some inputs are still unknown.");
+        return Ok(None);
     }
 
-    // Otherwise we can only deduce the type and shape of the output.
-    let input_shapes: Vec<_> = inputs
-        .iter()
-        .map(|t| &t.shape)
-        .collect();
-
+    // If we know the value of all the inputs, we can deduce everything.
+    let output_value = op.eval(input_values)?.pop().unwrap();
     let output = TensorFact {
         datatype: inputs[0].datatype,
-        shape: infer_shape_broadcasting(input_shapes)?,
-        value: valuefact!(_)
+        shape: output_value.shape().into(),
+        value: valuefact!(output_value.into_matrix())
     };
 
-    Ok(vec![output])
+    Ok(Some(vec![output]))
 }
 
 /// Infers basic shape properties in the case of broadcasting operators.
-pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<ShapeFact> {
+pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeFact>> {
     if shapes.iter().any(|s| s.open) {
-        bail!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
+        info!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
+        return Ok(None);
     }
 
     let dims: Vec<_> = shapes.iter()
@@ -85,9 +59,11 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<ShapeFact> {
         }
 
         if unknown > 1 {
-            bail!("Can't infer shape (broadcasting): there are multiple unknown values at same index.");
+            info!("Can't infer shape (broadcasting): there are multiple unknown values at same index.");
+            return Ok(None);
         } else if unknown == 1 && previous != None {
-            bail!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
+            info!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
+            return Ok(None);
         } else if unknown == 1 && previous == None {
             output_shape.push(DimFact::Any);
         } else {
@@ -95,7 +71,28 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<ShapeFact> {
         }
     }
 
-    Ok(ShapeFact::closed(output_shape))
+    Ok(Some(ShapeFact::closed(output_shape)))
+}
+
+/// Infers basic properties in the case of unary or binary operators.
+pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+    if let Some(output) = infer_forward_concrete(op, &inputs)? {
+        return Ok(Some(output));
+    }
+
+    // Otherwise we can only deduce the type and shape of the output.
+    let input_shapes: Vec<_> = inputs
+        .iter()
+        .map(|t| &t.shape)
+        .collect();
+
+    let output = TensorFact {
+        datatype: inputs[0].datatype,
+        shape: unwrap_or_none!(infer_shape_broadcasting(input_shapes)?),
+        value: valuefact!(_)
+    };
+
+    Ok(Some(vec![output]))
 }
 
 /// Returns the most specific closed shape out of an iterator.

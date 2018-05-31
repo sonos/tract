@@ -224,13 +224,12 @@ impl<'n> Analyser<'n> {
                 .collect();
 
             let inferred = if self.current_direction {
-                node.op.infer_forward(sources)
+                node.op.infer_forward(sources)?
             } else {
-                node.op.infer_backward(sources)
+                node.op.infer_backward(sources)?
             };
 
-            // TODO(liautaud): Change this to Option<_>.
-            if inferred.is_err() {
+            if inferred.is_none() {
                 return Ok(false);
             }
 

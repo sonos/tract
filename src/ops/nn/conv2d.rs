@@ -50,19 +50,19 @@ impl<T: Datum> Op for Conv2D<T> {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 2 {
             bail!("Conv2D operation only supports two inputs.");
         }
 
-        if let Ok(output) = infer_forward_concrete(self, &inputs) {
-            return Ok(output);
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
         }
 
         // If we don't know the actual value, we can still compute the shape.
-        fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&TensorFact>) -> Result<ShapeFact> where T: Datum {
-            let input_shape = inputs[0].shape.concretize()?;
-            let filter_shape = inputs[1].shape.concretize()?;
+        fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&TensorFact>) -> Result<Option<ShapeFact>> where T: Datum {
+            let input_shape = unwrap_or_none!(inputs[0].shape.concretize());
+            let filter_shape = unwrap_or_none!(inputs[1].shape.concretize());
 
             let shape = match (input_shape.as_slice(), filter_shape.as_slice()) {
                 ([batch, in_height, in_width, in_channels],
@@ -80,26 +80,27 @@ impl<T: Datum> Op for Conv2D<T> {
                 _ => bail!("The input and filter dimensions are invalid.")
             };
 
-            Ok(shape)
+            Ok(Some(shape))
         };
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: try_infer_forward_concrete_shape(self, inputs).unwrap_or(shapefact![_, _, _, _]),
+            shape: try_infer_forward_concrete_shape(self, inputs)?
+                  .unwrap_or(shapefact![_, _, _, _]),
             value: valuefact!(_),
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() != 1 {
             bail!("Conv2D operation only supports one output.");
         }
 
         match outputs[0].shape.concretize() {
-            Ok(shape) => match shape.as_slice() {
+            Some(shape) => match shape.as_slice() {
                 [batch, _, _, out_channels] => {
                     let input = TensorFact {
                         datatype: outputs[0].datatype,
@@ -113,7 +114,7 @@ impl<T: Datum> Op for Conv2D<T> {
                         value: valuefact!(_)
                     };
 
-                    Ok(vec![input, filter])
+                    Ok(Some(vec![input, filter]))
                 },
 
                 _ => bail!("The output dimensions are invalid.")
@@ -121,7 +122,7 @@ impl<T: Datum> Op for Conv2D<T> {
 
             // If we don't have concrete dimensions yet, we can still
             // give the shape that we want.
-            Err(_) => {
+            None => {
                 let input = TensorFact {
                     datatype: outputs[0].datatype,
                     shape: shapefact![_, _, _, _],
@@ -134,7 +135,7 @@ impl<T: Datum> Op for Conv2D<T> {
                     value: valuefact!(_)
                 };
 
-                Ok(vec![input, filter])
+                Ok(Some(vec![input, filter]))
             }
         }
     }

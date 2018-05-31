@@ -41,18 +41,19 @@ impl Op for Const {
     }
 
     /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         let output = TensorFact {
             datatype: typefact!(self.datatype),
             shape: self.value.shape().into(),
             value: valuefact!(self.value.as_ref().clone())
         };
 
-        Ok(vec![output])
+        Ok(Some(vec![output]))
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Vec<TensorFact>> {
-        bail!("Const operation is a leaf, nothing to infer backwards.");
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        info!("Const operation is a leaf, nothing to infer backwards.");
+        Ok(None)
     }
 }
