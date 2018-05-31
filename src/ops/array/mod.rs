@@ -104,7 +104,7 @@ impl Op for ConcatV2 {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("Concat operation only supports one output.");
         }
 
@@ -184,7 +184,7 @@ impl Op for ExpandDims {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("ExpandDims operation only supports one output.");
         }
 
@@ -230,7 +230,7 @@ impl Op for Identity {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("Identity operation only supports one output.");
         }
 
@@ -372,7 +372,7 @@ impl Op for Reshape {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("Reshape operation only supports one output.");
         }
 
@@ -436,7 +436,7 @@ impl Op for Shape {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("Shape operation only supports one output.");
         }
 
@@ -533,7 +533,7 @@ impl Op for Squeeze {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("Squeeze operation only supports one output.");
         }
 

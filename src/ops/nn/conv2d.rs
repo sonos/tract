@@ -95,7 +95,7 @@ impl<T: Datum> Op for Conv2D<T> {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("Conv2D operation only supports one output.");
         }
 

@@ -31,8 +31,8 @@ macro_rules! element_map {
 
             /// Infers properties about the input tensors from the output tensors.
             fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                if outputs.len() != 1 {
-                    bail!("Unary operations only supports one output.");
+                if outputs.len() < 1 {
+                    bail!("Unary operations need at least one output.");
                 }
 
                 let input = $crate::analyser::TensorFact {
@@ -86,8 +86,8 @@ macro_rules! element_bin {
 
             /// Infers properties about the input tensors from the output tensors.
             fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                if outputs.len() != 1 {
-                    bail!("Binary operations only supports one output.");
+                if outputs.len() < 1 {
+                    bail!("Binary operations need at least one output.");
                 }
 
                 let input = $crate::analyser::TensorFact {

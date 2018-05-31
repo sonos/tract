@@ -85,7 +85,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("SpaceToBatchND operation only supports one output.");
         }
 
@@ -175,7 +175,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("BatchToSpaceND operation only supports one output.");
         }
 

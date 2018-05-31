@@ -77,7 +77,7 @@ where
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() != 1 {
+        if outputs.len() < 1 {
             bail!("Pack operation only supports one output.");
         }
 
