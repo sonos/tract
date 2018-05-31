@@ -183,6 +183,9 @@ impl<'n> Analyser<'n> {
         self.current_pass = 0;
 
         loop {
+            // TODO(liautaud): Not quite sure about that.
+            // Maybe we should check that there was no change during
+            // a sequence of forward AND backward passes?
             if !self.run_pass()? {
                 return Ok(());
             }

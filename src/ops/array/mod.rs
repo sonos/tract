@@ -510,11 +510,15 @@ impl Op for Squeeze {
             return Ok(Some(output));
         }
 
-        let shape = unwrap_or_none!(inputs[0].shape.concretize());
+        let shape = match inputs[0].shape.concretize() {
+            Some(shape) => self.squeeze_shape(shape)?.iter().collect(),
+            None => shapefact![..]
+        };
+
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: self.squeeze_shape(shape)?.iter().collect(),
-            value: valuefact!(_)
+            shape,
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![output]))
