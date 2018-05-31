@@ -96,7 +96,7 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<V
 }
 
 /// Returns the most specific closed shape out of an iterator.
-pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a ShapeFact>>(iter: I) -> Result<&'a ShapeFact> {
+pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a ShapeFact>>(iter: I) -> Result<Option<&'a ShapeFact>> {
     let mut prev_rank = None;
     let mut prev_concrete = None;
     let mut best = None;
@@ -120,5 +120,5 @@ pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a ShapeFact>>(iter: I) -> 
         }
     }
 
-    Ok(best.unwrap())
+    Ok(best)
 }

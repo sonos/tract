@@ -53,12 +53,19 @@ where
             .map(|t| &t.shape);
 
         // We get the most specific shape, and replace the axis with an unknown.
-        let mut shape = most_specific_shape(shapes)?.dims.clone();
-        shape.insert(self.axis, dimfact!(n));
+        let shape = match most_specific_shape(shapes)? {
+            Some(s) => {
+                let mut dims = s.dims.clone();
+                dims.insert(self.axis, dimfact!(n));
+                ShapeFact::closed(dims)
+            },
+
+            None => shapefact![..]
+        };
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: ShapeFact::closed(shape),
+            shape,
             value: valuefact!(_),
         };
 

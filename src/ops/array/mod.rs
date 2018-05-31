@@ -83,12 +83,19 @@ impl Op for ConcatV2 {
         // TODO(liautaud): Improve this to check whether the shapes actually match,
         //                 and sum the dimension over all the vectors instead of
         //                 just returning an unknown when possible.
-        let mut shape = most_specific_shape(shapes)?.dims.clone();
-        shape[axis as usize] = dimfact!(_);
+        let shape = match most_specific_shape(shapes)? {
+            Some(s) => {
+                let mut dims = s.dims.clone();
+                dims[axis as usize] = dimfact!(_);
+                ShapeFact::closed(dims)
+            },
+
+            None => shapefact![..]
+        };
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: ShapeFact::closed(shape),
+            shape,
             value: valuefact!(_),
         };
 
