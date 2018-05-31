@@ -22,7 +22,7 @@ use std::process;
 use std::time::Instant;
 
 use simplelog::{Config, LevelFilter, TermLogger};
-use simplelog::Level::Info;
+use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
@@ -115,7 +115,13 @@ fn main() {
         _ => LevelFilter::Trace,
     };
 
-    TermLogger::init(level, Config::default()).unwrap();
+    TermLogger::init(level, Config {
+        time: None,
+        time_format: None,
+        level: Some(Error),
+        target: None,
+        location: Some(Trace)
+    }).unwrap();
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());
@@ -524,8 +530,8 @@ fn handle_analyse(params: Parameters) -> Result<()> {
     info!("Starting the analysis.");
 
     let mut analyser = Analyser::new(&model, output.id)?;
-    analyser.run()?;
+    let result = analyser.run();
     graphviz::display_graph(&analyser, &vec![])?;
 
-    Ok(())
+    Ok(result?)
 }

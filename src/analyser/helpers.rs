@@ -8,7 +8,7 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Opti
         .collect();
 
     if input_values.len() < inputs.len() {
-        info!("Can't infer value: some inputs are still unknown.");
+        debug!("Can't infer value: some inputs are still unknown.");
         return Ok(None);
     }
 
@@ -26,7 +26,7 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Opti
 /// Infers basic shape properties in the case of broadcasting operators.
 pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeFact>> {
     if shapes.iter().any(|s| s.open) {
-        info!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
+        debug!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
         return Ok(None);
     }
 
@@ -59,10 +59,10 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
         }
 
         if unknown > 1 {
-            info!("Can't infer shape (broadcasting): there are multiple unknown values at same index.");
+            debug!("Can't infer shape (broadcasting): there are multiple unknown values at same index.");
             return Ok(None);
         } else if unknown == 1 && previous != None {
-            info!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
+            debug!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
             return Ok(None);
         } else if unknown == 1 && previous == None {
             output_shape.push(DimFact::Any);

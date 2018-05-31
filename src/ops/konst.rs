@@ -53,7 +53,7 @@ impl Op for Const {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        info!("Const operation is a leaf, nothing to infer backwards.");
+        debug!("Const operation is a leaf, nothing to infer backwards.");
         Ok(None)
     }
 }

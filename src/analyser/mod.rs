@@ -170,6 +170,8 @@ impl<'n> Analyser<'n> {
         let current_step = 0;
         let current_direction = true;
 
+        info!("Using execution plan {:?}.", plan);
+
         Ok(Analyser {
             nodes, edges, prev_edges, next_edges, plan,
             current_pass, current_step, current_direction
@@ -189,6 +191,12 @@ impl<'n> Analyser<'n> {
 
     /// Runs a single pass of the analysis.
     pub fn run_pass(&mut self) -> Result<bool> {
+        info!(
+            "Starting pass [pass={:?}, direction={:?}].",
+            self.current_pass,
+            self.current_direction,
+        );
+
         self.current_step = 0;
         let mut changed = false;
 
@@ -203,6 +211,22 @@ impl<'n> Analyser<'n> {
 
     /// Runs a single step of the analysis.
     pub fn run_step(&mut self) -> Result<bool> {
+        let changed = self.try_step()?;
+
+        // Switch to the next step.
+        self.current_step += 1;
+        if self.current_step == self.plan.len() {
+            self.current_pass += 1;
+            self.current_direction = !self.current_direction;
+            self.current_step = 0;
+        }
+
+        Ok(changed)
+    }
+
+    /// Tries to run a single step of the analysis, and returns whether
+    /// there was any additional information gained during the step.
+    fn try_step(&mut self) -> Result<bool> {
         let node = self.nodes[self.plan[self.current_step]];
 
         // The node is a special node, don't do anything with it.
@@ -210,13 +234,22 @@ impl<'n> Analyser<'n> {
             return Ok(false);
         }
 
+        let node = node.unwrap();
+
+        debug!(
+            "Starting step for {} ({}) [pass={:?}, direction={:?}, step={:?}].",
+            node.name,
+            node.op_name,
+            self.current_pass,
+            self.current_direction,
+            self.current_step,
+        );
+
         let (source, target) = if self.current_direction {
             (&self.prev_edges, &self.next_edges)
         } else {
             (&self.next_edges, &self.prev_edges)
         };
-
-        let node = node.unwrap();
 
         let inferred = {
             let sources: Vec<_> = source[node.id].iter()
@@ -244,14 +277,6 @@ impl<'n> Analyser<'n> {
                 self.edges[j].fact = unified;
                 changed = true;
             }
-        }
-
-        // Switch to the next step.
-        self.current_step += 1;
-        if self.current_step == self.plan.len() {
-            self.current_step = 0;
-            self.current_pass += 1;
-            self.current_direction = !self.current_direction;
         }
 
         Ok(changed)

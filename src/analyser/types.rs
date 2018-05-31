@@ -77,7 +77,7 @@ impl ShapeFact {
     /// Tries to transform the fact into a Vec<usize>, or returns None.
     pub fn concretize(self: &ShapeFact) -> Option<Vec<usize>> {
         if self.open {
-            info!("Impossible to concretize an open shape.");
+            debug!("Impossible to concretize an open shape.");
             return None;
         }
 
@@ -86,7 +86,7 @@ impl ShapeFact {
             .collect();
 
         if dims.len() < self.dims.len() {
-            info!("Impossible to concretize a shape with unknown dimensions.");
+            debug!("Impossible to concretize a shape with unknown dimensions.");
             None
         } else {
             Some(dims)
@@ -155,7 +155,7 @@ impl ValueFact {
     pub fn concretize(self: &ValueFact) -> Option<&Matrix> {
         match self {
             ValueFact::Any => {
-                info!("Impossible to concretize an Any value.");
+                debug!("Impossible to concretize an Any value.");
                 None
             },
 
