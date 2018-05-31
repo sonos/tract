@@ -9,14 +9,17 @@ use matrix::Datum;
 
 #[derive(Debug, Default, new)]
 pub struct Pack<T: Datum> {
+    n: usize, // The number of inputs
     axis: usize,
     _phantom: PhantomData<T>,
 }
 
 pub fn pack(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datatype("T")?;
+    let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;
-    Ok(boxed_new!(Pack(dtype)(axis)))
+
+    Ok(boxed_new!(Pack(dtype)(n, axis)))
 }
 
 impl<T> Op for Pack<T>
@@ -91,11 +94,13 @@ where
             ShapeFact::closed(inner)
         };
 
-        Ok(Some(vec![TensorFact {
+        let input = TensorFact {
             datatype: outputs[0].datatype,
             shape,
             value: valuefact!(_)
-        }]))
+        };
+
+        Ok(Some(vec![input; self.n]))
     }
 }
 
@@ -114,7 +119,7 @@ mod tests {
             Matrix::i32s(&[2], &[3, 6]).unwrap().into(),
         ];
         assert_eq!(
-            Pack::<i32>::new(0)
+            Pack::<i32>::new(3, 0)
                 .eval(inputs.clone())
                 .unwrap()
                 .remove(0)
@@ -122,7 +127,7 @@ mod tests {
             Matrix::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
         );
         assert_eq!(
-            Pack::<i32>::new(1)
+            Pack::<i32>::new(3, 1)
                 .eval(inputs.clone())
                 .unwrap()
                 .remove(0)
@@ -133,7 +138,7 @@ mod tests {
 
     #[test]
     fn pack_1() {
-        let pack = Pack::<i32>::new(0);
+        let pack = Pack::<i32>::new(3, 0);
         let input = Matrix::i32s(&[0], &[]).unwrap();
         let exp: Matrix = Matrix::i32s(&[1, 0], &[]).unwrap();
         let found = pack.eval(vec![input.into()]).unwrap();
