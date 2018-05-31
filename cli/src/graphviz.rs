@@ -1,5 +1,8 @@
+#![allow(dead_code)]
+
 use dot;
 use errors::*;
+use std::io;
 use std::io::Write;
 use tfdeploy::analyser::*;
 
@@ -104,28 +107,27 @@ pub fn render_dot<W: Write>(
     Ok(())
 }
 
-// /// Displays a DOT export of the analysed graph on the standard output.
-// pub fn display_dot(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()> {
-//     render_dot(analyser, highlighted, &mut io::stdout())
-// }
+/// Displays a DOT export of the analysed graph on the standard output.
+pub fn display_dot(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()> {
+    render_dot(analyser, highlighted, &mut io::stdout())
+}
 
 /// Displays a render of the analysed graph using the `dot` command.
 pub fn display_graph(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()> {
     use std::process::{Command, Stdio};
 
     let renderer = Command::new("dot")
-        .arg("-Tpng")
+        .arg("-Tpdf")
         .arg("-o")
-        .arg("/tmp/tfd-graph.png")
+        .arg("/tmp/tfd-graph.pdf")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
 
     render_dot(analyser, highlighted, &mut renderer.stdin.unwrap())?;
 
-    let _ = Command::new("eog")
-        .arg("--fullscreen")
-        .arg("/tmp/tfd-graph.png")
+    let _ = Command::new("xdg-open")
+        .arg("/tmp/tfd-graph.pdf")
         .output();
 
     Ok(())
