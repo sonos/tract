@@ -246,11 +246,7 @@ pub struct Placeholder {
 impl Placeholder {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Placeholder {
-            datatype: node
-                .get_attr()
-                .get("dtype")
-                .unwrap()
-                .get_field_type()
+            datatype: node.get_attr_datatype("dtype")?
         }))
     }
 }

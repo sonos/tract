@@ -16,11 +16,7 @@ pub struct Const {
 
 impl Const {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let datatype = node
-                .get_attr()
-                .get("dtype")
-                .unwrap()
-                .get_field_type();
+        let datatype = node.get_attr_datatype("dtype")?;
         let mat = node.get_attr_tensor("value")?;
 
         if mat.datatype() != datatype {
