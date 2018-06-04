@@ -9,7 +9,7 @@ use tensorflow::OutputToken;
 use tensorflow::DataType;
 use tensorflow::Tensor;
 
-use tfdeploy::Matrix;
+use tfdeploy::Tensor as TfdTensor;
 
 use ndarray::ArrayD;
 
@@ -55,27 +55,27 @@ impl TensorHolder {
     }
 }
 
-impl From<Matrix> for TensorHolder {
-    fn from(m: Matrix) -> TensorHolder {
+impl From<TfdTensor> for TensorHolder {
+    fn from(m: TfdTensor) -> TensorHolder {
         match m {
-            Matrix::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
-            Matrix::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
-            Matrix::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
-            Matrix::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
-            Matrix::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
-            Matrix::String(a) => TensorHolder::String(Self::to_tensor(a)),
+            TfdTensor::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
+            TfdTensor::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
+            TfdTensor::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
+            TfdTensor::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
+            TfdTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
+            TfdTensor::String(a) => TensorHolder::String(Self::to_tensor(a)),
         }
     }
 }
 
-fn tensor_to_matrix<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<ArrayD<T>> {
+fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<ArrayD<T>> {
     let shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
     Ok(::ndarray::Array::from_iter(tensor.iter().cloned()).into_shape(shape)?)
 }
 
 impl Tensorflow {
     /// Executes the graph in one batch.
-    pub fn run(&mut self, inputs: Vec<(&str, Matrix)>, output_name: &str) -> Result<Vec<Matrix>> {
+    pub fn run(&mut self, inputs: Vec<(&str, TfdTensor)>, output_name: &str) -> Result<Vec<TfdTensor>> {
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()
             .map(|(name, mat)| (name, mat.into()))
@@ -102,7 +102,7 @@ impl Tensorflow {
     }
 
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
-    pub fn run_get_all(&mut self, inputs: Vec<(&str, Matrix)>) -> Result<HashMap<String, Vec<Matrix>>> {
+    pub fn run_get_all(&mut self, inputs: Vec<(&str, TfdTensor)>) -> Result<HashMap<String, Vec<TfdTensor>>> {
         let mut tensors: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
@@ -150,20 +150,20 @@ impl Tensorflow {
     }
 }
 
-/// Converts the output of a Tensorflow node into a Vec<Matrix>.
-fn convert_output(step: &mut StepWithGraph, output_type: &DataType, output: OutputToken) -> Result<Vec<Matrix>> {
+/// Converts the output of a Tensorflow node into a Vec<TfdTensor>.
+fn convert_output(step: &mut StepWithGraph, output_type: &DataType, output: OutputToken) -> Result<Vec<TfdTensor>> {
     macro_rules! convert {
-        ($dt:ident) => (Matrix::$dt(tensor_to_matrix(&step.take_output(output)?)?))
+        ($dt:ident) => (TfdTensor::$dt(tensor_to_array(&step.take_output(output)?)?))
     };
 
-    let matrix = match output_type {
+    let tfd_tensor = match output_type {
         DataType::Float => convert!(F32),
         DataType::UInt8 => convert!(U8),
         DataType::Int8 => convert!(I8),
         DataType::String => convert!(String),
         DataType::Int32 => convert!(I32),
-        t => bail!("Missing tensor to matrix for type {:?}", t),
+        t => bail!("Missing Tensor to TfdTensor for type {:?}", t),
     };
 
-    Ok(vec![matrix])
+    Ok(vec![tfd_tensor])
 }

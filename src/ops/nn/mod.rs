@@ -1,8 +1,11 @@
-use {Matrix, Result};
-use super::{Input, Op, OpRegister};
+use super::{TensorView, Op, OpRegister};
+use analyser::TensorFact;
+use analyser::helpers::infer_forward_concrete;
+use tfpb::types::DataType;
+use {Tensor, Result};
 
-pub mod local_patch;
 pub mod conv2d;
+pub mod local_patch;
 pub mod pools;
 pub mod space_to_batch;
 
@@ -28,17 +31,60 @@ impl Softmax {
 }
 
 impl Op for Softmax {
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
-            .into_matrix()
+            .into_tensor()
             .take_f32s()
             .ok_or("Expect input #0 to be f32")?;
         input.map_inplace(|a| *a = a.exp());
         let norm: f32 = input.iter().sum();
         input.map_inplace(|a| *a = *a / norm);
-        let result = Matrix::from(input);
+        let result = Tensor::from(input);
         Ok(vec![result.into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if inputs.len() != 1 {
+            bail!("Softmax operation only supports one input.");
+        }
+
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
+        }
+
+        let output = TensorFact {
+            datatype: typefact!(DataType::DT_FLOAT),
+            shape: match &inputs[0].shape.concretize() {
+                Some(v) if v.len() == 2 => v.iter().collect(),
+                Some(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
+                _ => shapefact![_, _],
+            },
+            value: valuefact!(_)
+        };
+
+        Ok(Some(vec![output]))
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if outputs.len() < 1 {
+            bail!("Softmax operation only supports one output.");
+        }
+
+        let input = TensorFact {
+            datatype: typefact!(DataType::DT_FLOAT),
+            shape: match &outputs[0].shape.concretize() {
+                Some(v) if v.len() == 2 => v.iter().collect(),
+                Some(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
+                _ => shapefact![_, _],
+            },
+            value: valuefact!(_)
+        };
+
+        Ok(Some(vec![input]))
     }
 }
 

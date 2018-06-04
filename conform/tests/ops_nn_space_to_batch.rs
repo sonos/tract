@@ -12,10 +12,10 @@ use ndarray::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_INT32;
 use tfdeploy::tfpb::types::DataType::DT_FLOAT;
-use tfdeploy::Matrix;
+use tfdeploy::Tensor as TfdTensor;
 use tfdeploy::ops::nn::arr4;
 
-fn space_to_batch_strat() -> BoxedStrategy<(Matrix, Matrix, Matrix)> {
+fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
     use proptest::collection::vec;
     (
         1usize..4,
@@ -82,15 +82,15 @@ proptest! {
     }
 }
 
-fn batch_to_space_strat() -> BoxedStrategy<(Matrix, Matrix, Matrix)> {
+fn batch_to_space_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
             use tfdeploy::ops::Op;
-            let batches: Matrix = tfdeploy::ops::nn::space_to_batch::SpaceToBatch::<f32>::new()
+            let batches: TfdTensor = tfdeploy::ops::nn::space_to_batch::SpaceToBatch::<f32>::new()
                 .eval(vec![i.into(), bs.clone().into(), p.clone().into()])
                 .unwrap()
                 .remove(0)
-                .into_matrix();
+                .into_tensor();
             (batches, bs, p)
         })
         .boxed()

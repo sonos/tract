@@ -1,8 +1,10 @@
 use std::marker::PhantomData;
 
+use analyser::TensorFact;
+use analyser::helpers::infer_forward_concrete;
 use Result;
-use super::{Input, Op};
-use matrix::Datum;
+use super::{TensorView, Op};
+use tensor::Datum;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datatype = pb.get_attr_datatype("T")?;
@@ -17,11 +19,12 @@ pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 pub struct SpaceToBatch<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for SpaceToBatch<T> {
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let paddings = paddings.as_i32s().ok_or("paddings expected as I32")?;
-        let mut data = T::mat_into_array(input.into_matrix())?;
+        let mut data = T::mat_into_array(input.into_tensor())?;
 
         for (ix, pad) in paddings.outer_iter().enumerate() {
             if pad[0] != 0 {
@@ -63,7 +66,48 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         let data: Vec<T> = data.into_iter().map(|x| *x).collect();
         let data = ::ndarray::ArrayD::from_shape_vec(final_shape, data)?;
 
-        Ok(vec![T::array_into_mat(data).into()])
+        Ok(vec![T::array_into_tensor(data).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if inputs.len() != 3 {
+            bail!("SpaceToBatchND operation only supports three inputs.");
+        }
+
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
+        }
+
+        // TODO(liautaud): It will be fun implementing this, I promess.
+        Ok(None)
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if outputs.len() < 1 {
+            bail!("SpaceToBatchND operation only supports one output.");
+        }
+
+        let input = TensorFact {
+            datatype: outputs[0].datatype,
+            shape: shapefact![_; ..],
+            value: valuefact!(_)
+        };
+
+        let block_shape = TensorFact {
+            datatype: typefact!(_),
+            shape: shapefact![_],
+            value: valuefact!(_)
+        };
+
+        let paddings = TensorFact {
+            datatype: typefact!(_),
+            shape: shapefact![_, 2],
+            value: valuefact!(_)
+        };
+
+        Ok(Some(vec![input, block_shape, paddings]))
     }
 }
 
@@ -71,12 +115,13 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         use ndarray::*;
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let crops = crops.as_i32s().ok_or("crops expected as I32")?;
-        let data = T::mat_into_array(input.into_matrix())?;
+        let data = T::mat_into_array(input.into_tensor())?;
         let input_shape = data.shape().to_vec();
         let crops = crops.clone().into_shape((block_shape.len(), 2))?;
 
@@ -111,7 +156,48 @@ impl<T: Datum> Op for BatchToSpace<T> {
                     .to_owned();
             }
         }
-        Ok(vec![T::array_into_mat(data).into()])
+        Ok(vec![T::array_into_tensor(data).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if inputs.len() != 3 {
+            bail!("BatchToSpaceND operation only supports three inputs.");
+        }
+
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
+        }
+
+        // TODO(liautaud): It will be fun implementing this, I promess.
+        Ok(None)
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if outputs.len() < 1 {
+            bail!("BatchToSpaceND operation only supports one output.");
+        }
+
+        let input = TensorFact {
+            datatype: outputs[0].datatype,
+            shape: shapefact![_; ..],
+            value: valuefact!(_)
+        };
+
+        let block_shape = TensorFact {
+            datatype: typefact!(_),
+            shape: shapefact![_],
+            value: valuefact!(_)
+        };
+
+        let crops = TensorFact {
+            datatype: typefact!(_),
+            shape: shapefact![_, 2],
+            value: valuefact!(_)
+        };
+
+        Ok(Some(vec![input, block_shape, crops]))
     }
 }
 

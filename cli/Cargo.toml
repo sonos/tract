@@ -7,6 +7,7 @@ authors = ["Romain Liautaud <romain.liautaud@snips.ai>"]
 clap = "2.31"
 colored = "1.6"
 conform = { path = "../conform" }
+dot = "0.1.4"
 error-chain = "0"
 lazy_static = "1.0"
 log = "0.4"

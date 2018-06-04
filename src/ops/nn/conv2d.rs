@@ -1,10 +1,12 @@
 use std::marker::PhantomData;
 
+use analyser::{TensorFact, ShapeFact};
+use analyser::helpers::infer_forward_concrete;
 use Result;
-use super::{Input, Op};
+use super::{TensorView, Op};
 use ndarray::prelude::*;
 use super::local_patch::*;
-use matrix::Datum;
+use tensor::Datum;
 
 #[derive(Debug, new)]
 pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
@@ -16,9 +18,10 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 }
 
 impl<T: Datum> Op for Conv2D<T> {
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (m_data, m_filter) = args_2!(inputs);
-        let data = T::mat_into_array(m_data.into_matrix())?;
+        let data = T::mat_into_array(m_data.into_tensor())?;
         let filter = T::mat_to_view(&*m_filter)?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
@@ -43,17 +46,108 @@ impl<T: Datum> Op for Conv2D<T> {
         let transformed = Array::from_vec(transformed)
             .into_shape((images.n(), out_height, out_width, out_depth))?
             .into_dyn();
-        Ok(vec![T::array_into_mat(transformed).into()])
+        Ok(vec![T::array_into_tensor(transformed).into()])
+    }
+
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if inputs.len() != 2 {
+            bail!("Conv2D operation only supports two inputs.");
+        }
+
+        if let Some(output) = infer_forward_concrete(self, &inputs)? {
+            return Ok(Some(output));
+        }
+
+        // If we don't know the actual value, we can still compute the shape.
+        fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&TensorFact>) -> Result<Option<ShapeFact>> where T: Datum {
+            let input_shape = unwrap_or_none!(inputs[0].shape.concretize());
+            let filter_shape = unwrap_or_none!(inputs[1].shape.concretize());
+
+            let shape = match (input_shape.as_slice(), filter_shape.as_slice()) {
+                ([batch, in_height, in_width, in_channels],
+                 [filter_height, filter_width, in_channels_2, out_channels])
+                 if in_channels == in_channels_2 => {
+                    let (height, width) = op.0.adjusted_dim(
+                        *in_height, *in_width,
+                        (*filter_height, *filter_width)
+                    );
+
+                    // TODO(liautaud): Take the data_format parameter into account.
+                    shapefact![(*batch), height, width, (*out_channels)]
+                },
+
+                _ => bail!("The input and filter dimensions are invalid.")
+            };
+
+            Ok(Some(shape))
+        };
+
+        let output = TensorFact {
+            datatype: inputs[0].datatype,
+            shape: try_infer_forward_concrete_shape(self, inputs)?
+                  .unwrap_or(shapefact![_, _, _, _]),
+            value: valuefact!(_),
+        };
+
+        Ok(Some(vec![output]))
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        if outputs.len() < 1 {
+            bail!("Conv2D operation only supports one output.");
+        }
+
+        match outputs[0].shape.concretize() {
+            Some(shape) => match shape.as_slice() {
+                [batch, _, _, out_channels] => {
+                    let input = TensorFact {
+                        datatype: outputs[0].datatype,
+                        shape: shapefact![(*batch), _, _, _],
+                        value: valuefact!(_)
+                    };
+
+                    let filter = TensorFact {
+                        datatype: outputs[0].datatype,
+                        shape: shapefact![_, _, _, (*out_channels)],
+                        value: valuefact!(_)
+                    };
+
+                    Ok(Some(vec![input, filter]))
+                },
+
+                _ => bail!("The output dimensions are invalid.")
+            },
+
+            // If we don't have concrete dimensions yet, we can still
+            // give the shape that we want.
+            None => {
+                let input = TensorFact {
+                    datatype: outputs[0].datatype,
+                    shape: shapefact![_, _, _, _],
+                    value: valuefact!(_)
+                };
+
+                let filter = TensorFact {
+                    datatype: outputs[0].datatype,
+                    shape: shapefact![_, _, _, _],
+                    value: valuefact!(_)
+                };
+
+                Ok(Some(vec![input, filter]))
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Matrix;
+    use Tensor;
     use super::*;
 
-    fn mk(sizes: &[usize]) -> Matrix {
+    fn mk(sizes: &[usize]) -> Tensor {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
             .into_shape(sizes)
             .unwrap()
@@ -71,7 +165,7 @@ mod tests {
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
         let found = result
-            .into_matrix()
+            .into_tensor()
             .take_f32s()
             .unwrap()
             .into_shape(expect.len())
@@ -132,15 +226,15 @@ mod tests {
             _data_format: DataFormat::NHWC,
         });
         // NHWC
-        let data: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[1f32]).unwrap();
+        let data: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1f32]).unwrap();
         // HWIO
-        let filter = Matrix::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
-        let exp: Matrix = Matrix::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
+        let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
+        let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
         let result = conv.eval(vec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
-        assert_eq!(exp, result.into_matrix());
+        assert_eq!(exp, result.into_tensor());
     }
 
     #[test]
@@ -152,13 +246,13 @@ mod tests {
             _data_format: DataFormat::NHWC,
         });
         let data =
-            Matrix::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994]).unwrap();
-        let filter: Matrix = Matrix::f32s(
+            Tensor::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994]).unwrap();
+        let filter: Tensor = Tensor::f32s(
             &[2, 2, 1, 1],
             &[160.72833, 107.84076, 247.50552, -38.738464],
         ).unwrap();
-        let exp: Matrix =
-            Matrix::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
+        let exp: Tensor =
+            Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
         assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0],))
     }

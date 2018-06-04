@@ -12,7 +12,7 @@ use ndarray::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_FLOAT;
 
-use tfdeploy::Matrix;
+use tfdeploy::Tensor as TfdTensor;
 
 fn img_and_pool(
     ih: usize,
@@ -20,7 +20,7 @@ fn img_and_pool(
     ic: usize,
     kh: usize,
     kw: usize,
-) -> BoxedStrategy<(Matrix, (usize, usize), String, usize)> {
+) -> BoxedStrategy<(TfdTensor, (usize, usize), String, usize)> {
     (1..ih, 1..iw, 1..ic)
         .prop_flat_map(move |(ih, iw, ic)| {
             (

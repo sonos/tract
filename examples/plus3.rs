@@ -16,7 +16,7 @@ fn main() {
         .attr("dtype", DT_FLOAT)
         .attr(
             "value",
-            tfdeploy::matrix::Matrix::from(::ndarray::arr1(&[3.0f32]))
+            tfdeploy::tensor::Tensor::from(::ndarray::arr1(&[3.0f32]))
                 .to_pb()
                 .unwrap(),
         );

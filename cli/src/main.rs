@@ -3,6 +3,7 @@ extern crate clap;
 extern crate colored;
 #[cfg(feature = "tensorflow")]
 extern crate conform;
+extern crate dot;
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
@@ -21,10 +22,11 @@ use std::process;
 use std::time::Instant;
 
 use simplelog::{Config, LevelFilter, TermLogger};
-use simplelog::Level::Info;
+use simplelog::Level::{Error, Info, Trace};
+use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
-use tfdeploy::Matrix;
+use tfdeploy::Tensor;
 use tfpb::graph::GraphDef;
 use tfpb::types::DataType;
 
@@ -37,11 +39,12 @@ use format::Row;
 use utils::compare_outputs;
 use utils::detect_inputs;
 use utils::detect_output;
-use utils::random_matrix;
+use utils::random_tensor;
 
 mod errors;
 mod format;
 mod utils;
+mod graphviz;
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u32 = 10_000;
@@ -97,6 +100,9 @@ fn main() {
                 "Sets the maximum number of iterations for each node [default: 10_000].")
             (@arg max_time: -t [max_time]
                 "Sets the maximum execution time for each node (in ns) [default: 10_000]."))
+
+        (@subcommand analyse =>
+            (about: "Analyses the graph to infer properties about tensors (experimental)."))
     );
 
     let matches = app.get_matches();
@@ -109,7 +115,13 @@ fn main() {
         _ => LevelFilter::Trace,
     };
 
-    TermLogger::init(level, Config::default()).unwrap();
+    TermLogger::init(level, Config {
+        time: None,
+        time_format: None,
+        level: Some(Error),
+        target: None,
+        location: Some(Trace)
+    }).unwrap();
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());
@@ -137,6 +149,8 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
                 Some(s) => s.parse::<u32>()?,
             },
         ),
+
+        ("analyse", _) => handle_analyse(params),
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
@@ -226,7 +240,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     for i in params.inputs {
         generated.push((
             tfd.get_node_by_id(i)?.name.as_str(),
-            random_matrix(params.sizes.clone(), params.datatype),
+            random_tensor(params.sizes.clone(), params.datatype),
         ));
     }
 
@@ -278,7 +292,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
             _ => {
                 let tfd_output = state.outputs[n].as_ref().unwrap();
-                let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Matrix>>();
+                let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Tensor>>();
 
                 match compare_outputs(&tf_output, &views) {
                     Err(_) => {
@@ -381,7 +395,7 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 
     // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        state.set_value(s, random_matrix(params.sizes.clone(), params.datatype))?;
+        state.set_value(s, random_tensor(params.sizes.clone(), params.datatype))?;
     }
 
     info!("Running {} iterations max. for each node.", max_iters);
@@ -506,4 +520,18 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
     }
 
     Ok(())
+}
+
+/// Handles the `analyse` subcommand.
+fn handle_analyse(params: Parameters) -> Result<()> {
+    let model = params.tfd_model;
+    let output = model.get_node_by_id(params.output)?;
+
+    info!("Starting the analysis.");
+
+    let mut analyser = Analyser::new(&model, output.id)?;
+    let result = analyser.run();
+    graphviz::display_graph(&analyser, &vec![])?;
+
+    Ok(result?)
 }

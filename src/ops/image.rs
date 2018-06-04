@@ -1,6 +1,6 @@
 use ndarray::prelude::*;
 
-use {Matrix, Result};
+use {Tensor, Result};
 use super::{Input, Op};
 
 #[derive(Debug)]
@@ -24,7 +24,7 @@ impl Op for DecodeJpeg {
         let m_input = args_1!(inputs);
         let input = m_input.as_u8s().ok_or("Expected a string")?;
         let image = decode_one(input.as_slice().unwrap())?;
-        Ok(vec![Matrix::U8(image.into_dyn()).into()])
+        Ok(vec![Tensor::U8(image.into_dyn()).into()])
     }
 }
 
@@ -42,7 +42,7 @@ impl Op for ResizeBilinear {
         use std::cmp::min;
         let (m_images, m_sizes) = args_2!(inputs);
         let images = m_images
-            .into_matrix()
+            .into_tensor()
             .take_f32s()
             .ok_or("Expect input #0 to be images")?;
         let sizes = m_sizes.as_i32s().ok_or("Expect input #1 to be sizes")?;
@@ -72,6 +72,6 @@ impl Op for ResizeBilinear {
             let dy = proj_y - old_y as f32;
             (1.0 - dy) * ((1.0 - dx) * q11 + dx * q21) + dy * ((1.0 - dx) * q12 + dx * q22)
         });
-        Ok(vec![Matrix::F32(result.into_dyn()).into()])
+        Ok(vec![Tensor::F32(result.into_dyn()).into()])
     }
 }

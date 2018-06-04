@@ -11,11 +11,11 @@ use tfdeploy::ops::nn::local_patch::*;
 
 use tfdeploy::ops::Op;
 
-fn mk(sizes: &[usize]) -> Matrix {
+fn mk(sizes: &[usize]) -> Tensor {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
         .into_shape(sizes)
         .unwrap();
-    Matrix::F32(data)
+    Tensor::F32(data)
 }
 
 fn conv(bencher: &mut Criterion) {

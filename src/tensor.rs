@@ -1,4 +1,4 @@
-//! `Matrix` is the equivalent of Tensorflow Tensor.
+//! `Tensor` is the equivalent of Tensorflow Tensor.
 
 use std::fmt::Debug;
 use ndarray::prelude::*;
@@ -19,13 +19,13 @@ pub trait Datum
     + ::std::ops::SubAssign
     + ::std::ops::RemAssign {
     fn name() -> &'static str;
-    fn mat_into_array(m: Matrix) -> ::Result<ArrayD<Self>>;
-    fn mat_to_view(m: &Matrix) -> ::Result<ArrayViewD<Self>>;
-    fn array_into_mat(m: ArrayD<Self>) -> Matrix;
+    fn mat_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
+    fn mat_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
+    fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Matrix {
+pub enum Tensor {
     F32(ArrayD<f32>),
     F64(ArrayD<f64>),
     I32(ArrayD<i32>),
@@ -34,8 +34,8 @@ pub enum Matrix {
     String(ArrayD<i8>),
 }
 
-impl Matrix {
-    pub fn from_pb(t: &::tfpb::tensor::TensorProto) -> ::Result<Matrix> {
+impl Tensor {
+    pub fn from_pb(t: &::tfpb::tensor::TensorProto) -> ::Result<Tensor> {
         use tfpb::types::DataType::*;
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
@@ -46,7 +46,7 @@ impl Matrix {
             .collect::<Vec<_>>();
         let rank = dims.len();
         let content = t.get_tensor_content();
-        let mat: Matrix = if content.len() != 0 {
+        let mat: Tensor = if content.len() != 0 {
             match dtype {
                 DT_FLOAT => Self::from_content::<f32, u8>(dims, content)?.into(),
                 DT_INT32 => Self::from_content::<i32, u8>(dims, content)?.into(),
@@ -89,7 +89,7 @@ impl Matrix {
         let mut tensor = ::tfpb::tensor::TensorProto::new();
         tensor.set_tensor_shape(shape);
         match self {
-            &Matrix::F32(ref it) => {
+            &Tensor::F32(ref it) => {
                 tensor.set_dtype(DataType::DT_FLOAT);
                 tensor.set_float_val(it.iter().cloned().collect());
             }
@@ -100,9 +100,9 @@ impl Matrix {
 
     pub fn shape(&self) -> &[usize] {
         match self {
-            &Matrix::I32(ref it) => it.shape(),
-            &Matrix::F32(ref it) => it.shape(),
-            &Matrix::U8(ref it) => it.shape(),
+            &Tensor::I32(ref it) => it.shape(),
+            &Tensor::F32(ref it) => it.shape(),
+            &Tensor::U8(ref it) => it.shape(),
             _ => unimplemented!(),
         }
     }
@@ -110,9 +110,9 @@ impl Matrix {
     pub fn datatype(&self) -> ::tfpb::types::DataType {
         use tfpb::types::DataType;
         match self {
-            &Matrix::I32(_) => DataType::DT_INT32,
-            &Matrix::F32(_) => DataType::DT_FLOAT,
-            &Matrix::U8(_) => DataType::DT_UINT8,
+            &Tensor::I32(_) => DataType::DT_INT32,
+            &Tensor::F32(_) => DataType::DT_FLOAT,
+            &Tensor::U8(_) => DataType::DT_UINT8,
             _ => unimplemented!(),
         }
     }
@@ -122,18 +122,18 @@ impl Matrix {
             Ok(format!("{:?} {:?}", self.datatype(), self.shape()))
         } else {
             Ok(match self {
-                &Matrix::I32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
-                &Matrix::F32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
-                &Matrix::U8(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
+                &Tensor::I32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
+                &Tensor::F32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
+                &Tensor::U8(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
                 _ => unimplemented!(),
             })
         }
     }
 
-    fn to_f32(&self) -> Matrix {
+    fn to_f32(&self) -> Tensor {
         match self {
-            &Matrix::I32(ref data) => Matrix::F32(data.map(|&a| a as f32)),
-            &Matrix::F32(_) => self.clone(),
+            &Tensor::I32(ref data) => Tensor::F32(data.map(|&a| a as f32)),
+            &Tensor::F32(_) => self.clone(),
             _ => unimplemented!(),
         }
     }
@@ -170,17 +170,17 @@ where
     }
 }
 
-macro_rules! matrix {
+macro_rules! tensor {
     ($t:ident,$v:ident,$as:ident,$take:ident,$make:ident) => {
-        impl<D: ::ndarray::Dimension> From<Array<$t,D>> for Matrix {
-            fn from(it: Array<$t,D>) -> Matrix {
-                Matrix::$v(it.into_dyn())
+        impl<D: ::ndarray::Dimension> From<Array<$t,D>> for Tensor {
+            fn from(it: Array<$t,D>) -> Tensor {
+                Tensor::$v(it.into_dyn())
             }
         }
 
-        impl Matrix {
+        impl Tensor {
             pub fn $as(&self) -> Option<&ArrayD<$t>> {
-                if let &Matrix::$v(ref it) = self {
+                if let &Tensor::$v(ref it) = self {
                     Some(it)
                 } else {
                     None
@@ -188,21 +188,21 @@ macro_rules! matrix {
             }
 
             pub fn $take(self) -> Option<ArrayD<$t>> {
-                if let Matrix::$v(it) = self {
+                if let Tensor::$v(it) = self {
                     Some(it)
                 } else {
                     None
                 }
             }
 
-            pub fn $make(shape:&[usize], values:&[$t]) -> ::Result<Matrix> {
+            pub fn $make(shape:&[usize], values:&[$t]) -> ::Result<Tensor> {
                 Ok(Array::from_shape_vec(shape, values.to_vec())?.into())
             }
         }
 
-        impl CastFrom<Matrix> for ArrayD<$t> {
-            fn cast_from(mat: Matrix) -> Option<ArrayD<$t>> {
-                if let Matrix::$v(it) = mat {
+        impl CastFrom<Tensor> for ArrayD<$t> {
+            fn cast_from(mat: Tensor) -> Option<ArrayD<$t>> {
+                if let Tensor::$v(it) = mat {
                     Some(it)
                 } else {
                     None
@@ -214,24 +214,24 @@ macro_rules! matrix {
             fn name() -> &'static str {
                 stringify!($t)
             }
-            fn mat_into_array(m: Matrix) -> ::Result<ArrayD<Self>> {
+            fn mat_into_array(m: Tensor) -> ::Result<ArrayD<Self>> {
                 m.$take().ok_or("unmatched data type".into())
             }
 
-            fn mat_to_view(m: &Matrix) -> ::Result<ArrayViewD<Self>> {
+            fn mat_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>> {
                 m.$as().map(|m| m.view()).ok_or("unmatched data type".into())
             }
 
-            fn array_into_mat(m: ArrayD<Self>) -> Matrix {
-                Matrix::from(m)
+            fn array_into_tensor(m: ArrayD<Self>) -> Tensor {
+                Tensor::from(m)
             }
 
         }
     }
 }
 
-matrix!(f64, F64, as_f64s, take_f64s, f64s);
-matrix!(f32, F32, as_f32s, take_f32s, f32s);
-matrix!(i32, I32, as_i32s, take_i32s, i32s);
-matrix!(u8, U8, as_u8s, take_u8s, u8s);
-matrix!(i8, I8, as_i8s, take_i8s, i8s);
+tensor!(f64, F64, as_f64s, take_f64s, f64s);
+tensor!(f32, F32, as_f32s, take_f32s, f32s);
+tensor!(i32, I32, as_i32s, take_i32s, i32s);
+tensor!(u8, U8, as_u8s, take_u8s, u8s);
+tensor!(i8, I8, as_i8s, take_i8s, i8s);

@@ -37,6 +37,7 @@ extern crate derive_new;
 extern crate error_chain;
 #[cfg(feature="image_ops")]
 extern crate image;
+extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
@@ -46,17 +47,19 @@ extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
 
+#[macro_use]
+pub mod analyser;
 pub mod errors;
 pub mod tfpb;
-pub mod matrix;
+pub mod tensor;
 pub mod ops;
 
 use std::{fs, path, str};
 use std::collections::{HashMap, HashSet};
-use ops::{Input, Op};
+use ops::{TensorView, Op};
 pub use errors::*;
 
-pub use matrix::Matrix;
+pub use tensor::Tensor;
 
 #[derive(Debug)]
 pub struct Node {
@@ -95,8 +98,9 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
     Model::for_path(p)
 }
 
+#[derive(Debug)]
 pub struct Plan {
-    order: Vec<usize>,
+    pub order: Vec<usize>,
 }
 
 impl Plan {
@@ -270,7 +274,7 @@ impl Model {
         Plan::for_node(&self, node)
     }
 
-    pub fn run(&self, inputs: Vec<(usize, Matrix)>, output: usize) -> Result<Vec<Matrix>> {
+    pub fn run(&self, inputs: Vec<(usize, Tensor)>, output: usize) -> Result<Vec<Tensor>> {
         self.state().run(inputs, output)
     }
 
@@ -278,10 +282,10 @@ impl Model {
         &*self.nodes
     }
 
-    pub fn run_with_names(&self, inputs: Vec<(&str, Matrix)>, output: &str) -> Result<Vec<Matrix>> {
+    pub fn run_with_names(&self, inputs: Vec<(&str, Tensor)>, output: &str) -> Result<Vec<Tensor>> {
         let inputs = inputs
             .into_iter()
-            .map(|(name, mat)| -> Result<(usize, Matrix)> {
+            .map(|(name, mat)| -> Result<(usize, Tensor)> {
                 Ok((self.node_id_by_name(name)?, mat))
             })
             .collect::<Result<_>>()?;
@@ -291,7 +295,7 @@ impl Model {
 
 pub struct ModelState<'a> {
     model: &'a Model,
-    pub outputs: Vec<Option<Vec<Input>>>,
+    pub outputs: Vec<Option<Vec<TensorView>>>,
 }
 
 impl<'a> ModelState<'a> {
@@ -301,16 +305,16 @@ impl<'a> ModelState<'a> {
         Ok(())
     }
 
-    pub fn set_outputs(&mut self, id: usize, values: Vec<Matrix>) -> Result<()> {
-        self.outputs[id] = Some(values.into_iter().map(Input::Owned).collect());
+    pub fn set_outputs(&mut self, id: usize, values: Vec<Tensor>) -> Result<()> {
+        self.outputs[id] = Some(values.into_iter().map(TensorView::Owned).collect());
         Ok(())
     }
 
-    pub fn set_value(&mut self, id: usize, value: Matrix) -> Result<()> {
+    pub fn set_value(&mut self, id: usize, value: Tensor) -> Result<()> {
         self.set_outputs(id, vec![value])
     }
 
-    pub fn set_values(&mut self, values: Vec<(&str, Matrix)>) -> Result<()> {
+    pub fn set_values(&mut self, values: Vec<(&str, Tensor)>) -> Result<()> {
         for (name, mat) in values {
             self.set_value(self.model.node_id_by_name(name)?, mat)?;
         }
@@ -320,7 +324,7 @@ impl<'a> ModelState<'a> {
 
     pub fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.model.nodes[node];
-        let mut inputs: Vec<Input> = vec![];
+        let mut inputs: Vec<TensorView> = vec![];
         for i in &node.inputs {
             let prec_node = &self.model.nodes[i.0];
             let prec = self.outputs[i.0].as_ref().ok_or(format!(
@@ -334,24 +338,24 @@ impl<'a> ModelState<'a> {
         Ok(())
     }
 
-    pub fn take_by_name(&mut self, name: &str) -> Result<Vec<Matrix>> {
+    pub fn take_by_name(&mut self, name: &str) -> Result<Vec<Tensor>> {
         let id = self.model.node_id_by_name(name)?;
         Self::take(self, id)
     }
 
-    pub fn take(&mut self, id: usize) -> Result<Vec<Matrix>> {
+    pub fn take(&mut self, id: usize) -> Result<Vec<Tensor>> {
         Ok(self.outputs[id]
             .take()
             .ok_or("Value is not computed")?
             .into_iter()
-            .map(Input::into_matrix)
+            .map(TensorView::into_tensor)
             .collect())
     }
 
     /// Main entrypoint for running a network.
     ///
     /// Clears the internal state.
-    pub fn run(&mut self, inputs: Vec<(usize, Matrix)>, output: usize) -> Result<Vec<Matrix>> {
+    pub fn run(&mut self, inputs: Vec<(usize, Tensor)>, output: usize) -> Result<Vec<Tensor>> {
         self.reset()?;
         for input in inputs {
             self.set_value(input.0, input.1)?;

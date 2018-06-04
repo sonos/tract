@@ -10,13 +10,38 @@ macro_rules! element_map {
         }
 
         impl ::ops::Op for $Struct {
-            fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> $crate::Result<Vec<$crate::ops::Input>> {
+            /// Evaluates the operation given the input tensors.
+            fn eval(&self, mut inputs: Vec<$crate::ops::TensorView>) -> $crate::Result<Vec<$crate::ops::TensorView>> {
                 let a = args_1!(inputs);
-                let mut a = a.into_matrix().take_f32s().ok_or(
+                let mut a = a.into_tensor().take_f32s().ok_or(
                     "Expect input #0 to be f32",
                 )?;
                 a.mapv_inplace($expr);
-                Ok(vec![$crate::matrix::Matrix::F32(a).into()])
+                Ok(vec![$crate::tensor::Tensor::F32(a).into()])
+            }
+
+            /// Infers properties about the output tensors from the input tensors.
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+                if inputs.len() != 1 {
+                    bail!("Unary operations only supports one input.");
+                }
+
+                $crate::analyser::helpers::infer_forward_basic(self, inputs)
+            }
+
+            /// Infers properties about the input tensors from the output tensors.
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+                if outputs.len() < 1 {
+                    bail!("Unary operations need at least one output.");
+                }
+
+                let input = $crate::analyser::TensorFact {
+                    datatype: outputs[0].datatype,
+                    shape: outputs[0].shape.clone(),
+                    value: valuefact!(_)
+                };
+
+                Ok(Some(vec![input]))
             }
         }
     }
@@ -26,19 +51,52 @@ macro_rules! element_bin {
     ($Name:ident, $name:ident, $expr: expr) =>
     {
         #[derive(Debug,new)]
-        pub struct $Name<T: ::matrix::Datum>(::std::marker::PhantomData<T>);
+        pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
             let dtype = pb.get_attr_datatype("T")?;
             Ok(boxed_new!($Name(dtype)()))
         }
 
-        impl<T: ::matrix::Datum> Op for $Name<T> {
-            fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> Result<Vec<$crate::ops::Input>> {
+        impl<T: ::tensor::Datum> Op for $Name<T> {
+            /// Evaluates the operation given the input tensors.
+            fn eval(&self, mut inputs: Vec<$crate::ops::TensorView>) -> Result<Vec<$crate::ops::TensorView>> {
                 let (a, b) = args_2!(inputs);
-                let a = T::mat_into_array(a.into_matrix())?;
+                let a = T::mat_into_array(a.into_tensor())?;
                 let b = T::mat_to_view(&*b)?;
-                Ok(vec!(T::array_into_mat($expr(a,b)).into()))
+                Ok(vec!(T::array_into_tensor($expr(a,b)).into()))
+            }
+
+            /// Infers properties about the output tensors from the input tensors.
+            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+                use $crate::analyser::TypeFact::*;
+
+                if inputs.len() != 2 {
+                    bail!("Binary operations only supports two inputs.");
+                }
+
+                if let (Only(i), Only(j)) = (inputs[0].datatype, inputs[1].datatype) {
+                    if i != j {
+                        bail!("Binary operations don't support inputs of different types.");
+                    }
+                }
+
+                $crate::analyser::helpers::infer_forward_basic(self, inputs)
+            }
+
+            /// Infers properties about the input tensors from the output tensors.
+            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+                if outputs.len() < 1 {
+                    bail!("Binary operations need at least one output.");
+                }
+
+                let input = $crate::analyser::TensorFact {
+                    datatype: outputs[0].datatype,
+                    shape: shapefact![..],
+                    value: valuefact!(_)
+                };
+
+                Ok(Some(vec![input.clone(), input]))
             }
         }
     }

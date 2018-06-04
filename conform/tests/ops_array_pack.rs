@@ -11,18 +11,18 @@ use proptest::prelude::*;
 use ndarray::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_INT32;
-use tfdeploy::Matrix;
+use tfdeploy::Tensor as TfdTensor;
 use proptest::collection::vec;
 
-fn strat() -> BoxedStrategy<(usize, Vec<Matrix>)> {
+fn strat() -> BoxedStrategy<(usize, Vec<TfdTensor>)> {
     // input rank
     (1usize..8)
         // rank, dimensions, number of inputs
         .prop_flat_map(|r| (0usize..r, vec(1usize..5, r..r+1), 1..5))
         .prop_map(|(ax, dims, n)| {
             let size = dims.iter().map(|a| *a).product::<usize>();
-            let mats:Vec<Matrix> = (0..n).map(|ix| {
-                Matrix::from(Array::from_shape_vec(dims.clone(), ((ix*1000)..).take(size).collect()).unwrap())
+            let mats:Vec<TfdTensor> = (0..n).map(|ix| {
+                TfdTensor::from(Array::from_shape_vec(dims.clone(), ((ix*1000)..).take(size).collect()).unwrap())
             }).collect();
             (ax, mats)
         }).boxed()

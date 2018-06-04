@@ -1,76 +1,89 @@
 //! TensorFlow Ops
 
-use std::fmt::Debug;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::Arc;
 
-use {Matrix, Result};
+use analyser::TensorFact;
+
+use {Tensor, Result};
 
 #[macro_use]
 mod macros;
 
 mod array;
-mod math;
 mod cast;
-pub mod nn;
-#[cfg(features="image_ops")]
+#[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;
+mod math;
+pub mod nn;
 
 #[derive(Debug, Clone)]
-pub enum Input {
-    Owned(Matrix),
-    Shared(Arc<Matrix>),
+pub enum TensorView {
+    Owned(Tensor),
+    Shared(Arc<Tensor>),
 }
 
-impl Input {
-    pub fn into_matrix(self) -> Matrix {
+impl TensorView {
+    pub fn into_tensor(self) -> Tensor {
         match self {
-            Input::Owned(m) => m,
-            Input::Shared(m) => m.as_ref().clone(),
+            TensorView::Owned(m) => m,
+            TensorView::Shared(m) => m.as_ref().clone(),
         }
     }
-    pub fn as_matrix(&self) -> &Matrix {
+    pub fn as_tensor(&self) -> &Tensor {
         match self {
-            &Input::Owned(ref m) => &m,
-            &Input::Shared(ref m) => m.as_ref(),
+            &TensorView::Owned(ref m) => &m,
+            &TensorView::Shared(ref m) => m.as_ref(),
         }
     }
 }
 
-impl<M> From<M> for Input
+impl<M> From<M> for TensorView
 where
-    Matrix: From<M>,
+    Tensor: From<M>,
 {
-    fn from(m: M) -> Input {
-        Input::Owned(m.into())
+    fn from(m: M) -> TensorView {
+        TensorView::Owned(m.into())
     }
 }
 
-impl From<Arc<Matrix>> for Input {
-    fn from(m: Arc<Matrix>) -> Input {
-        Input::Shared(m)
+impl From<Arc<Tensor>> for TensorView {
+    fn from(m: Arc<Tensor>) -> TensorView {
+        TensorView::Shared(m)
     }
 }
 
-impl ::std::ops::Deref for Input {
-    type Target = Matrix;
-    fn deref(&self) -> &Matrix {
+impl ::std::ops::Deref for TensorView {
+    type Target = Tensor;
+    fn deref(&self) -> &Tensor {
         match self {
-            &Input::Owned(ref m) => &m,
-            &Input::Shared(ref m) => m.as_ref(),
+            &TensorView::Owned(ref m) => &m,
+            &TensorView::Shared(ref m) => m.as_ref(),
         }
     }
 }
 
-impl PartialEq for Input {
-    fn eq(&self, other: &Input) -> bool {
-        self.as_matrix() == other.as_matrix()
+impl PartialEq for TensorView {
+    fn eq(&self, other: &TensorView) -> bool {
+        self.as_tensor() == other.as_tensor()
     }
 }
 
 pub trait Op: Debug + Send + Sync + 'static {
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>>;
+
+    /// Infers properties about the output tensors from the input tensors.
+    /// Returns Err in case of an unrecoverable error during the inference,
+    /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
+
+    /// Infers properties about the input tensors from the output tensors.
+    /// Returns Err in case of an unrecoverable error during the inference,
+    /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
 }
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
@@ -103,8 +116,18 @@ impl OpBuilder {
 pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
-    fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
-}
 
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
+    }
+
+    /// Infers properties about the input tensors from the output tensors.
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
+    }
+}
