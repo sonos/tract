@@ -6,33 +6,27 @@ use std::io;
 use std::io::Write;
 use tfdeploy::analyser::*;
 
-type Nd = (String, String, bool);
-type Ed = Edge;
+type Nd<'a> = (usize, &'a String, &'a String, bool);
+type Ed<'a> = (usize, &'a Edge, bool);
 
 struct Graph<'a> {
-    forward: bool,
-    nodes: &'a [Nd],
-    edges: &'a [Ed],
-}
-
-/// Removes special characters from strings.
-fn slugify(text: &String) -> String {
-    text.replace("/", "").replace(".", "").replace(" ", "_")
+    nodes: &'a [Nd<'a>],
+    edges: &'a [Ed<'a>],
 }
 
 /// An implementation of dot::Labeller for the analyser.
-impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
+impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
     fn graph_id(&'a self) -> dot::Id<'a> {
         dot::Id::new("analysed_graph").unwrap()
     }
     fn node_id(&'a self, n: &Nd) -> dot::Id<'a> {
-        dot::Id::new(format!("node_{}", slugify(&n.0))).unwrap()
+        dot::Id::new(format!("node_{:?}", &n.0)).unwrap()
     }
     fn node_label<'b>(&'b self, n: &Nd) -> dot::LabelText<'b> {
-        dot::LabelText::LabelStr(format!("{} ({})", n.0, n.1).into())
+        dot::LabelText::LabelStr(format!("[{:?}] {} ({})", n.0, n.1, n.2).into())
     }
     fn node_color<'b>(&'b self, n: &Nd) -> Option<dot::LabelText<'b>> {
-        if n.2 {
+        if n.3 {
             Some(dot::LabelText::LabelStr("crimson".into()))
         } else {
             None
@@ -42,10 +36,11 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
         use self::ValueFact::*;
 
         let mut label = format!(
-            "{:?}\n{:?}\n{}",
-            e.fact.datatype,
-            e.fact.shape,
-            match e.fact.value {
+            "[{:?}] {:?}\n{:?}\n{}",
+            e.0,
+            e.1.fact.datatype,
+            e.1.fact.shape,
+            match e.1.fact.value {
                 Any => "Any",
                 Only(_) => "Only(_)",
             }
@@ -55,9 +50,7 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
         dot::LabelText::LabelStr(label.into())
     }
     fn edge_color<'b>(&'b self, e: &Ed) -> Option<dot::LabelText<'b>> {
-        if self.forward && self.nodes[e.from_node].2 {
-            Some(dot::LabelText::LabelStr("crimson".into()))
-        } else if !self.forward && self.nodes[e.to_node].2 {
+        if e.2 {
             Some(dot::LabelText::LabelStr("crimson".into()))
         } else {
             None
@@ -66,7 +59,7 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
 }
 
 /// An implementation of dot::GraphWalk for the analyser.
-impl<'a> dot::GraphWalk<'a, Nd, Ed> for Graph<'a> {
+impl<'a> dot::GraphWalk<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
     fn nodes(&self) -> dot::Nodes<'a, Nd> {
         self.nodes.into()
     }
@@ -74,36 +67,50 @@ impl<'a> dot::GraphWalk<'a, Nd, Ed> for Graph<'a> {
         self.edges.into()
     }
     fn source(&self, e: &Ed) -> Nd {
-        self.nodes[e.from_node].clone()
+        self.nodes[e.1.from_node].clone()
     }
     fn target(&self, e: &Ed) -> Nd {
-        self.nodes[e.to_node].clone()
+        self.nodes[e.1.to_node].clone()
     }
 }
 
 /// Writes a DOT export of the analysed graph to a given Writer.
 pub fn render_dot<W: Write>(
     analyser: &Analyser,
-    highlighted: &Vec<usize>,
+    red_nodes: &Vec<usize>,
+    red_edges: &Vec<usize>,
     writer: &mut W,
 ) -> Result<()> {
+    let output_name = "output".to_string();
+
     let nodes: Vec<_> = analyser
         .nodes
         .iter()
         .map(|n| match n {
             Some(n) => (
-                n.name.clone(),
-                n.op_name.clone(),
-                highlighted.contains(&n.id),
+                n.id,
+                &n.name,
+                &n.op_name,
+                red_nodes.contains(&n.id),
             ),
-            None => ("output".to_string(), "output".to_string(), false),
+
+            None => (
+                analyser.nodes.len() - 1,
+                &output_name,
+                &output_name,
+                false
+            ),
         })
         .collect();
 
+    let edges: Vec<_> = analyser.edges.iter()
+        .enumerate()
+        .map(|(i, e)| (i, e, red_edges.contains(&i)))
+        .collect();
+
     let graph = Graph {
-        forward: analyser.current_direction,
         nodes: nodes.as_slice(),
-        edges: analyser.edges.as_slice(),
+        edges: edges.as_slice(),
     };
 
     dot::render(&graph, writer)?;
@@ -112,12 +119,12 @@ pub fn render_dot<W: Write>(
 }
 
 /// Displays a DOT export of the analysed graph on the standard output.
-pub fn display_dot(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()> {
-    render_dot(analyser, highlighted, &mut io::stdout())
+pub fn display_dot(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Vec<usize>) -> Result<()> {
+    render_dot(analyser, red_nodes, red_edges, &mut io::stdout())
 }
 
 /// Displays a render of the analysed graph using the `dot` command.
-pub fn display_graph(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()> {
+pub fn display_graph(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Vec<usize>) -> Result<()> {
     use std::process::{Command, Stdio};
 
     let renderer = Command::new("dot")
@@ -128,9 +135,9 @@ pub fn display_graph(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()
         .stdout(Stdio::piped())
         .spawn()?;
 
-    render_dot(analyser, highlighted, &mut renderer.stdin.unwrap())?;
+    render_dot(analyser, red_nodes, red_edges, &mut renderer.stdin.unwrap())?;
 
-    let _ = Command::new("xdg-open").arg("/tmp/tfd-graph.pdf").output();
+    let _ = Command::new("evince").arg("/tmp/tfd-graph.pdf").output();
 
     Ok(())
 }
