@@ -1,7 +1,7 @@
 use tfpb::types::DataType;
 use analyser::TensorFact;
 use {Tensor, Result};
-use super::{Input, Op, OpRegister};
+use super::{TensorView, Op, OpRegister};
 use std::sync::Arc;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -32,7 +32,7 @@ impl Const {
 
 impl Op for Const {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         Ok(vec![self.value.clone().into()])
     }
 

@@ -9,7 +9,7 @@ use analyser::helpers::most_specific_shape;
 use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
 use {Tensor, Result};
-use super::{Input, Op, OpRegister};
+use super::{TensorView, Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", ConcatV2::build);
@@ -38,7 +38,7 @@ impl ConcatV2 {
 
 impl Op for ConcatV2 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let axis: i32 = inputs[self.n]
             .as_i32s()
             .ok_or("Expected a i32 matrix")?
@@ -124,7 +124,7 @@ impl ExpandDims {
 
 impl Op for ExpandDims {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (data, dims) = args_2!(inputs);
         let data = data.into_tensor()
             .take_f32s()
@@ -215,7 +215,7 @@ impl Identity {
 
 impl Op for Identity {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         Ok(inputs)
     }
 
@@ -253,7 +253,7 @@ impl Placeholder {
 
 impl Op for Placeholder {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         panic!("Placeholder should not get evaluated")
     }
 
@@ -302,7 +302,7 @@ impl Reshape {
 
 impl Op for Reshape {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (input, dims) = args_2!(inputs);
 
         let input = input
@@ -399,7 +399,7 @@ impl Shape {
 
 impl Op for Shape {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
         Ok(vec![Tensor::from(Array1::from_vec(shape)).into()])
@@ -497,7 +497,7 @@ impl Squeeze {
 
 impl Op for Squeeze {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape = self.squeeze_shape(data.shape().to_vec())?;
         Ok(vec![Tensor::from(data.clone().into_shape(shape)?).into()])

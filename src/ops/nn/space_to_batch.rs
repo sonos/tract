@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use Result;
-use super::{Input, Op};
+use super::{TensorView, Op};
 use tensor::Datum;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
@@ -20,7 +20,7 @@ pub struct SpaceToBatch<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for SpaceToBatch<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let paddings = paddings.as_i32s().ok_or("paddings expected as I32")?;
@@ -116,7 +116,7 @@ pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         use ndarray::*;
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;

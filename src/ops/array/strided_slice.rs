@@ -2,7 +2,7 @@ use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use ndarray::prelude::*;
 use {Tensor, Result};
-use ops::{Input, Op};
+use ops::{TensorView, Op};
 use tfpb::types::DataType;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
@@ -25,7 +25,7 @@ pub struct StridedSlice {
 
 impl Op for StridedSlice {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let input = input.as_i32s().ok_or("Input expected as I32")?;
         let begin = begin.as_i32s().ok_or("Begin expected as I32")?;

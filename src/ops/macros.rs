@@ -11,7 +11,7 @@ macro_rules! element_map {
 
         impl ::ops::Op for $Struct {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> $crate::Result<Vec<$crate::ops::Input>> {
+            fn eval(&self, mut inputs: Vec<$crate::ops::TensorView>) -> $crate::Result<Vec<$crate::ops::TensorView>> {
                 let a = args_1!(inputs);
                 let mut a = a.into_tensor().take_f32s().ok_or(
                     "Expect input #0 to be f32",
@@ -60,7 +60,7 @@ macro_rules! element_bin {
 
         impl<T: ::tensor::Datum> Op for $Name<T> {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, mut inputs: Vec<$crate::ops::Input>) -> Result<Vec<$crate::ops::Input>> {
+            fn eval(&self, mut inputs: Vec<$crate::ops::TensorView>) -> Result<Vec<$crate::ops::TensorView>> {
                 let (a, b) = args_2!(inputs);
                 let a = T::mat_into_array(a.into_tensor())?;
                 let b = T::mat_to_view(&*b)?;

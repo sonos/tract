@@ -164,13 +164,14 @@ impl ValueFact {
     // Tries to transform the value fact into a Tensor, or returns None.
     pub fn concretize(self: &ValueFact) -> Option<&Tensor> {
         match self {
-            ValueFact::Any => {
-                debug!("Impossible to concretize an Any value.");
-                None
-            },
-
+            ValueFact::Any => None,
             ValueFact::Only(m) => Some(m)
         }
+    }
+
+    /// Returns whether the value is fully determined.
+    pub fn is_concrete(&self) -> bool {
+        self.concretize().is_some()
     }
 
     // Applies fn to a defined value, and leaves an unknown value untouched.

@@ -5,8 +5,18 @@
 /// - If all the outgoing edges of a node are in G, that node is also in G.
 /// - If an edge in G has no target, a new node is added to G and becomes
 ///   the target of that edge. This new node is called a sink.
-fn constant_subgraph() {
-	unimplemented!()
+fn constant_subgraph(analyser: &Analyser) -> (Vec<bool>, Vec<bool>) {
+	let edge_belongs = analyser.edges.iter()
+		.map(|e| e.fact.value.is_concrete())
+		.collect();
+
+	let node_belongs = analyser.next_edges.iter()
+		.map(|next| next.len() > 0 && next.all(|i| edge_belongs[i]))
+		.collect();
+
+	// TODO(liautaud): How do we represent sinks?
+
+	(node_belongs, edge_belongs)
 }
 
 

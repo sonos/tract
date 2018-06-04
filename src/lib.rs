@@ -56,7 +56,7 @@ pub mod ops;
 
 use std::{fs, path, str};
 use std::collections::{HashMap, HashSet};
-use ops::{Input, Op};
+use ops::{TensorView, Op};
 pub use errors::*;
 
 pub use tensor::Tensor;
@@ -295,7 +295,7 @@ impl Model {
 
 pub struct ModelState<'a> {
     model: &'a Model,
-    pub outputs: Vec<Option<Vec<Input>>>,
+    pub outputs: Vec<Option<Vec<TensorView>>>,
 }
 
 impl<'a> ModelState<'a> {
@@ -306,7 +306,7 @@ impl<'a> ModelState<'a> {
     }
 
     pub fn set_outputs(&mut self, id: usize, values: Vec<Tensor>) -> Result<()> {
-        self.outputs[id] = Some(values.into_iter().map(Input::Owned).collect());
+        self.outputs[id] = Some(values.into_iter().map(TensorView::Owned).collect());
         Ok(())
     }
 
@@ -324,7 +324,7 @@ impl<'a> ModelState<'a> {
 
     pub fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.model.nodes[node];
-        let mut inputs: Vec<Input> = vec![];
+        let mut inputs: Vec<TensorView> = vec![];
         for i in &node.inputs {
             let prec_node = &self.model.nodes[i.0];
             let prec = self.outputs[i.0].as_ref().ok_or(format!(
@@ -348,7 +348,7 @@ impl<'a> ModelState<'a> {
             .take()
             .ok_or("Value is not computed")?
             .into_iter()
-            .map(Input::into_tensor)
+            .map(TensorView::into_tensor)
             .collect())
     }
 

@@ -1,7 +1,7 @@
 use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use {Tensor, Result};
-use super::{Input, Op};
+use super::{TensorView, Op};
 use ndarray::prelude::*;
 use std::marker::PhantomData;
 use super::local_patch::*;
@@ -27,7 +27,7 @@ pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 
 impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let m_input = args_1!(inputs);
         let data = m_input
             .into_tensor()

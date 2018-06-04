@@ -1,7 +1,7 @@
 use Result;
 
 use analyser::TensorFact;
-use super::{Input, Op, OpRegister};
+use super::{TensorView, Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);
@@ -18,7 +18,7 @@ impl Cast {
 
 impl ::ops::Op for Cast {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut _inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         panic!(
             "nope, fixme. parse two args in build to get src and dst types, then generalize (macro ?)"
         );

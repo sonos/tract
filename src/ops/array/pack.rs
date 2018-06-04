@@ -4,7 +4,7 @@ use analyser::{TensorFact, ShapeFact};
 use analyser::helpers::most_specific_shape;
 use analyser::helpers::infer_forward_concrete;
 use Result;
-use super::{Input, Op};
+use super::{TensorView, Op};
 use tensor::Datum;
 
 #[derive(Debug, Default, new)]
@@ -27,7 +27,7 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         use ndarray::Axis;
         let views = inputs
             .iter()

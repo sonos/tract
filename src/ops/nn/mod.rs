@@ -1,4 +1,4 @@
-use super::{Input, Op, OpRegister};
+use super::{TensorView, Op, OpRegister};
 use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
 use tfpb::types::DataType;
@@ -32,7 +32,7 @@ impl Softmax {
 
 impl Op for Softmax {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
             .into_tensor()

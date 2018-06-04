@@ -20,60 +20,60 @@ mod math;
 pub mod nn;
 
 #[derive(Debug, Clone)]
-pub enum Input {
+pub enum TensorView {
     Owned(Tensor),
     Shared(Arc<Tensor>),
 }
 
-impl Input {
+impl TensorView {
     pub fn into_tensor(self) -> Tensor {
         match self {
-            Input::Owned(m) => m,
-            Input::Shared(m) => m.as_ref().clone(),
+            TensorView::Owned(m) => m,
+            TensorView::Shared(m) => m.as_ref().clone(),
         }
     }
     pub fn as_tensor(&self) -> &Tensor {
         match self {
-            &Input::Owned(ref m) => &m,
-            &Input::Shared(ref m) => m.as_ref(),
+            &TensorView::Owned(ref m) => &m,
+            &TensorView::Shared(ref m) => m.as_ref(),
         }
     }
 }
 
-impl<M> From<M> for Input
+impl<M> From<M> for TensorView
 where
     Tensor: From<M>,
 {
-    fn from(m: M) -> Input {
-        Input::Owned(m.into())
+    fn from(m: M) -> TensorView {
+        TensorView::Owned(m.into())
     }
 }
 
-impl From<Arc<Tensor>> for Input {
-    fn from(m: Arc<Tensor>) -> Input {
-        Input::Shared(m)
+impl From<Arc<Tensor>> for TensorView {
+    fn from(m: Arc<Tensor>) -> TensorView {
+        TensorView::Shared(m)
     }
 }
 
-impl ::std::ops::Deref for Input {
+impl ::std::ops::Deref for TensorView {
     type Target = Tensor;
     fn deref(&self) -> &Tensor {
         match self {
-            &Input::Owned(ref m) => &m,
-            &Input::Shared(ref m) => m.as_ref(),
+            &TensorView::Owned(ref m) => &m,
+            &TensorView::Shared(ref m) => m.as_ref(),
         }
     }
 }
 
-impl PartialEq for Input {
-    fn eq(&self, other: &Input) -> bool {
+impl PartialEq for TensorView {
+    fn eq(&self, other: &TensorView) -> bool {
         self.as_tensor() == other.as_tensor()
     }
 }
 
 pub trait Op: Debug + Send + Sync + 'static {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Input>) -> Result<Vec<Input>>;
+    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>>;
 
     /// Infers properties about the output tensors from the input tensors.
     /// Returns Err in case of an unrecoverable error during the inference,
@@ -117,7 +117,7 @@ pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
 

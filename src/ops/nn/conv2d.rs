@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use analyser::{TensorFact, ShapeFact};
 use analyser::helpers::infer_forward_concrete;
 use Result;
-use super::{Input, Op};
+use super::{TensorView, Op};
 use ndarray::prelude::*;
 use super::local_patch::*;
 use tensor::Datum;
@@ -19,7 +19,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 
 impl<T: Datum> Op for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Input>) -> Result<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = T::mat_into_array(m_data.into_tensor())?;
         let filter = T::mat_to_view(&*m_filter)?;
