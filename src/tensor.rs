@@ -93,7 +93,15 @@ impl Tensor {
             &Tensor::F32(ref it) => {
                 tensor.set_dtype(DataType::DT_FLOAT);
                 tensor.set_float_val(it.iter().cloned().collect());
-            }
+            },
+            &Tensor::F64(ref it) => {
+                tensor.set_dtype(DataType::DT_DOUBLE);
+                tensor.set_double_val(it.iter().cloned().collect());
+            },
+            &Tensor::I32(ref it) => {
+                tensor.set_dtype(DataType::DT_INT32);
+                tensor.set_int_val(it.iter().cloned().collect());
+            },
             _ => unimplemented!(),
         }
         Ok(tensor)
