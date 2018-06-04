@@ -527,32 +527,48 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 /// Handles the `analyse` subcommand.
 fn handle_analyse(params: Parameters) -> Result<()> {
     let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output)?;
+    let output = model.get_node_by_id(params.output)?.id;
 
     info!("Starting the analysis.");
 
-    let mut analyser = Analyser::new(&model, output.id)?;
+    let mut analyser = Analyser::new(model, output)?;
     let result = analyser.run();
 
+    // DEBUG(liautaud): Displays the connected components.
+    // for component in constants::connected_components(&analyser)? {
+    //     use constants::Element::*;
+
+    //     println!("Current constant component: {:?}", component);
+    //     let mut red_nodes = vec![];
+    //     let mut red_edges = vec![];
+
+    //     for element in component.elements {
+    //         match element {
+    //             Node(n) => red_nodes.push(n),
+    //             Edge(n) => red_edges.push(n),
+    //         }
+    //     }
+
+    //     graphviz::display_graph(&analyser, &red_nodes, &red_edges)?;
+    // }
+
+    info!(
+        "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",
+        format!("{:?}", analyser.nodes).into_bytes().len(),
+        analyser.nodes.len()
+    );
+
+    // graphviz::display_graph(&analyser, &vec![], &vec![])?;
+    constants::prune_constants(&mut analyser)?;
+    // graphviz::display_graph(&analyser, &vec![], &vec![])?;
+    analyser.remove_unused();
     graphviz::display_graph(&analyser, &vec![], &vec![])?;
 
-    // DEBUG
-    for component in constants::connected_components(&analyser)? {
-        use constants::Element::*;
-
-        println!("Current constant component: {:?}", component);
-        let mut red_nodes = vec![];
-        let mut red_edges = vec![];
-
-        for element in component.elements {
-            match element {
-                Node(n) => red_nodes.push(n),
-                Edge(n) => red_edges.push(n),
-            }
-        }
-
-        graphviz::display_graph(&analyser, &red_nodes, &red_edges)?;
-    }
+    info!(
+        "Ending size of the graph: approx. {:?} bytes for {:?} nodes.",
+        format!("{:?}", analyser.nodes).into_bytes().len(),
+        analyser.nodes.len()
+    );
 
     Ok(result?)
 }

@@ -89,7 +89,7 @@ impl Node {
     }
 
     pub fn eval_order(&self, model: &Model) -> Result<Vec<usize>> {
-        Ok(Plan::for_nodes(model, &[self.id])?.order)
+        Ok(Plan::for_model(model, &[self.id])?.order)
     }
 }
 
@@ -104,14 +104,14 @@ pub struct Plan {
 }
 
 impl Plan {
-    fn for_node(model: &Model, target: usize) -> Result<Plan> {
-        Self::for_nodes(model, &[target])
+    pub fn for_model(model: &Model, targets: &[usize]) -> Result<Plan> {
+        Self::for_nodes(&model.nodes, targets)
     }
 
-    fn for_nodes(model: &Model, targets: &[usize]) -> Result<Plan> {
+    fn for_nodes(nodes: &Vec<Node>, targets: &[usize]) -> Result<Plan> {
         let mut order: Vec<usize> = Vec::new();
-        let mut done = bit_set::BitSet::with_capacity(model.nodes.len());
-        let mut needed = bit_set::BitSet::with_capacity(model.nodes.len());
+        let mut done = bit_set::BitSet::with_capacity(nodes.len());
+        let mut needed = bit_set::BitSet::with_capacity(nodes.len());
         for &t in targets {
             needed.insert(t);
         }
@@ -121,7 +121,7 @@ impl Plan {
             missing.difference_with(&done);
             for node_id in missing.iter() {
                 let mut computable = true;
-                let node = &model.nodes[node_id];
+                let node = &nodes[node_id];
                 for i in node.inputs.iter() {
                     if !done.contains(i.0) {
                         computable = false;
@@ -141,7 +141,7 @@ impl Plan {
         }
         for &t in targets {
             if !done.contains(t) {
-                let node = &model.nodes[t];
+                let node = &nodes[t];
                 Err(format!("Could not plan for node {}", node.name))?
             }
         }
@@ -162,8 +162,8 @@ impl Plan {
 /// and runs the inference interpreter.
 ///
 pub struct Model {
-    nodes: Vec<Node>,
-    nodes_by_name: HashMap<String, usize>,
+    pub nodes: Vec<Node>,
+    pub nodes_by_name: HashMap<String, usize>,
 }
 
 impl Model {
@@ -271,7 +271,7 @@ impl Model {
     }
 
     pub fn plan_for_one(&self, node: usize) -> Result<Plan> {
-        Plan::for_node(&self, node)
+        Plan::for_model(&self, &[node])
     }
 
     pub fn run(&self, inputs: Vec<(usize, Tensor)>, output: usize) -> Result<Vec<Tensor>> {
@@ -360,7 +360,7 @@ impl<'a> ModelState<'a> {
         for input in inputs {
             self.set_value(input.0, input.1)?;
         }
-        Plan::for_node(self.model, output)?.run(self)?;
+        Plan::for_model(self.model, &[output])?.run(self)?;
         Ok(self.take(output)?)
     }
 

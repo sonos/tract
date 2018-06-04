@@ -95,78 +95,75 @@ pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
     pub id: usize,
-    pub from_node: usize,
+    pub from_node: Option<usize>,
     pub from_out: usize,
-    pub to_node: usize,
+    pub to_node: Option<usize>,
     pub fact: TensorFact,
 }
 
 /// A graph analyser, along with its current state.
-#[derive(Debug)]
-pub struct Analyser<'n> {
+pub struct Analyser {
+    // The original output.
+    pub output: usize,
+
     // The graph being analysed.
-    pub nodes: Vec<Option<&'n Node>>,
+    pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     prev_edges: Vec<Vec<usize>>,
     next_edges: Vec<Vec<usize>>,
 
-    // The execution plan for this graph.
+    // The execution plan and unused nodes.
     plan: Vec<usize>,
 
     // The current state of the algorithm.
-    current_pass: usize,
-    current_step: usize,
+    pub current_pass: usize,
+    pub current_step: usize,
     pub current_direction: bool,
 }
 
-impl<'n> Analyser<'n> {
+impl Analyser {
     /// Constructs an analyser for the given graph.
     ///
     /// The output argument is used to infer an execution plan for the graph.
     /// Changing it won't alter the correctness of the analysis, but it might
     /// take much longer to complete.
-    pub fn new<'a>(model: &'a Model, output: usize) -> Result<Analyser> {
-        let mut nodes = vec![];
+    pub fn new(model: Model, output: usize) -> Result<Analyser> {
+        let nodes = model.nodes;
         let mut edges = vec![];
-        let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
-        let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
+        let mut prev_edges = vec![Vec::new(); nodes.len() + 1];
+        let mut next_edges = vec![Vec::new(); nodes.len() + 1];
 
-        for node in model.nodes() {
+        for node in &nodes {
             for input in &node.inputs {
                 let id = edges.len();
 
                 edges.push(Edge {
                     id,
-                    from_node: input.0,
+                    from_node: Some(input.0),
                     from_out: input.1.unwrap_or(0),
-                    to_node: node.id,
+                    to_node: Some(node.id),
                     fact: TensorFact::new(),
                 });
 
                 prev_edges[node.id].push(id);
                 next_edges[input.0].push(id);
             }
-
-            nodes.push(Some(node));
         }
 
-        // Add a special output node.
-        let special_node_id = nodes.len();
+        // Add a special output edge.
         let special_edge_id = edges.len();
-        nodes.push(None);
         edges.push(Edge {
             id: special_edge_id,
-            from_node: output,
+            from_node: Some(output),
             from_out: 0,
-            to_node: nodes.len() - 1,
+            to_node: None,
             fact: TensorFact::new(),
         });
 
         next_edges[output].push(special_edge_id);
-        prev_edges[special_node_id].push(special_edge_id);
 
         // Compute an execution plan for the graph.
-        let plan = Plan::for_node(model, output)?.order;
+        let plan = Plan::for_nodes(&nodes, &[output])?.order;
         let current_pass = 0;
         let current_step = 0;
         let current_direction = true;
@@ -174,6 +171,7 @@ impl<'n> Analyser<'n> {
         info!("Using execution plan {:?}.", plan);
 
         Ok(Analyser {
+            output,
             nodes,
             edges,
             prev_edges,
@@ -185,42 +183,82 @@ impl<'n> Analyser<'n> {
         })
     }
 
-    /// Removes a node from the graph.
-    pub fn remove_node(&mut self, i: usize) {
-        if i >= self.nodes.len() {
-            panic!("There is no node with index {:?}.", i);
-        }
-
-        self.prev_edges.remove(i);
-        self.next_edges.remove(i);
-        self.nodes.remove(i);
+    /// Returns a model from the analyser.
+    pub fn into_model(self) -> Model {
+        unimplemented!()
     }
 
-    /// Removes an edge from the graph.
-    pub fn remove_edge(&mut self, i: usize) {
-        if i >= self.edges.len() {
-            panic!("There is no edge with index {:?}.", i);
-        }
-
-        let prev = &mut self.prev_edges[self.edges[i].to_node];
-        let next = &mut self.next_edges[self.edges[i].from_node];
-
-        let prev_i = prev.iter().position(|&j| j == i);
-        if prev_i.is_some() {
-            prev.remove(prev_i.unwrap());
-        }
-
-        let next_i = next.iter().position(|&j| j == i);
-        if next_i.is_some() {
-            next.remove(next_i.unwrap());
-        }
-
-        self.edges.remove(i);
+    /// Computes a new execution plan for the graph.
+    pub fn reset_plan(&mut self) -> Result<()> {
+        self.plan = Plan::for_nodes(&self.nodes, &[self.output])?.order;
+        Ok(())
     }
 
-    /// Clears the analyser's execution plan.
-    pub fn clear_plan(&mut self) {
-        self.plan = vec![];
+    /// Removes the nodes and edges which are not part of the execution plan.
+    pub fn remove_unused(&mut self) {
+        let mut node_used = vec![false; self.nodes.len()];
+        let mut edge_used = vec![false; self.edges.len()];
+        for &i in &self.plan {
+            node_used[i] = true;
+        }
+
+        // Remove the nodes while keeping track of the new indices.
+        let mut deleted = 0;
+        let mut node_mapping = vec![None; self.nodes.len()];
+
+        for i in 0..self.nodes.len() {
+            if !node_used[i] {
+                self.nodes.remove(i - deleted);
+
+                self.prev_edges.remove(i - deleted);
+                self.next_edges.remove(i - deleted);
+                deleted += 1;
+            } else {
+                node_mapping[i] = Some(i - deleted);
+
+                self.prev_edges[i - deleted].iter().for_each(|&j| edge_used[j] = true);
+                self.next_edges[i - deleted].iter().for_each(|&j| edge_used[j] = true);
+            }
+        }
+
+        info!("Deleted {:?} unused nodes.", deleted);
+
+        // Update the nodes and edges to use the new indices.
+        for node in &mut self.nodes {
+            node.id = node_mapping[node.id].unwrap();
+            node.inputs.iter_mut().for_each(|i| i.0 = node_mapping[i.0].unwrap());
+        }
+
+        for edge in &mut self.edges {
+            if let Some(i) = edge.from_node {
+                edge.from_node = node_mapping[i];
+            }
+
+            if let Some(i) = edge.to_node {
+                edge.to_node = node_mapping[i];
+            }
+        }
+
+        // Remove the edges while keeping track of the new indices.
+        let mut deleted = 0;
+        let mut edge_mapping = vec![None; self.edges.len()];
+
+        for i in 0..self.edges.len() {
+            if !edge_used[i] {
+                self.edges.remove(i - deleted);
+                deleted += 1;
+            } else {
+                edge_mapping[i] = Some(i - deleted);
+            }
+        }
+
+        info!("Deleted {:?} unused edges.", deleted);
+
+        // Update the adjacency lists to use the new indices.
+        for i in 0..self.nodes.len() {
+            self.prev_edges[i].iter_mut().for_each(|j| *j = edge_mapping[*j].unwrap());
+            self.next_edges[i].iter_mut().for_each(|j| *j = edge_mapping[*j].unwrap());
+        }
     }
 
     /// Runs the entire analysis at once.
@@ -286,17 +324,10 @@ impl<'n> Analyser<'n> {
     /// there was any additional information gained during the step.
     fn try_step(&mut self) -> Result<bool> {
         let node = if self.current_direction {
-            self.nodes[self.plan[self.current_step]]
+            &self.nodes[self.plan[self.current_step]]
         } else {
-            self.nodes[self.plan[self.plan.len() - 1 - self.current_step]]
+            &self.nodes[self.plan[self.plan.len() - 1 - self.current_step]]
         };
-
-        // The node is a special node, don't do anything with it.
-        if node.is_none() {
-            return Ok(false);
-        }
-
-        let node = node.unwrap();
 
         debug!(
             "Starting step for {} ({}) [pass={:?}, direction={:?}, step={:?}].",

@@ -67,10 +67,16 @@ impl<'a> dot::GraphWalk<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
         self.edges.into()
     }
     fn source(&self, e: &Ed) -> Nd {
-        self.nodes[e.1.from_node].clone()
+        match e.1.from_node {
+            Some(n) => self.nodes[n].clone(),
+            None => panic!("{:?}", e)
+        }
     }
     fn target(&self, e: &Ed) -> Nd {
-        self.nodes[e.1.to_node].clone()
+        match e.1.to_node {
+            Some(n) => self.nodes[n].clone(),
+            None => self.nodes[self.nodes.len() - 1].clone()
+        }
     }
 }
 
@@ -81,27 +87,27 @@ pub fn render_dot<W: Write>(
     red_edges: &Vec<usize>,
     writer: &mut W,
 ) -> Result<()> {
-    let output_name = "output".to_string();
+    let output_node_name = "output".to_string();
 
-    let nodes: Vec<_> = analyser
+    let mut nodes: Vec<_> = analyser
         .nodes
         .iter()
-        .map(|n| match n {
-            Some(n) => (
-                n.id,
-                &n.name,
-                &n.op_name,
-                red_nodes.contains(&n.id),
-            ),
-
-            None => (
-                analyser.nodes.len() - 1,
-                &output_name,
-                &output_name,
-                false
-            ),
-        })
+        .map(|n| (
+            n.id,
+            &n.name,
+            &n.op_name,
+            red_nodes.contains(&n.id),
+        ))
         .collect();
+
+    // Add a special output node.
+    let output_node_id = nodes.len();
+    nodes.push((
+        output_node_id,
+        &output_node_name,
+        &output_node_name,
+        false
+    ));
 
     let edges: Vec<_> = analyser.edges.iter()
         .enumerate()
@@ -125,6 +131,7 @@ pub fn display_dot(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Vec<
 
 /// Displays a render of the analysed graph using the `dot` command.
 pub fn display_graph(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Vec<usize>) -> Result<()> {
+    use std::{thread, time};
     use std::process::{Command, Stdio};
 
     let renderer = Command::new("dot")
@@ -137,7 +144,9 @@ pub fn display_graph(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Ve
 
     render_dot(analyser, red_nodes, red_edges, &mut renderer.stdin.unwrap())?;
 
-    let _ = Command::new("evince").arg("/tmp/tfd-graph.pdf").output();
+    thread::sleep(time::Duration::from_secs(1));
+
+    let _ = Command::new("xpdf").arg("/tmp/tfd-graph.pdf").output();
 
     Ok(())
 }

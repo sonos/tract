@@ -1,10 +1,10 @@
-use Node;
-use Tensor;
-use ops::OpBuilder;
-use tfpb::node_def::NodeDef;
-use tfpb::attr_value::AttrValue;
 use super::Analyser;
 use super::Result;
+use ops::OpBuilder;
+use tfpb::attr_value::AttrValue;
+use tfpb::node_def::NodeDef;
+use tfpb::tensor::TensorProto;
+use Node;
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
 /// replaced with a constant node containing a copy of that tensor.
@@ -19,7 +19,7 @@ pub enum Element {
 #[derive(Debug)]
 pub struct Component {
     pub elements: Vec<Element>,
-    pub outputs: Vec<usize>
+    pub outputs: Vec<usize>,
 }
 
 /// Computes all the connected components of the constant underlying graph.
@@ -42,43 +42,53 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
         .collect();
 
     let mut components = vec![];
-    let mut colored = vec![false; is_node_const.len()];
+    let mut is_node_colored = vec![false; analyser.nodes.len()];
+    let mut is_edge_colored = vec![false; analyser.edges.len()];
     let mut stack = vec![];
 
+    macro_rules! process_edges {
+        ($from:ident, $field:ident, $component:expr, $node:expr) => {{
+            for &edge in &analyser.$from[$node] {
+                if !is_edge_const[edge] || is_edge_colored[edge] {
+                    continue;
+                }
+
+                is_edge_colored[edge] = true;
+                $component.elements.push(Element::Edge(edge));
+
+                let target = analyser.edges[edge].$field;
+                if target.is_none() {
+                    continue;
+                }
+
+                if !is_node_const[target.unwrap()] {
+                    $component.outputs.push(edge);
+                } else {
+                    stack.push(target.unwrap());
+                }
+            }
+        }};
+    };
+
     for (node, &is_const) in is_node_const.iter().enumerate() {
-        if is_const && !colored[node] {
+        if is_const && !is_node_colored[node] {
             let mut component = Component {
                 elements: vec![],
-                outputs: vec![]
+                outputs: vec![],
             };
 
             stack.push(node);
 
             while let Some(node) = stack.pop() {
-                if !is_node_const[node] {
+                if !is_node_const[node] || is_node_colored[node] {
                     continue;
                 }
 
-                colored[node] = true;
+                is_node_colored[node] = true;
                 component.elements.push(Element::Node(node));
 
-                for &edge in &analyser.prev_edges[node] {
-                    if !is_edge_const[edge] {
-                        continue;
-                    }
-
-                    component.elements.push(Element::Edge(edge));
-                    stack.push(analyser.edges[edge].from_node);
-                }
-
-                for &edge in &analyser.next_edges[node] {
-                    if !is_edge_const[edge] {
-                        continue;
-                    }
-
-                    component.elements.push(Element::Edge(edge));
-                    stack.push(analyser.edges[edge].to_node);
-                }
+                process_edges!(prev_edges, from_node, component, node);
+                process_edges!(next_edges, to_node, component, node);
             }
 
             components.push(component);
@@ -89,37 +99,35 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
 }
 
 /// Computes the lowest common ancestor of the sinks of a connected component.
+#[allow(dead_code)]
 fn lowest_common_ancestor() {
     unimplemented!()
 }
 
 /// Creates a new Const node with the given Tensor value.
-fn build_const_node(id: usize, name: String, tensor: &Tensor) -> Node {
+fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
     let op_builder = OpBuilder::new();
-	let mut node_def = NodeDef::new();
+    let mut node_def = NodeDef::new();
 
     node_def.set_name(name.clone());
     node_def.set_op("Const".to_string());
 
     let mut dtype = AttrValue::new();
-    dtype.set_field_type(tensor.datatype());
+    dtype.set_field_type(tensor.get_dtype());
     node_def.mut_attr().insert("dtype".to_string(), dtype);
 
     let mut value = AttrValue::new();
-    value.set_tensor(tensor.to_pb().unwrap());
+    value.set_tensor(tensor);
     node_def.mut_attr().insert("value".to_string(), value);
 
-	Node {
-	    id,
-	    name,
-	    op_name: "Const".to_string(),
-	    inputs: vec![],
-	    op: op_builder
-	        .build(&node_def)
-	        .unwrap()
-	}
+    Node {
+        id,
+        name,
+        op_name: "Const".to_string(),
+        inputs: vec![],
+        op: op_builder.build(&node_def).unwrap(),
+    }
 }
-
 
 /// Prunes the constant nodes and edges from the given graph.
 ///
@@ -154,53 +162,50 @@ fn build_const_node(id: usize, name: String, tensor: &Tensor) -> Node {
 ///   size or performance gained from pruning compensates the size loss.
 pub fn prune_constants(analyser: &mut Analyser) -> Result<()> {
     let components: Vec<Component> = connected_components(analyser)?;
+    info!("Detected {:?} connected components.", components.len());
 
-    info!("Constant connected components: {:?}", components);
+    for component in components {
+        for i in component.outputs {
+            let edge = &mut analyser.edges[i];
+            let tensor = edge
+                .fact
+                .value
+                .concretize()
+                .unwrap()
+                .to_pb()
+                .unwrap();
 
-    // for component in components {
-    //     // let preserve_edges = vec![];
+            // TODO(liautaud): Implement the other strategy.
+            // let area: usize = tensor.shape().iter().product();
+            // if area <= COPY_THRESHOLD {
+            let node_id = analyser.nodes.len();
+            let node_name = format!("generated_{}", i).to_string();
+            let node = build_const_node(node_id, node_name, tensor);
+            let old_node_id = edge.from_node.unwrap();
 
-    // 	for i in component.outputs {
-    // 		let tensor = analyser.edges[i].fact.value.concretize().unwrap();
-    // 		let area: usize = tensor.shape().iter().product();
+            // Detach the edge from its previous source.
+            {
+                let successors = &mut analyser.next_edges[old_node_id];
+                let position = successors.iter().position(|&i| i == edge.id).unwrap();
+                successors.remove(position);
+            };
 
-    //         // TODO(liautaud): Implement the other strategy.
-    // 		// if area <= COPY_THRESHOLD {
-    // 			let id = analyser.nodes.len();
-    // 			let name = format!("generated_{}", i).to_string();
-    // 			let node = build_const_node(id, name, tensor);
+            // Detach the target node from its previous source.
+            {
+                let predecessors = &mut analyser.nodes[edge.to_node.unwrap()].inputs;
+                let position = predecessors.iter().position(|&(i, _)| i == old_node_id).unwrap();
+                predecessors[position] = (node_id, None);
+            }
 
-    //             analyser.nodes.push(Some(&node));
-    //             analyser.edges[i].from_node = id;
-    //             analyser.edges[i].from_out = 0;
-    // 		// }
+            // Attach the edge to its new source.
+            edge.from_node = Some(node_id);
+            analyser.prev_edges.push(vec![]);
+            analyser.next_edges.push(vec![edge.id]);
+            analyser.nodes.push(node);
+        }
+    }
 
-    //         // TODO(liautaud): Delete unused nodes for each component.
-    // 	}
-    // }
-
-    // // TODO(liautaud): Implement the other strategy.
-
-    // // Prune the remaining nodes and edges.
-    // analyser.clear_plan();
-
-    // // let constant_nodes = is_node_const.into_iter()
-    // //     .enumerate()
-    // //     .filter(|&(_, is_const)| is_const)
-    // //     .map(&|(i, _)| i);
-
-    // // for i in constant_nodes {
-    // //     analyser.remove_node(i);
-    // // }
-
-    // // let constant_edges = is_edge_const.into_iter()
-    // //     .enumerate()
-    // //     .filter(|&(_, is_const)| is_const)
-    // //     .map(&|(i, _)| i);
-
-    // // for i in constant_edges {
-    // //     analyser.remove_edge(i);
-    // // }
+    analyser.reset_plan()?;
 
     Ok(())
 }
