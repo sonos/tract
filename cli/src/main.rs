@@ -24,6 +24,7 @@ use std::time::Instant;
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::Analyser;
+use tfdeploy::analyser::constants;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Tensor;
@@ -532,7 +533,26 @@ fn handle_analyse(params: Parameters) -> Result<()> {
 
     let mut analyser = Analyser::new(&model, output.id)?;
     let result = analyser.run();
-    graphviz::display_graph(&analyser, &vec![])?;
+
+    graphviz::display_graph(&analyser, &vec![], &vec![])?;
+
+    // DEBUG
+    for component in constants::connected_components(&analyser)? {
+        use constants::Element::*;
+
+        println!("Current constant component: {:?}", component);
+        let mut red_nodes = vec![];
+        let mut red_edges = vec![];
+
+        for element in component.elements {
+            match element {
+                Node(n) => red_nodes.push(n),
+                Edge(n) => red_edges.push(n),
+            }
+        }
+
+        graphviz::display_graph(&analyser, &red_nodes, &red_edges)?;
+    }
 
     Ok(result?)
 }

@@ -11,6 +11,7 @@ pub use self::types::*;
 pub mod macros;
 #[macro_use]
 pub mod helpers;
+pub mod constants;
 
 /// Attempts to unify two tensor facts into a more specialized one.
 pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
@@ -182,6 +183,44 @@ impl<'n> Analyser<'n> {
             current_step,
             current_direction,
         })
+    }
+
+    /// Removes a node from the graph.
+    pub fn remove_node(&mut self, i: usize) {
+        if i >= self.nodes.len() {
+            panic!("There is no node with index {:?}.", i);
+        }
+
+        self.prev_edges.remove(i);
+        self.next_edges.remove(i);
+        self.nodes.remove(i);
+    }
+
+    /// Removes an edge from the graph.
+    pub fn remove_edge(&mut self, i: usize) {
+        if i >= self.edges.len() {
+            panic!("There is no edge with index {:?}.", i);
+        }
+
+        let prev = &mut self.prev_edges[self.edges[i].to_node];
+        let next = &mut self.next_edges[self.edges[i].from_node];
+
+        let prev_i = prev.iter().position(|&j| j == i);
+        if prev_i.is_some() {
+            prev.remove(prev_i.unwrap());
+        }
+
+        let next_i = next.iter().position(|&j| j == i);
+        if next_i.is_some() {
+            next.remove(next_i.unwrap());
+        }
+
+        self.edges.remove(i);
+    }
+
+    /// Clears the analyser's execution plan.
+    pub fn clear_plan(&mut self) {
+        self.plan = vec![];
     }
 
     /// Runs the entire analysis at once.
