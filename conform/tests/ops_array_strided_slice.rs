@@ -7,14 +7,19 @@ extern crate tensorflow;
 extern crate tfdeploy;
 
 use conform::*;
-use proptest::prelude::*;
 use ndarray::prelude::*;
+use proptest::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_INT32;
 use tfdeploy::Tensor as TfdTensor;
 
-fn strided_slice_strat(
-) -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor, TfdTensor, (i32, i32, i32, i32, i32))> {
+fn strided_slice_strat() -> BoxedStrategy<(
+    TfdTensor,
+    TfdTensor,
+    TfdTensor,
+    TfdTensor,
+    (i32, i32, i32, i32, i32),
+)> {
     ::proptest::collection::vec(
         (1..5).prop_flat_map(|n| {
             // each dim max

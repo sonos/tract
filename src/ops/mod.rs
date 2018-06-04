@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use analyser::TensorFact;
 
-use {Tensor, Result};
+use {Result, Tensor};
 
 #[macro_use]
 mod macros;

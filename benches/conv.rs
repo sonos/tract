@@ -5,9 +5,9 @@ extern crate tfdeploy;
 
 use criterion::Criterion;
 
-use tfdeploy::*;
 use tfdeploy::ops::nn::conv2d::*;
 use tfdeploy::ops::nn::local_patch::*;
+use tfdeploy::*;
 
 use tfdeploy::ops::Op;
 
@@ -23,10 +23,9 @@ fn conv(bencher: &mut Criterion) {
     let conv = Conv2D::<f32>::new(LocalPatch::valid(stride, stride));
     let inputs = vec![mk(&[1, 82, 1, 40]).into(), mk(&[41, 1, 40, 128]).into()];
     conv.eval(inputs.clone()).unwrap();
-    bencher.bench_function(
-        "Conv2D<f32>(1x82x1x40 41x1x40x128)",
-        move |b| b.iter(|| conv.eval(inputs.clone()).unwrap())
-    );
+    bencher.bench_function("Conv2D<f32>(1x82x1x40 41x1x40x128)", move |b| {
+        b.iter(|| conv.eval(inputs.clone()).unwrap())
+    });
 }
 
 criterion_group!(benches, conv);

@@ -33,8 +33,8 @@ pub use protobuf::Message;
 
 use tfdeploy::tfpb;
 use tfdeploy::Tensor as TfdTensor;
-use tfpb::types::DataType;
 use tfpb::tensor_shape::TensorShapeProto;
+use tfpb::types::DataType;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
@@ -76,7 +76,6 @@ pub fn compare<S: AsRef<str>>(
     inputs: Vec<(S, TfdTensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-
     let owned_names: Vec<String> = inputs.iter().map(|s| s.0.as_ref().to_string()).collect();
     let inputs: Vec<(&str, TfdTensor)> = inputs
         .into_iter()
@@ -93,5 +92,3 @@ pub fn compare<S: AsRef<str>>(
     );
     Ok(())
 }
-
-

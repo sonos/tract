@@ -1,10 +1,10 @@
-use analyser::TensorFact;
+use super::local_patch::*;
+use super::{Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
-use {Tensor, Result};
-use super::{TensorView, Op};
+use analyser::TensorFact;
 use ndarray::prelude::*;
 use std::marker::PhantomData;
-use super::local_patch::*;
+use {Result, Tensor};
 
 pub trait Pooler: Send + Sync + ::std::fmt::Debug + 'static {
     type State;
@@ -74,9 +74,9 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
             [batch, in_height, in_width, in_channels] => {
                 let (height, width) = self.0.adjusted_dim(*in_height, *in_width, self.1);
                 shapefact![(*batch), height, width, (*in_channels)]
-            },
+            }
 
-            _ => bail!("The input dimensions are invalid.")
+            _ => bail!("The input dimensions are invalid."),
         };
 
         let output = TensorFact {
@@ -96,15 +96,14 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 
         let shape = match unwrap_or_none!(outputs[0].shape.concretize()).as_slice() {
             // TODO(liautaud): Take the data_format parameter into account.
-            [batch, _, _, out_channels] =>
-                shapefact![(*batch), _, _, (*out_channels)],
-            _ => bail!("The output dimensions are invalid.")
+            [batch, _, _, out_channels] => shapefact![(*batch), _, _, (*out_channels)],
+            _ => bail!("The output dimensions are invalid."),
         };
 
         let input = TensorFact {
             datatype: outputs[0].datatype,
             shape,
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![input]))
@@ -147,8 +146,8 @@ impl Pooler for AvgPooler {
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Tensor;
     use super::*;
+    use Tensor;
 
     #[test]
     fn test_maxpool_1() {

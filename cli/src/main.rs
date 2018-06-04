@@ -21,8 +21,8 @@ use std::collections::HashMap;
 use std::process;
 use std::time::Instant;
 
-use simplelog::{Config, LevelFilter, TermLogger};
 use simplelog::Level::{Error, Info, Trace};
+use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
@@ -43,8 +43,8 @@ use utils::random_tensor;
 
 mod errors;
 mod format;
-mod utils;
 mod graphviz;
+mod utils;
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u32 = 10_000;
@@ -115,13 +115,16 @@ fn main() {
         _ => LevelFilter::Trace,
     };
 
-    TermLogger::init(level, Config {
-        time: None,
-        time_format: None,
-        level: Some(Error),
-        target: None,
-        location: Some(Trace)
-    }).unwrap();
+    TermLogger::init(
+        level,
+        Config {
+            time: None,
+            time_format: None,
+            level: Some(Error),
+            target: None,
+            location: Some(Trace),
+        },
+    ).unwrap();
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());
@@ -329,10 +332,12 @@ fn handle_compare(params: Parameters) -> Result<()> {
         let outputs: Vec<_> = tf_output
             .iter()
             .enumerate()
-            .map(|(n, data)| Row::Double(
-                format!("{} (TF):", format!("Output {}", n).bold()),
-                data.partial_dump(false).unwrap(),
-            ))
+            .map(|(n, data)| {
+                Row::Double(
+                    format!("{} (TF):", format!("Output {}", n).bold()),
+                    data.partial_dump(false).unwrap(),
+                )
+            })
             .collect();
 
         if log_enabled!(Info) {
@@ -383,10 +388,10 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 
     // The number of nanoseconds since a start time as an u32.
     macro_rules! elapsed_ns {
-        ($start:ident) => ({
+        ($start:ident) => {{
             let duration = $start.elapsed();
             duration.as_secs() as u32 * 1_000_000 + duration.subsec_nanos()
-        })
+        }};
     }
 
     let model = params.tfd_model;
@@ -448,21 +453,13 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 
         // Print the results for the node.
         if log_enabled!(Info) {
-            print_node(
-                node,
-                &params.graph,
-                &state,
-                status.to_string(),
-                vec![],
-            );
+            print_node(node, &params.graph, &state, status.to_string(), vec![]);
         }
 
         total += time;
         total_avg += time_avg;
         nodes.push((node, time, status));
-        let mut pair = operations
-            .entry(node.op_name.as_str())
-            .or_insert((0., 0));
+        let mut pair = operations.entry(node.op_name.as_str()).or_insert((0., 0));
         pair.0 += time;
         pair.1 += 1;
     }
@@ -478,45 +475,49 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 
     println!();
     println!("Most time consuming nodes:");
-    nodes.sort_by(
-        |(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse()
-    );
+    nodes.sort_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse());
     for (node, _, status) in nodes.iter().take(5) {
-        print_node(
-            node,
-            &params.graph,
-            &state,
-            status.to_string(),
-            vec![],
-        );
+        print_node(node, &params.graph, &state, status.to_string(), vec![]);
     }
 
     println!();
     println!("Total execution time:");
-    println!("{} (for {} nodes).", format!("{:.3} ms", global_time).yellow().bold(), nodes.len());
+    println!(
+        "{} (for {} nodes).",
+        format!("{:.3} ms", global_time).yellow().bold(),
+        nodes.len()
+    );
 
     println!();
     println!("Total node execution time:");
     println!("- {} in total.", format!("{:.3} ms", total).purple().bold());
-    println!("- {} averaged.", format!("{:.3} ms", total_avg).purple().bold());
+    println!(
+        "- {} averaged.",
+        format!("{:.3} ms", total_avg).purple().bold()
+    );
 
     // We don't display this when verbose logging is enabled, because the results
     // are skewed by the time it takes to call `print_node` for each node.
     if !log_enabled!(Info) {
-        println!("- {} of total execution time.", format!("{:.0}%", total / global_time * 100.).purple().bold());
+        println!(
+            "- {} of total execution time.",
+            format!("{:.0}%", total / global_time * 100.)
+                .purple()
+                .bold()
+        );
     }
 
     println!();
     println!("Most time consuming operations:");
-    let mut operations: Vec<_> = operations
-        .iter()
-        .map(|(o, (t, c))| (o, t, c))
-        .collect();
-    operations.sort_by(
-        |(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse()
-    );
+    let mut operations: Vec<_> = operations.iter().map(|(o, (t, c))| (o, t, c)).collect();
+    operations.sort_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse());
     for (operation, time, count) in operations.iter().take(5) {
-        println!("- {}: {:.3} ms (for {} nodes).", operation.blue().bold(), time, count);
+        println!(
+            "- {}: {:.3} ms (for {} nodes).",
+            operation.blue().bold(),
+            time,
+            count
+        );
     }
 
     Ok(())

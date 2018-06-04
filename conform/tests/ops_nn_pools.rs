@@ -7,8 +7,8 @@ extern crate tensorflow;
 extern crate tfdeploy;
 
 use conform::*;
-use proptest::prelude::*;
 use ndarray::prelude::*;
+use proptest::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_FLOAT;
 
@@ -48,7 +48,6 @@ fn img_and_pool(
         })
         .boxed()
 }
-
 
 proptest! {
     #[test]

@@ -1,7 +1,7 @@
 use Result;
 
+use super::{Op, OpRegister, TensorView};
 use analyser::TensorFact;
-use super::{TensorView, Op, OpRegister};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);

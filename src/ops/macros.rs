@@ -11,17 +11,23 @@ macro_rules! element_map {
 
         impl ::ops::Op for $Struct {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, mut inputs: Vec<$crate::ops::TensorView>) -> $crate::Result<Vec<$crate::ops::TensorView>> {
+            fn eval(
+                &self,
+                mut inputs: Vec<$crate::ops::TensorView>,
+            ) -> $crate::Result<Vec<$crate::ops::TensorView>> {
                 let a = args_1!(inputs);
-                let mut a = a.into_tensor().take_f32s().ok_or(
-                    "Expect input #0 to be f32",
-                )?;
+                let mut a = a.into_tensor()
+                    .take_f32s()
+                    .ok_or("Expect input #0 to be f32")?;
                 a.mapv_inplace($expr);
                 Ok(vec![$crate::tensor::Tensor::F32(a).into()])
             }
 
             /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+            fn infer_forward(
+                &self,
+                inputs: Vec<&$crate::analyser::TensorFact>,
+            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 if inputs.len() != 1 {
                     bail!("Unary operations only supports one input.");
                 }
@@ -30,7 +36,10 @@ macro_rules! element_map {
             }
 
             /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+            fn infer_backward(
+                &self,
+                outputs: Vec<&$crate::analyser::TensorFact>,
+            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 if outputs.len() < 1 {
                     bail!("Unary operations need at least one output.");
                 }
@@ -38,19 +47,18 @@ macro_rules! element_map {
                 let input = $crate::analyser::TensorFact {
                     datatype: outputs[0].datatype,
                     shape: outputs[0].shape.clone(),
-                    value: valuefact!(_)
+                    value: valuefact!(_),
                 };
 
                 Ok(Some(vec![input]))
             }
         }
-    }
+    };
 }
 
 macro_rules! element_bin {
-    ($Name:ident, $name:ident, $expr: expr) =>
-    {
-        #[derive(Debug,new)]
+    ($Name:ident, $name:ident, $expr:expr) => {
+        #[derive(Debug, new)]
         pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
@@ -60,15 +68,21 @@ macro_rules! element_bin {
 
         impl<T: ::tensor::Datum> Op for $Name<T> {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, mut inputs: Vec<$crate::ops::TensorView>) -> Result<Vec<$crate::ops::TensorView>> {
+            fn eval(
+                &self,
+                mut inputs: Vec<$crate::ops::TensorView>,
+            ) -> Result<Vec<$crate::ops::TensorView>> {
                 let (a, b) = args_2!(inputs);
                 let a = T::mat_into_array(a.into_tensor())?;
                 let b = T::mat_to_view(&*b)?;
-                Ok(vec!(T::array_into_tensor($expr(a,b)).into()))
+                Ok(vec![T::array_into_tensor($expr(a, b)).into()])
             }
 
             /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(&self, inputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+            fn infer_forward(
+                &self,
+                inputs: Vec<&$crate::analyser::TensorFact>,
+            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 use $crate::analyser::TypeFact::*;
 
                 if inputs.len() != 2 {
@@ -85,7 +99,10 @@ macro_rules! element_bin {
             }
 
             /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(&self, outputs: Vec<&$crate::analyser::TensorFact>) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
+            fn infer_backward(
+                &self,
+                outputs: Vec<&$crate::analyser::TensorFact>,
+            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
                 if outputs.len() < 1 {
                     bail!("Binary operations need at least one output.");
                 }
@@ -93,54 +110,62 @@ macro_rules! element_bin {
                 let input = $crate::analyser::TensorFact {
                     datatype: outputs[0].datatype,
                     shape: shapefact![..],
-                    value: valuefact!(_)
+                    value: valuefact!(_),
                 };
 
                 Ok(Some(vec![input.clone(), input]))
             }
         }
-    }
+    };
 }
 
 macro_rules! args_1 {
-    ($inputs:expr) => { {
+    ($inputs:expr) => {{
         if $inputs.len() != 1 {
             Err("Expected 1 arg")?
         }
         $inputs.pop().unwrap()
-    } }
+    }};
 }
 
 macro_rules! args_2 {
-    ($inputs:expr) => { {
+    ($inputs:expr) => {{
         if $inputs.len() != 2 {
             Err("Expected 2 args")?
         }
         $inputs.reverse();
         ($inputs.pop().unwrap(), $inputs.pop().unwrap())
-    } }
+    }};
 }
 
 #[allow(unused_macros)]
 macro_rules! args_3 {
-    ($inputs:expr) => { {
+    ($inputs:expr) => {{
         if $inputs.len() != 3 {
             Err("Expected 3 args")?
         }
         $inputs.reverse();
-        ($inputs.pop().unwrap(), $inputs.pop().unwrap(), $inputs.pop().unwrap())
-    } }
+        (
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+        )
+    }};
 }
 
 macro_rules! args_4 {
-    ($inputs:expr) => { {
+    ($inputs:expr) => {{
         if $inputs.len() != 4 {
             Err("Expected 4 args")?
         }
         $inputs.reverse();
-        ($inputs.pop().unwrap(), $inputs.pop().unwrap(),
-        $inputs.pop().unwrap(), $inputs.pop().unwrap())
-    } }
+        (
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+        )
+    }};
 }
 
 macro_rules! boxed_new {

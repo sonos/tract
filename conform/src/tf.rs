@@ -2,11 +2,11 @@
 
 use std::{fs, path};
 
+use tensorflow::DataType;
 use tensorflow::Graph;
+use tensorflow::OutputToken;
 use tensorflow::Session;
 use tensorflow::StepWithGraph;
-use tensorflow::OutputToken;
-use tensorflow::DataType;
 use tensorflow::Tensor;
 
 use tfdeploy::Tensor as TfdTensor;
@@ -16,7 +16,7 @@ use ndarray::ArrayD;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use ::Result;
+use Result;
 
 pub struct Tensorflow {
     session: Session,
@@ -75,7 +75,11 @@ fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<Ar
 
 impl Tensorflow {
     /// Executes the graph in one batch.
-    pub fn run(&mut self, inputs: Vec<(&str, TfdTensor)>, output_name: &str) -> Result<Vec<TfdTensor>> {
+    pub fn run(
+        &mut self,
+        inputs: Vec<(&str, TfdTensor)>,
+        output_name: &str,
+    ) -> Result<Vec<TfdTensor>> {
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()
             .map(|(name, mat)| (name, mat.into()))
@@ -97,12 +101,17 @@ impl Tensorflow {
         let token = step.request_output(&self.graph.operation_by_name_required(output_name)?, 0);
         self.session.run(&mut step)?;
 
-        let output_type = &self.graph.operation_by_name_required(&output_name)?.output_type(0);
+        let output_type = &self.graph
+            .operation_by_name_required(&output_name)?
+            .output_type(0);
         convert_output(&mut step, output_type, token)
     }
 
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
-    pub fn run_get_all(&mut self, inputs: Vec<(&str, TfdTensor)>) -> Result<HashMap<String, Vec<TfdTensor>>> {
+    pub fn run_get_all(
+        &mut self,
+        inputs: Vec<(&str, TfdTensor)>,
+    ) -> Result<HashMap<String, Vec<TfdTensor>>> {
         let mut tensors: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
@@ -151,9 +160,15 @@ impl Tensorflow {
 }
 
 /// Converts the output of a Tensorflow node into a Vec<TfdTensor>.
-fn convert_output(step: &mut StepWithGraph, output_type: &DataType, output: OutputToken) -> Result<Vec<TfdTensor>> {
+fn convert_output(
+    step: &mut StepWithGraph,
+    output_type: &DataType,
+    output: OutputToken,
+) -> Result<Vec<TfdTensor>> {
     macro_rules! convert {
-        ($dt:ident) => (TfdTensor::$dt(tensor_to_array(&step.take_output(output)?)?))
+        ($dt:ident) => {
+            TfdTensor::$dt(tensor_to_array(&step.take_output(output)?)?)
+        };
     };
 
     let tfd_tensor = match output_type {

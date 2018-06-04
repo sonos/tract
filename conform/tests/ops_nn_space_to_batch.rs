@@ -7,13 +7,13 @@ extern crate tensorflow;
 extern crate tfdeploy;
 
 use conform::*;
-use proptest::prelude::*;
 use ndarray::prelude::*;
+use proptest::prelude::*;
+use tfdeploy::ops::nn::arr4;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_INT32;
 use tfdeploy::tfpb::types::DataType::DT_FLOAT;
 use tfdeploy::Tensor as TfdTensor;
-use tfdeploy::ops::nn::arr4;
 
 fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
     use proptest::collection::vec;

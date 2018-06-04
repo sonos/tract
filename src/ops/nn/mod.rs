@@ -1,8 +1,8 @@
-use super::{TensorView, Op, OpRegister};
-use analyser::TensorFact;
+use super::{Op, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
+use analyser::TensorFact;
 use tfpb::types::DataType;
-use {Tensor, Result};
+use {Result, Tensor};
 
 pub mod conv2d;
 pub mod local_patch;
@@ -62,7 +62,7 @@ impl Op for Softmax {
                 Some(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
                 _ => shapefact![_, _],
             },
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![output]))
@@ -81,7 +81,7 @@ impl Op for Softmax {
                 Some(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
                 _ => shapefact![_, _],
             },
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![input]))

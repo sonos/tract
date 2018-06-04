@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
-use analyser::{TensorFact, ShapeFact};
-use analyser::helpers::most_specific_shape;
+use super::{Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
-use Result;
-use super::{TensorView, Op};
+use analyser::helpers::most_specific_shape;
+use analyser::{ShapeFact, TensorFact};
 use tensor::Datum;
+use Result;
 
 #[derive(Debug, Default, new)]
 pub struct Pack<T: Datum> {
@@ -31,9 +31,7 @@ where
         use ndarray::Axis;
         let views = inputs
             .iter()
-            .map(|m| {
-                Ok(T::mat_to_view(&*m)?.insert_axis(Axis(self.axis)))
-            })
+            .map(|m| Ok(T::mat_to_view(&*m)?.insert_axis(Axis(self.axis))))
             .collect::<Result<Vec<_>>>()?;
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
         Ok(vec![T::array_into_tensor(array).into()])
@@ -51,9 +49,7 @@ where
 
         // If we don't know the actual value, we can still compute the shape.
         let n = inputs.len();
-        let shapes = inputs
-            .iter()
-            .map(|t| &t.shape);
+        let shapes = inputs.iter().map(|t| &t.shape);
 
         // We get the most specific shape, and replace the axis with an unknown.
         let shape = match most_specific_shape(shapes)? {
@@ -61,9 +57,9 @@ where
                 let mut dims = s.dims.clone();
                 dims.insert(self.axis, dimfact!(n));
                 ShapeFact::closed(dims)
-            },
+            }
 
-            None => shapefact![..]
+            None => shapefact![..],
         };
 
         let output = TensorFact {
@@ -97,7 +93,7 @@ where
         let input = TensorFact {
             datatype: outputs[0].datatype,
             shape,
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![input; self.n]))
@@ -107,9 +103,9 @@ where
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Tensor;
     use super::*;
     use ndarray::arr2;
+    use Tensor;
 
     #[test]
     fn pack_0() {

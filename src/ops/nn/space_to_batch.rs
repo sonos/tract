@@ -1,10 +1,10 @@
 use std::marker::PhantomData;
 
-use analyser::TensorFact;
+use super::{Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
-use Result;
-use super::{TensorView, Op};
+use analyser::TensorFact;
 use tensor::Datum;
+use Result;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datatype = pb.get_attr_datatype("T")?;
@@ -92,19 +92,19 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         let input = TensorFact {
             datatype: outputs[0].datatype,
             shape: shapefact![_; ..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let block_shape = TensorFact {
             datatype: typefact!(_),
             shape: shapefact![_],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let paddings = TensorFact {
             datatype: typefact!(_),
             shape: shapefact![_, 2],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![input, block_shape, paddings]))
@@ -182,19 +182,19 @@ impl<T: Datum> Op for BatchToSpace<T> {
         let input = TensorFact {
             datatype: outputs[0].datatype,
             shape: shapefact![_; ..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let block_shape = TensorFact {
             datatype: typefact!(_),
             shape: shapefact![_],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let crops = TensorFact {
             datatype: typefact!(_),
             shape: shapefact![_, 2],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![input, block_shape, crops]))
@@ -249,14 +249,12 @@ mod tests {
         assert_eq!(
             SpaceToBatch::<i32>::new()
                 .eval(vec![
-                    arr4(&[
-                        [
-                            [[1], [2], [3], [4]],
-                            [[5], [6], [7], [8]],
-                            [[9], [10], [11], [12]],
-                            [[13], [14], [15], [16]],
-                        ],
-                    ]).into(),
+                    arr4(&[[
+                        [[1], [2], [3], [4]],
+                        [[5], [6], [7], [8]],
+                        [[9], [10], [11], [12]],
+                        [[13], [14], [15], [16]],
+                    ]]).into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
                 ])
@@ -329,9 +327,7 @@ mod tests {
                     arr2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            vec![
-                arr4(&[[[[1i32, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).into(),
-            ]
+            vec![arr4(&[[[[1i32, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).into()]
         )
     }
 
@@ -351,14 +347,12 @@ mod tests {
                 ])
                 .unwrap(),
             vec![
-                arr4(&[
-                    [
-                        [[1i32], [2], [3], [4]],
-                        [[5], [6], [7], [8]],
-                        [[9], [10], [11], [12]],
-                        [[13], [14], [15], [16]],
-                    ],
-                ]).into(),
+                arr4(&[[
+                    [[1i32], [2], [3], [4]],
+                    [[5], [6], [7], [8]],
+                    [[9], [10], [11], [12]],
+                    [[13], [14], [15], [16]],
+                ]]).into(),
             ]
         )
     }

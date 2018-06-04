@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
-use analyser::{TensorFact, ShapeFact};
-use analyser::helpers::infer_forward_concrete;
-use Result;
-use super::{TensorView, Op};
-use ndarray::prelude::*;
 use super::local_patch::*;
+use super::{Op, TensorView};
+use analyser::helpers::infer_forward_concrete;
+use analyser::{ShapeFact, TensorFact};
+use ndarray::prelude::*;
 use tensor::Datum;
+use Result;
 
 #[derive(Debug, new)]
 pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
@@ -60,24 +60,31 @@ impl<T: Datum> Op for Conv2D<T> {
         }
 
         // If we don't know the actual value, we can still compute the shape.
-        fn try_infer_forward_concrete_shape<T>(op: &Conv2D<T>, inputs: Vec<&TensorFact>) -> Result<Option<ShapeFact>> where T: Datum {
+        fn try_infer_forward_concrete_shape<T>(
+            op: &Conv2D<T>,
+            inputs: Vec<&TensorFact>,
+        ) -> Result<Option<ShapeFact>>
+        where
+            T: Datum,
+        {
             let input_shape = unwrap_or_none!(inputs[0].shape.concretize());
             let filter_shape = unwrap_or_none!(inputs[1].shape.concretize());
 
             let shape = match (input_shape.as_slice(), filter_shape.as_slice()) {
-                ([batch, in_height, in_width, in_channels],
-                 [filter_height, filter_width, in_channels_2, out_channels])
-                 if in_channels == in_channels_2 => {
-                    let (height, width) = op.0.adjusted_dim(
-                        *in_height, *in_width,
-                        (*filter_height, *filter_width)
-                    );
+                (
+                    [batch, in_height, in_width, in_channels],
+                    [filter_height, filter_width, in_channels_2, out_channels],
+                ) if in_channels == in_channels_2 =>
+                {
+                    let (height, width) =
+                        op.0
+                            .adjusted_dim(*in_height, *in_width, (*filter_height, *filter_width));
 
                     // TODO(liautaud): Take the data_format parameter into account.
                     shapefact![(*batch), height, width, (*out_channels)]
-                },
+                }
 
-                _ => bail!("The input and filter dimensions are invalid.")
+                _ => bail!("The input and filter dimensions are invalid."),
             };
 
             Ok(Some(shape))
@@ -85,8 +92,12 @@ impl<T: Datum> Op for Conv2D<T> {
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: try_infer_forward_concrete_shape(self, inputs)?
-                  .unwrap_or(shapefact![_, _, _, _]),
+            shape: try_infer_forward_concrete_shape(self, inputs)?.unwrap_or(shapefact![
+                _,
+                _,
+                _,
+                _
+            ]),
             value: valuefact!(_),
         };
 
@@ -105,19 +116,19 @@ impl<T: Datum> Op for Conv2D<T> {
                     let input = TensorFact {
                         datatype: outputs[0].datatype,
                         shape: shapefact![(*batch), _, _, _],
-                        value: valuefact!(_)
+                        value: valuefact!(_),
                     };
 
                     let filter = TensorFact {
                         datatype: outputs[0].datatype,
                         shape: shapefact![_, _, _, (*out_channels)],
-                        value: valuefact!(_)
+                        value: valuefact!(_),
                     };
 
                     Ok(Some(vec![input, filter]))
-                },
+                }
 
-                _ => bail!("The output dimensions are invalid.")
+                _ => bail!("The output dimensions are invalid."),
             },
 
             // If we don't have concrete dimensions yet, we can still
@@ -126,13 +137,13 @@ impl<T: Datum> Op for Conv2D<T> {
                 let input = TensorFact {
                     datatype: outputs[0].datatype,
                     shape: shapefact![_, _, _, _],
-                    value: valuefact!(_)
+                    value: valuefact!(_),
                 };
 
                 let filter = TensorFact {
                     datatype: outputs[0].datatype,
                     shape: shapefact![_, _, _, _],
-                    value: valuefact!(_)
+                    value: valuefact!(_),
                 };
 
                 Ok(Some(vec![input, filter]))
@@ -144,8 +155,8 @@ impl<T: Datum> Op for Conv2D<T> {
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Tensor;
     use super::*;
+    use Tensor;
 
     fn mk(sizes: &[usize]) -> Tensor {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
@@ -254,6 +265,6 @@ mod tests {
         let exp: Tensor =
             Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
-        assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0],))
+        assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0]))
     }
 }

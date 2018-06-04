@@ -1,15 +1,15 @@
-use std::iter::repeat;
 use ndarray::prelude::*;
+use std::iter::repeat;
 
 mod pack;
 mod strided_slice;
 
-use analyser::{TensorFact, ShapeFact, ValueFact};
-use analyser::helpers::most_specific_shape;
+use super::{Op, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
+use analyser::helpers::most_specific_shape;
+use analyser::{ShapeFact, TensorFact, ValueFact};
 use tfpb::types::DataType;
-use {Tensor, Result};
-use super::{TensorView, Op, OpRegister};
+use {Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", ConcatV2::build);
@@ -75,9 +75,7 @@ impl Op for ConcatV2 {
             .unwrap()
             .clone();
 
-        let shapes = inputs[0..self.n]
-            .iter()
-            .map(|t| &t.shape);
+        let shapes = inputs[0..self.n].iter().map(|t| &t.shape);
 
         // We get the most specific shape, and replace the axis with an unknown.
         // TODO(liautaud): Improve this to check whether the shapes actually match,
@@ -88,9 +86,9 @@ impl Op for ConcatV2 {
                 let mut dims = s.dims.clone();
                 dims[axis as usize] = dimfact!(_);
                 ShapeFact::closed(dims)
-            },
+            }
 
-            None => shapefact![..]
+            None => shapefact![..],
         };
 
         let output = TensorFact {
@@ -191,13 +189,13 @@ impl Op for ExpandDims {
         let data = TensorFact {
             datatype: outputs[0].datatype,
             shape: shapefact![..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let dims = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![data, dims]))
@@ -240,13 +238,13 @@ impl Op for Identity {
 
 #[derive(Debug)]
 pub struct Placeholder {
-    datatype: DataType
+    datatype: DataType,
 }
 
 impl Placeholder {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Placeholder {
-            datatype: node.get_attr_datatype("dtype")?
+            datatype: node.get_attr_datatype("dtype")?,
         }))
     }
 }
@@ -286,7 +284,7 @@ impl Reshape {
     /// Computes a vector of dimensions from the `dims` input.
     /// This is needed because `dims` might contain some -1 indices, in which
     /// case we need to infer the value for that index.
-    fn true_dims(mut dims: Vec<i32>, input_length: usize) -> Vec<usize>{
+    fn true_dims(mut dims: Vec<i32>, input_length: usize) -> Vec<usize> {
         if dims.contains(&-1) {
             let prod: i32 = dims.iter().map(|a| *a).filter(|a| *a != -1i32).product();
             for a in dims.iter_mut() {
@@ -316,7 +314,8 @@ impl Op for Reshape {
                 .iter()
                 .cloned()
                 .collect(),
-            input.len());
+            input.len(),
+        );
 
         Ok(vec![
             Tensor::from(input.into_shape(&*dims)?.into_dyn()).into(),
@@ -346,7 +345,7 @@ impl Op for Reshape {
             Some(shape) => TensorFact {
                 datatype: inputs[0].datatype,
                 shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
-                value: valuefact!(_)
+                value: valuefact!(_),
             },
 
             // If we don't know anything about the output, but know the value of
@@ -355,7 +354,7 @@ impl Op for Reshape {
             _ if !dims.contains(&-1) => TensorFact {
                 datatype: inputs[0].datatype,
                 shape: dims.into_iter().map(|d| d as usize).collect(),
-                value: valuefact!(_)
+                value: valuefact!(_),
             },
 
             _ => {
@@ -375,13 +374,13 @@ impl Op for Reshape {
         let input = TensorFact {
             datatype: outputs[0].datatype,
             shape: shapefact![..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let shape = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![_],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![input, shape]))
@@ -424,7 +423,7 @@ impl Op for Shape {
         let output = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![rank],
-            value: valuefact!(value)
+            value: valuefact!(value),
         };
 
         Ok(Some(vec![output]))
@@ -438,8 +437,7 @@ impl Op for Shape {
 
         let dimensions: ShapeFact = match &outputs[0].value {
             // If we know the output value, we can infer the shape of the input.
-            ValueFact::Only(v) => v
-                .clone()
+            ValueFact::Only(v) => v.clone()
                 .take_i32s()
                 .ok_or("Shape operation should produce a 1-D integer tensor.")?
                 .into_dimensionality::<Ix1>()?
@@ -459,11 +457,10 @@ impl Op for Shape {
             }
         };
 
-
         Ok(Some(vec![TensorFact {
             datatype: typefact!(_),
             shape: dimensions,
-            value: valuefact!(_)
+            value: valuefact!(_),
         }]))
     }
 }
@@ -515,7 +512,7 @@ impl Op for Squeeze {
 
         let shape = match inputs[0].shape.concretize() {
             Some(shape) => self.squeeze_shape(shape)?.iter().collect(),
-            None => shapefact![..]
+            None => shapefact![..],
         };
 
         let output = TensorFact {
@@ -536,7 +533,7 @@ impl Op for Squeeze {
         Ok(Some(vec![TensorFact {
             datatype: outputs[0].datatype,
             shape: shapefact![..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         }]))
     }
 }

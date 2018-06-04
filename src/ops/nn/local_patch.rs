@@ -1,5 +1,5 @@
-use Result;
 use ndarray::prelude::*;
+use Result;
 
 #[derive(Debug)]
 pub enum DataFormat {

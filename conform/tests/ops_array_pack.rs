@@ -7,12 +7,12 @@ extern crate tensorflow;
 extern crate tfdeploy;
 
 use conform::*;
-use proptest::prelude::*;
 use ndarray::prelude::*;
+use proptest::collection::vec;
+use proptest::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_INT32;
 use tfdeploy::Tensor as TfdTensor;
-use proptest::collection::vec;
 
 fn strat() -> BoxedStrategy<(usize, Vec<TfdTensor>)> {
     // input rank
@@ -50,4 +50,3 @@ proptest! {
         compare(&graph, graph_inputs, "op")?
     }
 }
-

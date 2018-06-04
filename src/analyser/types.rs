@@ -4,7 +4,6 @@ use errors::*;
 use tfpb::types::DataType;
 use Tensor;
 
-
 /// Partial information about a tensor.
 ///
 /// The task of the analyser is to tag every edge in the graph with information
@@ -48,7 +47,7 @@ impl TypeFact {
     pub fn concretize(&self) -> Option<DataType> {
         match self {
             TypeFact::Any => None,
-            TypeFact::Only(d) => Some(*d)
+            TypeFact::Only(d) => Some(*d),
         }
     }
 }
@@ -65,7 +64,7 @@ impl TypeFact {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapeFact {
     pub open: bool,
-    pub dims: Vec<DimFact>
+    pub dims: Vec<DimFact>,
 }
 
 impl ShapeFact {
@@ -91,9 +90,7 @@ impl ShapeFact {
             return None;
         }
 
-        let dims: Vec<_> = self.dims.iter()
-            .filter_map(|d| d.concretize())
-            .collect();
+        let dims: Vec<_> = self.dims.iter().filter_map(|d| d.concretize()).collect();
 
         if dims.len() < self.dims.len() {
             debug!("Impossible to concretize a shape with unknown dimensions.");
@@ -106,27 +103,21 @@ impl ShapeFact {
 
 impl FromIterator<usize> for ShapeFact {
     /// Converts an iterator over usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item=usize>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter
-            .into_iter()
-            .map(|d| DimFact::Only(d))
-            .collect())
+    fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFact {
+        ShapeFact::closed(iter.into_iter().map(|d| DimFact::Only(d)).collect())
     }
 }
 
 impl<'a> FromIterator<&'a usize> for ShapeFact {
     /// Converts an iterator over &usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item=&'a usize>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter
-            .into_iter()
-            .map(|d| DimFact::Only(*d))
-            .collect())
+    fn from_iter<I: IntoIterator<Item = &'a usize>>(iter: I) -> ShapeFact {
+        ShapeFact::closed(iter.into_iter().map(|d| DimFact::Only(*d)).collect())
     }
 }
 
-impl<'a> From<&'a[usize]> for ShapeFact {
+impl<'a> From<&'a [usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
-    fn from(slice: &'a[usize]) -> ShapeFact {
+    fn from(slice: &'a [usize]) -> ShapeFact {
         slice.iter().collect()
     }
 }
@@ -143,7 +134,7 @@ impl DimFact {
     pub fn concretize(&self) -> Option<usize> {
         match self {
             DimFact::Any => None,
-            DimFact::Only(i) => Some(*i)
+            DimFact::Only(i) => Some(*i),
         }
     }
 
@@ -165,7 +156,7 @@ impl ValueFact {
     pub fn concretize(self: &ValueFact) -> Option<&Tensor> {
         match self {
             ValueFact::Any => None,
-            ValueFact::Only(m) => Some(m)
+            ValueFact::Only(m) => Some(m),
         }
     }
 
@@ -177,10 +168,12 @@ impl ValueFact {
     // Applies fn to a defined value, and leaves an unknown value untouched.
     // Returns an Err if something went wrong during the transformation.
     pub fn map_err<F>(self: &ValueFact, f: F) -> Result<ValueFact>
-    where F: Fn(&Tensor) -> Result<Tensor> {
+    where
+        F: Fn(&Tensor) -> Result<Tensor>,
+    {
         match self {
             ValueFact::Any => Ok(ValueFact::Any),
-            ValueFact::Only(m) => Ok(ValueFact::Only(f(m)?))
+            ValueFact::Only(m) => Ok(ValueFact::Only(f(m)?)),
         }
     }
 }

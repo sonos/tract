@@ -1,8 +1,12 @@
 use super::*;
 
 /// Infers every property when all the values are concrete.
-pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-    let input_values: Vec<_> = inputs.iter()
+pub fn infer_forward_concrete(
+    op: &Op,
+    inputs: &Vec<&TensorFact>,
+) -> Result<Option<Vec<TensorFact>>> {
+    let input_values: Vec<_> = inputs
+        .iter()
         .filter_map(|t| t.value.concretize())
         .map(|v| v.clone().into())
         .collect();
@@ -17,7 +21,7 @@ pub fn infer_forward_concrete(op: &Op, inputs: &Vec<&TensorFact>) -> Result<Opti
     let output = TensorFact {
         datatype: inputs[0].datatype,
         shape: output_value.shape().into(),
-        value: valuefact!(output_value.into_tensor())
+        value: valuefact!(output_value.into_tensor()),
     };
 
     Ok(Some(vec![output]))
@@ -30,13 +34,8 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
         return Ok(None);
     }
 
-    let dims: Vec<_> = shapes.iter()
-        .map(|s| &s.dims)
-        .collect();
-    let bound = dims.iter()
-        .map(|s| s.len())
-        .max()
-        .unwrap();
+    let dims: Vec<_> = shapes.iter().map(|s| &s.dims).collect();
+    let bound = dims.iter().map(|s| s.len()).max().unwrap();
 
     let mut output_shape = vec![];
 
@@ -52,9 +51,13 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
             match &shape[shape.len() - i] {
                 DimFact::Any => unknown += 1,
                 DimFact::Only(j) => match previous {
-                    Some(k) if k != j => bail!("Invalid shape (broadcasting): {} is not compatible with {}.", j, k),
-                    _ => previous = Some(j)
-                }
+                    Some(k) if k != j => bail!(
+                        "Invalid shape (broadcasting): {} is not compatible with {}.",
+                        j,
+                        k
+                    ),
+                    _ => previous = Some(j),
+                },
             };
         }
 
@@ -81,12 +84,10 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<V
     }
 
     // Otherwise we can only deduce the type and shape of the output.
-    let input_shapes: Vec<_> = inputs
-        .iter()
-        .map(|t| &t.shape)
-        .collect();
+    let input_shapes: Vec<_> = inputs.iter().map(|t| &t.shape).collect();
 
-    let datatype = inputs.iter()
+    let datatype = inputs
+        .iter()
         .filter_map(|i| i.datatype.concretize())
         .next()
         .map(|t| typefact!(t))
@@ -95,14 +96,16 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<V
     let output = TensorFact {
         datatype,
         shape: infer_shape_broadcasting(input_shapes)?.unwrap_or(shapefact![..]),
-        value: valuefact!(_)
+        value: valuefact!(_),
     };
 
     Ok(Some(vec![output]))
 }
 
 /// Returns the most specific closed shape out of an iterator.
-pub fn most_specific_shape<'a, I: IntoIterator<Item=&'a ShapeFact>>(iter: I) -> Result<Option<&'a ShapeFact>> {
+pub fn most_specific_shape<'a, I: IntoIterator<Item = &'a ShapeFact>>(
+    iter: I,
+) -> Result<Option<&'a ShapeFact>> {
     let mut prev_rank = None;
     let mut prev_concrete = None;
     let mut best = None;

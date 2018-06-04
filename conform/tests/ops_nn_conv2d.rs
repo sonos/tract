@@ -7,8 +7,8 @@ extern crate tensorflow;
 extern crate tfdeploy;
 
 use conform::*;
-use proptest::prelude::*;
 use ndarray::prelude::*;
+use proptest::prelude::*;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_FLOAT;
 use tfdeploy::Tensor as TfdTensor;
@@ -73,4 +73,3 @@ proptest! {
         compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
     }
 }
-

@@ -1,4 +1,4 @@
-#[cfg(features="conform")]
+#[cfg(features = "conform")]
 extern crate conform;
 extern crate flate2;
 extern crate image;
@@ -51,8 +51,10 @@ pub fn load_labels() -> Vec<String> {
 
 fn inception_v3_2016_08_28() -> path::PathBuf {
     match ::std::env::var("TRAVIS_BUILD_DIR") {
-        Ok(t) => path::Path::new(&t).join("cached").join("inception-v3-2016_08_28"),
-        _ => ::std::env::temp_dir().join("inception-v3-2016_08_28")
+        Ok(t) => path::Path::new(&t)
+            .join("cached")
+            .join("inception-v3-2016_08_28"),
+        _ => ::std::env::temp_dir().join("inception-v3-2016_08_28"),
     }
 }
 
@@ -80,9 +82,9 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Tensor {
 #[cfg(test)]
 mod tests {
     extern crate dinghy_test;
-    use std::path;
     use self::dinghy_test::test_project_path;
     use super::*;
+    use std::path;
 
     const HOPPER: &str = "grace_hopper.jpg";
     pub fn hopper() -> path::PathBuf {
@@ -99,8 +101,12 @@ mod tests {
         let input = load_image(hopper());
         let output = tfd.run(vec![(input_id, input)], output_id).unwrap();
         let labels = load_labels();
-        let label_id = output[0].as_f32s().unwrap().iter().enumerate()
-            .max_by(|a,b| a.1.partial_cmp(b.1).unwrap_or(0u32.cmp(&1)))
+        let label_id = output[0]
+            .as_f32s()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(0u32.cmp(&1)))
             .unwrap()
             .0;
         let label = &labels[label_id];

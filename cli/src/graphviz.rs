@@ -45,7 +45,10 @@ impl<'a> dot::Labeller<'a, Nd, Ed> for Graph<'a> {
             "{:?}\n{:?}\n{}",
             e.fact.datatype,
             e.fact.shape,
-            match e.fact.value { Any => "Any", Only(_) => "Only(_)" }
+            match e.fact.value {
+                Any => "Any",
+                Only(_) => "Only(_)",
+            }
         );
         label.truncate(150);
 
@@ -82,17 +85,18 @@ impl<'a> dot::GraphWalk<'a, Nd, Ed> for Graph<'a> {
 pub fn render_dot<W: Write>(
     analyser: &Analyser,
     highlighted: &Vec<usize>,
-    writer: &mut W
+    writer: &mut W,
 ) -> Result<()> {
-    let nodes: Vec<_> = analyser.nodes
+    let nodes: Vec<_> = analyser
+        .nodes
         .iter()
         .map(|n| match n {
             Some(n) => (
                 n.name.clone(),
                 n.op_name.clone(),
-                highlighted.contains(&n.id)
+                highlighted.contains(&n.id),
             ),
-            None => ("output".to_string(), "output".to_string(), false)
+            None => ("output".to_string(), "output".to_string(), false),
         })
         .collect();
 
@@ -126,9 +130,7 @@ pub fn display_graph(analyser: &Analyser, highlighted: &Vec<usize>) -> Result<()
 
     render_dot(analyser, highlighted, &mut renderer.stdin.unwrap())?;
 
-    let _ = Command::new("xdg-open")
-        .arg("/tmp/tfd-graph.pdf")
-        .output();
+    let _ = Command::new("xdg-open").arg("/tmp/tfd-graph.pdf").output();
 
     Ok(())
 }

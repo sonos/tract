@@ -29,13 +29,13 @@
 //! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 
 extern crate bit_set;
-#[cfg(feature="blis")]
+#[cfg(feature = "blis")]
 extern crate blis_src;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
 extern crate error_chain;
-#[cfg(feature="image_ops")]
+#[cfg(feature = "image_ops")]
 extern crate image;
 extern crate itertools;
 #[allow(unused_imports)]
@@ -50,14 +50,14 @@ extern crate protobuf;
 #[macro_use]
 pub mod analyser;
 pub mod errors;
-pub mod tfpb;
-pub mod tensor;
 pub mod ops;
+pub mod tensor;
+pub mod tfpb;
 
-use std::{fs, path, str};
-use std::collections::{HashMap, HashSet};
-use ops::{TensorView, Op};
 pub use errors::*;
+use ops::{Op, TensorView};
+use std::collections::{HashMap, HashSet};
+use std::{fs, path, str};
 
 pub use tensor::Tensor;
 
@@ -242,9 +242,9 @@ impl Model {
 
     /// Load a Tensorflow protobuf graph def from a reader.
     pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph::GraphDef> {
-        Ok(::protobuf::parse_from_reader::<
-            ::tfpb::graph::GraphDef,
-        >(&mut r)?)
+        Ok(::protobuf::parse_from_reader::<::tfpb::graph::GraphDef>(
+            &mut r,
+        )?)
     }
 
     /// Load a Tensorflow protobuf graph def from a path

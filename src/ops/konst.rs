@@ -1,8 +1,8 @@
-use tfpb::types::DataType;
+use super::{Op, OpRegister, TensorView};
 use analyser::TensorFact;
-use {Tensor, Result};
-use super::{TensorView, Op, OpRegister};
 use std::sync::Arc;
+use tfpb::types::DataType;
+use {Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
@@ -20,7 +20,11 @@ impl Const {
         let mat = node.get_attr_tensor("value")?;
 
         if mat.datatype() != datatype {
-            bail!("Const node {:?} doesn't have the expected {:?} type.", mat, datatype);
+            bail!(
+                "Const node {:?} doesn't have the expected {:?} type.",
+                mat,
+                datatype
+            );
         }
 
         Ok(Box::new(Const {
@@ -41,7 +45,7 @@ impl Op for Const {
         let output = TensorFact {
             datatype: typefact!(self.datatype),
             shape: self.value.shape().into(),
-            value: valuefact!(self.value.as_ref().clone())
+            value: valuefact!(self.value.as_ref().clone()),
         };
 
         Ok(Some(vec![output]))

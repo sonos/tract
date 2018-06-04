@@ -2,7 +2,7 @@ use std::cmp::min;
 
 use prettytable as pt;
 use prettytable::format::FormatBuilder;
-use terminal_size::{Width, terminal_size};
+use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
 use tfdeploy::tfpb;
@@ -30,32 +30,32 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     let format_no_right_border = FormatBuilder::new()
         .column_separator('|')
         .left_border('|')
-        .separators(&[pt::format::LinePosition::Top,
-                      pt::format::LinePosition::Bottom],
-                    pt::format::LineSeparator::new('-', '+', '+', '+'))
+        .separators(
+            &[
+                pt::format::LinePosition::Top,
+                pt::format::LinePosition::Bottom,
+            ],
+            pt::format::LineSeparator::new('-', '+', '+', '+'),
+        )
         .padding(1, 1)
         .build();
-    let format_only_columns = FormatBuilder::new()
-        .column_separator('|')
-        .build();
+    let format_only_columns = FormatBuilder::new().column_separator('|').build();
 
     // Terminal size
     let cols = match terminal_size() {
         Some((Width(w), _)) => min(w as usize, 120),
-        None => 80
+        None => 80,
     };
 
     // Node identifier
-    let mut count = table!([
-        format!("{:^5}", id.bold())
-    ]);
+    let mut count = table!([format!("{:^5}", id.bold())]);
 
     count.set_format(format_no_right_border);
 
     // Node name
     let mut name_table = table!([
         " Name: ",
-        format!("{:1$}", textwrap::fill(name.as_str(), cols - 61), cols - 61)
+        format!("{:1$}", textwrap::fill(name.as_str(), cols - 61), cols - 61),
     ]);
 
     name_table.set_format(format_none);
@@ -64,7 +64,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     let mut header = table!([
         format!("Operation: {:15}", op.bold().blue()),
         name_table,
-        format!(" {:^26}", status.bold())
+        format!(" {:^26}", status.bold()),
     ]);
 
     header.set_format(format_only_columns);
@@ -82,13 +82,11 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
 
         for row in section {
             let mut inner = match row {
-                Row::Simple(content) => table!([
-                    textwrap::fill(content.as_str(), cols - 30)
-                ]),
+                Row::Simple(content) => table!([textwrap::fill(content.as_str(), cols - 30)]),
                 Row::Double(header, content) => table!([
                     format!("{} ", header),
-                    textwrap::fill(content.as_str(), cols - 30)
-                ])
+                    textwrap::fill(content.as_str(), cols - 30),
+                ]),
             };
 
             inner.set_format(format_none);
@@ -124,13 +122,16 @@ fn node_info(
     for attr in proto_node.get_attr() {
         attributes.push(Row::Double(
             format!("Attribute {}:", attr.0.bold()),
-
             if attr.1.has_tensor() {
                 let tensor = attr.1.get_tensor();
-                format!("Tensor: {:?} {:?}", tensor.get_dtype(), tensor.get_tensor_shape().get_dim())
+                format!(
+                    "Tensor: {:?} {:?}",
+                    tensor.get_dtype(),
+                    tensor.get_tensor_shape().get_dim()
+                )
             } else {
                 format!("{:?}", attr.1)
-            }
+            },
         ));
     }
 
@@ -168,7 +169,6 @@ pub fn print_node(
         [format::node_info(&node, &graph, &state), sections].concat(),
     );
 }
-
 
 /// Prints some text with a line underneath.
 pub fn print_header(text: String, color: &str) {

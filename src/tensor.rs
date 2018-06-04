@@ -1,10 +1,10 @@
 //! `Tensor` is the equivalent of Tensorflow Tensor.
 
-use std::fmt::Debug;
 use ndarray::prelude::*;
+use std::fmt::Debug;
 use tfpb::types::DataType;
-pub trait Datum
-    : Copy
+pub trait Datum:
+    Copy
     + Clone
     + Send
     + Sync
@@ -17,7 +17,8 @@ pub trait Datum
     + ::std::ops::MulAssign
     + ::std::ops::DivAssign
     + ::std::ops::SubAssign
-    + ::std::ops::RemAssign {
+    + ::std::ops::RemAssign
+{
     fn name() -> &'static str;
     fn mat_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
     fn mat_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
@@ -171,9 +172,9 @@ where
 }
 
 macro_rules! tensor {
-    ($t:ident,$v:ident,$as:ident,$take:ident,$make:ident) => {
-        impl<D: ::ndarray::Dimension> From<Array<$t,D>> for Tensor {
-            fn from(it: Array<$t,D>) -> Tensor {
+    ($t:ident, $v:ident, $as:ident, $take:ident, $make:ident) => {
+        impl<D: ::ndarray::Dimension> From<Array<$t, D>> for Tensor {
+            fn from(it: Array<$t, D>) -> Tensor {
                 Tensor::$v(it.into_dyn())
             }
         }
@@ -195,7 +196,7 @@ macro_rules! tensor {
                 }
             }
 
-            pub fn $make(shape:&[usize], values:&[$t]) -> ::Result<Tensor> {
+            pub fn $make(shape: &[usize], values: &[$t]) -> ::Result<Tensor> {
                 Ok(Array::from_shape_vec(shape, values.to_vec())?.into())
             }
         }
@@ -219,15 +220,16 @@ macro_rules! tensor {
             }
 
             fn mat_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>> {
-                m.$as().map(|m| m.view()).ok_or("unmatched data type".into())
+                m.$as()
+                    .map(|m| m.view())
+                    .ok_or("unmatched data type".into())
             }
 
             fn array_into_tensor(m: ArrayD<Self>) -> Tensor {
                 Tensor::from(m)
             }
-
         }
-    }
+    };
 }
 
 tensor!(f64, F64, as_f64s, take_f64s, f64s);

@@ -1,5 +1,5 @@
-use Result;
 use super::{Op, OpRegister};
+use Result;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Abs", Abs::build);

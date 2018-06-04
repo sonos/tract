@@ -1,9 +1,9 @@
-use analyser::TensorFact;
 use analyser::helpers::infer_forward_concrete;
+use analyser::TensorFact;
 use ndarray::prelude::*;
-use {Tensor, Result};
-use ops::{TensorView, Op};
+use ops::{Op, TensorView};
 use tfpb::types::DataType;
+use {Result, Tensor};
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
@@ -138,25 +138,25 @@ impl Op for StridedSlice {
         let input = TensorFact {
             datatype: outputs[0].datatype,
             shape: shapefact![..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let begin = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![_],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let end = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![_],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let strides = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![_],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         Ok(Some(vec![input, begin, end, strides]))
@@ -166,9 +166,9 @@ impl Op for StridedSlice {
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
-    use Tensor;
     use super::*;
     use ndarray::*;
+    use Tensor;
 
     fn run<I, B, E, S>(op: StridedSlice, input: I, begin: B, end: E, strides: S) -> Tensor
     where

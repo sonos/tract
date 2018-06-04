@@ -31,7 +31,7 @@ pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
         (_, Any) => x,
         (Any, _) => y,
         (Only(a), Only(b)) if a == b => x,
-        _ => bail!("Impossible to unify datatypes {:?} and {:?}.", x, y)
+        _ => bail!("Impossible to unify datatypes {:?} and {:?}.", x, y),
     };
 
     Ok(*datatype)
@@ -173,8 +173,14 @@ impl<'n> Analyser<'n> {
         info!("Using execution plan {:?}.", plan);
 
         Ok(Analyser {
-            nodes, edges, prev_edges, next_edges, plan,
-            current_pass, current_step, current_direction
+            nodes,
+            edges,
+            prev_edges,
+            next_edges,
+            plan,
+            current_pass,
+            current_step,
+            current_direction,
         })
     }
 
@@ -195,8 +201,7 @@ impl<'n> Analyser<'n> {
 
         info!(
             "Starting pass [pass={:?}, direction={:?}].",
-            self.current_pass,
-            self.current_direction,
+            self.current_pass, self.current_direction,
         );
 
         // We first run a forward pass.
@@ -209,8 +214,7 @@ impl<'n> Analyser<'n> {
 
         info!(
             "Starting pass [pass={:?}, direction={:?}].",
-            self.current_pass,
-            self.current_direction,
+            self.current_pass, self.current_direction,
         );
 
         // We then run a backward pass.
@@ -257,11 +261,7 @@ impl<'n> Analyser<'n> {
 
         debug!(
             "Starting step for {} ({}) [pass={:?}, direction={:?}, step={:?}].",
-            node.name,
-            node.op_name,
-            self.current_pass,
-            self.current_direction,
-            self.current_step,
+            node.name, node.op_name, self.current_pass, self.current_direction, self.current_step,
         );
 
         let (source, target) = if self.current_direction {
@@ -271,7 +271,8 @@ impl<'n> Analyser<'n> {
         };
 
         let inferred = {
-            let sources: Vec<_> = source[node.id].iter()
+            let sources: Vec<_> = source[node.id]
+                .iter()
                 .map(|&i| &self.edges[i].fact)
                 .collect();
 
