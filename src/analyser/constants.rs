@@ -1,8 +1,7 @@
 use super::Analyser;
 use super::Result;
 use ops::OpBuilder;
-use tfpb::attr_value::AttrValue;
-use tfpb::node_def::NodeDef;
+use tfpb;
 use tfpb::tensor::TensorProto;
 use Node;
 
@@ -106,26 +105,18 @@ fn lowest_common_ancestor() {
 
 /// Creates a new Const node with the given Tensor value.
 fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
-    let op_builder = OpBuilder::new();
-    let mut node_def = NodeDef::new();
-
-    node_def.set_name(name.clone());
-    node_def.set_op("Const".to_string());
-
-    let mut dtype = AttrValue::new();
-    dtype.set_field_type(tensor.get_dtype());
-    node_def.mut_attr().insert("dtype".to_string(), dtype);
-
-    let mut value = AttrValue::new();
-    value.set_tensor(tensor);
-    node_def.mut_attr().insert("value".to_string(), value);
+    let node_def = tfpb::node()
+        .name(name.clone())
+        .op("Const")
+        .attr("dtype", tensor.get_dtype())
+        .attr("value", tensor);
 
     Node {
         id,
         name,
         op_name: "Const".to_string(),
         inputs: vec![],
-        op: op_builder.build(&node_def).unwrap(),
+        op: OpBuilder::new().build(&node_def).unwrap(),
     }
 }
 
