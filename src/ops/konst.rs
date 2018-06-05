@@ -10,25 +10,25 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 
 #[derive(Debug)]
 pub struct Const {
-    datatype: DataType,
+    dtype: DataType,
     value: Arc<Tensor>,
 }
 
 impl Const {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let datatype = node.get_attr_datatype("dtype")?;
+        let dtype = node.get_attr_datatype("dtype")?;
         let mat = node.get_attr_tensor("value")?;
 
-        if mat.datatype() != datatype {
+        if mat.datatype() != dtype {
             bail!(
                 "Const node {:?} doesn't have the expected {:?} type.",
                 mat,
-                datatype
+                dtype
             );
         }
 
         Ok(Box::new(Const {
-            datatype,
+            dtype,
             value: Arc::new(mat),
         }))
     }
@@ -43,7 +43,7 @@ impl Op for Const {
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         let output = TensorFact {
-            datatype: typefact!(self.datatype),
+            datatype: typefact!(self.dtype),
             shape: self.value.shape().into(),
             value: valuefact!(self.value.as_ref().clone()),
         };

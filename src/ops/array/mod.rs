@@ -238,13 +238,13 @@ impl Op for Identity {
 
 #[derive(Debug)]
 pub struct Placeholder {
-    datatype: DataType,
+    dtype: DataType,
 }
 
 impl Placeholder {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Placeholder {
-            datatype: node.get_attr_datatype("dtype")?,
+            dtype: node.get_attr_datatype("dtype")?,
         }))
     }
 }
@@ -258,7 +258,7 @@ impl Op for Placeholder {
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         let output = TensorFact {
-            datatype: typefact!(self.datatype),
+            datatype: typefact!(self.dtype),
             shape: shapefact![..],
             value: valuefact!(_),
         };
