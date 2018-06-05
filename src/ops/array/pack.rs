@@ -31,7 +31,7 @@ where
         use ndarray::Axis;
         let views = inputs
             .iter()
-            .map(|m| Ok(T::mat_to_view(&*m)?.insert_axis(Axis(self.axis))))
+            .map(|m| Ok(T::tensor_to_view(&*m)?.insert_axis(Axis(self.axis))))
             .collect::<Result<Vec<_>>>()?;
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
         Ok(vec![T::array_into_tensor(array).into()])

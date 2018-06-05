@@ -24,7 +24,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let paddings = paddings.as_i32s().ok_or("paddings expected as I32")?;
-        let mut data = T::mat_into_array(input.into_tensor())?;
+        let mut data = T::tensor_into_array(input.into_tensor())?;
 
         for (ix, pad) in paddings.outer_iter().enumerate() {
             if pad[0] != 0 {
@@ -121,7 +121,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let crops = crops.as_i32s().ok_or("crops expected as I32")?;
-        let data = T::mat_into_array(input.into_tensor())?;
+        let data = T::tensor_into_array(input.into_tensor())?;
         let input_shape = data.shape().to_vec();
         let crops = crops.clone().into_shape((block_shape.len(), 2))?;
 

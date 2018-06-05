@@ -73,8 +73,8 @@ macro_rules! element_bin {
                 mut inputs: Vec<$crate::ops::TensorView>,
             ) -> Result<Vec<$crate::ops::TensorView>> {
                 let (a, b) = args_2!(inputs);
-                let a = T::mat_into_array(a.into_tensor())?;
-                let b = T::mat_to_view(&*b)?;
+                let a = T::tensor_into_array(a.into_tensor())?;
+                let b = T::tensor_to_view(&*b)?;
                 Ok(vec![T::array_into_tensor($expr(a, b)).into()])
             }
 

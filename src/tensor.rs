@@ -20,8 +20,8 @@ pub trait Datum:
     + ::std::ops::RemAssign
 {
     fn name() -> &'static str;
-    fn mat_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
-    fn mat_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
+    fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
+    fn tensor_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
 }
 
@@ -223,11 +223,11 @@ macro_rules! tensor {
             fn name() -> &'static str {
                 stringify!($t)
             }
-            fn mat_into_array(m: Tensor) -> ::Result<ArrayD<Self>> {
+            fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>> {
                 m.$take().ok_or("unmatched data type".into())
             }
 
-            fn mat_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>> {
+            fn tensor_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>> {
                 m.$as()
                     .map(|m| m.view())
                     .ok_or("unmatched data type".into())

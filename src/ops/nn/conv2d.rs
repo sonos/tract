@@ -21,8 +21,8 @@ impl<T: Datum> Op for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (m_data, m_filter) = args_2!(inputs);
-        let data = T::mat_into_array(m_data.into_tensor())?;
-        let filter = T::mat_to_view(&*m_filter)?;
+        let data = T::tensor_into_array(m_data.into_tensor())?;
+        let filter = T::tensor_to_view(&*m_filter)?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
