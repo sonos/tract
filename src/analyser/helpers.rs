@@ -1,6 +1,6 @@
 use super::*;
 
-/// Infers every property when all the values are concrete.
+/// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(
     op: &Op,
     inputs: &Vec<&TensorFact>,
@@ -27,7 +27,7 @@ pub fn infer_forward_concrete(
     Ok(Some(vec![output]))
 }
 
-/// Infers basic shape properties in the case of broadcasting operators.
+/// Infers basic shape facts in the case of broadcasting operators.
 pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeFact>> {
     if shapes.iter().any(|s| s.open) {
         debug!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
@@ -77,7 +77,7 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
     Ok(Some(ShapeFact::closed(output_shape)))
 }
 
-/// Infers basic properties in the case of unary or binary operators.
+/// Infers basic facts in the case of unary or binary operators.
 pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
     if let Some(output) = infer_forward_concrete(op, &inputs)? {
         return Ok(Some(output));
