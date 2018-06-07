@@ -21,7 +21,7 @@
     </v-toolbar>
 
     <v-content>
-      <graph-area style="width: 100%; height: 100%;"></graph-area>
+      <graph-area style="width: 100%; height: 100%;" :graph="graph"></graph-area>
     </v-content>
 
     <json-input
@@ -45,6 +45,22 @@
       GraphArea,
     },
 
-    props: []
+    props: [],
+
+    /** Fetches the last graph from the sessionStorage. */
+    mounted() {
+      let graph = sessionStorage.getItem('tfd-state')
+      if (graph) {
+        this.graph = JSON.parse(graph)
+      }
+    },
+
+    watch: {
+      /** Stores the graph in the sessionStorage when updated. */
+      graph(value) {
+        console.log('Storing the graph in the sessionStorage.')
+        sessionStorage.setItem('tfd-state', JSON.stringify(value))
+      }
+    }
   }
 </script>
