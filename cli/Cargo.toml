@@ -25,3 +25,4 @@ libc = "0.2"
 [features]
 default = []
 tensorflow = []
+serialize = ["tfdeploy/serialize"]

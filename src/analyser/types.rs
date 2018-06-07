@@ -17,6 +17,7 @@ use Tensor;
 /// graph. The analyser will first tag each edge with a fact, starting with the
 /// most general one and specializing it at each iteration. Eventually, it will
 /// reach a fixed point that - hopefully - holds enough information.
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TensorFact {
     pub datatype: TypeFact,
@@ -36,6 +37,7 @@ impl TensorFact {
 }
 
 /// Partial information about a type.
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum TypeFact {
     Any,
@@ -61,6 +63,7 @@ impl TypeFact {
 /// to only specify its first dimensions, so `shapefact![1, 2; ..]` matches any
 /// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
 /// `shapefact![..]` matches any shape.
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapeFact {
     pub open: bool,
@@ -123,6 +126,7 @@ impl<'a> From<&'a [usize]> for ShapeFact {
 }
 
 /// Partial information about a dimension.
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum DimFact {
     Any,
@@ -145,6 +149,7 @@ impl DimFact {
 }
 
 /// Partial information about a value.
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValueFact {
     Any,

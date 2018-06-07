@@ -47,6 +47,14 @@ extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
 
+#[cfg(feature = "serialize")]
+extern crate serde;
+#[cfg(feature = "serialize")]
+extern crate serde_json;
+#[cfg(feature = "serialize")]
+#[macro_use]
+extern crate serde_derive;
+
 #[macro_use]
 pub mod analyser;
 pub mod errors;
@@ -61,12 +69,15 @@ use std::{fs, path, str};
 
 pub use tensor::Tensor;
 
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug)]
 pub struct Node {
     pub id: usize,
     pub name: String,
     pub op_name: String,
     pub inputs: Vec<(usize, Option<usize>)>,
+
+    #[cfg_attr(feature = "serialize", serde(skip_serializing))]
     pub op: Box<Op>,
 }
 
