@@ -5,20 +5,30 @@ export const graphStyle = [
       'background-color': '#ddd',
       'border-width': '1px',
       'border-color': '#bbb',
-      'shape': 'ellipse',
       'label': 'data(name)',
+    }
+  },
+
+  {
+    selector: 'node[op != "Const"]',
+    style: {
+      'shape': 'roundrectangle',
       'font-size': '9px',
-      'text-margin-y': '-8px',
-      'width': '25px',
+      'width': 'label',
+      'padding': '5px',
       'height': '15px',
+      'text-valign': 'center',
     }
   },
 
   {
     selector: 'node[op = "Const"]',
     style: {
+      'shape': 'ellipse',
+      'font-size': '8px',
       'width': '10px',
       'height': '10px',
+      'text-margin-y': '-6px',
     }
   },
 

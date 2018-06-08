@@ -27,7 +27,6 @@ export class Hierarchy {
     })
 
     Object.keys(this.existsMapping).forEach(k => {
-      console.log('Deleted', k)
       delete this.metanodeMapping[k]
     })
 

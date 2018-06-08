@@ -53,11 +53,11 @@
               op: n.op_name,
               oid: n.id,
               name: hierarchy.getName(n.name),
-              parent: hierarchy.getParent(n.name),
+              // parent: hierarchy.getParent(n.name),
             }
           }))
 
-        let metanodes = hierarchy.getMetanodes()
+        // let metanodes = hierarchy.getMetanodes()
 
         let edges = this.graph[1]
           .filter(e => e.from_node !== null && e.to_node !== null)
@@ -69,7 +69,8 @@
             }
           }))
 
-        let graph = nodes.concat(metanodes, edges)
+        // let graph = nodes.concat(metanodes, edges)
+        let graph = nodes.concat(edges)
 
         this.instance = cytoscape({
           container: this.$el,
@@ -83,6 +84,7 @@
 
         this.layout = this.instance.layout({
           name: 'tensorflow',
+          // name: 'dagre',
         })
 
         this.layout.run()
