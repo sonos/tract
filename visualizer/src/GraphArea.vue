@@ -1,20 +1,18 @@
 <template></template>
 
 <script>
-  import { Hierarchy } from './helpers'
+  import { Hierarchy, stringToColor } from './helpers'
   import { graphStyle } from './styles'
 
+  import jquery from 'jquery'
+
   import cytoscape from 'cytoscape'
-  // import dagre from 'cytoscape-dagre'
-  // import klay from 'cytoscape-klay'
+  import expand from 'cytoscape-expand-collapse'
   import layout from './layout'
-  // import expand from 'cytoscape-expand-collapse'
 
   // Register extensions.
-  // cytoscape.use(dagre)
-  // cytoscape.use(klay)
   cytoscape.use(layout)
-  // cytoscape.use(expand)
+  cytoscape.use(expand, jquery)
 
   export default {
     props: {
@@ -52,12 +50,15 @@
               id: n.name,
               op: n.op_name,
               oid: n.id,
+              type: 'node',
               name: hierarchy.getName(n.name),
-              // parent: hierarchy.getParent(n.name),
+              parent: hierarchy.getParent(n.name),
+              background: 'hsl(' + stringToColor(n.op_name) + ', 100%, 90%)',
+              border: 'hsl(' + stringToColor(n.op_name) + ', 40%, 80%)',
             }
           }))
 
-        // let metanodes = hierarchy.getMetanodes()
+        let metanodes = hierarchy.getMetanodes()
 
         let edges = this.graph[1]
           .filter(e => e.from_node !== null && e.to_node !== null)
@@ -69,8 +70,23 @@
             }
           }))
 
-        // let graph = nodes.concat(metanodes, edges)
-        let graph = nodes.concat(edges)
+        let graph = nodes.concat(metanodes, edges)
+
+        // let graph = nodes.concat(edges)
+        // DEBUG(liautaud)
+        // let graph = [
+        //   {data: {id: 'a', op: 'noconst', name: 'a'}},
+        //   {data: {id: 'b', op: 'noconst', name: 'b'}},
+        //   {data: {id: 'c', op: 'noconst', name: 'c'}},
+        //   {data: {id: 'd', op: 'noconst', name: 'd'}},
+        //   {data: {id: 'e', op: 'noconst', name: 'e'}},
+        //   {data: {id: 'ab', source: 'a', target: 'b'}},
+        //   {data: {id: 'ac', source: 'a', target: 'c'}},
+        //   {data: {id: 'bd', source: 'b', target: 'd'}},
+        //   {data: {id: 'cd', source: 'c', target: 'd'}},
+        //   {data: {id: 'de', source: 'd', target: 'e'}},
+        //   {data: {id: 'ae', source: 'a', target: 'e'}},
+        // ]
 
         this.instance = cytoscape({
           container: this.$el,
@@ -84,8 +100,20 @@
 
         this.layout = this.instance.layout({
           name: 'tensorflow',
-          // name: 'dagre',
         })
+
+        this.expand = this.instance.expandCollapse({
+          layoutBy: {
+            name: "tensorflow",
+            randomize: false,
+            fit: true,
+            padding: 80,
+          },
+          fisheye: false,
+          undoable: false,
+        })
+
+        this.expand.collapseAll()
 
         this.layout.run()
       }
