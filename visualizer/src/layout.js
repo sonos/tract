@@ -38,6 +38,10 @@ class TensorflowLayout {
     this.nodes = options.eles.nodes()
     this.edges = options.eles.edges()
 
+    this.dagre = this.cy.layout({
+      name: 'dagre',
+    })
+
     let bb = options.boundingBox || {
       x1: 0,
       y1: 0,
@@ -54,33 +58,26 @@ class TensorflowLayout {
   }
 
   run() {
-    let idx = {}
-    this.nodes.forEach((n, i) => idx[n.id()] = i)
-
-    let positions = {}
-
-    // try {
-      positions = this.solveLinear(idx)
-    // } catch (e) {
-      // positions = this.solveDagre(idx)
-    // }
-
-    this.nodes.layoutPositions(this, this.options, function(node){
-      node = typeof node === "object" ? node : this
-      return positions[idx[node.id()]]
-    })
+    try {
+      this.solveLinear()
+    } catch (e) {
+      this.solveDagre()
+    }
 
     return this
   }
 
   /** Tries to position the nodes using the linear solver. */
-  solveLinear(idx) {
+  solveLinear() {
     console.log('Solving using the linear solver.')
 
     let nodes = this.nodes
     let solver = new kiwi.Solver()
     let xs = nodes.map(_ => new kvar())
     let ys = nodes.map(_ => new kvar())
+
+    let idx = {}
+    nodes.forEach((n, i) => idx[n.id()] = i)
 
     nodes.forEach(n => {
       let nid = idx[n.id()]
@@ -155,16 +152,21 @@ class TensorflowLayout {
 
     solver.updateVariables()
 
-    return nodes.map(node => ({
-      x: xs[idx[node.id()]].value(),
-      y: ys[idx[node.id()]].value(),
-    }))
+    this.nodes.layoutPositions(this, this.options, function(node){
+      node = typeof node === "object" ? node : this
+      return {
+        x: xs[idx[node.id()]].value(),
+        y: ys[idx[node.id()]].value(),
+      }
+    })
   }
 
   /** Tries to position the nodes using Dagre. */
-  solveDagre(idx) {
+  solveDagre() {
     console.log('Solving using Dagre.')
-    // TODO(liautaud)
+
+    // TODO(liautaud): Fix this when using collapse.
+    this.dagre.run()
   }
 }
 

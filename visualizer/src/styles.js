@@ -46,6 +46,7 @@ export const graphStyle = [
   {
     selector: 'node[type = "metanode"]',
     style: {
+      'font-size': '9px',
       'shape': 'roundrectangle',
       'padding': '8px',
       'background-color': '#eee',
@@ -54,7 +55,7 @@ export const graphStyle = [
       'text-rotation': '-90deg',
       'text-valign': 'top',
       'text-halign': 'left',
-      'text-margin-x': '-6px',
+      'text-margin-x': '-7px',
       'text-margin-y': '2px',
       'color': '#888',
     }

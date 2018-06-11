@@ -109,19 +109,21 @@
 
         // Handle double click on metanodes.
         let clickTimer = null
-        this.instance.nodes().filter('[type = "metanode"]').on('click', (e) => {
-          if (!clickTimer) {
-            clickTimer = setTimeout(() => clickTimer = clearTimeout(clickTimer), 400)
-          } else {
-            clickTimer = clearTimeout(clickTimer)
-
-            if (this.expand.isExpandable(e.target)) {
-              this.expand.expand(e.target)
+        this.instance.nodes()
+          .filter('[type = "metanode"]')
+          .on('click', (e) => {
+            if (!clickTimer) {
+              clickTimer = setTimeout(() => clickTimer = null, 400)
             } else {
-              this.expand.collapse(e.target)
+              clickTimer = null
+
+              if (this.expand.isExpandable(e.target)) {
+                this.expand.expand(e.target)
+              } else {
+                this.expand.collapse(e.target)
+              }
             }
-          }
-        })
+          })
       }
     },
 
