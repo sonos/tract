@@ -3,6 +3,16 @@ function predecessor(path) {
   return path.split('/').slice(0, -1).join('/')
 }
 
+/** Returns the hex color code corresponding to a string. */
+export function stringToColor(str) {
+  var hash = 0;
+  for (var i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  return hash % 360
+}
+
 export class Hierarchy {
   constructor(nodes) {
     // The node path corresponding to each node index.
@@ -85,6 +95,7 @@ export class Hierarchy {
           id: k,
           name: k,
           oid: -1,
+          type: 'metanode',
           parent: this.getParent(k),
         }
       }

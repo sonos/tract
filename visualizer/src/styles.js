@@ -2,11 +2,19 @@ export const graphStyle = [
   {
     selector: 'node',
     style: {
-      'background-color': '#ddd',
       'border-width': '1px',
-      'border-color': '#bbb',
       'label': 'data(name)',
     }
+  },
+
+  {
+    selector: 'node[background]',
+    style: {'background-color': 'data(background)'}
+  },
+
+  {
+    selector: 'node[border]',
+    style: {'border-color': 'data(border)'}
   },
 
   {
@@ -28,17 +36,43 @@ export const graphStyle = [
       'font-size': '8px',
       'width': '10px',
       'height': '10px',
-      'text-margin-y': '-6px',
+      'text-margin-y': '-5px',
+      'background-color': '#ddd',
+      'border-color': '#bbb',
     }
   },
 
   {
-    selector: '$node > node',
-    css: {
-      'padding-top': '10px',
-      'padding-left': '10px',
-      'padding-bottom': '10px',
-      'padding-right': '10px',
+    selector: 'node[type = "metanode"]',
+    style: {
+      'shape': 'roundrectangle',
+      'font-size': '7px',
+      'padding': '8px',
+      'background-color': '#eee',
+      'border-color': '#ddd',
+      'border-style': 'dashed',
+      'text-rotation': '-90deg',
+      'text-valign': 'top',
+      'text-halign': 'left',
+      'text-margin-x': '-6px',
+      'text-margin-y': '2px',
+      'color': '#888',
+    }
+  },
+
+  {
+    selector: 'node[type = "metanode"].cy-expand-collapse-collapsed-node',
+    style: {
+      'font-size': '9px',
+      'height': '10px',
+      'padding': '8px',
+      'width': 'label',
+      'text-rotation': '0deg',
+      'text-valign': 'center',
+      'text-halign': 'center',
+      'text-margin-x': '0',
+      'text-margin-y': '0',
+      'color': '#000',
     }
   },
 
