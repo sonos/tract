@@ -16,9 +16,9 @@ const leftPadding = 0
 const rightPadding = 0
 const topPadding = 90
 const bottomPadding = 0
-const xNodeSep = 90
-const yNodeSep = 60
-const xConstSep = 80
+const xNodeSep = 150
+const yNodeSep = 40
+const xConstSep = 40
 const yConstSep = 30
 
 
@@ -59,11 +59,11 @@ class TensorflowLayout {
 
     let positions = {}
 
-    try {
+    // try {
       positions = this.solveLinear(idx)
-    } catch (e) {
-      positions = this.solveDagre(idx)
-    }
+    // } catch (e) {
+      // positions = this.solveDagre(idx)
+    // }
 
     this.nodes.layoutPositions(this, this.options, function(node){
       node = typeof node === "object" ? node : this
@@ -87,23 +87,13 @@ class TensorflowLayout {
 
       solver.addEditVariable(xs[nid], kstrong)
       solver.addEditVariable(ys[nid], kstrong)
-      solver.suggestValue(xs[nid], this.bb.w / 2)
-    })
-
-    // Ensure the nodes stay in the bounding box.
-    nodes.forEach(n => {
-      let nid = idx[n.id()]
-
-      solver.createConstraint(xs[nid], kge, this.bb.x1 + leftPadding)
-      solver.createConstraint(xs[nid], kle, this.bb.x2 + rightPadding, kstrong)
-
-      solver.createConstraint(ys[nid], kge, this.bb.y1 + topPadding)
-      solver.createConstraint(ys[nid], kle, this.bb.y2 + bottomPadding, kstrong)
     })
 
     // Add constraints to predecessors.
     nodes.forEach(n => {
       let nid = idx[n.id()]
+      let nw = n.layoutDimensions().w
+      let nh = n.layoutDimensions().h
 
       /**
        * Rules for non-constant predecessors.
@@ -115,12 +105,14 @@ class TensorflowLayout {
         let mid = idx[m.id()]
 
         // The successor is below all the predecessors.
-        solver.createConstraint(ys[nid], kge, new kexp(ys[mid], yNodeSep))
+        solver.createConstraint(ys[nid], kge, new kexp(ys[mid], yNodeSep + nh / 2))
 
         // All the predecessors are spaced from each other.
         if (i > 0) {
-          let pid = idx[prevNodes[i - 1].id()]
-          solver.createConstraint(xs[mid], kge, new kexp(xs[pid], xNodeSep))
+          let p = prevNodes[i - 1]
+          let pid = idx[p.id()]
+          let pw = n.layoutDimensions().w
+          solver.createConstraint(xs[mid], kge, new kexp(xs[pid], xNodeSep + pw / 2))
         }
       })
 
@@ -140,13 +132,18 @@ class TensorflowLayout {
         let mid = idx[m.id()]
 
         // The successor is left of all the constant predecessors.
-        solver.createConstraint(xs[nid], kge, new kexp(xs[mid], xConstSep))
+        solver.createConstraint(xs[nid], kge, new kexp(xs[mid], xConstSep + nw / 2))
 
         // All the constant predecessors are spaced from each other.
         if (i > 0) {
           let pid = idx[prevConsts[i - 1].id()]
           solver.createConstraint(ys[mid], kge, new kexp(ys[pid], yConstSep))
         }
+
+        // All the constant predecessors are below the non-constant ones.
+        prevNodes.forEach(o => {
+          solver.createConstraint(ys[mid], kge, new kexp(ys[idx[o.id()]], yNodeSep / 3))
+        })
       })
 
       // The successor is aligned with the middle of the predecessors.
