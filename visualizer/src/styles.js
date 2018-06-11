@@ -2,8 +2,10 @@ export const graphStyle = [
   {
     selector: 'node',
     style: {
+      'font-size': '9px',
       'border-width': '1px',
       'label': 'data(name)',
+      'font-family': 'Space Mono, monospace'
     }
   },
 
@@ -21,9 +23,9 @@ export const graphStyle = [
     selector: 'node[op != "Const"]',
     style: {
       'shape': 'roundrectangle',
-      'font-size': '9px',
+      'font-size': '11px',
       'width': 'label',
-      'padding': '5px',
+      'padding': '8px',
       'height': '15px',
       'text-valign': 'center',
     }
@@ -33,7 +35,6 @@ export const graphStyle = [
     selector: 'node[op = "Const"]',
     style: {
       'shape': 'ellipse',
-      'font-size': '8px',
       'width': '10px',
       'height': '10px',
       'text-margin-y': '-5px',
@@ -46,7 +47,6 @@ export const graphStyle = [
     selector: 'node[type = "metanode"]',
     style: {
       'shape': 'roundrectangle',
-      'font-size': '7px',
       'padding': '8px',
       'background-color': '#eee',
       'border-color': '#ddd',
@@ -63,9 +63,8 @@ export const graphStyle = [
   {
     selector: 'node[type = "metanode"].cy-expand-collapse-collapsed-node',
     style: {
-      'font-size': '9px',
-      'height': '10px',
-      'padding': '8px',
+      'font-size': '11px',
+      'height': '15px',
       'width': 'label',
       'text-rotation': '0deg',
       'text-valign': 'center',

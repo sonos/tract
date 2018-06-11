@@ -9,10 +9,11 @@
         prepend-icon="search"
         hide-details
         single-line
-        class="mx-5"></v-text-field>
+        class="mx-4"></v-text-field>
 
       <v-btn icon
-        @click="$refs.input.open()">
+        @click="$refs.input.open()"
+        class="ml-4">
         <v-icon>open_in_browser</v-icon>
       </v-btn>
       <v-btn icon class="mr-4">
