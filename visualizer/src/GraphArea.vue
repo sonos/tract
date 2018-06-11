@@ -7,11 +7,13 @@
   import jquery from 'jquery'
 
   import cytoscape from 'cytoscape'
+  import dagre from 'cytoscape-dagre'
   import expand from 'cytoscape-expand-collapse'
   import layout from './layout'
 
   // Register extensions.
   cytoscape.use(layout)
+  cytoscape.use(dagre)
   cytoscape.use(expand, jquery)
 
   export default {
@@ -72,22 +74,6 @@
 
         let graph = nodes.concat(metanodes, edges)
 
-        // let graph = nodes.concat(edges)
-        // DEBUG(liautaud)
-        // let graph = [
-        //   {data: {id: 'a', op: 'noconst', name: 'a'}},
-        //   {data: {id: 'b', op: 'noconst', name: 'b'}},
-        //   {data: {id: 'c', op: 'noconst', name: 'c'}},
-        //   {data: {id: 'd', op: 'noconst', name: 'd'}},
-        //   {data: {id: 'e', op: 'noconst', name: 'e'}},
-        //   {data: {id: 'ab', source: 'a', target: 'b'}},
-        //   {data: {id: 'ac', source: 'a', target: 'c'}},
-        //   {data: {id: 'bd', source: 'b', target: 'd'}},
-        //   {data: {id: 'cd', source: 'c', target: 'd'}},
-        //   {data: {id: 'de', source: 'd', target: 'e'}},
-        //   {data: {id: 'ae', source: 'a', target: 'e'}},
-        // ]
-
         this.instance = cytoscape({
           container: this.$el,
           elements: graph,
@@ -104,9 +90,11 @@
 
         this.expand = this.instance.expandCollapse({
           layoutBy: {
-            name: "tensorflow",
+            // name: 'dagre',
+            name: 'tensorflow',
+            // animate: 'end',
             randomize: false,
-            fit: true,
+            fit: false,
             padding: 80,
           },
           fisheye: false,
@@ -114,8 +102,26 @@
         })
 
         this.expand.collapseAll()
-
         this.layout.run()
+
+        this.instance.zoom(1.5)
+        this.instance.center()
+
+        // Handle double click on metanodes.
+        let clickTimer = null
+        this.instance.nodes().filter('[type = "metanode"]').on('click', (e) => {
+          if (!clickTimer) {
+            clickTimer = setTimeout(() => clickTimer = clearTimeout(clickTimer), 400)
+          } else {
+            clickTimer = clearTimeout(clickTimer)
+
+            if (this.expand.isExpandable(e.target)) {
+              this.expand.expand(e.target)
+            } else {
+              this.expand.collapse(e.target)
+            }
+          }
+        })
       }
     },
 
