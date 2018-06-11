@@ -18,42 +18,100 @@ export class Hierarchy {
     // The node path corresponding to each node index.
     this.indexMapping = {}
 
-    // Whether a node with a given path exists.
-    this.existsMapping = {}
+    // All the paths in the graph.
+    this.paths = {}
 
-    // The metanode path corresponding to each node path.
-    this.metanodeMapping = {}
-
+    // Add all the paths to the list recursively.
     nodes.forEach(n => {
-      let path = n.name
-      let pred = predecessor(path)
+      let parts = n.name.split('/')
+      let length = parts.length
+      this.indexMapping[n.id] = n.name
 
-      this.indexMapping[n.id] = path
-      this.existsMapping[path] = true
+      while (parts.length > 0) {
+        let mapping = parts.join('/')
+        let isMetanode = true
+        let isUsed = true
 
-      if (pred) {
-        this.metanodeMapping[pred] = false
+        this.paths[mapping] = { isMetanode, isUsed, mapping }
+        parts.pop()
       }
     })
 
-    Object.keys(this.existsMapping).forEach(k => {
-      delete this.metanodeMapping[k]
+    // Mark all the nodes which actually exist.
+    nodes.forEach(n => {
+      this.paths[n.name].isMetanode = false
     })
 
-    Object.keys(this.metanodeMapping).forEach(k => {
-      // Group the metanodes which share the same prefix.
-      let p = k.split('/')
-      let pp = p.pop()
+    // Sort all the paths by depth, so that we can apply
+    // transformations recursively starting with parents.
+    let pathsByDepth = {}
 
-      let q = pp.split('_')
-      let qq = q.pop()
-      if (q.length == 0) {
-        return
+    Object.keys(this.paths).forEach(k => {
+      let depth = k.split('/').length
+
+      if (!(depth in pathsByDepth)) {
+        pathsByDepth[depth] = []
       }
 
-      let base = p.join('/') + '/' + q.join('_')
-      if (base in this.metanodeMapping) {
-        this.metanodeMapping[k] = base
+      pathsByDepth[depth].push(k)
+    })
+
+    Object.keys(pathsByDepth).forEach(depth => {
+      pathsByDepth[depth].forEach(k => {
+        // Propagate mappings from the predecessors.
+        let p = k.split('/')
+        let pred = p.slice(0, -1).join('/')
+        let name = p.pop()
+
+        if (pred.length > 0) {
+          pred = this.paths[pred].mapping
+
+          let realPath = [pred, name]
+            .filter(s => s)
+            .join('/')
+
+          this.paths[k].mapping = realPath
+        }
+
+        // Group similar metanodes together.
+        let n = name.split('_')
+        let prefix = n.slice(0, -1).join('_')
+        let suffix = n.pop()
+
+        if (prefix.length > 0) {
+          let basePath = [pred, prefix]
+            .filter(s => s)
+            .join('/')
+
+          if (basePath in this.paths && this.paths[basePath].isMetanode) {
+            name = prefix
+            this.paths[k].mapping = basePath
+          }
+        }
+      })
+    })
+
+    // Metanodes which have no child or only one child are unused.
+    let childrenCount = {}
+    Object.keys(this.paths).forEach(k => {
+      let parent = predecessor(k)
+
+      // FIXME(liautaud)
+      if (parent in this.paths &&
+          this.paths[parent].mapping in this.paths) {
+        parent = this.paths[parent].mapping
+      }
+
+      if (!(parent in childrenCount)) {
+        childrenCount[parent] = 0
+      }
+
+      childrenCount[parent] += 1
+    })
+
+    Object.keys(childrenCount).forEach(k => {
+      if (childrenCount[k] <= 1) {
+        this.paths[k].isUsed = false
       }
     })
   }
@@ -64,18 +122,13 @@ export class Hierarchy {
 
   getParent(path) {
     let parent = predecessor(path)
-
     if (parent.length == 0) {
       return null
     }
 
     // A parent should be a metanode, not a regular one.
-    if (parent in this.metanodeMapping) {
-      if (this.metanodeMapping[parent]) {
-        return this.metanodeMapping[parent]
-      } else {
-        return parent
-      }
+    if (this.paths[parent].isMetanode && this.paths[parent].isUsed) {
+      return this.paths[parent].mapping
     }
 
     // Otherwise, we reach for the grandparent.
@@ -87,13 +140,14 @@ export class Hierarchy {
   }
 
   getMetanodes() {
-    return Object.keys(this.metanodeMapping)
-    .filter(k => !this.metanodeMapping[k])
+    return Object.keys(this.paths)
+    .filter(k => this.paths[k].isMetanode)
+    .filter(k => this.paths[k].isUsed)
     .map(k => {
       return {
         data: {
-          id: k,
-          name: k,
+          id: this.paths[k].mapping,
+          name: this.paths[k].mapping,
           oid: -1,
           type: 'metanode',
           parent: this.getParent(k),
