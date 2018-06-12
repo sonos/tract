@@ -55,7 +55,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     // Node name
     let mut name_table = table!([
         " Name: ",
-        format!("{:1$}", textwrap::fill(name.as_str(), cols - 61), cols - 61),
+        format!("{:1$}", textwrap::fill(name.as_str(), cols - 68), cols - 68),
     ]);
 
     name_table.set_format(format_none);
@@ -64,7 +64,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     let mut header = table!([
         format!("Operation: {:15}", op.bold().blue()),
         name_table,
-        format!(" {:^26}", status.bold()),
+        format!(" {:^33}", status.bold()),
     ]);
 
     header.set_format(format_only_columns);

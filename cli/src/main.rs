@@ -467,7 +467,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
         total += time;
         total_avg += time_avg;
-        nodes.push((node, time, status));
+        nodes.push((node, time_avg));
         let mut pair = operations.entry(node.op_name.as_str()).or_insert((0., 0., 0));
         pair.0 += time;
         pair.1 += time_avg;
@@ -483,8 +483,14 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     println!();
     println!("Most time consuming nodes:");
-    nodes.sort_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse());
-    for (node, _, status) in nodes.iter().take(5) {
+    nodes.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap().reverse());
+    for (node, time_avg) in nodes.iter().take(5) {
+        let status = format!(
+            "{} ({:.2?}%)",
+            format!("{:.3} ms/i", time_avg * 1e3).white(),
+            *time_avg / total_avg * 100.
+        );
+
         print_node(node, &params.graph, &state, status.to_string(), vec![]);
     }
 
