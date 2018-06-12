@@ -394,7 +394,10 @@ struct Instant(StdInstant, f64, f64);
 impl Instant {
     /// Returns the current instant.
     pub fn now() -> Instant {
-        Instant(StdInstant::now(), 0., 0.)
+        let elapsed_user = rusage::get_memory_usage().unwrap().user_time;
+        let elapsed_sys = rusage::get_memory_usage().unwrap().system_time;
+
+        Instant(StdInstant::now(), elapsed_user, elapsed_sys)
     }
 
     /// Returns the number of elapsed real seconds since the instant.
@@ -405,17 +408,17 @@ impl Instant {
 
     /// Returns the number of elapsed user seconds since the instant.
     pub fn elapsed_user(&self) -> f64 {
-        rusage::get_memory_usage().unwrap().user_time
+        rusage::get_memory_usage().unwrap().user_time - self.1
     }
 
     /// Returns the number of elapsed system seconds since the instant.
     pub fn elapsed_sys(&self) -> f64 {
-        rusage::get_memory_usage().unwrap().system_time
+        rusage::get_memory_usage().unwrap().system_time - self.2
     }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct Measure {
+struct Duration {
     pub total_real: f64,
     pub total_user: f64,
     pub total_sys: f64,
@@ -424,19 +427,19 @@ struct Measure {
     pub avg_sys: f64,
 }
 
-impl Measure {
+impl Duration {
     /// Returns an empty measure.
-    pub fn new() -> Measure {
-        Measure { ..Default::default() }
+    pub fn new() -> Duration {
+        Duration { ..Default::default() }
     }
 
     /// Returns a measure from a given instant and iterations.
-    pub fn since(start: &Instant, iters: u64) -> Measure {
+    pub fn since(start: &Instant, iters: u64) -> Duration {
         let total_real = start.elapsed_real();
         let total_user = start.elapsed_user();
         let total_sys = start.elapsed_sys();
 
-        Measure {
+        Duration {
             total_real, total_user, total_sys,
             avg_real: total_real / iters as f64,
             avg_user: total_user / iters as f64,
@@ -445,9 +448,9 @@ impl Measure {
     }
 }
 
-impl std::ops::AddAssign for Measure {
-    fn add_assign(&mut self, other: Measure) {
-        *self = Measure {
+impl std::ops::AddAssign for Duration {
+    fn add_assign(&mut self, other: Duration) {
+        *self = Duration {
             total_real: self.total_real + other.total_real,
             total_user: self.total_user + other.total_user,
             total_sys: self.total_sys + other.total_sys,
@@ -474,7 +477,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
 
-    let mut global = Measure::new();
+    let mut global = Duration::new();
     let capacity = model.nodes().len();
     let mut nodes = Vec::with_capacity(capacity);
     let mut operations = HashMap::with_capacity(capacity);
@@ -513,7 +516,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
             iters += 1;
         }
 
-        let measure = Measure::since(&start, iters);
+        let measure = Duration::since(&start, iters);
 
         // Print the results for the node.
         if log_enabled!(Info) {
@@ -526,7 +529,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
         nodes.push((node, measure));
         let mut pair = operations
             .entry(node.op_name.as_str())
-            .or_insert((Measure::new(), 0));
+            .or_insert((Duration::new(), 0));
         pair.0 += measure;
         pair.1 += 1;
     }
