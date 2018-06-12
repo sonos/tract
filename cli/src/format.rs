@@ -1,7 +1,8 @@
 use std::cmp::min;
 
 use prettytable as pt;
-use prettytable::format::FormatBuilder;
+use prettytable::Table;
+use prettytable::format::{TableFormat, FormatBuilder};
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
@@ -21,13 +22,19 @@ pub enum Row {
     Double(String, String),
 }
 
-/// Prints a box containing arbitrary information.
-fn print_box(id: String, op: String, name: String, status: String, sections: Vec<Vec<Row>>) {
-    use colored::Colorize;
+/// Returns a table format with no borders or padding.
+fn format_none() -> TableFormat {
+    FormatBuilder::new().build()
+}
 
-    // Common formats
-    let format_none = FormatBuilder::new().build();
-    let format_no_right_border = FormatBuilder::new()
+/// Returns a table format with only inter-column borders.
+fn format_only_columns() -> TableFormat {
+    FormatBuilder::new().column_separator('|').build()
+}
+
+/// Returns a table format with no right border.
+fn format_no_right_border() -> TableFormat {
+    FormatBuilder::new()
         .column_separator('|')
         .left_border('|')
         .separators(
@@ -38,8 +45,63 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
             pt::format::LineSeparator::new('-', '+', '+', '+'),
         )
         .padding(1, 1)
-        .build();
-    let format_only_columns = FormatBuilder::new().column_separator('|').build();
+        .build()
+}
+
+/// Builds a box header containing the operation, name and status on the same line.
+fn build_header(cols: usize, op: String, name: String, status: String) -> Table {
+    use colored::Colorize;
+
+    let mut name_table = table!([
+        " Name: ",
+        format!("{:1$}", textwrap::fill(name.as_str(), cols - 68), cols - 68),
+    ]);
+
+    name_table.set_format(format_none());
+
+    let mut header = table!([
+        format!("Operation: {:15}", op.bold().blue()),
+        name_table,
+        format!(" {:^33}", status.bold()),
+    ]);
+
+    header.set_format(format_only_columns());
+    table![[header]]
+}
+
+/// Builds a box header conntaining the operation and name on one line, and a list
+/// of status messages on the other.
+fn build_header_wide(cols: usize, op: String, name: String, status: Vec<String>) -> Table {
+    use colored::Colorize;
+
+    let mut name_table = table!([
+        " Name: ",
+        name.as_str(),
+    ]);
+
+    name_table.set_format(format_none());
+
+    let status_row = pt::row::Row::new(
+        status.iter().map(|s| cell!(
+            format!("{:^1$}", s, cols / status.len()).bold()
+        )).collect()
+    );
+
+    let mut status = Table::init(vec![status_row]);
+    status.set_format(format_only_columns());
+
+    let mut header = table!([
+        format!("Operation: {:15}", op.bold().blue()),
+        name_table,
+    ]);
+    header.set_format(format_only_columns());
+
+    table![[header], [status]]
+}
+
+/// Prints a box containing arbitrary information.
+fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sections: Vec<Vec<Row>>) {
+    use colored::Colorize;
 
     // Terminal size
     let cols = match terminal_size() {
@@ -50,27 +112,16 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
     // Node identifier
     let mut count = table!([format!("{:^5}", id.bold())]);
 
-    count.set_format(format_no_right_border);
-
-    // Node name
-    let mut name_table = table!([
-        " Name: ",
-        format!("{:1$}", textwrap::fill(name.as_str(), cols - 68), cols - 68),
-    ]);
-
-    name_table.set_format(format_none);
-
-    // Table header
-    let mut header = table!([
-        format!("Operation: {:15}", op.bold().blue()),
-        name_table,
-        format!(" {:^33}", status.bold()),
-    ]);
-
-    header.set_format(format_only_columns);
+    count.set_format(format_no_right_border());
 
     // Content of the table
-    let mut right = table![[header]];
+    let mut right = if status.len() < 1 {
+        build_header(cols, op, name, "".to_string())
+    } else if status.len() == 1 {
+        build_header(cols, op, name, status.pop().unwrap())
+    } else {
+        build_header_wide(cols, op, name, status)
+    };
 
     for section in sections {
         if section.len() < 1 {
@@ -78,7 +129,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
         }
 
         let mut outer = table!();
-        outer.set_format(format_none);
+        outer.set_format(format_none());
 
         for row in section {
             let mut inner = match row {
@@ -89,7 +140,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
                 ]),
             };
 
-            inner.set_format(format_none);
+            inner.set_format(format_none());
             outer.add_row(row![inner]);
         }
 
@@ -98,7 +149,7 @@ fn print_box(id: String, op: String, name: String, status: String, sections: Vec
 
     // Whole table
     let mut table = table!();
-    table.set_format(format_none);
+    table.set_format(format_none());
     table.add_row(row![count, right]);
     table.printstd();
 }
@@ -158,7 +209,7 @@ pub fn print_node(
     node: &Node,
     graph: &GraphDef,
     state: &ModelState,
-    status: String,
+    status: Vec<String>,
     sections: Vec<Vec<Row>>,
 ) {
     format::print_box(

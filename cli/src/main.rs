@@ -18,10 +18,11 @@ extern crate textwrap;
 extern crate tfdeploy;
 extern crate pbr;
 extern crate atty;
+extern crate libc;
 
 use std::collections::HashMap;
 use std::process;
-use std::time::Instant;
+use std::time::Instant as StdInstant;
 
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
@@ -49,6 +50,7 @@ mod errors;
 mod format;
 mod graphviz;
 mod utils;
+mod rusage;
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u64 = 100_000;
@@ -275,7 +277,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
                     node,
                     &params.graph,
                     &state,
-                    "SKIP".yellow().to_string(),
+                    vec!["SKIP".yellow().to_string()],
                     vec![],
                 );
             }
@@ -350,7 +352,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
                 node,
                 &params.graph,
                 &state,
-                status.to_string(),
+                vec![status.to_string()],
                 vec![outputs.clone(), mismatches.clone()],
             );
         }
@@ -375,7 +377,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
                 node,
                 &params.graph,
                 &state,
-                status.to_string(),
+                vec![status.to_string()],
                 vec![outputs, mismatches],
             );
         }
@@ -386,17 +388,79 @@ fn handle_compare(params: Parameters) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug)]
+struct Instant(StdInstant, f64, f64);
+
+impl Instant {
+    /// Returns the current instant.
+    pub fn now() -> Instant {
+        Instant(StdInstant::now(), 0., 0.)
+    }
+
+    /// Returns the number of elapsed real seconds since the instant.
+    pub fn elapsed_real(&self) -> f64 {
+        let duration = self.0.elapsed();
+        duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1.0e-9
+    }
+
+    /// Returns the number of elapsed user seconds since the instant.
+    pub fn elapsed_user(&self) -> f64 {
+        rusage::get_memory_usage().unwrap().user_time
+    }
+
+    /// Returns the number of elapsed system seconds since the instant.
+    pub fn elapsed_sys(&self) -> f64 {
+        rusage::get_memory_usage().unwrap().system_time
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct Measure {
+    pub total_real: f64,
+    pub total_user: f64,
+    pub total_sys: f64,
+    pub avg_real: f64,
+    pub avg_user: f64,
+    pub avg_sys: f64,
+}
+
+impl Measure {
+    /// Returns an empty measure.
+    pub fn new() -> Measure {
+        Measure { ..Default::default() }
+    }
+
+    /// Returns a measure from a given instant and iterations.
+    pub fn since(start: &Instant, iters: u64) -> Measure {
+        let total_real = start.elapsed_real();
+        let total_user = start.elapsed_user();
+        let total_sys = start.elapsed_sys();
+
+        Measure {
+            total_real, total_user, total_sys,
+            avg_real: total_real / iters as f64,
+            avg_user: total_user / iters as f64,
+            avg_sys: total_sys / iters as f64,
+        }
+    }
+}
+
+impl std::ops::AddAssign for Measure {
+    fn add_assign(&mut self, other: Measure) {
+        *self = Measure {
+            total_real: self.total_real + other.total_real,
+            total_user: self.total_user + other.total_user,
+            total_sys: self.total_sys + other.total_sys,
+            avg_real: self.avg_real + other.avg_real,
+            avg_user: self.avg_user + other.avg_user,
+            avg_sys: self.avg_sys + other.avg_sys,
+        };
+    }
+}
+
 /// Handles the `profile` subcommand.
 fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
     use colored::Colorize;
-
-    // The number of seconds since a start time as an f64.
-    macro_rules! elapsed_sec {
-        ($start:ident) => {{
-            let duration = $start.elapsed();
-            duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1.0e-9
-        }};
-    }
 
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?;
@@ -410,8 +474,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
 
-    let mut total = 0.;
-    let mut total_avg = 0.;
+    let mut global = Measure::new();
     let capacity = model.nodes().len();
     let mut nodes = Vec::with_capacity(capacity);
     let mut operations = HashMap::with_capacity(capacity);
@@ -436,13 +499,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
         if node.op_name == "Placeholder" {
             if log_enabled!(Info) {
-                print_node(
-                    node,
-                    &params.graph,
-                    &state,
-                    "SKIP".yellow().to_string(),
-                    vec![],
-                );
+                print_node(node, &params.graph, &state, vec!["SKIP".yellow().to_string()], vec![]);
             }
 
             continue;
@@ -451,27 +508,27 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
         let mut iters = 0;
         let start = Instant::now();
 
-        while iters < max_iters && elapsed_sec!(start) < (max_time as f64 * 1e-3) {
+        while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
             state.compute_one(n)?;
             iters += 1;
         }
 
-        let time = elapsed_sec!(start); // in secs.
-        let time_avg = time / iters as f64; // in secs.
-        let status = format!("{:.3} ms/i", time_avg * 1e3).white();
+        let measure = Measure::since(&start, iters);
 
         // Print the results for the node.
         if log_enabled!(Info) {
-            print_node(node, &params.graph, &state, status.to_string(), vec![]);
+            print_node(node, &params.graph, &state, vec![
+                format!("{:.3} ms/i", measure.avg_real * 1e3).white().to_string()
+            ], vec![]);
         }
 
-        total += time;
-        total_avg += time_avg;
-        nodes.push((node, time_avg));
-        let mut pair = operations.entry(node.op_name.as_str()).or_insert((0., 0., 0));
-        pair.0 += time;
-        pair.1 += time_avg;
-        pair.2 += 1;
+        global += measure;
+        nodes.push((node, measure));
+        let mut pair = operations
+            .entry(node.op_name.as_str())
+            .or_insert((Measure::new(), 0));
+        pair.0 += measure;
+        pair.1 += 1;
     }
 
     if atty::is(atty::Stream::Stdout) {
@@ -483,28 +540,45 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     println!();
     println!("Most time consuming nodes:");
-    nodes.sort_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap().reverse());
-    for (node, time_avg) in nodes.iter().take(5) {
-        let status = format!(
-            "{} ({:.2?}%)",
-            format!("{:.3} ms/i", time_avg * 1e3).white(),
-            *time_avg / total_avg * 100.
+    nodes.sort_by(|(_, a), (_, b)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
+    for (node, measure) in nodes.iter().take(5) {
+        let status_real = format!(
+            "Real: {} ({:.2?}%)",
+            format!("{:.3} ms/i", measure.avg_real * 1e3).white(),
+            measure.avg_real / global.avg_real * 100.
         );
 
-        print_node(node, &params.graph, &state, status.to_string(), vec![]);
+        let status_user = format!(
+            "User: {} ({:.2?}%)",
+            format!("{:.3} ms/i", measure.avg_user * 1e3).white(),
+            measure.avg_user / global.avg_user * 100.
+        );
+
+        let status_sys = format!(
+            "Sys: {} ({:.2?}%)",
+            format!("{:.3} ms/i", measure.avg_sys * 1e3).white(),
+            measure.avg_sys / global.avg_sys * 100.
+        );
+
+        print_node(
+            node,
+            &params.graph,
+            &state,
+            vec![status_real.to_string(), status_user.to_string(), status_sys.to_string()],
+            vec![]
+        );
     }
 
     println!();
-    println!(
-        "Total execution time (for {} nodes): {}.",
-        nodes.len(),
-        format!("{:.3} ms/i", total_avg * 1e3).yellow().bold()
-    );
+    println!("Total execution time (for {} nodes):", nodes.len());
+    println!("- Real: {}.", format!("{:.3} ms/i", global.avg_real * 1e3).yellow().bold());
+    println!("- User: {}.", format!("{:.3} ms/i", global.avg_user * 1e3).yellow().bold());
+    println!("- Sys: {}.", format!("{:.3} ms/i", global.avg_sys * 1e3).yellow().bold());
 
     if log_enabled!(Info) {
         println!(
-            "({} in total, with max_iters={:e} and max_time={:?}ms.)",
-            format!("{:.3} ms", total * 1e3).white(),
+            "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
+            format!("{:.3} ms", global.total_real * 1e3).white(),
             max_iters as f32,
             max_time,
         );
@@ -512,21 +586,35 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     println!();
     println!("Most time consuming operations:");
-    let mut operations: Vec<_> = operations.iter().map(|(o, (t, ta, c))| (o, t, ta, c)).collect();
-    operations.sort_by(|(_, _, a, _), (_, _, b, _)| a.partial_cmp(b).unwrap().reverse());
-    for (operation, time, time_avg, count) in operations.iter().take(5) {
+    let mut operations: Vec<_> = operations.iter().map(|(o, (measure, c))| (o, measure, c)).collect();
+    operations.sort_by(|(_, a, _), (_, b, _)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
+    for (operation, measure, count) in operations.iter().take(5) {
         println!(
-            "- {} (for {} nodes): {} ({:.2?}%). {}",
-            operation.blue().bold(), count,
-            format!("{:.3} ms/i", *time_avg * 1e3).white().bold(),
-            *time_avg / total_avg * 100.,
-
-            if log_enabled!(Info) {
-                format!("{:.3} ms in total.", *time * 1e3)
-            } else {
-                "".to_string()
-            }
+            "- {} (for {} nodes):",
+            operation.blue().bold(), count
         );
+
+        println!(
+            "    - Real: {} ({:.2?}%).",
+            format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
+            measure.avg_real / global.avg_real * 100.
+        );
+
+        println!(
+            "    - User: {} ({:.2?}%).",
+            format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
+            measure.avg_user / global.avg_user * 100.
+        );
+
+        println!(
+            "    - Sys: {} ({:.2?}%).",
+            format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
+            measure.avg_sys / global.avg_sys * 100.
+        );
+
+        if log_enabled!(Info) {
+            println!("    - {:.3} ms in total.", measure.total_real * 1e3);
+        }
     }
 
     Ok(())
