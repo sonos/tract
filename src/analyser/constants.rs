@@ -134,6 +134,7 @@ fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
 ///   end up storing two large constants instead of one while only getting a
 ///   neglectible performance boost from the operation.
 ///
+/// ```text
 ///                                     +---------------------+
 ///                                 +--^+ Simple operation 1  +-->
 ///             +---------------+   |   +---------------------+
@@ -141,6 +142,7 @@ fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
 ///             +---------------+   |   +---------------------+
 ///                                 +--^+ Simple operation 2  +-->
 ///                                     +---------------------+
+/// ```
 ///
 /// - We could also search for the lowest common ancestor of all the sinks in
 ///   each connected component, and prune every node and edge that isn't part

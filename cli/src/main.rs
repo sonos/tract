@@ -16,6 +16,8 @@ extern crate simplelog;
 extern crate terminal_size;
 extern crate textwrap;
 extern crate tfdeploy;
+extern crate pbr;
+extern crate atty;
 
 use std::collections::HashMap;
 use std::process;
@@ -30,6 +32,7 @@ use tfdeploy::tfpb;
 use tfdeploy::Tensor;
 use tfpb::graph::GraphDef;
 use tfpb::types::DataType;
+use pbr::ProgressBar;
 
 use errors::*;
 use format::print_header;
@@ -416,14 +419,20 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
 
+    let mut progress = ProgressBar::new(plan.len() as u64);
+
     if log_enabled!(Info) {
         println!();
-        print_header(format!("Detailed profiling for {}:", params.name), "white");
+        print_header(format!("Profiling for {}:", params.name), "white");
     }
 
     // Then execute the plan while profiling each step.
     for n in plan {
         let node = model.get_node_by_id(n)?;
+
+        if atty::is(atty::Stream::Stdout) {
+            progress.inc();
+        }
 
         if node.op_name == "Placeholder" {
             if log_enabled!(Info) {
@@ -443,14 +452,13 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
         let start = Instant::now();
 
         while iters < max_iters && elapsed_sec!(start) < (max_time as f64 * 1e-3) {
-            // println!("{:?} {:?} {:?}", elapsed_sec!(start), max_time, (max_time as f64 * 1e-3));
             state.compute_one(n)?;
             iters += 1;
         }
 
         let time = elapsed_sec!(start); // in secs.
         let time_avg = time / iters as f64; // in secs.
-        let status = format!("{:.3} ms", time_avg * 1e3).white();
+        let status = format!("{:.3} ms/i", time_avg * 1e3).white();
 
         // Print the results for the node.
         if log_enabled!(Info) {
@@ -466,10 +474,11 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
         pair.2 += 1;
     }
 
-    if log_enabled!(Info) {
-        println!();
+    if atty::is(atty::Stream::Stdout) {
+        progress.finish_print("");
     }
 
+    println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
     println!();
@@ -480,14 +489,20 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     }
 
     println!();
-    println!("Total execution time (for {} nodes):", nodes.len());
-    println!("- {} on average.", format!("{:.3} ms", total_avg * 1e3).yellow().bold());
     println!(
-        "- {} in total (with max_iters={:e}, max_time={:?}ms).",
-        format!("{:.3} ms", total * 1e3).yellow().bold(),
-        max_iters as f32,
-        max_time,
+        "Total execution time (for {} nodes): {}.",
+        nodes.len(),
+        format!("{:.3} ms/i", total_avg * 1e3).yellow().bold()
     );
+
+    if log_enabled!(Info) {
+        println!(
+            "({} in total, with max_iters={:e} and max_time={:?}ms.)",
+            format!("{:.3} ms", total * 1e3).white(),
+            max_iters as f32,
+            max_time,
+        );
+    }
 
     println!();
     println!("Most time consuming operations:");
@@ -495,10 +510,16 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     operations.sort_by(|(_, _, a, _), (_, _, b, _)| a.partial_cmp(b).unwrap().reverse());
     for (operation, time, time_avg, count) in operations.iter().take(5) {
         println!(
-            "- {} (for {} nodes): {} on average, {} in total.",
+            "- {} (for {} nodes): {} ({:.2?}%). {}",
             operation.blue().bold(), count,
-            format!("{:.3} ms", *time_avg * 1e3).white().bold(),
-            format!("{:.3} ms", *time * 1e3).white().bold(),
+            format!("{:.3} ms/i", *time_avg * 1e3).white().bold(),
+            *time_avg / total_avg * 100.,
+
+            if log_enabled!(Info) {
+                format!("{:.3} ms in total.", *time * 1e3)
+            } else {
+                "".to_string()
+            }
         );
     }
 
