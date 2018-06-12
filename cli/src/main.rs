@@ -23,8 +23,8 @@ use std::time::Instant;
 
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
-use tfdeploy::analyser::Analyser;
-use tfdeploy::analyser::constants;
+// use tfdeploy::analyser::Analyser;
+// use tfdeploy::analyser::constants;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Tensor;
@@ -48,8 +48,8 @@ mod graphviz;
 mod utils;
 
 /// The default maximum for iterations and time.
-const DEFAULT_MAX_ITERS: u32 = 10_000;
-const DEFAULT_MAX_TIME: u32 = 10_000;
+const DEFAULT_MAX_ITERS: u64 = 100_000;
+const DEFAULT_MAX_TIME: u64 = 200;
 
 /// Structure holding the parsed parameters.
 struct Parameters {
@@ -100,7 +100,7 @@ fn main() {
             (@arg max_iters: -n [max_iters]
                 "Sets the maximum number of iterations for each node [default: 10_000].")
             (@arg max_time: -t [max_time]
-                "Sets the maximum execution time for each node (in ns) [default: 10_000]."))
+                "Sets the maximum execution time for each node (in ms) [default: 500]."))
 
         (@subcommand analyse =>
             (about: "Analyses the graph to infer properties about tensors (experimental)."))
@@ -146,11 +146,11 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
             params,
             match m.value_of("max_iters") {
                 None => DEFAULT_MAX_ITERS,
-                Some(s) => s.parse::<u32>()?,
+                Some(s) => s.parse::<u64>()?,
             },
             match m.value_of("max_time") {
                 None => DEFAULT_MAX_TIME,
-                Some(s) => s.parse::<u32>()?,
+                Some(s) => s.parse::<u64>()?,
             },
         ),
 
@@ -384,14 +384,14 @@ fn handle_compare(params: Parameters) -> Result<()> {
 }
 
 /// Handles the `profile` subcommand.
-fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<()> {
+fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
     use colored::Colorize;
 
-    // The number of nanoseconds since a start time as an u32.
-    macro_rules! elapsed_ns {
+    // The number of seconds since a start time as an f64.
+    macro_rules! elapsed_sec {
         ($start:ident) => {{
             let duration = $start.elapsed();
-            duration.as_secs() as u32 * 1_000_000 + duration.subsec_nanos()
+            duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1.0e-9
         }};
     }
 
@@ -413,11 +413,11 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
     let mut nodes = Vec::with_capacity(capacity);
     let mut operations = HashMap::with_capacity(capacity);
 
-    let global_start = Instant::now();
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
 
     if log_enabled!(Info) {
+        println!();
         print_header(format!("Detailed profiling for {}:", params.name), "white");
     }
 
@@ -442,15 +442,15 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
         let mut iters = 0;
         let start = Instant::now();
 
-        while iters < max_iters && elapsed_ns!(start) < max_time {
+        while iters < max_iters && elapsed_sec!(start) < (max_time as f64 * 1e-3) {
+            // println!("{:?} {:?} {:?}", elapsed_sec!(start), max_time, (max_time as f64 * 1e-3));
             state.compute_one(n)?;
             iters += 1;
         }
 
-        let elapsed = elapsed_ns!(start);
-        let time = elapsed as f64 * 1e-6;
-        let time_avg = elapsed as f64 / iters as f64 * 1e-6;
-        let status = format!("{:.3} ms", time_avg).white();
+        let time = elapsed_sec!(start); // in secs.
+        let time_avg = time / iters as f64; // in secs.
+        let status = format!("{:.3} ms", time_avg * 1e3).white();
 
         // Print the results for the node.
         if log_enabled!(Info) {
@@ -460,13 +460,11 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
         total += time;
         total_avg += time_avg;
         nodes.push((node, time, status));
-        let mut pair = operations.entry(node.op_name.as_str()).or_insert((0., 0));
+        let mut pair = operations.entry(node.op_name.as_str()).or_insert((0., 0., 0));
         pair.0 += time;
-        pair.1 += 1;
+        pair.1 += time_avg;
+        pair.2 += 1;
     }
-
-    let global_elapsed = elapsed_ns!(global_start);
-    let global_time = global_elapsed as f64 * 1e-6;
 
     if log_enabled!(Info) {
         println!();
@@ -482,42 +480,25 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
     }
 
     println!();
-    println!("Total execution time:");
+    println!("Total execution time (for {} nodes):", nodes.len());
+    println!("- {} on average.", format!("{:.3} ms", total_avg * 1e3).yellow().bold());
     println!(
-        "{} (for {} nodes).",
-        format!("{:.3} ms", global_time).yellow().bold(),
-        nodes.len()
+        "- {} in total (with max_iters={:e}, max_time={:?}ms).",
+        format!("{:.3} ms", total * 1e3).yellow().bold(),
+        max_iters as f32,
+        max_time,
     );
-
-    println!();
-    println!("Total node execution time:");
-    println!("- {} in total.", format!("{:.3} ms", total).purple().bold());
-    println!(
-        "- {} averaged.",
-        format!("{:.3} ms", total_avg).purple().bold()
-    );
-
-    // We don't display this when verbose logging is enabled, because the results
-    // are skewed by the time it takes to call `print_node` for each node.
-    if !log_enabled!(Info) {
-        println!(
-            "- {} of total execution time.",
-            format!("{:.0}%", total / global_time * 100.)
-                .purple()
-                .bold()
-        );
-    }
 
     println!();
     println!("Most time consuming operations:");
-    let mut operations: Vec<_> = operations.iter().map(|(o, (t, c))| (o, t, c)).collect();
-    operations.sort_by(|(_, a, _), (_, b, _)| a.partial_cmp(b).unwrap().reverse());
-    for (operation, time, count) in operations.iter().take(5) {
+    let mut operations: Vec<_> = operations.iter().map(|(o, (t, ta, c))| (o, t, ta, c)).collect();
+    operations.sort_by(|(_, _, a, _), (_, _, b, _)| a.partial_cmp(b).unwrap().reverse());
+    for (operation, time, time_avg, count) in operations.iter().take(5) {
         println!(
-            "- {}: {:.3} ms (for {} nodes).",
-            operation.blue().bold(),
-            time,
-            count
+            "- {} (for {} nodes): {} on average, {} in total.",
+            operation.blue().bold(), count,
+            format!("{:.3} ms", *time_avg * 1e3).white().bold(),
+            format!("{:.3} ms", *time * 1e3).white().bold(),
         );
     }
 
@@ -525,50 +506,6 @@ fn handle_profile(params: Parameters, max_iters: u32, max_time: u32) -> Result<(
 }
 
 /// Handles the `analyse` subcommand.
-fn handle_analyse(params: Parameters) -> Result<()> {
-    let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output)?.id;
-
-    info!("Starting the analysis.");
-
-    let mut analyser = Analyser::new(model, output)?;
-    let result = analyser.run();
-
-    // DEBUG(liautaud): Displays the connected components.
-    // for component in constants::connected_components(&analyser)? {
-    //     use constants::Element::*;
-
-    //     println!("Current constant component: {:?}", component);
-    //     let mut red_nodes = vec![];
-    //     let mut red_edges = vec![];
-
-    //     for element in component.elements {
-    //         match element {
-    //             Node(n) => red_nodes.push(n),
-    //             Edge(n) => red_edges.push(n),
-    //         }
-    //     }
-
-    //     graphviz::display_graph(&analyser, &red_nodes, &red_edges)?;
-    // }
-
-    info!(
-        "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",
-        format!("{:?}", analyser.nodes).into_bytes().len(),
-        analyser.nodes.len()
-    );
-
-    // graphviz::display_graph(&analyser, &vec![], &vec![])?;
-    constants::prune_constants(&mut analyser)?;
-    // graphviz::display_graph(&analyser, &vec![], &vec![])?;
-    analyser.remove_unused();
-    graphviz::display_graph(&analyser, &vec![], &vec![])?;
-
-    info!(
-        "Ending size of the graph: approx. {:?} bytes for {:?} nodes.",
-        format!("{:?}", analyser.nodes).into_bytes().len(),
-        analyser.nodes.len()
-    );
-
-    Ok(result?)
+fn handle_analyse(_params: Parameters) -> Result<()> {
+    unimplemented!()
 }
