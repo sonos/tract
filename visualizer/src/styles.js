@@ -20,13 +20,21 @@ export const graphStyle = [
   },
 
   {
+    selector: 'node.highlighted',
+    style: {
+      'border-style': 'dashed',
+      'border-color': '#999',
+    }
+  },
+
+  {
     selector: 'node[op != "Const"]',
     style: {
       'shape': 'roundrectangle',
       'font-size': '11px',
       'width': 'label',
-      'padding': '8px',
-      'height': '15px',
+      'padding': '12px',
+      'height': '8px',
       'text-valign': 'center',
     }
   },
@@ -44,11 +52,11 @@ export const graphStyle = [
   },
 
   {
-    selector: 'node[type = "metanode"]',
+    selector: 'node[op = "Meta"]',
     style: {
       'font-size': '9px',
       'shape': 'roundrectangle',
-      'padding': '8px',
+      'padding': '10px',
       'background-color': '#eee',
       'border-color': '#ddd',
       'border-style': 'dashed',
@@ -62,10 +70,11 @@ export const graphStyle = [
   },
 
   {
-    selector: 'node[type = "metanode"].cy-expand-collapse-collapsed-node',
+    selector: 'node[op = "Meta"].cy-expand-collapse-collapsed-node',
     style: {
       'font-size': '11px',
-      'height': '15px',
+      'padding': '12px',
+      'height': '8px',
       'width': 'label',
       'text-rotation': '0deg',
       'text-valign': 'center',

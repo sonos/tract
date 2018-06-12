@@ -149,7 +149,7 @@ export class Hierarchy {
           id: this.paths[k].mapping,
           name: this.paths[k].mapping,
           oid: -1,
-          type: 'metanode',
+          op: 'Meta',
           parent: this.getParent(k),
         }
       }

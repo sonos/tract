@@ -2,7 +2,7 @@
   <v-app>
     <v-toolbar color="indigo" dark fixed app>
       <v-toolbar-title class="mx-4">
-        TFDeploy Visualizer
+        TFVisualizer
       </v-toolbar-title>
 
       <v-text-field
