@@ -22,7 +22,22 @@
     </v-toolbar>
 
     <v-content>
-      <graph-area style="width: 100%; height: 100%;" :graph="graph"></graph-area>
+      <graph-area v-if="graph" style="width: 100%; height: 100%;" :graph="graph"></graph-area>
+
+      <v-container v-else fill-height>
+        <v-layout align-center>
+          <v-flex>
+            <h2 class="display-2">Welcome to TFVisualizer</h2>
+            <span class="subheading">To get started, generate an analyser dump of your model by running <code>cli &lt;model&gt; --size &lt;size&gt; analyse</code> and load it.</span>
+            <v-divider class="my-3"></v-divider>
+            <v-btn
+              large
+              color="primary"
+              class="mx-0"
+              @click="$refs.input.open()">Load a dump</v-btn>
+          </v-flex>
+        </v-layout>
+      </v-container>
     </v-content>
 
     <json-input
