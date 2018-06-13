@@ -546,19 +546,19 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     nodes.sort_by(|(_, a), (_, b)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
     for (node, measure) in nodes.iter().take(5) {
         let status_real = format!(
-            "Real: {} ({:.2?}%)",
+            "Real: {} ({:.1?}%)",
             format!("{:.3} ms/i", measure.avg_real * 1e3).white(),
             measure.avg_real / global.avg_real * 100.
         );
 
         let status_user = format!(
-            "User: {} ({:.2?}%)",
+            "User: {} ({:.1?}%)",
             format!("{:.3} ms/i", measure.avg_user * 1e3).white(),
             measure.avg_user / global.avg_user * 100.
         );
 
         let status_sys = format!(
-            "Sys: {} ({:.2?}%)",
+            "Sys: {} ({:.1?}%)",
             format!("{:.3} ms/i", measure.avg_sys * 1e3).white(),
             measure.avg_sys / global.avg_sys * 100.
         );

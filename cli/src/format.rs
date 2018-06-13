@@ -76,14 +76,14 @@ fn build_header_wide(cols: usize, op: String, name: String, status: Vec<String>)
 
     let mut name_table = table!([
         " Name: ",
-        name.as_str(),
+        format!("{:1$}", textwrap::fill(name.as_str(), cols - 46), cols - 46),
     ]);
 
     name_table.set_format(format_none());
 
     let status_row = pt::row::Row::new(
         status.iter().map(|s| cell!(
-            format!("{:^1$}", s, cols / status.len()).bold()
+            format!("{:^1$}", s, cols / status.len() + 4).bold()
         )).collect()
     );
 
