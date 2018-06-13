@@ -1,11 +1,18 @@
 export const graphStyle = [
   {
-    selector: 'node',
+    selector: 'edge, node',
     style: {
       'font-size': '9px',
-      'border-width': '1px',
-      'label': 'data(name)',
+      'label': 'data(label)',
+      'text-wrap': 'wrap',
       'font-family': 'Space Mono, monospace'
+    }
+  },
+
+  {
+    selector: 'node',
+    style: {
+      'border-width': '1px',
     }
   },
 
@@ -22,8 +29,8 @@ export const graphStyle = [
   {
     selector: 'node.highlighted',
     style: {
-      'border-style': 'dashed',
-      'border-color': '#999',
+      'border-style': 'dotted',
+      'border-color': '#666',
     }
   },
 
@@ -88,12 +95,35 @@ export const graphStyle = [
   {
     selector: 'edge',
     style: {
-      'width': 1,
+      'width': '1px',
       'line-color': '#ccc',
       'curve-style': 'bezier',
       'target-arrow-color': '#ccc',
       'target-arrow-shape': 'vee',
       'arrow-scale': '.8',
+      'color': '#999',
+      'font-size': '8px',
+      'text-background-color': '#fff',
+      'text-background-opacity': '.5',
+      'text-background-padding': '2px',
+      'text-background-shape': 'roundrectangle',
     }
-  }
+  },
+
+  {
+    selector: 'edge[?constant]',
+    style: {
+      'line-style': 'dashed',
+      'label': '',
+    }
+  },
+
+  {
+    selector: 'edge.highlighted',
+    style: {
+      'line-style': 'dotted',
+      'line-color': '#666',
+      'target-arrow-color': '#666',
+    }
+  },
 ]

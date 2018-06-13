@@ -2,24 +2,33 @@
   <div class="graph-container" ref="container">
     <v-card v-if="highlighted" class="node-infos">
       <v-card-title primary-title>
-        <div>
+        <div v-if="highlighted.is('node')">
           <div class="headline">{{ highlighted.id() }}</div>
-          <span class="grey--text">Operation: {{ highlighted.data('op') }}</span>
+          <div class="grey--text">Operation: {{ highlighted.data('op') }}</div>
+        </div>
+        <div v-else>
+          <div class="headline">
+            {{ hierarchy.getName(highlighted.data('source')) }}
+              &rarr;
+            {{ hierarchy.getName(highlighted.data('target')) }}
+          </div>
+          <div class="grey--text">
+            Datatype: {{ highlighted.data('other').fact.datatype | typeToString }}
+          </div>
+          <div class="grey--text">
+            Shape: {{ highlighted.data('other').fact.shape | shapeToString }}
+          </div>
+          <div v-if="highlighted.data('other').fact.value.Only">
+            <v-divider class="my-3"></v-divider>
+            <span class="grey--text">
+              Value:
+            </span>
+            <value-display
+              :value="highlighted.data('other').fact.value">
+            </value-display>
+          </div>
         </div>
       </v-card-title>
-<!--       <v-card-actions>
-        <v-btn flat>Share</v-btn>
-        <v-btn flat color="primary">Explore</v-btn>
-        <v-spacer></v-spacer>
-        <v-btn icon @click.native="show = !show">
-          <v-icon>{{ show ? 'keyboard_arrow_down' : 'keyboard_arrow_up' }}</v-icon>
-        </v-btn>
-      </v-card-actions>
-      <v-slide-y-transition>
-        <v-card-text v-show="show">
-          I'm a thing. But, like most politicians, he promised more than he could deliver. You won't have time for sleeping, soldier, not with all the bed making you'll be doing. Then we'll go with that data file! Hey, you add a one and two zeros to that or we walk! You're going to do his laundry? I've got to find a way to escape.
-        </v-card-text>
-      </v-slide-y-transition> -->
     </v-card>
     <div class="graph-area" ref="area"></div>
   </div>
@@ -51,7 +60,8 @@
 </style>
 
 <script>
-  import { Hierarchy, stringToColor } from './helpers'
+  import ValueDisplay from './ValueDisplay.vue'
+  import * as helpers from './helpers'
   import { graphStyle } from './styles'
 
   import jquery from 'jquery'
@@ -72,11 +82,20 @@
     },
 
     data: () => ({
+      hierarchy: null,
       instance: null,
       parsed: null,
       highlighted: null,
-      show: false,// FIXME
     }),
+
+    filters: {
+      typeToString: helpers.typeToString,
+      shapeToString: helpers.shapeToString,
+    },
+
+    components: {
+      ValueDisplay
+    },
 
     watch: {
       graph(value) {
@@ -106,30 +125,34 @@
           this.instance.destroy()
         }
 
-        let hierarchy = new Hierarchy(this.graph[0])
+        this.hierarchy = new helpers.Hierarchy(this.graph[0])
 
         let nodes = this.graph[0]
           .map(n => ({
             data: {
               id: n.name,
-              op: n.op_name,
               oid: n.id,
-              name: hierarchy.getName(n.name),
-              parent: hierarchy.getParent(n.name),
-              background: 'hsl(' + stringToColor(n.op_name) + ', 100%, 90%)',
-              border: 'hsl(' + stringToColor(n.op_name) + ', 40%, 80%)',
+              parent: this.hierarchy.getParent(n.name),
+              label: this.hierarchy.getName(n.name),
+              op: n.op_name,
+              background: 'hsl(' + helpers.stringToColor(n.op_name) + ', 100%, 90%)',
+              border: 'hsl(' + helpers.stringToColor(n.op_name) + ', 40%, 80%)',
+              other: n,
             }
           }))
 
-        let metanodes = hierarchy.getMetanodes()
+        let metanodes = this.hierarchy.getMetanodes()
 
         let edges = this.graph[1]
           .filter(e => e.from_node !== null && e.to_node !== null)
           .map(e => ({
             data: {
               id: 'e' + e.id,
-              source: hierarchy.getPath(e.from_node),
-              target: hierarchy.getPath(e.to_node),
+              source: this.hierarchy.getPath(e.from_node),
+              target: this.hierarchy.getPath(e.to_node),
+              label: helpers.shapeToString(e.fact.shape),
+              constant: !!e.fact.value.Only,
+              other: e,
             }
           }))
 
@@ -189,11 +212,11 @@
         // Prevent selection of expanded metanodes.
         // TODO(liautaud)
 
-        // Handle regular node highlighting.
+        // Handle node and edge highlighting.
         this.instance
           .on('click', e => {
             if (e.target === this.instance ||
-                !e.target.is('node[op != "Meta"]')) {
+                e.target.is('node[op = "Meta"]')) {
               this.highlighted = null
             } else {
               this.highlighted = e.target

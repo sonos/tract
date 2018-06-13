@@ -13,6 +13,26 @@ export function stringToColor(str) {
   return hash % 360
 }
 
+/** Returns the string corresponding to a type fact. */
+export function typeToString(type) {
+  if (!type.Only) {
+    return 'Any'
+  }
+
+  return type.Only
+}
+
+/** Returns the string corresponding to a shape fact. */
+export function shapeToString(shape) {
+  let dims = shape.dims.map(d => (d.Only) ? d.Only.toString() : '_')
+
+  if (shape.open) {
+    dims.push('...')
+  }
+
+  return '[' + dims.join(', ') + ']'
+}
+
 export class Hierarchy {
   constructor(nodes) {
     // The node path corresponding to each node index.
@@ -147,10 +167,11 @@ export class Hierarchy {
       return {
         data: {
           id: this.paths[k].mapping,
-          name: this.paths[k].mapping,
           oid: -1,
-          op: 'Meta',
           parent: this.getParent(k),
+
+          op: 'Meta',
+          label: this.paths[k].mapping,
         }
       }
     })

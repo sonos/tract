@@ -13,7 +13,7 @@ const kweak = kiwi.Strength.weak
 
 // Positionning constants, in pixels.
 const xNodeSep = 150
-const yNodeSep = 50
+const yNodeSep = 55
 const xConstSep = 40
 const yConstSep = 30
 

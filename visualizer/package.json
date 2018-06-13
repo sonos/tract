@@ -15,6 +15,7 @@
     "cytoscape-klay": "^3.1.1",
     "jquery": "^3.3.1",
     "kiwi.js": "^1.0.2",
+    "numjs": "^0.16.0",
     "vue": "^2.5.3",
     "vuetify": "^1.0.0"
   },
