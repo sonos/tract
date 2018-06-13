@@ -7,7 +7,7 @@ use Node;
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
 /// replaced with a constant node containing a copy of that tensor.
-const COPY_THRESHOLD: usize = 100;
+// const COPY_THRESHOLD: usize = 100;
 
 #[derive(Debug)]
 pub enum Element {
