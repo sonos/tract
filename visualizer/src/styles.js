@@ -55,6 +55,10 @@ export const graphStyle = [
       'text-margin-y': '-5px',
       'background-color': '#ddd',
       'border-color': '#bbb',
+      'text-background-color': '#fff',
+      'text-background-opacity': '.5',
+      'text-background-padding': '2px',
+      'text-background-shape': 'roundrectangle',
     }
   },
 
@@ -104,7 +108,7 @@ export const graphStyle = [
       'color': '#999',
       'font-size': '8px',
       'text-background-color': '#fff',
-      'text-background-opacity': '.5',
+      'text-background-opacity': '.4',
       'text-background-padding': '2px',
       'text-background-shape': 'roundrectangle',
     }

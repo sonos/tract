@@ -55,7 +55,9 @@
     top: 98px;
     right: 28px;
     z-index: 1000;
-    max-width: 500px;
+    max-width: 550px;
+    word-break: break-all;
+    word-wrap: break-word;
   }
 </style>
 
@@ -68,12 +70,14 @@
 
   import cytoscape from 'cytoscape'
   import dagre from 'cytoscape-dagre'
+  // import klay from 'cytoscape-klay'
   import expand from 'cytoscape-expand-collapse'
   import layout from './layout'
 
   // Register extensions.
   cytoscape.use(layout)
   cytoscape.use(dagre)
+  // cytoscape.use(klay)
   cytoscape.use(expand, jquery)
 
   export default {
@@ -168,15 +172,9 @@
           style: graphStyle,
         })
 
-        this.layout = this.instance.layout({
-          name: 'tensorflow',
-        })
-
         this.expand = this.instance.expandCollapse({
           layoutBy: {
-            // name: 'dagre',
             name: 'tensorflow',
-            // animate: 'end',
             randomize: false,
             fit: false,
             padding: 80,
@@ -186,10 +184,11 @@
         })
 
         this.expand.collapseAll()
-        this.layout.run()
 
-        this.instance.zoom(1.5)
-        this.instance.center()
+        setTimeout(() => {
+          this.instance.zoom(1.5)
+          this.instance.center()
+        }, 50)
 
         // Handle double click on metanodes.
         let clickTimer = null

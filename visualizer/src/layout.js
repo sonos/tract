@@ -8,14 +8,11 @@ const keq = kiwi.Operator.Eq
 const kge = kiwi.Operator.Ge
 const kle = kiwi.Operator.Le
 const kstrong = kiwi.Strength.strong
-const kweak = kiwi.Strength.weak
 
 
 // Positionning constants, in pixels.
-const xNodeSep = 150
-const yNodeSep = 55
-const xConstSep = 40
-const yConstSep = 30
+const xConstSep = 55
+const yConstSep = 40
 
 
 /**
@@ -34,10 +31,6 @@ class TensorflowLayout {
     this.nodes = options.eles.nodes()
     this.edges = options.eles.edges()
 
-    this.dagre = this.cy.layout({
-      name: 'dagre',
-    })
-
     let bb = options.boundingBox || {
       x1: 0,
       y1: 0,
@@ -53,116 +46,97 @@ class TensorflowLayout {
     this.bb = bb
   }
 
+  /** Position the nodes using a combination of the Dagre solver and a linear one. */
   run() {
-    try {
-      this.solveLinear()
-    } catch (e) {
-      this.solveDagre()
-    }
+    let nodes = this.nodes.filter('node[op != "Const"]')
+    let eles = nodes.union(nodes.edgesTo(nodes))
 
-    return this
-  }
+    // Position the non-constant nodes using Dagre.
+    let dagre = eles.layout({
+      name: 'dagre',
+      fit: false,
+      // TODO(liautaud)
+    })
 
-  /** Tries to position the nodes using the linear solver. */
-  solveLinear() {
-    console.log('Solving using the linear solver.')
+    dagre.run()
 
-    let nodes = this.nodes
+    // Position the constant nodes using the linear solver.
+    let consts = this.nodes.filter('node[op = "Const"]')
     let solver = new kiwi.Solver()
-    let xs = nodes.map(_ => new kvar())
-    let ys = nodes.map(_ => new kvar())
+    let xs = consts.map(_ => new kvar())
+    let ys = consts.map(_ => new kvar())
 
     let idx = {}
-    nodes.forEach((n, i) => idx[n.id()] = i)
+    consts.forEach((n, i) => idx[n.id()] = i)
 
-    nodes.forEach(n => {
+    consts.forEach(n => {
       let nid = idx[n.id()]
 
       solver.addEditVariable(xs[nid], kstrong)
       solver.addEditVariable(ys[nid], kstrong)
     })
 
-    // Add constraints to predecessors.
-    nodes.forEach(n => {
-      let nid = idx[n.id()]
+    consts.outgoers('node').forEach(n => {
+      let nx = n.position('x')
+      let ny = n.position('y')
       let nw = n.layoutDimensions().w
       let nh = n.layoutDimensions().h
 
-      /**
-       * Rules for non-constant predecessors.
-       */
-      let prevNodes = n.incomers().filter('node[op != "Const"]')
-      let prevNodesSize = prevNodes.length
-
-      prevNodes.forEach((m, i) => {
-        let mid = idx[m.id()]
-
-        // The successor is below all the predecessors.
-        solver.createConstraint(ys[nid], kge, new kexp(ys[mid], yNodeSep + nh / 2))
-
-        // All the predecessors are spaced from each other.
-        if (i > 0) {
-          let p = prevNodes[i - 1]
-          let pid = idx[p.id()]
-          let pw = n.layoutDimensions().w
-          solver.createConstraint(xs[mid], kge, new kexp(xs[pid], xNodeSep + pw / 2))
-        }
-      })
-
-      // The successor is aligned with the middle of the predecessors.
-      if (prevNodesSize > 0) {
-        let xmean = prevNodes.map(m => [1 / prevNodesSize, xs[idx[m.id()]]])
-        solver.createConstraint(xs[nid], keq, new kexp(...xmean), kstrong)
-      }
-
-      /**
-       * Rules for constant predecessors.
-       */
       let prevConsts = n.incomers().filter('node[op = "Const"]')
       let prevConstsSize = prevConsts.length
 
       prevConsts.forEach((m, i) => {
         let mid = idx[m.id()]
 
-        // The successor is left of all the constant predecessors.
-        solver.createConstraint(xs[nid], kge, new kexp(xs[mid], xConstSep + nw / 2))
+        let leftx = nx - (xConstSep + nw / 2);
+        let rightx = nx + (xConstSep + nw / 2);
+        let conflicts = nodes.some(o => {
+          // Ignore expanded meta-nodes.
+          if (o.isParent() && !o.hasClass('cy-expand-collapse-collapsed-node')) {
+            return false;
+          }
 
-        // All the constant predecessors are spaced from each other.
+          let ox = o.position('x')
+          let oy = o.position('y')
+          let ow = o.layoutDimensions().w
+          let oh = o.layoutDimensions().h
+
+          return ox - ow / 2 <= leftx &&
+                 leftx <= ox + ow / 2 &&
+                 oy - oh / 2 <= ny &&
+                 ny <= oy + oh / 2
+        })
+
+        // The constants are left of the successor if there is no conflict,
+        // and to its right otherwise.
+        if (!conflicts) {
+          solver.createConstraint(xs[mid], keq, leftx)
+        } else {
+          solver.createConstraint(xs[mid], keq, rightx)
+        }
+
+        // All the constants are spaced from each other.
         if (i > 0) {
           let pid = idx[prevConsts[i - 1].id()]
           solver.createConstraint(ys[mid], kge, new kexp(ys[pid], yConstSep))
         }
-
-        // All the constant predecessors are below the non-constant ones.
-        prevNodes.forEach(o => {
-          solver.createConstraint(ys[mid], kge, new kexp(ys[idx[o.id()]], yNodeSep / 3))
-        })
       })
 
-      // The successor is aligned with the middle of the predecessors.
-      if (prevConstsSize > 0) {
-        let ymean = prevConsts.map(m => [1 / prevConstsSize, ys[idx[m.id()]]])
-        solver.createConstraint(ys[nid], keq, new kexp(...ymean))
-      }
+      // The middle of the constants is aligned with the successor.
+      let ymean = prevConsts.map(m => [1 / prevConstsSize, ys[idx[m.id()]]])
+      solver.createConstraint(new kexp(...ymean), keq, ny)
     })
 
     solver.updateVariables()
-
-    this.nodes.layoutPositions(this, this.options, function(node){
+    consts.layoutPositions(this, this.options, function(node){
       node = typeof node === "object" ? node : this
       return {
         x: xs[idx[node.id()]].value(),
         y: ys[idx[node.id()]].value(),
       }
     })
-  }
 
-  /** Tries to position the nodes using Dagre. */
-  solveDagre() {
-    console.log('Solving using Dagre.')
-
-    // TODO(liautaud): Fix this when using collapse.
-    this.dagre.run()
+    return this
   }
 }
 
