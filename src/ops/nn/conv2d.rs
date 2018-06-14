@@ -51,6 +51,8 @@ impl<T: Datum> Op for Conv2D<T> {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        use analyser::DimFact::*;
+
         if inputs.len() != 2 {
             bail!("Conv2D operation only supports two inputs.");
         }
@@ -59,45 +61,35 @@ impl<T: Datum> Op for Conv2D<T> {
             return Ok(Some(output));
         }
 
-        // If we don't know the actual value, we can still compute the shape.
-        fn try_infer_forward_concrete_shape<T>(
-            op: &Conv2D<T>,
-            inputs: Vec<&TensorFact>,
-        ) -> Result<Option<ShapeFact>>
-        where
-            T: Datum,
-        {
-            let input_shape = unwrap_or_none!(inputs[0].shape.concretize());
-            let filter_shape = unwrap_or_none!(inputs[1].shape.concretize());
-
-            let shape = match (input_shape.as_slice(), filter_shape.as_slice()) {
-                (
-                    [batch, in_height, in_width, in_channels],
-                    [filter_height, filter_width, in_channels_2, out_channels],
-                ) if in_channels == in_channels_2 =>
-                {
-                    let (height, width) =
-                        op.0
-                            .adjusted_dim(*in_height, *in_width, (*filter_height, *filter_width));
-
-                    // TODO(liautaud): Take the data_format parameter into account.
-                    shapefact![(*batch), height, width, (*out_channels)]
+        let shape = match (inputs[0].shape.dims.as_slice(), inputs[1].shape.dims.as_slice()) {
+            ([batch, in_height, in_width, in_channels],
+             [filter_height, filter_width, in_channels_2, out_channels]) => {
+                if let (&Only(ic1), &Only(ic2)) = (in_channels, in_channels_2) {
+                    if ic1 != ic2 {
+                        bail!("The in_channels parameters of the input and filter must be equal.");
+                    }
                 }
 
-                _ => bail!("The input and filter dimensions are invalid."),
-            };
+                let (height, width) = match (in_height, in_width, filter_height, filter_width) {
+                    (&Only(ih), &Only(iw), &Only(fh), &Only(fw)) => {
+                        let (h, w) = self.0.adjusted_dim(ih, iw, (fh, fw));
+                        (Only(h), Only(w))
+                    },
 
-            Ok(Some(shape))
+                    _ => (Any, Any)
+                };
+
+                // TODO(liautaud): Take the data_format parameter into account.
+                ShapeFact::closed(vec![*batch, height, width, *out_channels])
+            }
+
+            _ if inputs[0].shape.open || inputs[1].shape.open => shapefact![_, _, _, _],
+            _ => bail!("The input and filter dimensions are invalid."),
         };
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: try_infer_forward_concrete_shape(self, inputs)?.unwrap_or(shapefact![
-                _,
-                _,
-                _,
-                _
-            ]),
+            shape,
             value: valuefact!(_),
         };
 
@@ -106,49 +98,36 @@ impl<T: Datum> Op for Conv2D<T> {
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        use analyser::DimFact::*;
+
         if outputs.len() < 1 {
             bail!("Conv2D operation only supports one output.");
         }
 
-        match outputs[0].shape.concretize() {
-            Some(shape) => match shape.as_slice() {
-                [batch, _, _, out_channels] => {
-                    let input = TensorFact {
-                        datatype: outputs[0].datatype,
-                        shape: shapefact![(*batch), _, _, _],
-                        value: valuefact!(_),
-                    };
+        let (input_shape, filter_shape) = match outputs[0].shape.dims.as_slice() {
+            [batch, _, _, out_channels] =>
+                (ShapeFact::closed(vec![*batch, Any, Any, Any]),
+                 ShapeFact::closed(vec![Any, Any, Any, *out_channels])),
 
-                    let filter = TensorFact {
-                        datatype: outputs[0].datatype,
-                        shape: shapefact![_, _, _, (*out_channels)],
-                        value: valuefact!(_),
-                    };
+            _ if outputs[0].shape.open =>
+                (shapefact![_, _, _, _], shapefact![_, _, _, _]),
 
-                    Ok(Some(vec![input, filter]))
-                }
+            _ => bail!("The output dimensions are invalid."),
+        };
 
-                _ => bail!("The output dimensions are invalid."),
-            },
+        let input = TensorFact {
+            datatype: outputs[0].datatype,
+            shape: input_shape,
+            value: valuefact!(_),
+        };
 
-            // If we don't have concrete dimensions yet, we can still
-            // give the shape that we want.
-            None => {
-                let input = TensorFact {
-                    datatype: outputs[0].datatype,
-                    shape: shapefact![_, _, _, _],
-                    value: valuefact!(_),
-                };
+        let filter = TensorFact {
+            datatype: outputs[0].datatype,
+            shape: filter_shape,
+            value: valuefact!(_),
+        };
 
-                let filter = TensorFact {
-                    datatype: outputs[0].datatype,
-                    shape: shapefact![_, _, _, _],
-                    value: valuefact!(_),
-                };
-
-                Ok(Some(vec![input, filter]))
-            }
-        }
+        Ok(Some(vec![input, filter]))
     }
 }
 

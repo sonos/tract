@@ -516,6 +516,9 @@ impl Op for Squeeze {
             return Ok(Some(output));
         }
 
+        // We can't say anything interesting if there are unknown dimensions,
+        // because they could turn out to be Only(1), and so Squeeze would
+        // have to remove them.
         let shape = match inputs[0].shape.concretize() {
             Some(shape) => self.squeeze_shape(shape)?.iter().collect(),
             None => shapefact![..],
