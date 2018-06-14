@@ -55,13 +55,15 @@ impl Op for Softmax {
             return Ok(Some(output));
         }
 
+        if let Some(v) = &inputs[0].shape.concretize() {
+            if v.len() != 2 {
+                bail!("Softmax operation doesn't support input shape {:?}.", v);
+            }
+        }
+
         let output = TensorFact {
             datatype: typefact!(DataType::DT_FLOAT),
-            shape: match &inputs[0].shape.concretize() {
-                Some(v) if v.len() == 2 => v.iter().collect(),
-                Some(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
-                _ => shapefact![_, _],
-            },
+            shape: inputs[0].shape.clone(),
             value: valuefact!(_),
         };
 
@@ -74,13 +76,15 @@ impl Op for Softmax {
             bail!("Softmax operation only supports one output.");
         }
 
+        if let Some(v) = &outputs[0].shape.concretize() {
+            if v.len() != 2 {
+                bail!("Softmax operation doesn't support output shape {:?}.", v);
+            }
+        }
+
         let input = TensorFact {
             datatype: typefact!(DataType::DT_FLOAT),
-            shape: match &outputs[0].shape.concretize() {
-                Some(v) if v.len() == 2 => v.iter().collect(),
-                Some(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
-                _ => shapefact![_, _],
-            },
+            shape: outputs[0].shape.clone(),
             value: valuefact!(_),
         };
 
