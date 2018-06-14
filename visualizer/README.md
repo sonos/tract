@@ -1,18 +1,21 @@
-# visualizer
+# TFVisualizer
 
 > A web-based visualizer for TFDeploy graphs.
 
-## Build Setup
+
+## Getting started.
+
+To get started, install and run the visualizer.
 
 ``` bash
-# install dependencies
+# Install dependencies.
 npm install
 
-# serve with hot reload at localhost:8080
+# Serve with hot reload at localhost:8080.
 npm run dev
 
-# build for production with minification
+# Build for production with minification.
 npm run build
 ```
 
-For detailed explanation on how things work, consult the [docs for vue-loader](http://vuejs.github.io/vue-loader).
+Then, generate an analyser dump of your model by running `cli <model> --size <size> analyse` and load it.
