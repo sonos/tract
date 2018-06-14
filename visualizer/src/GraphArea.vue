@@ -4,6 +4,7 @@
       <v-card-title primary-title>
         <div v-if="highlighted.is('node')">
           <div class="headline">{{ highlighted.id() }}</div>
+          <div class="grey--text">Index: {{ highlighted.data('oid') }}</div>
           <div class="grey--text">Operation: {{ highlighted.data('op') }}</div>
         </div>
         <div v-else>
@@ -11,6 +12,9 @@
             {{ hierarchy.getName(highlighted.data('source')) }}
               &rarr;
             {{ hierarchy.getName(highlighted.data('target')) }}
+          </div>
+          <div class="grey--text">
+            Index: {{ highlighted.data('oid') }}
           </div>
           <div class="grey--text">
             Datatype: {{ highlighted.data('other').fact.datatype | typeToString }}
@@ -152,6 +156,7 @@
           .map(e => ({
             data: {
               id: 'e' + e.id,
+              oid: e.id,
               source: this.hierarchy.getPath(e.from_node),
               target: this.hierarchy.getPath(e.to_node),
               label: helpers.shapeToString(e.fact.shape),
