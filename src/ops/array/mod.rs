@@ -141,8 +141,6 @@ impl Op for ExpandDims {
 
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        use analyser::unify_shape;
-
         if inputs.len() != 2 {
             bail!("ExpandDims operation only supports two inputs.");
         }
@@ -162,18 +160,26 @@ impl Op for ExpandDims {
 
         dims.sort();
 
-        let mut output_shape = vec![];
-        let mut previous_dim = 0;
-
-        for dim in dims {
-            output_shape.extend(repeat(dimfact!(_)).take(dim - previous_dim));
-            output_shape.push(dimfact!(1));
-            previous_dim = dim;
+        let mut output_dims = input_shape.dims.clone();
+        for index in dims {
+            if index > output_dims.len() && !input_shape.open {
+                bail!("Can't insert a new dimension when index > input_dim.");
+            } else if index > output_dims.len() {
+                let current_dim = output_dims.len();
+                output_dims.extend(repeat(dimfact!(_)).take(index - current_dim));
+                output_dims.push(dimfact!(1));
+            } else {
+                output_dims.insert(index, dimfact!(1));
+            }
         }
 
         let output = TensorFact {
             datatype: inputs[0].datatype,
-            shape: unify_shape(input_shape, &ShapeFact::open(output_shape))?,
+            shape: if input_shape.open {
+                ShapeFact::open(output_dims)
+            } else {
+                ShapeFact::closed(output_dims)
+            },
             value: valuefact!(_),
         };
 

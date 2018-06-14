@@ -74,6 +74,8 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
         }
     }
 
+    output_shape.reverse();
+
     Ok(Some(ShapeFact::closed(output_shape)))
 }
 
