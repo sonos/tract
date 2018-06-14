@@ -15,6 +15,7 @@ extern crate rand;
 extern crate simplelog;
 extern crate terminal_size;
 extern crate textwrap;
+#[macro_use]
 extern crate tfdeploy;
 extern crate pbr;
 extern crate atty;
@@ -28,6 +29,7 @@ use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::Analyser;
 use tfdeploy::analyser::constants;
+use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Tensor;
@@ -68,7 +70,7 @@ struct Parameters {
     inputs: Vec<usize>,
     output: usize,
 
-    sizes: Vec<usize>,
+    shape: Vec<usize>,
     datatype: DataType,
 }
 
@@ -180,8 +182,8 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         bail!("Size should be formatted as {size}x{...}x{type}.");
     }
 
-    let (datatype, sizes) = splits.split_last().unwrap();
-    let sizes: Vec<usize> = sizes.iter().map(|s| Ok(s.parse()?)).collect::<Result<_>>()?;
+    let (datatype, shape) = splits.split_last().unwrap();
+    let shape: Vec<usize> = shape.iter().map(|s| Ok(s.parse()?)).collect::<Result<_>>()?;
     let datatype = match datatype.to_lowercase().as_str() {
         "f64" => DataType::DT_DOUBLE,
         "f32" => DataType::DT_FLOAT,
@@ -212,7 +214,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         tf_model,
         inputs,
         output,
-        sizes,
+        shape,
         datatype,
     });
 
@@ -223,7 +225,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         tfd_model,
         inputs,
         output,
-        sizes,
+        shape,
         datatype,
     });
 }
@@ -249,7 +251,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
     for i in params.inputs {
         generated.push((
             tfd.get_node_by_id(i)?.name.as_str(),
-            random_tensor(params.sizes.clone(), params.datatype),
+            random_tensor(params.shape.clone(), params.datatype),
         ));
     }
 
@@ -471,7 +473,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        state.set_value(s, random_tensor(params.sizes.clone(), params.datatype))?;
+        state.set_value(s, random_tensor(params.shape.clone(), params.datatype))?;
     }
 
     info!("Running {} iterations max. for each node.", max_iters);
@@ -625,26 +627,30 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
 /// Handles the `analyse` subcommand.
 fn handle_analyse(params: Parameters) -> Result<()> {
+    use std::fs::File;
+    use std::io::prelude::*;
+
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?.id;
 
     info!("Starting the analysis.");
 
     let mut analyser = Analyser::new(model, output)?;
+
+    // Add hints for the input nodes.
+    for &i in &params.inputs {
+        analyser.hint(i, &TensorFact {
+            datatype: typefact!(params.datatype),
+            shape: params.shape.iter().collect(),
+            value: valuefact!(_),
+        })?;
+    }
+
     analyser.run()?;
 
-    #[cfg(not(feature = "serialize"))]
-    graphviz::display_graph(&analyser, &vec![], &vec![])?;
-
-    #[cfg(feature = "serialize")]
-    {
-        use std::fs::File;
-        use std::io::prelude::*;
-
-        let mut file = File::create("analyser.json")?;
-        file.write_all(analyser.as_json().as_bytes())?;
-        println!("Wrote the result of the analysis to analyser.json.");
-    }
+    let mut file = File::create("analyser.json")?;
+    file.write_all(analyser.as_json().as_bytes())?;
+    println!("Wrote the result of the analysis to analyser.json.");
 
     Ok(())
 }
@@ -658,24 +664,6 @@ fn handle_prune(params: Parameters) -> Result<()> {
     info!("Starting the analysis.");
 
     let mut analyser = Analyser::new(model, output)?;
-
-    // DEBUG(liautaud): Displays the connected components.
-    // for component in constants::connected_components(&analyser)? {
-    //     use constants::Element::*;
-
-    //     println!("Current constant component: {:?}", component);
-    //     let mut red_nodes = vec![];
-    //     let mut red_edges = vec![];
-
-    //     for element in component.elements {
-    //         match element {
-    //             Node(n) => red_nodes.push(n),
-    //             Edge(n) => red_edges.push(n),
-    //         }
-    //     }
-
-    //     graphviz::display_graph(&analyser, &red_nodes, &red_edges)?;
-    // }
 
     info!(
         "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",

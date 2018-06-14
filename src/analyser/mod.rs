@@ -187,6 +187,19 @@ impl Analyser {
         })
     }
 
+    /// Adds an user-provided tensor fact to the analyser.
+    pub fn hint(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
+        if node >= self.next_edges.len() {
+            bail!("There is no node with index {:?}.", node);
+        }
+
+        for &j in &self.next_edges[node] {
+            self.edges[j].fact = unify(fact, &self.edges[j].fact)?;
+        }
+
+        Ok(())
+    }
+
     /// Returns a model from the analyser.
     pub fn into_model(self) -> Model {
         unimplemented!()
@@ -357,9 +370,11 @@ impl Analyser {
                 .collect();
 
             let inferred = if self.current_direction {
-                node.op.infer_forward(sources)?
+                node.op.infer_forward(sources)
+                    .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?
             } else {
-                node.op.infer_backward(sources)?
+                node.op.infer_backward(sources)
+                    .map_err(|e| format!("While inferring backward for {}: {}", node.name, e))?
             };
 
             if inferred.is_none() {
@@ -386,7 +401,17 @@ impl Analyser {
                 &inferred[i]
             };
 
-            let unified = unify(fact, &self.edges[j].fact)?;
+            let unified = unify(fact, &self.edges[j].fact)
+                .map_err(|e| format!(
+                    "While unifying {} for node {:?}: {}",
+                    if self.current_direction {
+                        "forward"
+                    } else {
+                        "backward"
+                    },
+                    node.name, e
+                ))?;
+
             if unified != self.edges[j].fact {
                 self.edges[j].fact = unified;
                 changed = true;
