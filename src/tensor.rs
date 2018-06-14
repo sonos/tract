@@ -1,8 +1,11 @@
 //! `Tensor` is the equivalent of Tensorflow Tensor.
-
 use ndarray::prelude::*;
 use std::fmt::Debug;
 use tfpb::types::DataType;
+
+#[cfg(feature = "serialize")]
+use serde::ser::{Serialize, Serializer};
+
 pub trait Datum:
     Copy
     + Clone
@@ -176,6 +179,36 @@ where
 {
     fn cast_into(self) -> Option<U> {
         U::cast_from(self)
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl Serialize for Tensor
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        macro_rules! serialize_inner {
+            ($type:ident, $m:ident) => ({
+                let data = (
+                    stringify!($type),
+                    self.shape(),
+                    $m.iter().cloned().collect::<Vec<_>>()
+                );
+                data.serialize(serializer)
+            });
+        };
+
+        use Tensor::*;
+        match self {
+            F32(m) => serialize_inner!(f32, m),
+            F64(m) => serialize_inner!(f64, m),
+            I32(m) => serialize_inner!(i32, m),
+            I8(m) => serialize_inner!(i8, m),
+            U8(m) => serialize_inner!(u8, m),
+            String(m) => serialize_inner!(str, m),
+        }
     }
 }
 

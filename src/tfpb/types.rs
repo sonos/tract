@@ -8,6 +8,7 @@
 use protobuf::Message as Message_imported_for_functions;
 use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
 
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone,PartialEq,Eq,Debug,Hash)]
 pub enum DataType {
     DT_INVALID = 0,

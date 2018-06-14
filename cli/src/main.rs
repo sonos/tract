@@ -26,8 +26,8 @@ use std::time::Instant as StdInstant;
 
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
-// use tfdeploy::analyser::Analyser;
-// use tfdeploy::analyser::constants;
+use tfdeploy::analyser::Analyser;
+use tfdeploy::analyser::constants;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
 use tfdeploy::Tensor;
@@ -624,6 +624,74 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 }
 
 /// Handles the `analyse` subcommand.
-fn handle_analyse(_params: Parameters) -> Result<()> {
-    unimplemented!()
+fn handle_analyse(params: Parameters) -> Result<()> {
+    let model = params.tfd_model;
+    let output = model.get_node_by_id(params.output)?.id;
+
+    info!("Starting the analysis.");
+
+    let mut analyser = Analyser::new(model, output)?;
+    analyser.run()?;
+
+    #[cfg(not(feature = "serialize"))]
+    graphviz::display_graph(&analyser, &vec![], &vec![])?;
+
+    #[cfg(feature = "serialize")]
+    {
+        use std::fs::File;
+        use std::io::prelude::*;
+
+        let mut file = File::create("analyser.json")?;
+        file.write_all(analyser.as_json().as_bytes())?;
+        println!("Wrote the result of the analysis to analyser.json.");
+    }
+
+    Ok(())
+}
+
+/// Handles the `prune` subcommand.
+#[allow(dead_code)]
+fn handle_prune(params: Parameters) -> Result<()> {
+    let model = params.tfd_model;
+    let output = model.get_node_by_id(params.output)?.id;
+
+    info!("Starting the analysis.");
+
+    let mut analyser = Analyser::new(model, output)?;
+
+    // DEBUG(liautaud): Displays the connected components.
+    // for component in constants::connected_components(&analyser)? {
+    //     use constants::Element::*;
+
+    //     println!("Current constant component: {:?}", component);
+    //     let mut red_nodes = vec![];
+    //     let mut red_edges = vec![];
+
+    //     for element in component.elements {
+    //         match element {
+    //             Node(n) => red_nodes.push(n),
+    //             Edge(n) => red_edges.push(n),
+    //         }
+    //     }
+
+    //     graphviz::display_graph(&analyser, &red_nodes, &red_edges)?;
+    // }
+
+    info!(
+        "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",
+        format!("{:?}", analyser.nodes).into_bytes().len(),
+        analyser.nodes.len()
+    );
+
+    analyser.run()?;
+    constants::prune_constants(&mut analyser)?;
+    analyser.remove_unused();
+
+    info!(
+        "Ending size of the graph: approx. {:?} bytes for {:?} nodes.",
+        format!("{:?}", analyser.nodes).into_bytes().len(),
+        analyser.nodes.len()
+    );
+
+    Ok(())
 }
