@@ -1,12 +1,16 @@
 //! TensorFlow Ops
-
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
-
-use analyser::TensorFact;
+#[cfg(feature = "serialize")]
+use std::result::Result as StdResult;
 
 use {Result, Tensor};
+use analyser::TensorFact;
+use tfpb::types::DataType;
+
+#[cfg(feature = "serialize")]
+use serde::ser::{Serialize, Serializer};
 
 #[macro_use]
 mod macros;
@@ -71,9 +75,23 @@ impl PartialEq for TensorView {
     }
 }
 
+// TODO(liautaud): Find a more generic way to do this.
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+#[derive(Debug)]
+pub enum Attr<'a> {
+    I64(i64),
+    Usize(usize),
+    DataType(DataType),
+    Tensor(&'a Tensor),
+    IsizeVec(&'a Vec<isize>),
+}
+
 pub trait Op: Debug + Send + Sync + 'static {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>>;
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr>;
 
     /// Infers properties about the output tensors from the input tensors.
     /// Returns Err in case of an unrecoverable error during the inference,
@@ -84,6 +102,16 @@ pub trait Op: Debug + Send + Sync + 'static {
     /// Returns Err in case of an unrecoverable error during the inference,
     /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
     fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
+}
+
+#[cfg(feature = "serialize")]
+impl Serialize for Op {
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.get_attributes().serialize(serializer)
+    }
 }
 
 type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
@@ -119,6 +147,11 @@ impl Op for UnimplementedOp {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         Err(format!("unimplemented operation: {}", self.0))?
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        unimplemented!()
     }
 
     /// Infers properties about the output tensors from the input tensors.

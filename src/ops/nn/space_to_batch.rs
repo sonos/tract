@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use super::{Op, TensorView};
+use super::{Attr, Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::TensorFact;
 use tensor::Datum;
@@ -67,6 +68,11 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         let data = ::ndarray::ArrayD::from_shape_vec(final_shape, data)?;
 
         Ok(vec![T::array_into_tensor(data).into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{ "T" => Attr::DataType(T::datatype()) }
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -157,6 +163,11 @@ impl<T: Datum> Op for BatchToSpace<T> {
             }
         }
         Ok(vec![T::array_into_tensor(data).into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{ "T" => Attr::DataType(T::datatype()) }
     }
 
     /// Infers properties about the output tensors from the input tensors.

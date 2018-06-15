@@ -1,4 +1,6 @@
-use super::{Op, OpRegister, TensorView};
+use std::collections::HashMap;
+
+use super::{Attr, Op, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::TensorFact;
 use tfpb::types::DataType;
@@ -43,6 +45,11 @@ impl Op for Softmax {
         input.map_inplace(|a| *a = *a / norm);
         let result = Tensor::from(input);
         Ok(vec![result.into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
     }
 
     /// Infers properties about the output tensors from the input tensors.

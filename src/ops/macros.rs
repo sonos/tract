@@ -23,6 +23,11 @@ macro_rules! element_map {
                 Ok(vec![$crate::tensor::Tensor::F32(a).into()])
             }
 
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{}
+            }
+
             /// Infers properties about the output tensors from the input tensors.
             fn infer_forward(
                 &self,
@@ -76,6 +81,11 @@ macro_rules! element_bin {
                 let a = T::tensor_into_array(a.into_tensor())?;
                 let b = T::tensor_to_view(&*b)?;
                 Ok(vec![T::array_into_tensor($expr(a, b)).into()])
+            }
+
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{ "T" => ::ops::Attr::DataType(T::datatype()) }
             }
 
             /// Infers properties about the output tensors from the input tensors.

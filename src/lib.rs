@@ -46,6 +46,8 @@ extern crate log;
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
+#[macro_use]
+extern crate maplit;
 
 #[cfg(feature = "serialize")]
 extern crate serde;
@@ -74,8 +76,6 @@ pub struct Node {
     pub name: String,
     pub op_name: String,
     pub inputs: Vec<(usize, Option<usize>)>,
-
-    #[cfg_attr(feature = "serialize", serde(skip_serializing))]
     pub op: Box<Op>,
 }
 

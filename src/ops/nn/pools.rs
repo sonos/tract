@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use super::local_patch::*;
-use super::{Op, TensorView};
+use super::{Attr, Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::{TensorFact, ShapeFact};
 use ndarray::prelude::*;
@@ -56,6 +58,12 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         });
 
         Ok(vec![Tensor::from(transformed.into_dyn()).into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        // TODO(liautaud): Implement serialization for Pool.
+        hashmap!{}
     }
 
     /// Infers properties about the output tensors from the input tensors.

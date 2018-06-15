@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use analyser::helpers::infer_forward_concrete;
 use analyser::TensorFact;
 use ndarray::prelude::*;
-use ops::{Op, TensorView};
+use ops::{Attr, Op, TensorView};
 use tfpb::types::DataType;
 use {Result, Tensor};
 
@@ -113,6 +115,15 @@ impl Op for StridedSlice {
         let output = output.into_shape(reshape)?;
 
         Ok(vec![Tensor::I32(output.into()).into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{
+            "begin_mask"       => Attr::I64(self.begin_mask),
+            "end_mask"         => Attr::I64(self.end_mask),
+            "shrink_axis_mask" => Attr::I64(self.shrink_axis_mask),
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.

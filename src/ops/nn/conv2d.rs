@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
-use super::{Op, TensorView};
+use super::{Attr, Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::{ShapeFact, TensorFact};
 use ndarray::prelude::*;
@@ -47,6 +48,14 @@ impl<T: Datum> Op for Conv2D<T> {
             .into_shape((images.n(), out_height, out_width, out_depth))?
             .into_dyn();
         Ok(vec![T::array_into_tensor(transformed).into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        // TODO(liautaud): Implement serialization for LocalPatch.
+        hashmap!{
+            "T" => Attr::DataType(T::datatype()),
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.

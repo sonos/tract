@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use ndarray::prelude::*;
 use std::iter::repeat;
 
 mod pack;
 mod strided_slice;
 
-use super::{Op, OpRegister, TensorView};
+use ops::{Attr, Op, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::helpers::most_specific_shape;
 use analyser::{ShapeFact, TensorFact, ValueFact};
@@ -54,6 +55,13 @@ impl Op for ConcatV2 {
         let result = Tensor::from(result);
 
         Ok(vec![result.into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{
+            "n" => Attr::Usize(self.n),
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -137,6 +145,11 @@ impl Op for ExpandDims {
             }
         }
         Ok(vec![Tensor::from(data.into_shape(shape)?).into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -223,6 +236,11 @@ impl Op for Identity {
         Ok(inputs)
     }
 
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
+    }
+
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 1 {
@@ -259,6 +277,13 @@ impl Op for Placeholder {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         panic!("Placeholder should not get evaluated")
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{
+            "dtype" => Attr::DataType(self.dtype)
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -326,6 +351,11 @@ impl Op for Reshape {
         Ok(vec![
             Tensor::from(input.into_shape(&*dims)?.into_dyn()).into(),
         ])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -435,6 +465,11 @@ impl Op for Shape {
         Ok(Some(vec![output]))
     }
 
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
+    }
+
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if outputs.len() < 1 {
@@ -531,6 +566,13 @@ impl Op for Squeeze {
         };
 
         Ok(Some(vec![output]))
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{
+            "dims" => Attr::IsizeVec(&self.dims)
+        }
     }
 
     /// Infers properties about the input tensors from the output tensors.
