@@ -1,4 +1,5 @@
 use std::iter::FromIterator;
+use std::ops::*;
 
 use errors::*;
 use tfpb::types::DataType;
@@ -147,6 +148,39 @@ impl DimFact {
         self.concretize().is_some()
     }
 }
+
+/// Implements arithmetic operations over DimFacts.
+macro_rules! impl_dim_op {
+    ($trait:ident, $method:ident, $i:ident, $j:ident, $res:expr) => {
+        impl $trait<Self> for DimFact {
+            type Output = Self;
+
+            fn $method(self, other: Self) -> Self {
+                match (self, other) {
+                    (DimFact::Only($i), DimFact::Only($j)) => DimFact::Only($res),
+                    _ => DimFact::Any,
+                }
+            }
+        }
+
+        impl $trait<usize> for DimFact {
+            type Output = Self;
+
+            fn $method(self, other: usize) -> Self {
+                match (self, other) {
+                    (DimFact::Only($i), $j) => DimFact::Only($res),
+                    _ => DimFact::Any,
+                }
+            }
+        }
+    }
+}
+
+impl_dim_op!(Add, add, i, j, i + j);
+impl_dim_op!(Sub, sub, i, j, i - j);
+impl_dim_op!(Mul, mul, i, j, i * j);
+impl_dim_op!(Div, div, i, j, i / j);
+
 
 /// Partial information about a value.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
