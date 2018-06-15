@@ -1,6 +1,8 @@
 #[cfg(feature = "tensorflow")]
 use conform;
 use tfdeploy;
+use bincode;
+use serde_json;
 
 /// Configures error handling for this crate.
 error_chain! {
@@ -12,5 +14,7 @@ error_chain! {
     foreign_links {
         Io(::std::io::Error);
         NumParseInt(::std::num::ParseIntError);
+        Bincode(bincode::Error);
+        SerdeJson(serde_json::Error);
     }
 }

@@ -23,6 +23,8 @@ extern crate libc;
 #[macro_use]
 extern crate rouille;
 extern crate open;
+extern crate serde_json;
+extern crate bincode;
 
 use std::collections::HashMap;
 use std::process;
@@ -114,7 +116,9 @@ fn main() {
 
         (@subcommand analyse =>
             (about: "Analyses the graph to infer properties about tensors (experimental).")
-            (@arg interactive: --open
+            (@arg prune: --prune
+                "Prunes constant nodes and edges from the graph.")
+            (@arg open: --open
                 "Displays the results of the analysis in a web interface."))
     );
 
@@ -153,7 +157,6 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
         ("compare", _) => handle_compare(params),
 
         ("profile", None) => handle_profile(params, DEFAULT_MAX_ITERS, DEFAULT_MAX_TIME),
-
         ("profile", Some(m)) => handle_profile(
             params,
             match m.value_of("max_iters") {
@@ -166,8 +169,12 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
             },
         ),
 
-        ("analyse", None) => handle_analyse(params, false),
-        ("analyse", Some(m)) => handle_analyse(params, m.is_present("interactive")),
+        ("analyse", None) => handle_analyse(params, false, false),
+        ("analyse", Some(m)) => handle_analyse(
+            params,
+            m.is_present("prune"),
+            m.is_present("open")
+        ),
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
@@ -632,7 +639,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 }
 
 /// Handles the `analyse` subcommand.
-fn handle_analyse(params: Parameters, interactive: bool) -> Result<()> {
+fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     use std::fs::File;
     use std::io::prelude::*;
 
@@ -654,37 +661,54 @@ fn handle_analyse(params: Parameters, interactive: bool) -> Result<()> {
 
     analyser.run()?;
 
-    if interactive {
+    // Prune constant nodes if needed.
+    if prune {
+        info!(
+            "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
+            bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
+            analyser.nodes.len()
+        );
+
+        constants::prune_constants(&mut analyser)?;
+        analyser.remove_unused();
+
+        info!(
+            "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
+            bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
+            analyser.nodes.len()
+        );
+    }
+
+
+    // Display an interactive view of the graph if needed.
+    if open {
         use rouille::Response;
 
         println!("TFVisualizer is now running on http://127.0.0.1:8000/.");
         let _ = open::that("http://127.0.0.1:8000/");
 
         rouille::start_server("0.0.0.0:8000", move |request| {
-            // Handle static assets.
             if request.remove_prefix("/dist").is_some() || request.remove_prefix("/public").is_some() {
                 return rouille::match_assets(&request, "../visualizer");
             }
 
             return router!(request,
-                // Handle homepage.
                 (GET) (/) => {
                     let index = File::open("../visualizer/index.html").unwrap();
                     Response::from_file("text/html", index)
                 },
 
-                // Handle requests to get the analyser
                 (GET) (/current) => {
-                    Response::from_data("application/json", analyser.as_json().as_bytes())
+                    let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
+                    Response::from_data("application/json", data)
                 },
 
-                // Unknown route.
                 _ => Response::empty_404(),
             );
         });
     } else {
-        let mut file = File::create("analyser.json")?;
-        file.write_all(analyser.as_json().as_bytes())?;
+        let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
+        File::create("analyser.json")?.write_all(&data)?;
         println!("Wrote the result of the analysis to analyser.json.");
     }
 

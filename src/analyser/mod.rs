@@ -7,9 +7,6 @@ use Plan;
 mod types;
 pub use self::types::*;
 
-#[cfg(feature = "serialize")]
-use serde_json;
-
 #[macro_use]
 pub mod macros;
 #[macro_use]
@@ -203,12 +200,6 @@ impl Analyser {
     /// Returns a model from the analyser.
     pub fn into_model(self) -> Model {
         unimplemented!()
-    }
-
-    /// Returns a JSON representation of the graph from the analyser.
-    #[cfg(feature = "serialize")]
-    pub fn as_json(&self) -> String {
-        serde_json::to_string(&(&self.nodes, &self.edges)).unwrap()
     }
 
     /// Computes a new execution plan for the graph.
