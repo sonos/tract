@@ -20,6 +20,9 @@ extern crate tfdeploy;
 extern crate pbr;
 extern crate atty;
 extern crate libc;
+#[macro_use]
+extern crate rouille;
+extern crate open;
 
 use std::collections::HashMap;
 use std::process;
@@ -110,7 +113,9 @@ fn main() {
                 "Sets the maximum execution time for each node (in ms) [default: 500]."))
 
         (@subcommand analyse =>
-            (about: "Analyses the graph to infer properties about tensors (experimental)."))
+            (about: "Analyses the graph to infer properties about tensors (experimental).")
+            (@arg interactive: --open
+                "Displays the results of the analysis in a web interface."))
     );
 
     let matches = app.get_matches();
@@ -161,7 +166,8 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
             },
         ),
 
-        ("analyse", _) => handle_analyse(params),
+        ("analyse", None) => handle_analyse(params, false),
+        ("analyse", Some(m)) => handle_analyse(params, m.is_present("interactive")),
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
@@ -626,7 +632,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 }
 
 /// Handles the `analyse` subcommand.
-fn handle_analyse(params: Parameters) -> Result<()> {
+fn handle_analyse(params: Parameters, interactive: bool) -> Result<()> {
     use std::fs::File;
     use std::io::prelude::*;
 
@@ -648,9 +654,39 @@ fn handle_analyse(params: Parameters) -> Result<()> {
 
     analyser.run()?;
 
-    let mut file = File::create("analyser.json")?;
-    file.write_all(analyser.as_json().as_bytes())?;
-    println!("Wrote the result of the analysis to analyser.json.");
+    if interactive {
+        use rouille::Response;
+
+        println!("TFVisualizer is now running on http://127.0.0.1:8000/.");
+        let _ = open::that("http://127.0.0.1:8000/");
+
+        rouille::start_server("0.0.0.0:8000", move |request| {
+            // Handle static assets.
+            if request.remove_prefix("/dist").is_some() || request.remove_prefix("/public").is_some() {
+                return rouille::match_assets(&request, "../visualizer");
+            }
+
+            return router!(request,
+                // Handle homepage.
+                (GET) (/) => {
+                    let index = File::open("../visualizer/index.html").unwrap();
+                    Response::from_file("text/html", index)
+                },
+
+                // Handle requests to get the analyser
+                (GET) (/current) => {
+                    Response::from_data("application/json", analyser.as_json().as_bytes())
+                },
+
+                // Unknown route.
+                _ => Response::empty_404(),
+            );
+        });
+    } else {
+        let mut file = File::create("analyser.json")?;
+        file.write_all(analyser.as_json().as_bytes())?;
+        println!("Wrote the result of the analysis to analyser.json.");
+    }
 
     Ok(())
 }
