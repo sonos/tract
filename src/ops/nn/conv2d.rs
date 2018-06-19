@@ -39,11 +39,14 @@ impl<T: Datum> Op for Conv2D<T> {
             .view()
             .into_shape((filter_rows * filter_cols * images.d(), out_depth))?;
 
-        let mut transformed: Vec<T> = Vec::with_capacity(out_height * out_width * out_depth);
+        let mut transformed: Vec<T> = Vec::with_capacity(images.n() * out_height * out_width * out_depth);
+
+        // Loop over each batch.
         for image in data.outer_iter() {
             let patches = self.0.mk_patches(image, (filter_rows, filter_cols))?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
+
         let transformed = Array::from_vec(transformed)
             .into_shape((images.n(), out_height, out_width, out_depth))?
             .into_dyn();
