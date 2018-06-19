@@ -1,13 +1,13 @@
 //! TensorFlow Ops
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
 #[cfg(feature = "serialize")]
 use std::result::Result as StdResult;
+use std::sync::Arc;
 
-use {Result, Tensor};
 use analyser::TensorFact;
 use tfpb::types::DataType;
+use {Result, Tensor};
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
@@ -87,11 +87,40 @@ pub enum Attr<'a> {
 }
 
 pub trait Op: Debug + Send + Sync + 'static {
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr>;
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>>;
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr>;
+    /// Evaluates one step of the operation on the given input tensors.
+    /// This is only implemented for operators which support streaming.
+    ///
+    /// The input tensors are annotated with an Option<usize>:
+    /// - None if the tensor doesn't have a streaming dimension.
+    /// - Option(d) if the tensor is being streamed on dimension d.
+    ///
+    /// If an input tensor has a streaming dimension, the corresponding
+    /// TensorView will only contain a _chunk_ of input of size 1 along
+    /// that dimension. Note that each chunk will only be passed once
+    /// to the step function, so it should use the provided buffer to
+    /// store whichever chunks it needs for future computations.
+    ///
+    /// The function should return Some(chunks) when it has computed
+    /// new chunks, and None if it has computed an intermediary result
+    /// successfully but doesn't have new output chunks ready yet.
+    ///
+    /// For operators like Concat, multiple input tensors might have a
+    /// streaming dimension. In that case, at each call to step, only
+    /// one of the streaming inputs will receive new chunk while the
+    /// others will receive None.
+    fn step(
+        &self,
+        _inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        _buffer: &mut Option<TensorView>,
+    ) -> Result<Option<Vec<TensorView>>> {
+        bail!("Streaming is not available for this operator.")
+    }
 
     /// Infers properties about the output tensors from the input tensors.
     /// Returns Err in case of an unrecoverable error during the inference,

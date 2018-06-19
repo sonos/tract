@@ -173,7 +173,6 @@ impl Analyser {
     /// take much longer to complete.
     pub fn new(model: Model, output: usize) -> Result<Analyser> {
         let nodes = model.nodes;
-        let nodes_by_name = model.nodes_by_name;
         let mut edges = vec![];
         let mut prev_edges = vec![Vec::new(); nodes.len() + 1];
         let mut next_edges = vec![Vec::new(); nodes.len() + 1];

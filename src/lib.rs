@@ -62,11 +62,14 @@ pub mod ops;
 pub mod tensor;
 pub mod tfpb;
 
-pub use errors::*;
-use ops::{Op, TensorView};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::iter::repeat;
 use std::{fs, path, str};
 
+use analyser::helpers::tensor_to_fact;
+use analyser::Analyser;
+pub use errors::*;
+use ops::{Op, TensorView};
 pub use tensor::Tensor;
 
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -182,6 +185,12 @@ impl Model {
         let op_builder = ops::OpBuilder::new();
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
+
+            // From the node_def.proto documentation:
+            // Each input is "node:src_output" with "node" being a string name and
+            // "src_output" indicating which output tensor to use from "node". If
+            // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
+            // optionally be followed by control inputs that have the format "^node".
             let inputs: Vec<(usize, Option<usize>)> = pbnode
                 .get_input()
                 .iter()
@@ -200,6 +209,7 @@ impl Model {
                                 .get(i)
                                 .ok_or(format!("No node {} found", i))?
                                 .clone(),
+                            // TODO(liautaud): Handle the "node:output" format.
                             Some(0usize),
                         )
                     };
@@ -375,5 +385,158 @@ impl<'a> ModelState<'a> {
 
     pub fn model(&self) -> &Model {
         self.model
+    }
+}
+
+/// The state of a model during streaming evaluation.
+pub struct StreamingState {
+    model: Model,
+    output: usize,
+    mapping: Vec<Option<usize>>,
+    buffers: Vec<Option<TensorView>>,
+    dimensions: HashMap<(usize, usize), usize>,
+    successors: Vec<Vec<(usize, usize)>>,
+}
+
+/// The type of an input during streaming evaluation.
+pub enum StreamingInput {
+    // The input is being streamed along some dimension.
+    Streamed(usize),
+
+    // The input will remain constant during the evaluation.
+    Constant(Tensor),
+}
+
+impl StreamingState {
+    /// Initializes the streaming evaluation of a model.
+    ///
+    /// For each input in the model, you must either provide a constant
+    /// value or specify the dimension along which to stream.
+    ///
+    /// You will only be able to fetch the results of the evaluation step
+    /// for the output node. If `output` is None, the output node will be
+    /// guessed automatically.
+    pub fn start(
+        model: Model,
+        inputs: Vec<(usize, StreamingInput)>,
+        output: Option<usize>,
+    ) -> Result<StreamingState> {
+        use StreamingInput::*;
+
+        let output = output
+            .or(analyser::detect_output(&model)?)
+            .ok_or("Unable to auto-detect output node.")?;
+
+        let mut analyser = Analyser::new(model, output)?;
+
+        // Pre-compute the constant part of the graph using the analyser.
+        let mut streaming_inputs = vec![];
+        for input in inputs {
+            match input {
+                (i, Streamed(d)) => streaming_inputs.push((i, d)),
+                (i, Constant(tensor)) => analyser.hint(i, &tensor_to_fact(tensor))?,
+            }
+        }
+
+        analyser.run()?;
+        analyser::constants::prune_constants(&mut analyser)?;
+
+        // Keep track of the relation between old and new node indexes, as the
+        // analyser replaces the constant parts of the graph with Const nodes.
+        let mapping = analyser.prune_unused();
+        let output = mapping[output].ok_or("The output node doesn't exist in the streaming graph.")?;
+
+        let successors = analyser.next_edges.iter()
+            .map(|s| {
+                s.iter()
+                    .map(|&e| {
+                        let e = &analyser.edges[e];
+                        (e.from_out, e.to_node.unwrap())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        let buffers = repeat(None).take(analyser.nodes.len()).collect();
+
+        let mut dimensions = HashMap::with_capacity(analyser.edges.len());
+        for edge in &analyser.edges {
+            // FIXME(liautaud): Get the actual streamed dimension.
+            dimensions.insert((edge.from_node.unwrap(), edge.from_out), 0);
+        }
+
+        let model = analyser.into_model();
+
+        Ok(StreamingState {model, output, mapping, buffers, dimensions, successors})
+    }
+
+    /// Runs one streaming evaluation step.
+    ///
+    /// The step starts by feeding a new chunk of data into one of the
+    /// non-constant inputs of the model, which gets propagated to all
+    /// the nodes in the graph in breadth-first ordering.
+    ///
+    /// The method will return a Vec<Vec<Tensor>>, which will contain
+    /// a Vec<Tensor> for every chunk that was produced by the output
+    /// during the evaluation step, with one Tensor per output port.
+    pub fn step(&mut self, input: usize, input_chunk: Tensor) -> Result<Vec<Vec<Tensor>>> {
+        let mut queue = VecDeque::new();
+        let mut outputs = vec![];
+
+        let input = self.mapping[input].ok_or("The input node doesn't exist in the streaming graph.")?;
+        let input_view: TensorView = input_chunk.into();
+
+        for &(port, target) in &self.successors[input] {
+            queue.push_back((input, port, target, input_view.clone()));
+        }
+
+        while let Some((source, port, target, chunk)) = queue.pop_front() {
+            let target = self.model.get_node_by_id(target)?;
+            let mut inputs = vec![];
+
+            // We wrap chunk in an option because we want to capture
+            // its value in one and only one of the iterations, but
+            // the borrow checker doesn't know that.
+            let mut chunk = Some(chunk);
+
+            for &(k, kp) in &target.inputs {
+                let pred = self.model.get_node_by_id(k)?;
+                let dimension = self.dimensions.get(&(source, port)).map(|i| *i);
+                let value = if pred.op_name == "Const" {
+                    // The input is not streamed, and so was turned into a constant
+                    // node by the analyser when performing StreamingState::start.
+                    Some(pred.op.eval(vec![])?.pop().unwrap())
+                } else if k == source && kp.is_some() && kp.unwrap() == port {
+                    // The input is streamed, and we've got a new chunk to give it.
+                    Some(chunk.take().unwrap())
+                } else {
+                    // The input is streamed, but we don't have anything to give it yet.
+                    None
+                };
+
+                inputs.push((dimension, value));
+            }
+
+            let buffer = &mut self.buffers[target.id];
+
+            if let Some(output_chunks) = target.op.step(inputs, buffer)? {
+                if target.id == self.output {
+                    // If we've reached the output, just save the chunks.
+                    outputs.push(output_chunks.into_iter().map(|tv| tv.into_tensor()).collect());
+                } else {
+                    // Otherwise propagate the chunks to the successors.
+                    for &(port, successor) in &self.successors[target.id] {
+                        queue.push_back((target.id, port, successor, output_chunks[port].clone()));
+                    }
+                }
+            }
+        }
+
+        Ok(outputs)
+    }
+
+    /// Resets the model state.
+    pub fn reset(&mut self) -> Result<()> {
+        unimplemented!()
     }
 }

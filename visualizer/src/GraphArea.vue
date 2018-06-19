@@ -116,6 +116,7 @@
         }
 
         if (current) {
+          console.log(current.json())
           current.addClass('highlighted')
         }
       }
