@@ -34,6 +34,8 @@ use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::Analyser;
 use tfdeploy::analyser::constants;
+use tfdeploy::analyser::detect_inputs;
+use tfdeploy::analyser::detect_output;
 use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
 #[cfg(feature = "tensorflow")]
@@ -49,8 +51,6 @@ use format::print_node;
 use format::Row;
 #[cfg(feature = "tensorflow")]
 use utils::compare_outputs;
-use utils::detect_inputs;
-use utils::detect_output;
 use utils::random_tensor;
 
 mod errors;
@@ -670,7 +670,7 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
         );
 
         constants::prune_constants(&mut analyser)?;
-        analyser.remove_unused();
+        analyser.prune_unused();
 
         info!(
             "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
@@ -733,7 +733,7 @@ fn handle_prune(params: Parameters) -> Result<()> {
 
     analyser.run()?;
     constants::prune_constants(&mut analyser)?;
-    analyser.remove_unused();
+    analyser.prune_unused();
 
     info!(
         "Ending size of the graph: approx. {:?} bytes for {:?} nodes.",

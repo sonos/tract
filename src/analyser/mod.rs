@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use errors::*;
 use ops::Op;
 use Model;
@@ -91,6 +93,47 @@ pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
     Ok(value)
 }
 
+/// Tries to auto-detect the names of the input nodes.
+pub fn detect_inputs(model: &Model) -> Result<Option<Vec<usize>>> {
+    let inputs: Vec<usize> = model
+        .nodes()
+        .iter()
+        .filter(|n| n.op_name == "Placeholder")
+        .map(|n| n.id)
+        .collect();
+
+    if inputs.len() > 0 {
+        info!("Autodetecting input nodes: {:?}.", inputs);
+        Ok(Some(inputs))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Tries to auto-detect the name of the output node.
+pub fn detect_output(model: &Model) -> Result<Option<usize>> {
+    // We search for the only node in the graph with no successor.
+    let mut succs: Vec<Vec<usize>> = vec![Vec::new(); model.nodes().len()];
+
+    for node in model.nodes() {
+        for &link in &node.inputs {
+            succs[link.0].push(node.id);
+        }
+    }
+
+    for (i, s) in succs.iter().enumerate() {
+        if s.len() == 0 {
+            info!(
+                "Autodetecting output node: {:?}.",
+                model.get_node_by_id(i)?.name
+            );
+            return Ok(Some(i));
+        }
+    }
+
+    Ok(None)
+}
+
 /// An edge of the analysed graph, annotated by a fact.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
@@ -110,8 +153,8 @@ pub struct Analyser {
     // The graph being analysed.
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
-    prev_edges: Vec<Vec<usize>>,
-    next_edges: Vec<Vec<usize>>,
+    pub prev_edges: Vec<Vec<usize>>,
+    pub next_edges: Vec<Vec<usize>>,
 
     // The execution plan and unused nodes.
     plan: Vec<usize>,
@@ -130,6 +173,7 @@ impl Analyser {
     /// take much longer to complete.
     pub fn new(model: Model, output: usize) -> Result<Analyser> {
         let nodes = model.nodes;
+        let nodes_by_name = model.nodes_by_name;
         let mut edges = vec![];
         let mut prev_edges = vec![Vec::new(); nodes.len() + 1];
         let mut next_edges = vec![Vec::new(); nodes.len() + 1];
@@ -199,7 +243,15 @@ impl Analyser {
 
     /// Returns a model from the analyser.
     pub fn into_model(self) -> Model {
-        unimplemented!()
+        let mut nodes_by_name = HashMap::with_capacity(self.nodes.len());
+        self.nodes.iter().for_each(|n| {
+            nodes_by_name.insert(n.name.clone(), n.id);
+        });
+
+        Model {
+            nodes: self.nodes,
+            nodes_by_name,
+        }
     }
 
     /// Computes a new execution plan for the graph.
@@ -209,7 +261,8 @@ impl Analyser {
     }
 
     /// Removes the nodes and edges which are not part of the execution plan.
-    pub fn remove_unused(&mut self) {
+    /// Returns the mapping between the old and new node indexes.
+    pub fn prune_unused(&mut self) -> Vec<Option<usize>> {
         let mut node_used = vec![false; self.nodes.len()];
         let mut edge_used = vec![false; self.edges.len()];
         for &i in &self.plan {
@@ -273,6 +326,8 @@ impl Analyser {
             self.prev_edges[i].iter_mut().for_each(|j| *j = edge_mapping[*j].unwrap());
             self.next_edges[i].iter_mut().for_each(|j| *j = edge_mapping[*j].unwrap());
         }
+
+        node_mapping
     }
 
     /// Runs the entire analysis at once.
