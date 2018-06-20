@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use ndarray::prelude::*;
 use std::iter::repeat;
 
@@ -231,14 +232,27 @@ impl Identity {
 }
 
 impl Op for Identity {
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         Ok(inputs)
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
+    /// Evaluates one step of the operation on the given input tensors.
+    fn step(
+        &self,
+        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        _buffer: &mut Vec<VecDeque<TensorView>>,
+    ) -> Result<Option<Vec<TensorView>>> {
+        let input = args_1!(inputs);
+        match input.1 {
+            None => Ok(None),
+            Some(tv) => Ok(Some(self.eval(vec![tv])?))
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.

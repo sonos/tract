@@ -10,6 +10,11 @@ macro_rules! element_map {
         }
 
         impl ::ops::Op for $Struct {
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{}
+            }
+
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -23,9 +28,17 @@ macro_rules! element_map {
                 Ok(vec![$crate::tensor::Tensor::F32(a).into()])
             }
 
-            /// Returns the attributes of the operation and their values.
-            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{}
+            /// Evaluates one step of the operation on the given input tensors.
+            fn step(
+                &self,
+                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                _buffer: &mut Vec<::std::collections::VecDeque<$crate::ops::TensorView>>,
+            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+                let a = args_1!(inputs);
+                match a.1 {
+                    None => Ok(None),
+                    Some(tv) => Ok(Some(self.eval(vec![tv])?))
+                }
             }
 
             /// Infers properties about the output tensors from the input tensors.
@@ -72,6 +85,11 @@ macro_rules! element_bin {
         }
 
         impl<T: ::tensor::Datum> Op for $Name<T> {
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{ "T" => ::ops::Attr::DataType(T::datatype()) }
+            }
+
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -83,9 +101,24 @@ macro_rules! element_bin {
                 Ok(vec![T::array_into_tensor($expr(a, b)).into()])
             }
 
-            /// Returns the attributes of the operation and their values.
-            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => ::ops::Attr::DataType(T::datatype()) }
+            /// Evaluates one step of the operation on the given input tensors.
+            fn step(
+                &self,
+                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                buffer: &mut Vec<::std::collections::VecDeque<$crate::ops::TensorView>>,
+            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+                // If we don't have a value for some of the inputs yet, we buffer
+                // the current values to reuse them on the next call.
+                initialize_buffer!(buffer, 2);
+                append_buffer!(buffer, inputs);
+
+                if buffer[0].is_empty() || buffer[1].is_empty() {
+                    Ok(None)
+                } else {
+                    let a = buffer[0].pop_front().unwrap();
+                    let b = buffer[1].pop_front().unwrap();
+                    Ok(Some(self.eval(vec![a, b])?))
+                }
             }
 
             /// Infers properties about the output tensors from the input tensors.
@@ -188,4 +221,23 @@ macro_rules! boxed_new {
             _ => unimplemented!()
         }
     } }
+}
+
+macro_rules! initialize_buffer {
+    ($buffer:ident, $count:expr) => ({
+        if $buffer.is_empty() {
+            $buffer.extend(vec![::std::collections::VecDeque::new(); $count]);
+        }
+    })
+}
+
+macro_rules! append_buffer {
+    ($buffer:ident, $inputs:ident) => ({
+        // Pushes the current value of the inputs onto the buffer.
+        for (i, input) in $inputs.iter_mut().enumerate() {
+            if input.1.is_some() {
+                $buffer[i].push_back(input.1.take().unwrap());
+            }
+        }
+    })
 }
