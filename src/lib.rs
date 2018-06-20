@@ -63,7 +63,6 @@ pub mod tensor;
 pub mod tfpb;
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::iter::repeat;
 use std::{fs, path, str};
 
 use analyser::helpers::tensor_to_fact;
@@ -393,7 +392,7 @@ pub struct StreamingState {
     model: Model,
     output: usize,
     mapping: Vec<Option<usize>>,
-    buffers: Vec<Option<TensorView>>,
+    buffers: Vec<Vec<VecDeque<TensorView>>>,
     dimensions: HashMap<(usize, usize), usize>,
     successors: Vec<Vec<(usize, usize)>>,
 }
@@ -461,7 +460,7 @@ impl StreamingState {
             })
             .collect::<Vec<_>>();
 
-        let buffers = repeat(None).take(analyser.nodes.len()).collect();
+        let buffers = vec![vec![]; analyser.nodes.len()];
 
         let mut dimensions = HashMap::with_capacity(analyser.edges.len());
         for edge in &analyser.edges {
@@ -495,6 +494,11 @@ impl StreamingState {
         }
 
         while let Some((source, port, target, chunk)) = queue.pop_front() {
+            debug!(
+                "Executing new edge: source={:?}, port={:?}, target={:?}, chunk={:?}",
+                source, port, target, chunk
+            );
+
             let target = self.model.get_node_by_id(target)?;
             let mut inputs = vec![];
 
@@ -512,7 +516,14 @@ impl StreamingState {
                     Some(pred.op.eval(vec![])?.pop().unwrap())
                 } else if k == source && kp.is_some() && kp.unwrap() == port {
                     // The input is streamed, and we've got a new chunk to give it.
-                    Some(chunk.take().unwrap())
+                    let chunk = chunk.take().unwrap();
+
+                    // We only allow chunks of size 1 along the streaming dimension.
+                    if chunk.as_tensor().shape()[dimension.unwrap()] != 1 {
+                        bail!("Trying to consume a chunk of size != 1 along the streaming dimension.");
+                    }
+
+                    Some(chunk)
                 } else {
                     // The input is streamed, but we don't have anything to give it yet.
                     None

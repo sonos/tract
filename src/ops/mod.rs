@@ -1,5 +1,6 @@
 //! TensorFlow Ops
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 #[cfg(feature = "serialize")]
 use std::result::Result as StdResult;
@@ -154,7 +155,7 @@ pub trait Op: Debug + Send + Sync + 'static {
     fn step(
         &self,
         _inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        _buffer: &mut Option<TensorView>,
+        _buffer: &mut Vec<VecDeque<TensorView>>,
     ) -> Result<Option<Vec<TensorView>>> {
         bail!("Streaming is not available for this operator.")
     }

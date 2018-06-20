@@ -746,6 +746,11 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?.id;
 
+    // FIXME(liautaud): The analyser should handle streaming dimensions at some point.
+    let shape = params.shape.iter()
+        .map(|d| d.unwrap_or(1))
+        .collect::<Vec<_>>();
+
     info!("Starting the analysis.");
 
     let mut analyser = Analyser::new(model, output)?;
@@ -754,7 +759,7 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     for &i in &params.inputs {
         analyser.hint(i, &TensorFact {
             datatype: typefact!(params.datatype),
-            shape: shapefact![],//params.shape.iter().collect(),
+            shape: shape.iter().collect(),
             value: valuefact!(_),
         })?;
     }

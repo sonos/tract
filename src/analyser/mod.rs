@@ -23,6 +23,8 @@ pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
         value: unify_value(&x.value, &y.value)?,
     };
 
+    trace!("Unifying {:?} with {:?} into {:?}.", x, y, tensor);
+
     Ok(tensor)
 }
 
