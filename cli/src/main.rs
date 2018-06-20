@@ -28,7 +28,9 @@ extern crate bincode;
 
 use std::collections::HashMap;
 use std::process;
+use std::thread;
 use std::time::Instant as StdInstant;
+use std::time::Duration as StdDuration;
 
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
@@ -75,7 +77,7 @@ struct Parameters {
     inputs: Vec<usize>,
     output: usize,
 
-    shape: Vec<usize>,
+    shape: Vec<Option<usize>>,
     datatype: DataType,
 }
 
@@ -196,7 +198,15 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     }
 
     let (datatype, shape) = splits.split_last().unwrap();
-    let shape: Vec<usize> = shape.iter().map(|s| Ok(s.parse()?)).collect::<Result<_>>()?;
+
+    let shape: Vec<Option<usize>> = shape
+        .iter()
+        .map(|s| match *s {
+            "S" => Ok(None),            // Streaming dimension.
+            _   => Ok(Some(s.parse()?)) // Regular dimension.
+        })
+        .collect::<Result<_>>()?;
+
     let datatype = match datatype.to_lowercase().as_str() {
         "f64" => DataType::DT_DOUBLE,
         "f32" => DataType::DT_FLOAT,
@@ -259,12 +269,15 @@ fn handle_compare(params: Parameters) -> Result<()> {
     let output = tfd.get_node_by_id(params.output)?;
     let mut state = tfd.state();
 
+    let shape = params.shape.iter().cloned().collect::<Option<Vec<_>>>()
+        .ok_or("The compare command doesn't support streaming dimensions.")?;
+
     // First generate random values for the inputs.
     let mut generated = Vec::new();
     for i in params.inputs {
         generated.push((
             tfd.get_node_by_id(i)?.name.as_str(),
-            random_tensor(params.shape.clone(), params.datatype),
+            random_tensor(shape.clone(), params.datatype),
         ));
     }
 
@@ -478,6 +491,16 @@ impl std::ops::AddAssign for Duration {
 
 /// Handles the `profile` subcommand.
 fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
+    match params.shape.iter().cloned().collect::<Option<Vec<_>>>() {
+        Some(shape) =>
+            handle_profile_regular(params, max_iters, max_time, shape),
+        None =>
+            handle_profile_streaming(params, max_iters, max_time),
+    }
+}
+
+/// Handles the `profile` subcommand when there are no streaming dimensions.
+fn handle_profile_regular(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
     use colored::Colorize;
 
     let model = params.tfd_model;
@@ -486,7 +509,7 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        state.set_value(s, random_tensor(params.shape.clone(), params.datatype))?;
+        state.set_value(s, random_tensor(shape.clone(), params.datatype))?;
     }
 
     info!("Running {} iterations max. for each node.", max_iters);
@@ -638,6 +661,83 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     Ok(())
 }
 
+/// Handles the `profile` subcommand when there are streaming dimensions.
+fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64) -> Result<()> {
+    use colored::Colorize;
+
+    use tfdeploy::StreamingInput;
+    use tfdeploy::StreamingState;
+
+    let model = params.tfd_model;
+    let index = params.shape.iter()
+        .position(|&d| d == None)
+        .unwrap();
+    let inputs = params.inputs.iter()
+        .map(|&s| (s, StreamingInput::Streamed(index)))
+        .collect::<Vec<_>>();
+
+    info!("Initializing the StreamingState.");
+    let start = Instant::now();
+    let mut state = StreamingState::start(model, inputs, Some(params.output))?;
+
+    let measure = Duration::since(&start, 1);
+    info!("Initialized the StreamingState in:");
+    info!(
+        "    - Real: {}.",
+        format!("{:.3} ms/i", measure.total_real * 1e3).white().bold(),
+    );
+
+    info!(
+        "    - User: {}.",
+        format!("{:.3} ms/i", measure.total_user * 1e3).white().bold(),
+    );
+
+    info!(
+        "    - Sys: {}.",
+        format!("{:.3} ms/i", measure.total_sys * 1e3).white().bold(),
+    );
+
+    if log_enabled!(Info) {
+        println!();
+        print_header(format!("Streaming profiling for {}:", params.name), "white");
+    }
+
+    for step in 0..20 {
+        for &input in &params.inputs {
+            let shape = params.shape.iter()
+                .map(|d| d.unwrap_or(1))
+                .collect();
+            let input_chunk = random_tensor(shape, params.datatype);
+
+            println!();
+            println!("Starting step {:?} with input {:?}.", step, input_chunk);
+            let start = Instant::now();
+            let output = state.step(input, input_chunk)?;
+
+            let measure = Duration::since(&start, 1);
+            println!("Completed step {:?} with output {:?} in:", step, output);
+            println!(
+                "    - Real: {}.",
+                format!("{:.3} ms/i", measure.total_real * 1e3).white().bold(),
+            );
+
+            println!(
+                "    - User: {}.",
+                format!("{:.3} ms/i", measure.total_user * 1e3).white().bold(),
+            );
+
+            println!(
+                "    - Sys: {}.",
+                format!("{:.3} ms/i", measure.total_sys * 1e3).white().bold(),
+            );
+
+            thread::sleep(StdDuration::from_secs(1));
+        }
+    }
+
+    Ok(())
+}
+
 /// Handles the `analyse` subcommand.
 fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     use std::fs::File;
@@ -654,7 +754,7 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     for &i in &params.inputs {
         analyser.hint(i, &TensorFact {
             datatype: typefact!(params.datatype),
-            shape: params.shape.iter().collect(),
+            shape: shapefact![],//params.shape.iter().collect(),
             value: valuefact!(_),
         })?;
     }

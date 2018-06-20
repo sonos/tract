@@ -4,6 +4,9 @@ use rand::Rng;
 use tfdeploy::tfpb::types::DataType;
 use tfdeploy::Tensor;
 
+#[cfg(feature = "tensorflow")]
+use Result;
+
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]
 pub fn compare_outputs<Tensor1, Tensor2>(rtf: &[Tensor1], rtfd: &[Tensor2]) -> Result<()>
