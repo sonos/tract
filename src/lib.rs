@@ -449,9 +449,13 @@ impl StreamingState {
         let successors = analyser.next_edges.iter()
             .map(|s| {
                 s.iter()
-                    .map(|&e| {
+                    .filter_map(|&e| {
                         let e = &analyser.edges[e];
-                        (e.from_out, e.to_node.unwrap())
+                        if e.to_node.is_none() {
+                            None
+                        } else {
+                            Some((e.from_out, e.to_node.unwrap()))
+                        }
                     })
                     .collect::<Vec<_>>()
             })
@@ -484,7 +488,7 @@ impl StreamingState {
         let mut outputs = vec![];
 
         let input = self.mapping[input].ok_or("The input node doesn't exist in the streaming graph.")?;
-        let input_view: TensorView = input_chunk.into();
+        let input_view = Into::<TensorView>::into(input_chunk).into_shared();
 
         for &(port, target) in &self.successors[input] {
             queue.push_back((input, port, target, input_view.clone()));
@@ -519,14 +523,14 @@ impl StreamingState {
 
             let buffer = &mut self.buffers[target.id];
 
-            if let Some(output_chunks) = target.op.step(inputs, buffer)? {
+            if let Some(mut output_chunks) = target.op.step(inputs, buffer)? {
                 if target.id == self.output {
                     // If we've reached the output, just save the chunks.
                     outputs.push(output_chunks.into_iter().map(|tv| tv.into_tensor()).collect());
                 } else {
                     // Otherwise propagate the chunks to the successors.
                     for &(port, successor) in &self.successors[target.id] {
-                        queue.push_back((target.id, port, successor, output_chunks[port].clone()));
+                        queue.push_back((target.id, port, successor, output_chunks[port].share()));
                     }
                 }
             }

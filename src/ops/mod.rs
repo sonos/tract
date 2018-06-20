@@ -4,6 +4,7 @@ use std::fmt::Debug;
 #[cfg(feature = "serialize")]
 use std::result::Result as StdResult;
 use std::sync::Arc;
+use std::mem;
 
 use analyser::TensorFact;
 use tfpb::types::DataType;
@@ -30,17 +31,53 @@ pub enum TensorView {
 }
 
 impl TensorView {
+    /// Creates a shared TensorView from any TensorView.
+    pub fn into_shared(self) -> TensorView {
+        match self {
+            TensorView::Owned(m) => TensorView::Shared(Arc::new(m)),
+            TensorView::Shared(_) => self,
+        }
+    }
+
+    /// Creates a Tensor from a TensorView.
     pub fn into_tensor(self) -> Tensor {
         match self {
             TensorView::Owned(m) => m,
             TensorView::Shared(m) => m.as_ref().clone(),
         }
     }
+
+    /// Returns a reference to the Tensor wrapped inside a TensorView.
     pub fn as_tensor(&self) -> &Tensor {
         match self {
             &TensorView::Owned(ref m) => &m,
             &TensorView::Shared(ref m) => m.as_ref(),
         }
+    }
+
+    /// Returns a shared copy of the TensorView, turning the one passed
+    /// as argument into a TensorView::Shared if necessary.
+    pub fn share(&mut self) -> TensorView {
+        // This is somewhat ugly, but sadly we couldn't find any other
+        // way to implement it. If we try to write something like:
+        //   *self = TensorView::Shared(Arc::new(*m))
+        // the borrow checker will complain about *m being moved out of
+        // borrowed content, which makes sense but doesn't apply in our
+        // case because we will "give m back" to the TensorView, except
+        // wrapped around an Arc. The only way to get ownership of m is
+        // to use mem::replace, which means we have to create a "dummy"
+        // value to replace self first.
+        if let TensorView::Owned(_) = self {
+            let dummy = TensorView::Owned(Tensor::i32s(&[], &[0]).unwrap());
+            let shared = match mem::replace(self, dummy) {
+                TensorView::Owned(m) => TensorView::Shared(Arc::new(m)),
+                _ => panic!()
+            };
+
+            *self = shared;
+        }
+
+        self.clone()
     }
 }
 
