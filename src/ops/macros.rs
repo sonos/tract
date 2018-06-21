@@ -232,7 +232,7 @@ macro_rules! initialize_buffer {
 }
 
 macro_rules! append_buffer {
-    ($buffer:ident, $inputs:ident) => ({
+    ($buffer:ident, $inputs:expr) => ({
         // Pushes the current value of the inputs onto the buffer.
         for (i, input) in $inputs.iter_mut().enumerate() {
             if input.1.is_some() {

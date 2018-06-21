@@ -464,8 +464,12 @@ impl StreamingState {
 
         let mut dimensions = HashMap::with_capacity(analyser.edges.len());
         for edge in &analyser.edges {
+            let source = &analyser.nodes[edge.from_node.unwrap()];
+
             // FIXME(liautaud): Get the actual streamed dimension.
-            dimensions.insert((edge.from_node.unwrap(), edge.from_out), 0);
+            if source.op_name != "Const" {
+                dimensions.insert((source.id, edge.from_out), 0);
+            }
         }
 
         let model = analyser.into_model();
@@ -509,13 +513,18 @@ impl StreamingState {
 
             for &(k, kp) in &target.inputs {
                 let pred = self.model.get_node_by_id(k)?;
-                let dimension = self.dimensions.get(&(source, port)).map(|i| *i);
+                let dimension = self.dimensions.get(&(k, kp.unwrap_or(0))).map(|i| *i);
+
                 let value = if pred.op_name == "Const" {
                     // The input is not streamed, and so was turned into a constant
                     // node by the analyser when performing StreamingState::start.
                     Some(pred.op.eval(vec![])?.pop().unwrap())
                 } else if k == source && kp.is_some() && kp.unwrap() == port {
                     // The input is streamed, and we've got a new chunk to give it.
+                    // FIXME(liautaud): This doesn't work well if there are multiple
+                    // edges from node source to node k, because the condition above
+                    // will get verified for all edges but only one actually "holds"
+                    // the chunk. The others will be None, and the unwrap will fail.
                     let chunk = chunk.take().unwrap();
 
                     // We only allow chunks of size 1 along the streaming dimension.
@@ -537,15 +546,25 @@ impl StreamingState {
             if let Some(mut output_chunks) = target.op.step(inputs, buffer)? {
                 if target.id == self.output {
                     // If we've reached the output, just save the chunks.
-                    outputs.push(output_chunks.into_iter().map(|tv| tv.into_tensor()).collect());
-                } else {
-                    // Otherwise propagate the chunks to the successors.
-                    for &(port, successor) in &self.successors[target.id] {
-                        queue.push_back((target.id, port, successor, output_chunks[port].share()));
-                    }
+                    outputs.push(output_chunks.clone());
+                }
+
+                // Propagate the chunks to the successors.
+                for &(port, successor) in &self.successors[target.id] {
+                    queue.push_back((target.id, port, successor, output_chunks[port].share()));
                 }
             }
         }
+
+        // Convert the output TensorViews to Tensors.
+        let outputs = outputs
+            .into_iter()
+            .map(|chunks| chunks
+                .into_iter()
+                .map(|tv| tv.into_tensor())
+                .collect()
+            )
+            .collect();
 
         Ok(outputs)
     }

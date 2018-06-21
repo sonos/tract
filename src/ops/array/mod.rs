@@ -39,6 +39,13 @@ impl ConcatV2 {
 }
 
 impl Op for ConcatV2 {
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{
+            "n" => Attr::Usize(self.n),
+        }
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let axis: i32 = inputs[self.n]
@@ -58,10 +65,62 @@ impl Op for ConcatV2 {
         Ok(vec![result.into()])
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "n" => Attr::Usize(self.n),
+    /// Evaluates one step of the operation on the given input tensors.
+    fn step(
+        &self,
+        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        buffer: &mut Vec<VecDeque<TensorView>>,
+    ) -> Result<Option<Vec<TensorView>>> {
+        // According to https://www.tensorflow.org/api_docs/python/tf/concat,
+        // the number of dimensions of each input tensor must match, and all
+        // dimensions except `axis` must be equal. In particular, this means
+        // that all the input tensors must have the same streaming dimension.
+        // That leaves us with two cases:
+        // - Either all the tensors are streamed along `axis`, in which case
+        //   we push every slice we receive as input directly to the output.
+        // - Or they are streamed along another dimension, so we buffer them
+        //   until we have a chunk for each, and we push their concatenation
+        //   as the output chunk.
+
+        if inputs[self.n].0.is_some() || inputs[self.n].1.is_none() {
+            bail!("Axis input should not be streamed.");
+        }
+
+        let axis_tensor = inputs[self.n].1.take().unwrap();
+        let axis: i32 = axis_tensor
+            .as_i32s()
+            .ok_or("Expected a i32 matrix")?
+            .iter()
+            .next()
+            .unwrap()
+            .clone();
+
+        if inputs[0..self.n].iter().all(|i| i.0 == Some(axis as usize)) {
+            // All the input tensors are streamed along `axis`.
+            let chunk = inputs[0..self.n].iter_mut()
+                .find(|i| i.1.is_some())
+                .unwrap()
+                .1.take()
+                .unwrap();
+
+            Ok(Some(vec![chunk]))
+        } else {
+            // All the input tensors are streamed along a non-`axis` dimension.
+            initialize_buffer!(buffer, self.n);
+            append_buffer!(buffer, inputs[0..self.n]);
+
+            if buffer.iter().any(|b| b.is_empty()) {
+                Ok(None)
+            } else {
+                let mut chunks = buffer
+                    .iter_mut()
+                    .map(|b| b.pop_front().unwrap())
+                    .collect::<Vec<_>>();
+
+                chunks.push(axis_tensor);
+
+                Ok(Some(self.eval(chunks)?))
+            }
         }
     }
 
@@ -130,6 +189,11 @@ impl ExpandDims {
 }
 
 impl Op for ExpandDims {
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (data, dims) = args_2!(inputs);
@@ -148,9 +212,24 @@ impl Op for ExpandDims {
         Ok(vec![Tensor::from(data.into_shape(shape)?).into()])
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
+    /// Evaluates one step of the operation on the given input tensors.
+    fn step(
+        &self,
+        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        _: &mut Vec<VecDeque<TensorView>>,
+    ) -> Result<Option<Vec<TensorView>>> {
+        let (data, dims) = args_2!(inputs);
+
+        if dims.0.is_some() || dims.1.is_none() {
+            bail!("Dims input should not be streamed.");
+        }
+
+        let dims = dims.1.unwrap();
+
+        match data.1 {
+            None => Ok(None),
+            Some(tv) => Ok(Some(self.eval(vec![tv, dims])?))
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.
@@ -246,7 +325,7 @@ impl Op for Identity {
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        _buffer: &mut Vec<VecDeque<TensorView>>,
+        _: &mut Vec<VecDeque<TensorView>>,
     ) -> Result<Option<Vec<TensorView>>> {
         let input = args_1!(inputs);
         match input.1 {
