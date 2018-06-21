@@ -9,7 +9,7 @@ use ndarray::prelude::*;
 use tensor::Datum;
 use Result;
 
-#[derive(Debug, new)]
+#[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {

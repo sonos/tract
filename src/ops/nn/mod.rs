@@ -23,7 +23,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 
 element_map!(Relu, |x| if x < 0.0 { 0.0 } else { x });
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Softmax {}
 
 impl Softmax {

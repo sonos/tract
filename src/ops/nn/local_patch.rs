@@ -1,12 +1,12 @@
 use ndarray::prelude::*;
 use Result;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DataFormat {
     NHWC,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Padding {
     Valid,
     Same,
@@ -56,7 +56,7 @@ impl<'a, T> BatchImageWrapper<'a, T> {
     }
 }
 
-#[derive(Debug, new)]
+#[derive(Debug, Clone, new)]
 pub struct LocalPatch {
     pub _data_format: DataFormat,
     pub padding: Padding,

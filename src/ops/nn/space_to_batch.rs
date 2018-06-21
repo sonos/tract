@@ -17,7 +17,7 @@ pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     Ok(boxed_new!(BatchToSpace(datatype)()))
 }
 
-#[derive(Debug, new)]
+#[derive(Debug, Clone, new)]
 pub struct SpaceToBatch<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for SpaceToBatch<T> {
@@ -177,7 +177,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     }
 }
 
-#[derive(Debug, new)]
+#[derive(Debug, Clone, new)]
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {

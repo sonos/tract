@@ -13,6 +13,7 @@ use {Result, Tensor};
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
+use objekt;
 
 #[macro_use]
 mod macros;
@@ -124,7 +125,7 @@ pub enum Attr<'a> {
     IsizeVec(&'a Vec<isize>),
 }
 
-pub trait Op: Debug + Send + Sync + 'static {
+pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr>;
 
@@ -171,6 +172,8 @@ pub trait Op: Debug + Send + Sync + 'static {
     fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
 }
 
+clone_trait_object!(Op);
+
 #[cfg(feature = "serialize")]
 impl Serialize for Op {
     fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
@@ -207,7 +210,7 @@ impl OpBuilder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {

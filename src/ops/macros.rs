@@ -1,6 +1,6 @@
 macro_rules! element_map {
     ($Struct:ident, $expr:expr) => {
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct $Struct;
 
         impl $Struct {
@@ -76,7 +76,7 @@ macro_rules! element_map {
 
 macro_rules! element_bin {
     ($Name:ident, $name:ident, $expr:expr) => {
-        #[derive(Debug, new)]
+        #[derive(Debug, Clone, new)]
         pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {

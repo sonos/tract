@@ -8,7 +8,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Cast;
 
 impl Cast {

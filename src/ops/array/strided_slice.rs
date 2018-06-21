@@ -18,7 +18,7 @@ pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     }))
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct StridedSlice {
     begin_mask: i64,
     end_mask: i64,

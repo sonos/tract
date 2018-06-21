@@ -8,7 +8,7 @@ use analyser::{ShapeFact, TensorFact};
 use tensor::Datum;
 use Result;
 
-#[derive(Debug, Default, new)]
+#[derive(Debug, Clone, Default, new)]
 pub struct Pack<T: Datum> {
     n: usize, // The number of inputs
     axis: usize,

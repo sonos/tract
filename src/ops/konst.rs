@@ -10,7 +10,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Const {
     dtype: DataType,
     value: Arc<Tensor>,

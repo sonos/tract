@@ -678,23 +678,31 @@ fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64)
 
     info!("Initializing the StreamingState.");
     let start = Instant::now();
-    let mut state = StreamingState::start(model, inputs, Some(params.output))?;
+    let mut states = Vec::with_capacity(100);
 
-    let measure = Duration::since(&start, 1);
+    for _ in 0..100 {
+        states.push(StreamingState::start(
+            model.clone(),
+            inputs.clone(),
+            Some(params.output)
+        )?);
+    }
+
+    let measure = Duration::since(&start, 100);
     info!("Initialized the StreamingState in:");
     info!(
         "    - Real: {}.",
-        format!("{:.3} ms/i", measure.total_real * 1e3).white().bold(),
+        format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
     );
 
     info!(
         "    - User: {}.",
-        format!("{:.3} ms/i", measure.total_user * 1e3).white().bold(),
+        format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
     );
 
     info!(
         "    - Sys: {}.",
-        format!("{:.3} ms/i", measure.total_sys * 1e3).white().bold(),
+        format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
     );
 
     if log_enabled!(Info) {
@@ -711,24 +719,30 @@ fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64)
 
             println!();
             println!("Starting step {:?} with input {:?}.", step, input_chunk);
-            let start = Instant::now();
-            let output = state.step(input, input_chunk)?;
 
-            let measure = Duration::since(&start, 1);
-            println!("Completed step {:?} with output {:?} in:", step, output);
+            let mut input_chunks = vec![Some(input_chunk); 100];
+            let mut outputs = Vec::with_capacity(100);
+            let start = Instant::now();
+
+            for i in 0..100 {
+                outputs.push(states[i].step(input, input_chunks[i].take().unwrap())?);
+            }
+
+            let measure = Duration::since(&start, 100);
+            println!("Completed step {:?} with output {:?} in:", step, outputs[0]);
             println!(
                 "    - Real: {}.",
-                format!("{:.3} ms/i", measure.total_real * 1e3).white().bold(),
+                format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
             );
 
             println!(
                 "    - User: {}.",
-                format!("{:.3} ms/i", measure.total_user * 1e3).white().bold(),
+                format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
             );
 
             println!(
                 "    - Sys: {}.",
-                format!("{:.3} ms/i", measure.total_sys * 1e3).white().bold(),
+                format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
             );
 
             thread::sleep(StdDuration::from_secs(1));

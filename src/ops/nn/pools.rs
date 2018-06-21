@@ -8,14 +8,14 @@ use ndarray::prelude::*;
 use std::marker::PhantomData;
 use {Result, Tensor};
 
-pub trait Pooler: Send + Sync + ::std::fmt::Debug + 'static {
+pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'static {
     type State;
     fn state() -> Self::State;
     fn ingest(state: &mut Self::State, v: f32);
     fn digest(state: &mut Self::State) -> f32;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Pool<P: Pooler>(LocalPatch, (usize, usize), PhantomData<P>);
 
 pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
@@ -137,7 +137,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MaxPooler;
 impl Pooler for MaxPooler {
     type State = f32;
@@ -154,7 +154,7 @@ impl Pooler for MaxPooler {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AvgPooler;
 impl Pooler for AvgPooler {
     type State = (f32, usize);

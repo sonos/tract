@@ -48,6 +48,8 @@ extern crate num_traits;
 extern crate protobuf;
 #[macro_use]
 extern crate maplit;
+#[macro_use]
+extern crate objekt;
 
 #[cfg(feature = "serialize")]
 extern crate serde;
@@ -72,7 +74,7 @@ use ops::{Op, TensorView};
 pub use tensor::Tensor;
 
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Node {
     pub id: usize,
     pub name: String,
@@ -172,6 +174,7 @@ impl Plan {
 /// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
 /// and runs the inference interpreter.
 ///
+#[derive(Clone)]
 pub struct Model {
     pub nodes: Vec<Node>,
     pub nodes_by_name: HashMap<String, usize>,
@@ -388,6 +391,7 @@ impl<'a> ModelState<'a> {
 }
 
 /// The state of a model during streaming evaluation.
+#[derive(Clone)]
 pub struct StreamingState {
     model: Model,
     output: usize,
@@ -398,6 +402,7 @@ pub struct StreamingState {
 }
 
 /// The type of an input during streaming evaluation.
+#[derive(Debug, Clone)]
 pub enum StreamingInput {
     // The input is being streamed along some dimension.
     Streamed(usize),

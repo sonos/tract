@@ -25,7 +25,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("StridedSlice", strided_slice::build);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConcatV2 {
     n: usize,
 }
@@ -179,7 +179,7 @@ impl Op for ConcatV2 {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExpandDims;
 
 impl ExpandDims {
@@ -301,7 +301,7 @@ impl Op for ExpandDims {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Identity;
 
 impl Identity {
@@ -353,7 +353,7 @@ impl Op for Identity {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Placeholder {
     dtype: DataType,
 }
@@ -397,7 +397,7 @@ impl Op for Placeholder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Reshape {}
 
 impl Reshape {
@@ -516,7 +516,7 @@ impl Op for Reshape {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Shape;
 
 impl Shape {
@@ -599,7 +599,7 @@ impl Op for Shape {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Squeeze {
     dims: Vec<isize>,
 }
