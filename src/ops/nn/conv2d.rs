@@ -93,23 +93,33 @@ impl<T: Datum> Op for Conv2D<T> {
             bail!("Data input should be streamed.");
         }
 
-        let dim = data.0.unwrap();
-        if dim < 1 || dim > 2 {
-            bail!("Conv2D only supports width and height streaming.");
-        }
-
         // Maybe there is no incoming chunk.
         if data.1.is_none() {
             return Ok(None);
         }
 
-        let filter = T::tensor_into_array(filter.1.take().unwrap().into_tensor())?;
-        let filter_size = filter.shape()[dim - 1];
+        // Maybe the data is streamed along the batch dimension.
+        let dim = data.0.unwrap();
+        if dim == 0 {
+            let result = self.eval(vec![
+                data.1.take().unwrap(),
+                filter.1.take().unwrap()
+            ])?;
+
+            return Ok(Some(result))
+        }
+
+        if dim < 1 || dim > 2 {
+            bail!("Conv2D only supports batch, width and height streaming.");
+        }
 
         let data = data.1.take().unwrap().into_tensor();
         let data = into_4d(T::tensor_into_array(data)?)?;
         let data_size = data.shape()[dim];
         debug_assert!(data_size == 1);
+
+        let filter = T::tensor_into_array(filter.1.take().unwrap().into_tensor())?;
+        let filter_size = filter.shape()[dim - 1];
 
         // The buffer contains both `skip` (the number of chunks to skip) and
         // `prev` (the chunks from previous iterations which are still needed
@@ -150,7 +160,8 @@ impl<T: Datum> Op for Conv2D<T> {
         // Otherwise we compute the convolution using the non-streaming implementation.
         // FIXME(liautaud): THERE SHOULDN'T BE A CLONE HERE!
         let next_view = T::array_into_tensor(next.clone().into_dyn()).into();
-        let result = self.eval(vec![next_view])?;
+        let filter_view = T::array_into_tensor(filter).into();
+        let result = self.eval(vec![next_view, filter_view])?;
 
         let stride = [self.0.v_stride, self.0.h_stride][dim - 1];
 
@@ -163,7 +174,7 @@ impl<T: Datum> Op for Conv2D<T> {
             let next = match dim {
                 1 => next.slice_move(s![.., stride..next_size, .., ..]),
                 2 => next.slice_move(s![.., .., stride..next_size, ..]),
-                _ => bail!("Conv2D only supports width and height streaming.")
+                _ => bail!("Conv2D only supports batch, width and height streaming.")
             };
 
             buffer.set_usize(0, 0)?;
