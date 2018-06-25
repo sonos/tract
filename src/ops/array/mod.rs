@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use ndarray::prelude::*;
 use std::iter::repeat;
 
 mod pack;
 mod strided_slice;
 
-use ops::{Attr, Op, OpRegister, TensorView};
+use ops::{Buffer, Attr, Op, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::helpers::most_specific_shape;
 use analyser::{ShapeFact, TensorFact, ValueFact};
@@ -69,7 +68,7 @@ impl Op for ConcatV2 {
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        buffer: &mut Vec<VecDeque<TensorView>>,
+        buffer: &mut Buffer,
     ) -> Result<Option<Vec<TensorView>>> {
         // According to https://www.tensorflow.org/api_docs/python/tf/concat,
         // the number of dimensions of each input tensor must match, and all
@@ -106,14 +105,14 @@ impl Op for ConcatV2 {
             Ok(Some(vec![chunk]))
         } else {
             // All the input tensors are streamed along a non-`axis` dimension.
-            initialize_buffer!(buffer, self.n);
-            append_buffer!(buffer, inputs[0..self.n]);
+            buffer.initialize_queues(self.n)?;
+            buffer.append_queues(&mut inputs[0..self.n])?;
 
-            if buffer.iter().any(|b| b.is_empty()) {
+            if buffer.iter_queues().any(|q| q.is_empty()) {
                 Ok(None)
             } else {
                 let mut chunks = buffer
-                    .iter_mut()
+                    .iter_queues()
                     .map(|b| b.pop_front().unwrap())
                     .collect::<Vec<_>>();
 
@@ -216,7 +215,7 @@ impl Op for ExpandDims {
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        _: &mut Vec<VecDeque<TensorView>>,
+        _: &mut Buffer,
     ) -> Result<Option<Vec<TensorView>>> {
         let (data, dims) = args_2!(inputs);
 
@@ -325,7 +324,7 @@ impl Op for Identity {
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        _: &mut Vec<VecDeque<TensorView>>,
+        _: &mut Buffer,
     ) -> Result<Option<Vec<TensorView>>> {
         let input = args_1!(inputs);
         match input.1 {

@@ -70,7 +70,7 @@ use std::{fs, path, str};
 use analyser::helpers::tensor_to_fact;
 use analyser::Analyser;
 pub use errors::*;
-use ops::{Op, TensorView};
+use ops::{Op, TensorView, Buffer};
 pub use tensor::Tensor;
 
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -396,7 +396,7 @@ pub struct StreamingState {
     model: Model,
     output: usize,
     mapping: Vec<Option<usize>>,
-    buffers: Vec<Vec<VecDeque<TensorView>>>,
+    buffers: Vec<Buffer>,
     dimensions: HashMap<(usize, usize), usize>,
     successors: Vec<Vec<(usize, usize)>>,
 }
@@ -465,7 +465,7 @@ impl StreamingState {
             })
             .collect::<Vec<_>>();
 
-        let buffers = vec![vec![]; analyser.nodes.len()];
+        let buffers = vec![Buffer::new(); analyser.nodes.len()];
 
         let mut dimensions = HashMap::with_capacity(analyser.edges.len());
         for edge in &analyser.edges {

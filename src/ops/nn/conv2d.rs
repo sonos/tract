@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
-use super::{Attr, Op, TensorView};
+use ops::{Buffer, BufferItem, Attr, Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::{ShapeFact, TensorFact};
 use ndarray::prelude::*;
+use ndarray::{Axis, stack};
 use tensor::Datum;
 use Result;
 
@@ -19,6 +20,14 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 }
 
 impl<T: Datum> Op for Conv2D<T> {
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        // TODO(liautaud): Implement serialization for LocalPatch.
+        hashmap!{
+            "T" => Attr::DataType(T::datatype()),
+        }
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (m_data, m_filter) = args_2!(inputs);
@@ -53,12 +62,115 @@ impl<T: Datum> Op for Conv2D<T> {
         Ok(vec![T::array_into_tensor(transformed).into()])
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        // TODO(liautaud): Implement serialization for LocalPatch.
-        hashmap!{
-            "T" => Attr::DataType(T::datatype()),
+    /// Evaluates one step of the operation on the given input tensors.
+    fn step(
+        &self,
+        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        buffer: &mut Buffer,
+    ) -> Result<Option<Vec<TensorView>>> {
+        // We only support the VALID padding strategy for now, with the
+        // streaming dimension being either the width or the height.
+
+        // The idea is that, regardless of the strides, we need at least
+        // as many chunks in the buffer as the size of the filter in the
+        // streaming dimension to compute our first output chunk. Then,
+        // we pop the min(buffer_size, k) first chunks from the buffer,
+        // ignore the next max(k - buffer_size, 0) chunks, and wait for
+        // the k following chunks to compte one output chunk, with k the
+        // strides in the streaming dimension.
+
+        let (mut data, mut filter) = args_2!(inputs);
+
+        if self.0.padding != Padding::Valid {
+            bail!("Conv2D only supports VALID padding when streaming.");
         }
+
+        if filter.0.is_some() || filter.1.is_none() {
+            bail!("Filter input should not be streamed.");
+        }
+
+        if data.0.is_none()  {
+            bail!("Data input should be streamed.");
+        }
+
+        let dim = data.0.unwrap();
+        if dim < 1 || dim > 2 {
+            bail!("Conv2D only supports width and height streaming.");
+        }
+
+        // Maybe there is no incoming chunk.
+        if data.1.is_none() {
+            return Ok(None);
+        }
+
+        let filter = T::tensor_into_array(filter.1.take().unwrap().into_tensor())?;
+        let filter_size = filter.shape()[dim - 1];
+
+        let data = data.1.take().unwrap().into_tensor();
+        let data = into_4d(T::tensor_into_array(data)?)?;
+        let data_size = data.shape()[dim];
+        debug_assert!(data_size == 1);
+
+        // The buffer contains both `skip` (the number of chunks to skip) and
+        // `prev` (the chunks from previous iterations which are still needed
+        // to compute the next convolution).
+        let empty_view = || {
+            let array = match dim {
+                1 => Array::zeros((data.shape()[0], 0, data.shape()[2], data.shape()[3])),
+                2 => Array::zeros((data.shape()[0], data.shape()[1], 0, data.shape()[3])),
+                _ => panic!()
+            };
+
+            T::array_into_tensor(array.into_dyn()).into()
+        };
+
+        buffer.initialize(|| vec![
+            BufferItem::Usize(0),
+            BufferItem::View(empty_view())
+        ])?;
+
+        let skip = buffer.take_usize(0)?;
+        if skip > 0 {
+            buffer.set_usize(0, skip - 1)?;
+            return Ok(None)
+        }
+
+        let prev = buffer.take_view(1)?.into_tensor();
+        let prev = into_4d(T::tensor_into_array(prev)?)?;
+        let next = stack(Axis(dim), &[prev.view(), data.view()])?;
+        let next_size = next.shape()[dim];
+
+        // Maybe we don't have enough chunks to compute the convolution yet.
+        if next_size < filter_size {
+            buffer.set_usize(0, skip - 1)?;
+            buffer.set_view(1, T::array_into_tensor(next.into_dyn()).into())?;
+            return Ok(None)
+        }
+
+        // Otherwise we compute the convolution using the non-streaming implementation.
+        // FIXME(liautaud): THERE SHOULDN'T BE A CLONE HERE!
+        let next_view = T::array_into_tensor(next.clone().into_dyn()).into();
+        let result = self.eval(vec![next_view])?;
+
+        let stride = [self.0.v_stride, self.0.h_stride][dim - 1];
+
+        if stride > next_size {
+            // Maybe we must pop more chunks from the buffer than it currently contains.
+            buffer.set_usize(0, stride - next_size)?;
+            buffer.set_view(1, empty_view())?;
+        } else {
+            // Otherwise we pop the right number of chunks to prepare the next iteration.
+            let next = match dim {
+                1 => next.slice_move(s![.., stride..next_size, .., ..]),
+                2 => next.slice_move(s![.., .., stride..next_size, ..]),
+                _ => bail!("Conv2D only supports width and height streaming.")
+            };
+
+            buffer.set_usize(0, 0)?;
+            buffer.set_view(1, T::array_into_tensor(next.into_dyn()).into())?;
+        }
+
+        Ok(Some(result))
     }
 
     /// Infers properties about the output tensors from the input tensors.

@@ -32,7 +32,7 @@ macro_rules! element_map {
             fn step(
                 &self,
                 mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
-                _buffer: &mut Vec<::std::collections::VecDeque<$crate::ops::TensorView>>,
+                _buffer: &mut $crate::ops::Buffer,
             ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
                 let a = args_1!(inputs);
                 match a.1 {
@@ -105,18 +105,18 @@ macro_rules! element_bin {
             fn step(
                 &self,
                 mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
-                buffer: &mut Vec<::std::collections::VecDeque<$crate::ops::TensorView>>,
+                buffer: &mut $crate::ops::Buffer,
             ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
                 // If we don't have a value for some of the inputs yet, we buffer
                 // the current values to reuse them on the next call.
-                initialize_buffer!(buffer, 2);
-                append_buffer!(buffer, inputs);
+                buffer.initialize_queues(2)?;
+                buffer.append_queues(&mut inputs)?;
 
-                if buffer[0].is_empty() || buffer[1].is_empty() {
+                if buffer.get_queue(0)?.is_empty() || buffer.get_queue(1)?.is_empty() {
                     Ok(None)
                 } else {
-                    let a = buffer[0].pop_front().unwrap();
-                    let b = buffer[1].pop_front().unwrap();
+                    let a = buffer.get_queue(0)?.pop_front().unwrap();
+                    let b = buffer.get_queue(1)?.pop_front().unwrap();
                     Ok(Some(self.eval(vec![a, b])?))
                 }
             }
@@ -221,23 +221,4 @@ macro_rules! boxed_new {
             _ => unimplemented!()
         }
     } }
-}
-
-macro_rules! initialize_buffer {
-    ($buffer:ident, $count:expr) => ({
-        if $buffer.is_empty() {
-            $buffer.extend(vec![::std::collections::VecDeque::new(); $count]);
-        }
-    })
-}
-
-macro_rules! append_buffer {
-    ($buffer:ident, $inputs:expr) => ({
-        // Pushes the current value of the inputs onto the buffer.
-        for (i, input) in $inputs.iter_mut().enumerate() {
-            if input.1.is_some() {
-                $buffer[i].push_back(input.1.take().unwrap());
-            }
-        }
-    })
 }
