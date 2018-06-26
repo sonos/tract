@@ -8,7 +8,7 @@ clap = "2.31"
 colored = "1.6"
 conform = { path = "../conform" }
 dot = "0.1.4"
-error-chain = "0"
+error-chain = "0.12"
 lazy_static = "1.0"
 log = "0.4"
 ndarray = "0.11"
