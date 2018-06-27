@@ -238,7 +238,7 @@ impl LocalPatch {
 
 pub fn into_4d<T>(data: ArrayD<T>) -> Result<Array4<T>> {
     if data.shape().len() != 4 {
-        Err(format!("Expeted 4D shape, found: {:?}", data.shape()))?
+        Err(format!("Expected 4D shape, found: {:?}", data.shape()))?
     }
     let shape = (
         data.shape()[0],
