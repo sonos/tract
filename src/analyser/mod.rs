@@ -7,13 +7,14 @@ use Node;
 use Plan;
 
 mod types;
+mod constants;
+
 pub use self::types::*;
 
 #[macro_use]
 pub mod macros;
 #[macro_use]
 pub mod helpers;
-pub mod constants;
 
 /// Attempts to unify two tensor facts into a more specialized one.
 pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
@@ -259,6 +260,11 @@ impl Analyser {
     pub fn reset_plan(&mut self) -> Result<()> {
         self.plan = Plan::for_nodes(&self.nodes, &[self.output])?.order;
         Ok(())
+    }
+
+    /// Detaches the constant nodes and edges from the given graph.
+    pub fn propagate_constants(&mut self) -> Result<()> {
+        constants::propagate_constants(self)
     }
 
     /// Removes the nodes and edges which are not part of the execution plan.

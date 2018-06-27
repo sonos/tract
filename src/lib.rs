@@ -443,7 +443,7 @@ impl StreamingState {
         }
 
         analyser.run()?;
-        analyser::constants::prune_constants(&mut analyser)?;
+        analyser.propagate_constants()?;
 
         // Keep track of the relation between old and new node indexes, as the
         // analyser replaces the constant parts of the graph with Const nodes.

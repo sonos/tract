@@ -35,7 +35,6 @@ use std::time::Duration as StdDuration;
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::Analyser;
-use tfdeploy::analyser::constants;
 use tfdeploy::analyser::detect_inputs;
 use tfdeploy::analyser::detect_output;
 use tfdeploy::analyser::TensorFact;
@@ -788,7 +787,7 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
             analyser.nodes.len()
         );
 
-        constants::prune_constants(&mut analyser)?;
+        analyser.propagate_constants()?;
         analyser.prune_unused();
 
         info!(
@@ -851,7 +850,7 @@ fn handle_prune(params: Parameters) -> Result<()> {
     );
 
     analyser.run()?;
-    constants::prune_constants(&mut analyser)?;
+    analyser.propagate_constants()?;
     analyser.prune_unused();
 
     info!(
