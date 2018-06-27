@@ -206,13 +206,18 @@ impl Model {
                             None,
                         )
                     } else {
+                        let splits: Vec<_> = i.splitn(2, ':').collect();
                         (
                             nodes_by_name
-                                .get(i)
+                                .get(splits[0])
                                 .ok_or(format!("No node {} found", i))?
                                 .clone(),
-                            // TODO(liautaud): Handle the "node:output" format.
-                            Some(0usize),
+
+                            if splits.len() > 1 {
+                                Some(splits[1].parse::<usize>()?)
+                            } else {
+                                Some(0)
+                            }
                         )
                     };
                     Ok((input.0.clone(), input.1))
@@ -455,11 +460,7 @@ impl StreamingState {
                 s.iter()
                     .filter_map(|&e| {
                         let e = &analyser.edges[e];
-                        if e.to_node.is_none() {
-                            None
-                        } else {
-                            Some((e.from_out, e.to_node.unwrap()))
-                        }
+                        e.to_node.map(|dest| (e.from_out, dest))
                     })
                     .collect::<Vec<_>>()
             })
