@@ -152,7 +152,7 @@ impl<T: Datum> Op for Conv2D<T> {
 
         // Maybe we don't have enough chunks to compute the convolution yet.
         if next_size < filter_size {
-            buffer.set_usize(0, skip - 1)?;
+            buffer.set_usize(0, 0)?;
             buffer.set_view(1, T::array_into_tensor(next.into_dyn()).into())?;
             return Ok(None)
         }

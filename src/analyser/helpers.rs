@@ -57,6 +57,8 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
 
             match &shape[shape.len() - i] {
                 DimFact::Any => unknown += 1,
+                DimFact::Only(1) |
+                DimFact::Streamed => (),
                 DimFact::Only(j) => match previous {
                     Some(k) if k != j => bail!(
                         "Invalid shape (broadcasting): {} is not compatible with {}.",

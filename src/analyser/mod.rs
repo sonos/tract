@@ -54,12 +54,9 @@ pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
 
     let dimensions: Vec<_> = xi.zip_longest(yi)
         .map(|r| match r {
-            Both(Any, Any) => Ok(Any),
-
-            Both(Only(i), Any) | Both(Any, Only(i)) => Ok(Only(*i)),
-
-            Both(Only(i), Only(j)) if i == j => Ok(Only(*i)),
-            Both(Only(i), Only(j)) => bail!("Impossible to unify dimensions {:?} and {:?}.", i, j),
+            Both(a, Any) | Both(Any, a) => Ok(*a),
+            Both(a, b) if a == b => Ok(*a),
+            Both(a, b) => bail!("Impossible to unify {:?} and {:?}.", a, b),
 
             Left(d) if y.open => Ok(*d),
             Right(d) if x.open => Ok(*d),

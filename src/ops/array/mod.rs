@@ -472,7 +472,7 @@ impl Op for Reshape {
             // If we know the concrete shape of the input, we get the output shape.
             Some(shape) => TensorFact {
                 datatype: inputs[0].datatype,
-                shape: Reshape::true_dims(dims, shape[0]).iter().collect(),
+                shape: Reshape::true_dims(dims, shape[0]).iter().cloned().collect(),
                 value: valuefact!(_),
             },
 
@@ -647,7 +647,7 @@ impl Op for Squeeze {
         // because they could turn out to be Only(1), and so Squeeze would
         // have to remove them.
         let shape = match inputs[0].shape.concretize() {
-            Some(shape) => self.squeeze_shape(shape)?.iter().collect(),
+            Some(shape) => self.squeeze_shape(shape)?.iter().cloned().collect(),
             None => shapefact![..],
         };
 

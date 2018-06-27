@@ -112,17 +112,27 @@ impl FromIterator<usize> for ShapeFact {
     }
 }
 
-impl<'a> FromIterator<&'a usize> for ShapeFact {
-    /// Converts an iterator over &usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item = &'a usize>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter.into_iter().map(|d| DimFact::Only(*d)).collect())
-    }
-}
-
 impl<'a> From<&'a [usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
     fn from(slice: &'a [usize]) -> ShapeFact {
-        slice.iter().collect()
+        slice.iter().cloned().collect()
+    }
+}
+
+impl FromIterator<Option<usize>> for ShapeFact {
+    /// Converts an iterator over Option<usize> into a closed shape.
+    fn from_iter<I: IntoIterator<Item = Option<usize>>>(iter: I) -> ShapeFact {
+        ShapeFact::closed(iter.into_iter().map(|d| match d {
+            Some(d) => DimFact::Only(d),
+            None => DimFact::Streamed,
+        }).collect())
+    }
+}
+
+impl<'a> From<&'a [Option<usize>]> for ShapeFact {
+    /// Converts an Option<usize> slice into a closed shape.
+    fn from(slice: &'a [Option<usize>]) -> ShapeFact {
+        slice.iter().cloned().collect()
     }
 }
 
@@ -131,6 +141,7 @@ impl<'a> From<&'a [usize]> for ShapeFact {
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum DimFact {
     Any,
+    Streamed,
     Only(usize),
 }
 
@@ -139,6 +150,7 @@ impl DimFact {
     pub fn concretize(&self) -> Option<usize> {
         match self {
             DimFact::Any => None,
+            DimFact::Streamed => None,
             DimFact::Only(i) => Some(*i),
         }
     }
@@ -146,6 +158,11 @@ impl DimFact {
     /// Returns whether the dimension is fully determined.
     pub fn is_concrete(&self) -> bool {
         self.concretize().is_some()
+    }
+
+    /// Returns whether the dimension is streamed.
+    pub fn is_streamed(&self) -> bool {
+        self == &DimFact::Streamed
     }
 }
 

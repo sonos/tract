@@ -67,8 +67,8 @@ pub mod tfpb;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::{fs, path, str};
 
+use analyser::{Analyser, TensorFact};
 use analyser::helpers::tensor_to_fact;
-use analyser::Analyser;
 pub use errors::*;
 use ops::{Op, TensorView, Buffer};
 pub use tensor::Tensor;
@@ -409,8 +409,9 @@ pub struct StreamingState {
 /// The type of an input during streaming evaluation.
 #[derive(Debug, Clone)]
 pub enum StreamingInput {
-    // The input is being streamed along some dimension.
-    Streamed(usize),
+    // The input is being streamed. We pass its datatype and shape along,
+    // using None to denote the streaming dimension.
+    Streamed(tfpb::types::DataType, Vec<Option<usize>>),
 
     // The input will remain constant during the evaluation.
     Constant(Tensor),
@@ -439,10 +440,14 @@ impl StreamingState {
         let mut analyser = Analyser::new(model, output)?;
 
         // Pre-compute the constant part of the graph using the analyser.
-        let mut streaming_inputs = vec![];
         for input in inputs {
             match input {
-                (i, Streamed(d)) => streaming_inputs.push((i, d)),
+                (i, Streamed(dt, shape)) =>
+                    analyser.hint(i, &TensorFact {
+                        datatype: typefact!(dt),
+                        shape: shape.iter().cloned().collect(),
+                        value: valuefact!(_),
+                    })?,
                 (i, Constant(tensor)) => analyser.hint(i, &tensor_to_fact(tensor))?,
             }
         }
@@ -471,10 +476,17 @@ impl StreamingState {
         let mut dimensions = HashMap::with_capacity(analyser.edges.len());
         for edge in &analyser.edges {
             let source = &analyser.nodes[edge.from_node.unwrap()];
+            let streamed = edge.fact.shape.dims.iter().position(|d| d.is_streamed());
 
-            // FIXME(liautaud): Get the actual streamed dimension.
-            if source.op_name != "Const" {
-                dimensions.insert((source.id, edge.from_out), 0);
+            if source.op_name != "Const" && streamed.is_some() {
+                debug!(
+                    "Found streaming dimension {:?} for ({}, {:?}).",
+                    streamed.unwrap(),
+                    source.name,
+                    edge.from_out,
+                );
+
+                dimensions.insert((source.id, edge.from_out), streamed.unwrap());
             }
         }
 

@@ -748,11 +748,14 @@ fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64)
     use tfdeploy::StreamingState;
 
     let model = params.tfd_model;
-    let axis = params.shape.iter()
+    let datatype = params.datatype;
+    let shape = params.shape;
+
+    let axis = shape.iter()
         .position(|&d| d == None)
         .unwrap();
     let inputs = params.inputs.iter()
-        .map(|&s| (s, StreamingInput::Streamed(axis)))
+        .map(|&s| (s, StreamingInput::Streamed(datatype, shape.clone())))
         .collect::<Vec<_>>();
 
     info!("Initializing the StreamingState.");
@@ -788,12 +791,11 @@ fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64)
     }
 
     // Either get the input data from the input file or generate it randomly.
-    let data_type = params.datatype;
-    let data_shape = params.shape.iter()
+    let random_shape = shape.iter()
         .map(|d| d.unwrap_or(20))
         .collect::<Vec<_>>();
     let data = params.data
-        .unwrap_or_else(|| random_tensor(data_shape, data_type));
+        .unwrap_or_else(|| random_tensor(random_shape, datatype));
 
     // Split the input data into chunks along the streaming axis.
     macro_rules! split_inner {
@@ -871,7 +873,7 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     for &i in &params.inputs {
         analyser.hint(i, &TensorFact {
             datatype: typefact!(params.datatype),
-            shape: shape.iter().collect(),
+            shape: shape.iter().cloned().collect(),
             value: valuefact!(_),
         })?;
     }
