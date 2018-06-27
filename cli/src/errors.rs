@@ -3,6 +3,7 @@ use conform;
 use tfdeploy;
 use bincode;
 use serde_json;
+use ndarray;
 
 /// Configures error handling for this crate.
 error_chain! {
@@ -16,5 +17,6 @@ error_chain! {
         NumParseInt(::std::num::ParseIntError);
         Bincode(bincode::Error);
         SerdeJson(serde_json::Error);
+        NdarrayShape(ndarray::ShapeError);
     }
 }
