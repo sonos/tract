@@ -68,6 +68,14 @@
       let graph = sessionStorage.getItem('tfd-state')
       if (graph) {
         this.graph = JSON.parse(graph)
+      } else {
+        fetch('/current').then(resp => {
+          if (resp.ok) {
+            resp.json().then(graph => {
+              this.graph = graph
+            })
+          }
+        })
       }
     },
 

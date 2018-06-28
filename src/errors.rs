@@ -7,6 +7,7 @@ error_chain!{
         NdarrayShape(::ndarray::ShapeError);
         Protobuf(::protobuf::ProtobufError);
         StrUtf8(::std::str::Utf8Error);
+        NumParseInt(::std::num::ParseIntError);
     }
     errors {
         TFString {}

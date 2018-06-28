@@ -23,6 +23,7 @@ pub trait Datum:
     + ::std::ops::RemAssign
 {
     fn name() -> &'static str;
+    fn datatype() -> DataType;
     fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
     fn tensor_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
@@ -112,8 +113,10 @@ impl Tensor {
 
     pub fn shape(&self) -> &[usize] {
         match self {
-            &Tensor::I32(ref it) => it.shape(),
+            &Tensor::F64(ref it) => it.shape(),
             &Tensor::F32(ref it) => it.shape(),
+            &Tensor::I32(ref it) => it.shape(),
+            &Tensor::I8(ref it) => it.shape(),
             &Tensor::U8(ref it) => it.shape(),
             _ => unimplemented!(),
         }
@@ -122,8 +125,10 @@ impl Tensor {
     pub fn datatype(&self) -> ::tfpb::types::DataType {
         use tfpb::types::DataType;
         match self {
-            &Tensor::I32(_) => DataType::DT_INT32,
+            &Tensor::F64(_) => DataType::DT_DOUBLE,
             &Tensor::F32(_) => DataType::DT_FLOAT,
+            &Tensor::I32(_) => DataType::DT_INT32,
+            &Tensor::I8(_) => DataType::DT_INT8,
             &Tensor::U8(_) => DataType::DT_UINT8,
             _ => unimplemented!(),
         }
@@ -213,7 +218,7 @@ impl Serialize for Tensor
 }
 
 macro_rules! tensor {
-    ($t:ident, $v:ident, $as:ident, $take:ident, $make:ident) => {
+    ($t:ident, $pbt:ident, $v:ident, $as:ident, $take:ident, $make:ident) => {
         impl<D: ::ndarray::Dimension> From<Array<$t, D>> for Tensor {
             fn from(it: Array<$t, D>) -> Tensor {
                 Tensor::$v(it.into_dyn())
@@ -256,6 +261,11 @@ macro_rules! tensor {
             fn name() -> &'static str {
                 stringify!($t)
             }
+
+            fn datatype() -> DataType {
+                DataType::$pbt
+            }
+
             fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>> {
                 m.$take().ok_or("unmatched data type".into())
             }
@@ -273,8 +283,23 @@ macro_rules! tensor {
     };
 }
 
-tensor!(f64, F64, as_f64s, take_f64s, f64s);
-tensor!(f32, F32, as_f32s, take_f32s, f32s);
-tensor!(i32, I32, as_i32s, take_i32s, i32s);
-tensor!(u8, U8, as_u8s, take_u8s, u8s);
-tensor!(i8, I8, as_i8s, take_i8s, i8s);
+tensor!(f64, DT_DOUBLE, F64, as_f64s, take_f64s, f64s);
+tensor!(f32, DT_FLOAT, F32, as_f32s, take_f32s, f32s);
+tensor!(i32, DT_INT32, I32, as_i32s, take_i32s, i32s);
+tensor!(u8, DT_UINT8, U8, as_u8s, take_u8s, u8s);
+tensor!(i8, DT_INT8, I8, as_i8s, take_i8s, i8s);
+
+#[macro_export]
+macro_rules! map_tensor {
+    ($tensor:expr, |$array:ident| $return:expr) => ({
+        use Tensor::*;
+        match $tensor {
+            F64($array) => F64($return),
+            F32($array) => F32($return),
+            I32($array) => I32($return),
+            I8($array) => I8($return),
+            U8($array) => U8($return),
+            String($array) => String($return),
+        }
+    })
+}

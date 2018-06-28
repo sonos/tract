@@ -1,4 +1,14 @@
+use tensor::Tensor;
 use super::*;
+
+/// Build a TensorFact from a Tensor.
+pub fn tensor_to_fact(tensor: Tensor) -> TensorFact {
+    TensorFact {
+        datatype: typefact!(tensor.datatype()),
+        shape: tensor.shape().into(),
+        value: valuefact!(tensor),
+    }
+}
 
 /// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(
@@ -18,13 +28,10 @@ pub fn infer_forward_concrete(
 
     // If we know the value of all the inputs, we can deduce everything.
     let output_value = op.eval(input_values)?.pop().unwrap();
-    let output = TensorFact {
-        datatype: inputs[0].datatype,
-        shape: output_value.shape().into(),
-        value: valuefact!(output_value.into_tensor()),
-    };
 
-    Ok(Some(vec![output]))
+    Ok(Some(vec![
+        tensor_to_fact(output_value.into_tensor())
+    ]))
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.
@@ -50,6 +57,8 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
 
             match &shape[shape.len() - i] {
                 DimFact::Any => unknown += 1,
+                DimFact::Only(1) |
+                DimFact::Streamed => (),
                 DimFact::Only(j) => match previous {
                     Some(k) if k != j => bail!(
                         "Invalid shape (broadcasting): {} is not compatible with {}.",
@@ -73,6 +82,8 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
             output_shape.push(DimFact::Only(*previous.unwrap()));
         }
     }
+
+    output_shape.reverse();
 
     Ok(Some(ShapeFact::closed(output_shape)))
 }

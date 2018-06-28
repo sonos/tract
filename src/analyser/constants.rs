@@ -120,7 +120,7 @@ fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
     }
 }
 
-/// Prunes the constant nodes and edges from the given graph.
+/// Detaches the constant nodes and edges from the given graph.
 ///
 /// The following algorithm is used:
 /// 1. Compute the constant underlying graph of the given graph.
@@ -153,7 +153,7 @@ fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
 /// - Ideally, we would use a heuristic to find a middle ground between the
 ///   two strategies. This would allow the duplication of constants if the
 ///   size or performance gained from pruning compensates the size loss.
-pub fn prune_constants(analyser: &mut Analyser) -> Result<()> {
+pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
     let components: Vec<Component> = connected_components(analyser)?;
     info!("Detected {:?} connected components.", components.len());
 

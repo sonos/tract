@@ -15,25 +15,37 @@ extern crate rand;
 extern crate simplelog;
 extern crate terminal_size;
 extern crate textwrap;
+#[macro_use]
 extern crate tfdeploy;
 extern crate pbr;
 extern crate atty;
 extern crate libc;
+#[macro_use]
+extern crate rouille;
+extern crate open;
+extern crate serde_json;
+extern crate bincode;
 
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
 use std::process;
+use std::thread;
 use std::time::Instant as StdInstant;
+use std::time::Duration as StdDuration;
 
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::Analyser;
-use tfdeploy::analyser::constants;
+use tfdeploy::analyser::detect_inputs;
+use tfdeploy::analyser::detect_output;
+use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
-#[cfg(feature = "tensorflow")]
 use tfdeploy::Tensor;
 use tfpb::graph::GraphDef;
 use tfpb::types::DataType;
 use pbr::ProgressBar;
+use ndarray::Axis;
 
 use errors::*;
 use format::print_header;
@@ -42,8 +54,6 @@ use format::print_node;
 use format::Row;
 #[cfg(feature = "tensorflow")]
 use utils::compare_outputs;
-use utils::detect_inputs;
-use utils::detect_output;
 use utils::random_tensor;
 
 mod errors;
@@ -68,7 +78,8 @@ struct Parameters {
     inputs: Vec<usize>,
     output: usize,
 
-    sizes: Vec<usize>,
+    data: Option<Tensor>,
+    shape: Vec<Option<usize>>,
     datatype: DataType,
 }
 
@@ -92,8 +103,11 @@ fn main() {
         (@arg output: -o --output [output]
             "Sets the output node name (auto-detects otherwise).")
 
-        (@arg size: -s --size <size>
-            "Sets the input size, e.g. 32x64xf32.")
+        (@arg size: -s --size [size]
+            "Generates random input of a given size, e.g. 32x64xf32.")
+
+        (@arg data: -f --data [data]
+            "Loads input data from a given file.")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
 
@@ -108,7 +122,11 @@ fn main() {
                 "Sets the maximum execution time for each node (in ms) [default: 500]."))
 
         (@subcommand analyse =>
-            (about: "Analyses the graph to infer properties about tensors (experimental)."))
+            (about: "Analyses the graph to infer properties about tensors (experimental).")
+            (@arg prune: --prune
+                "Prunes constant nodes and edges from the graph.")
+            (@arg open: --open
+                "Displays the results of the analysis in a web interface."))
     );
 
     let matches = app.get_matches();
@@ -145,8 +163,6 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     match matches.subcommand() {
         ("compare", _) => handle_compare(params),
 
-        ("profile", None) => handle_profile(params, DEFAULT_MAX_ITERS, DEFAULT_MAX_TIME),
-
         ("profile", Some(m)) => handle_profile(
             params,
             match m.value_of("max_iters") {
@@ -159,7 +175,11 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
             },
         ),
 
-        ("analyse", _) => handle_analyse(params),
+        ("analyse", Some(m)) => handle_analyse(
+            params,
+            m.is_present("prune"),
+            m.is_present("open")
+        ),
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
@@ -174,21 +194,10 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     #[cfg(feature = "tensorflow")]
     let tf_model = conform::tf::for_path(&name)?;
 
-    let splits: Vec<&str> = matches.value_of("size").unwrap().split("x").collect();
-
-    if splits.len() < 1 {
-        bail!("Size should be formatted as {size}x{...}x{type}.");
-    }
-
-    let (datatype, sizes) = splits.split_last().unwrap();
-    let sizes: Vec<usize> = sizes.iter().map(|s| Ok(s.parse()?)).collect::<Result<_>>()?;
-    let datatype = match datatype.to_lowercase().as_str() {
-        "f64" => DataType::DT_DOUBLE,
-        "f32" => DataType::DT_FLOAT,
-        "i32" => DataType::DT_INT32,
-        "i8" => DataType::DT_INT8,
-        "u8" => DataType::DT_UINT8,
-        _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
+    let (data, shape, datatype) = match (matches.value_of("size"), matches.value_of("data")) {
+        (Some(size), None)     => parse_size(size)?,
+        (None, Some(filename)) => parse_data(filename)?,
+        _ => bail!("Exactly one of <size> or <data> must be specified.")
     };
 
     let inputs = match matches.values_of("inputs") {
@@ -212,7 +221,8 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         tf_model,
         inputs,
         output,
-        sizes,
+        data,
+        shape,
         datatype,
     });
 
@@ -223,9 +233,88 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         tfd_model,
         inputs,
         output,
-        sizes,
+        data,
+        shape,
         datatype,
     });
+}
+
+/// Parses the `size` command-line argument.
+fn parse_size(size: &str) -> Result<(Option<Tensor>, Vec<Option<usize>>, DataType)> {
+    let splits = size.split("x").collect::<Vec<_>>();
+
+    if splits.len() < 1 {
+        bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
+    }
+
+    let (datatype, shape) = splits.split_last().unwrap();
+
+    let shape = shape
+        .iter()
+        .map(|s| match *s {
+            "S" => Ok(None),            // Streaming dimension.
+            _   => Ok(Some(s.parse()?)) // Regular dimension.
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    if shape.iter().filter(|o| o.is_none()).count() > 1 {
+        bail!("The <size> argument doesn't support more than one streaming dimension.");
+    }
+
+    let datatype = match datatype.to_lowercase().as_str() {
+        "f64" => DataType::DT_DOUBLE,
+        "f32" => DataType::DT_FLOAT,
+        "i32" => DataType::DT_INT32,
+        "i8" => DataType::DT_INT8,
+        "u8" => DataType::DT_UINT8,
+        _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
+    };
+
+    Ok((None, shape, datatype))
+}
+
+
+/// Parses the `data` command-line argument.
+fn parse_data(filename: &str) -> Result<(Option<Tensor>, Vec<Option<usize>>, DataType)> {
+    let mut file = File::open(filename)?;
+    let mut data = String::new();
+    file.read_to_string(&mut data)?;
+
+    let mut lines = data.lines();
+    let (_, shape, datatype) = parse_size(lines.next().unwrap())?;
+
+    let values = lines
+        .flat_map(|l| l.split_whitespace())
+        .collect::<Vec<_>>();
+
+    // We know there is at most one streaming dimension, so we can deduce the
+    // missing value with a simple division.
+    let product: usize =  shape.iter().map(|o| o.unwrap_or(1)).product();
+    let missing = values.len() / product;
+    let data_shape = shape.iter()
+        .map(|o| o.unwrap_or(missing))
+        .collect::<Vec<_>>();
+
+    macro_rules! for_type {
+        ($t:ty) => ({
+            let array = ndarray::Array::from_iter(
+                values.iter().map(|v| v.parse::<$t>().unwrap())
+            );
+
+            array.into_shape(data_shape)?
+        });
+    }
+
+    let tensor = match datatype {
+        DataType::DT_DOUBLE => for_type!(f64).into(),
+        DataType::DT_FLOAT => for_type!(f32).into(),
+        DataType::DT_INT32 => for_type!(i32).into(),
+        DataType::DT_INT8 => for_type!(i8).into(),
+        DataType::DT_UINT8 => for_type!(u8).into(),
+        _ => unimplemented!(),
+    };
+
+    Ok((Some(tensor), shape, datatype))
 }
 
 /// Handles the `compare` subcommand.
@@ -244,12 +333,21 @@ fn handle_compare(params: Parameters) -> Result<()> {
     let output = tfd.get_node_by_id(params.output)?;
     let mut state = tfd.state();
 
+    let shape = params.shape.iter().cloned().collect::<Option<Vec<_>>>()
+        .ok_or("The compare command doesn't support streaming dimensions.")?;
+
     // First generate random values for the inputs.
     let mut generated = Vec::new();
     for i in params.inputs {
+        let data = if params.data.is_some() {
+            params.data.as_ref().unwrap().clone()
+        } else {
+            random_tensor(shape.clone(), params.datatype)
+        };
+
         generated.push((
             tfd.get_node_by_id(i)?.name.as_str(),
-            random_tensor(params.sizes.clone(), params.datatype),
+            data,
         ));
     }
 
@@ -305,7 +403,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
                 match compare_outputs(&tf_output, &views) {
                     Err(_) => {
-                        let mismatches: Vec<_> = tfd_output
+                        let mismatches = tfd_output
                             .iter()
                             .enumerate()
                             .map(|(n, data)| {
@@ -325,7 +423,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
 
                                 Row::Double(header, format!("{}\n{}", reason.to_string(), infos))
                             })
-                            .collect();
+                            .collect::<Vec<_>>();
 
                         (true, "MISM.".red(), mismatches)
                     }
@@ -335,7 +433,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
             }
         };
 
-        let outputs: Vec<_> = tf_output
+        let outputs = tf_output
             .iter()
             .enumerate()
             .map(|(n, data)| {
@@ -344,7 +442,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
                     data.partial_dump(false).unwrap(),
                 )
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         if log_enabled!(Info) {
             // Print the results for the node.
@@ -463,6 +561,16 @@ impl std::ops::AddAssign for Duration {
 
 /// Handles the `profile` subcommand.
 fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
+    match params.shape.iter().cloned().collect::<Option<Vec<_>>>() {
+        Some(shape) =>
+            handle_profile_regular(params, max_iters, max_time, shape),
+        None =>
+            handle_profile_streaming(params, max_iters, max_time),
+    }
+}
+
+/// Handles the `profile` subcommand when there are no streaming dimensions.
+fn handle_profile_regular(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
     use colored::Colorize;
 
     let model = params.tfd_model;
@@ -471,7 +579,13 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        state.set_value(s, random_tensor(params.sizes.clone(), params.datatype))?;
+        let data = if params.data.is_some() {
+            params.data.as_ref().unwrap().clone()
+        } else {
+            random_tensor(shape.clone(), params.datatype)
+        };
+
+        state.set_value(s, data)?;
     }
 
     info!("Running {} iterations max. for each node.", max_iters);
@@ -589,7 +703,9 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     println!();
     println!("Most time consuming operations:");
-    let mut operations: Vec<_> = operations.iter().map(|(o, (measure, c))| (o, measure, c)).collect();
+    let mut operations = operations.iter()
+        .map(|(o, (measure, c))| (o, measure, c))
+        .collect::<Vec<_>>();
     operations.sort_by(|(_, a, _), (_, b, _)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
     for (operation, measure, count) in operations.iter().take(5) {
         println!(
@@ -623,26 +739,195 @@ fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<(
     Ok(())
 }
 
+/// Handles the `profile` subcommand when there are streaming dimensions.
+fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64) -> Result<()> {
+    use Tensor::*;
+    use colored::Colorize;
+
+    use tfdeploy::StreamingInput;
+    use tfdeploy::StreamingState;
+
+    let model = params.tfd_model;
+    let datatype = params.datatype;
+    let shape = params.shape;
+
+    let axis = shape.iter()
+        .position(|&d| d == None)
+        .unwrap();
+    let inputs = params.inputs.iter()
+        .map(|&s| (s, StreamingInput::Streamed(datatype, shape.clone())))
+        .collect::<Vec<_>>();
+
+    info!("Initializing the StreamingState.");
+    let start = Instant::now();
+    let state = StreamingState::start(
+        model.clone(),
+        inputs.clone(),
+        Some(params.output)
+    )?;
+
+    let measure = Duration::since(&start, 1);
+    let mut states = (0..100).map(|_| state.clone()).collect::<Vec<_>>();
+
+    info!("Initialized the StreamingState in:");
+    info!(
+        "    - Real: {}.",
+        format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
+    );
+
+    info!(
+        "    - User: {}.",
+        format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
+    );
+
+    info!(
+        "    - Sys: {}.",
+        format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
+    );
+
+    if log_enabled!(Info) {
+        println!();
+        print_header(format!("Streaming profiling for {}:", params.name), "white");
+    }
+
+    // Either get the input data from the input file or generate it randomly.
+    let random_shape = shape.iter()
+        .map(|d| d.unwrap_or(20))
+        .collect::<Vec<_>>();
+    let data = params.data
+        .unwrap_or_else(|| random_tensor(random_shape, datatype));
+
+    // Split the input data into chunks along the streaming axis.
+    macro_rules! split_inner {
+        ($constr:ident, $array:expr) => ({
+            $array.axis_iter(Axis(axis))
+                .map(|v| $constr(v.insert_axis(Axis(axis)).to_owned()))
+                .collect::<Vec<_>>()
+        })
+    }
+
+    let chunks = match data {
+        F64(m) => split_inner!(F64, m),
+        F32(m) => split_inner!(F32, m),
+        I32(m) => split_inner!(I32, m),
+        I8(m) => split_inner!(I8, m),
+        U8(m) => split_inner!(U8, m),
+        String(m) => split_inner!(String, m),
+    };
+
+    for (step, chunk) in chunks.into_iter().enumerate() {
+        for &input in &params.inputs {
+            println!();
+            println!("Starting step {:?} with input {:?}.", step, chunk);
+
+            let mut input_chunks = vec![Some(chunk.clone()); 100];
+            let mut outputs = Vec::with_capacity(100);
+            let start = Instant::now();
+
+            for i in 0..100 {
+                outputs.push(states[i].step(input, input_chunks[i].take().unwrap())?);
+            }
+
+            let measure = Duration::since(&start, 100);
+            println!("Completed step {:?} with output {:?} in:", step, outputs[0]);
+            println!(
+                "    - Real: {}.",
+                format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
+            );
+
+            println!(
+                "    - User: {}.",
+                format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
+            );
+
+            println!(
+                "    - Sys: {}.",
+                format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
+            );
+
+            thread::sleep(StdDuration::from_secs(1));
+        }
+    }
+
+    Ok(())
+}
+
 /// Handles the `analyse` subcommand.
-fn handle_analyse(params: Parameters) -> Result<()> {
+fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
+    use std::fs::File;
+    use std::io::prelude::*;
+
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?.id;
+
+    // FIXME(liautaud): The analyser should handle streaming dimensions at some point.
+    let shape = params.shape.iter()
+        .map(|d| d.unwrap_or(1))
+        .collect::<Vec<_>>();
 
     info!("Starting the analysis.");
 
     let mut analyser = Analyser::new(model, output)?;
+
+    // Add hints for the input nodes.
+    for &i in &params.inputs {
+        analyser.hint(i, &TensorFact {
+            datatype: typefact!(params.datatype),
+            shape: shape.iter().cloned().collect(),
+            value: valuefact!(_),
+        })?;
+    }
+
     analyser.run()?;
 
-    #[cfg(not(feature = "serialize"))]
-    graphviz::display_graph(&analyser, &vec![], &vec![])?;
+    // Prune constant nodes if needed.
+    if prune {
+        info!(
+            "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
+            bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
+            analyser.nodes.len()
+        );
 
-    #[cfg(feature = "serialize")]
-    {
-        use std::fs::File;
-        use std::io::prelude::*;
+        analyser.propagate_constants()?;
+        analyser.prune_unused();
 
-        let mut file = File::create("analyser.json")?;
-        file.write_all(analyser.as_json().as_bytes())?;
+        info!(
+            "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
+            bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
+            analyser.nodes.len()
+        );
+    }
+
+
+    // Display an interactive view of the graph if needed.
+    if open {
+        use rouille::Response;
+
+        println!("TFVisualizer is now running on http://127.0.0.1:8000/.");
+        let _ = open::that("http://127.0.0.1:8000/");
+
+        rouille::start_server("0.0.0.0:8000", move |request| {
+            if request.remove_prefix("/dist").is_some() || request.remove_prefix("/public").is_some() {
+                return rouille::match_assets(&request, "../visualizer");
+            }
+
+            return router!(request,
+                (GET) (/) => {
+                    let index = File::open("../visualizer/index.html").unwrap();
+                    Response::from_file("text/html", index)
+                },
+
+                (GET) (/current) => {
+                    let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
+                    Response::from_data("application/json", data)
+                },
+
+                _ => Response::empty_404(),
+            );
+        });
+    } else {
+        let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
+        File::create("analyser.json")?.write_all(&data)?;
         println!("Wrote the result of the analysis to analyser.json.");
     }
 
@@ -659,24 +944,6 @@ fn handle_prune(params: Parameters) -> Result<()> {
 
     let mut analyser = Analyser::new(model, output)?;
 
-    // DEBUG(liautaud): Displays the connected components.
-    // for component in constants::connected_components(&analyser)? {
-    //     use constants::Element::*;
-
-    //     println!("Current constant component: {:?}", component);
-    //     let mut red_nodes = vec![];
-    //     let mut red_edges = vec![];
-
-    //     for element in component.elements {
-    //         match element {
-    //             Node(n) => red_nodes.push(n),
-    //             Edge(n) => red_edges.push(n),
-    //         }
-    //     }
-
-    //     graphviz::display_graph(&analyser, &red_nodes, &red_edges)?;
-    // }
-
     info!(
         "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",
         format!("{:?}", analyser.nodes).into_bytes().len(),
@@ -684,8 +951,8 @@ fn handle_prune(params: Parameters) -> Result<()> {
     );
 
     analyser.run()?;
-    constants::prune_constants(&mut analyser)?;
-    analyser.remove_unused();
+    analyser.propagate_constants()?;
+    analyser.prune_unused();
 
     info!(
         "Ending size of the graph: approx. {:?} bytes for {:?} nodes.",

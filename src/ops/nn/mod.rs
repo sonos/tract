@@ -1,4 +1,6 @@
-use super::{Op, OpRegister, TensorView};
+use std::collections::HashMap;
+
+use super::{Attr, Op, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::TensorFact;
 use tfpb::types::DataType;
@@ -21,7 +23,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 
 element_map!(Relu, |x| if x < 0.0 { 0.0 } else { x });
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Softmax {}
 
 impl Softmax {
@@ -45,6 +47,11 @@ impl Op for Softmax {
         Ok(vec![result.into()])
     }
 
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
+    }
+
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 1 {
@@ -55,13 +62,15 @@ impl Op for Softmax {
             return Ok(Some(output));
         }
 
+        if let Some(v) = &inputs[0].shape.concretize() {
+            if v.len() != 2 {
+                bail!("Softmax operation doesn't support input shape {:?}.", v);
+            }
+        }
+
         let output = TensorFact {
             datatype: typefact!(DataType::DT_FLOAT),
-            shape: match &inputs[0].shape.concretize() {
-                Some(v) if v.len() == 2 => v.iter().collect(),
-                Some(v) => bail!("Softmax operation doesn't support input shape {:?}.", v),
-                _ => shapefact![_, _],
-            },
+            shape: inputs[0].shape.clone(),
             value: valuefact!(_),
         };
 
@@ -74,13 +83,15 @@ impl Op for Softmax {
             bail!("Softmax operation only supports one output.");
         }
 
+        if let Some(v) = &outputs[0].shape.concretize() {
+            if v.len() != 2 {
+                bail!("Softmax operation doesn't support output shape {:?}.", v);
+            }
+        }
+
         let input = TensorFact {
             datatype: typefact!(DataType::DT_FLOAT),
-            shape: match &outputs[0].shape.concretize() {
-                Some(v) if v.len() == 2 => v.iter().collect(),
-                Some(v) => bail!("Softmax operation doesn't support output shape {:?}.", v),
-                _ => shapefact![_, _],
-            },
+            shape: outputs[0].shape.clone(),
             value: valuefact!(_),
         };
 

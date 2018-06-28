@@ -1,52 +1,11 @@
 use ndarray;
 use rand;
 use rand::Rng;
-use tfdeploy;
 use tfdeploy::tfpb::types::DataType;
 use tfdeploy::Tensor;
 
-use errors::*;
-
-/// Tries to autodetect the names of the input nodes.
-pub fn detect_inputs(model: &tfdeploy::Model) -> Result<Option<Vec<usize>>> {
-    let inputs: Vec<usize> = model
-        .nodes()
-        .iter()
-        .filter(|n| n.op_name == "Placeholder")
-        .map(|n| n.id)
-        .collect();
-
-    if inputs.len() > 0 {
-        info!("Autodetecting input nodes: {:?}.", inputs);
-        Ok(Some(inputs))
-    } else {
-        Ok(None)
-    }
-}
-
-/// Tries to autodetect the name of the output node.
-pub fn detect_output(model: &tfdeploy::Model) -> Result<Option<usize>> {
-    // We search for the only node in the graph with no successor.
-    let mut succs: Vec<Vec<usize>> = vec![Vec::new(); model.nodes().len()];
-
-    for node in model.nodes() {
-        for &link in &node.inputs {
-            succs[link.0].push(node.id);
-        }
-    }
-
-    for (i, s) in succs.iter().enumerate() {
-        if s.len() == 0 {
-            info!(
-                "Autodetecting output node: {:?}.",
-                model.get_node_by_id(i)?.name
-            );
-            return Ok(Some(i));
-        }
-    }
-
-    Ok(None)
-}
+#[cfg(feature = "tensorflow")]
+use Result;
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]

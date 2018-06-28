@@ -1,6 +1,6 @@
 macro_rules! element_map {
     ($Struct:ident, $expr:expr) => {
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         pub struct $Struct;
 
         impl $Struct {
@@ -10,6 +10,11 @@ macro_rules! element_map {
         }
 
         impl ::ops::Op for $Struct {
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{}
+            }
+
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -21,6 +26,19 @@ macro_rules! element_map {
                     .ok_or("Expect input #0 to be f32")?;
                 a.mapv_inplace($expr);
                 Ok(vec![$crate::tensor::Tensor::F32(a).into()])
+            }
+
+            /// Evaluates one step of the operation on the given input tensors.
+            fn step(
+                &self,
+                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                _buffer: &mut $crate::ops::Buffer,
+            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+                let a = args_1!(inputs);
+                match a.1 {
+                    None => Ok(None),
+                    Some(tv) => Ok(Some(self.eval(vec![tv])?))
+                }
             }
 
             /// Infers properties about the output tensors from the input tensors.
@@ -58,7 +76,7 @@ macro_rules! element_map {
 
 macro_rules! element_bin {
     ($Name:ident, $name:ident, $expr:expr) => {
-        #[derive(Debug, new)]
+        #[derive(Debug, Clone, new)]
         pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
@@ -67,6 +85,11 @@ macro_rules! element_bin {
         }
 
         impl<T: ::tensor::Datum> Op for $Name<T> {
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{ "T" => ::ops::Attr::DataType(T::datatype()) }
+            }
+
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -76,6 +99,26 @@ macro_rules! element_bin {
                 let a = T::tensor_into_array(a.into_tensor())?;
                 let b = T::tensor_to_view(&*b)?;
                 Ok(vec![T::array_into_tensor($expr(a, b)).into()])
+            }
+
+            /// Evaluates one step of the operation on the given input tensors.
+            fn step(
+                &self,
+                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                buffer: &mut $crate::ops::Buffer,
+            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+                // If we don't have a value for some of the inputs yet, we buffer
+                // the current values to reuse them on the next call.
+                buffer.initialize_queues(2)?;
+                buffer.append_queues(&mut inputs)?;
+
+                if buffer.get_queue(0)?.is_empty() || buffer.get_queue(1)?.is_empty() {
+                    Ok(None)
+                } else {
+                    let a = buffer.get_queue(0)?.pop_front().unwrap();
+                    let b = buffer.get_queue(1)?.pop_front().unwrap();
+                    Ok(Some(self.eval(vec![a, b])?))
+                }
             }
 
             /// Infers properties about the output tensors from the input tensors.

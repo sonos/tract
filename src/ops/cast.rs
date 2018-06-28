@@ -1,13 +1,14 @@
+use std::collections::HashMap;
 use Result;
 
-use super::{Op, OpRegister, TensorView};
+use super::{Attr, Op, OpRegister, TensorView};
 use analyser::TensorFact;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Cast;
 
 impl Cast {
@@ -28,6 +29,11 @@ impl ::ops::Op for Cast {
         )?;
         Ok(vec![Tensor::F32(input.mapv(|i| i as _))])
         */
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        unimplemented!()
     }
 
     /// Infers properties about the output tensors from the input tensors.
