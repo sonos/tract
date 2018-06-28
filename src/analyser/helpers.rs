@@ -46,9 +46,11 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
 
     let mut output_shape = vec![];
 
+    // FIXME(liautaud): Rewrite more clearly and test.
     for i in 1..(bound + 1) {
         let mut previous = None;
         let mut unknown = 0;
+        let mut streamed = 0;
 
         for shape in &dims {
             if shape.len() < i {
@@ -57,8 +59,8 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
 
             match &shape[shape.len() - i] {
                 DimFact::Any => unknown += 1,
-                DimFact::Only(1) |
-                DimFact::Streamed => (),
+                DimFact::Streamed => streamed += 1,
+                DimFact::Only(1) => (),
                 DimFact::Only(j) => match previous {
                     Some(k) if k != j => bail!(
                         "Invalid shape (broadcasting): {} is not compatible with {}.",
@@ -78,8 +80,12 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
             return Ok(None);
         } else if unknown == 1 && previous == None {
             output_shape.push(DimFact::Any);
-        } else {
+        } else if streamed > 0 {
+            output_shape.push(DimFact::Streamed);
+        } else if previous != None {
             output_shape.push(DimFact::Only(*previous.unwrap()));
+        } else {
+            output_shape.push(DimFact::Only(1));
         }
     }
 
