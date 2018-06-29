@@ -56,6 +56,8 @@ extern crate serde;
 #[cfg(feature = "serialize")]
 #[macro_use]
 extern crate serde_derive;
+#[macro_use]
+extern crate downcast_rs;
 
 #[macro_use]
 pub mod analyser;
@@ -70,7 +72,7 @@ use std::{fs, path, str};
 use analyser::{Analyser, TensorFact};
 use analyser::helpers::tensor_to_fact;
 pub use errors::*;
-use ops::{Op, TensorView, Buffer};
+use ops::{Op, TensorView, OpBuffer};
 pub use tensor::Tensor;
 
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -401,7 +403,7 @@ pub struct StreamingState {
     model: Model,
     output: usize,
     mapping: Vec<Option<usize>>,
-    buffers: Vec<Buffer>,
+    buffers: Vec<Box<OpBuffer>>,
     dimensions: HashMap<(usize, usize), usize>,
     successors: Vec<Vec<(usize, usize)>>,
 }
@@ -471,7 +473,9 @@ impl StreamingState {
             })
             .collect::<Vec<_>>();
 
-        let buffers = vec![Buffer::new(); analyser.nodes.len()];
+        let buffers = analyser.nodes.iter()
+            .map(|n| n.op.new_buffer())
+            .collect::<Vec<_>>();
 
         let mut dimensions = HashMap::with_capacity(analyser.edges.len());
         for edge in &analyser.edges {

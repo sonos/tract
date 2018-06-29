@@ -1,6 +1,7 @@
 //! TensorFlow Ops
-use std::collections::HashMap;
+use std::ops::{Index, IndexMut};
 use std::collections::VecDeque;
+use std::collections::HashMap;
 use std::fmt::Debug;
 #[cfg(feature = "serialize")]
 use std::result::Result as StdResult;
@@ -14,6 +15,7 @@ use {Result, Tensor};
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 use objekt;
+use downcast_rs::Downcast;
 
 #[macro_use]
 mod macros;
@@ -125,141 +127,18 @@ pub enum Attr<'a> {
     IsizeVec(&'a Vec<isize>),
 }
 
-/// An item that streaming operators can store into a buffer.
-#[derive(Debug, Clone)]
-pub enum BufferItem {
-    Empty,
-    Usize(usize),
-    View(TensorView),
-    Queue(VecDeque<TensorView>),
-}
-
-macro_rules! item_impl {
-    ($get_name:ident, $take_name:ident, $set_name:ident, $type:ty, $item:ident) => (
-        // Returns a mutable reference to a $item from a buffer slot.
-        pub fn $get_name(&mut self, index: usize) -> Result<&mut $type> {
-            if let BufferItem::$item(i) = self.get(index)? {
-                Ok(i)
-            } else {
-                bail!("Slot {:?} of the buffer doesn't contain an {}.", index, stringify!($item));
-            }
-        }
-
-        // Consumes a $item from a buffer slot.
-        pub fn $take_name(&mut self, index: usize) -> Result<$type> {
-            if let BufferItem::$item(i) = self.take(index)? {
-                Ok(i)
-            } else {
-                bail!("Slot {:?} of the buffer doesn't contain an {}.", index, stringify!($item));
-            }
-        }
-
-        // Sets the content of a buffer slot to a $item.
-        pub fn $set_name(&mut self, index: usize, element: $type) -> Result<()> {
-            self.set(index, BufferItem::$item(element))
-        }
-    )
-}
-
-/// A buffer for streaming operators.
-#[derive(Debug, Clone)]
-pub struct Buffer(Vec<BufferItem>);
-
-impl Buffer {
-    /// Returns an uninitialized buffer.
-    pub fn new() -> Buffer {
-        Buffer(vec![])
-    }
-
-    /// Ensures that the buffer is initialized to the right shape.
-    ///
-    /// This method takes a closure that will only be called if the
-    /// buffer hasn't yet been initialized, and that should return
-    /// the default shape and values for the buffer.
-    pub fn initialize<F>(&mut self, default: F) -> Result<()>
-    where F: Fn() -> Vec<BufferItem> {
-        if self.0.is_empty() {
-            self.0.append(&mut default());
-        }
-
-        Ok(())
-    }
-
-    /// Ensures that the buffer contains a given number of queues.
-    pub fn initialize_queues(&mut self, n: usize) -> Result<()> {
-        self.initialize(|| vec![BufferItem::Queue(VecDeque::new()); n])
-    }
-
-    /// Returns a mutable reference to a slot from the buffer.
-    pub fn get(&mut self, index: usize) -> Result<&mut BufferItem> {
-        if index > self.0.len() {
-            bail!("There is no slot {:?} in the buffer.", index);
-        }
-
-        Ok(&mut self.0[index])
-    }
-
-    /// Consumes a slot from the buffer.
-    pub fn take(&mut self, index: usize) -> Result<BufferItem> {
-        if index > self.0.len() {
-            bail!("There is no slot {:?} in the buffer.", index);
-        }
-
-        Ok(mem::replace(&mut self.0[index], BufferItem::Empty))
-    }
-
-    /// Sets the content of a buffer slot.
-    pub fn set(&mut self, index: usize, element: BufferItem) -> Result<()> {
-        if index > self.0.len() {
-            bail!("There is no slot {:?} in the buffer.", index);
-        }
-
-        self.0[index] = element;
-
-        Ok(())
-    }
-
-    item_impl!(get_usize, take_usize, set_usize, usize, Usize);
-    item_impl!(get_view,  take_view,  set_view,  TensorView, View);
-    item_impl!(get_queue, take_queue, set_queue, VecDeque<TensorView>, Queue);
-
-    /// Appends a new TensorView to each queue in the buffer.
-    ///
-    /// This method only works if self.0[0..views.len()] is filled with
-    /// BufferItem::Queue. This can be ensured by using initialize_queues.
-    pub fn append_queues(&mut self, views: &mut [(Option<usize>, Option<TensorView>)]) -> Result<()> {
-        if views.len() > self.0.len() {
-            bail!("There are more input TensorViews than queues in the buffer.");
-        }
-
-        for (i, view) in views.iter_mut().enumerate() {
-            if view.1.is_some() {
-                match &mut self.0[i] {
-                    BufferItem::Queue(q) => q.push_back(view.1.take().unwrap()),
-                    _ => bail!("Slot {:?} of the buffer doesn't contain a queue.", i)
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Returns a mutable iterator over all the queues in the buffer.
-    pub fn iter_queues<'a>(&'a mut self) -> impl Iterator<Item = &'a mut VecDeque<TensorView>> {
-        self.0.iter_mut().filter_map(|i| match i {
-            BufferItem::Queue(q) => Some(q),
-            _ => None,
-        })
-    }
-}
-
-
+/// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr>;
 
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>>;
+
+    /// Returns a new streaming buffer for the operation.
+    fn new_buffer(&self) -> Box<OpBuffer> {
+        Box::new(EmptyBuffer {})
+    }
 
     /// Evaluates one step of the operation on the given input tensors.
     /// This is only implemented for operators which support streaming.
@@ -285,7 +164,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
     fn step(
         &self,
         _inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        _buffer: &mut Buffer,
+        _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         bail!("Streaming is not available for this operator.")
     }
@@ -361,5 +240,77 @@ impl Op for UnimplementedOp {
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         unimplemented!()
+    }
+}
+
+
+/// A streaming buffer for a Tensorflow operation.
+///
+/// This is used during streaming evaluation of models. Each node is given
+/// a mutable reference to a buffer which it can use to store intermediary
+/// results between evaluation steps. Every operation must provide its own
+/// buffer type (or use one of the general ones defined below), which must
+/// implement the OpBuffer trait. It should return a new instance of it in
+/// the `Op::new_buffer` method, and downcast it from OpBuffer in `step`.
+pub trait OpBuffer: Downcast + Debug + objekt::Clone {}
+clone_trait_object!(OpBuffer);
+impl_downcast!(OpBuffer);
+
+/// An empty buffer for operations which don't need one.
+#[derive(Debug, Clone)]
+pub struct EmptyBuffer {}
+
+impl OpBuffer for EmptyBuffer {}
+
+
+/// A buffer with a variable number of TensorView queues.
+#[derive(Debug, Clone)]
+pub struct QueuesBuffer(Vec<VecDeque<TensorView>>);
+
+impl OpBuffer for QueuesBuffer {}
+
+impl QueuesBuffer {
+    /// Creates a new buffer with a given number of queues.
+    pub fn new(size: usize) -> QueuesBuffer {
+        QueuesBuffer(vec![VecDeque::new(); size])
+    }
+
+    /// Appends a new TensorView to each queue in the buffer.
+    pub fn append(&mut self, views: &mut [(Option<usize>, Option<TensorView>)]) -> Result<()> {
+        if views.len() > self.0.len() {
+            bail!("There are more input TensorViews than queues in the buffer.");
+        }
+
+        for (i, view) in views.iter_mut().enumerate() {
+            if view.1.is_some() {
+                self.0[i].push_back(view.1.take().unwrap())
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Returns an iterator over all the queues in the buffer.
+    pub fn iter<'a>(&'a mut self) -> impl Iterator<Item = &'a VecDeque<TensorView>> {
+        self.0.iter()
+    }
+
+    /// Returns a mutable iterator over all the queues in the buffer.
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut VecDeque<TensorView>> {
+        self.0.iter_mut()
+    }
+}
+
+impl Index<usize> for QueuesBuffer {
+    type Output = VecDeque<TensorView>;
+
+    fn index(&self, index: usize) -> &VecDeque<TensorView> {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for QueuesBuffer {
+    fn index_mut(&mut self, index: usize) -> &mut VecDeque<TensorView> {
+        &mut self.0[index]
     }
 }

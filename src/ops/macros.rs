@@ -32,7 +32,7 @@ macro_rules! element_map {
             fn step(
                 &self,
                 mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
-                _buffer: &mut $crate::ops::Buffer,
+                _buffer: &mut Box<$crate::ops::OpBuffer>,
             ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
                 let a = args_1!(inputs);
                 match a.1 {
@@ -101,22 +101,29 @@ macro_rules! element_bin {
                 Ok(vec![T::array_into_tensor($expr(a, b)).into()])
             }
 
+            /// Returns a new streaming buffer for the operation.
+            fn new_buffer(&self) -> Box<$crate::ops::OpBuffer> {
+                Box::new($crate::ops::QueuesBuffer::new(2))
+            }
+
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
                 mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
-                buffer: &mut $crate::ops::Buffer,
+                buffer: &mut Box<$crate::ops::OpBuffer>,
             ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+                let buffer = buffer.downcast_mut::<$crate::ops::QueuesBuffer>()
+                    .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
+
                 // If we don't have a value for some of the inputs yet, we buffer
                 // the current values to reuse them on the next call.
-                buffer.initialize_queues(2)?;
-                buffer.append_queues(&mut inputs)?;
+                buffer.append(&mut inputs)?;
 
-                if buffer.get_queue(0)?.is_empty() || buffer.get_queue(1)?.is_empty() {
+                if buffer[0].is_empty() || buffer[1].is_empty() {
                     Ok(None)
                 } else {
-                    let a = buffer.get_queue(0)?.pop_front().unwrap();
-                    let b = buffer.get_queue(1)?.pop_front().unwrap();
+                    let a = buffer[0].pop_front().unwrap();
+                    let b = buffer[1].pop_front().unwrap();
                     Ok(Some(self.eval(vec![a, b])?))
                 }
             }

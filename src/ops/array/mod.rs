@@ -5,7 +5,7 @@ use std::iter::repeat;
 mod pack;
 mod strided_slice;
 
-use ops::{Buffer, Attr, Op, OpRegister, TensorView};
+use ops::{Attr, Op, OpBuffer, QueuesBuffer, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::helpers::most_specific_shape;
 use analyser::{ShapeFact, TensorFact, ValueFact};
@@ -64,11 +64,16 @@ impl Op for ConcatV2 {
         Ok(vec![result.into()])
     }
 
+    /// Returns a new streaming buffer for the operation.
+    fn new_buffer(&self) -> Box<OpBuffer> {
+        Box::new(QueuesBuffer::new(self.n))
+    }
+
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        buffer: &mut Buffer,
+        buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         // According to https://www.tensorflow.org/api_docs/python/tf/concat,
         // the number of dimensions of each input tensor must match, and all
@@ -105,14 +110,16 @@ impl Op for ConcatV2 {
             Ok(Some(vec![chunk]))
         } else {
             // All the input tensors are streamed along a non-`axis` dimension.
-            buffer.initialize_queues(self.n)?;
-            buffer.append_queues(&mut inputs[0..self.n])?;
+            let buffer = buffer.downcast_mut::<QueuesBuffer>()
+                .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
 
-            if buffer.iter_queues().any(|q| q.is_empty()) {
+            buffer.append(&mut inputs[0..self.n])?;
+
+            if buffer.iter_mut().any(|q| q.is_empty()) {
                 Ok(None)
             } else {
                 let mut chunks = buffer
-                    .iter_queues()
+                    .iter_mut()
                     .map(|b| b.pop_front().unwrap())
                     .collect::<Vec<_>>();
 
@@ -215,7 +222,7 @@ impl Op for ExpandDims {
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        _: &mut Buffer,
+        _: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         let (data, dims) = args_2!(inputs);
 
@@ -324,7 +331,7 @@ impl Op for Identity {
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        _: &mut Buffer,
+        _: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         let input = args_1!(inputs);
         match input.1 {

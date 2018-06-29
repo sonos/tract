@@ -32,6 +32,7 @@ serde = { "version" = "1.0", optional = true }
 serde_derive = { "version" = "1.0", optional = true }
 maplit = "1.0"
 objekt = "0.1.1"
+downcast-rs = "1.0"
 
 [features]
 default = [ ]

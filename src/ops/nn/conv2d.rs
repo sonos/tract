@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
-use ops::{Buffer, BufferItem, Attr, Op, TensorView};
+use ops::{Attr, Op, OpBuffer, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::{ShapeFact, TensorFact};
 use ndarray::prelude::*;
@@ -12,6 +12,18 @@ use Result;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
+
+#[derive(Debug, Clone)]
+pub struct Buffer<T: Datum> {
+    // The number of future chunks to skip before storing them again.
+    skip: usize,
+
+    // An array which stores the previous chunks which are still needed to
+    // compute the next convolution.
+    prev: Option<Array4<T>>,
+}
+
+impl<T: Datum> OpBuffer for Buffer<T> {}
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datatype("T")?;
@@ -62,11 +74,21 @@ impl<T: Datum> Op for Conv2D<T> {
         Ok(vec![T::array_into_tensor(transformed).into()])
     }
 
+    /// Returns a new streaming buffer for the operation.
+    fn new_buffer(&self) -> Box<OpBuffer> {
+        let buffer: Buffer<T> = Buffer {
+            skip: 0,
+            prev: None,
+        };
+
+        Box::new(buffer)
+    }
+
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        buffer: &mut Buffer,
+        buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         // We only support the VALID padding strategy for now, with the
         // streaming dimension being either the width or the height.
@@ -121,39 +143,36 @@ impl<T: Datum> Op for Conv2D<T> {
         let filter = T::tensor_into_array(filter.1.take().unwrap().into_tensor())?;
         let filter_size = filter.shape()[dim - 1];
 
-        // The buffer contains both `skip` (the number of chunks to skip) and
-        // `prev` (the chunks from previous iterations which are still needed
-        // to compute the next convolution).
-        let empty_view = || {
-            let array = match dim {
+        // Generates an empty 4-dimensional array of the right shape.
+        let empty_array = || {
+            match dim {
                 1 => Array::zeros((data.shape()[0], 0, data.shape()[2], data.shape()[3])),
                 2 => Array::zeros((data.shape()[0], data.shape()[1], 0, data.shape()[3])),
                 _ => panic!()
-            };
-
-            T::array_into_tensor(array.into_dyn()).into()
+            }
         };
 
-        buffer.initialize(|| vec![
-            BufferItem::Usize(0),
-            BufferItem::View(empty_view())
-        ])?;
+        let buffer = buffer.downcast_mut::<Buffer<T>>()
+            .ok_or("The buffer can't be downcasted to Buffer<T>.")?;
 
-        let skip = buffer.take_usize(0)?;
-        if skip > 0 {
-            buffer.set_usize(0, skip - 1)?;
+        if buffer.prev.is_none() {
+            buffer.prev = Some(empty_array());
+        }
+
+        let skip = &mut buffer.skip;
+        let prev = buffer.prev.as_mut().unwrap();
+
+        if *skip > 0 {
+            *skip -= 1;
             return Ok(None)
         }
 
-        let prev = buffer.take_view(1)?.into_tensor();
-        let prev = into_4d(T::tensor_into_array(prev)?)?;
         let mut next = stack(Axis(dim), &[prev.view(), data.view()])?;
         let next_size = next.shape()[dim];
 
         // Maybe we don't have enough chunks to compute the convolution yet.
         if next_size < filter_size {
-            buffer.set_usize(0, 0)?;
-            buffer.set_view(1, T::array_into_tensor(next.into_dyn()).into())?;
+            *skip = 0;
             return Ok(None)
         }
 
@@ -167,13 +186,13 @@ impl<T: Datum> Op for Conv2D<T> {
 
         if stride > next_size {
             // Maybe we must pop more chunks from the buffer than it currently contains.
-            buffer.set_usize(0, stride - next_size)?;
-            buffer.set_view(1, empty_view())?;
+            *skip = stride - next_size;
+            *prev = empty_array();
         } else {
             // Otherwise we pop the right number of chunks to prepare the next iteration.
             next.slice_axis_inplace(Axis(dim), Slice::from(stride..));
-            buffer.set_usize(0, 0)?;
-            buffer.set_view(1, T::array_into_tensor(next.into_dyn()).into())?;
+            *skip = 0;
+            *prev = next;
         }
 
         Ok(Some(result))
