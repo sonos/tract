@@ -46,5 +46,5 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 criterion = "0.2"
 
 [[bench]]
-harness = false
 name = "conv"
+harness = false

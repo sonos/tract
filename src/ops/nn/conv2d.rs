@@ -6,7 +6,7 @@ use ops::{Buffer, BufferItem, Attr, Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::{ShapeFact, TensorFact};
 use ndarray::prelude::*;
-use ndarray::{Axis, stack};
+use ndarray::{Axis, Slice, stack};
 use tensor::Datum;
 use Result;
 
@@ -147,7 +147,7 @@ impl<T: Datum> Op for Conv2D<T> {
 
         let prev = buffer.take_view(1)?.into_tensor();
         let prev = into_4d(T::tensor_into_array(prev)?)?;
-        let next = stack(Axis(dim), &[prev.view(), data.view()])?;
+        let mut next = stack(Axis(dim), &[prev.view(), data.view()])?;
         let next_size = next.shape()[dim];
 
         // Maybe we don't have enough chunks to compute the convolution yet.
@@ -171,12 +171,7 @@ impl<T: Datum> Op for Conv2D<T> {
             buffer.set_view(1, empty_view())?;
         } else {
             // Otherwise we pop the right number of chunks to prepare the next iteration.
-            let next = match dim {
-                1 => next.slice_move(s![.., stride..next_size, .., ..]),
-                2 => next.slice_move(s![.., .., stride..next_size, ..]),
-                _ => bail!("Conv2D only supports batch, width and height streaming.")
-            };
-
+            next.slice_axis_inplace(Axis(dim), Slice::from(stride..));
             buffer.set_usize(0, 0)?;
             buffer.set_view(1, T::array_into_tensor(next.into_dyn()).into())?;
         }

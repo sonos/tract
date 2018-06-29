@@ -29,3 +29,14 @@ bincode = { "version" = "1.0" }
 [features]
 default = []
 tensorflow = []
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "streaming_conv2d"
+harness = false
+
+# [[bench]]
+# name = "streaming_diamond"
+# harness = false
