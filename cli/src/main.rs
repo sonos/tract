@@ -66,6 +66,13 @@ mod rusage;
 const DEFAULT_MAX_ITERS: u64 = 100_000;
 const DEFAULT_MAX_TIME: u64 = 200;
 
+/// Structure holding the input data.
+struct InputData {
+    data: Option<Tensor>,
+    shape: Vec<Option<usize>>,
+    datatype: DataType,
+}
+
 /// Structure holding the parsed parameters.
 struct Parameters {
     name: String,
@@ -75,12 +82,9 @@ struct Parameters {
     #[cfg(feature = "tensorflow")]
     tf_model: conform::tf::Tensorflow,
 
+    input: Option<InputData>,
     inputs: Vec<usize>,
     output: usize,
-
-    data: Option<Tensor>,
-    shape: Vec<Option<usize>>,
-    datatype: DataType,
 }
 
 /// Entrypoint for the command-line interface.
@@ -194,10 +198,10 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
     #[cfg(feature = "tensorflow")]
     let tf_model = conform::tf::for_path(&name)?;
 
-    let (data, shape, datatype) = match (matches.value_of("size"), matches.value_of("data")) {
-        (Some(size), None)     => parse_size(size)?,
-        (None, Some(filename)) => parse_data(filename)?,
-        _ => bail!("Exactly one of <size> or <data> must be specified.")
+    let input = match (matches.value_of("size"), matches.value_of("data")) {
+        (Some(size), None)     => Some(parse_size(size)?),
+        (None, Some(filename)) => Some(parse_data(filename)?),
+        _ => None
     };
 
     let inputs = match matches.values_of("inputs") {
@@ -221,9 +225,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         tf_model,
         inputs,
         output,
-        data,
-        shape,
-        datatype,
+        input,
     });
 
     #[cfg(not(feature = "tensorflow"))]
@@ -233,14 +235,12 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         tfd_model,
         inputs,
         output,
-        data,
-        shape,
-        datatype,
+        input,
     });
 }
 
 /// Parses the `size` command-line argument.
-fn parse_size(size: &str) -> Result<(Option<Tensor>, Vec<Option<usize>>, DataType)> {
+fn parse_size(size: &str) -> Result<InputData> {
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
@@ -270,18 +270,18 @@ fn parse_size(size: &str) -> Result<(Option<Tensor>, Vec<Option<usize>>, DataTyp
         _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
     };
 
-    Ok((None, shape, datatype))
+    Ok(InputData { data: None, shape, datatype })
 }
 
 
 /// Parses the `data` command-line argument.
-fn parse_data(filename: &str) -> Result<(Option<Tensor>, Vec<Option<usize>>, DataType)> {
+fn parse_data(filename: &str) -> Result<InputData> {
     let mut file = File::open(filename)?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
-    let (_, shape, datatype) = parse_size(lines.next().unwrap())?;
+    let InputData { shape, datatype, .. } = parse_size(lines.next().unwrap())?;
 
     let values = lines
         .flat_map(|l| l.split_whitespace())
@@ -314,7 +314,7 @@ fn parse_data(filename: &str) -> Result<(Option<Tensor>, Vec<Option<usize>>, Dat
         _ => unimplemented!(),
     };
 
-    Ok((Some(tensor), shape, datatype))
+    Ok(InputData { data: Some(tensor), shape, datatype })
 }
 
 /// Handles the `compare` subcommand.
@@ -333,16 +333,19 @@ fn handle_compare(params: Parameters) -> Result<()> {
     let output = tfd.get_node_by_id(params.output)?;
     let mut state = tfd.state();
 
-    let shape = params.shape.iter().cloned().collect::<Option<Vec<_>>>()
+    let input = params.input
+        .ok_or("Exactly one of <size> or <data> must be specified.")?;
+
+    let shape = input.shape.iter().cloned().collect::<Option<Vec<_>>>()
         .ok_or("The compare command doesn't support streaming dimensions.")?;
 
     // First generate random values for the inputs.
     let mut generated = Vec::new();
     for i in params.inputs {
-        let data = if params.data.is_some() {
-            params.data.as_ref().unwrap().clone()
+        let data = if input.data.is_some() {
+            input.data.as_ref().unwrap().clone()
         } else {
-            random_tensor(shape.clone(), params.datatype)
+            random_tensor(shape.clone(), input.datatype)
         };
 
         generated.push((
@@ -560,17 +563,21 @@ impl std::ops::AddAssign for Duration {
 }
 
 /// Handles the `profile` subcommand.
-fn handle_profile(params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
-    match params.shape.iter().cloned().collect::<Option<Vec<_>>>() {
+fn handle_profile(mut params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
+    let input = params.input
+        .take()
+        .ok_or("Exactly one of <size> or <data> must be specified.")?;
+
+    match input.shape.iter().cloned().collect::<Option<Vec<_>>>() {
         Some(shape) =>
-            handle_profile_regular(params, max_iters, max_time, shape),
+            handle_profile_regular(params, input, max_iters, max_time, shape),
         None =>
-            handle_profile_streaming(params, max_iters, max_time),
+            handle_profile_streaming(params, input, max_iters, max_time),
     }
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-fn handle_profile_regular(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
+fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
     use colored::Colorize;
 
     let model = params.tfd_model;
@@ -579,10 +586,10 @@ fn handle_profile_regular(params: Parameters, max_iters: u64, max_time: u64, sha
 
     // First fill the inputs with randomly generated values.
     for s in params.inputs {
-        let data = if params.data.is_some() {
-            params.data.as_ref().unwrap().clone()
+        let data = if input.data.is_some() {
+            input.data.as_ref().unwrap().clone()
         } else {
-            random_tensor(shape.clone(), params.datatype)
+            random_tensor(shape.clone(), input.datatype)
         };
 
         state.set_value(s, data)?;
@@ -740,7 +747,7 @@ fn handle_profile_regular(params: Parameters, max_iters: u64, max_time: u64, sha
 }
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
-fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64) -> Result<()> {
+fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u64, _max_time: u64) -> Result<()> {
     use Tensor::*;
     use colored::Colorize;
 
@@ -748,8 +755,8 @@ fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64)
     use tfdeploy::StreamingState;
 
     let model = params.tfd_model;
-    let datatype = params.datatype;
-    let shape = params.shape;
+    let datatype = input.datatype;
+    let shape = input.shape;
 
     let axis = shape.iter()
         .position(|&d| d == None)
@@ -794,7 +801,7 @@ fn handle_profile_streaming(params: Parameters, _max_iters: u64, _max_time: u64)
     let random_shape = shape.iter()
         .map(|d| d.unwrap_or(20))
         .collect::<Vec<_>>();
-    let data = params.data
+    let data = input.data
         .unwrap_or_else(|| random_tensor(random_shape, datatype));
 
     // Split the input data into chunks along the streaming axis.
@@ -861,21 +868,23 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     let output = model.get_node_by_id(params.output)?.id;
 
     // FIXME(liautaud): The analyser should handle streaming dimensions at some point.
-    let shape = params.shape.iter()
-        .map(|d| d.unwrap_or(1))
-        .collect::<Vec<_>>();
-
     info!("Starting the analysis.");
 
     let mut analyser = Analyser::new(model, output)?;
 
     // Add hints for the input nodes.
-    for &i in &params.inputs {
-        analyser.hint(i, &TensorFact {
-            datatype: typefact!(params.datatype),
-            shape: shape.iter().cloned().collect(),
-            value: valuefact!(_),
-        })?;
+    if let Some(input) = params.input {
+        let shape = input.shape.iter()
+            .map(|d| d.unwrap_or(1))
+            .collect::<Vec<_>>();
+
+        for &i in &params.inputs {
+            analyser.hint(i, &TensorFact {
+                datatype: typefact!(input.datatype),
+                shape: shape.iter().cloned().collect(),
+                value: valuefact!(_),
+            })?;
+        }
     }
 
     analyser.run()?;
