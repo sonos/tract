@@ -1,4 +1,6 @@
-use super::{Op, OpRegister, TensorView};
+use std::collections::HashMap;
+
+use super::{Attr, Op, OpRegister, TensorView};
 use analyser::TensorFact;
 use std::sync::Arc;
 use tfpb::types::DataType;
@@ -8,7 +10,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Const {
     dtype: DataType,
     value: Arc<Tensor>,
@@ -38,6 +40,14 @@ impl Op for Const {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         Ok(vec![self.value.clone().into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{
+            "dtype" => Attr::DataType(self.dtype),
+            "value" => Attr::Tensor(self.value.as_ref()),
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.

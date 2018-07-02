@@ -1,13 +1,14 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use super::{Op, TensorView};
+use ops::{Attr, Op, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::helpers::most_specific_shape;
 use analyser::{ShapeFact, TensorFact};
 use tensor::Datum;
 use Result;
 
-#[derive(Debug, Default, new)]
+#[derive(Debug, Clone, Default, new)]
 pub struct Pack<T: Datum> {
     n: usize, // The number of inputs
     axis: usize,
@@ -35,6 +36,15 @@ where
             .collect::<Result<Vec<_>>>()?;
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
         Ok(vec![T::array_into_tensor(array).into()])
+    }
+
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{
+            "T"    => Attr::DataType(T::datatype()),
+            "n"    => Attr::Usize(self.n),
+            "axis" => Attr::Usize(self.axis),
+        }
     }
 
     /// Infers properties about the output tensors from the input tensors.

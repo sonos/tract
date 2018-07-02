@@ -1,4 +1,5 @@
 use std::iter::FromIterator;
+use std::ops::*;
 
 use errors::*;
 use tfpb::types::DataType;
@@ -111,17 +112,27 @@ impl FromIterator<usize> for ShapeFact {
     }
 }
 
-impl<'a> FromIterator<&'a usize> for ShapeFact {
-    /// Converts an iterator over &usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item = &'a usize>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter.into_iter().map(|d| DimFact::Only(*d)).collect())
-    }
-}
-
 impl<'a> From<&'a [usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
     fn from(slice: &'a [usize]) -> ShapeFact {
-        slice.iter().collect()
+        slice.iter().cloned().collect()
+    }
+}
+
+impl FromIterator<Option<usize>> for ShapeFact {
+    /// Converts an iterator over Option<usize> into a closed shape.
+    fn from_iter<I: IntoIterator<Item = Option<usize>>>(iter: I) -> ShapeFact {
+        ShapeFact::closed(iter.into_iter().map(|d| match d {
+            Some(d) => DimFact::Only(d),
+            None => DimFact::Streamed,
+        }).collect())
+    }
+}
+
+impl<'a> From<&'a [Option<usize>]> for ShapeFact {
+    /// Converts an Option<usize> slice into a closed shape.
+    fn from(slice: &'a [Option<usize>]) -> ShapeFact {
+        slice.iter().cloned().collect()
     }
 }
 
@@ -130,6 +141,7 @@ impl<'a> From<&'a [usize]> for ShapeFact {
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum DimFact {
     Any,
+    Streamed,
     Only(usize),
 }
 
@@ -138,6 +150,7 @@ impl DimFact {
     pub fn concretize(&self) -> Option<usize> {
         match self {
             DimFact::Any => None,
+            DimFact::Streamed => None,
             DimFact::Only(i) => Some(*i),
         }
     }
@@ -146,7 +159,45 @@ impl DimFact {
     pub fn is_concrete(&self) -> bool {
         self.concretize().is_some()
     }
+
+    /// Returns whether the dimension is streamed.
+    pub fn is_streamed(&self) -> bool {
+        self == &DimFact::Streamed
+    }
 }
+
+/// Implements arithmetic operations over DimFacts.
+macro_rules! impl_dim_op {
+    ($trait:ident, $method:ident, $i:ident, $j:ident, $res:expr) => {
+        impl $trait<Self> for DimFact {
+            type Output = Self;
+
+            fn $method(self, other: Self) -> Self {
+                match (self, other) {
+                    (DimFact::Only($i), DimFact::Only($j)) => DimFact::Only($res),
+                    _ => DimFact::Any,
+                }
+            }
+        }
+
+        impl $trait<usize> for DimFact {
+            type Output = Self;
+
+            fn $method(self, other: usize) -> Self {
+                match (self, other) {
+                    (DimFact::Only($i), $j) => DimFact::Only($res),
+                    _ => DimFact::Any,
+                }
+            }
+        }
+    }
+}
+
+impl_dim_op!(Add, add, i, j, i + j);
+impl_dim_op!(Sub, sub, i, j, i - j);
+impl_dim_op!(Mul, mul, i, j, i * j);
+impl_dim_op!(Div, div, i, j, i / j);
+
 
 /// Partial information about a value.
 #[cfg_attr(feature = "serialize", derive(Serialize))]

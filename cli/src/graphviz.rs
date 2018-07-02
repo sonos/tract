@@ -146,7 +146,7 @@ pub fn display_graph(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Ve
 
     thread::sleep(time::Duration::from_secs(1));
 
-    let _ = Command::new("xpdf").arg("/tmp/tfd-graph.pdf").output();
+    let _ = Command::new("evince").arg("--fullscreen").arg("/tmp/tfd-graph.pdf").output();
 
     Ok(())
 }
