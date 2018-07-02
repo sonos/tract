@@ -9,7 +9,7 @@
 //! # extern crate ndarray;
 //! # fn main() {
 //! // load a simple model that just add 3 to each input component
-//! let graph = tfdeploy::for_path("tests/plus3.pb").unwrap();
+//! let graph = tfdeploy::for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // "input" and "output" are tensorflow graph node names.
 //! // we need to map these names to ids
