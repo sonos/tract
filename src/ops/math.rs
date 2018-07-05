@@ -6,16 +6,18 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Add", add);
     reg.insert("BiasAdd", add);
     reg.insert("Div", div);
-    reg.insert("Mul", mul);
     reg.insert("FloorMod", rem);
+    reg.insert("Mul", mul);
+    reg.insert("Neg", Neg::build);
     reg.insert("Rsqrt", Rsqrt::build);
     reg.insert("Sub", sub);
-    reg.insert("Neg", Neg::build);
+    reg.insert("Tanh", Tanh::build);
 }
 
-element_map!(Rsqrt, |x: f32| 1.0 / (x.sqrt()));
-element_map!(Abs, |x: f32| x.abs());
+element_map!(Abs, |x| x.abs());
 element_map!(Neg, |x| -1. * x);
+element_map!(Rsqrt, |x| 1.0 / (x.sqrt()));
+element_map!(Tanh, |x| x.tanh());
 
 element_bin!(Add, add, |mut a, b| {
     a += &b;
