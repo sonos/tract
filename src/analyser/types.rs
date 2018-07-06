@@ -19,7 +19,7 @@ use Tensor;
 /// most general one and specializing it at each iteration. Eventually, it will
 /// reach a fixed point that - hopefully - holds enough information.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TensorFact {
     pub datatype: TypeFact,
     pub shape: ShapeFact,
@@ -52,6 +52,12 @@ impl TypeFact {
             TypeFact::Any => None,
             TypeFact::Only(d) => Some(*d),
         }
+    }
+}
+
+impl Default for TypeFact {
+    fn default() -> TypeFact {
+        TypeFact::Any
     }
 }
 
@@ -105,6 +111,12 @@ impl ShapeFact {
     }
 }
 
+impl Default for ShapeFact {
+    fn default() -> ShapeFact {
+        ShapeFact::any()
+    }
+}
+
 impl FromIterator<usize> for ShapeFact {
     /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFact {
@@ -116,6 +128,13 @@ impl<'a> From<&'a [usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
     fn from(slice: &'a [usize]) -> ShapeFact {
         slice.iter().cloned().collect()
+    }
+}
+
+impl From<Vec<usize>> for ShapeFact {
+    /// Converts an vector of usize into a closed shape.
+    fn from(shape: Vec<usize>) -> ShapeFact {
+        shape.into_iter().collect()
     }
 }
 
@@ -231,6 +250,12 @@ impl ValueFact {
             ValueFact::Any => Ok(ValueFact::Any),
             ValueFact::Only(m) => Ok(ValueFact::Only(f(m)?)),
         }
+    }
+}
+
+impl Default for ValueFact {
+    fn default() -> ValueFact {
+        ValueFact::Any
     }
 }
 

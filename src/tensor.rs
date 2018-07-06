@@ -12,6 +12,7 @@ pub trait Datum:
     + Send
     + Sync
     + Debug
+    + Default
     + 'static
     + ::num_traits::Zero
     + ::num_traits::One

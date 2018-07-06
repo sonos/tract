@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use ndarray::prelude::*;
 use std::iter::repeat;
 
+mod pad;
 mod pack;
 mod strided_slice;
 
@@ -17,6 +18,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ExpandDims", ExpandDims::build);
     reg.insert("Identity", Identity::build);
     reg.insert("Pack", pack::pack);
+    reg.insert("Pad", pad::pad);
     reg.insert("Placeholder", Placeholder::build);
     reg.insert("Reshape", Reshape::build);
     reg.insert("Shape", Shape::build);
