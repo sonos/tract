@@ -181,7 +181,7 @@ mod tests {
     use ndarray::*;
     use Tensor;
 
-    fn run<I, B, E, S>(op: StridedSlice, input: I, begin: B, end: E, strides: S) -> Tensor
+    fn run<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
     where
         I: Into<Tensor>,
         B: Into<Tensor>,
