@@ -1,9 +1,12 @@
 use super::{Op, OpRegister};
 use Result;
 
+mod add_n;
+
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Abs", Abs::build);
     reg.insert("Add", add);
+    reg.insert("AddN", add_n::add_n);
     reg.insert("BiasAdd", add);
     reg.insert("Div", div);
     reg.insert("FloorMod", rem);

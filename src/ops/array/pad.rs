@@ -90,7 +90,7 @@ where
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         // FIXME
         Ok(Some(vec!(TensorFact::default(), TensorFact::default())))
     }
