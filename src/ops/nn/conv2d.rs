@@ -31,21 +31,9 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
 
-impl<T: Datum> Op for Conv2D<T> {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        // TODO(liautaud): Implement serialization for LocalPatch.
-        hashmap!{
-            "T" => Attr::DataType(T::datatype()),
-        }
-    }
-
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
-        let (m_data, m_filter) = args_2!(inputs);
-        let data = T::tensor_into_array(m_data.into_tensor())?;
-        let filter = T::tensor_to_view(&*m_filter)?;
-        let data = into_4d(data)?;
+impl<T: Datum> Conv2D<T> {
+    /// Performs a 2D convolution on an input tensor and a filter.
+    fn convolve(&self, data: &Array4<T>, filter: ArrayViewD<T>) -> Result<(Array4<T>)> {
         let images = BatchImageWrapper(data.view());
 
         let filter_rows = filter.shape()[0];
@@ -69,9 +57,31 @@ impl<T: Datum> Op for Conv2D<T> {
         }
 
         let transformed = Array::from_vec(transformed)
-            .into_shape((images.n(), out_height, out_width, out_depth))?
-            .into_dyn();
-        Ok(vec![T::array_into_tensor(transformed).into()])
+            .into_shape((images.n(), out_height, out_width, out_depth))?;
+
+        Ok(transformed)
+    }
+}
+
+impl<T: Datum> Op for Conv2D<T> {
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        // TODO(liautaud): Implement serialization for LocalPatch.
+        hashmap!{
+            "T" => Attr::DataType(T::datatype()),
+        }
+    }
+
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+        let (m_data, m_filter) = args_2!(inputs);
+        let data = T::tensor_into_array(m_data.into_tensor())?;
+        let filter = T::tensor_to_view(&*m_filter)?;
+        let data = into_4d(data)?;
+
+        Ok(vec![T::array_into_tensor(
+            self.convolve(&data, filter)?.into_dyn()).into()
+        ])
     }
 
     /// Returns a new streaming buffer for the operation.
@@ -140,7 +150,8 @@ impl<T: Datum> Op for Conv2D<T> {
         let data_size = data.shape()[dim];
         debug_assert!(data_size == 1);
 
-        let filter = T::tensor_into_array(filter.1.take().unwrap().into_tensor())?;
+        let filter = filter.1.take().unwrap();
+        let filter = T::tensor_to_view(&*filter)?;
         let filter_size = filter.shape()[dim - 1];
 
         // Generates an empty 4-dimensional array of the right shape.
@@ -178,11 +189,7 @@ impl<T: Datum> Op for Conv2D<T> {
         }
 
         // Otherwise we compute the convolution using the non-streaming implementation.
-        // FIXME(liautaud): THERE SHOULDN'T BE A CLONE HERE!
-        let next_view = T::array_into_tensor(next.clone().into_dyn()).into();
-        let filter_view = T::array_into_tensor(filter).into();
-        let result = self.eval(vec![next_view, filter_view])?;
-
+        let result = self.convolve(&next, filter)?.into_dyn();
         let stride = [self.0.v_stride, self.0.h_stride][dim - 1];
 
         if stride > next_size {
@@ -196,7 +203,7 @@ impl<T: Datum> Op for Conv2D<T> {
             *prev = next;
         }
 
-        Ok(Some(result))
+        Ok(Some(vec![T::array_into_tensor(result).into()]))
     }
 
     /// Infers properties about the output tensors from the input tensors.
