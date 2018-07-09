@@ -252,7 +252,7 @@ impl Op for UnimplementedOp {
 /// buffer type (or use one of the general ones defined below), which must
 /// implement the OpBuffer trait. It should return a new instance of it in
 /// the `Op::new_buffer` method, and downcast it from OpBuffer in `step`.
-pub trait OpBuffer: Downcast + Debug + objekt::Clone {}
+pub trait OpBuffer: Downcast + Debug + objekt::Clone + Send + 'static {}
 clone_trait_object!(OpBuffer);
 impl_downcast!(OpBuffer);
 
