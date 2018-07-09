@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::collections::HashMap;
 use ndarray::prelude::*;
 use std::iter::repeat;
@@ -12,6 +13,7 @@ use analyser::helpers::infer_forward_concrete;
 use analyser::helpers::most_specific_shape;
 use analyser::{ShapeFact, TensorFact, ValueFact};
 use tfpb::types::DataType;
+use tensor::Datum;
 use {Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -24,7 +26,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Placeholder", Placeholder::build);
     reg.insert("Reshape", Reshape::build);
     reg.insert("Shape", Shape::build);
-    reg.insert("Squeeze", Squeeze::build);
+    reg.insert("Squeeze", squeeze);
     reg.insert("StridedSlice", strided_slice::build);
 }
 
@@ -609,38 +611,46 @@ impl Op for Shape {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Squeeze {
-    dims: Vec<isize>,
-}
-
-impl Squeeze {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let mut dims = pb.get_attr_list_int("squeeze_dims")?;
+pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    let mut dims = pb.get_attr_opt_list_int("squeeze_dims")?;
+    if let Some(ref mut dims) = dims {
         dims.sort();
         dims.reverse();
-        Ok(Box::new(Squeeze { dims }))
     }
+    let t = pb.get_attr_datatype("T")?;
+    Ok(boxed_new!(Squeeze(t)(dims)))
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Squeeze<T: Datum> {
+    dims: Option<Vec<isize>>,
+    t: PhantomData<T>,
+}
+
+impl<T:Datum> Squeeze<T> {
 
     /// Removes the dimensions of size 1 from the given shape vector.
-    fn squeeze_shape(&self, mut shape: Vec<usize>) -> Result<Vec<usize>> {
-        for d in &self.dims {
-            if *d >= 0 {
-                shape.remove(*d as usize);
-            } else {
-                Err(format!("unimplemented Squeeze with negative parameter"))?
+    fn squeeze_shape(&self, mut shape: Vec<usize>, stream_dim: Option<usize>) -> Result<Vec<usize>> {
+        if let Some(ref dims) = self.dims {
+            for d in dims {
+                if *d >= 0 {
+                    shape.remove(*d as usize);
+                } else {
+                    Err(format!("unimplemented Squeeze with negative parameter"))?
+                }
             }
+            Ok(shape)
+        } else {
+            Ok(shape.into_iter().enumerate().filter(|&(ix, d)| stream_dim == Some(ix) || d != 1).map(|(_,d)| d).collect())
         }
-
-        Ok(shape)
     }
 }
 
-impl Op for Squeeze {
+impl<T: Datum> Op for Squeeze<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
-        let shape = self.squeeze_shape(data.shape().to_vec())?;
+        let shape = self.squeeze_shape(data.shape().to_vec(), None)?;
         Ok(vec![Tensor::from(data.clone().into_shape(shape)?).into()])
     }
 
@@ -658,7 +668,7 @@ impl Op for Squeeze {
         // because they could turn out to be Only(1), and so Squeeze would
         // have to remove them.
         let shape = match inputs[0].shape.concretize() {
-            Some(shape) => self.squeeze_shape(shape)?.iter().cloned().collect(),
+            Some(shape) => self.squeeze_shape(shape, None)?.iter().cloned().collect(),
             None => shapefact![..],
         };
 
@@ -673,8 +683,10 @@ impl Op for Squeeze {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "dims" => Attr::IsizeVec(&self.dims)
+        if let Some(dim) = self.dims.as_ref() {
+            hashmap! { "dims" => Attr::IsizeVec(dim) }
+        } else {
+            hashmap!{ }
         }
     }
 
@@ -689,5 +701,20 @@ impl Op for Squeeze {
             shape: shapefact![..],
             value: valuefact!(_),
         }]))
+    }
+
+    fn step(
+        &self,
+        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        _buffer: &mut Box<OpBuffer>,
+    ) -> Result<Option<Vec<TensorView>>> {
+        let input = args_1!(inputs);
+        if let (Some(stream), Some(chunk)) = input {
+            let chunk = T::tensor_into_array(chunk.into_tensor())?;
+            let shape = self.squeeze_shape(chunk.shape().to_vec(), Some(stream))?;
+            Ok(Some(vec!( T::array_into_tensor(chunk.into_shape(shape)?).into() )))
+        } else {
+            Ok(None)
+        }
     }
 }

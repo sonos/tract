@@ -166,7 +166,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
         _inputs: Vec<(Option<usize>, Option<TensorView>)>,
         _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
-        bail!("Streaming is not available for this operator.")
+        bail!("Streaming is not available for operator {:?}", self)
     }
 
     /// Infers properties about the output tensors from the input tensors.
