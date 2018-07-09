@@ -12,6 +12,7 @@ pub trait Datum:
     + Send
     + Sync
     + Debug
+    + Default
     + 'static
     + ::num_traits::Zero
     + ::num_traits::One
@@ -160,10 +161,11 @@ impl Tensor {
         let mb = other.to_f32().take_f32s().unwrap();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
+        let margin = (dev / 10.0).max(avg.abs()/10_000.0);
         ma.shape() == mb.shape()
             && mb.iter()
                 .zip(ma.iter())
-                .all(|(&a, &b)| (b - a).abs() <= dev / 10.0)
+                .all(|(&a, &b)| (b - a).abs() <= margin)
     }
 }
 

@@ -1,35 +1,35 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 use analyser::helpers::infer_forward_concrete;
 use analyser::TensorFact;
 use ndarray::prelude::*;
 use ops::{Attr, Op, TensorView};
 use tfpb::types::DataType;
-use {Result, Tensor};
+use tensor::Datum;
+use Result;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
-    Ok(Box::new(StridedSlice {
-        begin_mask,
-        end_mask,
-        shrink_axis_mask,
-    }))
+    let datatype = pb.get_attr_datatype("T")?;
+    Ok(boxed_new!(StridedSlice(datatype)(begin_mask, end_mask, shrink_axis_mask)))
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct StridedSlice {
+#[derive(Debug, Default, Clone, new)]
+pub struct StridedSlice<T:Datum> {
     begin_mask: i64,
     end_mask: i64,
     shrink_axis_mask: i64,
+    _phantom: PhantomData<T>,
 }
 
-impl Op for StridedSlice {
+impl<T:Datum> Op for StridedSlice<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (input, begin, end, strides) = args_4!(inputs);
-        let input = input.as_i32s().ok_or("Input expected as I32")?;
+        let input = T::tensor_to_view(&input)?;
         let begin = begin.as_i32s().ok_or("Begin expected as I32")?;
         let end = end.as_i32s().ok_or("End expected as I32")?;
         let strides = strides.as_i32s().ok_or("Strides expected as I32")?;
@@ -114,7 +114,7 @@ impl Op for StridedSlice {
         });
         let output = output.into_shape(reshape)?;
 
-        Ok(vec![Tensor::I32(output.into()).into()])
+        Ok(vec![T::array_into_tensor(output.into()).into()])
     }
 
     /// Returns the attributes of the operation and their values.
@@ -181,7 +181,7 @@ mod tests {
     use ndarray::*;
     use Tensor;
 
-    fn run<I, B, E, S>(op: StridedSlice, input: I, begin: B, end: E, strides: S) -> Tensor
+    fn run<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
     where
         I: Into<Tensor>,
         B: Into<Tensor>,
