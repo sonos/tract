@@ -33,7 +33,13 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 
 impl<T: Datum> Conv2D<T> {
     /// Performs a 2D convolution on an input tensor and a filter.
-    fn convolve(&self, data: &Array4<T>, filter: ArrayViewD<T>) -> Result<(Array4<T>)> {
+    fn convolve(
+        &self,
+        data: &Array4<T>,
+        filter: ArrayViewD<T>,
+        pad_rows: bool,
+        pad_cols: bool
+    ) -> Result<(Array4<T>)> {
         let images = BatchImageWrapper(data.view());
 
         let filter_rows = filter.shape()[0];
@@ -52,7 +58,7 @@ impl<T: Datum> Conv2D<T> {
 
         // Loop over each batch.
         for image in data.outer_iter() {
-            let patches = self.0.mk_patches(image, (filter_rows, filter_cols))?;
+            let patches = self.0.mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
 
@@ -80,7 +86,7 @@ impl<T: Datum> Op for Conv2D<T> {
         let data = into_4d(data)?;
 
         Ok(vec![T::array_into_tensor(
-            self.convolve(&data, filter)?.into_dyn()).into()
+            self.convolve(&data, filter, true, true)?.into_dyn()).into()
         ])
     }
 
@@ -189,7 +195,7 @@ impl<T: Datum> Op for Conv2D<T> {
         }
 
         // Otherwise we compute the convolution using the non-streaming implementation.
-        let result = self.convolve(&next, filter)?.into_dyn();
+        let result = self.convolve(&next, filter, dim != 1, dim != 2)?.into_dyn();
         let stride = [self.0.v_stride, self.0.h_stride][dim - 1];
 
         if stride > next_size {
