@@ -119,10 +119,6 @@ impl<T: Datum> Op for Conv2D<T> {
 
         let (mut data, mut filter) = args_2!(inputs);
 
-        if self.0.padding != Padding::Valid {
-            bail!("Conv2D only supports VALID padding when streaming.");
-        }
-
         if filter.0.is_some() || filter.1.is_none() {
             bail!("Filter input should not be streamed.");
         }
