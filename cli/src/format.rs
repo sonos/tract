@@ -49,21 +49,34 @@ fn format_no_right_border() -> TableFormat {
 }
 
 /// Builds a box header containing the operation, name and status on the same line.
-fn build_header(cols: usize, op: String, name: String, status: String) -> Table {
+fn build_header(cols: usize, op: String, name: String, status: Option<String>) -> Table {
     use colored::Colorize;
 
-    let mut name_table = table!([
-        " Name: ",
-        format!("{:1$}", textwrap::fill(name.as_str(), cols - 68), cols - 68),
-    ]);
 
-    name_table.set_format(format_none());
+    let mut header = if let Some(status) = status {
+        let mut name_table = table!([
+            " Name: ",
+            format!("{:1$}", textwrap::fill(name.as_str(), cols - 68), cols - 68),
+        ]);
 
-    let mut header = table!([
-        format!("Operation: {:15}", op.bold().blue()),
-        name_table,
-        format!(" {:^33}", status.bold()),
-    ]);
+        name_table.set_format(format_none());
+        table!([
+            format!("Operation: {:15}", op.bold().blue()),
+            name_table,
+            format!(" {:^33}", status.bold()),
+        ])
+    } else {
+        let mut name_table = table!([
+            " Name: ",
+            format!("{:1$}", textwrap::fill(name.as_str(), cols - 46), cols - 46),
+        ]);
+
+        name_table.set_format(format_none());
+        table!([
+            format!("Operation: {:15}", op.bold().blue()),
+            name_table
+        ])
+    };
 
     header.set_format(format_only_columns());
     table![[header]]
@@ -115,10 +128,8 @@ fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sect
     count.set_format(format_no_right_border());
 
     // Content of the table
-    let mut right = if status.len() < 1 {
-        build_header(cols, op, name, "".to_string())
-    } else if status.len() == 1 {
-        build_header(cols, op, name, status.pop().unwrap())
+    let mut right = if status.len() < 2 {
+        build_header(cols, op, name, status.pop())
     } else {
         build_header_wide(cols, op, name, status)
     };
@@ -158,7 +169,7 @@ fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sect
 fn node_info(
     node: &tfdeploy::Node,
     graph: &tfpb::graph::GraphDef,
-    state: &::tfdeploy::ModelState,
+    state: Option<&::tfdeploy::ModelState>,
 ) -> Vec<Vec<Row>> {
     use colored::Colorize;
 
@@ -189,16 +200,18 @@ fn node_info(
     let mut inputs = Vec::new();
 
     for (ix, &(n, i)) in node.inputs.iter().enumerate() {
-        let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
-        inputs.push(Row::Double(
-            format!(
-                "{} ({}/{}):",
-                format!("Input {}", ix).bold(),
-                n,
-                i.unwrap_or(0),
-            ),
-            data.partial_dump(false).unwrap(),
-        ));
+        if let Some(state) = state {
+            let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
+            inputs.push(Row::Double(
+                format!(
+                    "{} ({}/{}):",
+                    format!("Input {}", ix).bold(),
+                    n,
+                    i.unwrap_or(0),
+                ),
+                data.partial_dump(false).unwrap(),
+            ));
+        }
     }
 
     vec![attributes, inputs]
@@ -208,7 +221,7 @@ fn node_info(
 pub fn print_node(
     node: &Node,
     graph: &GraphDef,
-    state: &ModelState,
+    state: Option<&ModelState>,
     status: Vec<String>,
     sections: Vec<Vec<Row>>,
 ) {
@@ -217,7 +230,7 @@ pub fn print_node(
         node.op_name.to_string(),
         node.name.to_string(),
         status,
-        [format::node_info(&node, &graph, &state), sections].concat(),
+        [format::node_info(&node, &graph, state), sections].concat(),
     );
 }
 

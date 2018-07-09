@@ -31,8 +31,6 @@ use std::fs::File;
 use std::io::Read;
 use std::process;
 use std::thread;
-use std::time::Instant as StdInstant;
-use std::time::Duration as StdDuration;
 
 use simplelog::Level::{Error, Info, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
@@ -55,6 +53,7 @@ use format::Row;
 #[cfg(feature = "tensorflow")]
 use utils::compare_outputs;
 use utils::random_tensor;
+use rusage::{ Duration, Instant };
 
 mod errors;
 mod format;
@@ -118,6 +117,9 @@ fn main() {
         (@subcommand compare =>
             (about: "Compares the output of tfdeploy and tensorflow on randomly generated input."))
 
+        (@subcommand dump =>
+            (about: "Dumps tensorflow graph in human readable form"))
+
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input.")
             (@arg max_iters: -n [max_iters]
@@ -166,6 +168,8 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
     match matches.subcommand() {
         ("compare", _) => handle_compare(params),
+
+        ("dump", _) => handle_dump(params),
 
         ("profile", Some(m)) => handle_profile(
             params,
@@ -377,7 +381,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
                 print_node(
                     node,
                     &params.graph,
-                    &state,
+                    Some(&state),
                     vec!["SKIP".yellow().to_string()],
                     vec![],
                 );
@@ -452,7 +456,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
             print_node(
                 node,
                 &params.graph,
-                &state,
+                Some(&state),
                 vec![status.to_string()],
                 vec![outputs.clone(), mismatches.clone()],
             );
@@ -477,7 +481,7 @@ fn handle_compare(params: Parameters) -> Result<()> {
             print_node(
                 node,
                 &params.graph,
-                &state,
+                Some(&state),
                 vec![status.to_string()],
                 vec![outputs, mismatches],
             );
@@ -489,77 +493,25 @@ fn handle_compare(params: Parameters) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug)]
-struct Instant(StdInstant, f64, f64);
+fn handle_dump(params: Parameters) -> Result<()> {
+    use colored::Colorize;
 
-impl Instant {
-    /// Returns the current instant.
-    pub fn now() -> Instant {
-        let elapsed_user = rusage::get_memory_usage().unwrap().user_time;
-        let elapsed_sys = rusage::get_memory_usage().unwrap().system_time;
+    let tfd = params.tfd_model;
+    let output = tfd.get_node_by_id(params.output)?;
+    let plan = output.eval_order(&tfd)?;
 
-        Instant(StdInstant::now(), elapsed_user, elapsed_sys)
+    for n in plan {
+        let node = tfd.get_node_by_id(n)?;
+        print_node(
+            node,
+            &params.graph,
+            None,
+            vec![],
+            vec![],
+        );
     }
 
-    /// Returns the number of elapsed real seconds since the instant.
-    pub fn elapsed_real(&self) -> f64 {
-        let duration = self.0.elapsed();
-        duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1.0e-9
-    }
-
-    /// Returns the number of elapsed user seconds since the instant.
-    pub fn elapsed_user(&self) -> f64 {
-        rusage::get_memory_usage().unwrap().user_time - self.1
-    }
-
-    /// Returns the number of elapsed system seconds since the instant.
-    pub fn elapsed_sys(&self) -> f64 {
-        rusage::get_memory_usage().unwrap().system_time - self.2
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct Duration {
-    pub total_real: f64,
-    pub total_user: f64,
-    pub total_sys: f64,
-    pub avg_real: f64,
-    pub avg_user: f64,
-    pub avg_sys: f64,
-}
-
-impl Duration {
-    /// Returns an empty measure.
-    pub fn new() -> Duration {
-        Duration { ..Default::default() }
-    }
-
-    /// Returns a measure from a given instant and iterations.
-    pub fn since(start: &Instant, iters: u64) -> Duration {
-        let total_real = start.elapsed_real();
-        let total_user = start.elapsed_user();
-        let total_sys = start.elapsed_sys();
-
-        Duration {
-            total_real, total_user, total_sys,
-            avg_real: total_real / iters as f64,
-            avg_user: total_user / iters as f64,
-            avg_sys: total_sys / iters as f64,
-        }
-    }
-}
-
-impl std::ops::AddAssign for Duration {
-    fn add_assign(&mut self, other: Duration) {
-        *self = Duration {
-            total_real: self.total_real + other.total_real,
-            total_user: self.total_user + other.total_user,
-            total_sys: self.total_sys + other.total_sys,
-            avg_real: self.avg_real + other.avg_real,
-            avg_user: self.avg_user + other.avg_user,
-            avg_sys: self.avg_sys + other.avg_sys,
-        };
-    }
+    Ok(())
 }
 
 /// Handles the `profile` subcommand.
@@ -623,7 +575,7 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
 
         if node.op_name == "Placeholder" {
             if log_enabled!(Info) {
-                print_node(node, &params.graph, &state, vec!["SKIP".yellow().to_string()], vec![]);
+                print_node(node, &params.graph, Some(&state), vec!["SKIP".yellow().to_string()], vec![]);
             }
 
             continue;
@@ -641,7 +593,7 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
 
         // Print the results for the node.
         if log_enabled!(Info) {
-            print_node(node, &params.graph, &state, vec![
+            print_node(node, &params.graph, Some(&state), vec![
                 format!("{:.3} ms/i", measure.avg_real * 1e3).white().to_string()
             ], vec![]);
         }
@@ -687,7 +639,7 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
         print_node(
             node,
             &params.graph,
-            &state,
+            Some(&state),
             vec![status_real.to_string(), status_user.to_string(), status_sys.to_string()],
             vec![]
         );
@@ -852,7 +804,7 @@ fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u6
                 format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
             );
 
-            thread::sleep(StdDuration::from_secs(1));
+            thread::sleep(::std::time::Duration::from_secs(1));
         }
     }
 

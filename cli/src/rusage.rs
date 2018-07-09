@@ -1,5 +1,83 @@
 #![allow(dead_code)]
+
+use std::time::Instant as StdInstant;
+
 use Result;
+
+#[derive(Debug)]
+pub struct Instant(StdInstant, f64, f64);
+
+impl Instant {
+    /// Returns the current instant.
+    pub fn now() -> Instant {
+        let elapsed_user = get_memory_usage().unwrap().user_time;
+        let elapsed_sys = get_memory_usage().unwrap().system_time;
+
+        Instant(StdInstant::now(), elapsed_user, elapsed_sys)
+    }
+
+    /// Returns the number of elapsed real seconds since the instant.
+    pub fn elapsed_real(&self) -> f64 {
+        let duration = self.0.elapsed();
+        duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1.0e-9
+    }
+
+    /// Returns the number of elapsed user seconds since the instant.
+    pub fn elapsed_user(&self) -> f64 {
+        get_memory_usage().unwrap().user_time - self.1
+    }
+
+    /// Returns the number of elapsed system seconds since the instant.
+    pub fn elapsed_sys(&self) -> f64 {
+        get_memory_usage().unwrap().system_time - self.2
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Duration {
+    pub total_real: f64,
+    pub total_user: f64,
+    pub total_sys: f64,
+    pub avg_real: f64,
+    pub avg_user: f64,
+    pub avg_sys: f64,
+}
+
+impl Duration {
+    /// Returns an empty measure.
+    pub fn new() -> Duration {
+        Duration { ..Default::default() }
+    }
+
+    /// Returns a measure from a given instant and iterations.
+    pub fn since(start: &Instant, iters: u64) -> Duration {
+        let total_real = start.elapsed_real();
+        let total_user = start.elapsed_user();
+        let total_sys = start.elapsed_sys();
+
+        Duration {
+            total_real, total_user, total_sys,
+            avg_real: total_real / iters as f64,
+            avg_user: total_user / iters as f64,
+            avg_sys: total_sys / iters as f64,
+        }
+    }
+}
+
+impl ::std::ops::AddAssign for Duration {
+    fn add_assign(&mut self, other: Duration) {
+        *self = Duration {
+            total_real: self.total_real + other.total_real,
+            total_user: self.total_user + other.total_user,
+            total_sys: self.total_sys + other.total_sys,
+            avg_real: self.avg_real + other.avg_real,
+            avg_user: self.avg_user + other.avg_user,
+            avg_sys: self.avg_sys + other.avg_sys,
+        };
+    }
+}
+
+
 
 use libc::{getrusage, RUSAGE_SELF, rusage, timeval};
 
