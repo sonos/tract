@@ -37,7 +37,7 @@ use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::Analyser;
 use tfdeploy::analyser::detect_inputs;
 use tfdeploy::analyser::detect_output;
-use tfdeploy::analyser::TensorFact;
+use tfdeploy::analyser::{TensorFact, ShapeFact, DimFact};
 use tfdeploy::tfpb;
 use tfdeploy::Tensor;
 use tfpb::graph::GraphDef;
@@ -494,8 +494,6 @@ fn handle_compare(params: Parameters) -> Result<()> {
 }
 
 fn handle_dump(params: Parameters) -> Result<()> {
-    use colored::Colorize;
-
     let tfd = params.tfd_model;
     let output = tfd.get_node_by_id(params.output)?;
     let plan = output.eval_order(&tfd)?;
@@ -819,21 +817,23 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?.id;
 
-    // FIXME(liautaud): The analyser should handle streaming dimensions at some point.
     info!("Starting the analysis.");
 
     let mut analyser = Analyser::new(model, output)?;
 
     // Add hints for the input nodes.
     if let Some(input) = params.input {
-        let shape = input.shape.iter()
-            .map(|d| d.unwrap_or(1))
+        let dims = input.shape.iter()
+            .map(|d| match d {
+                None    => DimFact::Streamed,
+                Some(i) => DimFact::Only(*i),
+            })
             .collect::<Vec<_>>();
 
         for &i in &params.inputs {
             analyser.hint(i, &TensorFact {
                 datatype: typefact!(input.datatype),
-                shape: shape.iter().cloned().collect(),
+                shape: ShapeFact::closed(dims.clone()),
                 value: valuefact!(_),
             })?;
         }
