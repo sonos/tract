@@ -173,6 +173,7 @@ impl<T: Datum> Op for Conv2D<T> {
         // Maybe we don't have enough chunks to compute the convolution yet.
         if next_size < filter_size {
             *skip = 0;
+            *prev = next;
             return Ok(None)
         }
 
