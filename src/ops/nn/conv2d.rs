@@ -221,6 +221,19 @@ impl<T: Datum> Op for Conv2D<T> {
                 }
 
                 let (height, width) = match (in_height, in_width, filter_height, filter_width) {
+                    (_, _, &Streamed, _) | (_, _, _, &Streamed) =>
+                        bail!("The filter should not be streamed."),
+
+                    (&Streamed, &Only(iw), &Only(_), &Only(fw)) => {
+                        let w = self.0.adjusted_dim_cols(iw, fw);
+                        (Streamed, Only(w))
+                    },
+
+                    (&Only(ih), &Streamed, &Only(fh), &Only(_)) => {
+                        let h = self.0.adjusted_dim_rows(ih, fh);
+                        (Only(h), Streamed)
+                    },
+
                     (&Only(ih), &Only(iw), &Only(fh), &Only(fw)) => {
                         let (h, w) = self.0.adjusted_dim(ih, iw, (fh, fw));
                         (Only(h), Only(w))

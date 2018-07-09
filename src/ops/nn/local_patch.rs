@@ -120,15 +120,33 @@ impl LocalPatch {
         in_cols: usize,
         (filter_rows, filter_cols): (usize, usize),
     ) -> (usize, usize) {
+        (self.adjusted_dim_rows(in_rows, filter_rows),
+         self.adjusted_dim_cols(in_cols, filter_cols))
+    }
+
+    pub fn adjusted_dim_rows(
+        &self,
+        in_rows: usize,
+        filter_rows: usize,
+    ) -> usize {
         match self.padding {
-            Padding::Same => (
+            Padding::Same =>
                 (in_rows as f32 / self.v_stride as f32).ceil() as usize,
-                (in_cols as f32 / self.h_stride as f32).ceil() as usize,
-            ),
-            Padding::Valid => (
+            Padding::Valid =>
                 ((in_rows - filter_rows + 1) as f32 / self.v_stride as f32).ceil() as usize,
+        }
+    }
+
+    pub fn adjusted_dim_cols(
+        &self,
+        in_cols: usize,
+        filter_cols: usize,
+    ) -> usize {
+        match self.padding {
+            Padding::Same =>
+                (in_cols as f32 / self.h_stride as f32).ceil() as usize,
+            Padding::Valid =>
                 ((in_cols - filter_cols + 1) as f32 / self.h_stride as f32).ceil() as usize,
-            ),
         }
     }
 
