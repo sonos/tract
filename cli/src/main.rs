@@ -23,6 +23,9 @@ extern crate libc;
 #[macro_use]
 extern crate rouille;
 extern crate open;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate serde_json;
 extern crate bincode;
 
@@ -53,6 +56,7 @@ use format::Row;
 #[cfg(feature = "tensorflow")]
 use utils::compare_outputs;
 use utils::random_tensor;
+use utils::generate_json;
 use rusage::{ Duration, Instant };
 
 mod errors;
