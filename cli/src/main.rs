@@ -122,7 +122,9 @@ fn main() {
             (about: "Compares the output of tfdeploy and tensorflow on randomly generated input."))
 
         (@subcommand dump =>
-            (about: "Dumps tensorflow graph in human readable form"))
+            (about: "Dumps the Tensorflow graph in human readable form.")
+            (@arg web: --web
+                "Displays the dump in a web interface."))
 
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input.")
@@ -135,7 +137,7 @@ fn main() {
             (about: "Analyses the graph to infer properties about tensors (experimental).")
             (@arg prune: --prune
                 "Prunes constant nodes and edges from the graph.")
-            (@arg open: --open
+            (@arg web: --web
                 "Displays the results of the analysis in a web interface."))
     );
 
@@ -173,7 +175,10 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     match matches.subcommand() {
         ("compare", _) => handle_compare(params),
 
-        ("dump", _) => handle_dump(params),
+        ("dump", Some(m)) => handle_dump(
+            params,
+            m.is_present("web")
+        ),
 
         ("profile", Some(m)) => handle_profile(
             params,
@@ -190,7 +195,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
         ("analyse", Some(m)) => handle_analyse(
             params,
             m.is_present("prune"),
-            m.is_present("open")
+            m.is_present("web")
         ),
 
         (s, _) => bail!("Unknown subcommand {}.", s),
@@ -497,20 +502,25 @@ fn handle_compare(params: Parameters) -> Result<()> {
     Ok(())
 }
 
-fn handle_dump(params: Parameters) -> Result<()> {
+fn handle_dump(params: Parameters, web: bool) -> Result<()> {
     let tfd = params.tfd_model;
     let output = tfd.get_node_by_id(params.output)?;
     let plan = output.eval_order(&tfd)?;
 
-    for n in plan {
-        let node = tfd.get_node_by_id(n)?;
-        print_node(
-            node,
-            &params.graph,
-            None,
-            vec![],
-            vec![],
-        );
+    if web {
+        let data = generate_json(&tfd)?;
+        open_web(data);
+    } else {
+        for n in plan {
+            let node = tfd.get_node_by_id(n)?;
+            print_node(
+                node,
+                &params.graph,
+                None,
+                vec![],
+                vec![],
+            );
+        }
     }
 
     Ok(())
@@ -814,7 +824,7 @@ fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u6
 }
 
 /// Handles the `analyse` subcommand.
-fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
+fn handle_analyse(params: Parameters, prune: bool, web: bool) -> Result<()> {
     use std::fs::File;
     use std::io::prelude::*;
 
@@ -865,38 +875,42 @@ fn handle_analyse(params: Parameters, prune: bool, open: bool) -> Result<()> {
 
 
     // Display an interactive view of the graph if needed.
-    if open {
-        use rouille::Response;
-
-        println!("TFVisualizer is now running on http://127.0.0.1:8000/.");
-        let _ = open::that("http://127.0.0.1:8000/");
-
-        rouille::start_server("0.0.0.0:8000", move |request| {
-            if request.remove_prefix("/dist").is_some() || request.remove_prefix("/public").is_some() {
-                return rouille::match_assets(&request, "../visualizer");
-            }
-
-            return router!(request,
-                (GET) (/) => {
-                    let index = File::open("../visualizer/index.html").unwrap();
-                    Response::from_file("text/html", index)
-                },
-
-                (GET) (/current) => {
-                    let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
-                    Response::from_data("application/json", data)
-                },
-
-                _ => Response::empty_404(),
-            );
-        });
+    let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
+    if web {
+        open_web(data);
     } else {
-        let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
         File::create("analyser.json")?.write_all(&data)?;
         println!("Wrote the result of the analysis to analyser.json.");
     }
 
     Ok(())
+}
+
+/// Starts a web server for TFVisualizer and opens its webroot in a browser.
+fn open_web(data: Vec<u8>) -> () {
+    use rouille::Response;
+
+    println!("TFVisualizer is now running on http://127.0.0.1:8000/.");
+    let _ = open::that("http://127.0.0.1:8000/");
+
+    rouille::start_server("0.0.0.0:8000", move |request| {
+        if request.remove_prefix("/dist").is_some() || request.remove_prefix("/public").is_some() {
+            return rouille::match_assets(&request, "../visualizer");
+        }
+
+        return router!(request,
+            (GET) (/) => {
+                let index = File::open("../visualizer/index.html").unwrap();
+                Response::from_file("text/html", index)
+            },
+
+            (GET) (/current) => {
+                Response::from_data("application/json", data.clone())
+            },
+
+            _ => Response::empty_404(),
+        );
+    });
 }
 
 /// Handles the `prune` subcommand.
