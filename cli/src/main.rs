@@ -29,7 +29,6 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate bincode;
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::process;
@@ -59,10 +58,13 @@ use utils::random_tensor;
 use utils::generate_json;
 use rusage::{ Duration, Instant };
 
+use profile::ProfileData;
+
 mod errors;
 mod format;
 mod graphviz;
 mod utils;
+mod profile;
 mod rusage;
 
 /// The default maximum for iterations and time.
@@ -77,7 +79,7 @@ struct InputData {
 }
 
 /// Structure holding the parsed parameters.
-struct Parameters {
+pub struct Parameters {
     name: String,
     graph: GraphDef,
     tfd_model: tfdeploy::Model,
@@ -544,32 +546,28 @@ fn handle_profile(mut params: Parameters, max_iters: u64, max_time: u64) -> Resu
 fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
     use colored::Colorize;
 
-    let model = params.tfd_model;
+    let ref model = params.tfd_model;
     let output = model.get_node_by_id(params.output)?;
     let mut state = model.state();
 
     // First fill the inputs with randomly generated values.
-    for s in params.inputs {
+    for s in &params.inputs {
         let data = if input.data.is_some() {
             input.data.as_ref().unwrap().clone()
         } else {
             random_tensor(shape.clone(), input.datatype)
         };
 
-        state.set_value(s, data)?;
+        state.set_value(*s, data)?;
     }
 
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
 
-    let mut global = Duration::new();
-    let capacity = model.nodes().len();
-    let mut nodes = Vec::with_capacity(capacity);
-    let mut operations = HashMap::with_capacity(capacity);
-
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
 
+    let mut profile = ProfileData::new(&params);
     let mut progress = ProgressBar::new(plan.len() as u64);
 
     if log_enabled!(Info) {
@@ -610,9 +608,9 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
             ], vec![]);
         }
 
-        global += measure;
-        nodes.push((node, measure));
-        let mut pair = operations
+        profile.global += measure;
+        profile.nodes.push((node, measure));
+        let mut pair = profile.operations
             .entry(node.op_name.as_str())
             .or_insert((Duration::new(), 0));
         pair.0 += measure;
@@ -626,85 +624,18 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
+    profile.print_most_consuming_nodes(Some(&state));
     println!();
-    println!("Most time consuming nodes:");
-    nodes.sort_by(|(_, a), (_, b)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
-    for (node, measure) in nodes.iter().take(5) {
-        let status_real = format!(
-            "Real: {} ({:.1?}%)",
-            format!("{:.3} ms/i", measure.avg_real * 1e3).white(),
-            measure.avg_real / global.avg_real * 100.
-        );
 
-        let status_user = format!(
-            "User: {} ({:.1?}%)",
-            format!("{:.3} ms/i", measure.avg_user * 1e3).white(),
-            measure.avg_user / global.avg_user * 100.
-        );
-
-        let status_sys = format!(
-            "Sys: {} ({:.1?}%)",
-            format!("{:.3} ms/i", measure.avg_sys * 1e3).white(),
-            measure.avg_sys / global.avg_sys * 100.
-        );
-
-        print_node(
-            node,
-            &params.graph,
-            Some(&state),
-            vec![status_real.to_string(), status_user.to_string(), status_sys.to_string()],
-            vec![]
-        );
-    }
-
-    println!();
-    println!("Total execution time (for {} nodes):", nodes.len());
-    println!("- Real: {}.", format!("{:.3} ms/i", global.avg_real * 1e3).yellow().bold());
-    println!("- User: {}.", format!("{:.3} ms/i", global.avg_user * 1e3).yellow().bold());
-    println!("- Sys: {}.", format!("{:.3} ms/i", global.avg_sys * 1e3).yellow().bold());
+    profile.print_most_consuming_ops();
 
     if log_enabled!(Info) {
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
-            format!("{:.3} ms", global.total_real * 1e3).white(),
+            format!("{:.3} ms", profile.global.total_real * 1e3).white(),
             max_iters as f32,
             max_time,
         );
-    }
-
-    println!();
-    println!("Most time consuming operations:");
-    let mut operations = operations.iter()
-        .map(|(o, (measure, c))| (o, measure, c))
-        .collect::<Vec<_>>();
-    operations.sort_by(|(_, a, _), (_, b, _)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
-    for (operation, measure, count) in operations.iter().take(5) {
-        println!(
-            "- {} (for {} nodes):",
-            operation.blue().bold(), count
-        );
-
-        println!(
-            "    - Real: {} ({:.2?}%).",
-            format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
-            measure.avg_real / global.avg_real * 100.
-        );
-
-        println!(
-            "    - User: {} ({:.2?}%).",
-            format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
-            measure.avg_user / global.avg_user * 100.
-        );
-
-        println!(
-            "    - Sys: {} ({:.2?}%).",
-            format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
-            measure.avg_sys / global.avg_sys * 100.
-        );
-
-        if log_enabled!(Info) {
-            println!("    - {:.3} ms in total.", measure.total_real * 1e3);
-        }
     }
 
     Ok(())
