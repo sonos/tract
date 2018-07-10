@@ -72,10 +72,12 @@ impl<T: Datum> Conv2D<T> {
 impl<T: Datum> Op for Conv2D<T> {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        // TODO(liautaud): Implement serialization for LocalPatch.
-        hashmap!{
+        let mut attributes = hashmap!{
             "T" => Attr::DataType(T::datatype()),
-        }
+        };
+
+        attributes.extend(self.0.get_attributes());
+        attributes
     }
 
     /// Evaluates the operation given the input tensors.

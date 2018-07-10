@@ -46,7 +46,7 @@ impl Op for Const {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
             "dtype" => Attr::DataType(self.dtype),
-            "value" => Attr::Tensor(self.value.as_ref()),
+            "value" => Attr::Tensor(self.value.as_ref().clone()),
         }
     }
 
