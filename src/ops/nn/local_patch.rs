@@ -1,12 +1,17 @@
+use std::collections::HashMap;
 use ndarray::prelude::*;
 use Result;
 
-#[derive(Debug, Clone)]
+use ops::Attr;
+
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DataFormat {
     NHWC,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum Padding {
     Valid,
     Same,
@@ -112,6 +117,16 @@ impl LocalPatch {
             h_stride,
             v_stride,
         })
+    }
+
+    /// Appends each attribute of the LocalPatch to the given hashmap.
+    /// Returns the attributes of the LocalPatch and their values.
+    pub fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap! {
+            "data_format" => Attr::DataFormat(self._data_format),
+            "padding" => Attr::Padding(self.padding),
+            "strides" => Attr::UsizeVec(vec![1, self.v_stride, self.h_stride, 1]),
+        }
     }
 
     pub fn adjusted_dim(

@@ -684,7 +684,7 @@ impl<T: Datum> Op for Squeeze<T> {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         if let Some(dim) = self.dims.as_ref() {
-            hashmap! { "dims" => Attr::IsizeVec(dim) }
+            hashmap! { "dims" => Attr::IsizeVec(dim.clone()) }
         } else {
             hashmap!{ }
         }

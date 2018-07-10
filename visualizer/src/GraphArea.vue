@@ -6,6 +6,23 @@
           <div class="headline">{{ highlighted.id() }}</div>
           <div class="grey--text">Index: {{ highlighted.data('oid') }}</div>
           <div class="grey--text">Operation: {{ highlighted.data('op') }}</div>
+
+          <template v-if="highlighted.data('other').op">
+              <v-divider class="my-3"></v-divider>
+              <div v-for="(value, key) in highlighted.data('other').op">
+                <div v-if="!!value.Tensor" class="mb-3">
+                  <div class="grey--text">
+                    {{ key }}:
+                  </div>
+                  <tensor-display
+                    :value="{ 'Only': value.Tensor }">
+                  </tensor-display>
+                </div>
+                <div class="grey--text" v-else>
+                  {{ key }}: {{ value }}
+                </div>
+              </div>
+          </template>
         </div>
         <div v-else>
           <div class="headline">
@@ -16,21 +33,23 @@
           <div class="grey--text">
             Index: {{ highlighted.data('oid') }}
           </div>
-          <div class="grey--text">
-            Datatype: {{ highlighted.data('other').fact.datatype | typeToString }}
-          </div>
-          <div class="grey--text">
-            Shape: {{ highlighted.data('other').fact.shape | shapeToString }}
-          </div>
-          <div v-if="highlighted.data('other').fact.value.Only">
-            <v-divider class="my-3"></v-divider>
-            <span class="grey--text">
-              Value:
-            </span>
-            <value-display
-              :value="highlighted.data('other').fact.value">
-            </value-display>
-          </div>
+          <template v-if="highlighted.data('other').fact">
+            <div class="grey--text">
+              Datatype: {{ highlighted.data('other').fact.datatype | typeToString }}
+            </div>
+            <div class="grey--text">
+              Shape: {{ highlighted.data('other').fact.shape | shapeToString }}
+            </div>
+            <div v-if="highlighted.data('other').fact.value.Only">
+              <v-divider class="my-3"></v-divider>
+              <span class="grey--text">
+                Value:
+              </span>
+              <tensor-display
+                :value="highlighted.data('other').fact.value">
+              </tensor-display>
+            </div>
+          </template>
         </div>
       </v-card-title>
     </v-card>
@@ -66,7 +85,7 @@
 </style>
 
 <script>
-  import ValueDisplay from './ValueDisplay.vue'
+  import TensorDisplay from './TensorDisplay.vue'
   import * as helpers from './helpers'
   import { graphStyle } from './styles'
 
@@ -102,7 +121,7 @@
     },
 
     components: {
-      ValueDisplay
+      TensorDisplay
     },
 
     watch: {
@@ -160,8 +179,8 @@
               oid: e.id,
               source: this.hierarchy.getPath(e.from_node),
               target: this.hierarchy.getPath(e.to_node),
-              label: helpers.shapeToString(e.fact.shape),
-              constant: !!e.fact.value.Only,
+              label: (!!e.fact) ? helpers.shapeToString(e.fact.shape) : '',
+              constant: (!!e.fact) ? !!e.fact.value.Only : null,
               other: e,
             }
           }))

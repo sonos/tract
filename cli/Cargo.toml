@@ -24,6 +24,8 @@ atty = "0.2"
 libc = "0.2"
 rouille = "2.1"
 open = "1.2"
+serde = { "version" = "1.0" }
+serde_derive = { "version" = "1.0" }
 serde_json = { "version" = "1.0" }
 bincode = { "version" = "1.0" }
 

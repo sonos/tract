@@ -62,8 +62,12 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        // TODO(liautaud): Implement serialization for Pool.
-        hashmap!{}
+        let mut attributes = hashmap!{
+            "ksize" => Attr::UsizeVec(vec![(self.1).0, (self.1).1]),
+        };
+
+        attributes.extend(self.0.get_attributes());
+        attributes
     }
 
     /// Infers properties about the output tensors from the input tensors.

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::mem;
 
 use analyser::TensorFact;
+use ops::nn::local_patch::{DataFormat, Padding};
 use tfpb::types::DataType;
 use {Result, Tensor};
 
@@ -119,12 +120,15 @@ impl PartialEq for TensorView {
 // TODO(liautaud): Find a more generic way to do this.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone)]
-pub enum Attr<'a> {
+pub enum Attr {
     I64(i64),
     Usize(usize),
     DataType(DataType),
-    Tensor(&'a Tensor),
-    IsizeVec(&'a Vec<isize>),
+    DataFormat(DataFormat),
+    Padding(Padding),
+    Tensor(Tensor),
+    UsizeVec(Vec<usize>),
+    IsizeVec(Vec<isize>),
 }
 
 /// A Tensorflow operation.

@@ -1,10 +1,12 @@
 use ndarray;
 use rand;
 use rand::Rng;
-use tfdeploy::tfpb::types::DataType;
+use tfdeploy::Model;
+use tfdeploy::Node;
 use tfdeploy::Tensor;
+use tfdeploy::tfpb::types::DataType;
+use serde_json;
 
-#[cfg(feature = "tensorflow")]
 use Result;
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
@@ -61,4 +63,40 @@ pub fn random_tensor(sizes: Vec<usize>, datatype: DataType) -> Tensor {
         DataType::DT_UINT8 => for_type!(u8).into(),
         _ => unimplemented!(),
     }
+}
+
+#[derive(Serialize)]
+struct EdgeSummary {
+    id: usize,
+    from_node: usize,
+    from_out: usize,
+    to_node: usize,
+}
+
+/// Generates a JSON representation of a Tensorflow graph.
+pub fn generate_json(
+    tfd: &Model,
+) -> Result<Vec<u8>> {
+    let mut nodes: Vec<Node> = vec![];
+    let mut edges: Vec<EdgeSummary> = vec![];
+
+    for node in tfd.nodes() {
+        nodes.push(node.clone());
+
+        for &(from, port) in &node.inputs {
+            let edge = EdgeSummary {
+                id: edges.len(),
+                from_node: from,
+                from_out: port.unwrap_or(0),
+                to_node: node.id,
+            };
+
+            edges.push(edge);
+        }
+    }
+
+    let graph = (&nodes, &edges);
+    let json = serde_json::to_vec(&graph).unwrap();
+
+    Ok(json)
 }
