@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-card-text
-      class="mt-3"
+      class="mt-2"
       style="text-align: center; padding: 0">
 
       <span v-if="!isOnly">Unknown (depends on input)</span>

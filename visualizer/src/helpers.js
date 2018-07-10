@@ -46,7 +46,6 @@ export function dimToString(dim) {
   return '_'
 }
 
-
 export class Hierarchy {
   constructor(nodes) {
     // The node path corresponding to each node index.
