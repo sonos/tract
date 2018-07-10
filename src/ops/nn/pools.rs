@@ -40,7 +40,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 
         let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
 
-        let padded = self.0.pad(data.view(), self.1, ::std::f32::NAN)?;
+        let padded = self.0.pad(data.view(), self.1, ::std::f32::NAN, true, true)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         let out_shape = (images.count(), out_h, out_w, images.d());
 

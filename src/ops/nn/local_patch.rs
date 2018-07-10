@@ -120,15 +120,33 @@ impl LocalPatch {
         in_cols: usize,
         (filter_rows, filter_cols): (usize, usize),
     ) -> (usize, usize) {
+        (self.adjusted_dim_rows(in_rows, filter_rows),
+         self.adjusted_dim_cols(in_cols, filter_cols))
+    }
+
+    pub fn adjusted_dim_rows(
+        &self,
+        in_rows: usize,
+        filter_rows: usize,
+    ) -> usize {
         match self.padding {
-            Padding::Same => (
+            Padding::Same =>
                 (in_rows as f32 / self.v_stride as f32).ceil() as usize,
-                (in_cols as f32 / self.h_stride as f32).ceil() as usize,
-            ),
-            Padding::Valid => (
+            Padding::Valid =>
                 ((in_rows - filter_rows + 1) as f32 / self.v_stride as f32).ceil() as usize,
+        }
+    }
+
+    pub fn adjusted_dim_cols(
+        &self,
+        in_cols: usize,
+        filter_cols: usize,
+    ) -> usize {
+        match self.padding {
+            Padding::Same =>
+                (in_cols as f32 / self.h_stride as f32).ceil() as usize,
+            Padding::Valid =>
                 ((in_cols - filter_cols + 1) as f32 / self.h_stride as f32).ceil() as usize,
-            ),
         }
     }
 
@@ -137,60 +155,78 @@ impl LocalPatch {
         data: ArrayView4<T>,
         shape: (usize, usize),
         item: T,
+        pad_rows: bool,
+        pad_cols: bool,
     ) -> Result<Option<Array4<T>>>
     where
         T: Copy + ::num_traits::Zero + ::std::fmt::Debug,
     {
+        // The pad_rows and pad_cols arguments are used for streaming evaluation,
+        // where we don't want to pad along the streaming dimension, even if the
+        // padding is set to VALID.
+
         let img = BatchImageWrapper(data);
         let (filter_rows, filter_cols) = shape;
 
         if self.padding == Padding::Same {
             // https://www.tensorflow.org/api_guides/python/nn#Convolution
-            let v_padding = ::std::cmp::max(
-                0,
-                filter_rows - if img.height() % self.v_stride == 0 {
-                    self.v_stride
-                } else {
-                    img.height() % self.v_stride
-                },
-            );
-            let h_padding = ::std::cmp::max(
-                0,
-                filter_cols - if img.width() % self.h_stride == 0 {
-                    self.h_stride
-                } else {
-                    img.width() % self.h_stride
-                },
-            );
-            let left_padding = h_padding / 2;
-            let right_padding = h_padding - left_padding;
-            let top_padding = v_padding / 2;
-            let bottom_padding = v_padding - top_padding;
-            let left_padding = ::ndarray::Array4::<T>::from_elem(
-                (img.count(), img.height(), left_padding, img.depth()),
-                item,
-            );
-            let right_padding = ::ndarray::Array4::<T>::from_elem(
-                (img.count(), img.height(), right_padding, img.depth()),
-                item,
-            );
-            let tmp = ::ndarray::stack(
-                ::ndarray::Axis(2),
-                &[left_padding.view(), data.view(), right_padding.view()],
-            )?;
-            let top_padding = ::ndarray::Array4::<T>::from_elem(
-                (img.count(), top_padding, tmp.shape()[2], img.depth()),
-                item,
-            );
-            let bottom_padding = ::ndarray::Array4::<T>::from_elem(
-                (img.count(), bottom_padding, tmp.shape()[2], img.depth()),
-                item,
-            );
-            let a = ::ndarray::stack(
-                ::ndarray::Axis(1),
-                &[top_padding.view(), tmp.view(), bottom_padding.view()],
-            )?;
-            Ok(Some(a))
+            let padded_cols = if pad_cols {
+                let h_padding = ::std::cmp::max(
+                    0,
+                    filter_cols - if img.width() % self.h_stride == 0 {
+                        self.h_stride
+                    } else {
+                        img.width() % self.h_stride
+                    },
+                );
+                let left_padding = h_padding / 2;
+                let right_padding = h_padding - left_padding;
+                let left_padding = ::ndarray::Array4::<T>::from_elem(
+                    (img.count(), img.height(), left_padding, img.depth()),
+                    item,
+                );
+                let right_padding = ::ndarray::Array4::<T>::from_elem(
+                    (img.count(), img.height(), right_padding, img.depth()),
+                    item,
+                );
+
+                ::ndarray::stack(
+                    ::ndarray::Axis(2),
+                    &[left_padding.view(), data.view(), right_padding.view()],
+                )?
+            } else {
+                data.to_owned()
+            };
+
+            let padded_rows = if pad_rows {
+                let v_padding = ::std::cmp::max(
+                    0,
+                    filter_rows - if img.height() % self.v_stride == 0 {
+                        self.v_stride
+                    } else {
+                        img.height() % self.v_stride
+                    },
+                );
+                let top_padding = v_padding / 2;
+                let bottom_padding = v_padding - top_padding;
+                let top_padding = ::ndarray::Array4::<T>::from_elem(
+                    (img.count(), top_padding, padded_cols.shape()[2], img.depth()),
+                    item,
+                );
+                let bottom_padding = ::ndarray::Array4::<T>::from_elem(
+                    (img.count(), bottom_padding, padded_cols.shape()[2], img.depth()),
+                    item,
+                );
+
+                ::ndarray::stack(
+                    ::ndarray::Axis(1),
+                    &[top_padding.view(), padded_cols.view(), bottom_padding.view()],
+                )?
+            } else {
+                padded_cols
+            };
+
+            Ok(Some(padded_rows))
         } else {
             Ok(None)
         }
@@ -201,6 +237,8 @@ impl LocalPatch {
         &self,
         data: ArrayView<T, Ix3>,
         shape: (usize, usize),
+        pad_rows: bool,
+        pad_cols: bool,
     ) -> Result<Array2<T>> {
         let img = ImageWrapper(data);
         let (filter_rows, filter_cols) = shape;
@@ -215,7 +253,7 @@ impl LocalPatch {
 
         let mut patches = unsafe { ::ndarray::Array2::<T>::uninitialized(patches_size) };
         let data = data.into_shape((1, img.height(), img.width(), img.depth()))?;
-        let padded = self.pad(data, (filter_rows, filter_cols), T::zero())?;
+        let padded = self.pad(data, (filter_rows, filter_cols), T::zero(), pad_rows, pad_cols)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         for i_x in 0..out_width {
             for i_y in 0..out_height {

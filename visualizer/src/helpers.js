@@ -24,7 +24,7 @@ export function typeToString(type) {
 
 /** Returns the string corresponding to a shape fact. */
 export function shapeToString(shape) {
-  let dims = shape.dims.map(d => (d.Only) ? d.Only.toString() : '_')
+  let dims = shape.dims.map(dimToString)
 
   if (shape.open) {
     dims.push('...')
@@ -32,6 +32,20 @@ export function shapeToString(shape) {
 
   return '[' + dims.join(', ') + ']'
 }
+
+/** Returns the string corresponding to a dimension fact. */
+export function dimToString(dim) {
+  if (dim.Only) {
+    return dim.Only.toString()
+  }
+
+  if (dim == 'Streamed') {
+    return 'S'
+  }
+
+  return '_'
+}
+
 
 export class Hierarchy {
   constructor(nodes) {
