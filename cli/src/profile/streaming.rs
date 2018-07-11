@@ -2,7 +2,7 @@ use std::thread;
 use simplelog::Level::Info;
 
 use ndarray::Axis;
-use { Parameters, InputData };
+use { Parameters, InputParameters };
 use errors::*;
 use utils::random_tensor;
 use profile::ProfileData;
@@ -10,7 +10,7 @@ use rusage::{ Duration, Instant };
 use format::*;
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
-pub fn handle(params: Parameters, input: InputData, _max_iters: u64, _max_time: u64) -> Result<()> {
+pub fn handle(params: Parameters, input: InputParameters, _max_iters: u64, _max_time: u64) -> Result<()> {
     use Tensor::*;
 
     use tfdeploy::StreamingInput;
@@ -23,7 +23,7 @@ pub fn handle(params: Parameters, input: InputData, _max_iters: u64, _max_time: 
     let axis = shape.iter()
         .position(|&d| d == None)
         .unwrap();
-    let inputs = params.inputs.iter()
+    let inputs = params.input_node_ids.iter()
         .map(|&s| (s, StreamingInput::Streamed(datatype, shape.clone())))
         .collect::<Vec<_>>();
 
@@ -32,7 +32,7 @@ pub fn handle(params: Parameters, input: InputData, _max_iters: u64, _max_time: 
     let state = StreamingState::start(
         model.clone(),
         inputs.clone(),
-        Some(params.output)
+        Some(params.output_node_id)
     )?;
 
     let measure = Duration::since(&start, 1);
@@ -73,7 +73,7 @@ pub fn handle(params: Parameters, input: InputData, _max_iters: u64, _max_time: 
     let mut profile = ProfileData::new(&params.graph, &state.model());
 
     for (step, chunk) in chunks.into_iter().enumerate() {
-        for &input in &params.inputs {
+        for &input in &params.input_node_ids {
             trace!("Starting step {:?} with input {:?}.", step, chunk);
 
             let mut input_chunks = vec![Some(chunk.clone()); 100];

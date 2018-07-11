@@ -21,7 +21,7 @@ pub fn handle(params: Parameters) -> Result<()> {
     let tfd = params.tfd_model;
     let mut tf = params.tf_model;
 
-    let output = tfd.get_node_by_id(params.output)?;
+    let output = tfd.get_node_by_id(params.output_node_id)?;
     let mut state = tfd.state();
 
     let input = params.input
@@ -32,7 +32,7 @@ pub fn handle(params: Parameters) -> Result<()> {
 
     // First generate random values for the inputs.
     let mut generated = Vec::new();
-    for i in params.inputs {
+    for i in params.input_node_ids {
         let data = if input.data.is_some() {
             input.data.as_ref().unwrap().clone()
         } else {

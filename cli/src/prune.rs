@@ -7,7 +7,7 @@ use tfdeploy::analyser::Analyser;
 #[allow(dead_code)]
 pub fn handle(params: Parameters) -> Result<()> {
     let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output)?.id;
+    let output = model.get_node_by_id(params.output_node_id)?.id;
 
     info!("Starting the analysis.");
 

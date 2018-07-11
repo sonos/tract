@@ -6,7 +6,7 @@ use utils::generate_json;
 
 pub fn handle(params: Parameters, web: bool) -> Result<()> {
     let tfd = params.tfd_model;
-    let output = tfd.get_node_by_id(params.output)?;
+    let output = tfd.get_node_by_id(params.output_node_id)?;
     let plan = output.eval_order(&tfd)?;
 
     if web {

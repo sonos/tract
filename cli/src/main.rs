@@ -60,8 +60,8 @@ mod web;
 const DEFAULT_MAX_ITERS: u64 = 100_000;
 const DEFAULT_MAX_TIME: u64 = 200;
 
-/// Structure holding the input data.
-pub struct InputData {
+/// Structure holding the input parameters (eventually containing data).
+pub struct InputParameters {
     data: Option<Tensor>,
     shape: Vec<Option<usize>>,
     datatype: DataType,
@@ -76,9 +76,9 @@ pub struct Parameters {
     #[cfg(feature = "tensorflow")]
     tf_model: conform::tf::Tensorflow,
 
-    input: Option<InputData>,
-    inputs: Vec<usize>,
-    output: usize,
+    input: Option<InputParameters>,
+    input_node_ids: Vec<usize>,
+    output_node_id: usize,
 }
 
 /// Entrypoint for the command-line interface.
@@ -208,7 +208,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         _ => None
     };
 
-    let inputs = match matches.values_of("inputs") {
+    let input_node_ids = match matches.values_of("inputs") {
         Some(names) => names
             .map(|s| Ok(tfd_model.node_id_by_name(s)?))
             .collect::<Result<_>>()?,
@@ -216,7 +216,7 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
             .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
     };
 
-    let output = match matches.value_of("output") {
+    let output_node_id = match matches.value_of("output") {
         Some(name) => tfd_model.node_id_by_name(name)?,
         None => tfdeploy::analyser::detect_output(&tfd_model)?.ok_or("Impossible to auto-detect output nodes.")?,
     };
@@ -237,14 +237,14 @@ fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
         name: name.to_string(),
         graph,
         tfd_model,
-        inputs,
-        output,
+        input_node_ids,
+        output_node_id,
         input,
     });
 }
 
 /// Parses the `size` command-line argument.
-fn parse_size(size: &str) -> Result<InputData> {
+fn parse_size(size: &str) -> Result<InputParameters> {
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
@@ -274,18 +274,18 @@ fn parse_size(size: &str) -> Result<InputData> {
         _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
     };
 
-    Ok(InputData { data: None, shape, datatype })
+    Ok(InputParameters { data: None, shape, datatype })
 }
 
 
 /// Parses the `data` command-line argument.
-fn parse_data(filename: &str) -> Result<InputData> {
+fn parse_data(filename: &str) -> Result<InputParameters> {
     let mut file = File::open(filename)?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
-    let InputData { shape, datatype, .. } = parse_size(lines.next().unwrap())?;
+    let InputParameters { shape, datatype, .. } = parse_size(lines.next().unwrap())?;
 
     let values = lines
         .flat_map(|l| l.split_whitespace())
@@ -318,6 +318,6 @@ fn parse_data(filename: &str) -> Result<InputData> {
         _ => unimplemented!(),
     };
 
-    Ok(InputData { data: Some(tensor), shape, datatype })
+    Ok(InputParameters { data: Some(tensor), shape, datatype })
 }
 

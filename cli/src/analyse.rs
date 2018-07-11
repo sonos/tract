@@ -11,7 +11,7 @@ use tfdeploy::analyser::{TensorFact, ShapeFact, DimFact};
 pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
 
     let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output)?.id;
+    let output = model.get_node_by_id(params.output_node_id)?.id;
 
     info!("Starting the analysis.");
 
@@ -26,7 +26,7 @@ pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
             })
             .collect::<Vec<_>>();
 
-        for &i in &params.inputs {
+        for &i in &params.input_node_ids {
             analyser.hint(i, &TensorFact {
                 datatype: typefact!(input.datatype),
                 shape: ShapeFact::closed(dims.clone()),

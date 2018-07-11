@@ -2,7 +2,7 @@ use atty;
 use pbr::ProgressBar;
 use simplelog::Level::Info;
 
-use { Parameters, InputData };
+use { Parameters, InputParameters };
 use errors::*;
 use utils::random_tensor;
 
@@ -11,15 +11,15 @@ use rusage::{ Instant, Duration };
 use format::*;
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, input: InputData, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
+pub fn handle(params: Parameters, input: InputParameters, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
     use colored::Colorize;
 
     let ref model = params.tfd_model;
-    let output = model.get_node_by_id(params.output)?;
+    let output = model.get_node_by_id(params.output_node_id)?;
     let mut state = model.state();
 
     // First fill the inputs with randomly generated values.
-    for s in &params.inputs {
+    for s in &params.input_node_ids {
         let data = if input.data.is_some() {
             input.data.as_ref().unwrap().clone()
         } else {
