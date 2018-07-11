@@ -3,8 +3,14 @@ use rusage::Duration;
 use simplelog::Level::Info;
 use tfdeploy::tfpb::graph::GraphDef;
 
-use tfdeploy::*;
+use tfdeploy::{Model, ModelState};
 use format::*;
+use errors::*;
+
+use Parameters;
+
+mod regular;
+mod streaming;
 
 pub struct ProfileData<'a> {
     graph: &'a GraphDef,
@@ -26,7 +32,7 @@ impl<'a> ProfileData<'a> {
         }
     }
 
-    pub fn add(&mut self, node_id:usize, dur: Duration) -> Result<()> {
+    pub fn add(&mut self, node_id:usize, dur: Duration) -> ::tfdeploy::Result<()> {
         self.global += dur;
         *self.nodes.entry(node_id).or_insert(Duration::default()) += dur;
         let node = self.model.get_node_by_id(node_id)?;
@@ -74,6 +80,20 @@ impl<'a> ProfileData<'a> {
                 println!("    - {:.3} ms in total.", measure.total_real * 1e3);
             }
         }
+    }
+}
+
+/// Handles the `profile` subcommand.
+pub fn handle(mut params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
+    let input = params.input
+        .take()
+        .ok_or("Exactly one of <size> or <data> must be specified.")?;
+
+    match input.shape.iter().cloned().collect::<Option<Vec<_>>>() {
+        Some(shape) =>
+            regular::handle(params, input, max_iters, max_time, shape),
+        None =>
+            streaming::handle(params, input, max_iters, max_time),
     }
 }
 
