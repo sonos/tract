@@ -37,8 +37,6 @@ impl<'a> ProfileData<'a> {
     }
 
     pub fn print_most_consuming_nodes(&mut self, state: Option<&ModelState>) -> Result<()> {
-        use colored::Colorize;
-
         println!("Most time consuming nodes:");
         let mut nodes:Vec<(usize, Duration)> = self.nodes.iter().map(|(&a, &b)| (a,b)).collect();
         nodes.sort_by(|(_, a), (_, b)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
