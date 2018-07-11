@@ -16,6 +16,8 @@ pub mod macros;
 #[macro_use]
 pub mod helpers;
 
+pub mod interface;
+
 /// Attempts to unify two tensor facts into a more specialized one.
 pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
     let tensor = TensorFact {
