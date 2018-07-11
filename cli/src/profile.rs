@@ -1,0 +1,121 @@
+use std::collections::HashMap;
+use {Parameters};
+use rusage::Duration;
+use simplelog::Level::Info;
+use tfdeploy::tfpb::graph::GraphDef;
+
+use tfdeploy::*;
+use format::*;
+
+pub struct ProfileData<'a> {
+    graph: &'a GraphDef,
+    model: &'a Model,
+    pub global: Duration,
+    pub nodes: HashMap<usize, Duration>,
+    pub operations: HashMap<&'a str, (Duration, usize)>,
+}
+
+impl<'a> ProfileData<'a> {
+    pub fn new(graph: &'a GraphDef, model: &'a Model) -> ProfileData<'a> {
+        let capacity = model.nodes().len();
+        ProfileData {
+            graph,
+            model,
+            global:Duration::new(),
+            nodes: HashMap::with_capacity(capacity),
+            operations:HashMap::with_capacity(capacity),
+        }
+    }
+
+    pub fn add(&mut self, node_id:usize, dur: Duration) -> Result<()> {
+        self.global += dur;
+        *self.nodes.entry(node_id).or_insert(Duration::default()) += dur;
+        let node = self.model.get_node_by_id(node_id)?;
+        let ref mut pair = self.operations.entry(&node.op_name).or_insert((Duration::default(),0));
+        pair.0 += dur;
+        pair.1 += 1;
+        Ok(())
+    }
+
+    pub fn print_most_consuming_nodes(&mut self, state: Option<&ModelState>) -> Result<()> {
+        use colored::Colorize;
+
+        println!("Most time consuming nodes:");
+        let mut nodes:Vec<(usize, Duration)> = self.nodes.iter().map(|(&a, &b)| (a,b)).collect();
+        nodes.sort_by(|(_, a), (_, b)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
+        for (node, measure) in nodes.iter().take(5) {
+            let node = self.model.get_node_by_id(*node)?;
+            let status_real = format!(
+                "Real: {} ({:.1?}%)",
+                format!("{:.3} ms/i", measure.avg_real * 1e3).white(),
+                measure.avg_real / self.global.avg_real * 100.
+            );
+
+            let status_user = format!(
+                "User: {} ({:.1?}%)",
+                format!("{:.3} ms/i", measure.avg_user * 1e3).white(),
+                measure.avg_user / self.global.avg_user * 100.
+            );
+
+            let status_sys = format!(
+                "Sys: {} ({:.1?}%)",
+                format!("{:.3} ms/i", measure.avg_sys * 1e3).white(),
+                measure.avg_sys / self.global.avg_sys * 100.
+            );
+
+            print_node(
+                node,
+                &self.graph,
+                state,
+                vec![status_real.to_string(), status_user.to_string(), status_sys.to_string()],
+                vec![]
+            );
+        }
+
+        println!();
+        println!("Total execution time (for {} nodes):", self.nodes.len());
+        println!("- Real: {}.", format!("{:.3} ms/i", self.global.avg_real * 1e3).yellow().bold());
+        println!("- User: {}.", format!("{:.3} ms/i", self.global.avg_user * 1e3).yellow().bold());
+        println!("- Sys: {}.", format!("{:.3} ms/i", self.global.avg_sys * 1e3).yellow().bold());
+        Ok(())
+    }
+
+    pub fn print_most_consuming_ops(&self) {
+        use colored::Colorize;
+
+        println!("Most time consuming operations:");
+        let mut operations = self.operations.iter()
+            .map(|(o, (measure, c))| (o, measure, c))
+            .collect::<Vec<_>>();
+        operations.sort_by(|(_, a, _), (_, b, _)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
+        for (operation, measure, count) in operations.iter().take(5) {
+            println!(
+                "- {} (for {} nodes):",
+                operation.blue().bold(), count
+            );
+
+            println!(
+                "    - Real: {} ({:.2?}%).",
+                format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
+                measure.avg_real / self.global.avg_real * 100.
+            );
+
+            println!(
+                "    - User: {} ({:.2?}%).",
+                format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
+                measure.avg_user / self.global.avg_user * 100.
+            );
+
+            println!(
+                "    - Sys: {} ({:.2?}%).",
+                format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
+                measure.avg_sys / self.global.avg_sys * 100.
+            );
+
+            if log_enabled!(Info) {
+                println!("    - {:.3} ms in total.", measure.total_real * 1e3);
+            }
+        }
+    }
+}
+
