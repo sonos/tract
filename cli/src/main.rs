@@ -53,18 +53,19 @@ use format::print_node;
 #[allow(unused_imports)]
 use format::Row;
 use utils::random_tensor;
-use utils::generate_json;
 use rusage::{ Duration, Instant };
 
 use profile::ProfileData;
 
 mod compare;
+mod dump;
 mod errors;
 mod format;
 mod graphviz;
 mod utils;
 mod profile;
 mod rusage;
+mod web;
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u64 = 100_000;
@@ -176,7 +177,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     match matches.subcommand() {
         ("compare", _) => compare::handle(params),
 
-        ("dump", Some(m)) => handle_dump(
+        ("dump", Some(m)) => dump::handle(
             params,
             m.is_present("web")
         ),
@@ -329,30 +330,6 @@ fn parse_data(filename: &str) -> Result<InputData> {
     };
 
     Ok(InputData { data: Some(tensor), shape, datatype })
-}
-
-fn handle_dump(params: Parameters, web: bool) -> Result<()> {
-    let tfd = params.tfd_model;
-    let output = tfd.get_node_by_id(params.output)?;
-    let plan = output.eval_order(&tfd)?;
-
-    if web {
-        let data = generate_json(&tfd)?;
-        open_web(data);
-    } else {
-        for n in plan {
-            let node = tfd.get_node_by_id(n)?;
-            print_node(
-                node,
-                &params.graph,
-                None,
-                vec![],
-                vec![],
-            );
-        }
-    }
-
-    Ok(())
 }
 
 /// Handles the `profile` subcommand.
@@ -615,40 +592,13 @@ fn handle_analyse(params: Parameters, prune: bool, web: bool) -> Result<()> {
     // Display an interactive view of the graph if needed.
     let data = serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
     if web {
-        open_web(data);
+        ::web::open_web(data);
     } else {
         File::create("analyser.json")?.write_all(&data)?;
         println!("Wrote the result of the analysis to analyser.json.");
     }
 
     Ok(())
-}
-
-/// Starts a web server for TFVisualizer and opens its webroot in a browser.
-fn open_web(data: Vec<u8>) -> () {
-    use rouille::Response;
-
-    println!("TFVisualizer is now running on http://127.0.0.1:8000/.");
-    let _ = open::that("http://127.0.0.1:8000/");
-
-    rouille::start_server("0.0.0.0:8000", move |request| {
-        if request.remove_prefix("/dist").is_some() || request.remove_prefix("/public").is_some() {
-            return rouille::match_assets(&request, "../visualizer");
-        }
-
-        return router!(request,
-            (GET) (/) => {
-                let index = File::open("../visualizer/index.html").unwrap();
-                Response::from_file("text/html", index)
-            },
-
-            (GET) (/current) => {
-                Response::from_data("application/json", data.clone())
-            },
-
-            _ => Response::empty_404(),
-        );
-    });
 }
 
 /// Handles the `prune` subcommand.
