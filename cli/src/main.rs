@@ -64,6 +64,7 @@ mod format;
 mod graphviz;
 mod utils;
 mod profile;
+mod prune;
 mod rusage;
 mod web;
 
@@ -601,31 +602,3 @@ fn handle_analyse(params: Parameters, prune: bool, web: bool) -> Result<()> {
     Ok(())
 }
 
-/// Handles the `prune` subcommand.
-#[allow(dead_code)]
-fn handle_prune(params: Parameters) -> Result<()> {
-    let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output)?.id;
-
-    info!("Starting the analysis.");
-
-    let mut analyser = Analyser::new(model, output)?;
-
-    info!(
-        "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",
-        format!("{:?}", analyser.nodes).into_bytes().len(),
-        analyser.nodes.len()
-    );
-
-    analyser.run()?;
-    analyser.propagate_constants()?;
-    analyser.prune_unused();
-
-    info!(
-        "Ending size of the graph: approx. {:?} bytes for {:?} nodes.",
-        format!("{:?}", analyser.nodes).into_bytes().len(),
-        analyser.nodes.len()
-    );
-
-    Ok(())
-}
