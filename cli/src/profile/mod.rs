@@ -91,9 +91,9 @@ pub fn handle(mut params: Parameters, max_iters: u64, max_time: u64) -> Result<(
 
     match input.shape.iter().cloned().collect::<Option<Vec<_>>>() {
         Some(shape) =>
-            regular::handle(params, input, max_iters, max_time, shape),
+            regular::handle(params, max_iters, max_time, shape),
         None =>
-            streaming::handle(params, input, max_iters, max_time),
+            streaming::handle(params, max_iters, max_time),
     }
 }
 

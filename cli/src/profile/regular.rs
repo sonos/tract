@@ -11,7 +11,7 @@ use rusage::{ Instant, Duration };
 use format::*;
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, input: InputParameters, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
+pub fn handle(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
     use colored::Colorize;
 
     let ref model = params.tfd_model;
@@ -20,10 +20,12 @@ pub fn handle(params: Parameters, input: InputParameters, max_iters: u64, max_ti
 
     // First fill the inputs with randomly generated values.
     for s in &params.input_node_ids {
-        let data = if input.data.is_some() {
-            input.data.as_ref().unwrap().clone()
+        let given_input:&InputParameters = params.input.as_ref()
+            .ok_or("Exactly one of <size> or <data> must be specified.")?;
+        let data = if let Some(value) = given_input.data.as_ref() {
+            value.clone()
         } else {
-            random_tensor(shape.clone(), input.datatype)
+            random_tensor(shape.clone(), given_input.datatype)
         };
 
         state.set_value(*s, data)?;

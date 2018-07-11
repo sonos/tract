@@ -2,21 +2,21 @@ use std::thread;
 use simplelog::Level::Info;
 
 use ndarray::Axis;
-use { Parameters, InputParameters };
+use Parameters;
 use errors::*;
 use utils::random_tensor;
 use profile::ProfileData;
 use rusage::{ Duration, Instant };
 use format::*;
+use tfdeploy::StreamingInput;
+use tfdeploy::StreamingState;
+use tfdeploy::Tensor;
+
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
-pub fn handle(params: Parameters, input: InputParameters, _max_iters: u64, _max_time: u64) -> Result<()> {
-    use Tensor::*;
-
-    use tfdeploy::StreamingInput;
-    use tfdeploy::StreamingState;
-
+pub fn handle(params: Parameters, _max_iters: u64, _max_time: u64) -> Result<()> {
     let model = params.tfd_model.clone();
+    let input = params.input.ok_or("Exactly one of <size> or <data> must be specified.")?;
     let datatype = input.datatype;
     let shape = input.shape;
 
@@ -54,7 +54,7 @@ pub fn handle(params: Parameters, input: InputParameters, _max_iters: u64, _max_
 
     // Split the input data into chunks along the streaming axis.
     macro_rules! split_inner {
-        ($constr:ident, $array:expr) => ({
+        ($constr:path, $array:expr) => ({
             $array.axis_iter(Axis(axis))
                 .map(|v| $constr(v.insert_axis(Axis(axis)).to_owned()))
                 .collect::<Vec<_>>()
@@ -62,12 +62,12 @@ pub fn handle(params: Parameters, input: InputParameters, _max_iters: u64, _max_
     }
 
     let chunks = match data {
-        F64(m) => split_inner!(F64, m),
-        F32(m) => split_inner!(F32, m),
-        I32(m) => split_inner!(I32, m),
-        I8(m) => split_inner!(I8, m),
-        U8(m) => split_inner!(U8, m),
-        String(m) => split_inner!(String, m),
+        Tensor::F64(m) => split_inner!(Tensor::F64, m),
+        Tensor::F32(m) => split_inner!(Tensor::F32, m),
+        Tensor::I32(m) => split_inner!(Tensor::I32, m),
+        Tensor::I8(m) => split_inner!(Tensor::I8, m),
+        Tensor::U8(m) => split_inner!(Tensor::U8, m),
+        Tensor::String(m) => split_inner!(Tensor::String, m),
     };
 
     let mut profile = ProfileData::new(&params.graph, &state.model());
