@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use {Parameters};
 use rusage::Duration;
 use simplelog::Level::Info;
 use tfdeploy::tfpb::graph::GraphDef;
@@ -45,38 +44,17 @@ impl<'a> ProfileData<'a> {
         nodes.sort_by(|(_, a), (_, b)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
         for (node, measure) in nodes.iter().take(5) {
             let node = self.model.get_node_by_id(*node)?;
-            let status_real = format!(
-                "Real: {} ({:.1?}%)",
-                format!("{:.3} ms/i", measure.avg_real * 1e3).white(),
-                measure.avg_real / self.global.avg_real * 100.
-            );
-
-            let status_user = format!(
-                "User: {} ({:.1?}%)",
-                format!("{:.3} ms/i", measure.avg_user * 1e3).white(),
-                measure.avg_user / self.global.avg_user * 100.
-            );
-
-            let status_sys = format!(
-                "Sys: {} ({:.1?}%)",
-                format!("{:.3} ms/i", measure.avg_sys * 1e3).white(),
-                measure.avg_sys / self.global.avg_sys * 100.
-            );
-
             print_node(
                 node,
                 &self.graph,
                 state,
-                vec![status_real.to_string(), status_user.to_string(), status_sys.to_string()],
+                vec![dur_avg_oneline_ratio(*measure, self.global)],
                 vec![]
             );
         }
 
         println!();
-        println!("Total execution time (for {} nodes):", self.nodes.len());
-        println!("- Real: {}.", format!("{:.3} ms/i", self.global.avg_real * 1e3).yellow().bold());
-        println!("- User: {}.", format!("{:.3} ms/i", self.global.avg_user * 1e3).yellow().bold());
-        println!("- Sys: {}.", format!("{:.3} ms/i", self.global.avg_sys * 1e3).yellow().bold());
+        println!("Total execution time (for {} nodes): {}", self.nodes.len(), dur_avg_oneline(self.global));
         Ok(())
     }
 
@@ -90,26 +68,8 @@ impl<'a> ProfileData<'a> {
         operations.sort_by(|(_, a, _), (_, b, _)| a.avg_real.partial_cmp(&b.avg_real).unwrap().reverse());
         for (operation, measure, count) in operations.iter().take(5) {
             println!(
-                "- {} (for {} nodes):",
-                operation.blue().bold(), count
-            );
-
-            println!(
-                "    - Real: {} ({:.2?}%).",
-                format!("{:.3} ms/i", measure.avg_real * 1e3).white().bold(),
-                measure.avg_real / self.global.avg_real * 100.
-            );
-
-            println!(
-                "    - User: {} ({:.2?}%).",
-                format!("{:.3} ms/i", measure.avg_user * 1e3).white().bold(),
-                measure.avg_user / self.global.avg_user * 100.
-            );
-
-            println!(
-                "    - Sys: {} ({:.2?}%).",
-                format!("{:.3} ms/i", measure.avg_sys * 1e3).white().bold(),
-                measure.avg_sys / self.global.avg_sys * 100.
+                "- {:20} {:3} nodes: {}",
+                operation.blue().bold(), count, dur_avg_oneline_ratio(**measure, self.global)
             );
 
             if log_enabled!(Info) {
