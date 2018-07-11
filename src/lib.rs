@@ -501,6 +501,11 @@ impl StreamingState {
         Ok(StreamingState {model, output, mapping, buffers, dimensions, successors})
     }
 
+    /// Access the simplified model used for streaming operations.
+    pub fn model(&self) -> &Model {
+        &self.model
+    }
+
     /// Runs one streaming evaluation step.
     ///
     /// The step starts by feeding a new chunk of data into one of the
@@ -518,8 +523,8 @@ impl StreamingState {
     // instrumentation and auditing from cli.
     #[inline]
     #[doc(hidden)]
-    pub fn step_wrapping_ops<W>(&mut self, input: usize, input_chunk: Tensor, node_step:W) -> Result<Vec<Vec<Tensor>>> 
-        where W: Fn(&Node, Vec<(Option<usize>, Option<TensorView>)>, &mut Box<OpBuffer>) -> Result<Option<Vec<TensorView>>>
+    pub fn step_wrapping_ops<W>(&mut self, input: usize, input_chunk: Tensor, mut node_step:W) -> Result<Vec<Vec<Tensor>>> 
+        where W: FnMut(&Node, Vec<(Option<usize>, Option<TensorView>)>, &mut Box<OpBuffer>) -> Result<Option<Vec<TensorView>>>
     {
         let mut queue = VecDeque::new();
         let mut outputs = vec![];
@@ -605,6 +610,7 @@ impl StreamingState {
 
     /// Resets the model state.
     pub fn reset(&mut self) -> Result<()> {
-        unimplemented!()
+        self.buffers = self.model.nodes.iter().map(|n| n.op.new_buffer()).collect::<Vec<_>>();
+        Ok(())
     }
 }

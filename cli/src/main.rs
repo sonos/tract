@@ -567,7 +567,7 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
 
-    let mut profile = ProfileData::new(&params);
+    let mut profile = ProfileData::new(&params.graph, model);
     let mut progress = ProgressBar::new(plan.len() as u64);
 
     if log_enabled!(Info) {
@@ -608,13 +608,7 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
             ], vec![]);
         }
 
-        profile.global += measure;
-        profile.nodes.push((node, measure));
-        let mut pair = profile.operations
-            .entry(node.op_name.as_str())
-            .or_insert((Duration::new(), 0));
-        pair.0 += measure;
-        pair.1 += 1;
+        profile.add(node.id, measure)?;
     }
 
     if atty::is(atty::Stream::Stdout) {
@@ -624,7 +618,7 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(Some(&state));
+    profile.print_most_consuming_nodes(Some(&state))?;
     println!();
 
     profile.print_most_consuming_ops();
@@ -649,7 +643,7 @@ fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u6
     use tfdeploy::StreamingInput;
     use tfdeploy::StreamingState;
 
-    let model = params.tfd_model;
+    let model = params.tfd_model.clone();
     let datatype = input.datatype;
     let shape = input.shape;
 
@@ -717,17 +711,25 @@ fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u6
         String(m) => split_inner!(String, m),
     };
 
+    let mut profile = ProfileData::new(&params.graph, &state.model());
+
     for (step, chunk) in chunks.into_iter().enumerate() {
         for &input in &params.inputs {
-            println!();
-            println!("Starting step {:?} with input {:?}.", step, chunk);
+            trace!("Starting step {:?} with input {:?}.", step, chunk);
 
             let mut input_chunks = vec![Some(chunk.clone()); 100];
             let mut outputs = Vec::with_capacity(100);
             let start = Instant::now();
 
             for i in 0..100 {
-                outputs.push(states[i].step(input, input_chunks[i].take().unwrap())?);
+                outputs.push(states[i].step_wrapping_ops(input, input_chunks[i].take().unwrap(),
+                    |node, input, buffer| {
+                        let start = Instant::now();
+                        let r = node.op.step(input, buffer)?;
+                        profile.add(node.id, Duration::since(&start, 1))?;
+                        Ok(r)
+                    }
+                ));
             }
 
             let measure = Duration::since(&start, 100);
@@ -750,6 +752,14 @@ fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u6
             thread::sleep(::std::time::Duration::from_secs(1));
         }
     }
+
+    println!();
+    print_header(format!("Summary for {}:", params.name), "white");
+
+    profile.print_most_consuming_nodes(None)?;
+    println!();
+
+    profile.print_most_consuming_ops();
 
     Ok(())
 }

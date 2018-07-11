@@ -78,7 +78,6 @@ impl ::std::ops::AddAssign for Duration {
 }
 
 
-
 use libc::{getrusage, RUSAGE_SELF, rusage, timeval};
 
 #[derive(Debug)]
