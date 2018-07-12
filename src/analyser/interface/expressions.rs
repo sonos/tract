@@ -119,6 +119,7 @@ where
     }
 }
 
+
 /// Converts &T to ConstantExpression<T>.
 impl<'a, T> From<&'a T> for ConstantExpression<T> where T: Datum {
     fn from(c: &T) -> ConstantExpression<T> {
