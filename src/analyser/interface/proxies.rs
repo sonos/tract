@@ -1,51 +1,24 @@
-//! A fluent interface for the analyser.
-//!
-//! This interface provides proxies for the different properties of tensors.
-//! This allows inference rules to be stated in a clear, declarative fashion
-//! inside the `rules` method of each operator.
-//!
-//! Take these rules for instance:
-//! ```text
-//! solver.equals(inputs.len, 2);
-//! solver.equals(inputs[0].datatype, outputs[0].datatype);
-//! ```
-//! Here, `inputs.len`, `inputs[0].datatype` and `outputs[0].datatype` don't
-//! actually hold the values of the length and datatypes, but instead act as
-//! declarative placeholders for these values.
-
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::hash::Hash;
+use analyser::interface::cache::Cache;
 use std::ops::Index;
 
-/// An insert-only HashMap which doesn't require mutable references.
-struct Cache<K: Eq + Hash, V>(
-    // We need to use a RefCell here because we need interior mutability for
-    // the cache. This way, the `get` method will only need `&self` (and not
-    // `&mut self`) but we'll still be able to insert new items dynamically.
-    RefCell<HashMap<K, V>>,
-);
 
-impl<K: Eq + Hash, V> Cache<K, V> {
-    /// Creates a new Cache instance.
-    pub fn new() -> Cache<K, V> {
-        Cache(RefCell::new(HashMap::new()))
-    }
-
-    /// Returns a reference to the cached entry for a given key, or stores a
-    /// new entry on cache misses and then returns a reference to it.
-    pub fn get<F>(&self, index: K, default: F) -> &V
-    where
-        F: FnOnce() -> V,
-    {
-        // This is valid because we never remove anything from the cache, so
-        // the reference to the items that we return will always exist.
-        unsafe {
-            let cache = &mut *self.0.as_ptr();
-            cache.entry(index).or_insert_with(default)
-        }
-    }
+/// A proxy for any value.
+pub trait Proxy {
+    /// Returns the symbolic path to the value.
+    ///
+    /// Take the `inputs[0].shape[1]` proxy for instance: it represents the
+    /// second dimension of the shape of the first input. Because we encode
+    /// the "inputs" vectors as `0`, and the `shape` field as `2`, the path
+    /// for this proxy will be `&[0, 0, 2, 1]`.
+    fn get_path<'a>(&self) -> Vec<usize>;
 }
+
+/// A proxy for any Datatype value.
+pub trait TypeProxy: Proxy {}
+
+/// A proxy for any integer-like value.
+pub trait IntProxy: Proxy {}
+
 
 /// A proxy for a vector of tensors.
 ///
@@ -90,6 +63,7 @@ impl Index<usize> for TensorsProxy {
     }
 }
 
+
 /// A proxy for a tensor.
 ///
 /// This is used for rules involving the datatype, rank, shape or value of a
@@ -100,8 +74,8 @@ impl Index<usize> for TensorsProxy {
 /// solver.equals(input.shape[1], output.value[0][1])
 /// ```
 pub struct TensorProxy {
-    pub datatype: (),
-    pub rank: (),
+    pub datatype: DatatypeProxy,
+    pub rank: RankProxy,
     pub shape: ShapeProxy,
     pub value: ValueProxy,
 }
@@ -110,13 +84,56 @@ impl TensorProxy {
     /// Creates a new TensorProxy instance.
     pub fn new() -> TensorProxy {
         TensorProxy {
-            datatype: (),
-            rank: (),
+            datatype: DatatypeProxy::new(),
+            rank: RankProxy::new(),
             shape: ShapeProxy::new(),
             value: ValueProxy::new(),
         }
     }
 }
+
+
+/// A proxy for a tensor datatype.
+#[derive(PartialEq)]
+pub struct DatatypeProxy {}
+
+impl DatatypeProxy {
+    /// Creates a new DatatypeProxy instance.
+    pub fn new() -> DatatypeProxy {
+        DatatypeProxy {}
+    }
+}
+
+impl Proxy for DatatypeProxy {
+    /// Returns the symbolic path to the value.
+    fn get_path<'a>(&self) -> Vec<usize> {
+        unimplemented!()
+    }
+}
+
+impl TypeProxy for DatatypeProxy {}
+
+
+/// A proxy for a tensor rank.
+#[derive(PartialEq)]
+pub struct RankProxy {}
+
+impl RankProxy {
+    /// Creates a new RankProxy instance.
+    pub fn new() -> RankProxy {
+        RankProxy {}
+    }
+}
+
+impl Proxy for RankProxy {
+    /// Returns the symbolic path to the value.
+    fn get_path<'a>(&self) -> Vec<usize> {
+        unimplemented!()
+    }
+}
+
+impl IntProxy for RankProxy {}
+
 
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
@@ -139,6 +156,7 @@ impl Index<usize> for ShapeProxy {
     }
 }
 
+
 /// A proxy for a tensor dimension.
 #[derive(PartialEq)]
 pub struct DimProxy {}
@@ -150,12 +168,22 @@ impl DimProxy {
     }
 }
 
+impl Proxy for DimProxy {
+    /// Returns the symbolic path to the value.
+    fn get_path<'a>(&self) -> Vec<usize> {
+        unimplemented!()
+    }
+}
+
+impl IntProxy for DimProxy {}
+
+
 /// A proxy for a tensor value.
 ///
 /// This proxy is a bit special as it allows arbitrarily nested indexing, so
 /// that writing something like ```input.value[1][6][2]``` will always work.
 /// To make this work, each ValueProxy holds a cache which will generate new
-/// ValueProxy for nested items on the fly and store them.
+/// ValueProxys for nested items on the fly and store them.
 pub struct ValueProxy {
     sub: Cache<usize, ValueProxy>,
 }
@@ -175,6 +203,16 @@ impl Index<usize> for ValueProxy {
         self.sub.get(index, || ValueProxy::new())
     }
 }
+
+impl Proxy for ValueProxy {
+    /// Returns the symbolic path to the value.
+    fn get_path<'a>(&self) -> Vec<usize> {
+        unimplemented!()
+    }
+}
+
+impl IntProxy for ValueProxy {}
+
 
 #[cfg(test)]
 mod tests {
