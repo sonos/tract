@@ -12,9 +12,12 @@ use tfdeploy::StreamingInput;
 use tfdeploy::StreamingState;
 use tfdeploy::Tensor;
 
+pub fn handle_cruise(params: Parameters) -> Result<()> {
+    unimplemented!();
+}
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
-pub fn handle(params: Parameters, _max_iters: u64, _max_time: u64) -> Result<()> {
+pub fn handle_buffering(params: Parameters) -> Result<()> {
     let model = params.tfd_model.clone();
     let input = params.input.ok_or("Exactly one of <size> or <data> must be specified.")?;
     let datatype = input.datatype;

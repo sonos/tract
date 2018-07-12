@@ -2,7 +2,7 @@ use atty;
 use pbr::ProgressBar;
 use simplelog::Level::Info;
 
-use { Parameters, InputParameters };
+use { Parameters, InputParameters, ProfilingParameters };
 use errors::*;
 use utils::random_tensor;
 
@@ -11,12 +11,13 @@ use rusage::{ Instant, Duration };
 use format::*;
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usize>) -> Result<()> {
+pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> {
     use colored::Colorize;
 
     let ref model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?;
     let mut state = model.state();
+    let shape:Vec<usize> = params.input.as_ref().unwrap().shape.iter().map(|s| s.unwrap()).collect(); // checked by clap and dispatcher
 
     // First fill the inputs with randomly generated values.
     for s in &params.input_node_ids {
@@ -31,8 +32,8 @@ pub fn handle(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usiz
         state.set_value(*s, data)?;
     }
 
-    info!("Running {} iterations max. for each node.", max_iters);
-    info!("Running for {} ms max. for each node.", max_time);
+    info!("Running {} iterations max. for each node.", profiling.max_iters);
+    info!("Running for {} ms max. for each node.", profiling.max_time);
 
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
@@ -64,7 +65,7 @@ pub fn handle(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usiz
         let mut iters = 0;
         let start = Instant::now();
 
-        while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+        while iters < profiling.max_iters && start.elapsed_real() < (profiling.max_time as f64 * 1e-3) {
             state.compute_one(n)?;
             iters += 1;
         }
@@ -97,8 +98,8 @@ pub fn handle(params: Parameters, max_iters: u64, max_time: u64, shape: Vec<usiz
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
             format!("{:.3} ms", profile.global.total_real * 1e3).white(),
-            max_iters as f32,
-            max_time,
+            profiling.max_iters as f32,
+            profiling.max_time,
         );
     }
 

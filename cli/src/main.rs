@@ -7,6 +7,7 @@ extern crate conform;
 extern crate dot;
 #[macro_use]
 extern crate error_chain;
+extern crate insideout;
 #[macro_use]
 extern crate log;
 extern crate ndarray;
@@ -32,7 +33,9 @@ extern crate serde_json;
 use std::fs::File;
 use std::io::Read;
 use std::process;
+use std::str::FromStr;
 
+use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
@@ -59,27 +62,6 @@ mod web;
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u64 = 100_000;
 const DEFAULT_MAX_TIME: u64 = 200;
-
-/// Structure holding the input parameters (eventually containing data).
-pub struct InputParameters {
-    data: Option<Tensor>,
-    shape: Vec<Option<usize>>,
-    datatype: DataType,
-}
-
-/// Structure holding the parsed parameters.
-pub struct Parameters {
-    name: String,
-    graph: GraphDef,
-    tfd_model: tfdeploy::Model,
-
-    #[cfg(feature = "tensorflow")]
-    tf_model: conform::tf::Tensorflow,
-
-    input: Option<InputParameters>,
-    input_node_ids: Vec<usize>,
-    output_node_id: usize,
-}
 
 /// Entrypoint for the command-line interface.
 fn main() {
@@ -122,7 +104,9 @@ fn main() {
             (@arg max_iters: -n [max_iters]
                 "Sets the maximum number of iterations for each node [default: 10_000].")
             (@arg max_time: -t [max_time]
-                "Sets the maximum execution time for each node (in ms) [default: 500]."))
+                "Sets the maximum execution time for each node (in ms) [default: 500].")
+            (@arg buffering: --buffering
+                "Profile streaming network buffering phase instead of cruise."))
 
         (@subcommand analyse =>
             (about: "Analyses the graph to infer properties about tensors (experimental).")
@@ -159,9 +143,184 @@ fn main() {
     }
 }
 
+/// Structure holding the parsed parameters.
+pub struct Parameters {
+    name: String,
+    graph: GraphDef,
+    tfd_model: tfdeploy::Model,
+
+    #[cfg(feature = "tensorflow")]
+    tf_model: conform::tf::Tensorflow,
+
+    input: Option<InputParameters>,
+    input_node_ids: Vec<usize>,
+    output_node_id: usize,
+}
+
+impl Parameters {
+
+    /// Parses the command-line arguments.
+    pub fn from_clap(matches: &clap::ArgMatches) -> Result<Parameters> {
+        let name = matches.value_of("model").unwrap();
+        let graph = tfdeploy::Model::graphdef_for_path(&name)?;
+        let tfd_model = tfdeploy::for_path(&name)?;
+
+        #[cfg(feature = "tensorflow")]
+        let tf_model = conform::tf::for_path(&name)?;
+
+        let input = InputParameters::from_clap(matches)?;
+
+        let input_node_ids = match matches.values_of("inputs") {
+            Some(names) => names
+                .map(|s| Ok(tfd_model.node_id_by_name(s)?))
+                .collect::<Result<_>>()?,
+            None => tfdeploy::analyser::detect_inputs(&tfd_model)?
+                .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
+        };
+
+        let output_node_id = match matches.value_of("output") {
+            Some(name) => tfd_model.node_id_by_name(name)?,
+            None => tfdeploy::analyser::detect_output(&tfd_model)?.ok_or("Impossible to auto-detect output nodes.")?,
+        };
+
+        #[cfg(feature = "tensorflow")]
+        return Ok(Parameters {
+            name: name.to_string(),
+            graph,
+            tfd_model,
+            tf_model,
+            inputs,
+            output,
+            input,
+        });
+
+        #[cfg(not(feature = "tensorflow"))]
+        return Ok(Parameters {
+            name: name.to_string(),
+            graph,
+            tfd_model,
+            input_node_ids,
+            output_node_id,
+            input,
+        });
+    }
+}
+
+pub struct ProfilingParameters {
+    max_iters: u64,
+    max_time: u64,
+    buffering: bool,
+}
+
+impl ProfilingParameters {
+    pub fn from_clap(matches: &clap::ArgMatches) -> Result<ProfilingParameters> {
+        let max_iters = matches.value_of("max_iters").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_ITERS);
+        let max_time = matches.value_of("max_time").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_TIME);
+        Ok(ProfilingParameters {
+            max_iters,
+            max_time,
+            buffering: matches.is_present("buffering"),
+        })
+    }
+}
+
+/// Structure holding the input parameters (eventually containing data).
+pub struct InputParameters {
+    data: Option<Tensor>,
+    shape: Vec<Option<usize>>,
+    datatype: DataType,
+}
+
+impl InputParameters {
+    fn from_clap(matches: &clap::ArgMatches) -> Result<Option<InputParameters>> {
+         let input = match (matches.value_of("size"), matches.value_of("data")) {
+            (_, Some(filename)) => Some(Self::for_data(filename)?),
+            (Some(size), _)     => Some(Self::for_size(size)?),
+            _ => None
+        };
+        Ok(input)
+    }
+
+    fn for_size(size: &str) -> std::result::Result<InputParameters, errors::Error> {
+        let splits = size.split("x").collect::<Vec<_>>();
+
+        if splits.len() < 1 {
+            bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
+        }
+
+        let (datatype, shape) = splits.split_last().unwrap();
+
+        let shape = shape
+            .iter()
+            .map(|s| match *s {
+                "S" => Ok(None),            // Streaming dimension.
+                _   => Ok(Some(s.parse()?)) // Regular dimension.
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        if shape.iter().filter(|o| o.is_none()).count() > 1 {
+            bail!("The <size> argument doesn't support more than one streaming dimension.");
+        }
+
+        let datatype = match datatype.to_lowercase().as_str() {
+            "f64" => DataType::DT_DOUBLE,
+            "f32" => DataType::DT_FLOAT,
+            "i32" => DataType::DT_INT32,
+            "i8" => DataType::DT_INT8,
+            "u8" => DataType::DT_UINT8,
+            _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
+        };
+
+        Ok(InputParameters { data: None, shape, datatype })
+    }
+
+    /// Parses the `data` command-line argument.
+    fn for_data(filename: &str) -> Result<InputParameters> {
+        let mut file = File::open(filename)?;
+        let mut data = String::new();
+        file.read_to_string(&mut data)?;
+
+        let mut lines = data.lines();
+        let InputParameters { shape, datatype, .. } = InputParameters::for_size(lines.next().ok_or("Empty data file")?)?;
+
+        let values = lines
+            .flat_map(|l| l.split_whitespace())
+            .collect::<Vec<_>>();
+
+        // We know there is at most one streaming dimension, so we can deduce the
+        // missing value with a simple division.
+        let product: usize =  shape.iter().map(|o| o.unwrap_or(1)).product();
+        let missing = values.len() / product;
+        let data_shape = shape.iter()
+            .map(|o| o.unwrap_or(missing))
+            .collect::<Vec<_>>();
+
+        macro_rules! for_type {
+            ($t:ty) => ({
+                let array = ndarray::Array::from_iter(
+                    values.iter().map(|v| v.parse::<$t>().unwrap())
+                );
+
+                array.into_shape(data_shape)?
+            });
+        }
+
+        let tensor = match datatype {
+            DataType::DT_DOUBLE => for_type!(f64).into(),
+            DataType::DT_FLOAT => for_type!(f32).into(),
+            DataType::DT_INT32 => for_type!(i32).into(),
+            DataType::DT_INT8 => for_type!(i8).into(),
+            DataType::DT_UINT8 => for_type!(u8).into(),
+            _ => unimplemented!(),
+        };
+
+        Ok(InputParameters { data: Some(tensor), shape, datatype })
+    }
+}
+
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> Result<()> {
-    let params = parse(&matches)?;
+    let params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
         ("compare", _) => compare::handle(params),
@@ -173,14 +332,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
         ("profile", Some(m)) => profile::handle(
             params,
-            match m.value_of("max_iters") {
-                None => DEFAULT_MAX_ITERS,
-                Some(s) => s.parse::<u64>()?,
-            },
-            match m.value_of("max_time") {
-                None => DEFAULT_MAX_TIME,
-                Some(s) => s.parse::<u64>()?,
-            },
+            ProfilingParameters::from_clap(&m)?
         ),
 
         ("analyse", Some(m)) => analyse::handle(
@@ -191,133 +343,5 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
-}
-
-/// Parses the command-line arguments.
-fn parse(matches: &clap::ArgMatches) -> Result<Parameters> {
-    let name = matches.value_of("model").unwrap();
-    let graph = tfdeploy::Model::graphdef_for_path(&name)?;
-    let tfd_model = tfdeploy::for_path(&name)?;
-
-    #[cfg(feature = "tensorflow")]
-    let tf_model = conform::tf::for_path(&name)?;
-
-    let input = match (matches.value_of("size"), matches.value_of("data")) {
-        (Some(size), None)     => Some(parse_size(size)?),
-        (None, Some(filename)) => Some(parse_data(filename)?),
-        _ => None
-    };
-
-    let input_node_ids = match matches.values_of("inputs") {
-        Some(names) => names
-            .map(|s| Ok(tfd_model.node_id_by_name(s)?))
-            .collect::<Result<_>>()?,
-        None => tfdeploy::analyser::detect_inputs(&tfd_model)?
-            .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
-    };
-
-    let output_node_id = match matches.value_of("output") {
-        Some(name) => tfd_model.node_id_by_name(name)?,
-        None => tfdeploy::analyser::detect_output(&tfd_model)?.ok_or("Impossible to auto-detect output nodes.")?,
-    };
-
-    #[cfg(feature = "tensorflow")]
-    return Ok(Parameters {
-        name: name.to_string(),
-        graph,
-        tfd_model,
-        tf_model,
-        inputs,
-        output,
-        input,
-    });
-
-    #[cfg(not(feature = "tensorflow"))]
-    return Ok(Parameters {
-        name: name.to_string(),
-        graph,
-        tfd_model,
-        input_node_ids,
-        output_node_id,
-        input,
-    });
-}
-
-/// Parses the `size` command-line argument.
-fn parse_size(size: &str) -> Result<InputParameters> {
-    let splits = size.split("x").collect::<Vec<_>>();
-
-    if splits.len() < 1 {
-        bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
-    }
-
-    let (datatype, shape) = splits.split_last().unwrap();
-
-    let shape = shape
-        .iter()
-        .map(|s| match *s {
-            "S" => Ok(None),            // Streaming dimension.
-            _   => Ok(Some(s.parse()?)) // Regular dimension.
-        })
-        .collect::<Result<Vec<_>>>()?;
-
-    if shape.iter().filter(|o| o.is_none()).count() > 1 {
-        bail!("The <size> argument doesn't support more than one streaming dimension.");
-    }
-
-    let datatype = match datatype.to_lowercase().as_str() {
-        "f64" => DataType::DT_DOUBLE,
-        "f32" => DataType::DT_FLOAT,
-        "i32" => DataType::DT_INT32,
-        "i8" => DataType::DT_INT8,
-        "u8" => DataType::DT_UINT8,
-        _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
-    };
-
-    Ok(InputParameters { data: None, shape, datatype })
-}
-
-
-/// Parses the `data` command-line argument.
-fn parse_data(filename: &str) -> Result<InputParameters> {
-    let mut file = File::open(filename)?;
-    let mut data = String::new();
-    file.read_to_string(&mut data)?;
-
-    let mut lines = data.lines();
-    let InputParameters { shape, datatype, .. } = parse_size(lines.next().unwrap())?;
-
-    let values = lines
-        .flat_map(|l| l.split_whitespace())
-        .collect::<Vec<_>>();
-
-    // We know there is at most one streaming dimension, so we can deduce the
-    // missing value with a simple division.
-    let product: usize =  shape.iter().map(|o| o.unwrap_or(1)).product();
-    let missing = values.len() / product;
-    let data_shape = shape.iter()
-        .map(|o| o.unwrap_or(missing))
-        .collect::<Vec<_>>();
-
-    macro_rules! for_type {
-        ($t:ty) => ({
-            let array = ndarray::Array::from_iter(
-                values.iter().map(|v| v.parse::<$t>().unwrap())
-            );
-
-            array.into_shape(data_shape)?
-        });
-    }
-
-    let tensor = match datatype {
-        DataType::DT_DOUBLE => for_type!(f64).into(),
-        DataType::DT_FLOAT => for_type!(f32).into(),
-        DataType::DT_INT32 => for_type!(i32).into(),
-        DataType::DT_INT8 => for_type!(i8).into(),
-        DataType::DT_UINT8 => for_type!(u8).into(),
-        _ => unimplemented!(),
-    };
-
-    Ok(InputParameters { data: Some(tensor), shape, datatype })
 }
 

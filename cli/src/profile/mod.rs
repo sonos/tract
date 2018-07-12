@@ -7,7 +7,7 @@ use tfdeploy::{Model, ModelState};
 use format::*;
 use errors::*;
 
-use Parameters;
+use { Parameters, ProfilingParameters };
 
 mod regular;
 mod streaming;
@@ -84,16 +84,11 @@ impl<'a> ProfileData<'a> {
 }
 
 /// Handles the `profile` subcommand.
-pub fn handle(mut params: Parameters, max_iters: u64, max_time: u64) -> Result<()> {
-    let input = params.input
-        .take()
-        .ok_or("Exactly one of <size> or <data> must be specified.")?;
-
-    match input.shape.iter().cloned().collect::<Option<Vec<_>>>() {
-        Some(shape) =>
-            regular::handle(params, max_iters, max_time, shape),
-        None =>
-            streaming::handle(params, max_iters, max_time),
+pub fn handle(params: Parameters, profiling:ProfilingParameters) -> Result<()> {
+    if params.input.as_ref().unwrap().shape.iter().all(|dim| dim.is_some()) {
+        regular::handle(params, profiling)
+    } else {
+        streaming::handle_buffering(params)
     }
 }
 
