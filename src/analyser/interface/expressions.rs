@@ -74,7 +74,7 @@ impl<T: Datum> Expression for VariableExpression<T> {
 
 
 /// A scalar product between a constant and another expression.
-struct ProductExpression<T, E>(T, Box<E>)
+struct ProductExpression<T, E>(T, E)
 where
     T: Datum + Num + CheckedDiv,
     E: Expression<Output = T>;
@@ -157,6 +157,6 @@ where
 {
     fn from((k, e): (T, I)) -> ProductExpression<T, E>
     {
-        ProductExpression(k, Box::new(e.into()))
+        ProductExpression(k, e.into())
     }
 }
