@@ -9,29 +9,51 @@ use analyser::interface::expressions::Expression;
 ///
 /// This is used during inference (see `Solver::infer`) to let rules compute
 /// the value of expressions which involve tensor properties.
-pub struct Context {}
+pub struct Context {
+    dirty: bool,
+}
 
 impl Context {
-    /// Returns the current value of the property at the given path.
+    /// Creates a new Context using variables involved in the given rules.
+    pub fn from(rules: &Vec<Box<Rule>>) -> Context {
+        unimplemented!()
+    }
+
+    /// Sets the current value of all variables from a set of TensorFacts.
+    pub fn fill(&mut self, facts: &(Vec<TensorFact>, Vec<TensorFact>)) {
+        unimplemented!()
+    }
+
+    /// Dumps the current value of all variables into a set of TensorFacts.
+    pub fn dump(&self) -> (Vec<TensorFact>, Vec<TensorFact>) {
+        unimplemented!()
+    }
+
+    /// Returns whether the value of at least one variable has changed since
+    /// the Context was created.
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    /// Returns the current value of the variables at the given path.
     pub fn get<T>(&self, path: &Vec<usize>) -> Result<Option<T>> {
         unimplemented!()
     }
 
-    /// Tries to set the value of the expression in the given context.
-    /// If the expression doesn't have a value, returns None.
+    /// Tries to set the value of the variable at the given path.
     pub fn set<T>(&mut self, path: &Vec<usize>, value: T) -> Result<()> {
         unimplemented!()
     }
 }
 
 /// A rule that can be applied by the solver.
-trait Rule {
+pub trait Rule {
     /// Tries to apply the rule to a given context.
     ///
     /// The method must return Ok(true) if the rule was applied successfully
     /// (meaning that the Context was mutated), or Ok(false) if the rule was
     /// not applied but didn't generate any errors.
-    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool>;
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)>;
 }
 
 /// The `equals` rule.
@@ -55,7 +77,7 @@ impl<T: Datum> EqualsRule<T> {
 
 impl<T: Datum> Rule for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool> {
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
         // Find an expression which already has a value in the context.
         let mut first = None;
 
@@ -99,7 +121,7 @@ impl<T: Datum + Num> EqualsZeroRule<T> {
 
 impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool> {
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
         // Find all the expressions which have a value in the context.
         let mut values = vec![];
         let mut sum = T::zero();
@@ -157,9 +179,10 @@ impl<T: Datum, E: Expression<Output = T>> GivenRule<T, E> {
 
 impl<T: Datum, E: Expression<Output = T>> Rule for GivenRule<T, E> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool> {
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
         if let Some(value) = self.item.get(context)? {
-            (self.closure)(solver, value);
+            // (self.closure)(solver, value);
+            unimplemented!();
             Ok(true)
         } else {
             Ok(false)
@@ -181,12 +204,27 @@ impl Solver {
     /// - Ok(None) if no more information about tensors could be deduced.
     /// - Ok(Some(facts)) otherwise, with `facts` the new TensorFacts.
     pub fn infer(
-        &self,
+        &mut self,
         facts: (Vec<TensorFact>, Vec<TensorFact>),
     ) -> Result<Option<(Vec<TensorFact>, Vec<TensorFact>)>> {
-        // Get all the variables involved in the rules, and set their values
-        // from the TensorFact.
-        unimplemented!()
+        // Create a Context using the variables involved in the rules.
+        let mut context = Context::from(&self.rules);
+
+        // Fill the context using the input TensorFacts.
+        context.fill(&facts);
+
+        // Apply the rules until reaching a fixed point.
+        let mut changed = false;
+        for rule in &self.rules {
+            // changed = rule.apply(self, &mut context)?;
+        }
+
+        // Dump the output TensorFacts from the context.
+        if context.is_dirty() {
+            Ok(Some(context.dump()))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Ensures that two expressions are equal.
