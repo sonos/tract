@@ -1,3 +1,5 @@
+use num_traits::Num;
+
 use Result;
 use analyser::types::TensorFact;
 use analyser::interface::expressions::Datum;
@@ -29,7 +31,7 @@ trait Rule {
     /// The method must return Ok(true) if the rule was applied successfully
     /// (meaning that the Context was mutated), or Ok(false) if the rule was
     /// not applied but didn't generate any errors.
-    fn apply(&self, context: &mut Context) -> Result<bool>;
+    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool>;
 }
 
 /// The `equals` rule.
@@ -53,8 +55,8 @@ impl<T: Datum> EqualsRule<T> {
 
 impl<T: Datum> Rule for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<bool> {
-        // Try to find an expression which already has a value in the context.
+    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool> {
+        // Find an expression which already has a value in the context.
         let mut first = None;
 
         for item in &self.items {
@@ -84,21 +86,45 @@ impl<T: Datum> Rule for EqualsRule<T> {
 /// ```text
 /// solver.equals_zero(vec![a, b, ...]);
 /// ```
-struct EqualsZeroRule<T: Datum> {
+struct EqualsZeroRule<T: Datum + Num> {
     items: Vec<Box<Expression<Output = T>>>,
 }
 
-impl<T: Datum> EqualsZeroRule<T> {
+impl<T: Datum + Num> EqualsZeroRule<T> {
     /// Creates a new EqualsZeroRule instance.
     pub fn new(items: Vec<Box<Expression<Output = T>>>) -> EqualsZeroRule<T> {
         EqualsZeroRule { items }
     }
 }
 
-impl<T: Datum> Rule for EqualsZeroRule<T> {
+impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<bool> {
-        unimplemented!()
+    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool> {
+        // Find all the expressions which have a value in the context.
+        let mut values = vec![];
+        let mut sum = T::zero();
+
+        let mut misses = vec![];
+
+        for item in &self.items {
+            if let Some(value) = item.get(context)? {
+                values.push(value);
+                sum = sum + value;
+            } else {
+                misses.push(item);
+            }
+        }
+
+        if misses.len() > 1 {
+            Ok(false)
+        } else if misses.len() == 1 {
+            misses[0].set(context, sum)?;
+            Ok(true)
+        } else if sum == T::zero() {
+            Ok(true)
+        } else {
+            bail!("The sum of these values doesn't equal zero: {:?}.", values);
+        }
     }
 }
 
@@ -114,14 +140,14 @@ impl<T: Datum> Rule for EqualsZeroRule<T> {
 /// ```
 struct GivenRule<T: Datum, E: Expression<Output = T>> {
     item: E,
-    closure: Box<FnOnce(&mut Solver, T) -> ()>,
+    closure: Box<Fn(&mut Solver, T) -> ()>,
 }
 
 impl<T: Datum, E: Expression<Output = T>> GivenRule<T, E> {
     /// Creates a new GivenRule instance.
     pub fn new<F: 'static>(item: E, closure: F) -> GivenRule<T, E>
     where
-        F: FnOnce(&mut Solver, T) -> ()
+        F: Fn(&mut Solver, T) -> ()
     {
         let closure = Box::new(closure);
 
@@ -131,8 +157,13 @@ impl<T: Datum, E: Expression<Output = T>> GivenRule<T, E> {
 
 impl<T: Datum, E: Expression<Output = T>> Rule for GivenRule<T, E> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<bool> {
-        unimplemented!()
+    fn apply(&self, solver: &mut Solver, context: &mut Context) -> Result<bool> {
+        if let Some(value) = self.item.get(context)? {
+            (self.closure)(solver, value);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 
@@ -212,7 +243,7 @@ impl Solver {
     /// ```
     pub fn equals_zero<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver
     where
-        T: Datum,
+        T: Datum + Num,
     {
         let rule = EqualsZeroRule::new(items);
         self.rules.push(Box::new(rule));
@@ -231,7 +262,7 @@ impl Solver {
         T: Datum,
         E: Expression<Output = T>,
         A: Into<E>,
-        F: FnOnce(&mut Solver, T) -> ()
+        F: Fn(&mut Solver, T) -> ()
     {
         let rule = GivenRule::new(item.into(), closure);
         self.rules.push(Box::new(rule));
