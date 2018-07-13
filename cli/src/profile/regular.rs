@@ -38,7 +38,7 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
 
-    let mut profile = ProfileData::new(&params.graph, model);
+    let mut profile = ProfileData::new(model);
     let mut progress = ProgressBar::new(plan.len() as u64);
 
     if log_enabled!(Info) {
@@ -79,7 +79,7 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
             ], vec![]);
         }
 
-        profile.add(node.id, measure)?;
+        profile.add(&node, measure)?;
     }
 
     if atty::is(atty::Stream::Stdout) {
@@ -89,7 +89,7 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(Some(&state))?;
+    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, Some(&state))?;
     println!();
 
     profile.print_most_consuming_ops();

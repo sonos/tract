@@ -2,7 +2,7 @@ use std::thread;
 use simplelog::Level::Info;
 
 use ndarray::Axis;
-use Parameters;
+use { Parameters, ProfilingParameters };
 use errors::*;
 use utils::random_tensor;
 use profile::ProfileData;
@@ -12,48 +12,84 @@ use tfdeploy::StreamingInput;
 use tfdeploy::StreamingState;
 use tfdeploy::Tensor;
 
-pub fn handle_cruise(params: Parameters) -> Result<()> {
-    unimplemented!();
+fn build_streaming_state(params: &Parameters) -> Result<StreamingState> {
+    let input = params.input.as_ref().ok_or("Exactly one of <size> or <data> must be specified.")?;
+    let inputs = params.input_node_ids.iter()
+        .map(|&s| (s, StreamingInput::Streamed(input.datatype, input.shape.clone())))
+        .collect::<Vec<_>>();
+
+    let state = StreamingState::start(
+        params.tfd_model.clone(),
+        inputs.clone(),
+        Some(params.output_node_id)
+    )?;
+    Ok(state)
+}
+
+pub fn handle_cruise(params: Parameters, profiling: ProfilingParameters) -> Result<()> {
+    let start = Instant::now();
+    info!("Initializing the StreamingState.");
+    let mut state = build_streaming_state(&params)?;
+    let measure = Duration::since(&start, 1);
+    info!("Initialized the StreamingState in: {}", dur_avg_oneline(measure));
+
+    let input = params.input.ok_or("Exactly one of <size> or <data> must be specified.")?;
+    let chunk_shape = input.shape.iter().map(|d| d.unwrap_or(1)).collect::<Vec<_>>();
+    let chunk = random_tensor(chunk_shape, input.datatype);
+
+    let buffering = Instant::now();
+    info!("Buffering...");
+    let mut buffered = 0;
+    loop {
+        let result = state.step(0, chunk.clone())?;
+        if result.len() != 0 {
+            break
+        }
+        buffered += 1;
+    }
+    info!("Buffered {} chunks in {}", buffered, dur_avg_oneline(Duration::since(&buffering, 1)));
+    let mut profile = ProfileData::new(&state.model());
+    for _ in 0..100000 {
+        let _result = state.step_wrapping_ops(params.input_node_ids[0], chunk.clone(),
+                    |node, input, buffer| {
+                        let start = Instant::now();
+                        let r = node.op.step(input, buffer)?;
+                        profile.add(node, Duration::since(&start, 1))?;
+                        Ok(r)
+                    });
+    }
+
+    profile.print_most_consuming_nodes(&state.model(), &params.graph, None)?;
+    println!();
+
+    profile.print_most_consuming_ops();
+
+    Ok(())
 }
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
 pub fn handle_buffering(params: Parameters) -> Result<()> {
-    let model = params.tfd_model.clone();
-    let input = params.input.ok_or("Exactly one of <size> or <data> must be specified.")?;
-    let datatype = input.datatype;
-    let shape = input.shape;
-
-    let axis = shape.iter()
-        .position(|&d| d == None)
-        .unwrap();
-    let inputs = params.input_node_ids.iter()
-        .map(|&s| (s, StreamingInput::Streamed(datatype, shape.clone())))
-        .collect::<Vec<_>>();
-
-    info!("Initializing the StreamingState.");
     let start = Instant::now();
-    let state = StreamingState::start(
-        model.clone(),
-        inputs.clone(),
-        Some(params.output_node_id)
-    )?;
-
+    info!("Initializing the StreamingState.");
+    let state = build_streaming_state(&params)?;
     let measure = Duration::since(&start, 1);
-    let mut states = (0..100).map(|_| state.clone()).collect::<Vec<_>>();
-
     info!("Initialized the StreamingState in: {}", dur_avg_oneline(measure));
+
+    let mut input = params.input.ok_or("Exactly one of <size> or <data> must be specified.")?;
+    let axis = input.shape.iter().position(|&d| d == None).unwrap(); // checked above
+
+    let mut states = (0..100).map(|_| state.clone()).collect::<Vec<_>>();
 
     if log_enabled!(Info) {
         println!();
         print_header(format!("Streaming profiling for {}:", params.name), "white");
     }
 
-    // Either get the input data from the input file or generate it randomly.
-    let random_shape = shape.iter()
+    let shape = input.shape.iter()
         .map(|d| d.unwrap_or(20))
         .collect::<Vec<_>>();
-    let data = input.data
-        .unwrap_or_else(|| random_tensor(random_shape, datatype));
+    let data = input.data.take()
+        .unwrap_or_else(|| random_tensor(shape, input.datatype));
 
     // Split the input data into chunks along the streaming axis.
     macro_rules! split_inner {
@@ -73,7 +109,7 @@ pub fn handle_buffering(params: Parameters) -> Result<()> {
         Tensor::String(m) => split_inner!(Tensor::String, m),
     };
 
-    let mut profile = ProfileData::new(&params.graph, &state.model());
+    let mut profile = ProfileData::new(&state.model());
 
     for (step, chunk) in chunks.into_iter().enumerate() {
         for &input in &params.input_node_ids {
@@ -88,7 +124,7 @@ pub fn handle_buffering(params: Parameters) -> Result<()> {
                     |node, input, buffer| {
                         let start = Instant::now();
                         let r = node.op.step(input, buffer)?;
-                        profile.add(node.id, Duration::since(&start, 1))?;
+                        profile.add(node, Duration::since(&start, 1))?;
                         Ok(r)
                     }
                 ));
@@ -103,7 +139,7 @@ pub fn handle_buffering(params: Parameters) -> Result<()> {
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(None)?;
+    profile.print_most_consuming_nodes(&state.model(), &params.graph, None)?;
     println!();
 
     profile.print_most_consuming_ops();

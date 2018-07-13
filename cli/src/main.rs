@@ -126,16 +126,15 @@ fn main() {
         _ => LevelFilter::Trace,
     };
 
-    TermLogger::init(
-        level,
-        Config {
+    let log_config = Config {
             time: None,
             time_format: None,
             level: Some(Error),
             target: None,
             location: Some(Trace),
-        },
-    ).unwrap();
+        };
+
+    TermLogger::init(level, log_config).or_else(|_| simplelog::SimpleLogger::init(level, log_config));
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());

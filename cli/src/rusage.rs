@@ -4,7 +4,7 @@ use std::time::Instant as StdInstant;
 
 use Result;
 
-#[derive(Debug)]
+#[derive(Debug,Copy,Clone)]
 pub struct Instant(StdInstant, f64, f64);
 
 impl Instant {
