@@ -1,3 +1,4 @@
+use analyser::interface::proxies::Path;
 use analyser::interface::solver::Context;
 use std::marker::PhantomData;
 use std::fmt::Debug;
@@ -12,8 +13,38 @@ use analyser::interface::proxies::TypeProxy;
 
 
 /// The types of values that expressions can produce.
-pub trait Datum: Copy + Debug + PartialEq {}
-impl<T> Datum for T where T: Copy + Debug + PartialEq {}
+pub trait Datum: Debug + Clone + Copy + PartialEq {
+    fn into_wrapped(source: Self) -> Wrapped;
+    fn from_wrapped(wrapped: Wrapped) -> Self;
+}
+
+macro_rules! impl_datum {
+    ($type:ty, $constr:ident) => {
+        impl Datum for $type {
+            fn into_wrapped(source: Self) -> Wrapped {
+                Wrapped::$constr(source)
+            }
+
+            fn from_wrapped(wrapped: Wrapped) -> $type {
+                if let Wrapped::$constr(v) = wrapped {
+                    v
+                } else {
+                    panic!("Tried to get a {} from {:?}.", stringify!($ty), wrapped);
+                }
+            }
+        }
+    }
+}
+
+/// A wrapper for all the types of values that expressions can produce.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Wrapped {
+    Int(isize),
+    Type(DataType),
+}
+
+impl_datum!(isize, Int);
+impl_datum!(DataType, Type);
 
 
 /// An expression that can be compared by the solver.
@@ -56,7 +87,7 @@ impl<T: Datum> Expression for ConstantExpression<T> {
 /// For instance, `inputs[0].rank` is a reference to the rank of the first
 /// input. Internally, a reference holds a Vec<usize> called a path (see
 /// the documentation for `Proxy::get_path`).
-struct VariableExpression<T: Datum>(Vec<usize>, PhantomData<T>);
+struct VariableExpression<T: Datum>(Path, PhantomData<T>);
 
 impl<T: Datum> Expression for VariableExpression<T> {
     type Output = T;
@@ -137,14 +168,14 @@ impl<T> From<T> for ConstantExpression<T> where T: Datum {
 /// Converts &IntProxy to VariableExpression<isize>.
 impl<'a, T> From<&'a T> for VariableExpression<isize> where T: IntProxy {
     fn from(p: &T) -> VariableExpression<isize> {
-        VariableExpression(p.get_path(), PhantomData)
+        VariableExpression(p.get_path().to_vec(), PhantomData)
     }
 }
 
 /// Converts &TypeProxy to VariableExpression<DataType>.
 impl<'a, T> From<&'a T> for VariableExpression<DataType> where T: TypeProxy {
     fn from(p: &T) -> VariableExpression<DataType> {
-        VariableExpression(p.get_path(), PhantomData)
+        VariableExpression(p.get_path().to_vec(), PhantomData)
     }
 }
 
