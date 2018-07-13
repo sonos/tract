@@ -8,6 +8,7 @@ extern crate dot;
 #[macro_use]
 extern crate error_chain;
 extern crate insideout;
+extern crate itertools;
 #[macro_use]
 extern crate log;
 extern crate ndarray;

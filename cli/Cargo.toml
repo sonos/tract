@@ -22,6 +22,7 @@ textwrap = "0.10"
 tfdeploy = { path = "..", features=["serialize"] }
 pbr = "1.0"
 atty = "0.2"
+itertools = "0.7"
 libc = "0.2"
 rouille = "2.1"
 open = "1.2"

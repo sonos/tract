@@ -15,6 +15,8 @@ use format;
 use rusage::Duration;
 use colored::Colorize;
 
+use itertools::Itertools;
+
 /// A single row, which has either one or two columns.
 /// The two-column layout is usually used when displaying a header and some content.
 #[derive(Debug, Clone)]
@@ -169,7 +171,7 @@ fn node_info(
         .find(|n| n.get_name() == node.name)
         .unwrap();
 
-    for attr in proto_node.get_attr() {
+    for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
         attributes.push(Row::Double(
             format!("Attribute {}:", attr.0.bold()),
             if attr.1.has_tensor() {
