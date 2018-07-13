@@ -2,6 +2,9 @@ use analyser::interface::cache::Cache;
 use std::ops::Index;
 
 
+/// A symbolic path for a value.
+pub type Path = Vec<isize>;
+
 /// A proxy for any value.
 pub trait Proxy {
     /// Returns the symbolic path to the value.
@@ -9,8 +12,8 @@ pub trait Proxy {
     /// Take the `inputs[0].shape[1]` proxy for instance: it represents the
     /// second dimension of the shape of the first input. Because we encode
     /// the "inputs" vectors as `0`, and the `shape` field as `2`, the path
-    /// for this proxy will be `&[0, 0, 2, 1]`.
-    fn get_path<'a>(&self) -> Vec<usize>;
+    /// for this proxy will be `vec![0, 0, 2, 1]`.
+    fn get_path(&self) -> &Path;
 }
 
 /// A proxy for any Datatype value.
@@ -18,6 +21,34 @@ pub trait TypeProxy: Proxy {}
 
 /// A proxy for any integer-like value.
 pub trait IntProxy: Proxy {}
+
+/// Generates the get_path method for structs which have a `path` field.
+macro_rules! impl_proxy(
+    ($struct:ident) => {
+        impl Proxy for $struct {
+            /// Returns the symbolic path to the value.
+            fn get_path(&self) -> &Path {
+                &self.path
+            }
+        }
+    }
+);
+
+
+/// A simple implementation of a proxy for any Datatype value.
+#[derive(new)]
+pub struct BaseTypeProxy { path: Path }
+
+impl_proxy!(BaseTypeProxy);
+impl TypeProxy for BaseTypeProxy {}
+
+
+/// A simple implementation of a proxy for any integer-like value.
+#[derive(new)]
+pub struct BaseIntProxy { path: Path }
+
+impl_proxy!(BaseIntProxy);
+impl TypeProxy for BaseIntProxy {}
 
 
 /// A proxy for a vector of tensors.
@@ -36,19 +67,23 @@ pub trait IntProxy: Proxy {}
 /// ```
 /// when i >= len.
 pub struct TensorsProxy {
-    pub len: (),
+    pub len: BaseIntProxy,
     tensors: Cache<usize, TensorProxy>,
+    path: Path,
 }
 
 impl TensorsProxy {
     /// Creates a new TensorsProxy instance.
-    pub fn new() -> TensorsProxy {
+    pub fn new(path: Path) -> TensorsProxy {
         TensorsProxy {
-            len: (),
+            len: BaseIntProxy::new([&path[..], &[-1]].concat()),
             tensors: Cache::new(),
+            path,
         }
     }
 }
+
+impl_proxy!(TensorsProxy);
 
 impl Index<usize> for TensorsProxy {
     type Output = TensorProxy;
@@ -59,7 +94,8 @@ impl Index<usize> for TensorsProxy {
     /// dynamically and cached inside `self.tensors`. This way, future calls
     /// to `index` will return the same TensorProxy.
     fn index(&self, index: usize) -> &TensorProxy {
-        self.tensors.get(index, || TensorProxy::new())
+        let path = [&self.path[..], &[index as isize]].concat();
+        self.tensors.get(index, || TensorProxy::new(path))
     }
 }
 
@@ -74,108 +110,53 @@ impl Index<usize> for TensorsProxy {
 /// solver.equals(input.shape[1], output.value[0][1])
 /// ```
 pub struct TensorProxy {
-    pub datatype: DatatypeProxy,
-    pub rank: RankProxy,
+    pub datatype: BaseTypeProxy,
+    pub rank: BaseIntProxy,
     pub shape: ShapeProxy,
     pub value: ValueProxy,
+    path: Path,
 }
 
 impl TensorProxy {
     /// Creates a new TensorProxy instance.
-    pub fn new() -> TensorProxy {
+    pub fn new(path: Path) -> TensorProxy {
         TensorProxy {
-            datatype: DatatypeProxy::new(),
-            rank: RankProxy::new(),
-            shape: ShapeProxy::new(),
-            value: ValueProxy::new(),
+            datatype: BaseTypeProxy::new([&path[..], &[0]].concat()),
+            rank:     BaseIntProxy::new([&path[..],  &[1]].concat()),
+            shape:    ShapeProxy::new([&path[..],    &[2]].concat()),
+            value:    ValueProxy::new([&path[..],    &[3]].concat()),
+            path,
         }
     }
 }
 
-
-/// A proxy for a tensor datatype.
-#[derive(PartialEq)]
-pub struct DatatypeProxy {}
-
-impl DatatypeProxy {
-    /// Creates a new DatatypeProxy instance.
-    pub fn new() -> DatatypeProxy {
-        DatatypeProxy {}
-    }
-}
-
-impl Proxy for DatatypeProxy {
-    /// Returns the symbolic path to the value.
-    fn get_path<'a>(&self) -> Vec<usize> {
-        unimplemented!()
-    }
-}
-
-impl TypeProxy for DatatypeProxy {}
-
-
-/// A proxy for a tensor rank.
-#[derive(PartialEq)]
-pub struct RankProxy {}
-
-impl RankProxy {
-    /// Creates a new RankProxy instance.
-    pub fn new() -> RankProxy {
-        RankProxy {}
-    }
-}
-
-impl Proxy for RankProxy {
-    /// Returns the symbolic path to the value.
-    fn get_path<'a>(&self) -> Vec<usize> {
-        unimplemented!()
-    }
-}
-
-impl IntProxy for RankProxy {}
+impl_proxy!(TensorProxy);
 
 
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
-    dims: Cache<usize, DimProxy>,
+    dims: Cache<usize, BaseIntProxy>,
+    path: Path,
 }
 
 impl ShapeProxy {
     /// Creates a new ShapeProxy instance.
-    pub fn new() -> ShapeProxy {
-        ShapeProxy { dims: Cache::new() }
+    pub fn new(path: Path) -> ShapeProxy {
+        ShapeProxy { dims: Cache::new(), path }
     }
 }
+
+impl_proxy!(ShapeProxy);
 
 impl Index<usize> for ShapeProxy {
-    type Output = DimProxy;
+    type Output = BaseIntProxy;
 
-    /// Returns the DimProxy corresponding to the given index.
-    fn index(&self, index: usize) -> &DimProxy {
-        self.dims.get(index, || DimProxy::new())
+    /// Returns the BaseIntProxy corresponding to the given index.
+    fn index(&self, index: usize) -> &BaseIntProxy {
+        let path = [&self.path[..], &[index as isize]].concat();
+        self.dims.get(index, || BaseIntProxy::new(path))
     }
 }
-
-
-/// A proxy for a tensor dimension.
-#[derive(PartialEq)]
-pub struct DimProxy {}
-
-impl DimProxy {
-    /// Creates a new DimProxy instance.
-    pub fn new() -> DimProxy {
-        DimProxy {}
-    }
-}
-
-impl Proxy for DimProxy {
-    /// Returns the symbolic path to the value.
-    fn get_path<'a>(&self) -> Vec<usize> {
-        unimplemented!()
-    }
-}
-
-impl IntProxy for DimProxy {}
 
 
 /// A proxy for a tensor value.
@@ -186,12 +167,13 @@ impl IntProxy for DimProxy {}
 /// ValueProxys for nested items on the fly and store them.
 pub struct ValueProxy {
     sub: Cache<usize, ValueProxy>,
+    path: Path,
 }
 
 impl ValueProxy {
     /// Creates a new ValueProxy instance.
-    pub fn new() -> ValueProxy {
-        ValueProxy { sub: Cache::new() }
+    pub fn new(path: Path) -> ValueProxy {
+        ValueProxy { sub: Cache::new(), path }
     }
 }
 
@@ -200,17 +182,12 @@ impl Index<usize> for ValueProxy {
 
     /// Returns the ValueProxy corresponding to the given index.
     fn index(&self, index: usize) -> &ValueProxy {
-        self.sub.get(index, || ValueProxy::new())
+        let path = [&self.path[..], &[index as isize]].concat();
+        self.sub.get(index, || ValueProxy::new(path))
     }
 }
 
-impl Proxy for ValueProxy {
-    /// Returns the symbolic path to the value.
-    fn get_path<'a>(&self) -> Vec<usize> {
-        unimplemented!()
-    }
-}
-
+impl_proxy!(ValueProxy);
 impl IntProxy for ValueProxy {}
 
 
@@ -220,40 +197,43 @@ mod tests {
 
     #[test]
     fn test_tensors_proxy() {
-        let inputs = TensorsProxy::new();
-        let _ = &inputs.len;
-        let _ = &inputs[0];
-        let _ = &inputs[2];
+        let inputs = TensorsProxy::new(vec![0]);
+        assert_eq!(inputs.len.get_path(), &vec![0, -1]);
+        assert_eq!(inputs[0].get_path(),  &vec![0, 0]);
+        assert_eq!(inputs[2].get_path(),  &vec![0, 2]);
     }
 
     #[test]
     fn test_tensor_proxy_datatype() {
-        let inputs = TensorsProxy::new();
+        let inputs = TensorsProxy::new(vec![0]);
         let input = &inputs[0];
-        let _ = input.datatype;
+
+        assert_eq!(input.datatype.get_path(), &vec![0, 0, 0]);
     }
 
     #[test]
     fn test_tensor_proxy_rank() {
-        let inputs = TensorsProxy::new();
+        let inputs = TensorsProxy::new(vec![0]);
         let input = &inputs[0];
-        let _ = input.rank;
+
+        assert_eq!(input.rank.get_path(), &vec![0, 0, 1]);
     }
 
     #[test]
     fn test_tensor_proxy_shape() {
-        let inputs = TensorsProxy::new();
+        let inputs = TensorsProxy::new(vec![0]);
         let input = &inputs[0];
-        let _ = input.shape[0];
-        let _ = input.shape[2];
+
+        assert_eq!(input.shape[0].get_path(), &vec![0, 0, 2, 0]);
+        assert_eq!(input.shape[2].get_path(), &vec![0, 0, 2, 2]);
     }
 
     #[test]
     fn test_tensor_proxy_value() {
-        let inputs = TensorsProxy::new();
+        let inputs = TensorsProxy::new(vec![0]);
         let input = &inputs[0];
-        let _ = input.value[1][3];
-        let _ = input.value[0][2];
-        let _ = input.value[0][1][2];
+
+        assert_eq!(input.value[0][1].get_path(),    &vec![0, 0, 3, 0, 1]);
+        assert_eq!(input.value[1][2][3].get_path(), &vec![0, 0, 3, 1, 2, 3]);
     }
 }
