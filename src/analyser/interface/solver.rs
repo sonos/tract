@@ -2,7 +2,9 @@ use num_traits::Num;
 
 use Result;
 use analyser::types::TensorFact;
+use analyser::interface::proxies::Path;
 use analyser::interface::expressions::Datum;
+use analyser::interface::expressions::Wrapped;
 use analyser::interface::expressions::Expression;
 
 /// A structure that holds the current value of tensor properties.
@@ -94,9 +96,9 @@ impl<T: Datum> Rule for EqualsRule<T> {
                 item.set(context, value)?;
             }
 
-            Ok(true)
+            Ok((true, vec![]))
         } else {
-            Ok(false)
+            Ok((false, vec![]))
         }
     }
 }
@@ -138,12 +140,12 @@ impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
         }
 
         if misses.len() > 1 {
-            Ok(false)
+            Ok((false, vec![]))
         } else if misses.len() == 1 {
             misses[0].set(context, sum)?;
-            Ok(true)
+            Ok((true, vec![]))
         } else if sum == T::zero() {
-            Ok(true)
+            Ok((true, vec![]))
         } else {
             bail!("The sum of these values doesn't equal zero: {:?}.", values);
         }
@@ -181,22 +183,33 @@ impl<T: Datum, E: Expression<Output = T>> Rule for GivenRule<T, E> {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
         if let Some(value) = self.item.get(context)? {
-            // (self.closure)(solver, value);
-            unimplemented!();
-            Ok(true)
+            // We create a new solver instance, which will be populated with
+            // new rules by the code inside the closure.
+            let mut solver = Solver::new();
+
+            (self.closure)(&mut solver, value);
+
+            Ok((true, solver.take_rules()))
         } else {
-            Ok(false)
+            Ok((false, vec![]))
         }
     }
 }
 
 /// A declarative constraint solver for tensors.
+#[derive(new)]
 pub struct Solver {
     // The rules used by the solver.
+    #[new(default)]
     rules: Vec<Box<Rule>>,
 }
 
 impl Solver {
+    /// Consumes the solver and returns the rules that it uses.
+    pub fn take_rules(self) -> Vec<Box<Rule>> {
+        self.rules
+    }
+
     /// Runs the solver on a set of TensorFacts.
     ///
     /// This method returns:
@@ -204,19 +217,39 @@ impl Solver {
     /// - Ok(None) if no more information about tensors could be deduced.
     /// - Ok(Some(facts)) otherwise, with `facts` the new TensorFacts.
     pub fn infer(
-        &mut self,
+        self,
         facts: (Vec<TensorFact>, Vec<TensorFact>),
     ) -> Result<Option<(Vec<TensorFact>, Vec<TensorFact>)>> {
-        // Create a Context using the variables involved in the rules.
-        let mut context = Context::from(&self.rules);
-
-        // Fill the context using the input TensorFacts.
-        context.fill(&facts);
+        // Create a Context using the variables involved in the rules and
+        // fill it using the input TensorFacts.
+        let mut context = Context::from(&self.rules, &facts);
 
         // Apply the rules until reaching a fixed point.
-        let mut changed = false;
-        for rule in &self.rules {
-            // changed = rule.apply(self, &mut context)?;
+        let mut changed = true;
+        let mut added_rules = vec![];
+        let mut rules: Vec<_> = self.rules.into_iter()
+            .map(|r| (false, r))
+            .collect();
+
+        while changed {
+            changed = false;
+
+            for (used, rule) in &mut rules {
+                // Don't try to apply rules which have already been used.
+                if *used {
+                    continue;
+                }
+
+                let (step_used, mut step_added) = rule.apply(&mut context)?;
+                *used |= step_used;
+                changed |= step_used;
+                added_rules.append(&mut step_added);
+            }
+        }
+
+        for rule in added_rules.drain(..) {
+            context.update(&rule, &facts);
+            rules.push((false, rule));
         }
 
         // Dump the output TensorFacts from the context.
