@@ -118,23 +118,6 @@ fn main() {
 
     let matches = app.get_matches();
 
-    // Configure the logging level.
-    let level = match matches.occurrences_of("verbosity") {
-        0 => LevelFilter::Warn,
-        1 => LevelFilter::Info,
-        2 => LevelFilter::Debug,
-        _ => LevelFilter::Trace,
-    };
-
-    let log_config = Config {
-            time: None,
-            time_format: None,
-            level: Some(Error),
-            target: None,
-            location: Some(Trace),
-        };
-
-    TermLogger::init(level, log_config).or_else(|_| simplelog::SimpleLogger::init(level, log_config));
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());
@@ -319,6 +302,26 @@ impl InputParameters {
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> Result<()> {
+    // Configure the logging level.
+    let level = match matches.occurrences_of("verbosity") {
+        0 => LevelFilter::Warn,
+        1 => LevelFilter::Info,
+        2 => LevelFilter::Debug,
+        _ => LevelFilter::Trace,
+    };
+
+    let log_config = Config {
+            time: None,
+            time_format: None,
+            level: Some(Error),
+            target: None,
+            location: Some(Trace),
+        };
+
+    if TermLogger::init(level, log_config).is_err() && simplelog::SimpleLogger::init(level, log_config).is_err() {
+        panic!("Could not initiatize logger")
+    };
+
     let params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {

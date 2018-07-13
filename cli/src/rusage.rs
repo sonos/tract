@@ -38,9 +38,7 @@ pub struct Duration {
     pub total_real: f64,
     pub total_user: f64,
     pub total_sys: f64,
-    pub avg_real: f64,
-    pub avg_user: f64,
-    pub avg_sys: f64,
+    pub counter: u64,
 }
 
 impl Duration {
@@ -56,11 +54,20 @@ impl Duration {
         let total_sys = start.elapsed_sys();
 
         Duration {
-            total_real, total_user, total_sys,
-            avg_real: total_real / iters as f64,
-            avg_user: total_user / iters as f64,
-            avg_sys: total_sys / iters as f64,
+            total_real, total_user, total_sys, counter: iters
         }
+    }
+
+    pub fn avg_real(&self) -> f64 {
+        self.total_real / self.counter as f64
+    }
+
+    pub fn avg_user(&self) -> f64 {
+        self.total_user / self.counter as f64
+    }
+
+    pub fn avg_sys(&self) -> f64 {
+        self.total_sys / self.counter as f64
     }
 }
 
@@ -70,9 +77,7 @@ impl ::std::ops::AddAssign for Duration {
             total_real: self.total_real + other.total_real,
             total_user: self.total_user + other.total_user,
             total_sys: self.total_sys + other.total_sys,
-            avg_real: self.avg_real + other.avg_real,
-            avg_user: self.avg_user + other.avg_user,
-            avg_sys: self.avg_sys + other.avg_sys,
+            counter: self.counter + other.counter,
         };
     }
 }

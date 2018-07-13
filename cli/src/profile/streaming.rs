@@ -1,5 +1,6 @@
-use std::thread;
 use simplelog::Level::Info;
+
+use std::thread;
 
 use ndarray::Axis;
 use { Parameters, ProfilingParameters };
@@ -26,7 +27,7 @@ fn build_streaming_state(params: &Parameters) -> Result<StreamingState> {
     Ok(state)
 }
 
-pub fn handle_cruise(params: Parameters, profiling: ProfilingParameters) -> Result<()> {
+pub fn handle_cruise(params: Parameters, _profiling: ProfilingParameters) -> Result<()> {
     let start = Instant::now();
     info!("Initializing the StreamingState.");
     let mut state = build_streaming_state(&params)?;
@@ -49,7 +50,7 @@ pub fn handle_cruise(params: Parameters, profiling: ProfilingParameters) -> Resu
     }
     info!("Buffered {} chunks in {}", buffered, dur_avg_oneline(Duration::since(&buffering, 1)));
     let mut profile = ProfileData::new(&state.model());
-    for _ in 0..100000 {
+    for _ in 0..100 {
         let _result = state.step_wrapping_ops(params.input_node_ids[0], chunk.clone(),
                     |node, input, buffer| {
                         let start = Instant::now();
@@ -62,7 +63,7 @@ pub fn handle_cruise(params: Parameters, profiling: ProfilingParameters) -> Resu
     profile.print_most_consuming_nodes(&state.model(), &params.graph, None)?;
     println!();
 
-    profile.print_most_consuming_ops();
+    profile.print_most_consuming_ops(&state.model())?;
 
     Ok(())
 }
@@ -142,7 +143,7 @@ pub fn handle_buffering(params: Parameters) -> Result<()> {
     profile.print_most_consuming_nodes(&state.model(), &params.graph, None)?;
     println!();
 
-    profile.print_most_consuming_ops();
+    profile.print_most_consuming_ops(&state.model())?;
 
     Ok(())
 }

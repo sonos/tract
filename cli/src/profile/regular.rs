@@ -75,7 +75,7 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
         // Print the results for the node.
         if log_enabled!(Info) {
             print_node(node, &params.graph, Some(&state), vec![
-                format!("{:.3} ms/i", measure.avg_real * 1e3).white().to_string()
+                format!("{:.3} ms/i", measure.avg_real() * 1e3).white().to_string()
             ], vec![]);
         }
 
@@ -92,12 +92,12 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
     profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, Some(&state))?;
     println!();
 
-    profile.print_most_consuming_ops();
+    profile.print_most_consuming_ops(&params.tfd_model)?;
 
     if log_enabled!(Info) {
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
-            format!("{:.3} ms", profile.global.total_real * 1e3).white(),
+            format!("{:.3} ms", profile.summed().total_real * 1e3).white(),
             profiling.max_iters as f32,
             profiling.max_time,
         );
