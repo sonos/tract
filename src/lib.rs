@@ -323,6 +323,7 @@ impl Model {
     }
 }
 
+#[derive(Clone)]
 pub struct ModelState<'a> {
     model: &'a Model,
     pub outputs: Vec<Option<Vec<TensorView>>>,
