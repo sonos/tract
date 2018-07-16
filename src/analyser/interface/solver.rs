@@ -57,8 +57,149 @@ impl Context {
     }
 
     /// Dumps the current value of all variables into a set of TensorFacts.
-    pub fn dump(&self) -> (Vec<TensorFact>, Vec<TensorFact>) {
-        unimplemented!()
+    pub fn dump(&self) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        #[derive(Debug)]
+        struct TensorDump {
+            datatype: Option<DataType>,
+            rank: Option<usize>,
+            dims: Vec<(usize, usize)>,
+            values: HashMap<Vec<usize>, isize>,
+        }
+
+        let mut inputs_len = None;
+        let mut outputs_len = None;
+        let mut inputs = HashMap::<usize, TensorDump>::new();
+        let mut outputs = HashMap::<usize, TensorDump>::new();
+
+        macro_rules! to_usize {
+            ($isize:expr) => (isize::from_wrapped($isize).to_usize().unwrap())
+        };
+
+        /// Dumps the given variable into the right TensorDump.
+        fn dump_path(path: &[isize], dump: &mut TensorDump, value: Wrapped) -> Result<()> {
+            match path {
+                [0]      => dump.datatype = Some(DataType::from_wrapped(value)),
+                [1]      => dump.rank = Some(to_usize!(value)),
+                [2, i]   => dump.dims.push((i.to_usize().unwrap(), to_usize!(value))),
+                [3, s..] => {
+                    let path = s.iter().map(|v| v.to_usize().unwrap()).collect::<Vec<_>>();
+                    dump.values.insert(path, isize::from_wrapped(value));
+                },
+                _ => bail!("Unknown path for a given tensor: {:?}.", path)
+            };
+
+            Ok(())
+        }
+
+        // Iterate over all the values defined in the context, and store them
+        // inside a set of TensorDumps. We will translate those dumps into
+        // TensorFacts once all the values are dumped.
+        for (path, value) in self.values.iter() {
+            match &path[..] {
+                [0, -1] => inputs_len = value.map(|v| to_usize!(v)),
+                [1, -1] => outputs_len = value.map(|v| to_usize!(v)),
+
+                [i, j, sub..] => {
+                    let target = if *i == 0 {
+                        &mut inputs
+                    } else if *i == 1 {
+                        &mut outputs
+                    } else {
+                        panic!();
+                    };
+
+                    let values = target
+                        .entry(*j as usize)
+                        .or_insert_with(|| TensorDump {
+                            datatype: None,
+                            rank: None,
+                            dims: vec![],
+                            values: HashMap::new(),
+                        });
+
+                    if let Some(v) = value {
+                        dump_path(sub, values, *v)?;
+                    }
+                },
+                _ => bail!("Unknown path: {:?}.", path)
+            };
+        }
+
+        /// Transforms the given TensorDump into a TensorFact.
+        fn dump_to_fact(dump: &mut TensorDump) -> Result<TensorFact> {
+            let mut fact = TensorFact::new();
+
+            // Fill the datatype.
+            fact.datatype = dump.datatype
+                .map(|dt| typefact!(dt))
+                .unwrap_or(typefact!(_));
+
+            // Fill the shape.
+            dump.dims.sort_unstable_by_key(|(k, _)| *k);
+            let max_index = dump.dims.iter().map(|&(k, _)| k).max();
+
+            let (open, mut dims) = if let (Some(m), Some(rank)) = (max_index, dump.rank) {
+                if m >= rank {
+                    bail!("The tensor {:?} is supposed to have rank {:?}, but a rule \
+                           mentions dimension {:?} which is absurd.", dump, rank, m);
+                }
+
+                (false, vec![dimfact!(_); rank])
+            } else if let Some(m) = max_index {
+                (true, vec![dimfact!(_); m])
+            } else {
+                (true, vec![])
+            };
+
+            for &(i, dim) in &dump.dims {
+                dims[i] = dimfact!(dim);
+            }
+
+            fact.shape = ShapeFact { open, dims };
+
+            // Try to fill the value.
+            // Since we can't really do anything with partial information about the value,
+            // we'll only fill fact.value if we know every coordinate of the value.
+            // FIXME(liautaud)
+            fact.value = valuefact!(_);
+
+            Ok(fact)
+        }
+
+        /// Transforms the given hashmap of TensorDumps into a list of TensorFacts of the right size.
+        fn dumps_to_facts(
+            length: Option<usize>,
+            map: HashMap<usize, TensorDump>
+        ) -> Result<Vec<TensorFact>> {
+            let mut dumps: Vec<_> = map.into_iter().collect();
+            dumps.sort_unstable_by_key(|(k, _)| *k);
+
+            let max_index = dumps.iter().map(|&(k, _)| k).max();
+
+            let mut facts = if let (Some(m), Some(l)) = (max_index, length) {
+                if m >= l {
+                    bail!("There should only be {:?} facts mentionned in the rules, but \
+                           there is a {:?}-th fact mentionned somewhere.", l, m);
+                }
+
+                vec![TensorFact::new(); l]
+            } else if let Some(m) = max_index {
+                vec![TensorFact::new(); m]
+            } else {
+                vec![]
+            };
+
+            for (i, mut dump) in dumps {
+                facts[i] = dump_to_fact(&mut dump)?;
+            }
+
+            Ok(facts)
+        }
+
+        Ok((
+            dumps_to_facts(inputs_len, inputs)?,
+            dumps_to_facts(outputs_len, outputs)?
+        ))
     }
 
     /// Returns whether the value of at least one variable has changed since
