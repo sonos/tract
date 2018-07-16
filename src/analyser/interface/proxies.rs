@@ -1,9 +1,8 @@
+use analyser::interface::path::Path;
 use analyser::interface::cache::Cache;
 use std::ops::Index;
 
-
-/// A symbolic path for a value.
-pub type Path = Vec<isize>;
+use num_traits::cast::ToPrimitive;
 
 /// A proxy for any value.
 pub trait Proxy {
@@ -18,6 +17,9 @@ pub trait Proxy {
 
 /// A proxy for any Datatype value.
 pub trait TypeProxy: Proxy {}
+
+/// A proxy for any DimFact value.
+pub trait DimProxy: Proxy {}
 
 /// A proxy for any integer-like value.
 pub trait IntProxy: Proxy {}
@@ -43,12 +45,20 @@ impl_proxy!(BaseTypeProxy);
 impl TypeProxy for BaseTypeProxy {}
 
 
+/// A simple implementation of a proxy for any DimFact value.
+#[derive(new)]
+pub struct BaseDimProxy { path: Path }
+
+impl_proxy!(BaseDimProxy);
+impl DimProxy for BaseDimProxy {}
+
+
 /// A simple implementation of a proxy for any integer-like value.
 #[derive(new)]
 pub struct BaseIntProxy { path: Path }
 
 impl_proxy!(BaseIntProxy);
-impl TypeProxy for BaseIntProxy {}
+impl IntProxy for BaseIntProxy {}
 
 
 /// A proxy for a vector of tensors.
@@ -94,7 +104,7 @@ impl Index<usize> for TensorsProxy {
     /// dynamically and cached inside `self.tensors`. This way, future calls
     /// to `index` will return the same TensorProxy.
     fn index(&self, index: usize) -> &TensorProxy {
-        let path = [&self.path[..], &[index as isize]].concat();
+        let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
         self.tensors.get(index, || TensorProxy::new(path))
     }
 }
@@ -135,6 +145,8 @@ impl_proxy!(TensorProxy);
 
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
+    // FIXME(liautaud): Use a BaseDimProxy instead, because we don't handle
+    // streaming dimensions with the current approach.
     dims: Cache<usize, BaseIntProxy>,
     path: Path,
 }
@@ -153,7 +165,7 @@ impl Index<usize> for ShapeProxy {
 
     /// Returns the BaseIntProxy corresponding to the given index.
     fn index(&self, index: usize) -> &BaseIntProxy {
-        let path = [&self.path[..], &[index as isize]].concat();
+        let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
         self.dims.get(index, || BaseIntProxy::new(path))
     }
 }
@@ -182,7 +194,7 @@ impl Index<usize> for ValueProxy {
 
     /// Returns the ValueProxy corresponding to the given index.
     fn index(&self, index: usize) -> &ValueProxy {
-        let path = [&self.path[..], &[index as isize]].concat();
+        let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
         self.sub.get(index, || ValueProxy::new(path))
     }
 }

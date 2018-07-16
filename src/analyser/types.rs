@@ -5,6 +5,8 @@ use errors::*;
 use tfpb::types::DataType;
 use Tensor;
 
+use num_traits::cast::ToPrimitive;
+
 /// Partial information about a tensor.
 ///
 /// The task of the analyser is to tag every edge in the graph with information
@@ -205,6 +207,27 @@ macro_rules! impl_dim_op {
             fn $method(self, other: usize) -> Self {
                 match (self, other) {
                     (DimFact::Only($i), $j) => DimFact::Only($res),
+                    _ => DimFact::Any,
+                }
+            }
+        }
+
+        impl $trait<isize> for DimFact {
+            type Output = Self;
+
+            fn $method(self, other: isize) -> Self {
+                match (self, other) {
+                    (DimFact::Only($i), $j) => {
+                        let $i = ($i).to_isize().unwrap();
+
+                        // This should not be a problem in most computations
+                        // involving a dimension. If we get a negative value
+                        // however, it it much safer to crash rather than to
+                        // silently accept the coersion.
+                        let res = $res.to_usize().unwrap();
+
+                        DimFact::Only(res)
+                    },
                     _ => DimFact::Any,
                 }
             }

@@ -13,6 +13,7 @@
 //! actually hold the values of the length and datatypes, but instead act as
 //! declarative placeholders for these values.
 
+mod path;
 mod cache;
 mod proxies;
 mod expressions;

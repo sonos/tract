@@ -1,5 +1,3 @@
-use analyser::interface::proxies::Path;
-use analyser::interface::solver::Context;
 use std::marker::PhantomData;
 use std::fmt::Debug;
 
@@ -8,7 +6,11 @@ use num_traits::CheckedDiv;
 
 use Result;
 use tfpb::types::DataType;
+use analyser::types::DimFact;
+use analyser::interface::path::Path;
+use analyser::interface::solver::Context;
 use analyser::interface::proxies::IntProxy;
+use analyser::interface::proxies::DimProxy;
 use analyser::interface::proxies::TypeProxy;
 
 
@@ -40,10 +42,12 @@ macro_rules! impl_datum {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Wrapped {
     Int(isize),
+    Dim(DimFact),
     Type(DataType),
 }
 
 impl_datum!(isize, Int);
+impl_datum!(DimFact, Dim);
 impl_datum!(DataType, Type);
 
 
@@ -57,6 +61,9 @@ pub trait Expression {
 
     /// Tries to set the value of the expression in the given context.
     fn set(&self, context: &mut Context, value: Self::Output) -> Result<()>;
+
+    /// Returns the paths that the expression depends on.
+    fn get_paths(&self) -> Vec<&Path>;
 }
 
 
@@ -79,6 +86,11 @@ impl<T: Datum> Expression for ConstantExpression<T> {
             bail!("Cannot set the value of constant {:?} to {:?}.", self.0, value);
         }
     }
+
+    /// Returns the paths that the expression depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        vec![]
+    }
 }
 
 
@@ -100,6 +112,11 @@ impl<T: Datum> Expression for VariableExpression<T> {
     /// Tries to set the value of the expression in the given context.
     fn set(&self, context: &mut Context, value: T) -> Result<()> {
         context.set(&self.0, value)
+    }
+
+    /// Returns the paths that the expression depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        vec![&self.0]
     }
 }
 
@@ -148,6 +165,11 @@ where
             self.1.set(context, div)
         }
     }
+
+    /// Returns the paths that the expression depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        self.1.get_paths()
+    }
 }
 
 
@@ -168,6 +190,13 @@ impl<T> From<T> for ConstantExpression<T> where T: Datum {
 /// Converts &IntProxy to VariableExpression<isize>.
 impl<'a, T> From<&'a T> for VariableExpression<isize> where T: IntProxy {
     fn from(p: &T) -> VariableExpression<isize> {
+        VariableExpression(p.get_path().to_vec(), PhantomData)
+    }
+}
+
+/// Converts &DimProxy to VariableExpression<DimFact>.
+impl<'a, T> From<&'a T> for VariableExpression<DimFact> where T: DimProxy {
+    fn from(p: &T) -> VariableExpression<DimFact> {
         VariableExpression(p.get_path().to_vec(), PhantomData)
     }
 }

@@ -1,8 +1,12 @@
+use std::collections::HashMap;
 use num_traits::Num;
+use num_traits::cast::ToPrimitive;
 
 use Result;
-use analyser::types::TensorFact;
-use analyser::interface::proxies::Path;
+use tfpb::types::DataType;
+use analyser::types::{TensorFact, ShapeFact};
+use analyser::interface::path::Path;
+use analyser::interface::path::get_value_at_path;
 use analyser::interface::expressions::Datum;
 use analyser::interface::expressions::Wrapped;
 use analyser::interface::expressions::Expression;
@@ -13,17 +17,43 @@ use analyser::interface::expressions::Expression;
 /// the value of expressions which involve tensor properties.
 pub struct Context {
     dirty: bool,
+    values: HashMap<Path, Option<Wrapped>>,
 }
 
 impl Context {
-    /// Creates a new Context using variables involved in the given rules.
-    pub fn from(rules: &Vec<Box<Rule>>) -> Context {
-        unimplemented!()
+    /// Creates a new context using variables involved in the given rules.
+    /// Uses the `facts` argument to get the current value of those variables.
+    pub fn from(
+        rules: &Vec<Box<Rule>>,
+        facts: &(Vec<TensorFact>, Vec<TensorFact>)
+    ) -> Result<Context> {
+        let mut context = Context {
+            dirty: false,
+            values: HashMap::new(),
+        };
+
+        for rule in rules {
+            context.update(rule, facts)?;
+        }
+
+        Ok(context)
     }
 
-    /// Sets the current value of all variables from a set of TensorFacts.
-    pub fn fill(&mut self, facts: &(Vec<TensorFact>, Vec<TensorFact>)) {
-        unimplemented!()
+    /// Updates the context by adding the variables involved in the given rule.
+    /// Uses the `facts` argument to get the current value of those variables.
+    pub fn update(
+        &mut self,
+        rule: &Box<Rule>,
+        facts: &(Vec<TensorFact>, Vec<TensorFact>)
+    ) -> Result<()> {
+        for path in rule.get_paths() {
+            self.values.insert(
+                path.to_vec(),
+                get_value_at_path(path, facts)?
+            );
+        }
+
+        Ok(())
     }
 
     /// Dumps the current value of all variables into a set of TensorFacts.
@@ -38,13 +68,35 @@ impl Context {
     }
 
     /// Returns the current value of the variables at the given path.
-    pub fn get<T>(&self, path: &Vec<usize>) -> Result<Option<T>> {
-        unimplemented!()
+    pub fn get<T: Datum>(&self, path: &Path) -> Result<Option<T>> {
+        match self.values.get(path) {
+            None => bail!("The variable at path {:?} doesn't exist in the context.", path),
+            Some(v) => Ok(v.map(
+                |wrapped| T::from_wrapped(wrapped)
+            )),
+        }
     }
 
     /// Tries to set the value of the variable at the given path.
-    pub fn set<T>(&mut self, path: &Vec<usize>, value: T) -> Result<()> {
-        unimplemented!()
+    pub fn set<T: Datum>(&mut self, path: &Path, value: T) -> Result<()> {
+        match self.values.get_mut(path) {
+            // The variable doesn't exist.
+            None => bail!("The variable at path {:?} doesn't exist in the context.", path),
+
+            // The variable already has the same value.
+            Some(Some(prev)) if T::from_wrapped(*prev) == value => Ok(()),
+
+            // The variable already has another value.
+            Some(Some(prev)) => bail!("The variable at path {:?} has value {:?}, so it can't \
+                                      receive the value {:?}.", path, prev, value),
+
+            // The variable doesn't yet have a value.
+            Some(slot) => {
+                self.dirty = true;
+                *slot = Some(T::into_wrapped(value));
+                Ok(())
+            }
+        }
     }
 }
 
@@ -56,6 +108,9 @@ pub trait Rule {
     /// (meaning that the Context was mutated), or Ok(false) if the rule was
     /// not applied but didn't generate any errors.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)>;
+
+    /// Returns the paths that the rule depends on.
+    fn get_paths(&self) -> Vec<&Path>;
 }
 
 /// The `equals` rule.
@@ -100,6 +155,11 @@ impl<T: Datum> Rule for EqualsRule<T> {
         } else {
             Ok((false, vec![]))
         }
+    }
+
+    /// Returns the paths that the rule depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        self.items.iter().flat_map(|e| e.get_paths()).collect()
     }
 }
 
@@ -150,6 +210,11 @@ impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
             bail!("The sum of these values doesn't equal zero: {:?}.", values);
         }
     }
+
+    /// Returns the paths that the rule depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        self.items.iter().flat_map(|e| e.get_paths()).collect()
+    }
 }
 
 /// The `given` rule.
@@ -194,6 +259,11 @@ impl<T: Datum, E: Expression<Output = T>> Rule for GivenRule<T, E> {
             Ok((false, vec![]))
         }
     }
+
+    /// Returns the paths that the rule depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        self.item.get_paths()
+    }
 }
 
 /// A declarative constraint solver for tensors.
@@ -222,7 +292,7 @@ impl Solver {
     ) -> Result<Option<(Vec<TensorFact>, Vec<TensorFact>)>> {
         // Create a Context using the variables involved in the rules and
         // fill it using the input TensorFacts.
-        let mut context = Context::from(&self.rules, &facts);
+        let mut context = Context::from(&self.rules, &facts)?;
 
         // Apply the rules until reaching a fixed point.
         let mut changed = true;
@@ -248,13 +318,13 @@ impl Solver {
         }
 
         for rule in added_rules.drain(..) {
-            context.update(&rule, &facts);
+            context.update(&rule, &facts)?;
             rules.push((false, rule));
         }
 
         // Dump the output TensorFacts from the context.
         if context.is_dirty() {
-            Ok(Some(context.dump()))
+            Ok(Some(context.dump()?))
         } else {
             Ok(None)
         }
