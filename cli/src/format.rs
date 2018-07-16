@@ -120,7 +120,7 @@ fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sect
     count.set_format(format_no_right_border());
 
     // Content of the table
-    let mut right = if status.len() < 2 && status[0].len() < 10 {
+    let mut right = if status.len() == 1 && status[0].len() < 10 {
         build_header(cols, op, name, status.pop())
     } else {
         build_header_wide(cols, op, name, status)
