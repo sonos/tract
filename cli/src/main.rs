@@ -102,12 +102,14 @@ fn main() {
 
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input.")
-            (@arg max_iters: -n [max_iters]
+            (@arg max_iters: --max_iters -n [max_iters]
                 "Sets the maximum number of iterations for each node [default: 10_000].")
-            (@arg max_time: -t [max_time]
+            (@arg max_time: --max_time -t [max_time]
                 "Sets the maximum execution time for each node (in ms) [default: 500].")
             (@arg buffering: --buffering
-                "Profile streaming network buffering phase instead of cruise."))
+                "Profile streaming network buffering phase instead of cruise.")
+            (@arg bench: --bench
+                "Run the stream network without inner instrumentations"))
 
         (@subcommand analyse =>
             (about: "Analyses the graph to infer properties about tensors (experimental).")
@@ -186,24 +188,6 @@ impl Parameters {
             output_node_id,
             input,
         });
-    }
-}
-
-pub struct ProfilingParameters {
-    max_iters: u64,
-    max_time: u64,
-    buffering: bool,
-}
-
-impl ProfilingParameters {
-    pub fn from_clap(matches: &clap::ArgMatches) -> Result<ProfilingParameters> {
-        let max_iters = matches.value_of("max_iters").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_ITERS);
-        let max_time = matches.value_of("max_time").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_TIME);
-        Ok(ProfilingParameters {
-            max_iters,
-            max_time,
-            buffering: matches.is_present("buffering"),
-        })
     }
 }
 
@@ -299,7 +283,50 @@ impl InputParameters {
 
         Ok(InputParameters { data: Some(tensor), shape, datatype })
     }
+
+    fn streaming(&self) -> bool {
+        self.shape.iter().any(|dim| dim.is_none())
+    }
 }
+
+pub enum ProfilingMode {
+    Regular {
+        max_iters: u64,
+        max_time: u64,
+    },
+    StreamCruising,
+    StreamBuffering,
+    StreamBenching {
+        max_iters: u64,
+        max_time: u64,
+    }
+}
+
+impl ProfilingMode {
+    pub fn from_clap(matches: &clap::ArgMatches, streaming: bool) -> Result<ProfilingMode> {
+        let max_iters = matches.value_of("max_iters").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_ITERS);
+        let max_time = matches.value_of("max_time").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_TIME);
+        let mode = if streaming {
+            if matches.is_present("buffering") {
+                ProfilingMode::StreamBuffering
+            } else if matches.is_present("bench") {
+                ProfilingMode::StreamBenching {
+                    max_iters,
+                    max_time,
+                }
+            } else {
+                ProfilingMode::StreamCruising
+            }
+        } else {
+            ProfilingMode::Regular {
+                max_iters,
+                max_time,
+            }
+        };
+        Ok(mode)
+    }
+}
+
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> Result<()> {
@@ -324,6 +351,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     };
 
     let params = Parameters::from_clap(&matches)?;
+    let streaming = params.input.as_ref().map(|i| i.streaming()).unwrap_or(false);
 
     match matches.subcommand() {
         ("compare", _) => compare::handle(params),
@@ -335,7 +363,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
         ("profile", Some(m)) => profile::handle(
             params,
-            ProfilingParameters::from_clap(&m)?
+            ProfilingMode::from_clap(&m, streaming)?
         ),
 
         ("analyse", Some(m)) => analyse::handle(

@@ -2,7 +2,7 @@ use atty;
 use pbr::ProgressBar;
 use simplelog::Level::Info;
 
-use { Parameters, InputParameters, ProfilingParameters };
+use { Parameters, InputParameters, ProfilingMode };
 use errors::*;
 use utils::random_tensor;
 
@@ -11,8 +11,14 @@ use rusage::{ Instant, Duration };
 use format::*;
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> {
+pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
     use colored::Colorize;
+
+    let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
+        (max_iters, max_time)
+    } else {
+        bail!("Expecting regular profile mode")
+    };
 
     let ref model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?;
@@ -32,8 +38,19 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
         state.set_value(*s, data)?;
     }
 
-    info!("Running {} iterations max. for each node.", profiling.max_iters);
-    info!("Running for {} ms max. for each node.", profiling.max_time);
+    let plan = model.plan_for_one(params.output_node_id)?;
+    info!("Running entire network");
+    let mut iters = 0;
+    let start = Instant::now();
+    while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+        let mut cloned = state.clone();
+        let _ = plan.run(&mut cloned)?;
+        iters += 1;
+    }
+    let entire = Duration::since(&start, iters);
+
+    info!("Running {} iterations max. for each node.", max_iters);
+    info!("Running for {} ms max. for each node.", max_time);
 
     let plan = output.eval_order(&model)?;
     info!("Using execution plan: {:?}", plan);
@@ -65,7 +82,7 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
         let mut iters = 0;
         let start = Instant::now();
 
-        while iters < profiling.max_iters && start.elapsed_real() < (profiling.max_time as f64 * 1e-3) {
+        while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
             state.compute_one(n)?;
             iters += 1;
         }
@@ -86,20 +103,24 @@ pub fn handle(params: Parameters, profiling: ProfilingParameters) -> Result<()> 
         progress.finish_print("");
     }
 
-    println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
     profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, Some(&state))?;
     println!();
 
     profile.print_most_consuming_ops(&params.tfd_model)?;
+    println!();
+
+    println!("Entire network performance: {}", dur_avg_oneline(entire));
+    println!("Accounted by ops: {}", dur_avg_oneline_ratio(profile.summed(), entire));
+
 
     if log_enabled!(Info) {
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
             format!("{:.3} ms", profile.summed().total_real * 1e3).white(),
-            profiling.max_iters as f32,
-            profiling.max_time,
+            max_iters as f32,
+            max_time,
         );
     }
 

@@ -3,7 +3,7 @@ use simplelog::Level::Info;
 use std::thread;
 
 use ndarray::Axis;
-use { Parameters, ProfilingParameters };
+use { Parameters, ProfilingMode };
 use errors::*;
 use utils::random_tensor;
 use profile::ProfileData;
@@ -13,7 +13,9 @@ use tfdeploy::StreamingInput;
 use tfdeploy::StreamingState;
 use tfdeploy::Tensor;
 
-fn build_streaming_state(params: &Parameters) -> Result<StreamingState> {
+fn build_streaming_state(params: &Parameters) -> Result<(StreamingState, Tensor)> {
+    let start = Instant::now();
+    info!("Initializing the StreamingState.");
     let input = params.input.as_ref().ok_or("Exactly one of <size> or <data> must be specified.")?;
     let inputs = params.input_node_ids.iter()
         .map(|&s| (s, StreamingInput::Streamed(input.datatype, input.shape.clone())))
@@ -24,20 +26,18 @@ fn build_streaming_state(params: &Parameters) -> Result<StreamingState> {
         inputs.clone(),
         Some(params.output_node_id)
     )?;
-    Ok(state)
-}
-
-pub fn handle_cruise(params: Parameters, _profiling: ProfilingParameters) -> Result<()> {
-    let start = Instant::now();
-    info!("Initializing the StreamingState.");
-    let mut state = build_streaming_state(&params)?;
     let measure = Duration::since(&start, 1);
     info!("Initialized the StreamingState in: {}", dur_avg_oneline(measure));
 
-    let input = params.input.ok_or("Exactly one of <size> or <data> must be specified.")?;
+    let input = params.input.as_ref().ok_or("Exactly one of <size> or <data> must be specified.")?;
     let chunk_shape = input.shape.iter().map(|d| d.unwrap_or(1)).collect::<Vec<_>>();
     let chunk = random_tensor(chunk_shape, input.datatype);
 
+    Ok((state, chunk))
+}
+
+// feed the network until it outputs something
+fn bufferize(state: &mut StreamingState, chunk: &Tensor) -> Result<()> {
     let buffering = Instant::now();
     info!("Buffering...");
     let mut buffered = 0;
@@ -49,6 +49,36 @@ pub fn handle_cruise(params: Parameters, _profiling: ProfilingParameters) -> Res
         buffered += 1;
     }
     info!("Buffered {} chunks in {}", buffered, dur_avg_oneline(Duration::since(&buffering, 1)));
+    Ok(())
+}
+
+pub fn handle_bench(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+    let (max_iters, max_time) = if let ProfilingMode::StreamBenching { max_iters, max_time } = profiling {
+        (max_iters, max_time)
+    } else {
+        bail!("Expecting bench profile mode")
+    };
+    let (mut state, chunk) = build_streaming_state(&params)?;
+    bufferize(&mut state, &chunk)?;
+
+    info!("Starting bench itself");
+    let start = Instant::now();
+    let mut fed = 0;
+    let mut read = 0;
+    while fed < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+        let result = state.step(0, chunk.clone())?;
+        read += result.len();
+        fed += 1;
+    }
+
+    info!("Fed {} chunks, obtained {}. {}", fed, read, dur_avg_oneline(Duration::since(&start, fed)));
+    Ok(())
+}
+
+pub fn handle_cruise(params: Parameters) -> Result<()> {
+    let (mut state, chunk) = build_streaming_state(&params)?;
+    bufferize(&mut state, &chunk)?;
+
     let mut profile = ProfileData::new(&state.model());
     for _ in 0..100 {
         let _result = state.step_wrapping_ops(params.input_node_ids[0], chunk.clone(),
@@ -72,7 +102,7 @@ pub fn handle_cruise(params: Parameters, _profiling: ProfilingParameters) -> Res
 pub fn handle_buffering(params: Parameters) -> Result<()> {
     let start = Instant::now();
     info!("Initializing the StreamingState.");
-    let state = build_streaming_state(&params)?;
+    let (state, _chunk) = build_streaming_state(&params)?;
     let measure = Duration::since(&start, 1);
     info!("Initialized the StreamingState in: {}", dur_avg_oneline(measure));
 

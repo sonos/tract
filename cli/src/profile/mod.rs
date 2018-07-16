@@ -7,7 +7,7 @@ use tfdeploy::{Model, ModelState, Node};
 use format::*;
 use errors::*;
 
-use { Parameters, ProfilingParameters };
+use { Parameters, ProfilingMode };
 
 mod regular;
 mod streaming;
@@ -87,15 +87,12 @@ impl ProfileData {
 }
 
 /// Handles the `profile` subcommand.
-pub fn handle(params: Parameters, profiling:ProfilingParameters) -> Result<()> {
-    if params.input.as_ref().unwrap().shape.iter().all(|dim| dim.is_some()) {
-        regular::handle(params, profiling)
-    } else {
-        if profiling.buffering {
-            streaming::handle_buffering(params)
-        } else {
-            streaming::handle_cruise(params, profiling)
-        }
+pub fn handle(params: Parameters, profiling:ProfilingMode) -> Result<()> {
+    match &profiling {
+        ProfilingMode::Regular{..} => regular::handle(params, profiling),
+        ProfilingMode::StreamCruising => streaming::handle_cruise(params),
+        ProfilingMode::StreamBuffering => streaming::handle_buffering(params),
+        ProfilingMode::StreamBenching{..} => streaming::handle_bench(params, profiling),
     }
 }
 
