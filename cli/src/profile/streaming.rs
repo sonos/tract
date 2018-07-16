@@ -71,7 +71,7 @@ pub fn handle_bench(params: Parameters, profiling: ProfilingMode) -> Result<()> 
         fed += 1;
     }
 
-    info!("Fed {} chunks, obtained {}. {}", fed, read, dur_avg_oneline(Duration::since(&start, fed)));
+    println!("Fed {} chunks, obtained {}. {}", fed, read, dur_avg_oneline(Duration::since(&start, fed)));
     Ok(())
 }
 

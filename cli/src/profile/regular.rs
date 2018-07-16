@@ -10,21 +10,12 @@ use profile::ProfileData;
 use rusage::{ Instant, Duration };
 use format::*;
 
-/// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
-    use colored::Colorize;
+use tfdeploy::ModelState;
 
-    let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
-        (max_iters, max_time)
-    } else {
-        bail!("Expecting regular profile mode")
-    };
-
+fn make_state(params: &Parameters) -> Result<ModelState> {
     let ref model = params.tfd_model;
-    let output = model.get_node_by_id(params.output_node_id)?;
     let mut state = model.state();
     let shape:Vec<usize> = params.input.as_ref().unwrap().shape.iter().map(|s| s.unwrap()).collect(); // checked by clap and dispatcher
-
     // First fill the inputs with randomly generated values.
     for s in &params.input_node_ids {
         let given_input:&InputParameters = params.input.as_ref()
@@ -37,6 +28,47 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
 
         state.set_value(*s, data)?;
     }
+    Ok(state)
+}
+
+pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+    let (max_iters, max_time) = if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
+        (max_iters, max_time)
+    } else {
+        bail!("Expecting bench profile mode")
+    };
+
+    let ref model = params.tfd_model;
+    let state = make_state(&params)?;
+
+    let plan = model.plan_for_one(params.output_node_id)?;
+    info!("Starting bench itself");
+    let mut iters = 0;
+    let start = Instant::now();
+    while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+        let mut cloned = state.clone();
+        let _ = plan.run(&mut cloned)?;
+        iters += 1;
+    }
+    let dur = Duration::since(&start, iters);
+
+    println!("Bench ran {} times in {}", iters, dur_avg_oneline(dur));
+    Ok(())
+}
+
+/// Handles the `profile` subcommand when there are no streaming dimensions.
+pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+    use colored::Colorize;
+
+    let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
+        (max_iters, max_time)
+    } else {
+        bail!("Expecting regular profile mode")
+    };
+
+    let ref model = params.tfd_model;
+    let output = model.get_node_by_id(params.output_node_id)?;
+    let mut state = make_state(&params)?;
 
     let plan = model.plan_for_one(params.output_node_id)?;
     info!("Running entire network");

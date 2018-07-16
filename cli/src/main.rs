@@ -294,6 +294,10 @@ pub enum ProfilingMode {
         max_iters: u64,
         max_time: u64,
     },
+    RegularBenching {
+        max_iters: u64,
+        max_time: u64,
+    },
     StreamCruising,
     StreamBuffering,
     StreamBenching {
@@ -318,9 +322,16 @@ impl ProfilingMode {
                 ProfilingMode::StreamCruising
             }
         } else {
-            ProfilingMode::Regular {
-                max_iters,
-                max_time,
+            if matches.is_present("bench") {
+                ProfilingMode::RegularBenching {
+                    max_iters,
+                    max_time,
+                }
+            } else {
+                ProfilingMode::Regular {
+                    max_iters,
+                    max_time,
+                }
             }
         };
         Ok(mode)

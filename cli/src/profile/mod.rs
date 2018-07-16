@@ -90,6 +90,7 @@ impl ProfileData {
 pub fn handle(params: Parameters, profiling:ProfilingMode) -> Result<()> {
     match &profiling {
         ProfilingMode::Regular{..} => regular::handle(params, profiling),
+        ProfilingMode::RegularBenching{..} => regular::handle_benching(params, profiling),
         ProfilingMode::StreamCruising => streaming::handle_cruise(params),
         ProfilingMode::StreamBuffering => streaming::handle_buffering(params),
         ProfilingMode::StreamBenching{..} => streaming::handle_bench(params, profiling),
