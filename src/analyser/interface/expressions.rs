@@ -68,7 +68,7 @@ pub trait Expression {
 
 
 /// A constant expression (e.g. `2` or `DataType::DT_INT32`).
-struct ConstantExpression<T: Datum>(T);
+pub struct ConstantExpression<T: Datum>(T);
 
 impl<T: Datum> Expression for ConstantExpression<T> {
     type Output = T;
@@ -99,7 +99,7 @@ impl<T: Datum> Expression for ConstantExpression<T> {
 /// For instance, `inputs[0].rank` is a reference to the rank of the first
 /// input. Internally, a reference holds a Vec<usize> called a path (see
 /// the documentation for `Proxy::get_path`).
-struct VariableExpression<T: Datum>(Path, PhantomData<T>);
+pub struct VariableExpression<T: Datum>(Path, PhantomData<T>);
 
 impl<T: Datum> Expression for VariableExpression<T> {
     type Output = T;
@@ -122,7 +122,7 @@ impl<T: Datum> Expression for VariableExpression<T> {
 
 
 /// A scalar product between a constant and another expression.
-struct ProductExpression<T, E>(T, E)
+pub struct ProductExpression<T, E>(T, E)
 where
     T: Datum + Num + CheckedDiv,
     E: Expression<Output = T>;
@@ -173,50 +173,62 @@ where
 }
 
 
+/// A value that be converted into an expression.
+///
+/// I am aware that From<T> and Into<T> exist for this very purpose, but the
+/// number of conflicting implementations of From<T> in the standard library
+/// seems to confuse the compiler to the point where it is impossible to use
+/// Into<T> in the signature of `equals`, `equals_all` and `equals_zero` w/o
+/// having to specify the type parameters manually.
+pub trait IntoExpression<T> {
+    /// Converts the value to an Expression.
+    fn into_expr(self) -> T;
+}
+
 /// Converts &T to ConstantExpression<T>.
-impl<'a, T> From<&'a T> for ConstantExpression<T> where T: Datum {
-    fn from(c: &T) -> ConstantExpression<T> {
-        ConstantExpression(*c)
+impl<'a, T> IntoExpression<ConstantExpression<T>> for &'a T where T: Datum {
+    fn into_expr(self) -> ConstantExpression<T> {
+        ConstantExpression(*self)
     }
 }
 
 /// Converts T to ConstantExpression<T>.
-impl<T> From<T> for ConstantExpression<T> where T: Datum {
-    fn from(c: T) -> ConstantExpression<T> {
-        ConstantExpression(c)
+impl<T> IntoExpression<ConstantExpression<T>> for T where T: Datum {
+    fn into_expr(self) -> ConstantExpression<T> {
+        ConstantExpression(self)
     }
 }
 
-/// Converts &IntProxy to VariableExpression<isize>.
-impl<'a, T> From<&'a T> for VariableExpression<isize> where T: IntProxy {
-    fn from(p: &T) -> VariableExpression<isize> {
-        VariableExpression(p.get_path().to_vec(), PhantomData)
+/// Converts IntProxy to VariableExpression<isize>.
+impl<T> IntoExpression<VariableExpression<isize>> for T where T: IntProxy {
+    fn into_expr(self) -> VariableExpression<isize> {
+        VariableExpression(self.get_path().to_vec(), PhantomData)
     }
 }
 
-/// Converts &DimProxy to VariableExpression<DimFact>.
-impl<'a, T> From<&'a T> for VariableExpression<DimFact> where T: DimProxy {
-    fn from(p: &T) -> VariableExpression<DimFact> {
-        VariableExpression(p.get_path().to_vec(), PhantomData)
+/// Converts DimProxy to VariableExpression<DimFact>.
+impl<T> IntoExpression<VariableExpression<DimFact>> for T where T: DimProxy {
+    fn into_expr(self) -> VariableExpression<DimFact> {
+        VariableExpression(self.get_path().to_vec(), PhantomData)
     }
 }
 
-/// Converts &TypeProxy to VariableExpression<DataType>.
-impl<'a, T> From<&'a T> for VariableExpression<DataType> where T: TypeProxy {
-    fn from(p: &T) -> VariableExpression<DataType> {
-        VariableExpression(p.get_path().to_vec(), PhantomData)
+/// Converts TypeProxy to VariableExpression<DataType>.
+impl<T> IntoExpression<VariableExpression<DataType>> for T where T: TypeProxy {
+    fn into_expr(self) -> VariableExpression<DataType> {
+        VariableExpression(self.get_path().to_vec(), PhantomData)
     }
 }
 
 /// Converts (T, Into<Expression<Output = T>>) to ProductExpression<T>.
-impl<T, E, I> From<(T, I)> for ProductExpression<T, E>
+impl<T, E, I> IntoExpression<ProductExpression<T, E>> for (T, I)
 where
     T: Datum + Num + CheckedDiv,
     E: Expression<Output = T>,
-    I: Into<E>,
+    I: IntoExpression<E>,
 {
-    fn from((k, e): (T, I)) -> ProductExpression<T, E>
-    {
-        ProductExpression(k, e.into())
+    fn into_expr(self) -> ProductExpression<T, E> {
+        let (k, e) = self;
+        ProductExpression(k, e.into_expr())
     }
 }

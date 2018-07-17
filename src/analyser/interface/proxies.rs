@@ -33,6 +33,14 @@ macro_rules! impl_proxy(
                 &self.path
             }
         }
+
+        // FIXME(liautaud): This is stupid.
+        impl<'a> Proxy for &'a $struct {
+            /// Returns the symbolic path to the value.
+            fn get_path(&self) -> &Path {
+                &self.path
+            }
+        }
     }
 );
 
@@ -43,6 +51,7 @@ pub struct BaseTypeProxy { path: Path }
 
 impl_proxy!(BaseTypeProxy);
 impl TypeProxy for BaseTypeProxy {}
+impl<'a> TypeProxy for &'a BaseTypeProxy {}
 
 
 /// A simple implementation of a proxy for any DimFact value.
@@ -51,6 +60,7 @@ pub struct BaseDimProxy { path: Path }
 
 impl_proxy!(BaseDimProxy);
 impl DimProxy for BaseDimProxy {}
+impl<'a> DimProxy for &'a BaseDimProxy {}
 
 
 /// A simple implementation of a proxy for any integer-like value.
@@ -59,6 +69,7 @@ pub struct BaseIntProxy { path: Path }
 
 impl_proxy!(BaseIntProxy);
 impl IntProxy for BaseIntProxy {}
+impl<'a> IntProxy for &'a BaseIntProxy {}
 
 
 /// A proxy for a vector of tensors.

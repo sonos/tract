@@ -10,11 +10,13 @@ use analyser::interface::path::get_value_at_path;
 use analyser::interface::expressions::Datum;
 use analyser::interface::expressions::Wrapped;
 use analyser::interface::expressions::Expression;
+use analyser::interface::expressions::IntoExpression;
 
 /// A structure that holds the current value of tensor properties.
 ///
 /// This is used during inference (see `Solver::infer`) to let rules compute
 /// the value of expressions which involve tensor properties.
+#[derive(Debug)]
 pub struct Context {
     dirty: bool,
     values: HashMap<Path, Option<Wrapped>>,
@@ -483,11 +485,11 @@ impl Solver {
         T: Datum,
         EA: Expression<Output = T>,
         EB: Expression<Output = T>,
-        A: Into<EA>,
-        B: Into<EB>,
+        A: IntoExpression<EA>,
+        B: IntoExpression<EB>,
     {
         let items: Vec<Box<Expression<Output = T>>> =
-            vec![Box::new(left.into()), Box::new(right.into())];
+            vec![Box::new(left.into_expr()), Box::new(right.into_expr())];
 
         let rule = EqualsRule::new(items);
         self.rules.push(Box::new(rule));
