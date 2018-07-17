@@ -1,11 +1,8 @@
 use num_traits::Num;
 
 use Result;
-use tfpb::types::DataType;
 use analyser::types::TensorFact;
-use analyser::interface::path::*;
-use analyser::interface::path::get_path;
-use analyser::interface::path::set_path;
+use analyser::interface::path::{Path, get_path, set_path};
 use analyser::interface::expressions::Datum;
 use analyser::interface::expressions::Expression;
 use analyser::interface::expressions::IntoExpression;
@@ -16,8 +13,6 @@ use analyser::interface::expressions::IntoExpression;
 /// the value of expressions which involve tensor properties.
 #[derive(Debug, new)]
 pub struct Context {
-    #[new(value = "false")]
-    pub dirty: bool,
     pub inputs: Vec<TensorFact>,
     pub outputs: Vec<TensorFact>,
 }
@@ -32,7 +27,7 @@ impl Context {
 
     /// Tries to set the value of the variable at the given path.
     pub fn set<T: Datum>(&mut self, path: &Path, value: T) -> Result<()> {
-        self.dirty |= set_path(self, &path[..], T::into_wrapped(value))?;
+        set_path(self, &path[..], T::into_wrapped(value))?;
 
         Ok(())
     }
@@ -227,7 +222,7 @@ impl Solver {
     pub fn infer(
         self,
         facts: (Vec<TensorFact>, Vec<TensorFact>),
-    ) -> Result<Option<(Vec<TensorFact>, Vec<TensorFact>)>> {
+    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
         let mut context = Context::new(facts.0, facts.1);
 
         // Apply the rules until reaching a fixed point.
@@ -257,12 +252,7 @@ impl Solver {
             rules.push((false, rule));
         }
 
-        // FIXME(liautaud): This is supposed to work.
-        if true || context.dirty {
-            Ok(Some((context.inputs, context.outputs)))
-        } else {
-            Ok(None)
-        }
+        Ok((context.inputs, context.outputs))
     }
 
     /// Ensures that two expressions are equal.
@@ -350,7 +340,9 @@ impl Solver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use analyser::interface::TensorsProxy;
+    use tfpb::types::DataType;
 
     fn bootstrap() -> (Solver, TensorsProxy, TensorsProxy) {
         (Solver::new(),
@@ -380,7 +372,7 @@ mod tests {
         solver.equals(&inputs.len, 1);
 
         let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
-        assert_eq!(facts, Some((vec![TensorFact::new()], vec![])));
+        assert_eq!(facts, (vec![TensorFact::new()], vec![]));
     }
 
     #[test]
@@ -397,7 +389,7 @@ mod tests {
             vec![]
         );
 
-        assert_eq!(facts, Some(expected));
+        assert_eq!(facts, expected);
     }
 
     #[test]
@@ -411,7 +403,7 @@ mod tests {
             vec![]
         );
 
-        assert_eq!(facts, Some(expected));
+        assert_eq!(facts, expected);
     }
 
     #[test]
@@ -425,7 +417,7 @@ mod tests {
             vec![]
         );
 
-        assert_eq!(facts, Some(expected));
+        assert_eq!(facts, expected);
     }
 
     #[test]
@@ -442,7 +434,7 @@ mod tests {
             vec![]
         );
 
-        assert_eq!(facts, Some(expected));
+        assert_eq!(facts, expected);
     }
 
     #[test]
@@ -471,7 +463,7 @@ mod tests {
             vec![TensorFact::new()]
         );
 
-        assert_eq!(facts, Some(expected));
+        assert_eq!(facts, expected);
     }
 
     #[test]
@@ -486,6 +478,6 @@ mod tests {
             vec![output.clone()]
         );
 
-        assert_eq!(facts, Some(expected));
+        assert_eq!(facts, expected);
     }
 }

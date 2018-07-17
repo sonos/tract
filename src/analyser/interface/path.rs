@@ -4,11 +4,10 @@
 use Result;
 use Tensor;
 use tfpb::types::DataType;
+use analyser::{unify_datatype, unify_shape};
 use analyser::types::{TensorFact, ShapeFact, ValueFact};
 use analyser::interface::solver::Context;
 use analyser::interface::expressions::{Datum, Wrapped};
-
-use analyser::{unify_datatype, unify_shape};
 
 use num_traits::cast::ToPrimitive;
 
@@ -57,7 +56,7 @@ pub fn get_path(context: &Context, path: &[isize]) -> Result<Option<Wrapped>> {
 }
 
 /// Sets the value at the given path (starting from a context).
-pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> Result<bool> {
+pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> Result<()> {
     match &path[..] {
         [0, sub..] => set_tensorfacts_path(&mut context.inputs, sub, value),
         [1, sub..] => set_tensorfacts_path(&mut context.outputs, sub, value),
@@ -89,7 +88,7 @@ fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Optio
 }
 
 /// Sets the value at the given path (starting from a set of TensorFacts).
-fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrapped) -> Result<bool> {
+fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrapped) -> Result<()> {
     match &path[..] {
         // Set the number of facts in the set.
         [-1] => {
@@ -99,7 +98,7 @@ fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrap
                 bail!("Can't set the length of the given set of facts to {:?} \
                        because it already has length {:?}.", value, facts.len());
             } else {
-                Ok(false)
+                Ok(())
             }
         },
 
@@ -141,32 +140,30 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Option<Wrapp
 }
 
 /// Sets the value at the given path (starting from a TensorFact).
-fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> Result<bool> {
+fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> Result<()> {
     match &path[..] {
         // Set the type of the TensorFact.
         [0] => {
             let value = DataType::from_wrapped(value);
-            let target = unify_datatype(
+
+            fact.datatype = unify_datatype(
                 &fact.datatype,
                 &typefact!(value)
             )?;
 
-            let changed = fact.datatype == target;
-            fact.datatype = target;
-            Ok(changed)
+            Ok(())
         },
 
         // Set the rank of the TensorFact.
         [1] => {
             let k = isize::from_wrapped(value).to_usize().unwrap();
-            let target = unify_shape(
+
+            fact.shape = unify_shape(
                 &fact.shape,
                 &ShapeFact::closed(vec![dimfact!(_); k])
             )?;
 
-            let changed = fact.shape == target;
-            fact.shape = target;
-            Ok(changed)
+            Ok(())
         },
 
         // Set a dimension of the TensorFact.
@@ -177,18 +174,16 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             let mut dims = vec![dimfact!(_); k];
             dims.push(dimfact!(d));
 
-            let target = unify_shape(
+            fact.shape = unify_shape(
                 &fact.shape,
                 &ShapeFact::open(dims)
             )?;
 
-            let changed = fact.shape == target;
-            fact.shape = target;
-            Ok(changed)
+            Ok(())
         },
 
         // Set a value of the TensorFact.
-        [3, sub..] => unimplemented!(),
+        [3, _..] => unimplemented!(),
 
         _ => bail!("The subpath {:?} should start with 0, 1, 2 or 3 (for the type, \
                     rank, dimension or value of the fact respectively).", path)
