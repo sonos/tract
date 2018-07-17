@@ -6,11 +6,9 @@ use num_traits::CheckedDiv;
 
 use Result;
 use tfpb::types::DataType;
-use analyser::types::DimFact;
 use analyser::interface::path::Path;
 use analyser::interface::solver::Context;
 use analyser::interface::proxies::IntProxy;
-use analyser::interface::proxies::DimProxy;
 use analyser::interface::proxies::TypeProxy;
 
 
@@ -42,12 +40,10 @@ macro_rules! impl_datum {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Wrapped {
     Int(isize),
-    Dim(DimFact),
     Type(DataType),
 }
 
 impl_datum!(isize, Int);
-impl_datum!(DimFact, Dim);
 impl_datum!(DataType, Type);
 
 
@@ -206,12 +202,13 @@ impl<T> IntoExpression<VariableExpression<isize>> for T where T: IntProxy {
     }
 }
 
-/// Converts DimProxy to VariableExpression<DimFact>.
-impl<T> IntoExpression<VariableExpression<DimFact>> for T where T: DimProxy {
-    fn into_expr(self) -> VariableExpression<DimFact> {
-        VariableExpression(self.get_path().to_vec(), PhantomData)
-    }
-}
+// FIXME(liautaud): Use a DimProxy to handle streaming.
+// /// Converts DimProxy to VariableExpression<DimFact>.
+// impl<T> IntoExpression<VariableExpression<DimFact>> for T where T: DimProxy {
+//     fn into_expr(self) -> VariableExpression<DimFact> {
+//         VariableExpression(self.get_path().to_vec(), PhantomData)
+//     }
+// }
 
 /// Converts TypeProxy to VariableExpression<DataType>.
 impl<T> IntoExpression<VariableExpression<DataType>> for T where T: TypeProxy {

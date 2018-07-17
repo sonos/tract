@@ -156,8 +156,7 @@ impl_proxy!(TensorProxy);
 
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
-    // FIXME(liautaud): Use a BaseDimProxy instead, because we don't handle
-    // streaming dimensions with the current approach.
+    // FIXME(liautaud): Use a BaseDimProxy to handle streaming.
     dims: Cache<usize, BaseIntProxy>,
     path: Path,
 }
