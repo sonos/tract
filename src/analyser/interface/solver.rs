@@ -1,248 +1,40 @@
-use std::collections::HashMap;
 use num_traits::Num;
-use num_traits::cast::ToPrimitive;
 
 use Result;
 use tfpb::types::DataType;
-use analyser::types::{TensorFact, ShapeFact};
-use analyser::interface::path::Path;
-use analyser::interface::path::get_value_at_path;
+use analyser::types::TensorFact;
+use analyser::interface::path::*;
+use analyser::interface::path::get_path;
+use analyser::interface::path::set_path;
 use analyser::interface::expressions::Datum;
-use analyser::interface::expressions::Wrapped;
 use analyser::interface::expressions::Expression;
 use analyser::interface::expressions::IntoExpression;
 
-/// A structure that holds the current value of tensor properties.
+/// A structure that holds the current sets of TensorFacts.
 ///
 /// This is used during inference (see `Solver::infer`) to let rules compute
 /// the value of expressions which involve tensor properties.
-#[derive(Debug)]
+#[derive(Debug, new)]
 pub struct Context {
-    dirty: bool,
-    values: HashMap<Path, Option<Wrapped>>,
+    #[new(value = "false")]
+    pub dirty: bool,
+    pub inputs: Vec<TensorFact>,
+    pub outputs: Vec<TensorFact>,
 }
 
 impl Context {
-    /// Creates a new context using variables involved in the given rules.
-    /// Uses the `facts` argument to get the current value of those variables.
-    pub fn from(
-        rules: &Vec<Box<Rule>>,
-        facts: &(Vec<TensorFact>, Vec<TensorFact>)
-    ) -> Result<Context> {
-        let mut context = Context {
-            // FIXME(liautaud)
-            // dirty: false,
-            dirty: true,
-            values: HashMap::new(),
-        };
-
-        for rule in rules {
-            context.update(rule, facts)?;
-        }
-
-        Ok(context)
-    }
-
-    /// Updates the context by adding the variables involved in the given rule.
-    /// Uses the `facts` argument to get the current value of those variables.
-    pub fn update(
-        &mut self,
-        rule: &Box<Rule>,
-        facts: &(Vec<TensorFact>, Vec<TensorFact>)
-    ) -> Result<()> {
-        for path in rule.get_paths() {
-            self.values.insert(
-                path.to_vec(),
-                get_value_at_path(path, facts)?
-            );
-        }
-
-        Ok(())
-    }
-
-    /// Dumps the current value of all variables into a set of TensorFacts.
-    pub fn dump(&self) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
-        #[derive(Debug)]
-        struct TensorDump {
-            datatype: Option<DataType>,
-            rank: Option<usize>,
-            dims: Vec<(usize, usize)>,
-            values: HashMap<Vec<usize>, isize>,
-        }
-
-        let mut inputs_len = None;
-        let mut outputs_len = None;
-        let mut inputs = HashMap::<usize, TensorDump>::new();
-        let mut outputs = HashMap::<usize, TensorDump>::new();
-
-        macro_rules! to_usize {
-            ($isize:expr) => (isize::from_wrapped($isize).to_usize().unwrap())
-        };
-
-        /// Dumps the given variable into the right TensorDump.
-        fn dump_path(path: &[isize], dump: &mut TensorDump, value: Wrapped) -> Result<()> {
-            match path {
-                [0]      => dump.datatype = Some(DataType::from_wrapped(value)),
-                [1]      => dump.rank = Some(to_usize!(value)),
-                [2, i]   => dump.dims.push((i.to_usize().unwrap(), to_usize!(value))),
-                [3, s..] => {
-                    let path = s.iter().map(|v| v.to_usize().unwrap()).collect::<Vec<_>>();
-                    dump.values.insert(path, isize::from_wrapped(value));
-                },
-                _ => bail!("Unknown path for a given tensor: {:?}.", path)
-            };
-
-            Ok(())
-        }
-
-        // Iterate over all the values defined in the context, and store them
-        // inside a set of TensorDumps. We will translate those dumps into
-        // TensorFacts once all the values are dumped.
-        for (path, value) in self.values.iter() {
-            match &path[..] {
-                [0, -1] => inputs_len = value.map(|v| to_usize!(v)),
-                [1, -1] => outputs_len = value.map(|v| to_usize!(v)),
-
-                [i, j, sub..] => {
-                    let target = if *i == 0 {
-                        &mut inputs
-                    } else if *i == 1 {
-                        &mut outputs
-                    } else {
-                        panic!();
-                    };
-
-                    let values = target
-                        .entry(*j as usize)
-                        .or_insert_with(|| TensorDump {
-                            datatype: None,
-                            rank: None,
-                            dims: vec![],
-                            values: HashMap::new(),
-                        });
-
-                    if let Some(v) = value {
-                        dump_path(sub, values, *v)?;
-                    }
-                },
-                _ => bail!("Unknown path: {:?}.", path)
-            };
-        }
-
-        /// Transforms the given TensorDump into a TensorFact.
-        fn dump_to_fact(dump: &mut TensorDump) -> Result<TensorFact> {
-            let mut fact = TensorFact::new();
-
-            // Fill the datatype.
-            fact.datatype = dump.datatype
-                .map(|dt| typefact!(dt))
-                .unwrap_or(typefact!(_));
-
-            // Fill the shape.
-            dump.dims.sort_unstable_by_key(|(k, _)| *k);
-            let max_index = dump.dims.iter().map(|&(k, _)| k).max();
-
-            let (open, mut dims) = if let Some(rank) = dump.rank {
-                if max_index.is_some() && max_index.unwrap() >= rank {
-                    bail!("The tensor {:?} is supposed to have rank {:?}, but a rule \
-                           mentions dimension {:?} which is absurd.", dump, rank, max_index.unwrap());
-                }
-
-                (false, vec![dimfact!(_); rank])
-            } else if let Some(m) = max_index {
-                (true, vec![dimfact!(_); m + 1])
-            } else {
-                (true, vec![])
-            };
-
-            for &(i, dim) in &dump.dims {
-                dims[i] = dimfact!(dim);
-            }
-
-            fact.shape = ShapeFact { open, dims };
-
-            // Try to fill the value.
-            // Since we can't really do anything with partial information about the value,
-            // we'll only fill fact.value if we know every coordinate of the value.
-            // FIXME(liautaud)
-            fact.value = valuefact!(_);
-
-            Ok(fact)
-        }
-
-        /// Transforms the given hashmap of TensorDumps into a list of TensorFacts of the right size.
-        fn dumps_to_facts(
-            length: Option<usize>,
-            map: HashMap<usize, TensorDump>
-        ) -> Result<Vec<TensorFact>> {
-            let mut dumps: Vec<_> = map.into_iter().collect();
-            dumps.sort_unstable_by_key(|(k, _)| *k);
-
-            let max_index = dumps.iter().map(|&(k, _)| k).max();
-            println!("{:?}", max_index);
-
-            let mut facts = if let Some(l) = length {
-                if max_index.is_some() && max_index.unwrap() >= l {
-                    bail!("There should only be {:?} facts mentionned in the rules, but \
-                           there is a {:?}-th fact mentionned somewhere.", l, max_index.unwrap());
-                }
-
-                vec![TensorFact::new(); l]
-            } else if let Some(m) = max_index {
-                vec![TensorFact::new(); m + 1]
-            } else {
-                vec![]
-            };
-
-            for (i, mut dump) in dumps {
-                facts[i] = dump_to_fact(&mut dump)?;
-            }
-
-            Ok(facts)
-        }
-
-        Ok((
-            dumps_to_facts(inputs_len, inputs)?,
-            dumps_to_facts(outputs_len, outputs)?
-        ))
-    }
-
-    /// Returns whether the value of at least one variable has changed since
-    /// the Context was created.
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
-    }
-
-    /// Returns the current value of the variables at the given path.
+    /// Returns the current value of the variable at the given path.
     pub fn get<T: Datum>(&self, path: &Path) -> Result<Option<T>> {
-        match self.values.get(path) {
-            None => bail!("The variable at path {:?} doesn't exist in the context.", path),
-            Some(v) => Ok(v.map(
-                |wrapped| T::from_wrapped(wrapped)
-            )),
-        }
+        let value = get_path(self, &path[..])?;
+
+        Ok(value.map(|v| T::from_wrapped(v)))
     }
 
     /// Tries to set the value of the variable at the given path.
     pub fn set<T: Datum>(&mut self, path: &Path, value: T) -> Result<()> {
-        match self.values.get_mut(path) {
-            // The variable doesn't exist.
-            None => bail!("The variable at path {:?} doesn't exist in the context.", path),
+        self.dirty |= set_path(self, &path[..], T::into_wrapped(value))?;
 
-            // The variable already has the same value.
-            Some(Some(prev)) if T::from_wrapped(*prev) == value => Ok(()),
-
-            // The variable already has another value.
-            Some(Some(prev)) => bail!("The variable at path {:?} has value {:?}, so it can't \
-                                      receive the value {:?}.", path, prev, value),
-
-            // The variable doesn't yet have a value.
-            Some(slot) => {
-                self.dirty = true;
-                *slot = Some(T::into_wrapped(value));
-                Ok(())
-            }
-        }
+        Ok(())
     }
 }
 
@@ -436,9 +228,7 @@ impl Solver {
         self,
         facts: (Vec<TensorFact>, Vec<TensorFact>),
     ) -> Result<Option<(Vec<TensorFact>, Vec<TensorFact>)>> {
-        // Create a Context using the variables involved in the rules and
-        // fill it using the input TensorFacts.
-        let mut context = Context::from(&self.rules, &facts)?;
+        let mut context = Context::new(facts.0, facts.1);
 
         // Apply the rules until reaching a fixed point.
         let mut changed = true;
@@ -464,13 +254,12 @@ impl Solver {
         }
 
         for rule in added_rules.drain(..) {
-            context.update(&rule, &facts)?;
             rules.push((false, rule));
         }
 
-        // Dump the output TensorFacts from the context.
-        if context.is_dirty() {
-            Ok(Some(context.dump()?))
+        // FIXME(liautaud): This is supposed to work.
+        if true || context.dirty {
+            Ok(Some((context.inputs, context.outputs)))
         } else {
             Ok(None)
         }
