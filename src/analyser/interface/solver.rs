@@ -30,7 +30,9 @@ impl Context {
         facts: &(Vec<TensorFact>, Vec<TensorFact>)
     ) -> Result<Context> {
         let mut context = Context {
-            dirty: false,
+            // FIXME(liautaud)
+            // dirty: false,
+            dirty: true,
             values: HashMap::new(),
         };
 
@@ -140,15 +142,15 @@ impl Context {
             dump.dims.sort_unstable_by_key(|(k, _)| *k);
             let max_index = dump.dims.iter().map(|&(k, _)| k).max();
 
-            let (open, mut dims) = if let (Some(m), Some(rank)) = (max_index, dump.rank) {
-                if m >= rank {
+            let (open, mut dims) = if let Some(rank) = dump.rank {
+                if max_index.is_some() && max_index.unwrap() >= rank {
                     bail!("The tensor {:?} is supposed to have rank {:?}, but a rule \
-                           mentions dimension {:?} which is absurd.", dump, rank, m);
+                           mentions dimension {:?} which is absurd.", dump, rank, max_index.unwrap());
                 }
 
                 (false, vec![dimfact!(_); rank])
             } else if let Some(m) = max_index {
-                (true, vec![dimfact!(_); m])
+                (true, vec![dimfact!(_); m + 1])
             } else {
                 (true, vec![])
             };
@@ -177,16 +179,17 @@ impl Context {
             dumps.sort_unstable_by_key(|(k, _)| *k);
 
             let max_index = dumps.iter().map(|&(k, _)| k).max();
+            println!("{:?}", max_index);
 
-            let mut facts = if let (Some(m), Some(l)) = (max_index, length) {
-                if m >= l {
+            let mut facts = if let Some(l) = length {
+                if max_index.is_some() && max_index.unwrap() >= l {
                     bail!("There should only be {:?} facts mentionned in the rules, but \
-                           there is a {:?}-th fact mentionned somewhere.", l, m);
+                           there is a {:?}-th fact mentionned somewhere.", l, max_index.unwrap());
                 }
 
                 vec![TensorFact::new(); l]
             } else if let Some(m) = max_index {
-                vec![TensorFact::new(); m]
+                vec![TensorFact::new(); m + 1]
             } else {
                 vec![]
             };
@@ -545,11 +548,155 @@ impl Solver {
     where
         T: Datum,
         E: Expression<Output = T>,
-        A: Into<E>,
+        A: IntoExpression<E>,
         F: Fn(&mut Solver, T) -> ()
     {
-        let rule = GivenRule::new(item.into(), closure);
+        let rule = GivenRule::new(item.into_expr(), closure);
         self.rules.push(Box::new(rule));
         self
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use analyser::interface::TensorsProxy;
+
+    fn bootstrap() -> (Solver, TensorsProxy, TensorsProxy) {
+        (Solver::new(),
+         TensorsProxy::new(vec![0]),
+         TensorsProxy::new(vec![1]))
+    }
+
+    #[test]
+    #[should_panic]
+    fn solver_wrong_size_1() {
+        let (mut solver, inputs, _) = bootstrap();
+        solver.equals(&inputs.len, 2);
+        solver.infer((vec![], vec![])).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn solver_wrong_size_2() {
+        let (mut solver, inputs, _) = bootstrap();
+        solver.equals(&inputs[0].rank, 2);
+        solver.infer((vec![], vec![])).unwrap();
+    }
+
+    #[test]
+    fn solver_exact_size() {
+        let (mut solver, inputs, _) = bootstrap();
+        solver.equals(&inputs.len, 1);
+
+        let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
+        assert_eq!(facts, Some((vec![TensorFact::new()], vec![])));
+    }
+
+    #[test]
+    fn solver_dynamic_size() {
+        let (mut solver, inputs, _) = bootstrap();
+        solver.equals(&inputs[1].datatype, DataType::DT_INT32);
+
+        let facts = solver.infer((vec![TensorFact::new(), TensorFact::new()], vec![])).unwrap();
+        let expected = (
+            vec![
+                TensorFact::new(),
+                TensorFact {datatype: typefact!(DataType::DT_INT32), ..TensorFact::new()}
+            ],
+            vec![]
+        );
+
+        assert_eq!(facts, Some(expected));
+    }
+
+    #[test]
+    fn solver_exact_rank() {
+        let (mut solver, inputs, _) = bootstrap();
+        solver.equals(&inputs[0].rank, 2);
+
+        let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
+        let expected = (
+            vec![TensorFact {shape: shapefact![_, _], ..TensorFact::new()}],
+            vec![]
+        );
+
+        assert_eq!(facts, Some(expected));
+    }
+
+    #[test]
+    fn solver_dynamic_rank() {
+        let (mut solver, inputs, _) = bootstrap();
+        solver.equals(&inputs[0].shape[1], 0);
+
+        let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
+        let expected = (
+            vec![TensorFact {shape: shapefact![_, 0; ..], ..TensorFact::new()}],
+            vec![]
+        );
+
+        assert_eq!(facts, Some(expected));
+    }
+
+    #[test]
+    fn solver_ranks() {
+        let (mut solver, inputs, _) = bootstrap();
+        solver.equals(&inputs[0].rank, 3);
+        solver.equals(&inputs[0].shape[0], &inputs[0].shape[1]);
+        solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]);
+        solver.equals(&inputs[0].shape[1], 3);
+
+        let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
+        let expected = (
+            vec![TensorFact {shape: shapefact![3, 3, 3], ..TensorFact::new()}],
+            vec![]
+        );
+
+        assert_eq!(facts, Some(expected));
+    }
+
+    #[test]
+    #[should_panic]
+    fn solver_wrong_constant() {
+        let (mut solver, _, _) = bootstrap();
+        solver.equals(1, 2);
+        solver.infer((vec![], vec![])).unwrap();
+    }
+
+    #[test]
+    fn solver_right_constant() {
+        let (mut solver, _, _) = bootstrap();
+        solver.equals(2, 2);
+        solver.infer((vec![], vec![])).unwrap();
+    }
+
+    #[test]
+    fn solver_backward_1() {
+        let (mut solver, inputs, outputs) = bootstrap();
+        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]);
+
+        let facts = solver.infer((vec![TensorFact::new()], vec![TensorFact::new()])).unwrap();
+        let expected = (
+            vec![TensorFact::new()],
+            vec![TensorFact::new()]
+        );
+
+        assert_eq!(facts, Some(expected));
+    }
+
+    #[test]
+    fn solver_backward_2() {
+        let (mut solver, inputs, outputs) = bootstrap();
+        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]);
+
+        let output = TensorFact { shape: shapefact![_, 2, _], ..TensorFact::new() };
+        let facts = solver.infer((vec![TensorFact::new()], vec![output.clone()])).unwrap();
+        let expected = (
+            vec![TensorFact { shape: shapefact![_, 2; ..], ..TensorFact::new() }],
+            vec![output.clone()]
+        );
+
+        assert_eq!(facts, Some(expected));
     }
 }

@@ -30,7 +30,7 @@ pub fn get_value_at_path(
         match path[0] {
             -1 => return_wrapped!(isize, facts.len()),
 
-            k if k > 0 && (k.to_usize().unwrap()) < facts.len() =>
+            k if k >= 0 && (k.to_usize().unwrap()) < facts.len() =>
                 get_tensorfact_property_at_path(&path[1..], &facts[k.to_usize().unwrap()]),
 
             k => bail!("Invalid TensorFact index: {:?}.", k),
