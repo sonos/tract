@@ -17,6 +17,8 @@ mod path;
 mod cache;
 mod proxies;
 mod expressions;
+#[macro_use]
 mod solver;
 pub use self::proxies::*;
 pub use self::solver::*;
+pub use self::expressions::IntoExpression;

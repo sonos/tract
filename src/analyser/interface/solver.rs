@@ -7,6 +7,17 @@ use analyser::interface::expressions::Datum;
 use analyser::interface::expressions::Expression;
 use analyser::interface::expressions::IntoExpression;
 
+#[macro_export]
+macro_rules! wrap {
+    ($($x:expr),*) => ({
+        #[allow(unused_imports)]
+        use $crate::analyser::interface::IntoExpression;
+        vec![$(Box::new($x.into_expr())),*]
+    });
+
+    ($($x:expr,)*) => (wrap![$($x),*]);
+}
+
 /// A structure that holds the current sets of TensorFacts.
 ///
 /// This is used during inference (see `Solver::infer`) to let rules compute
@@ -270,8 +281,7 @@ impl Solver {
         A: IntoExpression<EA>,
         B: IntoExpression<EB>,
     {
-        let items: Vec<Box<Expression<Output = T>>> =
-            vec![Box::new(left.into_expr()), Box::new(right.into_expr())];
+        let items: Vec<Box<Expression<Output = T>>> = wrap![left, right];
 
         let rule = EqualsRule::new(items);
         self.rules.push(Box::new(rule));

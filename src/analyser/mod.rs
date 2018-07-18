@@ -15,7 +15,7 @@ pub use self::types::*;
 pub mod macros;
 #[macro_use]
 pub mod helpers;
-
+#[macro_use]
 pub mod interface;
 
 /// Attempts to unify two tensor facts into a more specialized one.
