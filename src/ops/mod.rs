@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::mem;
 
 use analyser::TensorFact;
+use analyser::interface::{Solver, TensorsProxy};
 use ops::nn::local_patch::{DataFormat, Padding};
 use tfpb::types::DataType;
 use {Result, Tensor};
@@ -182,6 +183,31 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
     /// Returns Err in case of an unrecoverable error during the inference,
     /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
     fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
+
+    /// Registers the inference rules of the operator.
+    fn rules<'s>(&self, _: &mut Solver<'s>, _: &'s TensorsProxy, _: &'s TensorsProxy) {
+        unimplemented!()
+    }
+
+    /// Infers properties about the input and output tensors.
+    ///
+    /// The `inputs` and `outputs` arguments correspond to properties about
+    /// the input and output tensors that are already known.
+    ///
+    /// Returns Err in case of an unrecoverable error during the inference,
+    /// and the refined properties about the inputs and outputs otherwise.
+    fn infer(
+        &self,
+        inputs: Vec<TensorFact>,
+        outputs: Vec<TensorFact>,
+    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        let inputs_proxy = TensorsProxy::new(vec![0]);
+        let outputs_proxy = TensorsProxy::new(vec![1]);
+
+        let mut solver = Solver::new();
+        self.rules(&mut solver, &inputs_proxy, &outputs_proxy);
+        solver.infer((inputs, outputs))
+    }
 }
 
 clone_trait_object!(Op);

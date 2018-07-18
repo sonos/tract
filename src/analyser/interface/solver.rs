@@ -171,16 +171,16 @@ impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
-struct GivenRule<T: Datum, E: Expression<Output = T>> {
+struct GivenRule<'a, T: Datum, E: Expression<Output = T>> {
     item: E,
-    closure: Box<Fn(&mut Solver, T) -> ()>,
+    closure: Box<Fn(&mut Solver, T) + 'a>,
 }
 
-impl<T: Datum, E: Expression<Output = T>> GivenRule<T, E> {
+impl<'a, T: Datum, E: Expression<Output = T>> GivenRule<'a, T, E> {
     /// Creates a new GivenRule instance.
-    pub fn new<F: 'static>(item: E, closure: F) -> GivenRule<T, E>
+    pub fn new<F: 'a>(item: E, closure: F) -> GivenRule<'a, T, E>
     where
-        F: Fn(&mut Solver, T) -> ()
+        F: Fn(&mut Solver, T)
     {
         let closure = Box::new(closure);
 
@@ -188,7 +188,7 @@ impl<T: Datum, E: Expression<Output = T>> GivenRule<T, E> {
     }
 }
 
-impl<T: Datum, E: Expression<Output = T>> Rule for GivenRule<T, E> {
+impl<'a, T: Datum, E: Expression<Output = T>> Rule for GivenRule<'a, T, E> {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
         if let Some(value) = self.item.get(context)? {
@@ -212,15 +212,15 @@ impl<T: Datum, E: Expression<Output = T>> Rule for GivenRule<T, E> {
 
 /// A declarative constraint solver for tensors.
 #[derive(new)]
-pub struct Solver {
+pub struct Solver<'s> {
     // The rules used by the solver.
     #[new(default)]
-    rules: Vec<Box<Rule>>,
+    rules: Vec<Box<Rule + 's>>,
 }
 
-impl Solver {
+impl<'s> Solver<'s> {
     /// Consumes the solver and returns the rules that it uses.
-    pub fn take_rules(self) -> Vec<Box<Rule>> {
+    pub fn take_rules(self) -> Vec<Box<Rule + 's>> {
         self.rules
     }
 
@@ -273,7 +273,7 @@ impl Solver {
     /// solver.equals(outputs[0].rank, inputs[1].shape[0]);
     /// solver.equals(outputs[1].rank, 3);
     /// ```
-    pub fn equals<T: 'static, EA: 'static, EB: 'static, A, B>(&mut self, left: A, right: B) -> &mut Solver
+    pub fn equals<T: 'static, EA: 'static, EB: 'static, A, B>(&mut self, left: A, right: B) -> &mut Solver<'s>
     where
         T: Datum,
         EA: Expression<Output = T>,
@@ -298,7 +298,7 @@ impl Solver {
     ///     3.into(),
     /// ]);
     /// ```
-    pub fn equals_all<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver
+    pub fn equals_all<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'s>
     where
         T: Datum,
     {
@@ -317,7 +317,7 @@ impl Solver {
     ///     (-1, inputs[1].shape[0]).into(),
     /// ]);
     /// ```
-    pub fn equals_zero<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver
+    pub fn equals_zero<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'s>
     where
         T: Datum + Num,
     {
@@ -333,12 +333,12 @@ impl Solver {
     /// solver.given(input.rank, |solver, ir|
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
-    pub fn given<T: 'static, E: 'static, A, F: 'static>(&mut self, item: A, closure: F) -> &mut Solver
+    pub fn given<T: 'static, E: 'static, A, F: 's>(&mut self, item: A, closure: F) -> &mut Solver<'s>
     where
         T: Datum,
         E: Expression<Output = T>,
         A: IntoExpression<E>,
-        F: Fn(&mut Solver, T) -> ()
+        F: Fn(&mut Solver, T)
     {
         let rule = GivenRule::new(item.into_expr(), closure);
         self.rules.push(Box::new(rule));
@@ -354,7 +354,7 @@ mod tests {
     use analyser::interface::TensorsProxy;
     use tfpb::types::DataType;
 
-    fn bootstrap() -> (Solver, TensorsProxy, TensorsProxy) {
+    fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
         (Solver::new(),
          TensorsProxy::new(vec![0]),
          TensorsProxy::new(vec![1]))
