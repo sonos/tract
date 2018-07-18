@@ -47,7 +47,7 @@ pub type Path = Vec<isize>;
 
 /// Returns the value at the given path (starting from a context).
 pub fn get_path(context: &Context, path: &[isize]) -> Result<Option<Wrapped>> {
-    match &path[..] {
+    match path {
         [0, sub..] => get_tensorfacts_path(&context.inputs, sub),
         [1, sub..] => get_tensorfacts_path(&context.outputs, sub),
         _ => bail!("The first component of path {:?} should be 0 (for the `inputs` \
@@ -57,7 +57,7 @@ pub fn get_path(context: &Context, path: &[isize]) -> Result<Option<Wrapped>> {
 
 /// Sets the value at the given path (starting from a context).
 pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> Result<()> {
-    match &path[..] {
+    match path {
         [0, sub..] => set_tensorfacts_path(&mut context.inputs, sub, value),
         [1, sub..] => set_tensorfacts_path(&mut context.outputs, sub, value),
         _ => bail!("The first component of path {:?} should be 0 (for the `inputs` \
@@ -67,7 +67,7 @@ pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> Result
 
 /// Returns the value at the given path (starting from a set of TensorFacts).
 fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Option<Wrapped>> {
-    match &path[..] {
+    match path {
         // Get the number of facts in the set.
         [-1] => wrap_isize!(facts.len()),
 
@@ -89,7 +89,7 @@ fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Optio
 
 /// Sets the value at the given path (starting from a set of TensorFacts).
 fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrapped) -> Result<()> {
-    match &path[..] {
+    match path {
         // Set the number of facts in the set.
         [-1] => {
             let value = isize::from_wrapped(value).to_usize().unwrap();
@@ -120,7 +120,7 @@ fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrap
 
 /// Returns the value at the given path (starting from a TensorFact).
 fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Option<Wrapped>> {
-    match &path[..] {
+    match path {
         // Get the type of the TensorFact.
         [0] => wrap_type_option!(fact.datatype),
 
@@ -141,7 +141,7 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Option<Wrapp
 
 /// Sets the value at the given path (starting from a TensorFact).
 fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> Result<()> {
-    match &path[..] {
+    match path {
         // Set the type of the TensorFact.
         [0] => {
             let value = DataType::from_wrapped(value);
@@ -166,7 +166,15 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             Ok(())
         },
 
-        // Set a dimension of the TensorFact.
+        // Set the whole shape of the TensorFact.
+        [2] => {
+            let shape = ShapeFact::from_wrapped(value);
+            fact.shape = unify_shape(&fact.shape, &shape)?;
+
+            Ok(())
+        },
+
+        // Set a precise dimension of the TensorFact.
         [2, k] => {
             let k = k.to_usize().unwrap();
             let d = isize::from_wrapped(value).to_usize().unwrap();
@@ -190,17 +198,34 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
     }
 }
 
-/// Returns the dimension at the given path (starting from a ShapeFact).
+/// Returns the shape or dimension at the given path (starting from a ShapeFact).
 fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> Result<Option<Wrapped>> {
-    let k = path[0].to_usize().unwrap();
+    match path {
+        // Get the whole shape.
+        [] => {
+            if *shape == shapefact![..] {
+                Ok(None)
+            } else {
+                Ok(Some(ShapeFact::into_wrapped(shape.clone())))
+            }
+        },
 
-    if k < shape.dims.len() {
-        // FIXME(liautaud): Return a DimFact directly to handle streaming.
-        wrap_isize_option!(shape.dims[k])
-    } else if shape.open {
-        Ok(None)
-    } else {
-        bail!("The closed shape {:?} has no {:?}-th dimension.", shape.dims, k);
+        // Get a precise dimension.
+        [k] => {
+            let k = k.to_usize().unwrap();
+
+            if k < shape.dims.len() {
+                // FIXME(liautaud): Return a DimFact directly to handle streaming.
+                wrap_isize_option!(shape.dims[k])
+            } else if shape.open {
+                Ok(None)
+            } else {
+                bail!("The closed shape {:?} has no {:?}-th dimension.", shape.dims, k);
+            }
+        },
+
+        _ => bail!("The subpath {:?} for the shape should either be [] (for the \
+                    entire shape) or [k] with k the index of a dimension.", path)
     }
 }
 

@@ -211,6 +211,7 @@ impl Index<usize> for ValueProxy {
 
 impl_proxy!(ValueProxy);
 impl IntProxy for ValueProxy {}
+impl<'a> IntProxy for &'a ValueProxy {}
 
 
 #[cfg(test)]

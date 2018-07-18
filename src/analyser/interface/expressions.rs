@@ -6,14 +6,17 @@ use num_traits::CheckedDiv;
 
 use Result;
 use tfpb::types::DataType;
+use analyser::types::ShapeFact;
 use analyser::interface::path::Path;
 use analyser::interface::solver::Context;
+use analyser::interface::proxies::Proxy;
 use analyser::interface::proxies::IntProxy;
 use analyser::interface::proxies::TypeProxy;
+use analyser::interface::proxies::ShapeProxy;
 
 
 /// The types of values that expressions can produce.
-pub trait Datum: Debug + Clone + Copy + PartialEq {
+pub trait Datum: Debug + Clone + PartialEq {
     fn into_wrapped(source: Self) -> Wrapped;
     fn from_wrapped(wrapped: Wrapped) -> Self;
 }
@@ -37,14 +40,21 @@ macro_rules! impl_datum {
 }
 
 /// A wrapper for all the types of values that expressions can produce.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Wrapped {
     Int(isize),
     Type(DataType),
+
+    // FIXME(liautaud): This approach is a bit buggy at the moment,
+    // because we only get the first non-None value inside the rules,
+    // and copy it everywhere else, whereas we should unify all the
+    // shapes with each other.
+    Shape(ShapeFact),
 }
 
 impl_datum!(isize, Int);
 impl_datum!(DataType, Type);
+impl_datum!(ShapeFact, Shape);
 
 
 /// An expression that can be compared by the solver.
@@ -71,7 +81,7 @@ impl<T: Datum> Expression for ConstantExpression<T> {
 
     /// Returns the current value of the expression in the given context.
     fn get(&self, _: &Context) -> Result<Option<T>> {
-        Ok(Some(self.0))
+        Ok(Some(self.0.clone()))
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -134,15 +144,15 @@ where
     fn get(&self, context: &Context) -> Result<Option<T>> {
         let inner = self.1.get(context)?;
 
-        Ok(inner.map(|v| v * self.0))
+        Ok(inner.map(|v| v * self.0.clone()))
     }
 
     /// Tries to set the value of the expression in the given context.
     fn set(&self, context: &mut Context, value: T) -> Result<()> {
-        let k = self.0;
+        let k = &self.0;
         let m = value;
 
-        if m == T::zero() && k == T::zero() {
+        if m == T::zero() && *k == T::zero() {
             // We want to set 0 * x <- 0, so we don't have to do anything.
             Ok(())
         } else if m == T::zero() {
@@ -181,10 +191,17 @@ pub trait IntoExpression<T> {
     fn into_expr(self) -> T;
 }
 
+// /// Converts usize to ConstantExpression<isize>.
+// impl IntoExpression<ConstantExpression<isize>> for usize {
+//     fn into_expr(self) -> ConstantExpression<isize> {
+//         ConstantExpression(self.to_isize().unwrap())
+//     }
+// }
+
 /// Converts &T to ConstantExpression<T>.
 impl<'a, T> IntoExpression<ConstantExpression<T>> for &'a T where T: Datum {
     fn into_expr(self) -> ConstantExpression<T> {
-        ConstantExpression(*self)
+        ConstantExpression(self.clone())
     }
 }
 
@@ -213,6 +230,20 @@ impl<T> IntoExpression<VariableExpression<isize>> for T where T: IntProxy {
 /// Converts TypeProxy to VariableExpression<DataType>.
 impl<T> IntoExpression<VariableExpression<DataType>> for T where T: TypeProxy {
     fn into_expr(self) -> VariableExpression<DataType> {
+        VariableExpression(self.get_path().to_vec(), PhantomData)
+    }
+}
+
+/// Converts ShapeProxy to VariableExpression<ShapeFact>.
+impl IntoExpression<VariableExpression<ShapeFact>> for ShapeProxy {
+    fn into_expr(self) -> VariableExpression<ShapeFact> {
+        VariableExpression(self.get_path().to_vec(), PhantomData)
+    }
+}
+
+/// Converts &ShapeProxy to VariableExpression<ShapeFact>.
+impl<'a> IntoExpression<VariableExpression<ShapeFact>> for &'a ShapeProxy {
+    fn into_expr(self) -> VariableExpression<ShapeFact> {
         VariableExpression(self.get_path().to_vec(), PhantomData)
     }
 }

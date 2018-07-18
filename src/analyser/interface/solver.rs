@@ -92,7 +92,7 @@ impl<T: Datum> Rule for EqualsRule<T> {
         if let Some(value) = first {
             // All the items should have the same value.
             for item in &self.items {
-                item.set(context, value)?;
+                item.set(context, value.clone())?;
             }
 
             Ok((true, vec![]))
@@ -136,7 +136,7 @@ impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
 
         for item in &self.items {
             if let Some(value) = item.get(context)? {
-                values.push(value);
+                values.push(value.clone());
                 sum = sum + value;
             } else {
                 misses.push(item);

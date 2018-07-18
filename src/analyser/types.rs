@@ -41,7 +41,7 @@ impl TensorFact {
 
 /// Partial information about a type.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TypeFact {
     Any,
     Only(DataType),
@@ -159,7 +159,7 @@ impl<'a> From<&'a [Option<usize>]> for ShapeFact {
 
 /// Partial information about a dimension.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DimFact {
     Any,
     Streamed,
