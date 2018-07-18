@@ -232,11 +232,26 @@ macro_rules! assert_forward {
         assert_eq!(
             $op.infer(
                 vec![$input.clone()],
-                vec![TensorFact::new()
-            ]).unwrap(),
-            (
+                vec![TensorFact::new()],
+            ).unwrap(), (
                 vec![$input.clone()],
-                vec![$output]
+                vec![$output],
+            )
+        )
+    );
+}
+
+/// Asserts that backward inference results work as expected.
+#[allow(unused_macros)]
+macro_rules! assert_backward {
+    ($op:expr, $input:ident, $output:ident) => (
+        assert_eq!(
+            $op.infer(
+                vec![TensorFact::new()],
+                vec![$output.clone()],
+            ).unwrap(), (
+                vec![$input],
+                vec![$output.clone()],
             )
         )
     );

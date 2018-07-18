@@ -745,4 +745,21 @@ mod tests {
 
         assert_forward!(Shape::build(&node()).unwrap(), input, output);
     }
+
+    #[test]
+    fn shape_inference_4() {
+        let input = TensorFact {
+            datatype: typefact!(_),
+            shape: shapefact![1, 2, 3],
+            value: valuefact!(_)
+        };
+
+        let output = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![3],
+            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap())
+        };
+
+        assert_backward!(Shape::build(&node()).unwrap(), input, output);
+    }
 }

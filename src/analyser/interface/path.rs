@@ -191,7 +191,8 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
         },
 
         // Set a value of the TensorFact.
-        [3, _..] => unimplemented!(),
+        // FIXME(liautaud): This should do something.
+        [3, _..] => Ok(()),
 
         _ => bail!("The subpath {:?} should start with 0, 1, 2 or 3 (for the type, \
                     rank, dimension or value of the fact respectively).", path)

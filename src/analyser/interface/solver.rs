@@ -254,13 +254,17 @@ impl<'s> Solver<'s> {
 
                 let (step_used, mut step_added) = rule.apply(&mut context)?;
                 *used |= step_used;
+
+                // There is a change if the rule was used, or if it added new rules.
                 changed |= step_used;
+                changed |= step_added.len() > 0;
+
                 added_rules.append(&mut step_added);
             }
-        }
 
-        for rule in added_rules.drain(..) {
-            rules.push((false, rule));
+            for rule in added_rules.drain(..) {
+                rules.push((false, rule));
+            }
         }
 
         Ok((context.inputs, context.outputs))
