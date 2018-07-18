@@ -7,6 +7,8 @@ use analyser::interface::expressions::Datum;
 use analyser::interface::expressions::Expression;
 use analyser::interface::expressions::IntoExpression;
 
+use std::fmt;
+
 #[macro_export]
 macro_rules! wrap {
     ($($x:expr),*) => ({
@@ -45,7 +47,7 @@ impl Context {
 }
 
 /// A rule that can be applied by the solver.
-pub trait Rule {
+pub trait Rule: fmt::Debug {
     /// Tries to apply the rule to a given context.
     ///
     /// The method must return Ok(true) if the rule was applied successfully
@@ -107,6 +109,12 @@ impl<T: Datum> Rule for EqualsRule<T> {
     }
 }
 
+impl<T: Datum> fmt::Debug for EqualsRule<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "EqualsRule {{ ... }}")
+    }
+}
+
 /// The `equals_zero` rule.
 /// It states that the sum of the given expressions must equal zero.
 ///
@@ -161,6 +169,12 @@ impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
     }
 }
 
+impl<T: Datum + Num> fmt::Debug for EqualsZeroRule<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "EqualsZeroRule {{ ... }}")
+    }
+}
+
 /// The `given` rule.
 /// It allows you to add more rules to the solver once the value of a given
 /// expression is known, using a closure that takes the value as parameter.
@@ -207,6 +221,12 @@ impl<'a, T: Datum, E: Expression<Output = T>> Rule for GivenRule<'a, T, E> {
     /// Returns the paths that the rule depends on.
     fn get_paths(&self) -> Vec<&Path> {
         self.item.get_paths()
+    }
+}
+
+impl<'a, T: Datum, E: Expression<Output = T>> fmt::Debug for GivenRule<'a, T, E> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "GivenRule {{ ... }}")
     }
 }
 
