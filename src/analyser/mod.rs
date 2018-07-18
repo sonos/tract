@@ -409,65 +409,50 @@ impl Analyser {
             node.name, node.op_name, self.current_pass, self.current_direction, self.current_step,
         );
 
-        let (source, target) = if self.current_direction {
-            (&self.prev_edges, &self.next_edges)
-        } else {
-            (&self.next_edges, &self.prev_edges)
-        };
+        let inputs: Vec<_> = self.prev_edges[node.id]
+            .iter()
+            .map(|&i| self.edges[i].fact.clone())
+            .collect();
 
-        let inferred = {
-            let sources: Vec<_> = source[node.id]
-                .iter()
-                .map(|&i| &self.edges[i].fact)
-                .collect();
+        // FIXME(liautaud): We should handle multiple output ports in the future.
+        let mut outputs = vec![TensorFact::new()];
+        for &i in &self.next_edges[node.id] {
+            outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
+        }
 
-            let inferred = if self.current_direction {
-                node.op.infer_forward(sources)
-                    .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?
-            } else {
-                node.op.infer_backward(sources)
-                    .map_err(|e| format!("While inferring backward for {}: {}", node.name, e))?
-            };
-
-            if inferred.is_none() {
-                return Ok(false);
-            }
-
-            inferred.unwrap()
-        };
+        let inferred = node.op
+            .infer(inputs, outputs)
+            .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?;
 
         let mut changed = false;
 
-        // TODO(liautaud): For now, we will assume that forward inference only
-        // produces a single output. We need to know this because several nodes
-        // might want to consume that single output, so we must copy it instead
-        // of expecting the node to produce several copies itself.
-        for (i, &j) in target[node.id].iter().enumerate() {
-            let fact = if self.current_direction {
-                if inferred.len() > 1 {
-                    panic!("Forward inference should not produce more than one output.");
-                }
-
-                &inferred[0]
-            } else {
-                &inferred[i]
-            };
-
+        for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
+            let fact = &inferred.0[i];
             let unified = unify(fact, &self.edges[j].fact)
                 .map_err(|e| format!(
-                    "While unifying {} for node {:?}: {}",
-                    if self.current_direction {
-                        "forward"
-                    } else {
-                        "backward"
-                    },
+                    "While unifying inputs of node {:?}: {}",
                     node.name, e
                 ))?;
 
-            if unified != self.edges[j].fact {
-                self.edges[j].fact = unified;
-                changed = true;
+            changed |= unified != self.edges[j].fact;
+            self.edges[j].fact = unified;
+        }
+
+        for (_, &j) in self.next_edges[node.id].iter().enumerate() {
+            // FIXME(liautaud): We should handle multiple output ports in the future.
+            if inferred.1.len() != 1 {
+                panic!("Inference only supports nodes with a single output port.");
             }
+
+            let fact = &inferred.1[0];
+            let unified = unify(fact, &self.edges[j].fact)
+                .map_err(|e| format!(
+                    "While unifying outputs of node {:?}: {}",
+                    node.name, e
+                ))?;
+
+            changed |= unified != self.edges[j].fact;
+            self.edges[j].fact = unified;
         }
 
         Ok(changed)
