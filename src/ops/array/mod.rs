@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::collections::HashMap;
 use ndarray::prelude::*;
 use std::iter::repeat;
+use num_traits::ToPrimitive;
 
 mod fill;
 mod pad;
@@ -12,6 +13,7 @@ use ops::{Attr, Op, OpBuffer, QueuesBuffer, OpRegister, TensorView};
 use analyser::helpers::infer_forward_concrete;
 use analyser::helpers::most_specific_shape;
 use analyser::{ShapeFact, TensorFact, ValueFact};
+use analyser::interface::{Solver, TensorsProxy};
 use tfpb::types::DataType;
 use tensor::Datum;
 use {Result, Tensor};
@@ -346,22 +348,23 @@ impl Op for Identity {
         }
     }
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() != 1 {
-            bail!("Identity operation only supports one input.");
-        }
+    /// Registers the inference rules of the operator.
+    fn rules(&self, solver: &mut Solver, inputs: &TensorsProxy, outputs: &TensorsProxy) {
+        solver
+            .equals(&inputs.len, 1)
+            .equals(&outputs.len, 1)
+            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[0].shape, &outputs[0].shape);
+    }
 
-        Ok(Some(inputs.into_iter().cloned().collect()))
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, _: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("Identity operation only supports one output.");
-        }
-
-        Ok(Some(outputs.into_iter().cloned().collect()))
+    fn infer_backward(&self, _: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
     }
 }
 
@@ -391,21 +394,22 @@ impl Op for Placeholder {
         }
     }
 
+    /// Registers the inference rules of the operator.
+    fn rules(&self, solver: &mut Solver, inputs: &TensorsProxy, outputs: &TensorsProxy) {
+        solver
+            .equals(&inputs.len, 0)
+            .equals(&outputs.len, 1)
+            .equals(&outputs[0].datatype, self.dtype);
+    }
+
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        let output = TensorFact {
-            datatype: typefact!(self.dtype),
-            shape: shapefact![..],
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
+        unimplemented!()
     }
 
     /// Infers properties about the input tensors from the output tensors.
     fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        debug!("Placeholder operation is a leaf, nothing to infer backwards.");
-        Ok(None)
+        unimplemented!()
     }
 }
 
@@ -538,6 +542,11 @@ impl Shape {
 }
 
 impl Op for Shape {
+    /// Returns the attributes of the operation and their values.
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!{}
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
@@ -545,69 +554,31 @@ impl Op for Shape {
         Ok(vec![Tensor::from(Array1::from_vec(shape)).into()])
     }
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() != 1 {
-            bail!("Shape operation only supports one input.");
-        }
+    /// Registers the inference rules of the operator.
+    fn rules<'s>(&self, solver: &mut Solver<'s>, inputs: &'s TensorsProxy, outputs: &'s TensorsProxy) {
+        solver
+            .equals(&inputs.len, 1)
+            .equals(&outputs.len, 1)
 
-        // We don't care about the concrete value, just the shape.
-        let shape: Vec<_> = unwrap_or_none!(inputs[0].shape.concretize())
-            .into_iter()
-            .map(|d| d as i32)
-            .collect();
-        let rank = shape.len();
-        let value = Tensor::from(Array1::from_vec(shape)).into();
+            .equals(&outputs[0].datatype, DataType::DT_INT32)
+            .equals(&outputs[0].rank, 1)
+            .equals(&outputs[0].shape[0], &inputs[0].rank)
 
-        // The output is the shape of the input.
-        // The shape of the output is the rank of the input.
-        let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
-            shape: shapefact![rank],
-            value: valuefact!(value),
-        };
-
-        Ok(Some(vec![output]))
+            .given(&inputs[0].rank, move |solver, ir| {
+                for i in 0..ir.to_usize().unwrap() {
+                    solver.equals(&outputs[0].value[i], &inputs[0].shape[i]);
+                }
+            });
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
+    /// Infers properties about the output tensors from the input tensors.
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
     }
 
     /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("Shape operation only supports one output.");
-        }
-
-        let dimensions: ShapeFact = match &outputs[0].value {
-            // If we know the output value, we can infer the shape of the input.
-            ValueFact::Only(v) => v.clone()
-                .take_i32s()
-                .ok_or("Shape operation should produce a 1-D integer tensor.")?
-                .into_dimensionality::<Ix1>()?
-                .into_iter()
-                .map(|d| *d as usize)
-                .collect(),
-
-            // Otherwise, we can only infer the rank of the input.
-            ValueFact::Any => {
-                let shape = unwrap_or_none!(outputs[0].shape.concretize());
-
-                if shape.len() != 1 {
-                    bail!("Shape operation should produce a 1-D integer tensor.");
-                }
-
-                ShapeFact::closed(vec![dimfact!(_); shape[0]])
-            }
-        };
-
-        Ok(Some(vec![TensorFact {
-            datatype: typefact!(_),
-            shape: dimensions,
-            value: valuefact!(_),
-        }]))
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
     }
 }
 
@@ -627,8 +598,7 @@ pub struct Squeeze<T: Datum> {
     t: PhantomData<T>,
 }
 
-impl<T:Datum> Squeeze<T> {
-
+impl<T: Datum> Squeeze<T> {
     /// Removes the dimensions of size 1 from the given shape vector.
     fn squeeze_shape(&self, mut shape: Vec<usize>, stream_dim: Option<usize>) -> Result<Vec<usize>> {
         if let Some(ref dims) = self.dims {
@@ -716,5 +686,63 @@ impl<T: Datum> Op for Squeeze<T> {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tfpb::node;
+
+    #[test]
+    fn shape_inference_1() {
+        let input = TensorFact {
+            datatype: typefact!(DataType::DT_FLOAT),
+            shape: shapefact![1, _, _; ..],
+            value: valuefact!(_)
+        };
+
+        let output = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![_],
+            value: valuefact!(_)
+        };
+
+        assert_forward!(Shape::build(&node()).unwrap(), input, output);
+    }
+
+    #[test]
+    fn shape_inference_2() {
+        let input = TensorFact {
+            datatype: typefact!(DataType::DT_FLOAT),
+            shape: shapefact![1, _, _],
+            value: valuefact!(_)
+        };
+
+        let output = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![3],
+            value: valuefact!(_)
+        };
+
+        assert_forward!(Shape::build(&node()).unwrap(), input, output);
+    }
+
+    #[test]
+    fn shape_inference_3() {
+        let input = TensorFact {
+            datatype: typefact!(DataType::DT_FLOAT),
+            shape: shapefact![1, 2, 3],
+            value: valuefact!(_)
+        };
+
+        let output = TensorFact {
+            datatype: typefact!(DataType::DT_INT32),
+            shape: shapefact![3],
+            // FIXME(liautaud)
+            value: valuefact!(_)
+        };
+
+        assert_forward!(Shape::build(&node()).unwrap(), input, output);
     }
 }
