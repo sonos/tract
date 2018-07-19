@@ -13,7 +13,7 @@ use ops::{Attr, Op, OpBuffer, QueuesBuffer, OpRegister, TensorView};
 use analyser::unify;
 use analyser::helpers::infer_forward_concrete;
 use analyser::helpers::most_specific_shape;
-use analyser::{ShapeFact, TensorFact, ValueFact};
+use analyser::{ShapeFact, TensorFact};
 use analyser::interface::{Solver, TensorsProxy};
 use tfpb::types::DataType;
 use tensor::Datum;
@@ -248,7 +248,7 @@ impl Op for ExpandDims {
     }
 
     /// Registers the inference rules of the operator.
-    fn rules<'s>(&self, solver: &mut Solver<'s>, inputs: &'s TensorsProxy, outputs: &'s TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         let data = &inputs[0];
         let dims = &inputs[1];
         let output = &outputs[1];
@@ -385,7 +385,7 @@ impl Op for Identity {
     }
 
     /// Registers the inference rules of the operator.
-    fn rules(&self, solver: &mut Solver, inputs: &TensorsProxy, outputs: &TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
@@ -421,7 +421,7 @@ impl Op for Placeholder {
     }
 
     /// Registers the inference rules of the operator.
-    fn rules(&self, solver: &mut Solver, inputs: &TensorsProxy, outputs: &TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 0)
             .equals(&outputs.len, 1)
@@ -576,7 +576,7 @@ impl Op for Shape {
     }
 
     /// Registers the inference rules of the operator.
-    fn rules<'s>(&self, solver: &mut Solver<'s>, inputs: &'s TensorsProxy, outputs: &'s TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)

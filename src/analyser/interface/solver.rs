@@ -47,13 +47,13 @@ impl Context {
 }
 
 /// A rule that can be applied by the solver.
-pub trait Rule: fmt::Debug {
+pub trait Rule<'rules>: fmt::Debug {
     /// Tries to apply the rule to a given context.
     ///
     /// The method must return Ok(true) if the rule was applied successfully
     /// (meaning that the Context was mutated), or Ok(false) if the rule was
     /// not applied but didn't generate any errors.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)>;
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)>;
 
     /// Returns the paths that the rule depends on.
     fn get_paths(&self) -> Vec<&Path>;
@@ -78,9 +78,9 @@ impl<T: Datum> EqualsRule<T> {
     }
 }
 
-impl<T: Datum> Rule for EqualsRule<T> {
+impl<'rules, T: Datum> Rule<'rules> for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         // Find an expression which already has a value in the context.
         let mut first = None;
 
@@ -133,9 +133,9 @@ impl<T: Datum + Num> EqualsZeroRule<T> {
     }
 }
 
-impl<T: Datum + Num> Rule for EqualsZeroRule<T> {
+impl<'rules, T: Datum + Num> Rule<'rules> for EqualsZeroRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         // Find all the expressions which have a value in the context.
         let mut values = vec![];
         let mut sum = T::zero();
@@ -185,16 +185,16 @@ impl<T: Datum + Num> fmt::Debug for EqualsZeroRule<T> {
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
-struct GivenRule<'a, T: Datum, E: Expression<Output = T>> {
-    item: E,
-    closure: Box<Fn(&mut Solver, T) + 'a>,
+pub struct GivenRule<'rules, T: Datum, E: Expression<Output = T>> {
+    pub item: E,
+    pub closure: Box<Fn(&mut Solver<'rules>, T) + 'rules>,
 }
 
-impl<'a, T: Datum, E: Expression<Output = T>> GivenRule<'a, T, E> {
+impl<'rules, T: Datum, E: Expression<Output = T>> GivenRule<'rules, T, E> {
     /// Creates a new GivenRule instance.
-    pub fn new<F: 'a>(item: E, closure: F) -> GivenRule<'a, T, E>
+    pub fn new<F>(item: E, closure: F) -> GivenRule<'rules, T, E>
     where
-        F: Fn(&mut Solver, T)
+        F: Fn(&mut Solver<'rules>, T) + 'rules
     {
         let closure = Box::new(closure);
 
@@ -202,9 +202,9 @@ impl<'a, T: Datum, E: Expression<Output = T>> GivenRule<'a, T, E> {
     }
 }
 
-impl<'a, T: Datum, E: Expression<Output = T>> Rule for GivenRule<'a, T, E> {
+impl<'rules, T: Datum, E: Expression<Output = T>> Rule<'rules> for GivenRule<'rules, T, E> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule>>)> {
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         if let Some(value) = self.item.get(context)? {
             // We create a new solver instance, which will be populated with
             // new rules by the code inside the closure.
@@ -224,7 +224,7 @@ impl<'a, T: Datum, E: Expression<Output = T>> Rule for GivenRule<'a, T, E> {
     }
 }
 
-impl<'a, T: Datum, E: Expression<Output = T>> fmt::Debug for GivenRule<'a, T, E> {
+impl<'s, T: Datum, E: Expression<Output = T>> fmt::Debug for GivenRule<'s, T, E> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GivenRule {{ ... }}")
     }
@@ -232,15 +232,15 @@ impl<'a, T: Datum, E: Expression<Output = T>> fmt::Debug for GivenRule<'a, T, E>
 
 /// A declarative constraint solver for tensors.
 #[derive(new)]
-pub struct Solver<'s> {
+pub struct Solver<'rules> {
     // The rules used by the solver.
     #[new(default)]
-    rules: Vec<Box<Rule + 's>>,
+    pub rules: Vec<Box<Rule<'rules> + 'rules>>,
 }
 
-impl<'s> Solver<'s> {
+impl<'rules> Solver<'rules> {
     /// Consumes the solver and returns the rules that it uses.
-    pub fn take_rules(self) -> Vec<Box<Rule + 's>> {
+    pub fn take_rules(self) -> Vec<Box<Rule<'rules> + 'rules>> {
         self.rules
     }
 
@@ -297,7 +297,7 @@ impl<'s> Solver<'s> {
     /// solver.equals(outputs[0].rank, inputs[1].shape[0]);
     /// solver.equals(outputs[1].rank, 3);
     /// ```
-    pub fn equals<T: 'static, EA: 'static, EB: 'static, A, B>(&mut self, left: A, right: B) -> &mut Solver<'s>
+    pub fn equals<T: 'static, EA: 'static, EB: 'static, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
     where
         T: Datum,
         EA: Expression<Output = T>,
@@ -322,7 +322,7 @@ impl<'s> Solver<'s> {
     ///     3.into(),
     /// ]);
     /// ```
-    pub fn equals_all<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'s>
+    pub fn equals_all<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'rules>
     where
         T: Datum,
     {
@@ -341,7 +341,7 @@ impl<'s> Solver<'s> {
     ///     (-1, inputs[1].shape[0]).into(),
     /// ]);
     /// ```
-    pub fn equals_zero<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'s>
+    pub fn equals_zero<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'rules>
     where
         T: Datum + Num,
     {
@@ -357,12 +357,12 @@ impl<'s> Solver<'s> {
     /// solver.given(input.rank, |solver, ir|
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
-    pub fn given<T: 'static, E: 'static, A, F: 's>(&mut self, item: A, closure: F) -> &mut Solver<'s>
+    pub fn given<T: 'static, E: 'static, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
     where
         T: Datum,
         E: Expression<Output = T>,
         A: IntoExpression<E>,
-        F: Fn(&mut Solver, T)
+        F: Fn(&mut Solver<'rules>, T) + 'rules
     {
         let rule = GivenRule::new(item.into_expr(), closure);
         self.rules.push(Box::new(rule));

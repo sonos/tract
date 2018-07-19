@@ -42,11 +42,11 @@ macro_rules! element_map {
             }
 
             /// Infers properties about the input and output tensors.
-            fn rules(
+            fn rules<'r, 'p: 'r>(
                 &self,
-                solver: &mut $crate::analyser::interface::Solver,
-                inputs: &$crate::analyser::interface::TensorsProxy,
-                outputs: &$crate::analyser::interface::TensorsProxy,
+                solver: &mut $crate::analyser::interface::Solver<'r>,
+                inputs: &'p $crate::analyser::interface::TensorsProxy,
+                outputs: &'p $crate::analyser::interface::TensorsProxy,
             ) {
                 solver
                     .equals(&inputs.len, 1)
@@ -129,11 +129,11 @@ macro_rules! element_bin {
             }
 
             /// Infers properties about the input and output tensors.
-            fn rules(
+            fn rules<'r, 'p: 'r>(
                 &self,
-                solver: &mut $crate::analyser::interface::Solver,
-                inputs: &$crate::analyser::interface::TensorsProxy,
-                outputs: &$crate::analyser::interface::TensorsProxy,
+                solver: &mut $crate::analyser::interface::Solver<'r>,
+                inputs: &'p $crate::analyser::interface::TensorsProxy,
+                outputs: &'p $crate::analyser::interface::TensorsProxy,
             ) {
                 let a = &inputs[0];
                 let b = &inputs[1];

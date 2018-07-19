@@ -189,7 +189,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
     }
 
     /// Registers the inference rules of the operator.
-    fn rules<'s>(&self, _: &mut Solver<'s>, _: &'s TensorsProxy, _: &'s TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {
         unimplemented!()
     }
 
