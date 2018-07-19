@@ -177,12 +177,16 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
     /// Infers properties about the output tensors from the input tensors.
     /// Returns Err in case of an unrecoverable error during the inference,
     /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
+    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
+    }
 
     /// Infers properties about the input tensors from the output tensors.
     /// Returns Err in case of an unrecoverable error during the inference,
     /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>>;
+    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+        unimplemented!()
+    }
 
     /// Registers the inference rules of the operator.
     fn rules<'s>(&self, _: &mut Solver<'s>, _: &'s TensorsProxy, _: &'s TensorsProxy) {

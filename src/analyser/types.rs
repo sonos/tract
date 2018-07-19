@@ -48,7 +48,7 @@ pub enum TypeFact {
 }
 
 impl TypeFact {
-    /// Tries to transform the type fact into a DataType, or returns None.
+    /// Tries to transform the type fact into a `DataType`, or returns `None`.
     pub fn concretize(&self) -> Option<DataType> {
         match self {
             TypeFact::Any => None,
@@ -95,7 +95,7 @@ impl ShapeFact {
         ShapeFact { open: false, dims }
     }
 
-    /// Tries to transform the fact into a Vec<usize>, or returns None.
+    /// Tries to transform the fact into a `Vec<usize>`, or returns `None`.
     pub fn concretize(self: &ShapeFact) -> Option<Vec<usize>> {
         if self.open {
             debug!("Impossible to concretize an open shape.");
@@ -141,7 +141,7 @@ impl From<Vec<usize>> for ShapeFact {
 }
 
 impl FromIterator<Option<usize>> for ShapeFact {
-    /// Converts an iterator over Option<usize> into a closed shape.
+    /// Converts an iterator over `Option<usize>` into a closed shape.
     fn from_iter<I: IntoIterator<Item = Option<usize>>>(iter: I) -> ShapeFact {
         ShapeFact::closed(iter.into_iter().map(|d| match d {
             Some(d) => DimFact::Only(d),
@@ -151,7 +151,7 @@ impl FromIterator<Option<usize>> for ShapeFact {
 }
 
 impl<'a> From<&'a [Option<usize>]> for ShapeFact {
-    /// Converts an Option<usize> slice into a closed shape.
+    /// Converts an `Option<usize>` slice into a closed shape.
     fn from(slice: &'a [Option<usize>]) -> ShapeFact {
         slice.iter().cloned().collect()
     }
@@ -167,7 +167,7 @@ pub enum DimFact {
 }
 
 impl DimFact {
-    /// Tries to transform the dimension fact into an usize, or returns None.
+    /// Tries to transform the dimension fact into an `usize`, or returns `None`.
     pub fn concretize(&self) -> Option<usize> {
         match self {
             DimFact::Any => None,
@@ -187,7 +187,7 @@ impl DimFact {
     }
 }
 
-/// Implements arithmetic operations over DimFacts.
+/// Implements arithmetic operations over `DimFact`s.
 macro_rules! impl_dim_op {
     ($trait:ident, $method:ident, $i:ident, $j:ident, $res:expr) => {
         impl $trait<Self> for DimFact {
@@ -250,7 +250,7 @@ pub enum ValueFact {
 }
 
 impl ValueFact {
-    // Tries to transform the value fact into a Tensor, or returns None.
+    // Tries to transform the value fact into a `Tensor`, or returns `None`.
     pub fn concretize(self: &ValueFact) -> Option<&Tensor> {
         match self {
             ValueFact::Any => None,
@@ -264,7 +264,7 @@ impl ValueFact {
     }
 
     // Applies fn to a defined value, and leaves an unknown value untouched.
-    // Returns an Err if something went wrong during the transformation.
+    // Returns an ̀Err` if something went wrong during the transformation.
     pub fn map_err<F>(self: &ValueFact, f: F) -> Result<ValueFact>
     where
         F: Fn(&Tensor) -> Result<Tensor>,
