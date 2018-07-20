@@ -210,7 +210,15 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
 
         let mut solver = Solver::new();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy);
-        solver.infer((inputs, outputs))
+        let (infered_inputs, infered_outputs) = solver.infer((inputs, outputs))?;
+
+        if infered_inputs.iter().all(|i| i.value.is_concrete()) {
+            let input_values = infered_inputs.iter().map(|i| i.value.concretize().unwrap().clone().into()).collect(); // checked
+            let output_value = self.eval(input_values)?.pop().unwrap();
+            Ok((infered_inputs, vec!(::analyser::helpers::tensor_to_fact(output_value.into_tensor()))))
+        } else {
+            Ok((infered_inputs, infered_outputs))
+        }
     }
 }
 
