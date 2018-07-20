@@ -251,7 +251,7 @@ impl Op for ExpandDims {
     fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         let data = &inputs[0];
         let dims = &inputs[1];
-        let output = &outputs[1];
+        let output = &outputs[0];
 
         solver
             .equals(&inputs.len, 2)
@@ -267,16 +267,16 @@ impl Op for ExpandDims {
                 let index = index.to_usize().unwrap();
 
                 for i in 0..index {
-                    solver.equals(&outputs[0].shape[i], &inputs[0].shape[i]);
+                    solver.equals(&output.shape[i], &data.shape[i]);
                 }
 
-                solver.equals(&outputs[0].shape[index], 1);
+                solver.equals(&output.shape[index], 1);
 
-                solver.given(&inputs[0].rank, move |solver, dr| {
-                    let dr = dr.to_usize().unwrap();
+                solver.given(&data.rank, move |solver, rank| {
+                    let rank = rank.to_usize().unwrap();
 
-                    for i in index..dr {
-                        solver.equals(&outputs[0].shape[i], &inputs[0].shape[i]);
+                    for i in 0..rank {
+                        solver.equals(&output.shape[i + 1], &data.shape[i]);
                     }
                 });
             });
