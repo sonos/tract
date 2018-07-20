@@ -27,7 +27,6 @@
 //! ```
 //!
 //! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
-#![feature(slice_patterns)]
 
 extern crate bit_set;
 #[cfg(feature = "blis")]

@@ -47,9 +47,9 @@ pub type Path = Vec<isize>;
 
 /// Returns the value at the given path (starting from a context).
 pub fn get_path(context: &Context, path: &[isize]) -> Result<Option<Wrapped>> {
-    match path {
-        [0, sub..] => get_tensorfacts_path(&context.inputs, sub),
-        [1, sub..] => get_tensorfacts_path(&context.outputs, sub),
+    match path[0] {
+        0 => get_tensorfacts_path(&context.inputs, &path[1..]),
+        1 => get_tensorfacts_path(&context.outputs, &path[1..]),
         _ => bail!("The first component of path {:?} should be 0 (for the `inputs` \
                     set of facts) or 1 (for the `outputs` set of facts).", path)
     }
@@ -57,9 +57,9 @@ pub fn get_path(context: &Context, path: &[isize]) -> Result<Option<Wrapped>> {
 
 /// Sets the value at the given path (starting from a context).
 pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> Result<()> {
-    match path {
-        [0, sub..] => set_tensorfacts_path(&mut context.inputs, sub, value),
-        [1, sub..] => set_tensorfacts_path(&mut context.outputs, sub, value),
+    match path[0] {
+        0 => set_tensorfacts_path(&mut context.inputs, &path[1..], value),
+        1 => set_tensorfacts_path(&mut context.outputs, &path[1..], value),
         _ => bail!("The first component of path {:?} should be 0 (for the `inputs` \
                     set of facts) or 1 (for the `outputs` set of facts).", path)
     }
@@ -71,11 +71,11 @@ fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Optio
         // Get the number of facts in the set.
         [-1] => wrap_isize!(facts.len()),
 
-        [k, sub..] if *k >= 0 => {
-            let k = k.to_usize().unwrap();
+        slice if slice[0] >= 0 => {
+            let k = slice[0].to_usize().unwrap(); // checked
 
             if k < facts.len() {
-                get_tensorfact_path(&facts[k], sub)
+                get_tensorfact_path(&facts[k], &slice[1..])
             } else {
                 bail!("There are only {:?} facts in the given set, so the index \
                        {:?} is not valid.", facts.len(), k)
@@ -102,11 +102,11 @@ fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrap
             }
         },
 
-        [k, sub..] if *k >= 0 => {
-            let k = k.to_usize().unwrap();
+        slice if slice[0] >= 0 => {
+            let k = slice[0].to_usize().unwrap(); // checked
 
             if k < facts.len() {
-                set_tensorfact_path(&mut facts[k], sub, value)
+                set_tensorfact_path(&mut facts[k], &path[1..], value)
             } else {
                 bail!("There are only {:?} facts in the given set, so the index \
                        {:?} is not valid.", facts.len(), k)
@@ -131,8 +131,8 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Option<Wrapp
             wrap_isize!(fact.shape.dims.len())
         },
 
-        [2, sub..] => get_shape_path(&fact.shape, sub),
-        [3, sub..] => get_value_path(&fact.value, sub),
+        slice if slice[0] == 2 => get_shape_path(&fact.shape, &slice[1..]),
+        slice if slice[0] == 3 => get_value_path(&fact.value, &slice[1..]),
 
         _ => bail!("The subpath {:?} should start with 0, 1, 2 or 3 (for the type, \
                     rank, dimension or value of the fact respectively).", path)
@@ -192,7 +192,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
 
         // Set a value of the TensorFact.
         // FIXME(liautaud): This should do something.
-        [3, _..] => Ok(()),
+        slice if slice[0] == 3 => Ok(()),
 
         _ => bail!("The subpath {:?} should start with 0, 1, 2 or 3 (for the type, \
                     rank, dimension or value of the fact respectively).", path)
