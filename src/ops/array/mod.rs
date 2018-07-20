@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 use std::collections::HashMap;
 use ndarray::prelude::*;
-use std::iter::repeat;
 use num_traits::ToPrimitive;
 
 mod fill;
@@ -9,12 +8,8 @@ mod pad;
 mod pack;
 mod strided_slice;
 
-use ops::{Attr, Op, OpBuffer, QueuesBuffer, OpRegister, TensorView};
-use analyser::unify;
-use analyser::helpers::infer_forward_concrete;
-use analyser::helpers::most_specific_shape;
-use analyser::{ShapeFact, TensorFact};
-use analyser::interface::{Solver, TensorsProxy};
+use ops::prelude::*;
+use analyser::interface::*;
 use tfpb::types::DataType;
 use tensor::Datum;
 use {Result, Tensor};
@@ -138,7 +133,7 @@ impl Op for ConcatV2 {
             }
         }
     }
-
+/*
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() < 2 {
@@ -191,6 +186,12 @@ impl Op for ConcatV2 {
 
         // TODO(liautaud): Implement something here.
         Ok(None)
+    }
+    */
+}
+
+impl InferenceRulesOp for ConcatV2 {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
     }
 }
 
@@ -246,8 +247,9 @@ impl Op for ExpandDims {
             Some(tv) => Ok(Some(self.eval(vec![tv, dims])?))
         }
     }
+}
 
-    /// Registers the inference rules of the operator.
+impl InferenceRulesOp for ExpandDims {
     fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         let data = &inputs[0];
         let dims = &inputs[1];
@@ -280,74 +282,6 @@ impl Op for ExpandDims {
                     }
                 });
             });
-    }
-
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() != 2 {
-            bail!("ExpandDims operation only supports two inputs.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        // If we don't know the actual value, we can still compute the shape.
-        let input_shape = &inputs[0].shape;
-        let mut dims: Vec<_> = unwrap_or_none!(inputs[1].value.concretize())
-            .as_i32s()
-            .ok_or("Expected a i32 matrix")?
-            .iter()
-            .map(|i| *i as usize)
-            .collect();
-
-        dims.sort();
-
-        let mut output_dims = input_shape.dims.clone();
-        for index in dims {
-            if index > output_dims.len() && !input_shape.open {
-                bail!("Can't insert a new dimension when index > input_dim.");
-            } else if index > output_dims.len() {
-                let current_dim = output_dims.len();
-                output_dims.extend(repeat(dimfact!(_)).take(index - current_dim));
-                output_dims.push(dimfact!(1));
-            } else {
-                output_dims.insert(index, dimfact!(1));
-            }
-        }
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape: if input_shape.open {
-                ShapeFact::open(output_dims)
-            } else {
-                ShapeFact::closed(output_dims)
-            },
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("ExpandDims operation only supports one output.");
-        }
-
-        let data = TensorFact {
-            datatype: outputs[0].datatype,
-            shape: shapefact![..],
-            value: valuefact!(_),
-        };
-
-        let dims = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
-            shape: shapefact![..],
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![data, dims]))
     }
 }
 
@@ -383,8 +317,9 @@ impl Op for Identity {
             Some(tv) => Ok(Some(self.eval(vec![tv])?))
         }
     }
+}
 
-    /// Registers the inference rules of the operator.
+impl InferenceRulesOp for Identity {
     fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
@@ -419,7 +354,9 @@ impl Op for Placeholder {
             "dtype" => Attr::DataType(self.dtype)
         }
     }
+}
 
+impl InferenceRulesOp for Placeholder {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
@@ -483,6 +420,7 @@ impl Op for Reshape {
         hashmap!{}
     }
 
+    /*
     /// Infers properties about the input and output tensors.
     /// TODO(liautaud): This is ugly, rewrite using the solver.
     fn infer(
@@ -551,6 +489,13 @@ impl Op for Reshape {
 
         Ok((vec![input, shape], vec![output]))
     }
+    */
+}
+
+impl InferenceRulesOp for Reshape {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        unimplemented!()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -574,8 +519,9 @@ impl Op for Shape {
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
         Ok(vec![Tensor::from(Array1::from_vec(shape)).into()])
     }
+}
 
-    /// Registers the inference rules of the operator.
+impl InferenceRulesOp for Shape {
     fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
@@ -634,7 +580,7 @@ impl<T: Datum> Op for Squeeze<T> {
         let shape = self.squeeze_shape(data.shape().to_vec(), None)?;
         Ok(vec![Tensor::from(data.clone().into_shape(shape)?).into()])
     }
-
+/*
     /// Infers properties about the input and output tensors.
     /// TODO(liautaud): This is ugly, rewrite using the solver.
     fn infer(
@@ -681,6 +627,7 @@ impl<T: Datum> Op for Squeeze<T> {
 
         Ok((vec![input], vec![output]))
     }
+*/
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
@@ -705,6 +652,12 @@ impl<T: Datum> Op for Squeeze<T> {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl<T:Datum> InferenceRulesOp for Squeeze<T> {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        unimplemented!()
     }
 }
 

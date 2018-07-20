@@ -10,7 +10,7 @@ use std::mem;
 
 use analyser::TensorFact;
 use analyser::interface::{Solver, TensorsProxy};
-use ops::nn::local_patch::{DataFormat, Padding};
+// use ops::nn::local_patch::{DataFormat, Padding};
 use tfpb::types::DataType;
 use {Result, Tensor};
 
@@ -28,7 +28,14 @@ mod cast;
 pub mod image;
 pub mod konst;
 mod math;
-pub mod nn;
+// pub mod nn;
+
+pub mod prelude {
+    pub use tfpb::types::DataType;
+    pub use super::{Attr, Op, OpRegister, InferenceRulesOp };
+    pub use super::{OpBuffer, QueuesBuffer, TensorView};
+    pub use tensor::Datum;
+}
 
 #[derive(Debug, Clone)]
 pub enum TensorView {
@@ -125,15 +132,15 @@ pub enum Attr {
     I64(i64),
     Usize(usize),
     DataType(DataType),
-    DataFormat(DataFormat),
-    Padding(Padding),
+//    DataFormat(DataFormat),
+//    Padding(Padding),
     Tensor(Tensor),
     UsizeVec(Vec<usize>),
     IsizeVec(Vec<isize>),
 }
 
 /// A Tensorflow operation.
-pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
+pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr>;
 
@@ -174,25 +181,6 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
         bail!("Streaming is not available for operator {:?}", self)
     }
 
-    /// Infers properties about the output tensors from the input tensors.
-    /// Returns Err in case of an unrecoverable error during the inference,
-    /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        unimplemented!()
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    /// Returns Err in case of an unrecoverable error during the inference,
-    /// Ok(None) if there was nothing to infer, and Ok(Some(_)) otherwise.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        unimplemented!()
-    }
-
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {
-        unimplemented!()
-    }
-
     /// Infers properties about the input and output tensors.
     ///
     /// The `inputs` and `outputs` arguments correspond to properties about
@@ -200,17 +188,12 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
     ///
     /// Returns Err in case of an unrecoverable error during the inference,
     /// and the refined properties about the inputs and outputs otherwise.
-    fn infer(
+    fn infer_and_propagate(
         &self,
         inputs: Vec<TensorFact>,
         outputs: Vec<TensorFact>,
     ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
-        let inputs_proxy = TensorsProxy::new(vec![0]);
-        let outputs_proxy = TensorsProxy::new(vec![1]);
-
-        let mut solver = Solver::new();
-        self.rules(&mut solver, &inputs_proxy, &outputs_proxy);
-        let (infered_inputs, infered_outputs) = solver.infer((inputs, outputs))?;
+        let (infered_inputs, infered_outputs) = self.infer(inputs, outputs)?;
 
         if infered_inputs.iter().all(|i| i.value.is_concrete()) {
             let input_values = infered_inputs.iter().map(|i| i.value.concretize().unwrap().clone().into()).collect(); // checked
@@ -219,6 +202,26 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static {
         } else {
             Ok((infered_inputs, infered_outputs))
         }
+    }
+}
+
+pub trait InferenceOp {
+    fn infer(&self, inputs: Vec<TensorFact>, outputs: Vec<TensorFact>) -> Result<(Vec<TensorFact>, Vec<TensorFact>)>;
+}
+
+pub trait InferenceRulesOp {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy);
+}
+
+impl<O: InferenceRulesOp> InferenceOp for O {
+    fn infer(&self, inputs: Vec<TensorFact>, outputs: Vec<TensorFact>) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        let inputs_proxy = TensorsProxy::new(vec![0]);
+        let outputs_proxy = TensorsProxy::new(vec![1]);
+
+        let mut solver = Solver::new();
+        self.rules(&mut solver, &inputs_proxy, &outputs_proxy);
+        solver.infer((inputs, outputs))
     }
 }
 
@@ -234,18 +237,18 @@ impl Serialize for Op {
     }
 }
 
-type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
+pub type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
 
 pub struct OpBuilder(OpRegister);
 
 impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
-        array::register_all_ops(&mut reg);
+//        array::register_all_ops(&mut reg);
         cast::register_all_ops(&mut reg);
         konst::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
-        nn::register_all_ops(&mut reg);
+//        nn::register_all_ops(&mut reg);
         OpBuilder(reg)
     }
 
@@ -273,16 +276,10 @@ impl Op for UnimplementedOp {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         unimplemented!()
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        unimplemented!()
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        unimplemented!()
-    }
+impl InferenceRulesOp for UnimplementedOp {
+    fn rules<'r, 'p: 'r>(&self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {}
 }
 
 

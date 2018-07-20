@@ -40,7 +40,9 @@ macro_rules! element_map {
                     Some(tv) => Ok(Some(self.eval(vec![tv])?))
                 }
             }
+        }
 
+        impl ::ops::InferenceRulesOp for $Struct {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r>(
                 &self,
@@ -53,22 +55,6 @@ macro_rules! element_map {
                     .equals(&outputs.len, 1)
                     .equals(&inputs[0].datatype, &outputs[0].datatype)
                     .equals(&inputs[0].shape, &outputs[0].shape);
-            }
-
-            /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(
-                &self,
-                _: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                unimplemented!()
-            }
-
-            /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(
-                &self,
-                _: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                unimplemented!()
             }
         }
     };
@@ -127,7 +113,9 @@ macro_rules! element_bin {
                     Ok(Some(self.eval(vec![a, b])?))
                 }
             }
+        }
 
+        impl<T: ::tensor::Datum> ::ops::InferenceRulesOp for $Name<T> {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r>(
                 &self,
@@ -143,22 +131,6 @@ macro_rules! element_bin {
                     .equals(&outputs.len, 1)
                     .equals_all(wrap![&a.datatype, &b.datatype, &c.datatype])
                     .equals_all(wrap![&a.shape, &b.shape, &c.shape]);
-            }
-
-            /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(
-                &self,
-                _: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                unimplemented!()
-            }
-
-            /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(
-                &self,
-                _: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                unimplemented!()
             }
         }
     };

@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use analyser::helpers::infer_forward_concrete;
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 
-use analyser::TensorFact;
-use ops::{Attr, Op, OpBuffer, TensorView};
+use analyser::interface::*;
+use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
@@ -75,6 +74,7 @@ where
         }
     }
 
+    /*
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, mut inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         use analyser::*;
@@ -115,6 +115,7 @@ where
         // FIXME
         Ok(Some(vec![TensorFact::default(), TensorFact::default()]))
     }
+    */
 
     fn step(
         &self,
@@ -130,6 +131,31 @@ where
         } else {
             Ok(None)
         }
+    }
+}
+
+impl<T:Datum> InferenceRulesOp for Pad<T> {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        let input = &inputs[0];
+        let padding = &inputs[1];
+        let output = &outputs[0];
+        solver
+            .equals(&inputs.len, 2)
+            .equals(&outputs.len, 1)
+            .equals(&output.datatype, &input.datatype)
+            .equals(&padding.datatype, DataType::DT_INT32)
+            .equals(&input.rank, &output.rank)
+            .equals(&padding.rank, 2)
+            .equals(&padding.shape[0], &input.rank)
+            .equals(&padding.shape[1], 2)
+            .given(&input.rank, move |solver, rank| {
+                (0..(rank as usize)).for_each(|d| {
+                    solver.equals_zero(
+                        wrap!((-1, &output.shape[d]),(1, &input.shape[d]), (1, &padding.value[d][0]), (1, &padding.value[d][1]))
+                    );}
+                )
+            })
+        ;
     }
 }
 

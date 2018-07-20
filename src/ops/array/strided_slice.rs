@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use analyser::helpers::infer_forward_concrete;
-use analyser::TensorFact;
 use ndarray::prelude::*;
-use ops::{Attr, Op, TensorView};
-use tfpb::types::DataType;
+use analyser::interface::*;
+use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
@@ -126,6 +124,7 @@ impl<T:Datum> Op for StridedSlice<T> {
         }
     }
 
+    /*
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         if inputs.len() != 4 {
@@ -171,6 +170,13 @@ impl<T:Datum> Op for StridedSlice<T> {
         };
 
         Ok(Some(vec![input, begin, end, strides]))
+    }
+    */
+}
+
+impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
+    fn rules<'r, 'p: 'r>(&self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {
+        unimplemented!()
     }
 }
 

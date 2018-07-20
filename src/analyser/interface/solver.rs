@@ -9,17 +9,6 @@ use analyser::interface::expressions::IntoExpression;
 
 use std::fmt;
 
-#[macro_export]
-macro_rules! wrap {
-    ($($x:expr),*) => ({
-        #[allow(unused_imports)]
-        use $crate::analyser::interface::IntoExpression;
-        vec![$(Box::new($x.into_expr())),*]
-    });
-
-    ($($x:expr,)*) => (wrap![$($x),*]);
-}
-
 /// A structure that holds the current sets of TensorFacts.
 ///
 /// This is used during inference (see `Solver::infer`) to let rules compute
@@ -297,11 +286,11 @@ impl<'rules> Solver<'rules> {
     /// solver.equals(outputs[0].rank, inputs[1].shape[0]);
     /// solver.equals(outputs[1].rank, 3);
     /// ```
-    pub fn equals<T: 'static, EA: 'static, EB: 'static, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
+    pub fn equals<T, EA , EB, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
     where
-        T: Datum,
-        EA: Expression<Output = T>,
-        EB: Expression<Output = T>,
+        T: Datum + 'static,
+        EA: Expression<Output = T> + 'static,
+        EB: Expression<Output = T> + 'static,
         A: IntoExpression<EA>,
         B: IntoExpression<EB>,
     {
@@ -322,9 +311,9 @@ impl<'rules> Solver<'rules> {
     ///     3.into(),
     /// ]);
     /// ```
-    pub fn equals_all<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'rules>
+    pub fn equals_all<T>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'rules>
     where
-        T: Datum,
+        T: Datum + 'static,
     {
         let rule = EqualsRule::new(items);
         self.rules.push(Box::new(rule));
@@ -341,9 +330,9 @@ impl<'rules> Solver<'rules> {
     ///     (-1, inputs[1].shape[0]).into(),
     /// ]);
     /// ```
-    pub fn equals_zero<T: 'static>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'rules>
+    pub fn equals_zero<T>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'rules>
     where
-        T: Datum + Num,
+        T: Datum + Num + 'static
     {
         let rule = EqualsZeroRule::new(items);
         self.rules.push(Box::new(rule));
@@ -357,10 +346,10 @@ impl<'rules> Solver<'rules> {
     /// solver.given(input.rank, |solver, ir|
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
-    pub fn given<T: 'static, E: 'static, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
+    pub fn given<T, E, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
     where
-        T: Datum,
-        E: Expression<Output = T>,
+        T: Datum + 'static,
+        E: Expression<Output = T> + 'static,
         A: IntoExpression<E>,
         F: Fn(&mut Solver<'rules>, T) + 'rules
     {

@@ -282,6 +282,12 @@ impl Default for ValueFact {
     }
 }
 
+impl From<Tensor> for ValueFact {
+    fn from(t:Tensor) -> ValueFact {
+        ValueFact::Only(t)
+    }
+}
+
 #[cfg(tests)]
 mod tests {
     #[test]

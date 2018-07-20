@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use ops::{Attr, Op, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::helpers::most_specific_shape;
-use analyser::{ShapeFact, TensorFact, ValueFact};
+use ops::prelude::*;
+use analyser::interface::*;
 use tensor::Datum;
 use Result;
 
@@ -43,39 +41,27 @@ where
             "N"    => Attr::Usize(self.n),
         }
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() < 1 {
-            bail!("Pack operation needs at least one input.");
-        }
+impl<T:Datum> InferenceRulesOp for AddN<T> {
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
 
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
+        let n = self.n as isize;
+        solver
+            .equals(&inputs.len, n)
+            .equals(&outputs.len, 1)
+            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals_all((0..self.n).map(|i| bexp(&inputs[i].datatype)).collect())
 
-        // If we don't know the actual value, we can still compute the shape.
-        let shapes = inputs.iter().map(|t| &t.shape);
+            .equals(&inputs[0].rank, &outputs[0].rank)
+            .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
 
-        // We get the most specific shape, and replace the axis with an unknown.
-        let shape = most_specific_shape(shapes)?;
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape: shape.map(|s| s.clone()).unwrap_or(ShapeFact::any()),
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        let input_fact = TensorFact {
-            value: ValueFact::Any,
-            .. outputs[0].clone()
-        };
-        let inputs = (0..self.n).map(|_| input_fact.clone()).collect();
-        Ok(Some(inputs))
+            .given(&inputs[0].rank, move |solver, rank| {
+                for dim in 0..(rank as usize) {
+                    solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
+                    solver.equals_all((0..n as usize).map(|i| bexp(&inputs[i].shape[dim])).collect());
+                }
+            })
+        ;
     }
 }
