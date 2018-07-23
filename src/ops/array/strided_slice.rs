@@ -176,7 +176,7 @@ impl<T:Datum> Op for StridedSlice<T> {
 
 impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
     fn rules<'r, 'p: 'r>(&self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {
-        unimplemented!()
+        unimplemented!("rules for StridedSlice")
     }
 }
 

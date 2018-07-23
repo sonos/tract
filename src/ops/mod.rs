@@ -277,7 +277,7 @@ impl Op for UnimplementedOp {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        unimplemented!()
+        hashmap! {} // FIXME
     }
 }
 

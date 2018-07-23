@@ -97,12 +97,6 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
     Ok(components)
 }
 
-/// Computes the lowest common ancestor of the sinks of a connected component.
-#[allow(dead_code)]
-fn lowest_common_ancestor() {
-    unimplemented!()
-}
-
 /// Creates a new Const node with the given Tensor value.
 fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
     let node_def = tfpb::node()

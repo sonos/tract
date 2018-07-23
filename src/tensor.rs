@@ -56,13 +56,13 @@ impl Tensor {
             match dtype {
                 DT_FLOAT => Self::from_content::<f32, u8>(dims, content)?.into(),
                 DT_INT32 => Self::from_content::<i32, u8>(dims, content)?.into(),
-                _ => unimplemented!(),
+                _ => unimplemented!("missing type"),
             }
         } else {
             match dtype {
                 DT_INT32 => Self::from_content::<i32, i32>(dims, t.get_int_val())?.into(),
                 DT_FLOAT => Self::from_content::<f32, f32>(dims, t.get_float_val())?.into(),
-                _ => unimplemented!(),
+                _ => unimplemented!("missing type"),
             }
         };
         assert_eq!(rank, mat.shape().len());
@@ -107,7 +107,7 @@ impl Tensor {
                 tensor.set_dtype(DataType::DT_INT32);
                 tensor.set_int_val(it.iter().cloned().collect());
             },
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
         Ok(tensor)
     }
@@ -119,7 +119,7 @@ impl Tensor {
             &Tensor::I32(ref it) => it.shape(),
             &Tensor::I8(ref it) => it.shape(),
             &Tensor::U8(ref it) => it.shape(),
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
     }
 
@@ -131,7 +131,7 @@ impl Tensor {
             &Tensor::I32(_) => DataType::DT_INT32,
             &Tensor::I8(_) => DataType::DT_INT8,
             &Tensor::U8(_) => DataType::DT_UINT8,
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
     }
 
@@ -143,7 +143,7 @@ impl Tensor {
                 &Tensor::I32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
                 &Tensor::F32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
                 &Tensor::U8(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
-                _ => unimplemented!(),
+                _ => unimplemented!("missing type"),
             })
         }
     }
@@ -152,7 +152,7 @@ impl Tensor {
         match self {
             &Tensor::I32(ref data) => Tensor::F32(data.map(|&a| a as f32)),
             &Tensor::F32(_) => self.clone(),
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
     }
 

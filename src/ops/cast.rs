@@ -33,12 +33,12 @@ impl ::ops::Op for Cast {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        unimplemented!()
+        unimplemented!("Cast op")
     }
 }
 
 impl InferenceRulesOp for Cast {
     fn rules<'r, 'p: 'r>(&self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {
-        unimplemented!()
+        unimplemented!("Cast op")
     }
 }

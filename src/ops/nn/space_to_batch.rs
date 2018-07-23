@@ -170,6 +170,7 @@ fn rules<'r, 'p: 'r>(solver: &mut Solver<'r>, batch: &'p TensorProxy, space: &'p
         })
         */
         ;
+    unimplemented!("FIXME: rules, need tensor access");
 }
 
 

@@ -61,7 +61,7 @@ pub fn random_tensor(sizes: Vec<usize>, datatype: DataType) -> Tensor {
         DataType::DT_INT32 => for_type!(i32).into(),
         DataType::DT_INT8 => for_type!(i8).into(),
         DataType::DT_UINT8 => for_type!(u8).into(),
-        _ => unimplemented!(),
+        _ => unimplemented!("missing type"),
     }
 }
 

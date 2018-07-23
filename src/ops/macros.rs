@@ -192,7 +192,7 @@ macro_rules! boxed_new {
             DataType::DT_INT32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
             DataType::DT_FLOAT => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
             DataType::DT_DOUBLE => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
-            _ => unimplemented!()
+            _ => unimplemented!("missing type")
         }
     } }
 }
