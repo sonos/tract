@@ -714,9 +714,7 @@ fn handle_profile_regular(params: Parameters, input: InputData, max_iters: u64, 
 fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u64, _max_time: u64) -> Result<()> {
     use Tensor::*;
     use colored::Colorize;
-
-    use tfdeploy::StreamingInput;
-    use tfdeploy::StreamingState;
+    use tfdeploy::streaming::*;
 
     let model = params.tfd_model;
     let datatype = input.datatype;
@@ -731,14 +729,14 @@ fn handle_profile_streaming(params: Parameters, input: InputData, _max_iters: u6
 
     info!("Initializing the StreamingState.");
     let start = Instant::now();
-    let state = StreamingState::start(
+    let streaming_model = StreamingModel::new(
         model.clone(),
         inputs.clone(),
         Some(params.output)
     )?;
 
     let measure = Duration::since(&start, 1);
-    let mut states = (0..100).map(|_| state.clone()).collect::<Vec<_>>();
+    let mut states = (0..100).map(|_| streaming_model.state()).collect::<Vec<_>>();
 
     info!("Initialized the StreamingState in:");
     info!(
