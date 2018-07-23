@@ -28,6 +28,8 @@
 //!
 //! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 
+// TODO: show Plan-based API in doc instead of shortcut
+
 extern crate bit_set;
 #[cfg(feature = "blis")]
 extern crate blis_src;
@@ -322,6 +324,7 @@ impl Model {
     }
 }
 
+#[derive(Clone)]
 pub struct ModelState<'a> {
     model: &'a Model,
     pub outputs: Vec<Option<Vec<TensorView>>>,
