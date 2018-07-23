@@ -105,6 +105,13 @@ impl StreamingModel {
         state.reset();
         state
     }
+
+    /// Access the simplified Model for streaming records. 
+    /// This is not the original model from which the StreamingModel has been
+    /// generated.
+    pub fn inner_model(&self) -> &Model {
+        &self.model
+    }
 }
 
 pub struct StreamingModelState<'a> {
@@ -123,6 +130,16 @@ impl<'a> StreamingModelState<'a> {
     /// a Vec<Tensor> for every chunk that was produced by the output
     /// during the evaluation step, with one Tensor per output port.
     pub fn step(&mut self, input: usize, input_chunk: Tensor) -> Result<Vec<Vec<Tensor>>> {
+        self.step_wrapping_ops(input, input_chunk, |node, inputs, buffers| node.op.step(inputs, buffers))
+    }
+
+    // This function is not part of the public API, it's public to allow
+    // instrumentation and auditing from cli.
+    #[inline]
+    #[doc(hidden)]
+    pub fn step_wrapping_ops<W>(&mut self, input: usize, input_chunk: Tensor, mut node_step:W) -> Result<Vec<Vec<Tensor>>> 
+        where W: FnMut(&Node, Vec<(Option<usize>, Option<TensorView>)>, &mut Box<OpBuffer>) -> Result<Option<Vec<TensorView>>>
+    {
         let mut queue = VecDeque::new();
         let mut outputs = vec![];
 
@@ -179,7 +196,7 @@ impl<'a> StreamingModelState<'a> {
 
             let buffer = &mut self.buffers[target.id];
 
-            if let Some(mut output_chunks) = target.op.step(inputs, buffer)? {
+            if let Some(mut output_chunks) = node_step(target, inputs, buffer)? {
                 if target.id == self.model.output {
                     // If we've reached the output, just save the chunks.
                     outputs.push(output_chunks.clone());
@@ -203,6 +220,10 @@ impl<'a> StreamingModelState<'a> {
             .collect();
 
         Ok(outputs)
+    }
+
+    pub fn streaming_model(&self) -> &StreamingModel {
+        &self.model
     }
 
     /// Resets the model state.
