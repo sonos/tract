@@ -74,49 +74,6 @@ where
         }
     }
 
-    /*
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, mut inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        use analyser::*;
-
-        if inputs.len() != 2 {
-            bail!("Pad operation needs at least one input.");
-        }
-
-        // if we know everything...
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-        let (input_fact, padding_fact) = args_2!(inputs);
-
-        let mut output_fact = TensorFact {
-            // propagate input type to output
-            datatype: input_fact.datatype,
-            ..TensorFact::default()
-        };
-
-        if let (Some(mut shape), Some(pad)) = (
-            input_fact.shape.concretize(),
-            padding_fact.value.concretize(),
-        ) {
-            let pad = i32::tensor_to_view(pad)?;
-            shape
-                .iter_mut()
-                .zip(pad.outer_iter())
-                .for_each(|(s, p)| *s += p[0] as usize + p[1] as usize);
-            output_fact.shape = shape.into();
-        }
-
-        Ok(Some(vec![output_fact]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        // FIXME
-        Ok(Some(vec![TensorFact::default(), TensorFact::default()]))
-    }
-    */
-
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,

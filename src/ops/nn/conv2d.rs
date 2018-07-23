@@ -2,13 +2,10 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
-use ops::{Attr, Op, OpBuffer, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::{ShapeFact, TensorFact};
+use ops::prelude::*;
+use analyser::interface::*;
 use ndarray::prelude::*;
 use ndarray::{Axis, Slice, stack};
-use tensor::Datum;
-use Result;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
@@ -210,6 +207,7 @@ impl<T: Datum> Op for Conv2D<T> {
         Ok(Some(vec![T::array_into_tensor(result).into()]))
     }
 
+    /*
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         use analyser::DimFact::*;
@@ -302,6 +300,14 @@ impl<T: Datum> Op for Conv2D<T> {
         };
 
         Ok(Some(vec![input, filter]))
+    }
+    */
+}
+
+impl<T: Datum> InferenceRulesOp for Conv2D<T> {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        unimplemented!();
     }
 }
 

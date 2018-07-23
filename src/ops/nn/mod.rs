@@ -1,10 +1,5 @@
-use std::collections::HashMap;
-
-use super::{Attr, Op, OpRegister, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::TensorFact;
-use tfpb::types::DataType;
-use {Result, Tensor};
+use ops::prelude::*;
+use analyser::interface::*;
 
 pub mod conv2d;
 pub mod local_patch;
@@ -54,52 +49,20 @@ impl Op for Softmax {
         hashmap!{}
     }
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() != 1 {
-            bail!("Softmax operation only supports one input.");
-        }
+}
 
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        if let Some(v) = &inputs[0].shape.concretize() {
-            if v.len() != 2 {
-                bail!("Softmax operation doesn't support input shape {:?}.", v);
-            }
-        }
-
-        let output = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
-            shape: inputs[0].shape.clone(),
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("Softmax operation only supports one output.");
-        }
-
-        if let Some(v) = &outputs[0].shape.concretize() {
-            if v.len() != 2 {
-                bail!("Softmax operation doesn't support output shape {:?}.", v);
-            }
-        }
-
-        let input = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
-            shape: outputs[0].shape.clone(),
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![input]))
+impl InferenceRulesOp for Softmax {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 1)
+            .equals(&outputs.len, 1)
+            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[0].shape, &outputs[0].shape);
     }
 }
+
+
 
 pub fn arr4<A, V, U, T>(xs: &[V]) -> ::ndarray::Array4<A>
 where

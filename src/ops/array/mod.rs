@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use ndarray::prelude::*;
 use num_traits::ToPrimitive;
 
+mod concatv2;
 mod fill;
 mod pad;
 mod pack;
@@ -15,7 +16,7 @@ use tensor::Datum;
 use {Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("ConcatV2", ConcatV2::build);
+    reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", ExpandDims::build);
     reg.insert("Identity", Identity::build);
     reg.insert("Fill", fill::fill);
@@ -26,173 +27,6 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Shape", Shape::build);
     reg.insert("Squeeze", squeeze);
     reg.insert("StridedSlice", strided_slice::build);
-}
-
-#[derive(Debug, Clone)]
-pub struct ConcatV2 {
-    n: usize,
-}
-
-impl ConcatV2 {
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Ok(Box::new(ConcatV2 {
-            n: pb.get_attr_int("N")?,
-        }))
-    }
-}
-
-impl Op for ConcatV2 {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "n" => Attr::Usize(self.n),
-        }
-    }
-
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
-        let axis: i32 = inputs[self.n]
-            .as_i32s()
-            .ok_or("Expected a i32 matrix")?
-            .iter()
-            .next()
-            .unwrap()
-            .clone();
-        let mats: Vec<_> = inputs[0..self.n]
-            .iter()
-            .map(|mat| mat.as_f32s().unwrap().view())
-            .collect();
-        let result = ::ndarray::stack(Axis(axis as usize), &*mats)?;
-        let result = Tensor::from(result);
-
-        Ok(vec![result.into()])
-    }
-
-    /// Returns a new streaming buffer for the operation.
-    fn new_buffer(&self) -> Box<OpBuffer> {
-        Box::new(QueuesBuffer::new(self.n))
-    }
-
-    /// Evaluates one step of the operation on the given input tensors.
-    fn step(
-        &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
-        buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
-        // According to https://www.tensorflow.org/api_docs/python/tf/concat,
-        // the number of dimensions of each input tensor must match, and all
-        // dimensions except `axis` must be equal. In particular, this means
-        // that all the input tensors must have the same streaming dimension.
-        // That leaves us with two cases:
-        // - Either all the tensors are streamed along `axis`, in which case
-        //   we push every slice we receive as input directly to the output.
-        // - Or they are streamed along another dimension, so we buffer them
-        //   until we have a chunk for each, and we push their concatenation
-        //   as the output chunk.
-
-        if inputs[self.n].0.is_some() || inputs[self.n].1.is_none() {
-            bail!("Axis input should not be streamed.");
-        }
-
-        let axis_tensor = inputs[self.n].1.take().unwrap();
-        let axis: i32 = axis_tensor
-            .as_i32s()
-            .ok_or("Expected a i32 matrix")?
-            .iter()
-            .next()
-            .unwrap()
-            .clone();
-
-        if inputs[0..self.n].iter().all(|i| i.0 == Some(axis as usize)) {
-            // All the input tensors are streamed along `axis`.
-            let chunk = inputs[0..self.n].iter_mut()
-                .find(|i| i.1.is_some())
-                .unwrap()
-                .1.take()
-                .unwrap();
-
-            Ok(Some(vec![chunk]))
-        } else {
-            // All the input tensors are streamed along a non-`axis` dimension.
-            let buffer = buffer.downcast_mut::<QueuesBuffer>()
-                .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
-
-            buffer.append(&mut inputs[0..self.n])?;
-
-            if buffer.iter_mut().any(|q| q.is_empty()) {
-                Ok(None)
-            } else {
-                let mut chunks = buffer
-                    .iter_mut()
-                    .map(|b| b.pop_front().unwrap())
-                    .collect::<Vec<_>>();
-
-                chunks.push(axis_tensor);
-
-                Ok(Some(self.eval(chunks)?))
-            }
-        }
-    }
-/*
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() < 2 {
-            bail!("Concat operation needs at least two inputs.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        // If we don't know the actual value, we can still compute the shape.
-        let axis: i32 = unwrap_or_none!(inputs[self.n].value.concretize())
-            .as_i32s()
-            .ok_or("Expected a i32 matrix")?
-            .iter()
-            .next()
-            .unwrap()
-            .clone();
-
-        let shapes = inputs[0..self.n].iter().map(|t| &t.shape);
-
-        // We get the most specific shape, and replace the axis with an unknown.
-        // TODO(liautaud): Improve this to check whether the shapes actually match,
-        //                 and sum the dimension over all the vectors instead of
-        //                 just returning an unknown when possible.
-        let shape = match most_specific_shape(shapes)? {
-            Some(s) => {
-                let mut dims = s.dims.clone();
-                dims[axis as usize] = dimfact!(_);
-                ShapeFact::closed(dims)
-            }
-
-            None => shapefact![..],
-        };
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("Concat operation only supports one output.");
-        }
-
-        // TODO(liautaud): Implement something here.
-        Ok(None)
-    }
-    */
-}
-
-impl InferenceRulesOp for ConcatV2 {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
-    }
 }
 
 #[derive(Debug, Clone)]

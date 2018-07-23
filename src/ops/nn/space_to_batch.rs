@@ -1,12 +1,5 @@
-use std::iter::repeat;
-use std::collections::HashMap;
-use std::marker::PhantomData;
-
-use super::{Attr, Op, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::{TensorFact, ShapeFact};
-use tensor::Datum;
-use Result;
+use ops::prelude::*;
+use analyser::interface::*;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datatype = pb.get_attr_datatype("T")?;
@@ -76,6 +69,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         hashmap!{ "T" => Attr::DataType(T::datatype()) }
     }
 
+    /*
     /// Infers properties about the output tensors from the input tensors.
     /// See tensorflow.org/api_docs/cc/class/tensorflow/ops/space-to-batch-n-d.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
@@ -148,34 +142,36 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
         Ok(Some(vec![output]))
     }
+    */
+}
 
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("SpaceToBatchND operation only supports one output.");
-        }
-
-        let input = TensorFact {
-            datatype: outputs[0].datatype,
-            shape: shapefact![_; ..],
-            value: valuefact!(_),
-        };
-
-        let block_shape = TensorFact {
-            datatype: typefact!(_),
-            shape: shapefact![_],
-            value: valuefact!(_),
-        };
-
-        let paddings = TensorFact {
-            datatype: typefact!(_),
-            shape: shapefact![_, 2],
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![input, block_shape, paddings]))
+impl<T: Datum> InferenceRulesOp for SpaceToBatch<T> {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 3)
+            .equals(&outputs.len, 1);
+        rules(solver, &outputs[0], &inputs[0], &inputs[1], &inputs[2]);
     }
 }
+
+fn rules<'r, 'p: 'r>(solver: &mut Solver<'r>, batch: &'p TensorProxy, space: &'p TensorProxy, block_shape: &'p TensorProxy, paddings: &'p TensorProxy) {
+    solver
+        .equals(&batch.datatype, &space.datatype)
+        .equals(&space.datatype, DataType::DT_INT32)
+        .equals(&block_shape.datatype, DataType::DT_INT32)
+        .equals(&paddings.datatype, DataType::DT_INT32)
+        .equals(&batch.rank, &space.rank)
+        .equals(&block_shape.rank, 1)
+        .equals(&paddings.rank, 2)
+        /*
+        .given(&block_shape.value, |solver, block_shape| {
+//            let block_shape_prod = block_shape.
+        })
+        */
+        ;
+}
+
 
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
@@ -229,107 +225,18 @@ impl<T: Datum> Op for BatchToSpace<T> {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{ "T" => Attr::DataType(T::datatype()) }
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    /// See tensorflow.org/api_docs/cc/class/tensorflow/ops/batch-to-space-n-d.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() != 3 {
-            bail!("BatchToSpaceND operation only supports three inputs.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        let input_shape = &inputs[0].shape;
-        let mut input_dims = input_shape.dims.clone();
-
-        let block_shape = unwrap_or_none!(inputs[1].value.concretize())
-            .as_i32s()
-            .ok_or("Expected a i32 matrix for block_shape.")?;
-
-        if block_shape.ndim() != 1 {
-            bail!("BatchToSpaceND expected block_shape to be of shape [M].");
-        }
-
-        let m = block_shape.shape()[0];
-
-        let crops = unwrap_or_none!(inputs[2].value.concretize())
-            .as_i32s()
-            .ok_or("Expected a i32 matrix for crops.")?;
-
-        if crops.ndim() != 2 ||
-           crops.shape()[0] != m ||
-           crops.shape()[1] != 2 {
-            bail!("BatchToSpaceND expected crops to be of shape [M, 2].");
-        }
-
-        // The input is supposed to have shape [batch] + spatial_shape + remaining_shape,
-        // where spatial_shape has M dimensions. If this is not the case but the input
-        // shape is open, we can just add unknown dimensions until we get the right shape.
-        let input_rank = input_dims.len();
-        if input_rank < 1 + m {
-            if input_shape.open {
-                input_dims.extend(repeat(dimfact!(_)).take(1 + m - input_rank));
-            } else {
-                bail!("BatchToSpaceND expected the input to have at least 1 + M dimensions.");
-            }
-        }
-
-        for i in 0..m {
-            // Expand the spatial dimensions according to `block_shape`.
-            input_dims[i + 1] = input_dims[i + 1] * (block_shape[[i]] as usize);
-
-            // Reduce the batch dimension according to `block_shape`.
-            input_dims[0] = input_dims[0] / (block_shape[[i]] as usize);
-
-            // Crop the spatial dimensions according to `crops`.
-            input_dims[i + 1] = input_dims[i + 1] - (crops[[i, 0]] as usize);
-            input_dims[i + 1] = input_dims[i + 1] - (crops[[i, 1]] as usize);
-        }
-
-        let output_shape = if input_shape.open {
-            ShapeFact::open(input_dims)
-        } else {
-            ShapeFact::closed(input_dims)
-        };
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape: output_shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("BatchToSpaceND operation only supports one output.");
-        }
-
-        let input = TensorFact {
-            datatype: outputs[0].datatype,
-            shape: shapefact![_; ..],
-            value: valuefact!(_),
-        };
-
-        let block_shape = TensorFact {
-            datatype: typefact!(_),
-            shape: shapefact![_],
-            value: valuefact!(_),
-        };
-
-        let crops = TensorFact {
-            datatype: typefact!(_),
-            shape: shapefact![_, 2],
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![input, block_shape, crops]))
+impl<T: Datum> InferenceRulesOp for BatchToSpace<T> {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 3)
+            .equals(&outputs.len, 1);
+        rules(solver, &inputs[0], &outputs[0], &inputs[1], &inputs[2]);
     }
 }
+
 
 #[cfg(test)]
 mod tests {

@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 
 use super::local_patch::*;
-use super::{Attr, Op, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::{TensorFact, ShapeFact};
+use ops::prelude::*;
+use analyser::interface::*;
 use ndarray::prelude::*;
-use std::marker::PhantomData;
-use {Result, Tensor};
 
 pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'static {
     type State;
@@ -70,6 +67,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         attributes
     }
 
+    /*
     /// Infers properties about the output tensors from the input tensors.
     fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
         use analyser::DimFact::*;
@@ -138,6 +136,14 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         };
 
         Ok(Some(vec![input]))
+    }
+    */
+}
+
+impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        unimplemented!();
     }
 }
 

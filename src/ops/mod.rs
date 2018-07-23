@@ -10,7 +10,7 @@ use std::mem;
 
 use analyser::TensorFact;
 use analyser::interface::{Solver, TensorsProxy};
-// use ops::nn::local_patch::{DataFormat, Padding};
+use ops::nn::local_patch::{DataFormat, Padding};
 use tfpb::types::DataType;
 use {Result, Tensor};
 
@@ -28,13 +28,16 @@ mod cast;
 pub mod image;
 pub mod konst;
 mod math;
-// pub mod nn;
+pub mod nn;
 
 pub mod prelude {
+    pub use std::collections::HashMap;
     pub use tfpb::types::DataType;
     pub use super::{Attr, Op, OpRegister, InferenceRulesOp };
     pub use super::{OpBuffer, QueuesBuffer, TensorView};
-    pub use tensor::Datum;
+    pub use tensor::{Datum, Tensor};
+    pub use std::marker::PhantomData;
+    pub use Result;
 }
 
 #[derive(Debug, Clone)]
@@ -132,8 +135,8 @@ pub enum Attr {
     I64(i64),
     Usize(usize),
     DataType(DataType),
-//    DataFormat(DataFormat),
-//    Padding(Padding),
+    DataFormat(DataFormat),
+    Padding(Padding),
     Tensor(Tensor),
     UsizeVec(Vec<usize>),
     IsizeVec(Vec<isize>),
@@ -244,11 +247,11 @@ pub struct OpBuilder(OpRegister);
 impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
-//        array::register_all_ops(&mut reg);
+        array::register_all_ops(&mut reg);
         cast::register_all_ops(&mut reg);
         konst::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
-//        nn::register_all_ops(&mut reg);
+        nn::register_all_ops(&mut reg);
         OpBuilder(reg)
     }
 
