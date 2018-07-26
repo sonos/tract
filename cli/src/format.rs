@@ -12,6 +12,10 @@ use tfdeploy::ModelState;
 use tfdeploy::Node;
 
 use format;
+use rusage::Duration;
+use colored::Colorize;
+
+use itertools::Itertools;
 
 /// A single row, which has either one or two columns.
 /// The two-column layout is usually used when displaying a header and some content.
@@ -50,9 +54,6 @@ fn format_no_right_border() -> TableFormat {
 
 /// Builds a box header containing the operation, name and status on the same line.
 fn build_header(cols: usize, op: String, name: String, status: Option<String>) -> Table {
-    use colored::Colorize;
-
-
     let mut header = if let Some(status) = status {
         let mut name_table = table!([
             " Name: ",
@@ -85,8 +86,6 @@ fn build_header(cols: usize, op: String, name: String, status: Option<String>) -
 /// Builds a box header conntaining the operation and name on one line, and a list
 /// of status messages on the other.
 fn build_header_wide(cols: usize, op: String, name: String, status: Vec<String>) -> Table {
-    use colored::Colorize;
-
     let mut name_table = table!([
         " Name: ",
         format!("{:1$}", textwrap::fill(name.as_str(), cols - 46), cols - 46),
@@ -94,14 +93,7 @@ fn build_header_wide(cols: usize, op: String, name: String, status: Vec<String>)
 
     name_table.set_format(format_none());
 
-    let status_row = pt::row::Row::new(
-        status.iter().map(|s| cell!(
-            format!("{:^1$}", s, cols / status.len() + 4).bold()
-        )).collect()
-    );
-
-    let mut status = Table::init(vec![status_row]);
-    status.set_format(format_only_columns());
+    let status = pt::row::Row::new(status.iter().map(|s| pt::cell::Cell::new_align(s, pt::format::Alignment::CENTER)).collect());
 
     let mut header = table!([
         format!("Operation: {:15}", op.bold().blue()),
@@ -109,13 +101,13 @@ fn build_header_wide(cols: usize, op: String, name: String, status: Vec<String>)
     ]);
     header.set_format(format_only_columns());
 
-    table![[header], [status]]
+    let mut t = table![[header]];
+    t.add_row(status);
+    t
 }
 
 /// Prints a box containing arbitrary information.
 fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sections: Vec<Vec<Row>>) {
-    use colored::Colorize;
-
     // Terminal size
     let cols = match terminal_size() {
         Some((Width(w), _)) => min(w as usize, 120),
@@ -128,7 +120,7 @@ fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sect
     count.set_format(format_no_right_border());
 
     // Content of the table
-    let mut right = if status.len() < 2 {
+    let mut right = if status.len() == 1 && status[0].len() < 10 {
         build_header(cols, op, name, status.pop())
     } else {
         build_header_wide(cols, op, name, status)
@@ -171,8 +163,6 @@ fn node_info(
     graph: &tfpb::graph::GraphDef,
     state: Option<&::tfdeploy::ModelState>,
 ) -> Vec<Vec<Row>> {
-    use colored::Colorize;
-
     // First section: node attributes.
     let mut attributes = Vec::new();
     let proto_node = graph
@@ -181,7 +171,7 @@ fn node_info(
         .find(|n| n.get_name() == node.name)
         .unwrap();
 
-    for attr in proto_node.get_attr() {
+    for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
         attributes.push(Row::Double(
             format!("Attribute {}:", attr.0.bold()),
             if attr.1.has_tensor() {
@@ -236,8 +226,28 @@ pub fn print_node(
 
 /// Prints some text with a line underneath.
 pub fn print_header(text: String, color: &str) {
-    use colored::Colorize;
-
     println!("{}", text.bold().color(color));
     println!("{}", format!("{:=<1$}", "", text.len()).bold().color(color));
 }
+
+/// Format a rusage::Duration showing avgtime in ms.
+pub fn dur_avg_oneline(measure: Duration) -> String {
+    format!("Real: {} User: {} Sys: {}",
+        format!("{:.3} ms/i", measure.avg_real() * 1e3).white().bold(),
+        format!("{:.3} ms/i", measure.avg_user() * 1e3).white().bold(),
+        format!("{:.3} ms/i", measure.avg_sys() * 1e3).white().bold())
+}
+
+/// Format a rusage::Duration showing avgtime in ms, with percentage to a global
+/// one.
+pub fn dur_avg_oneline_ratio(measure: Duration, global:Duration) -> String {
+    format!("Real: {} {} User: {} {} Sys: {} {}",
+        format!("{:7.3} ms/i", measure.avg_real() * 1e3).white().bold(),
+        format!("{:2.0}%", measure.avg_real() / global.avg_real() * 100.).yellow().bold(),
+        format!("{:7.3} ms/i", measure.avg_user() * 1e3).white().bold(),
+        format!("{:2.0}%", measure.avg_user() / global.avg_user() * 100.).yellow().bold(),
+        format!("{:7.3} ms/i", measure.avg_sys() * 1e3).white().bold(),
+        format!("{:2.0}%", measure.avg_sys() / global.avg_sys() * 100.).yellow().bold(),
+        )
+}
+
