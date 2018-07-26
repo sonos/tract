@@ -8,7 +8,7 @@ use std::result::Result as StdResult;
 use std::sync::Arc;
 use std::mem;
 
-use analyser::TensorFact;
+use analyser::prelude::*;
 use analyser::interface::{Solver, TensorsProxy};
 use ops::nn::local_patch::{DataFormat, Padding};
 use tfpb::types::DataType;

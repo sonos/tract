@@ -3,9 +3,7 @@
 //! &T and &mut T, so I should find a way to abstract this.
 use Result;
 use Tensor;
-use tfpb::types::DataType;
-use analyser::{unify_datatype, unify_shape};
-use analyser::types::{TensorFact, ShapeFact, ValueFact};
+use analyser::prelude::*;
 use analyser::interface::solver::Context;
 use analyser::interface::expressions::{Datum, Wrapped};
 

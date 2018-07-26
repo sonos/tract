@@ -32,7 +32,7 @@ mod solver;
 pub use self::proxies::*;
 pub use self::solver::*;
 pub use self::expressions::{ Expression, IntoExpression };
-pub use super::{ TensorFact, ValueFact, ShapeFact };
+pub use super::prelude::*;
 
 pub fn bexp<T,IE,E>(fact: IE) -> Box<Expression<Output=T>> 
 where

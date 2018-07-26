@@ -1,4 +1,4 @@
-use super::Analyser;
+use super::prelude::*;
 use super::Result;
 use ops::OpBuilder;
 use tfpb;

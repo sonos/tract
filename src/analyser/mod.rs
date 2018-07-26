@@ -9,7 +9,38 @@ use Plan;
 mod types;
 mod constants;
 
-pub use self::types::*;
+pub mod prelude {
+    use Result;
+    pub use super::types::*;
+    pub use super::Analyser;
+
+    /// Attempts to unify two tensor facts into a more specialized one.
+    pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two datatype facts.
+    pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two shape facts.
+    pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two dimension facts.
+    pub fn unify_dim(x: &DimFact, y: &DimFact) -> Result<DimFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two value facts.
+    pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
+        x.unify(y)
+    }
+}
+
+pub use self::prelude::*;
 
 #[macro_use]
 pub mod macros;
@@ -17,83 +48,6 @@ pub mod macros;
 pub mod helpers;
 #[macro_use]
 pub mod interface;
-
-/// Attempts to unify two tensor facts into a more specialized one.
-pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
-    let tensor = TensorFact {
-        datatype: unify_datatype(&x.datatype, &y.datatype)?,
-        shape: unify_shape(&x.shape, &y.shape)?,
-        value: unify_value(&x.value, &y.value)?,
-    };
-
-    trace!("Unifying {:?} with {:?} into {:?}.", x, y, tensor);
-
-    Ok(tensor)
-}
-
-/// Attempts to unify two datatype facts.
-pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
-    use self::TypeFact::*;
-
-    let datatype = match (x, y) {
-        (_, Any) => x,
-        (Any, _) => y,
-        (Only(a), Only(b)) if a == b => x,
-        _ => bail!("Impossible to unify datatypes {:?} and {:?}.", x, y),
-    };
-
-    Ok(*datatype)
-}
-
-/// Attempts to unify two shape facts.
-pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
-    use self::DimFact::*;
-    use itertools::EitherOrBoth::{Both, Left, Right};
-    use itertools::Itertools;
-
-    let xi = x.dims.iter();
-    let yi = y.dims.iter();
-
-    let dimensions: Vec<_> = xi.zip_longest(yi)
-        .map(|r| match r {
-            Both(a, Any) | Both(Any, a) => Ok(*a),
-            Both(a, b) if a == b => Ok(*a),
-            Both(a, b) => bail!("Impossible to unify {:?} and {:?}.", a, b),
-
-            Left(d) if y.open => Ok(*d),
-            Right(d) if x.open => Ok(*d),
-
-            Left(_) | Right(_) => bail!(
-                "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",
-                x,
-                y
-            ),
-        })
-        .collect::<Result<_>>()?;
-
-    if x.open && y.open {
-        Ok(ShapeFact::open(dimensions))
-    } else {
-        Ok(ShapeFact::closed(dimensions))
-    }
-}
-
-/// Attempts to unify two value facts.
-pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
-    use self::ValueFact::*;
-
-    let value = match (x, y) {
-        (_, Any) => x.clone(),
-        (Any, _) => y.clone(),
-        (Only(a), Only(b)) => if a == b {
-            x.clone()
-        } else {
-            bail!("Impossible to unify values {:?} and {:?}.", x, y);
-        },
-    };
-
-    Ok(value)
-}
 
 /// Tries to auto-detect the names of the input nodes.
 pub fn detect_inputs(model: &Model) -> Result<Option<Vec<usize>>> {
