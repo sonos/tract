@@ -1,29 +1,45 @@
 use std::marker::PhantomData;
-use std::fmt::Debug;
+use std::ops::Mul;
 
-use num_traits::Num;
 use num_traits::CheckedDiv;
 
 use Result;
 use tfpb::types::DataType;
-use analyser::types::ShapeFact;
+
+use analyser::types::Fact;
+use analyser::types::{IntFact, TypeFact, ShapeFact, DimFact, ValueFact};
+
 use analyser::interface::path::Path;
 use analyser::interface::solver::Context;
 use analyser::interface::proxies::Proxy;
 use analyser::interface::proxies::IntProxy;
 use analyser::interface::proxies::TypeProxy;
 use analyser::interface::proxies::ShapeProxy;
+use analyser::interface::proxies::DimProxy;
 
+/// A trait for values produced by expressions.
+///
+/// Expressions don't necessarily produce "concrete" values. For instance,
+/// some expressions produce Option<usize> values which are None when the
+/// value is not yet known, and Some(real) otherwise; or produce DimFacts
+/// which could either be Only(real), Streamed or Any.
+pub trait Output: Fact {
+    /// Wraps self in the Wrapped type.
+    fn wrap(self) -> Wrapped {
+        Self::into_wrapped(self)
+    }
 
-/// The types of values that expressions can produce.
-pub trait Datum: Debug + Clone + PartialEq {
+    /// Wraps the fact in the Wrapped type.
     fn into_wrapped(source: Self) -> Wrapped;
+
+    /// Retrieves the fact from the Wrapped type.
+    /// Panics if wrapped doesn't have the right constructor.
     fn from_wrapped(wrapped: Wrapped) -> Self;
 }
 
-macro_rules! impl_datum {
+macro_rules! impl_wrapped {
     ($type:ty, $constr:ident) => {
-        impl Datum for $type {
+        impl Output for $type {
             fn into_wrapped(source: Self) -> Wrapped {
                 Wrapped::$constr(source)
             }
@@ -42,28 +58,19 @@ macro_rules! impl_datum {
 /// A wrapper for all the types of values that expressions can produce.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Wrapped {
-    Int(isize),
-    Type(DataType),
-
-    // FIXME(liautaud): This approach is a bit buggy at the moment,
-    // because we only get the first non-None value inside the rules,
-    // and copy it everywhere else, whereas we should unify all the
-    // shapes with each other.
+    Int(IntFact),
+    Dim(DimFact),
+    Type(TypeFact),
     Shape(ShapeFact),
+    Value(ValueFact),
 }
-
-impl_datum!(isize, Int);
-impl_datum!(DataType, Type);
-impl_datum!(ShapeFact, Shape);
-
 
 /// An expression that can be compared by the solver.
 pub trait Expression {
-    type Output: Datum;
+    type Output: Output;
 
     /// Returns the current value of the expression in the given context.
-    /// If the expression doesn't have a value, returns None.
-    fn get(&self, context: &Context) -> Result<Option<Self::Output>>;
+    fn get(&self, context: &Context) -> Result<Self::Output>;
 
     /// Tries to set the value of the expression in the given context.
     fn set(&self, context: &mut Context, value: Self::Output) -> Result<()>;
@@ -72,16 +79,21 @@ pub trait Expression {
     fn get_paths(&self) -> Vec<&Path>;
 }
 
+impl_wrapped!(IntFact, Int);
+impl_wrapped!(DimFact, Dim);
+impl_wrapped!(TypeFact, Type);
+impl_wrapped!(ShapeFact, Shape);
+impl_wrapped!(ValueFact, Value);
 
 /// A constant expression (e.g. `2` or `DataType::DT_INT32`).
-pub struct ConstantExpression<T: Datum>(T);
+pub struct ConstantExpression<T: Output>(T);
 
-impl<T: Datum> Expression for ConstantExpression<T> {
+impl<T: Output> Expression for ConstantExpression<T> {
     type Output = T;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, _: &Context) -> Result<Option<T>> {
-        Ok(Some(self.0.clone()))
+    fn get(&self, _: &Context) -> Result<T> {
+        Ok(self.0.clone())
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -105,13 +117,13 @@ impl<T: Datum> Expression for ConstantExpression<T> {
 /// For instance, `inputs[0].rank` is a reference to the rank of the first
 /// input. Internally, a reference holds a Vec<usize> called a path (see
 /// the documentation for `Proxy::get_path`).
-pub struct VariableExpression<T: Datum>(Path, PhantomData<T>);
+pub struct VariableExpression<T: Output>(Path, PhantomData<T>);
 
-impl<T: Datum> Expression for VariableExpression<T> {
+impl<T: Output> Expression for VariableExpression<T> {
     type Output = T;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<Option<T>> {
+    fn get(&self, context: &Context) -> Result<T> {
         context.get(&self.0)
     }
 
@@ -128,48 +140,47 @@ impl<T: Datum> Expression for VariableExpression<T> {
 
 
 /// A scalar product between a constant and another expression.
-pub struct ProductExpression<T, E>(T, E)
+pub struct ProductExpression<T, E>(isize, E)
 where
-    T: Datum + Num + CheckedDiv,
+    T: Output + Mul<isize>,
     E: Expression<Output = T>;
 
 impl<T, E> Expression for ProductExpression<T, E>
 where
-    T: Datum + Num + CheckedDiv,
+    T: Output + Mul<isize, Output=T>,
     E: Expression<Output = T>
 {
     type Output = T;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<Option<T>> {
-        let inner = self.1.get(context)?;
-
-        Ok(inner.map(|v| v * self.0.clone()))
+    fn get(&self, context: &Context) -> Result<T> {
+        Ok(self.1.get(context)? * self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
     fn set(&self, context: &mut Context, value: T) -> Result<()> {
-        let k = &self.0;
-        let m = value;
+        unimplemented!()
+        // let k = &self.0;
+        // let m = value;
 
-        if m == T::zero() && *k == T::zero() {
-            // We want to set 0 * x <- 0, so we don't have to do anything.
-            Ok(())
-        } else if m == T::zero() {
-            // We want to set k * x <- 0, where k != 0, so we have to set x <- 0.
-            self.1.set(context, T::zero())
-        } else {
-            // We want to set k * x <- m, where k and m != 0, so we will try
-            // to set x <- m / k using a checked division. This way, if m is
-            // not divisible by k, we will return Err instead of panicking.
-            let div = m
-                .checked_div(&k)
-                .ok_or(format!(
-                    "Cannot set the value of ({:?}, _) to {:?} because \
-                    {:?} is not divisible by {:?}.", k, m, m, k))?;
+        // if m == T::zero() && *k == T::zero() {
+        //     // We want to set 0 * x <- 0, so we don't have to do anything.
+        //     Ok(())
+        // } else if m == T::zero() {
+        //     // We want to set k * x <- 0, where k != 0, so we have to set x <- 0.
+        //     self.1.set(context, T::zero())
+        // } else {
+        //     // We want to set k * x <- m, where k and m != 0, so we will try
+        //     // to set x <- m / k using a checked division. This way, if m is
+        //     // not divisible by k, we will return Err instead of panicking.
+        //     let div = m
+        //         .checked_div(&k)
+        //         .ok_or(format!(
+        //             "Cannot set the value of ({:?}, _) to {:?} because \
+        //             {:?} is not divisible by {:?}.", k, m, m, k))?;
 
-            self.1.set(context, div)
-        }
+        //     self.1.set(context, div)
+        // }
     }
 
     /// Returns the paths that the expression depends on.
@@ -191,45 +202,76 @@ pub trait IntoExpression<T> {
     fn into_expr(self) -> T;
 }
 
-// /// Converts usize to ConstantExpression<isize>.
-// impl IntoExpression<ConstantExpression<isize>> for usize {
-//     fn into_expr(self) -> ConstantExpression<isize> {
-//         ConstantExpression(self.to_isize().unwrap())
-//     }
-// }
+// ---------------- Conversions from constants ---------------- //
 
-/// Converts &T to ConstantExpression<T>.
-impl<'a, T> IntoExpression<ConstantExpression<T>> for &'a T where T: Datum {
+/// Converts &isize to ConstantExpression<IntFact>.
+impl<'a> IntoExpression<ConstantExpression<IntFact>> for &'a isize {
+    fn into_expr(self) -> ConstantExpression<IntFact> {
+        ConstantExpression((*self).into())
+    }
+}
+
+/// Converts isize to ConstantExpression<IntFact>.
+impl IntoExpression<ConstantExpression<IntFact>> for isize {
+    fn into_expr(self) -> ConstantExpression<IntFact> {
+        ConstantExpression(self.into())
+    }
+}
+
+/// Converts &DataType to ConstantExpression<TypeFact>.
+impl<'a> IntoExpression<ConstantExpression<TypeFact>> for &'a DataType {
+    fn into_expr(self) -> ConstantExpression<TypeFact> {
+        ConstantExpression((*self).into())
+    }
+}
+
+/// Converts DataType to ConstantExpression<TypeFact>.
+impl IntoExpression<ConstantExpression<TypeFact>> for DataType {
+    fn into_expr(self) -> ConstantExpression<TypeFact> {
+        ConstantExpression(self.into())
+    }
+}
+
+/// Converts &T: Output to ConstantExpression<T>.
+impl<'a, T> IntoExpression<ConstantExpression<T>> for &'a T where T: Output {
     fn into_expr(self) -> ConstantExpression<T> {
         ConstantExpression(self.clone())
     }
 }
 
-/// Converts T to ConstantExpression<T>.
-impl<T> IntoExpression<ConstantExpression<T>> for T where T: Datum {
+/// Converts T: Output to ConstantExpression<T>.
+impl<T> IntoExpression<ConstantExpression<T>> for T where T: Output {
     fn into_expr(self) -> ConstantExpression<T> {
         ConstantExpression(self)
     }
 }
 
+// ---------------- Conversions from proxies ---------------- //
+
 /// Converts IntProxy to VariableExpression<isize>.
-impl<T> IntoExpression<VariableExpression<isize>> for T where T: IntProxy {
-    fn into_expr(self) -> VariableExpression<isize> {
+impl<T> IntoExpression<VariableExpression<IntFact>> for T where T: IntProxy {
+    fn into_expr(self) -> VariableExpression<IntFact> {
         VariableExpression(self.get_path().to_vec(), PhantomData)
     }
 }
 
-// FIXME(liautaud): Use a DimProxy to handle streaming.
-// /// Converts DimProxy to VariableExpression<DimFact>.
-// impl<T> IntoExpression<VariableExpression<DimFact>> for T where T: DimProxy {
-//     fn into_expr(self) -> VariableExpression<DimFact> {
-//         VariableExpression(self.get_path().to_vec(), PhantomData)
-//     }
-// }
+/// Converts DimProxy to VariableExpression<DimFact>.
+impl<T> IntoExpression<VariableExpression<DimFact>> for T where T: DimProxy {
+    fn into_expr(self) -> VariableExpression<DimFact> {
+        VariableExpression(self.get_path().to_vec(), PhantomData)
+    }
+}
 
-/// Converts TypeProxy to VariableExpression<DataType>.
-impl<T> IntoExpression<VariableExpression<DataType>> for T where T: TypeProxy {
-    fn into_expr(self) -> VariableExpression<DataType> {
+/// Converts TypeProxy to VariableExpression<TypeFact>.
+impl IntoExpression<VariableExpression<TypeFact>> for TypeProxy {
+    fn into_expr(self) -> VariableExpression<TypeFact> {
+        VariableExpression(self.get_path().to_vec(), PhantomData)
+    }
+}
+
+/// Converts &TypeProxy to VariableExpression<TypeFact>.
+impl<'a> IntoExpression<VariableExpression<TypeFact>> for &'a TypeProxy {
+    fn into_expr(self) -> VariableExpression<TypeFact> {
         VariableExpression(self.get_path().to_vec(), PhantomData)
     }
 }
@@ -248,10 +290,12 @@ impl<'a> IntoExpression<VariableExpression<ShapeFact>> for &'a ShapeProxy {
     }
 }
 
+// ---------------- Conversions from tuples ---------------- //
+
 /// Converts (T, Into<Expression<Output = T>>) to ProductExpression<T>.
-impl<T, E, I> IntoExpression<ProductExpression<T, E>> for (T, I)
+impl<T, E, I> IntoExpression<ProductExpression<T, E>> for (isize, I)
 where
-    T: Datum + Num + CheckedDiv,
+    T: Output + Mul<isize, Output=T>,
     E: Expression<Output = T>,
     I: IntoExpression<E>,
 {

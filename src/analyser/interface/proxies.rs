@@ -15,9 +15,6 @@ pub trait Proxy {
     fn get_path(&self) -> &Path;
 }
 
-/// A proxy for any Datatype value.
-pub trait TypeProxy: Proxy {}
-
 /// A proxy for any DimFact value.
 pub trait DimProxy: Proxy {}
 
@@ -43,16 +40,6 @@ macro_rules! impl_proxy(
         }
     }
 );
-
-
-/// A simple implementation of a proxy for any Datatype value.
-#[derive(new)]
-pub struct BaseTypeProxy { path: Path }
-
-impl_proxy!(BaseTypeProxy);
-impl TypeProxy for BaseTypeProxy {}
-impl<'a> TypeProxy for &'a BaseTypeProxy {}
-
 
 /// A simple implementation of a proxy for any DimFact value.
 #[derive(new)]
@@ -131,7 +118,7 @@ impl Index<usize> for TensorsProxy {
 /// solver.equals(input.shape[1], output.value[0][1])
 /// ```
 pub struct TensorProxy {
-    pub datatype: BaseTypeProxy,
+    pub datatype: TypeProxy,
     pub rank: BaseIntProxy,
     pub shape: ShapeProxy,
     pub value: ValueProxy,
@@ -142,10 +129,10 @@ impl TensorProxy {
     /// Creates a new TensorProxy instance.
     pub fn new(path: Path) -> TensorProxy {
         TensorProxy {
-            datatype: BaseTypeProxy::new([&path[..], &[0]].concat()),
-            rank:     BaseIntProxy::new([&path[..],  &[1]].concat()),
-            shape:    ShapeProxy::new([&path[..],    &[2]].concat()),
-            value:    ValueProxy::new([&path[..],    &[3]].concat()),
+            datatype: TypeProxy::new([&path[..],  &[0]].concat()),
+            rank:     BaseIntProxy::new([&path[..],   &[1]].concat()),
+            shape:    ShapeProxy::new([&path[..],     &[2]].concat()),
+            value:    ValueProxy::new([&path[..], &[3]].concat()),
             path,
         }
     }
@@ -154,10 +141,18 @@ impl TensorProxy {
 impl_proxy!(TensorProxy);
 
 
+/// A proxy for a tensor datatype.
+#[derive(new)]
+pub struct TypeProxy {
+    path: Path
+}
+
+impl_proxy!(TypeProxy);
+
+
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
-    // FIXME(liautaud): Use a BaseDimProxy to handle streaming.
-    dims: Cache<usize, BaseIntProxy>,
+    dims: Cache<usize, BaseDimProxy>,
     path: Path,
 }
 
@@ -171,12 +166,12 @@ impl ShapeProxy {
 impl_proxy!(ShapeProxy);
 
 impl Index<usize> for ShapeProxy {
-    type Output = BaseIntProxy;
+    type Output = BaseDimProxy;
 
-    /// Returns the BaseIntProxy corresponding to the given index.
-    fn index(&self, index: usize) -> &BaseIntProxy {
+    /// Returns the BaseDimProxy corresponding to the given index.
+    fn index(&self, index: usize) -> &BaseDimProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.dims.get(index, || BaseIntProxy::new(path))
+        self.dims.get(index, || BaseDimProxy::new(path))
     }
 }
 
@@ -189,13 +184,24 @@ impl Index<usize> for ShapeProxy {
 /// ValueProxys for nested items on the fly and store them.
 pub struct ValueProxy {
     sub: Cache<usize, ValueProxy>,
+    root: BaseIntProxy,
     path: Path,
 }
 
 impl ValueProxy {
-    /// Creates a new ValueProxy instance.
+    /// Creates a new RootValueProxy instance.
     pub fn new(path: Path) -> ValueProxy {
-        ValueProxy { sub: Cache::new(), path }
+        let root = BaseIntProxy::new([&path[..], &[-1]].concat());
+        ValueProxy { sub: Cache::new(), root, path }
+    }
+}
+
+impl Index<()> for ValueProxy {
+    type Output = BaseIntProxy;
+
+    /// Returns the RootValueProxy corresponding to the given index.
+    fn index(&self, _: ()) -> &BaseIntProxy {
+        &self.root
     }
 }
 
@@ -256,6 +262,9 @@ mod tests {
         let inputs = TensorsProxy::new(vec![0]);
         let input = &inputs[0];
 
+        assert_eq!(input.value.get_path(), &vec![0, 0, 3]);
+        assert_eq!(input.value[()].get_path(), &vec![0, 0, 3, -1]);
+        assert_eq!(input.value[0].get_path(), &vec![0, 0, 3, 0]);
         assert_eq!(input.value[0][1].get_path(),    &vec![0, 0, 3, 0, 1]);
         assert_eq!(input.value[1][2][3].get_path(), &vec![0, 0, 3, 1, 2, 3]);
     }

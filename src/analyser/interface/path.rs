@@ -5,7 +5,8 @@ use Result;
 use Tensor;
 use analyser::prelude::*;
 use analyser::interface::solver::Context;
-use analyser::interface::expressions::{Datum, Wrapped};
+use analyser::interface::expressions::Wrapped;
+use analyser::interface::expressions::Output;
 
 use num_traits::cast::ToPrimitive;
 
@@ -17,26 +18,9 @@ macro_rules! to_isize {
 }
 
 macro_rules! wrap_isize {
-    ($expr:expr) => (Ok(Some(isize::into_wrapped(to_isize!($expr)))))
-}
-
-macro_rules! wrap_isize_option {
     ($expr:expr) => ({
-        if let Some(v) = $expr.concretize() {
-            Ok(Some(isize::into_wrapped(to_isize!(v))))
-        } else {
-            Ok(None)
-        }
-    })
-}
-
-macro_rules! wrap_type_option {
-    ($expr:expr) => ({
-        if let Some(v) = $expr.concretize() {
-            Ok(Some(DataType::into_wrapped(v)))
-        } else {
-            Ok(None)
-        }
+        let fact: IntFact = to_isize!($expr).into();
+        Ok(fact.wrap())
     })
 }
 
@@ -44,7 +28,7 @@ macro_rules! wrap_type_option {
 pub type Path = Vec<isize>;
 
 /// Returns the value at the given path (starting from a context).
-pub fn get_path(context: &Context, path: &[isize]) -> Result<Option<Wrapped>> {
+pub fn get_path(context: &Context, path: &[isize]) -> Result<Wrapped> {
     match path[0] {
         0 => get_tensorfacts_path(&context.inputs, &path[1..]),
         1 => get_tensorfacts_path(&context.outputs, &path[1..]),
@@ -64,7 +48,7 @@ pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> Result
 }
 
 /// Returns the value at the given path (starting from a set of TensorFacts).
-fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Option<Wrapped>> {
+fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Wrapped> {
     match path {
         // Get the number of facts in the set.
         [-1] => wrap_isize!(facts.len()),
@@ -90,18 +74,20 @@ fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrap
     match path {
         // Set the number of facts in the set.
         [-1] => {
-            let value = isize::from_wrapped(value).to_usize().unwrap();
+            // Conversion is checked.
+            let value = IntFact::from_wrapped(value).concretize().map(|v| v.to_usize().unwrap());
 
-            if value != facts.len() {
+            if value.is_some() && value.unwrap() != facts.len() {
                 bail!("Can't set the length of the given set of facts to {:?} \
                        because it already has length {:?}.", value, facts.len());
-            } else {
-                Ok(())
             }
+
+            Ok(())
         },
 
         slice if slice[0] >= 0 => {
-            let k = slice[0].to_usize().unwrap(); // checked
+            // Conversion is checked.
+            let k = slice[0].to_usize().unwrap();
 
             if k < facts.len() {
                 set_tensorfact_path(&mut facts[k], &path[1..], value)
@@ -117,14 +103,14 @@ fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrap
 }
 
 /// Returns the value at the given path (starting from a TensorFact).
-fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Option<Wrapped>> {
+fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Wrapped> {
     match path {
         // Get the type of the TensorFact.
-        [0] => wrap_type_option!(fact.datatype),
+        [0] => Ok(fact.datatype.wrap()),
 
         // Get the rank of the TensorFact.
         [1] => if fact.shape.open {
-            Ok(None)
+            Ok(IntFact::default().wrap())
         } else {
             wrap_isize!(fact.shape.dims.len())
         },
@@ -142,24 +128,19 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
     match path {
         // Set the type of the TensorFact.
         [0] => {
-            let value = DataType::from_wrapped(value);
-
-            fact.datatype = unify_datatype(
-                &fact.datatype,
-                &typefact!(value)
-            )?;
-
+            let value = TypeFact::from_wrapped(value);
+            fact.datatype = value.unify(&fact.datatype)?;
             Ok(())
         },
 
         // Set the rank of the TensorFact.
         [1] => {
-            let k = isize::from_wrapped(value).to_usize().unwrap();
-
-            fact.shape = unify_shape(
-                &fact.shape,
-                &ShapeFact::closed(vec![dimfact!(_); k])
-            )?;
+            if let Some(k) = IntFact::from_wrapped(value).concretize() {
+                let k = k.to_usize().unwrap();
+                fact.shape = fact.shape.unify(
+                    &ShapeFact::closed(vec![dimfact!(_); k])
+                )?;
+            }
 
             Ok(())
         },
@@ -167,7 +148,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
         // Set the whole shape of the TensorFact.
         [2] => {
             let shape = ShapeFact::from_wrapped(value);
-            fact.shape = unify_shape(&fact.shape, &shape)?;
+            fact.shape = shape.unify(&fact.shape)?;
 
             Ok(())
         },
@@ -175,13 +156,12 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
         // Set a precise dimension of the TensorFact.
         [2, k] => {
             let k = k.to_usize().unwrap();
-            let d = isize::from_wrapped(value).to_usize().unwrap();
+            let dim = DimFact::from_wrapped(value);
 
             let mut dims = vec![dimfact!(_); k];
-            dims.push(dimfact!(d));
+            dims.push(dim);
 
-            fact.shape = unify_shape(
-                &fact.shape,
+            fact.shape = fact.shape.unify(
                 &ShapeFact::open(dims)
             )?;
 
@@ -198,26 +178,19 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
 }
 
 /// Returns the shape or dimension at the given path (starting from a ShapeFact).
-fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> Result<Option<Wrapped>> {
+fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> Result<Wrapped> {
     match path {
         // Get the whole shape.
-        [] => {
-            if *shape == shapefact![..] {
-                Ok(None)
-            } else {
-                Ok(Some(ShapeFact::into_wrapped(shape.clone())))
-            }
-        },
+        [] => Ok(shape.clone().wrap()),
 
         // Get a precise dimension.
         [k] => {
             let k = k.to_usize().unwrap();
 
             if k < shape.dims.len() {
-                // FIXME(liautaud): Return a DimFact directly to handle streaming.
-                wrap_isize_option!(shape.dims[k])
+                Ok(shape.dims[k].wrap())
             } else if shape.open {
-                Ok(None)
+                Ok(dimfact!(_).wrap())
             } else {
                 bail!("The closed shape {:?} has no {:?}-th dimension.", shape.dims, k);
             }
@@ -229,7 +202,12 @@ fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> Result<Option<Wrapped>> 
 }
 
 /// Returns the value at the given path (starting from a ValueFact).
-fn get_value_path(value: &ValueFact, path: &[isize]) -> Result<Option<Wrapped>> {
+fn get_value_path(value: &ValueFact, path: &[isize]) -> Result<Wrapped> {
+    // Return the whole tensor.
+    if path == &[-1] {
+        return Ok(value.clone().wrap());
+    }
+
     let path: Vec<_> = path.iter().map(|i| i.to_usize().unwrap()).collect();
 
     macro_rules! inner {
@@ -242,7 +220,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> Result<Option<Wrapped>> 
     };
 
     match value.concretize() {
-        None => Ok(None),
+        None => Ok(IntFact::default().wrap()),
         Some(tensor) => match tensor {
             Tensor::I32(array) => inner!(array),
             Tensor::I8(array) => inner!(array),
