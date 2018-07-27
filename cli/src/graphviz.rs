@@ -33,7 +33,7 @@ impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
         }
     }
     fn edge_label<'b>(&'b self, e: &Ed) -> dot::LabelText<'b> {
-        use self::ValueFact::*;
+        use self::GenericFact::*;
 
         let mut label = format!(
             "[{:?}] {:?}\n{:?}\n{}",
