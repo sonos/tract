@@ -15,14 +15,11 @@ pub trait Proxy {
     fn get_path(&self) -> &Path;
 }
 
-/// A proxy for any DimFact value.
-pub trait DimProxy: Proxy {}
-
-/// A proxy for any integer-like value.
-pub trait IntProxy: Proxy {}
+/// A proxy which can be used in a solver rule.
+pub trait ComparableProxy: Proxy {}
 
 /// Generates the get_path method for structs which have a `path` field.
-macro_rules! impl_proxy(
+macro_rules! impl_proxy {
     ($struct:ident) => {
         impl Proxy for $struct {
             /// Returns the symbolic path to the value.
@@ -31,7 +28,6 @@ macro_rules! impl_proxy(
             }
         }
 
-        // FIXME(liautaud): This is stupid.
         impl<'a> Proxy for &'a $struct {
             /// Returns the symbolic path to the value.
             fn get_path(&self) -> &Path {
@@ -39,25 +35,24 @@ macro_rules! impl_proxy(
             }
         }
     }
-);
+}
 
-/// A simple implementation of a proxy for any DimFact value.
+/// Implements the ComparableProxy trait for the proxy and references to it.
+macro_rules! impl_comparable_proxy {
+    ($struct:ident) => {
+        impl ComparableProxy for $struct {}
+        impl<'a> ComparableProxy for &'a $struct {}
+    }
+}
+
+/// A proxy for any integer-like value.
 #[derive(new)]
-pub struct BaseDimProxy { path: Path }
+pub struct IntProxy {
+    path: Path
+}
 
-impl_proxy!(BaseDimProxy);
-impl DimProxy for BaseDimProxy {}
-impl<'a> DimProxy for &'a BaseDimProxy {}
-
-
-/// A simple implementation of a proxy for any integer-like value.
-#[derive(new)]
-pub struct BaseIntProxy { path: Path }
-
-impl_proxy!(BaseIntProxy);
-impl IntProxy for BaseIntProxy {}
-impl<'a> IntProxy for &'a BaseIntProxy {}
-
+impl_proxy!(IntProxy);
+impl_comparable_proxy!(IntProxy);
 
 /// A proxy for a vector of tensors.
 ///
@@ -75,7 +70,7 @@ impl<'a> IntProxy for &'a BaseIntProxy {}
 /// ```
 /// when i >= len.
 pub struct TensorsProxy {
-    pub len: BaseIntProxy,
+    pub len: IntProxy,
     tensors: Cache<usize, TensorProxy>,
     path: Path,
 }
@@ -84,7 +79,7 @@ impl TensorsProxy {
     /// Creates a new TensorsProxy instance.
     pub fn new(path: Path) -> TensorsProxy {
         TensorsProxy {
-            len: BaseIntProxy::new([&path[..], &[-1]].concat()),
+            len: IntProxy::new([&path[..], &[-1]].concat()),
             tensors: Cache::new(),
             path,
         }
@@ -107,7 +102,6 @@ impl Index<usize> for TensorsProxy {
     }
 }
 
-
 /// A proxy for a tensor.
 ///
 /// This is used for rules involving the datatype, rank, shape or value of a
@@ -119,7 +113,7 @@ impl Index<usize> for TensorsProxy {
 /// ```
 pub struct TensorProxy {
     pub datatype: TypeProxy,
-    pub rank: BaseIntProxy,
+    pub rank: IntProxy,
     pub shape: ShapeProxy,
     pub value: ValueProxy,
     path: Path,
@@ -130,8 +124,8 @@ impl TensorProxy {
     pub fn new(path: Path) -> TensorProxy {
         TensorProxy {
             datatype: TypeProxy::new([&path[..],  &[0]].concat()),
-            rank:     BaseIntProxy::new([&path[..],   &[1]].concat()),
-            shape:    ShapeProxy::new([&path[..],     &[2]].concat()),
+            rank:     IntProxy::new([&path[..],   &[1]].concat()),
+            shape:    ShapeProxy::new([&path[..], &[2]].concat()),
             value:    ValueProxy::new([&path[..], &[3]].concat()),
             path,
         }
@@ -140,7 +134,6 @@ impl TensorProxy {
 
 impl_proxy!(TensorProxy);
 
-
 /// A proxy for a tensor datatype.
 #[derive(new)]
 pub struct TypeProxy {
@@ -148,11 +141,11 @@ pub struct TypeProxy {
 }
 
 impl_proxy!(TypeProxy);
-
+impl_comparable_proxy!(TypeProxy);
 
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
-    dims: Cache<usize, BaseDimProxy>,
+    dims: Cache<usize, DimProxy>,
     path: Path,
 }
 
@@ -164,16 +157,26 @@ impl ShapeProxy {
 }
 
 impl_proxy!(ShapeProxy);
+impl_comparable_proxy!(ShapeProxy);
 
 impl Index<usize> for ShapeProxy {
-    type Output = BaseDimProxy;
+    type Output = DimProxy;
 
-    /// Returns the BaseDimProxy corresponding to the given index.
-    fn index(&self, index: usize) -> &BaseDimProxy {
+    /// Returns the DimProxy corresponding to the given index.
+    fn index(&self, index: usize) -> &DimProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.dims.get(index, || BaseDimProxy::new(path))
+        self.dims.get(index, || DimProxy::new(path))
     }
 }
+
+/// A proxy for a dimension of a shape.
+#[derive(new)]
+pub struct DimProxy {
+    path: Path
+}
+
+impl_proxy!(DimProxy);
+impl_comparable_proxy!(DimProxy);
 
 
 /// A proxy for a tensor value.
@@ -184,23 +187,23 @@ impl Index<usize> for ShapeProxy {
 /// ValueProxys for nested items on the fly and store them.
 pub struct ValueProxy {
     sub: Cache<usize, ValueProxy>,
-    root: BaseIntProxy,
+    root: IntProxy,
     path: Path,
 }
 
 impl ValueProxy {
     /// Creates a new RootValueProxy instance.
     pub fn new(path: Path) -> ValueProxy {
-        let root = BaseIntProxy::new([&path[..], &[-1]].concat());
+        let root = IntProxy::new([&path[..], &[-1]].concat());
         ValueProxy { sub: Cache::new(), root, path }
     }
 }
 
 impl Index<()> for ValueProxy {
-    type Output = BaseIntProxy;
+    type Output = IntProxy;
 
     /// Returns the RootValueProxy corresponding to the given index.
-    fn index(&self, _: ()) -> &BaseIntProxy {
+    fn index(&self, _: ()) -> &IntProxy {
         &self.root
     }
 }
@@ -216,9 +219,7 @@ impl Index<usize> for ValueProxy {
 }
 
 impl_proxy!(ValueProxy);
-impl IntProxy for ValueProxy {}
-impl<'a> IntProxy for &'a ValueProxy {}
-
+impl_comparable_proxy!(ValueProxy);
 
 #[cfg(test)]
 mod tests {

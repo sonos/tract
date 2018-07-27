@@ -106,7 +106,7 @@ fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrap
 fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Wrapped> {
     match path {
         // Get the type of the TensorFact.
-        [0] => Ok(fact.datatype.wrap()),
+        [0] => Ok(fact.datatype.clone().wrap()),
 
         // Get the rank of the TensorFact.
         [1] => if fact.shape.open {

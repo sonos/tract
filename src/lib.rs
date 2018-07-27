@@ -72,7 +72,7 @@ pub mod tfpb;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::{fs, path, str};
 
-use analyser::prelude::*;
+// use analyser::prelude::*;
 use analyser::helpers::tensor_to_fact;
 pub use errors::*;
 use ops::{Op, TensorView, OpBuffer};

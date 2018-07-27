@@ -1,8 +1,3 @@
-use std::marker::PhantomData;
-use std::ops::Mul;
-
-use num_traits::CheckedDiv;
-
 use Result;
 use tfpb::types::DataType;
 
@@ -11,18 +6,9 @@ use analyser::types::{IntFact, TypeFact, ShapeFact, DimFact, ValueFact};
 
 use analyser::interface::path::Path;
 use analyser::interface::solver::Context;
-use analyser::interface::proxies::Proxy;
-use analyser::interface::proxies::IntProxy;
-use analyser::interface::proxies::TypeProxy;
-use analyser::interface::proxies::ShapeProxy;
-use analyser::interface::proxies::DimProxy;
+use analyser::interface::proxies::ComparableProxy;
 
 /// A trait for values produced by expressions.
-///
-/// Expressions don't necessarily produce "concrete" values. For instance,
-/// some expressions produce Option<usize> values which are None when the
-/// value is not yet known, and Some(real) otherwise; or produce DimFacts
-/// which could either be Only(real), Streamed or Any.
 pub trait Output: Fact {
     /// Wraps self in the Wrapped type.
     fn wrap(self) -> Wrapped {
@@ -37,7 +23,7 @@ pub trait Output: Fact {
     fn from_wrapped(wrapped: Wrapped) -> Self;
 }
 
-macro_rules! impl_wrapped {
+macro_rules! impl_output {
     ($type:ty, $constr:ident) => {
         impl Output for $type {
             fn into_wrapped(source: Self) -> Wrapped {
@@ -55,8 +41,14 @@ macro_rules! impl_wrapped {
     }
 }
 
+impl_output!(IntFact, Int);
+impl_output!(DimFact, Dim);
+impl_output!(TypeFact, Type);
+impl_output!(ShapeFact, Shape);
+impl_output!(ValueFact, Value);
+
 /// A wrapper for all the types of values that expressions can produce.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Wrapped {
     Int(IntFact),
     Dim(DimFact),
@@ -78,12 +70,6 @@ pub trait Expression {
     /// Returns the paths that the expression depends on.
     fn get_paths(&self) -> Vec<&Path>;
 }
-
-impl_wrapped!(IntFact, Int);
-impl_wrapped!(DimFact, Dim);
-impl_wrapped!(TypeFact, Type);
-impl_wrapped!(ShapeFact, Shape);
-impl_wrapped!(ValueFact, Value);
 
 /// A constant expression (e.g. `2` or `DataType::DT_INT32`).
 pub struct ConstantExpression<T: Output>(T);
@@ -202,84 +188,49 @@ pub trait IntoExpression<T> {
     fn into_expr(self) -> T;
 }
 
-// ---------------- Conversions from constants ---------------- //
-
-/// Converts &isize to ConstantExpression<IntFact>.
-impl<'a> IntoExpression<ConstantExpression<IntFact>> for &'a isize {
-    fn into_expr(self) -> ConstantExpression<IntFact> {
-        ConstantExpression((*self).into())
+/// Converts isize to ConstantExpression.
+impl IntoExpression<ConstantExpression> for isize {
+    fn into_expr(self) -> ConstantExpression {
+        let fact: IntFact = self.into();
+        ConstantExpression(fact.wrap())
     }
 }
 
-/// Converts isize to ConstantExpression<IntFact>.
-impl IntoExpression<ConstantExpression<IntFact>> for isize {
-    fn into_expr(self) -> ConstantExpression<IntFact> {
-        ConstantExpression(self.into())
+/// Converts &isize to ConstantExpression.
+impl<'a> IntoExpression<ConstantExpression> for &'a isize {
+    fn into_expr(self) -> ConstantExpression {
+        let fact: IntFact = (*self).into();
+        ConstantExpression(fact.wrap())
     }
 }
 
-/// Converts &DataType to ConstantExpression<TypeFact>.
-impl<'a> IntoExpression<ConstantExpression<TypeFact>> for &'a DataType {
-    fn into_expr(self) -> ConstantExpression<TypeFact> {
-        ConstantExpression((*self).into())
+/// Converts DataType to ConstantExpression.
+impl IntoExpression<ConstantExpression> for DataType {
+    fn into_expr(self) -> ConstantExpression {
+        let fact: TypeFact = self.into();
+        ConstantExpression(fact.wrap())
     }
 }
 
-/// Converts DataType to ConstantExpression<TypeFact>.
-impl IntoExpression<ConstantExpression<TypeFact>> for DataType {
-    fn into_expr(self) -> ConstantExpression<TypeFact> {
-        ConstantExpression(self.into())
-    }
-}
-
-/// Converts &T: Output to ConstantExpression<T>.
-impl<'a, T> IntoExpression<ConstantExpression<T>> for &'a T where T: Output {
-    fn into_expr(self) -> ConstantExpression<T> {
-        ConstantExpression(self.clone())
+/// Converts &DataType to ConstantExpression.
+impl<'a> IntoExpression<ConstantExpression> for &'a DataType {
+    fn into_expr(self) -> ConstantExpression {
+        let fact: TypeFact = (*self).into();
+        ConstantExpression(fact.wrap())
     }
 }
 
 /// Converts T: Output to ConstantExpression<T>.
-impl<T> IntoExpression<ConstantExpression<T>> for T where T: Output {
-    fn into_expr(self) -> ConstantExpression<T> {
-        ConstantExpression(self)
+impl<T> IntoExpression<ConstantExpression> for T where T: Output {
+    fn into_expr(self) -> ConstantExpression {
+        ConstantExpression(self.wrap())
     }
 }
 
-// ---------------- Conversions from proxies ---------------- //
-
-/// Converts IntProxy to VariableExpression<isize>.
-impl<T> IntoExpression<VariableExpression<IntFact>> for T where T: IntProxy {
-    fn into_expr(self) -> VariableExpression<IntFact> {
-        VariableExpression(self.get_path().to_vec(), PhantomData)
-    }
-}
-
-/// Converts DimProxy to VariableExpression<DimFact>.
-impl<T> IntoExpression<VariableExpression<DimFact>> for T where T: DimProxy {
-    fn into_expr(self) -> VariableExpression<DimFact> {
-        VariableExpression(self.get_path().to_vec(), PhantomData)
-    }
-}
-
-/// Converts TypeProxy to VariableExpression<TypeFact>.
-impl IntoExpression<VariableExpression<TypeFact>> for TypeProxy {
-    fn into_expr(self) -> VariableExpression<TypeFact> {
-        VariableExpression(self.get_path().to_vec(), PhantomData)
-    }
-}
-
-/// Converts &TypeProxy to VariableExpression<TypeFact>.
-impl<'a> IntoExpression<VariableExpression<TypeFact>> for &'a TypeProxy {
-    fn into_expr(self) -> VariableExpression<TypeFact> {
-        VariableExpression(self.get_path().to_vec(), PhantomData)
-    }
-}
-
-/// Converts ShapeProxy to VariableExpression<ShapeFact>.
-impl IntoExpression<VariableExpression<ShapeFact>> for ShapeProxy {
-    fn into_expr(self) -> VariableExpression<ShapeFact> {
-        VariableExpression(self.get_path().to_vec(), PhantomData)
+// Converts any comparable proxy to VariableExpression.
+impl<T> IntoExpression<VariableExpression> for T where T: ComparableProxy {
+    fn into_expr(self) -> VariableExpression {
+        VariableExpression(self.get_path().to_vec())
     }
 }
 

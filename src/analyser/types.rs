@@ -1,12 +1,9 @@
 use std::iter::FromIterator;
 use std::fmt::Debug;
-use std::ops::*;
 use Result;
 
 use tfpb::types::DataType;
 use Tensor;
-
-use num_traits::cast::ToPrimitive;
 
 /// Partial information about any value.
 pub trait Fact: Debug + Clone + PartialEq + Default {
@@ -299,53 +296,53 @@ impl From<usize> for DimFact {
     }
 }
 
-/// Implements arithmetic operations over `DimFact`s.
-macro_rules! impl_op {
-    ($fact:ident, $real_fact:ident, $inner:ty, $trait:ident, $method:ident, $i:ident, $j:ident, $res:expr) => {
-        impl $trait<Self> for $fact {
-            type Output = Self;
+// /// Implements arithmetic operations over `DimFact`s.
+// macro_rules! impl_op {
+//     ($fact:ident, $real_fact:ident, $inner:ty, $trait:ident, $method:ident, $i:ident, $j:ident, $res:expr) => {
+//         impl $trait<Self> for $fact {
+//             type Output = Self;
 
-            fn $method(self, other: Self) -> Self {
-                match (self, other) {
-                    ($real_fact::Only($i), $real_fact::Only($j)) => $real_fact::Only($res),
-                    _ => $real_fact::Any,
-                }
-            }
-        }
+//             fn $method(self, other: Self) -> Self {
+//                 match (self, other) {
+//                     ($real_fact::Only($i), $real_fact::Only($j)) => $real_fact::Only($res),
+//                     _ => $real_fact::Any,
+//                 }
+//             }
+//         }
 
-        impl $trait<$inner> for $fact {
-            type Output = Self;
+//         impl $trait<$inner> for $fact {
+//             type Output = Self;
 
-            fn $method(self, other: $inner) -> Self {
-                match (self, other) {
-                    ($real_fact::Only($i), $j) => $real_fact::Only($res),
-                    _ => $real_fact::Any,
-                }
-            }
-        }
+//             fn $method(self, other: $inner) -> Self {
+//                 match (self, other) {
+//                     ($real_fact::Only($i), $j) => $real_fact::Only($res),
+//                     _ => $real_fact::Any,
+//                 }
+//             }
+//         }
 
-        impl $trait<isize> for $fact {
-            type Output = Self;
+//         impl $trait<isize> for $fact {
+//             type Output = Self;
 
-            fn $method(self, other: isize) -> Self {
-                match (self, other) {
-                    ($real_fact::Only($i), $j) => {
-                        let $i = ($i).to_isize().unwrap();
+//             fn $method(self, other: isize) -> Self {
+//                 match (self, other) {
+//                     ($real_fact::Only($i), $j) => {
+//                         let $i = ($i).to_isize().unwrap();
 
-                        // This should not be a problem in most computations
-                        // involving a dimension. If we get a negative value
-                        // however, it it much safer to crash rather than to
-                        // silently accept the coersion.
-                        let res = $res.to_usize().unwrap();
+//                         // This should not be a problem in most computations
+//                         // involving a dimension. If we get a negative value
+//                         // however, it it much safer to crash rather than to
+//                         // silently accept the coersion.
+//                         let res = $res.to_usize().unwrap();
 
-                        $real_fact::Only(res)
-                    },
-                    _ => $real_fact::Any,
-                }
-            }
-        }
-    }
-}
+//                         $real_fact::Only(res)
+//                     },
+//                     _ => $real_fact::Any,
+//                 }
+//             }
+//         }
+//     }
+// }
 
 // impl_op!(DimFact, DimFact, usize, Add, add, i, j, i + j);
 // impl_op!(DimFact, DimFact, usize, Sub, sub, i, j, i - j);

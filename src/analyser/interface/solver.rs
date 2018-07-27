@@ -2,6 +2,7 @@ use Result;
 use analyser::types::TensorFact;
 use analyser::interface::path::{Path, get_path, set_path};
 use analyser::interface::expressions::Output;
+use analyser::interface::expressions::Wrapped;
 use analyser::interface::expressions::Expression;
 use analyser::interface::expressions::IntoExpression;
 
