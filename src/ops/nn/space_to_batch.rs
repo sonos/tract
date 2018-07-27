@@ -1,3 +1,4 @@
+use ndarray::*;
 use ops::prelude::*;
 use analyser::interface::*;
 
@@ -158,19 +159,29 @@ impl<T: Datum> InferenceRulesOp for SpaceToBatch<T> {
 fn rules<'r, 'p: 'r>(solver: &mut Solver<'r>, batch: &'p TensorProxy, space: &'p TensorProxy, block_shape: &'p TensorProxy, paddings: &'p TensorProxy) {
     solver
         .equals(&batch.datatype, &space.datatype)
-        .equals(&space.datatype, DataType::DT_INT32)
         .equals(&block_shape.datatype, DataType::DT_INT32)
         .equals(&paddings.datatype, DataType::DT_INT32)
         .equals(&batch.rank, &space.rank)
         .equals(&block_shape.rank, 1)
         .equals(&paddings.rank, 2)
-        /*
-        .given(&block_shape.value, |solver, block_shape| {
-//            let block_shape_prod = block_shape.
-        })
-        */
-        ;
-    unimplemented!("FIXME: rules, need tensor access");
+        .equals(&block_shape.shape[0], &paddings.shape[0])
+        .given(&block_shape.value, move |solver, block_shape:Tensor| {
+            let block_shape:ArrayD<i32> = block_shape.take_i32s().unwrap(); // semi-enforced by rules order (FIXME)
+            let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
+            solver.equals(&batch.shape[0], (block_shape_prod as isize, &space.shape[0]));
+            for d in 0..block_shape.len() {
+                solver.equals_zero(wrap!(
+                    (1, &space.shape[1+d]),
+                    (1, &paddings.value[d][0]),
+                    (1, &paddings.value[d][1]),
+                    (-block_shape[d], &batch.shape[1+d])));
+            }
+            solver.given(&space.rank, move |solver, rank:usize| {
+                for d in block_shape.len()+1..rank {
+                    solver.equals(&space.shape[d], &batch.shape[d]);
+                }
+            });
+        });
 }
 
 

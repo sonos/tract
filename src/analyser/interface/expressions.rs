@@ -6,6 +6,7 @@ use num_traits::CheckedDiv;
 
 use Result;
 use tfpb::types::DataType;
+use tensor::Tensor;
 use analyser::interface::path::Path;
 use analyser::interface::solver::Context;
 use analyser::interface::proxies::ComparableProxy;
@@ -102,6 +103,21 @@ impl Output for isize {
         let message = format!("Tried to convert {:?} to a isize.", wrapped);
 
         IntFact::from_wrapped(wrapped)?
+            .concretize()
+            .ok_or(message.into())
+    }
+}
+
+// Converts back and forth between Wrapped and Tensor.
+impl Output for Tensor {
+    fn into_wrapped(source: Tensor) -> Wrapped {
+        ValueFact::into_wrapped(source.into())
+    }
+
+    fn from_wrapped(wrapped: Wrapped) -> Result<Tensor> {
+        let message = format!("Tried to convert {:?} to a tensor.", wrapped);
+
+        ValueFact::from_wrapped(wrapped)?
             .concretize()
             .ok_or(message.into())
     }
@@ -286,7 +302,7 @@ impl<T> IntoExpression<VariableExpression<T::Output>> for T where T: ComparableP
     }
 }
 
-/// Converts (T, IntoExpression<Output = IntFact>) to ProductExpression.
+/// Converts (isize, IntoExpression<Output = IntFact>) to ProductExpression.
 impl<E, I> IntoExpression<ProductExpression<E>> for (isize, I)
 where
     E: Expression<Output = IntFact>,
@@ -295,5 +311,17 @@ where
     fn into_expr(self) -> ProductExpression<E> {
         let (k, e) = self;
         ProductExpression(k, e.into_expr())
+    }
+}
+
+/// Converts (i32, IntoExpression<Output = IntFact>) to ProductExpression.
+impl<E, I> IntoExpression<ProductExpression<E>> for (i32, I)
+where
+    E: Expression<Output = IntFact>,
+    I: IntoExpression<E>,
+{
+    fn into_expr(self) -> ProductExpression<E> {
+        let (k, e) = self;
+        ProductExpression(k as isize, e.into_expr())
     }
 }

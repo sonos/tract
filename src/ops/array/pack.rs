@@ -119,7 +119,7 @@ impl<T:Datum> InferenceRulesOp for Pack<T> {
             .equals(&inputs.len, n as isize)
             .equals(&outputs.len, 1)
             .equals_all((0..n).map(|i| bexp(&inputs[i].rank)).collect())
-            .equals_zero(wrap!((-1,&output.rank),(1,1),(1,&inputs[0].rank)))
+            .equals_zero(wrap!((-1,&output.rank),(1isize,1),(1,&inputs[0].rank)))
             .given(&inputs[0].rank, move |solver, r: usize| {
                 (0..r).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); })
             })
