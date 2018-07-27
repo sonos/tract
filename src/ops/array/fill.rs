@@ -46,8 +46,8 @@ impl<T:Datum> InferenceRulesOp for Fill<T> {
             .equals(&inputs[0].rank, 1)
             .equals(&inputs[1].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].shape[0])
-            .given(&outputs[0].rank, move |solver, rank| {
-                for dim in 0..(rank as usize) {
+            .given(&outputs[0].rank, move |solver, rank: usize| {
+                for dim in 0..rank {
                     solver.equals(&outputs[0].shape[dim], &inputs[0].value[dim]);
                 }
             })

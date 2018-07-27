@@ -121,16 +121,15 @@ impl<T:Datum> InferenceRulesOp for ConcatV2<T> {
             .equals(&outputs[0].datatype, &inputs[0].datatype)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
             .equals(&outputs[0].rank, &inputs[0].rank)
-            .given(&inputs[n].value, move |solver, axis:isize| {
-                let axis = axis as usize;
+            .given(&inputs[n].value, move |solver, axis: usize| {
                 solver
-                    .given(&inputs[0].rank, move |solver, rank| {
-                        let rank = rank as usize;
+                    .given(&inputs[0].rank, move |solver, rank: usize| {
                         (0..axis).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); });
                         ((axis+1)..rank).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); });
                         (0..axis).for_each(|d| { solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]); });
                         ((axis+1)..rank).for_each(|d| { solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]); });
                     });
+
                 let mut concat_dim = vec!(bexp((-1, &outputs[0].shape[axis])));
                 concat_dim.extend((0..n).map(|i| bexp((1, &inputs[i].shape[axis]))));
                 solver.equals_all(concat_dim);

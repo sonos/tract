@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use num_traits::ToPrimitive;
+// use num_traits::ToPrimitive;
 
 mod concatv2;
 mod fill;
@@ -96,18 +96,14 @@ impl InferenceRulesOp for ExpandDims {
             .equals(&data.datatype, &output.datatype)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
 
-            .given(&dims.value, move |solver, index| {
-                let index = index.to_usize().unwrap();
-
+            .given(&dims.value, move |solver, index: usize| {
                 for i in 0..index {
                     solver.equals(&output.shape[i], &data.shape[i]);
                 }
 
                 solver.equals(&output.shape[index], 1);
 
-                solver.given(&data.rank, move |solver, rank| {
-                    let rank = rank.to_usize().unwrap();
-
+                solver.given(&data.rank, move |solver, rank: usize| {
                     for i in 0..rank {
                         solver.equals(&output.shape[i + 1], &data.shape[i]);
                     }
@@ -324,7 +320,7 @@ impl Op for Reshape {
 }
 
 impl InferenceRulesOp for Reshape {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, _solver: &mut Solver<'r>, _inputs: &'p TensorsProxy, _outputs: &'p TensorsProxy) {
         unimplemented!("full value access")
     }
 }
@@ -362,8 +358,8 @@ impl InferenceRulesOp for Shape {
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
 
-            .given(&inputs[0].rank, move |solver, ir| {
-                for i in 0..ir.to_usize().unwrap() {
+            .given(&inputs[0].rank, move |solver, ir: usize| {
+                for i in 0..ir {
                     solver.equals(&outputs[0].value[i], &inputs[0].shape[i]);
                 }
             });

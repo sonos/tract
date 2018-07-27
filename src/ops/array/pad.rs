@@ -105,12 +105,12 @@ impl<T:Datum> InferenceRulesOp for Pad<T> {
             .equals(&padding.rank, 2)
             .equals(&padding.shape[0], &input.rank)
             .equals(&padding.shape[1], 2)
-            .given(&input.rank, move |solver, rank| {
-                (0..(rank as usize)).for_each(|d| {
+            .given(&input.rank, move |solver, rank: usize| {
+                (0..rank).for_each(|d| {
                     solver.equals_zero(
                         wrap!((-1, &output.shape[d]),(1, &input.shape[d]), (1, &padding.value[d][0]), (1, &padding.value[d][1]))
-                    );}
-                )
+                    );
+                })
             })
         ;
     }

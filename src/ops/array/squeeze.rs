@@ -125,11 +125,11 @@ impl<T:Datum> InferenceRulesOp for Squeeze<T> {
             .equals(&inputs[0].datatype, &outputs[0].datatype)
             .equals(&inputs[0].datatype, T::datatype());
         ;
-        solver.given(&inputs[0].shape, |solver, shape| {
-            unimplemented!("rules for Squeeze");
-            // let output_shape = self.squeeze_shape(shape.to_vec(), None);
-            // FIXME
-        });
+        // solver.given(&inputs[0].shape, |solver, shape: Vec<usize>| {
+        //     unimplemented!("rules for Squeeze");
+        //     // let output_shape = self.squeeze_shape(shape.to_vec(), None);
+        //     // FIXME
+        // });
     }
 }
 

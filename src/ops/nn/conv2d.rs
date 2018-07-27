@@ -306,7 +306,7 @@ impl<T: Datum> Op for Conv2D<T> {
 
 impl<T: Datum> InferenceRulesOp for Conv2D<T> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, _solver: &mut Solver<'r>, _inputs: &'p TensorsProxy, _outputs: &'p TensorsProxy) {
         unimplemented!("FIXME (rules)")
     }
 }

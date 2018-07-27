@@ -142,7 +142,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 
 impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r>(&self, _solver: &mut Solver<'r>, _inputs: &'p TensorsProxy, _outputs: &'p TensorsProxy) {
         unimplemented!("FIXME: inference rules for Pool ops");
     }
 }

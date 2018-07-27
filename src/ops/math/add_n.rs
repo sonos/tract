@@ -56,8 +56,8 @@ impl<T:Datum> InferenceRulesOp for AddN<T> {
             .equals(&inputs[0].rank, &outputs[0].rank)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
 
-            .given(&inputs[0].rank, move |solver, rank| {
-                for dim in 0..(rank as usize) {
+            .given(&inputs[0].rank, move |solver, rank: usize| {
+                for dim in 0..rank {
                     solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
                     solver.equals_all((0..n as usize).map(|i| bexp(&inputs[i].shape[dim])).collect());
                 }
