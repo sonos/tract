@@ -1,6 +1,10 @@
+use std::ops::{Add, Sub, Mul, Div};
 use std::iter::FromIterator;
 use std::fmt::Debug;
 use Result;
+
+use num_traits::cast::ToPrimitive;
+use num_traits::CheckedDiv;
 
 use tfpb::types::DataType;
 use Tensor;
@@ -271,6 +275,15 @@ impl Fact for DimFact {
         }
     }
 
+    /// Returns whether the dimension is concrete.
+    fn is_concrete(&self) -> bool {
+        match self {
+            DimFact::Any => false,
+            DimFact::Streamed => true,
+            DimFact::Only(_) => true,
+        }
+    }
+
     /// Tries to unify the fact with another `DimFact`.
     fn unify(&self, other: &Self) -> Result<Self> {
         let fact = match (self, other) {
@@ -296,66 +309,173 @@ impl From<usize> for DimFact {
     }
 }
 
-// /// Implements arithmetic operations over `DimFact`s.
-// macro_rules! impl_op {
-//     ($fact:ident, $real_fact:ident, $inner:ty, $trait:ident, $method:ident, $i:ident, $j:ident, $res:expr) => {
-//         impl $trait<Self> for $fact {
-//             type Output = Self;
-
-//             fn $method(self, other: Self) -> Self {
-//                 match (self, other) {
-//                     ($real_fact::Only($i), $real_fact::Only($j)) => $real_fact::Only($res),
-//                     _ => $real_fact::Any,
-//                 }
-//             }
-//         }
-
-//         impl $trait<$inner> for $fact {
-//             type Output = Self;
-
-//             fn $method(self, other: $inner) -> Self {
-//                 match (self, other) {
-//                     ($real_fact::Only($i), $j) => $real_fact::Only($res),
-//                     _ => $real_fact::Any,
-//                 }
-//             }
-//         }
-
-//         impl $trait<isize> for $fact {
-//             type Output = Self;
-
-//             fn $method(self, other: isize) -> Self {
-//                 match (self, other) {
-//                     ($real_fact::Only($i), $j) => {
-//                         let $i = ($i).to_isize().unwrap();
-
-//                         // This should not be a problem in most computations
-//                         // involving a dimension. If we get a negative value
-//                         // however, it it much safer to crash rather than to
-//                         // silently accept the coersion.
-//                         let res = $res.to_usize().unwrap();
-
-//                         $real_fact::Only(res)
-//                     },
-//                     _ => $real_fact::Any,
-//                 }
-//             }
-//         }
-//     }
-// }
-
-// impl_op!(DimFact, DimFact, usize, Add, add, i, j, i + j);
-// impl_op!(DimFact, DimFact, usize, Sub, sub, i, j, i - j);
-// impl_op!(DimFact, DimFact, usize, Mul, mul, i, j, i * j);
-// impl_op!(DimFact, DimFact, usize, Div, div, i, j, i / j);
-
 /// Partial information about a value.
 pub type ValueFact = GenericFact<Tensor>;
 
-/// Partial information about an integer value.
-pub type IntFact = GenericFact<isize>;
+/// Partial information about any integer-like value.
+///
+/// This type is mostly used as plumbing for the solver: we convert all
+/// `DimFact`, isize and usize values into `IntFact` values so that we
+/// can both compare them and do some arithmetic on them. This becomes
+/// useful when trying to do something like:
+/// ```text
+/// solver.equals(&input.rank, &output.shape[0]);
+///                ^^^^^^^^^^   ^^^^^^^^^^^^^^^
+///                  IntFact        DimFact
+///```
+///
+/// Values using the constructor `Special` are treated as absorbing
+/// elements for all arithmetic operations. This is currently used to
+/// represent `DimFact::Streamed` values, but could be used for other
+/// absorbing values in the future.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IntFact {
+    Any,
+    Only(isize),
+    Special(SpecialKind),
+}
 
-// impl_op!(IntFact, GenericFact, isize, Add, add, i, j, i + j);
-// impl_op!(IntFact, GenericFact, isize, Sub, sub, i, j, i - j);
-// impl_op!(IntFact, GenericFact, isize, Mul, mul, i, j, i * j);
-// impl_op!(IntFact, GenericFact, isize, Div, div, i, j, i / j);
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecialKind {
+    Streamed,
+}
+
+impl Fact for IntFact {
+    type Concrete = isize;
+
+    /// Tries to transform the fact into a concrete value.
+    fn concretize(&self) -> Option<isize> {
+        match self {
+            IntFact::Only(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Returns whether the IntFact is concrete.
+    fn is_concrete(&self) -> bool {
+        match self {
+            IntFact::Any        => false,
+            IntFact::Only(_)    => true,
+            IntFact::Special(_) => true,
+        }
+    }
+
+    /// Tries to unify the fact with another fact of the same type.
+    fn unify(&self, other: &IntFact) -> Result<IntFact> {
+        let fact = match (self, other) {
+            (_, IntFact::Any)  => self.clone(),
+            (IntFact::Any, _)  => other.clone(),
+            _ if self == other => self.clone(),
+            _ => bail!("Impossible to unify {:?} with {:?}.", self, other),
+        };
+
+        Ok(fact)
+    }
+}
+
+impl Default for IntFact {
+    fn default() -> IntFact {
+        IntFact::Any
+    }
+}
+
+impl From<isize> for IntFact {
+    fn from(i: isize) -> IntFact {
+        IntFact::Only(i)
+    }
+}
+
+impl From<usize> for IntFact {
+    fn from(u: usize) -> IntFact {
+        IntFact::Only(u.to_isize().unwrap())
+    }
+}
+
+impl From<DimFact> for IntFact {
+    fn from(d: DimFact) -> IntFact {
+        match d {
+            DimFact::Any      => IntFact::Any,
+            DimFact::Only(d)  => d.into(),
+            DimFact::Streamed => IntFact::Special(SpecialKind::Streamed),
+        }
+    }
+}
+
+// /// Implements arithmetic operations over `DimFact`s.
+macro_rules! impl_op {
+    ($fact:ident, $trait:ident, $method:ident, $i:ident, $j:ident, $res:expr) => {
+        impl $trait<Self> for $fact {
+            type Output = Self;
+
+            fn $method(self, other: Self) -> Self {
+                match (self, other) {
+                    (IntFact::Special(a), IntFact::Special(b)) => if a == b {
+                        IntFact::Special(a)
+                    } else {
+                        panic!("Shouldn't perform an arithmetic operation on two\
+                                different special values ({:?} and {:?}).", a, b);
+                    },
+
+                    (IntFact::Special(s), _) |
+                    (_, IntFact::Special(s)) => IntFact::Special(s),
+
+                    (IntFact::Only($i), IntFact::Only($j)) => IntFact::Only($res),
+                    _ => IntFact::Any,
+                }
+            }
+        }
+
+        impl $trait<isize> for $fact {
+            type Output = Self;
+
+            fn $method(self, other: isize) -> Self {
+                match (self, other) {
+                    (IntFact::Special(s), _) => IntFact::Special(s),
+                    (IntFact::Only($i), $j)  => IntFact::Only($res),
+                    _ => IntFact::Any,
+                }
+            }
+        }
+
+        impl $trait<usize> for $fact {
+            type Output = Self;
+
+            fn $method(self, other: usize) -> Self {
+                match (self, other) {
+                    (IntFact::Special(s), _) => IntFact::Special(s),
+                    (IntFact::Only($i), $j)  => {
+                        let $j = ($j).to_isize().unwrap();
+                        IntFact::Only($res)
+                    },
+                    _ => IntFact::Any,
+                }
+            }
+        }
+    }
+}
+
+impl_op!(IntFact, Add, add, i, j, i + j);
+impl_op!(IntFact, Sub, sub, i, j, i - j);
+impl_op!(IntFact, Mul, mul, i, j, i * j);
+impl_op!(IntFact, Div, div, i, j, i / j);
+
+impl CheckedDiv for IntFact {
+    fn checked_div(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (IntFact::Special(a), IntFact::Special(b)) => if a == b {
+                Some(IntFact::Special(*a))
+            } else {
+                panic!("Shouldn't perform an arithmetic operation on two\
+                        different special values ({:?} and {:?}).", a, b);
+            },
+
+            (IntFact::Special(s), _) |
+            (_, IntFact::Special(s)) => Some(IntFact::Special(*s)),
+
+            (IntFact::Only(i), IntFact::Only(j)) =>
+                i.checked_div(j).map(|k| k.into()),
+
+            _ => Some(IntFact::Any),
+        }
+    }
+}

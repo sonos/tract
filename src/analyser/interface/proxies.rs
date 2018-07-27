@@ -1,5 +1,10 @@
+use analyser::types::IntFact;
+use analyser::types::TypeFact;
+use analyser::types::ShapeFact;
+use analyser::types::ValueFact;
 use analyser::interface::path::Path;
 use analyser::interface::cache::Cache;
+use analyser::interface::expressions::Output;
 use std::ops::Index;
 
 use num_traits::cast::ToPrimitive;
@@ -16,7 +21,9 @@ pub trait Proxy {
 }
 
 /// A proxy which can be used in a solver rule.
-pub trait ComparableProxy: Proxy {}
+pub trait ComparableProxy: Proxy {
+    type Output: Output;
+}
 
 /// Generates the get_path method for structs which have a `path` field.
 macro_rules! impl_proxy {
@@ -39,9 +46,9 @@ macro_rules! impl_proxy {
 
 /// Implements the ComparableProxy trait for the proxy and references to it.
 macro_rules! impl_comparable_proxy {
-    ($struct:ident) => {
-        impl ComparableProxy for $struct {}
-        impl<'a> ComparableProxy for &'a $struct {}
+    ($struct:ident, $output:ident) => {
+        impl ComparableProxy for $struct { type Output = $output; }
+        impl<'a> ComparableProxy for &'a $struct { type Output = $output; }
     }
 }
 
@@ -52,7 +59,7 @@ pub struct IntProxy {
 }
 
 impl_proxy!(IntProxy);
-impl_comparable_proxy!(IntProxy);
+impl_comparable_proxy!(IntProxy, IntFact);
 
 /// A proxy for a vector of tensors.
 ///
@@ -141,7 +148,7 @@ pub struct TypeProxy {
 }
 
 impl_proxy!(TypeProxy);
-impl_comparable_proxy!(TypeProxy);
+impl_comparable_proxy!(TypeProxy, TypeFact);
 
 /// A proxy for a tensor shape.
 pub struct ShapeProxy {
@@ -157,7 +164,7 @@ impl ShapeProxy {
 }
 
 impl_proxy!(ShapeProxy);
-impl_comparable_proxy!(ShapeProxy);
+impl_comparable_proxy!(ShapeProxy, ShapeFact);
 
 impl Index<usize> for ShapeProxy {
     type Output = DimProxy;
@@ -176,17 +183,17 @@ pub struct DimProxy {
 }
 
 impl_proxy!(DimProxy);
-impl_comparable_proxy!(DimProxy);
+impl_comparable_proxy!(DimProxy, IntFact);
 
 
-/// A proxy for a tensor value.
+/// A proxy for the whole tensor value.
 ///
 /// This proxy is a bit special as it allows arbitrarily nested indexing, so
 /// that writing something like ```input.value[1][6][2]``` will always work.
 /// To make this work, each ValueProxy holds a cache which will generate new
 /// ValueProxys for nested items on the fly and store them.
 pub struct ValueProxy {
-    sub: Cache<usize, ValueProxy>,
+    sub: Cache<usize, ElementProxy>,
     root: IntProxy,
     path: Path,
 }
@@ -209,17 +216,43 @@ impl Index<()> for ValueProxy {
 }
 
 impl Index<usize> for ValueProxy {
-    type Output = ValueProxy;
+    type Output = ElementProxy;
 
-    /// Returns the ValueProxy corresponding to the given index.
-    fn index(&self, index: usize) -> &ValueProxy {
+    /// Returns the ElementProxy corresponding to the given index.
+    fn index(&self, index: usize) -> &ElementProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.sub.get(index, || ValueProxy::new(path))
+        self.sub.get(index, || ElementProxy::new(path))
     }
 }
 
 impl_proxy!(ValueProxy);
-impl_comparable_proxy!(ValueProxy);
+impl_comparable_proxy!(ValueProxy, ValueFact);
+
+/// A proxy for a tensor element.
+pub struct ElementProxy {
+    sub: Cache<usize, ElementProxy>,
+    path: Path,
+}
+
+impl ElementProxy {
+    /// Creates a new ElementProxy instance.
+    pub fn new(path: Path) -> ElementProxy {
+        ElementProxy { sub: Cache::new(), path }
+    }
+}
+
+impl Index<usize> for ElementProxy {
+    type Output = ElementProxy;
+
+    /// Returns the ElementProxy corresponding to the given index.
+    fn index(&self, index: usize) -> &ElementProxy {
+        let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
+        self.sub.get(index, || ElementProxy::new(path))
+    }
+}
+
+impl_proxy!(ElementProxy);
+impl_comparable_proxy!(ElementProxy, IntFact);
 
 #[cfg(test)]
 mod tests {
