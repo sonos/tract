@@ -214,7 +214,7 @@ pub trait InferenceOp {
 
 pub trait InferenceRulesOp {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy);
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy);
 }
 
 impl<O: InferenceRulesOp> InferenceOp for O {
@@ -282,7 +282,7 @@ impl Op for UnimplementedOp {
 }
 
 impl InferenceRulesOp for UnimplementedOp {
-    fn rules<'r, 'p: 'r>(&self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {}
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {}
 }
 
 

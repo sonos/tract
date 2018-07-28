@@ -112,7 +112,7 @@ impl<T:Datum> Op for ConcatV2<T> {
 }
 
 impl<T:Datum> InferenceRulesOp for ConcatV2<T> {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         let n = self.n;
         solver
             .equals(&inputs.len, n as isize + 1)

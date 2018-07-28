@@ -44,7 +44,7 @@ where
 }
 
 impl<T:Datum> InferenceRulesOp for AddN<T> {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
 
         let n = self.n as isize;
         solver

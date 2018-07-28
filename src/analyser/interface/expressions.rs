@@ -123,6 +123,21 @@ impl Output for Tensor {
     }
 }
 
+// Converts back and forth between Wrapped and a Vec<usize> shape.
+impl Output for Vec<usize> {
+    fn into_wrapped(source: Vec<usize>) -> Wrapped {
+        ShapeFact::into_wrapped(source.into())
+    }
+
+    fn from_wrapped(wrapped: Wrapped) -> Result<Vec<usize>> {
+        let message = format!("Tried to convert {:?} to a shape.", wrapped);
+
+        ShapeFact::from_wrapped(wrapped)?
+            .concretize()
+            .ok_or(message.into())
+    }
+}
+
 /// A wrapper for all the types of values that expressions can produce.
 #[derive(Debug, Clone)]
 pub enum Wrapped {

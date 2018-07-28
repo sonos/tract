@@ -75,6 +75,16 @@ impl Fact for TensorFact {
     }
 }
 
+impl From<Tensor> for TensorFact {
+    fn from(t: Tensor) -> TensorFact {
+        TensorFact {
+            datatype: GenericFact::Only(t.datatype()),
+            shape: ShapeFact::from(t.shape()),
+            value: GenericFact::Only(t),
+        }
+    }
+}
+
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]

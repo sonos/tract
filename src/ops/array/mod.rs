@@ -81,7 +81,7 @@ impl Op for ExpandDims {
 }
 
 impl InferenceRulesOp for ExpandDims {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         let data = &inputs[0];
         let dims = &inputs[1];
         let output = &outputs[0];
@@ -96,14 +96,14 @@ impl InferenceRulesOp for ExpandDims {
             .equals(&data.datatype, &output.datatype)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
 
-            .given(&dims.value, move |solver, index: usize| {
+            .given(&dims.value, move |solver, index| {
                 for i in 0..index {
                     solver.equals(&output.shape[i], &data.shape[i]);
                 }
 
                 solver.equals(&output.shape[index], 1);
 
-                solver.given(&data.rank, move |solver, rank: usize| {
+                solver.given(&data.rank, move |solver, rank| {
                     for i in 0..rank {
                         solver.equals(&output.shape[i + 1], &data.shape[i]);
                     }
@@ -147,7 +147,7 @@ impl Op for Identity {
 }
 
 impl InferenceRulesOp for Identity {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
@@ -185,7 +185,7 @@ impl Op for Placeholder {
 
 impl InferenceRulesOp for Placeholder {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 0)
             .equals(&outputs.len, 1)
@@ -246,82 +246,23 @@ impl Op for Reshape {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{}
     }
-
-    /*
-    /// Infers properties about the input and output tensors.
-    /// TODO(liautaud): This is ugly, rewrite using the solver.
-    fn infer(
-        &self,
-        inputs: Vec<TensorFact>,
-        mut outputs: Vec<TensorFact>,
-    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
-        if inputs.len() != 2 {
-            bail!("Reshape operation only supports two inputs.");
-        }
-
-        if outputs.len() < 1 {
-            bail!("Reshape operation only supports one output.");
-        }
-
-        let input = unify(&inputs[0], &TensorFact {
-            datatype: outputs[0].datatype,
-            ..TensorFact::new()
-        })?;
-
-        let shape = unify(&inputs[1], &TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
-            ..TensorFact::new()
-        })?;
-
-        let output: Result<_> = {
-            let value = &inputs[1].value.concretize();
-
-            if let Some(value) = value {
-                // If we don't know the actual value, we can still compute the shape.
-                let dims: Vec<_> = value
-                    .as_i32s()
-                    .ok_or("Expected a i32 matrix")?
-                    .iter()
-                    .cloned()
-                    .collect();
-
-                match &inputs[0].shape.concretize() {
-                    // If we know the concrete shape of the input, we get the output shape.
-                    Some(shape) => Ok(Some(TensorFact {
-                        datatype: inputs[0].datatype,
-                        shape: Reshape::true_dims(dims, shape[0]).iter().cloned().collect(),
-                        value: valuefact!(_),
-                    })),
-
-                    // If we don't know anything about the output, but know the value of
-                    // dims and it doesn't contain -1 (e.g. we don't have to guess some
-                    // of the output dimensions), we can also compute the output shape.
-                    _ if !dims.contains(&-1) => Ok(Some(TensorFact {
-                        datatype: inputs[0].datatype,
-                        shape: dims.into_iter().map(|d| d as usize).collect(),
-                        value: valuefact!(_),
-                    })),
-
-                    _ => Ok(None)
-                }
-            } else {
-                Ok(None)
-            }
-        };
-
-        let output = match output? {
-            Some(fact) => unify(&outputs[0], &fact)?,
-            None => outputs.remove(0),
-        };
-
-        Ok((vec![input, shape], vec![output]))
-    }
-    */
 }
 
 impl InferenceRulesOp for Reshape {
-    fn rules<'r, 'p: 'r>(&self, _solver: &mut Solver<'r>, _inputs: &'p TensorsProxy, _outputs: &'p TensorsProxy) {
-        unimplemented!("full value access")
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 2)
+            .equals(&outputs.len, 1)
+            .equals(&inputs[1].datatype, DataType::DT_FLOAT)
+            .equals(&inputs[1].rank, 1)
+            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .given(&inputs[0].rank, move |solver, input_rank| {
+                solver.given(&inputs[1].value, move |solver, dims:Vec<usize>| {
+                    let dims:Vec<i32> = dims.into_iter().map(|d| d as i32).collect();
+                    let shape = Reshape::true_dims(dims, input_rank);
+                    solver.equals(&outputs[0].shape, ShapeFact::from(shape));
+                });
+            });
     }
 }
 
@@ -349,7 +290,7 @@ impl Op for Shape {
 }
 
 impl InferenceRulesOp for Shape {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)

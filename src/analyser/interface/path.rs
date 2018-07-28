@@ -189,8 +189,9 @@ fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> Result<Wrapped> {
 
 /// Returns the value at the given path (starting from a ValueFact).
 fn get_value_path(value: &ValueFact, path: &[isize]) -> Result<Wrapped> {
+    trace!("get_value_path path:{:?} value:{:?}", path, value);
     // Return the whole tensor.
-    if path == &[-1] {
+    if path == &[-1] || path == &[] {
         return Ok(value.clone().wrap());
     }
 

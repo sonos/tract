@@ -53,7 +53,7 @@ impl Op for Softmax {
 
 impl InferenceRulesOp for Softmax {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)

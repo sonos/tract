@@ -1,4 +1,4 @@
-use ndarray::*;
+use ndarray::prelude::*;
 use ops::prelude::*;
 use analyser::interface::*;
 
@@ -69,86 +69,11 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{ "T" => Attr::DataType(T::datatype()) }
     }
-
-    /*
-    /// Infers properties about the output tensors from the input tensors.
-    /// See tensorflow.org/api_docs/cc/class/tensorflow/ops/space-to-batch-n-d.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() != 3 {
-            bail!("SpaceToBatchND operation only supports three inputs.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        let input_shape = &inputs[0].shape;
-        let mut input_dims = input_shape.dims.clone();
-
-        let block_shape = unwrap_or_none!(inputs[1].value.concretize())
-            .as_i32s()
-            .ok_or("Expected a i32 matrix for block_shape.")?;
-
-        if block_shape.ndim() != 1 {
-            bail!("SpaceToBatchND expected block_shape to be of shape [M].");
-        }
-
-        let m = block_shape.shape()[0];
-
-        let paddings = unwrap_or_none!(inputs[2].value.concretize())
-            .as_i32s()
-            .ok_or("Expected a i32 matrix for paddings.")?;
-
-        if paddings.ndim() != 2 ||
-           paddings.shape()[0] != m ||
-           paddings.shape()[1] != 2 {
-            bail!("SpaceToBatchND expected paddings to be of shape [M, 2].");
-        }
-
-        // The input is supposed to have shape [batch] + spatial_shape + remaining_shape,
-        // where spatial_shape has M dimensions. If this is not the case but the input
-        // shape is open, we can just add unknown dimensions until we get the right shape.
-        let input_rank = input_dims.len();
-        if input_rank < 1 + m {
-            if input_shape.open {
-                input_dims.extend(repeat(dimfact!(_)).take(1 + m - input_rank));
-            } else {
-                bail!("SpaceToBatchND expected the input to have at least 1 + M dimensions.");
-            }
-        }
-
-        for i in 0..m {
-            // Pad the spatial dimensions according to `paddings`.
-            input_dims[i + 1] = input_dims[i + 1] + (paddings[[i, 0]] as usize);
-            input_dims[i + 1] = input_dims[i + 1] + (paddings[[i, 1]] as usize);
-
-            // Reduce the spatial dimensions according to `block_shape`.
-            input_dims[i + 1] = input_dims[i + 1] / (block_shape[[i]] as usize);
-
-            // Expand the batch dimension according to `block_shape`.
-            input_dims[0] = input_dims[0] * (block_shape[[i]] as usize);
-        }
-
-        let output_shape = if input_shape.open {
-            ShapeFact::open(input_dims)
-        } else {
-            ShapeFact::closed(input_dims)
-        };
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape: output_shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-    */
 }
 
 impl<T: Datum> InferenceRulesOp for SpaceToBatch<T> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 3)
             .equals(&outputs.len, 1);
@@ -241,7 +166,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
 
 impl<T: Datum> InferenceRulesOp for BatchToSpace<T> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 3)
             .equals(&outputs.len, 1);

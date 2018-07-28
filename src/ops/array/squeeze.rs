@@ -42,54 +42,6 @@ impl<T: Datum> Op for Squeeze<T> {
         let shape = self.squeeze_shape(data.shape().to_vec(), None)?;
         Ok(vec![Tensor::from(data.clone().into_shape(shape)?).into()])
     }
-/*
-    /// Infers properties about the input and output tensors.
-    /// TODO(liautaud): This is ugly, rewrite using the solver.
-    fn infer(
-        &self,
-        inputs: Vec<TensorFact>,
-        mut outputs: Vec<TensorFact>,
-    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
-        if inputs.len() != 1 {
-            bail!("Squeeze operation only supports one input.");
-        }
-
-        if outputs.len() != 1 {
-            bail!("Squeeze operation only supports one output.");
-        }
-
-        let output: Result<_> = {
-            // We can't say anything interesting if there are unknown dimensions,
-            // because they could turn out to be Only(1), and so Squeeze would
-            // have to remove them.
-            let shape = match inputs[0].shape.concretize() {
-                Some(shape) => self.squeeze_shape(shape, None)?.iter().cloned().collect(),
-                None => shapefact![..],
-            };
-
-            let output = TensorFact {
-                datatype: inputs[0].datatype,
-                shape,
-                value: valuefact!(_),
-            };
-
-            Ok(Some(vec![output]))
-        };
-
-        let output = match output? {
-            Some(v) => unify(&outputs[0], &v[0])?,
-            None => outputs.remove(0),
-        };
-
-        let input = unify(&inputs[0], &TensorFact {
-            datatype: output.datatype,
-            shape: shapefact![..],
-            value: valuefact!(_),
-        })?;
-
-        Ok((vec![input], vec![output]))
-    }
-*/
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
@@ -118,18 +70,16 @@ impl<T: Datum> Op for Squeeze<T> {
 }
 
 impl<T:Datum> InferenceRulesOp for Squeeze<T> {
-    fn rules<'r, 'p: 'r>(&self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datatype, &outputs[0].datatype)
-            .equals(&inputs[0].datatype, T::datatype());
-        ;
-        // solver.given(&inputs[0].shape, |solver, shape: Vec<usize>| {
-        //     unimplemented!("rules for Squeeze");
-        //     // let output_shape = self.squeeze_shape(shape.to_vec(), None);
-        //     // FIXME
-        // });
+            .equals(&inputs[0].datatype, T::datatype())
+            .given(&inputs[0].shape, move |solver, shape| {
+                let shape = self.squeeze_shape(shape, None).unwrap();
+                solver.equals(&outputs[0].shape, ShapeFact::from(shape));
+            });
     }
 }
 

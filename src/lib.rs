@@ -109,6 +109,10 @@ impl Node {
     pub fn eval_order(&self, model: &Model) -> Result<Vec<usize>> {
         Ok(Plan::for_model(model, &[self.id])?.order)
     }
+
+    pub fn op(&self) -> &Op {
+        &*self.op
+    }
 }
 
 /// Load a Tensorflow protobul model from a file.

@@ -44,8 +44,8 @@ macro_rules! element_map {
 
         impl ::ops::InferenceRulesOp for $Struct {
             /// Infers properties about the input and output tensors.
-            fn rules<'r, 'p: 'r>(
-                &self,
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
                 solver: &mut $crate::analyser::interface::Solver<'r>,
                 inputs: &'p $crate::analyser::interface::TensorsProxy,
                 outputs: &'p $crate::analyser::interface::TensorsProxy,
@@ -117,8 +117,8 @@ macro_rules! element_bin {
 
         impl<T: ::tensor::Datum> ::ops::InferenceRulesOp for $Name<T> {
             /// Infers properties about the input and output tensors.
-            fn rules<'r, 'p: 'r>(
-                &self,
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
                 solver: &mut $crate::analyser::interface::Solver<'r>,
                 inputs: &'p $crate::analyser::interface::TensorsProxy,
                 outputs: &'p $crate::analyser::interface::TensorsProxy,
