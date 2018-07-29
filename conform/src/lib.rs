@@ -110,9 +110,11 @@ pub fn compare<S: AsRef<str>>(
     let inputs_vectors:Vec<TensorFact> = node.inputs.iter().map(|(i,p)| state.outputs[*i].as_ref().unwrap()[p.unwrap_or(0)].as_tensor().clone().into()).collect();
     let output_vectors:Vec<TensorFact> = vec!(state.outputs[output_id].as_ref().unwrap()[0].as_tensor().clone().into());
 
+    info!("Checking inference on {}", output);
     let op = node.op();
     if let Err(e) = op.infer(inputs_vectors, output_vectors) {
         error!("{:?}", e);
+        Err(e)?
     }
 
     Ok(())
