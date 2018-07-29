@@ -1,3 +1,5 @@
+use std::fmt;
+
 use analyser::types::IntFact;
 use analyser::types::TypeFact;
 use analyser::types::ShapeFact;
@@ -32,6 +34,12 @@ macro_rules! impl_proxy {
             /// Returns the symbolic path to the value.
             fn get_path(&self) -> &Path {
                 &self.path
+            }
+        }
+
+        impl fmt::Debug for $struct {
+            fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "{:?}", self.get_path())
             }
         }
 

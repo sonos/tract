@@ -205,6 +205,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
 
 fn debug_tensorfact_path(path:&[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
     match path {
+        [] => Ok(()),
         [0] => write!(formatter, ".datatype"),
         [1] => write!(formatter, ".rank"),
         [2] => write!(formatter, ".shape"),
