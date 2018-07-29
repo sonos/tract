@@ -5,8 +5,10 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 
 [dependencies]
 error-chain =  "0"
+log = "0.4"
 ndarray = "0"
 proptest = "0.6"
 protobuf = "~1.6"
+simplelog = "0.5"
 tensorflow = "0"
 tfdeploy = { path = ".." }

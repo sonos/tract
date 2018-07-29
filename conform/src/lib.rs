@@ -2,10 +2,13 @@
 
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate log;
 extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
+extern crate simplelog;
 extern crate tensorflow;
 extern crate tfdeploy;
 
@@ -108,7 +111,9 @@ pub fn compare<S: AsRef<str>>(
     let output_vectors:Vec<TensorFact> = vec!(state.outputs[output_id].as_ref().unwrap()[0].as_tensor().clone().into());
 
     let op = node.op();
-    op.infer(inputs_vectors, output_vectors)?;
+    if let Err(e) = op.infer(inputs_vectors, output_vectors) {
+        error!("{:?}", e);
+    }
 
     Ok(())
 }

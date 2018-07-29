@@ -219,8 +219,8 @@ pub trait InferenceRulesOp {
 
 impl<O: InferenceRulesOp> InferenceOp for O {
     fn infer(&self, inputs: Vec<TensorFact>, outputs: Vec<TensorFact>) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
-        let inputs_proxy = TensorsProxy::new(vec![0]);
-        let outputs_proxy = TensorsProxy::new(vec![1]);
+        let inputs_proxy = TensorsProxy::new(vec![0].into());
+        let outputs_proxy = TensorsProxy::new(vec![1].into());
 
         let mut solver = Solver::new();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy);

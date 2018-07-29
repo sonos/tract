@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt;
 use std::marker::PhantomData;
 
 use num_traits::cast::ToPrimitive;
@@ -14,7 +14,7 @@ use analyser::types::{Fact, IntFact, TypeFact, ShapeFact, DimFact, ValueFact};
 use analyser::types::SpecialKind;
 
 /// A trait for values produced by expressions.
-pub trait Output: Debug + Clone + PartialEq {
+pub trait Output: fmt::Debug + Clone + PartialEq {
     /// Wraps self in the Wrapped type.
     fn wrap(self) -> Wrapped {
         Self::into_wrapped(self)
@@ -148,7 +148,7 @@ pub enum Wrapped {
 }
 
 /// An expression that can be compared by the solver.
-pub trait Expression: Debug {
+pub trait Expression: fmt::Debug {
     type Output: Output;
 
     /// Returns the current value of the expression in the given context.
@@ -162,7 +162,6 @@ pub trait Expression: Debug {
 }
 
 /// A constant expression (e.g. `2` or `DataType::DT_INT32`).
-#[derive(Debug)]
 pub struct ConstantExpression<T: Output>(T);
 
 impl<T: Output> Expression for ConstantExpression<T> {
@@ -188,13 +187,17 @@ impl<T: Output> Expression for ConstantExpression<T> {
     }
 }
 
+impl<T: Output> fmt::Debug for ConstantExpression<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self.0)
+    }
+}
 
 /// A reference to a variable.
 ///
 /// For instance, `inputs[0].rank` is a reference to the rank of the first
 /// input. Internally, a reference holds a Vec<usize> called a path (see
 /// the documentation for `Proxy::get_path`).
-#[derive(Debug)]
 pub struct VariableExpression<T: Output>(Path, PhantomData<T>);
 
 impl<T: Output> Expression for VariableExpression<T> {
@@ -216,9 +219,14 @@ impl<T: Output> Expression for VariableExpression<T> {
     }
 }
 
+impl<T: Output> fmt::Debug for VariableExpression<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self.0)
+    }
+}
+
 
 /// A scalar product between a constant and another expression.
-#[derive(Debug)]
 pub struct ProductExpression<E>(isize, E)
 where
     E: Expression<Output = IntFact>;
@@ -265,6 +273,14 @@ where
     }
 }
 
+impl<E> fmt::Debug for ProductExpression<E>
+where
+    E: Expression<Output = IntFact>
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{}*{{{:?}}}", self.0, self.1)
+    }
+}
 
 /// A value that be converted into an expression.
 ///

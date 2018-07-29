@@ -54,7 +54,6 @@ pub trait Rule<'rules>: fmt::Debug {
 /// solver.equals(a, b);
 /// solver.equals_all(vec![a, b, ...]);
 /// ```
-#[derive(Debug)]
 struct EqualsRule<T: Output + Fact> {
     items: Vec<Box<Expression<Output = T>>>,
 }
@@ -97,6 +96,16 @@ impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     }
 }
 
+impl<'rules, T: Output + Fact> fmt::Debug for EqualsRule<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self.items[0])?;
+        for item in &self.items[1..] {
+            write!(formatter, " == {:?}", item)?;
+        }
+        Ok(())
+    }
+}
+
 /// The `equals_zero` rule.
 /// It states that the sum of the given expressions must equal zero.
 ///
@@ -104,7 +113,6 @@ impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
 /// ```text
 /// solver.equals_zero(vec![a, b, ...]);
 /// ```
-#[derive(Debug)]
 struct EqualsZeroRule {
     items: Vec<Box<Expression<Output = IntFact>>>,
 }
@@ -151,6 +159,16 @@ impl<'rules> Rule<'rules> for EqualsZeroRule {
     /// Returns the paths that the rule depends on.
     fn get_paths(&self) -> Vec<&Path> {
         self.items.iter().flat_map(|e| e.get_paths()).collect()
+    }
+}
+
+impl fmt::Debug for EqualsZeroRule {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{:?}", self.items[0])?;
+        for item in &self.items[1..] {
+            write!(formatter, " + {:?}", item)?;
+        }
+        write!(formatter, " == 0")
     }
 }
 
@@ -260,7 +278,7 @@ impl<'rules> Solver<'rules> {
                     continue;
                 }
 
-                trace!("Applying rule {:?}", rule);
+                debug!("Applying rule {:?}", rule);
                 let (step_used, mut step_added) = rule.apply(&mut context)?;
                 *used |= step_used;
 

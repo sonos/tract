@@ -3,6 +3,7 @@ extern crate conform;
 extern crate ndarray;
 #[macro_use]
 extern crate proptest;
+extern crate simplelog;
 extern crate tensorflow;
 extern crate tfdeploy;
 
@@ -14,6 +15,11 @@ use tfdeploy::tfpb;
 use tfdeploy::tfpb::types::DataType::DT_INT32;
 use tfdeploy::tfpb::types::DataType::DT_FLOAT;
 use tfdeploy::Tensor as TfdTensor;
+
+fn simplelog_init() {
+    use simplelog::*;
+    let _ = TermLogger::init(LevelFilter::Trace, Config::default());
+}
 
 fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
     use proptest::collection::vec;
@@ -67,6 +73,7 @@ fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
 proptest! {
     #[test]
     fn space_to_batch((ref i, ref bs, ref p) in space_to_batch_strat()) {
+        simplelog_init();
         let graph = tfpb::graph()
             .node(placeholder_f32("input"))
             .node(placeholder("block_shape", DT_INT32, tensor_shape(bs.shape())))
