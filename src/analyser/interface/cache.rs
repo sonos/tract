@@ -7,7 +7,7 @@ pub struct Cache<K: Eq + Hash, V>(
     // We need to use a RefCell here because we need interior mutability for
     // the cache. This way, the `get` method will only need `&self` (and not
     // `&mut self`) but we'll still be able to insert new items dynamically.
-    RefCell<HashMap<K, V>>,
+    RefCell<HashMap<K, Box<V>>>,
 );
 
 impl<K: Eq + Hash, V> Cache<K, V> {
@@ -26,7 +26,7 @@ impl<K: Eq + Hash, V> Cache<K, V> {
         // the reference to the items that we return will always exist.
         unsafe {
             let cache = &mut *self.0.as_ptr();
-            cache.entry(index).or_insert_with(default)
+            cache.entry(index).or_insert_with(|| Box::new(default()))
         }
     }
 }
