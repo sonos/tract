@@ -86,7 +86,7 @@ impl TensorsProxy {
     /// Creates a new TensorsProxy instance.
     pub fn new(path: Path) -> TensorsProxy {
         TensorsProxy {
-            len: IntProxy::new([&path[..], &[-1]].concat()),
+            len: IntProxy::new([&path[..], &[-1]].concat().into()),
             tensors: Cache::new(),
             path,
         }
@@ -105,7 +105,7 @@ impl Index<usize> for TensorsProxy {
     /// to `index` will return the same TensorProxy.
     fn index(&self, index: usize) -> &TensorProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.tensors.get(index, || TensorProxy::new(path))
+        self.tensors.get(index, || TensorProxy::new(path.into()))
     }
 }
 
@@ -130,10 +130,10 @@ impl TensorProxy {
     /// Creates a new TensorProxy instance.
     pub fn new(path: Path) -> TensorProxy {
         TensorProxy {
-            datatype: TypeProxy::new([&path[..],  &[0]].concat()),
-            rank:     IntProxy::new([&path[..],   &[1]].concat()),
-            shape:    ShapeProxy::new([&path[..], &[2]].concat()),
-            value:    ValueProxy::new([&path[..], &[3]].concat()),
+            datatype: TypeProxy::new([&path[..],  &[0]].concat().into()),
+            rank:     IntProxy::new([&path[..],   &[1]].concat().into()),
+            shape:    ShapeProxy::new([&path[..], &[2]].concat().into()),
+            value:    ValueProxy::new([&path[..], &[3]].concat().into()),
             path,
         }
     }
@@ -172,7 +172,7 @@ impl Index<usize> for ShapeProxy {
     /// Returns the DimProxy corresponding to the given index.
     fn index(&self, index: usize) -> &DimProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.dims.get(index, || DimProxy::new(path))
+        self.dims.get(index, || DimProxy::new(path.into()))
     }
 }
 
@@ -201,7 +201,7 @@ pub struct ValueProxy {
 impl ValueProxy {
     /// Creates a new RootValueProxy instance.
     pub fn new(path: Path) -> ValueProxy {
-        let root = IntProxy::new([&path[..], &[-1]].concat());
+        let root = IntProxy::new([&path[..], &[-1]].concat().into());
         ValueProxy { sub: Cache::new(), root, path }
     }
 }
@@ -221,7 +221,7 @@ impl Index<usize> for ValueProxy {
     /// Returns the ElementProxy corresponding to the given index.
     fn index(&self, index: usize) -> &ElementProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.sub.get(index, || ElementProxy::new(path))
+        self.sub.get(index, || ElementProxy::new(path.into()))
     }
 }
 
@@ -247,7 +247,7 @@ impl Index<usize> for ElementProxy {
     /// Returns the ElementProxy corresponding to the given index.
     fn index(&self, index: usize) -> &ElementProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.sub.get(index, || ElementProxy::new(path))
+        self.sub.get(index, || ElementProxy::new(path.into()))
     }
 }
 
@@ -260,46 +260,46 @@ mod tests {
 
     #[test]
     fn test_tensors_proxy() {
-        let inputs = TensorsProxy::new(vec![0]);
-        assert_eq!(inputs.len.get_path(), &vec![0, -1]);
-        assert_eq!(inputs[0].get_path(),  &vec![0, 0]);
-        assert_eq!(inputs[2].get_path(),  &vec![0, 2]);
+        let inputs = TensorsProxy::new(vec![0].into());
+        assert_eq!(inputs.len.get_path(), &vec![0, -1].into());
+        assert_eq!(inputs[0].get_path(),  &vec![0, 0].into());
+        assert_eq!(inputs[2].get_path(),  &vec![0, 2].into());
     }
 
     #[test]
     fn test_tensor_proxy_datatype() {
-        let inputs = TensorsProxy::new(vec![0]);
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
-        assert_eq!(input.datatype.get_path(), &vec![0, 0, 0]);
+        assert_eq!(input.datatype.get_path(), &vec![0, 0, 0].into());
     }
 
     #[test]
     fn test_tensor_proxy_rank() {
-        let inputs = TensorsProxy::new(vec![0]);
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
-        assert_eq!(input.rank.get_path(), &vec![0, 0, 1]);
+        assert_eq!(input.rank.get_path(), &vec![0, 0, 1].into());
     }
 
     #[test]
     fn test_tensor_proxy_shape() {
-        let inputs = TensorsProxy::new(vec![0]);
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
-        assert_eq!(input.shape[0].get_path(), &vec![0, 0, 2, 0]);
-        assert_eq!(input.shape[2].get_path(), &vec![0, 0, 2, 2]);
+        assert_eq!(input.shape[0].get_path(), &vec![0, 0, 2, 0].into());
+        assert_eq!(input.shape[2].get_path(), &vec![0, 0, 2, 2].into());
     }
 
     #[test]
     fn test_tensor_proxy_value() {
-        let inputs = TensorsProxy::new(vec![0]);
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
-        assert_eq!(input.value.get_path(), &vec![0, 0, 3]);
-        assert_eq!(input.value[()].get_path(), &vec![0, 0, 3, -1]);
-        assert_eq!(input.value[0].get_path(), &vec![0, 0, 3, 0]);
-        assert_eq!(input.value[0][1].get_path(),    &vec![0, 0, 3, 0, 1]);
-        assert_eq!(input.value[1][2][3].get_path(), &vec![0, 0, 3, 1, 2, 3]);
+        assert_eq!(input.value.get_path(), &vec![0, 0, 3].into());
+        assert_eq!(input.value[()].get_path(), &vec![0, 0, 3, -1].into());
+        assert_eq!(input.value[0].get_path(), &vec![0, 0, 3, 0].into());
+        assert_eq!(input.value[0][1].get_path(),    &vec![0, 0, 3, 0, 1].into());
+        assert_eq!(input.value[1][2][3].get_path(), &vec![0, 0, 3, 1, 2, 3].into());
     }
 }

@@ -1,6 +1,7 @@
 //! TODO(liautaud):
 //! Right now most of the code in this module is duplicated to handle both
 //! &T and &mut T, so I should find a way to abstract this.
+use std::fmt;
 use Result;
 use Tensor;
 use analyser::prelude::*;
@@ -11,7 +12,27 @@ use analyser::interface::expressions::Output;
 use num_traits::cast::ToPrimitive;
 
 /// A symbolic path for a value.
-pub type Path = Vec<isize>;
+#[derive(PartialEq)]
+pub struct Path(Vec<isize>);
+
+impl From<Vec<isize>> for Path {
+    fn from(v: Vec<isize>) -> Path {
+        Path(v)
+    }
+}
+
+impl ::std::ops::Deref for Path {
+    type Target = [isize];
+    fn deref(&self) -> &[isize] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for Path {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        debug_path(self, formatter)
+    }
+}
 
 /// Returns the value at the given path (starting from a context).
 pub fn get_path(context: &Context, path: &[isize]) -> Result<Wrapped> {
@@ -31,6 +52,15 @@ pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> Result
         _ => bail!("The first component of path {:?} should be 0 (for the `inputs` \
                     set of facts) or 1 (for the `outputs` set of facts).", path)
     }
+}
+
+fn debug_path(path:&[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
+    write!(formatter, "{}",match path[0] {
+        0 => "inputs",
+        1 => "outputs",
+        _ => "buggy_path"
+    })?;
+    debug_tensorfacts_path(&path[1..], formatter)
 }
 
 /// Returns the value at the given path (starting from a set of TensorFacts).
@@ -88,6 +118,16 @@ fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrap
     }
 }
 
+fn debug_tensorfacts_path(path:&[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
+    match path[0] {
+        -1 => write!(formatter, ".len"),
+        n => {
+            write!(formatter, "[{}]", n)?;
+            debug_tensorfact_path(&path[1..], formatter)
+        }
+    }
+}
+
 /// Returns the value at the given path (starting from a TensorFact).
 fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Wrapped> {
     match path {
@@ -115,7 +155,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
         // Set the type of the TensorFact.
         [0] => {
             let value = TypeFact::from_wrapped(value)?;
-            fact.datatype = value.unify(&fact.datatype)?;
+             fact.datatype = value.unify(&fact.datatype)?;
             Ok(())
         },
 
@@ -160,6 +200,17 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
 
         _ => bail!("The subpath {:?} should start with 0, 1, 2 or 3 (for the type, \
                     rank, dimension or value of the fact respectively).", path)
+    }
+}
+
+fn debug_tensorfact_path(path:&[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
+    match path {
+        [0] => write!(formatter, ".datatype"),
+        [1] => write!(formatter, ".rank"),
+        [2] => write!(formatter, ".shape"),
+        [2,k] => write!(formatter, ".shape[{}]", k),
+        slice if slice[0] == 3 => debug_value_path(&path[1..], formatter),
+        _ => write!(formatter, ".invalid")
     }
 }
 
@@ -216,4 +267,11 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> Result<Wrapped> {
                        integer values.", tensor),
         },
     }
+}
+
+fn debug_value_path(path:&[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
+    for p in path {
+        write!(formatter, "[{}]", p)?;
+    }
+    Ok(())
 }

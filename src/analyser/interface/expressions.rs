@@ -148,7 +148,7 @@ pub enum Wrapped {
 }
 
 /// An expression that can be compared by the solver.
-pub trait Expression {
+pub trait Expression: Debug {
     type Output: Output;
 
     /// Returns the current value of the expression in the given context.
@@ -162,6 +162,7 @@ pub trait Expression {
 }
 
 /// A constant expression (e.g. `2` or `DataType::DT_INT32`).
+#[derive(Debug)]
 pub struct ConstantExpression<T: Output>(T);
 
 impl<T: Output> Expression for ConstantExpression<T> {
@@ -193,6 +194,7 @@ impl<T: Output> Expression for ConstantExpression<T> {
 /// For instance, `inputs[0].rank` is a reference to the rank of the first
 /// input. Internally, a reference holds a Vec<usize> called a path (see
 /// the documentation for `Proxy::get_path`).
+#[derive(Debug)]
 pub struct VariableExpression<T: Output>(Path, PhantomData<T>);
 
 impl<T: Output> Expression for VariableExpression<T> {
@@ -216,6 +218,7 @@ impl<T: Output> Expression for VariableExpression<T> {
 
 
 /// A scalar product between a constant and another expression.
+#[derive(Debug)]
 pub struct ProductExpression<E>(isize, E)
 where
     E: Expression<Output = IntFact>;
@@ -313,7 +316,7 @@ impl<T> IntoExpression<ConstantExpression<T>> for T where T: Fact + Output {
 // Converts any comparable proxy to VariableExpression<Output>.
 impl<T> IntoExpression<VariableExpression<T::Output>> for T where T: ComparableProxy {
     fn into_expr(self) -> VariableExpression<T::Output> {
-        VariableExpression(self.get_path().to_vec(), PhantomData)
+        VariableExpression(self.get_path().to_vec().into(), PhantomData)
     }
 }
 

@@ -54,6 +54,7 @@ pub trait Rule<'rules>: fmt::Debug {
 /// solver.equals(a, b);
 /// solver.equals_all(vec![a, b, ...]);
 /// ```
+#[derive(Debug)]
 struct EqualsRule<T: Output + Fact> {
     items: Vec<Box<Expression<Output = T>>>,
 }
@@ -96,12 +97,6 @@ impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     }
 }
 
-impl<T: Output + Fact> fmt::Debug for EqualsRule<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "EqualsRule {{ ... }}")
-    }
-}
-
 /// The `equals_zero` rule.
 /// It states that the sum of the given expressions must equal zero.
 ///
@@ -109,6 +104,7 @@ impl<T: Output + Fact> fmt::Debug for EqualsRule<T> {
 /// ```text
 /// solver.equals_zero(vec![a, b, ...]);
 /// ```
+#[derive(Debug)]
 struct EqualsZeroRule {
     items: Vec<Box<Expression<Output = IntFact>>>,
 }
@@ -155,12 +151,6 @@ impl<'rules> Rule<'rules> for EqualsZeroRule {
     /// Returns the paths that the rule depends on.
     fn get_paths(&self) -> Vec<&Path> {
         self.items.iter().flat_map(|e| e.get_paths()).collect()
-    }
-}
-
-impl fmt::Debug for EqualsZeroRule {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "EqualsZeroRule {{ ... }}")
     }
 }
 
@@ -224,7 +214,7 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules
 
 impl<'s, T: Output + Fact, E: Expression<Output = T>, C: Output> fmt::Debug for GivenRule<'s, T, E, C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "GivenRule {{ ... }}")
+        write!(f, "GivenRule {{ {:?} }}", self.item)
     }
 }
 
@@ -270,6 +260,7 @@ impl<'rules> Solver<'rules> {
                     continue;
                 }
 
+                trace!("Applying rule {:?}", rule);
                 let (step_used, mut step_added) = rule.apply(&mut context)?;
                 *used |= step_used;
 
@@ -376,8 +367,8 @@ mod tests {
 
     fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
         (Solver::new(),
-         TensorsProxy::new(vec![0]),
-         TensorsProxy::new(vec![1]))
+         TensorsProxy::new(vec![0].into()),
+         TensorsProxy::new(vec![1].into()))
     }
 
     #[test]
@@ -385,7 +376,7 @@ mod tests {
     fn solver_wrong_size_1() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs.len, 2);
-        solver.infer((vec![], vec![])).unwrap();
+        solver.infer((vec![].into(), vec![].into())).unwrap();
     }
 
     #[test]
@@ -393,7 +384,7 @@ mod tests {
     fn solver_wrong_size_2() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 2);
-        solver.infer((vec![], vec![])).unwrap();
+        solver.infer((vec![].into(), vec![].into())).unwrap();
     }
 
     #[test]
@@ -401,8 +392,8 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs.len, 1);
 
-        let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
-        assert_eq!(facts, (vec![TensorFact::new()], vec![]));
+        let facts = solver.infer((vec![TensorFact::new()].into(), vec![].into())).unwrap();
+        assert_eq!(facts, (vec![TensorFact::new()].into(), vec![].into()));
     }
 
     #[test]
