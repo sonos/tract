@@ -1,6 +1,6 @@
 //! `Tensor` is the equivalent of Tensorflow Tensor.
 use ndarray::prelude::*;
-use std::fmt::Debug;
+use std::fmt;
 use tfpb::types::DataType;
 
 #[cfg(feature = "serialize")]
@@ -11,7 +11,7 @@ pub trait Datum:
     + Clone
     + Send
     + Sync
-    + Debug
+    + fmt::Debug
     + Default
     + 'static
     + ::num_traits::Zero
@@ -30,7 +30,7 @@ pub trait Datum:
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Tensor {
     F32(ArrayD<f32>),
     F64(ArrayD<f64>),
@@ -136,7 +136,14 @@ impl Tensor {
     }
 
     pub fn partial_dump(&self, _single_line: bool) -> ::Result<String> {
-        if self.shape().iter().product::<usize>() > 25 {
+        if self.shape().len() == 0 {
+            Ok(match self {
+                &Tensor::I32(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
+                &Tensor::F32(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
+                &Tensor::U8(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
+                _ => unimplemented!("missing type"),
+            })
+        } else if self.shape().iter().product::<usize>() > 25 {
             Ok(format!("{:?} {:?}", self.datatype(), self.shape()))
         } else {
             Ok(match self {
@@ -166,6 +173,13 @@ impl Tensor {
             && mb.iter()
                 .zip(ma.iter())
                 .all(|(&a, &b)| (b - a).abs() <= margin)
+    }
+}
+
+impl fmt::Debug for Tensor {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let content = self.partial_dump(true).unwrap_or("Error".to_string());
+        write!(formatter, "{}", content)
     }
 }
 

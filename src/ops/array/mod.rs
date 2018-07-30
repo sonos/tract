@@ -96,7 +96,10 @@ impl InferenceRulesOp for ExpandDims {
             .equals(&data.datatype, &output.datatype)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
 
-            .given(&dims.value, move |solver, index| {
+            .given(&dims.value, move |solver, index:Tensor| {
+                let index = index.take_i32s().unwrap(); // already enforced
+                let index = index.as_slice().unwrap()[0] as usize; //already enforced
+
                 for i in 0..index {
                     solver.equals(&output.shape[i], &data.shape[i]);
                 }
@@ -104,7 +107,7 @@ impl InferenceRulesOp for ExpandDims {
                 solver.equals(&output.shape[index], 1);
 
                 solver.given(&data.rank, move |solver, rank| {
-                    for i in 0..rank {
+                    for i in index..rank {
                         solver.equals(&output.shape[i + 1], &data.shape[i]);
                     }
                 });
@@ -180,6 +183,15 @@ impl Op for Placeholder {
         hashmap!{
             "dtype" => Attr::DataType(self.dtype)
         }
+    }
+
+    fn infer_and_propagate(
+        &self,
+        inputs: Vec<TensorFact>,
+        outputs: Vec<TensorFact>,
+    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        use ops::InferenceOp;
+        self.infer(inputs, outputs)
     }
 }
 

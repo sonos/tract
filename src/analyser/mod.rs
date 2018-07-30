@@ -185,6 +185,7 @@ impl Analyser {
 
     /// Adds an user-provided tensor fact to the analyser.
     pub fn hint(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
+        debug!("Hint for node \"{}\": {:?}", self.nodes[node].name, fact);
         if node >= self.next_edges.len() {
             bail!("There is no node with index {:?}.", node);
         }
@@ -374,8 +375,15 @@ impl Analyser {
             outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
         }
 
+        for (ix, input) in inputs.iter().enumerate() {
+            trace!("  inputs : {} {:?}", ix, input);
+        }
+        for (ix, output) in outputs.iter().enumerate() {
+            trace!("  outputs: {} {:?}", ix, output);
+        }
+
         let inferred = node.op
-            .infer(inputs, outputs)
+            .infer_and_propagate(inputs, outputs)
             .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?;
 
         let mut changed = false;
@@ -388,11 +396,14 @@ impl Analyser {
                     node.name, e
                 ))?;
 
-            changed |= unified != self.edges[j].fact;
-            self.edges[j].fact = unified;
+            if unified != self.edges[j].fact {
+                debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
+                changed = true;
+                self.edges[j].fact = unified;
+            }
         }
 
-        for (_, &j) in self.next_edges[node.id].iter().enumerate() {
+        for (i, &j) in self.next_edges[node.id].iter().enumerate() {
             // FIXME(liautaud): We should handle multiple output ports in the future.
             if inferred.1.len() != 1 {
                 panic!("Inference only supports nodes with a single output port.");
@@ -405,8 +416,11 @@ impl Analyser {
                     node.name, e
                 ))?;
 
-            changed |= unified != self.edges[j].fact;
-            self.edges[j].fact = unified;
+            if unified != self.edges[j].fact {
+                debug!(" Refined {} output #{} to {:?}", node.name, i, unified);
+                changed = true;
+                self.edges[j].fact = unified;
+            }
         }
 
         Ok(changed)

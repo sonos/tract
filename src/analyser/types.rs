@@ -1,6 +1,6 @@
 use std::ops::{Add, Sub, Mul, Div};
 use std::iter::FromIterator;
-use std::fmt::Debug;
+use std::fmt;
 use Result;
 
 use num_traits::cast::ToPrimitive;
@@ -10,7 +10,7 @@ use tfpb::types::DataType;
 use Tensor;
 
 /// Partial information about any value.
-pub trait Fact: Debug + Clone + PartialEq + Default {
+pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
     type Concrete;
 
     /// Tries to transform the fact into a concrete value.
@@ -39,7 +39,7 @@ pub trait Fact: Debug + Clone + PartialEq + Default {
 /// most general one and specializing it at each iteration. Eventually, it will
 /// reach a fixed point that - hopefully - holds enough information.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default)]
 pub struct TensorFact {
     pub datatype: TypeFact,
     pub shape: ShapeFact,
@@ -85,15 +85,30 @@ impl From<Tensor> for TensorFact {
     }
 }
 
+impl fmt::Debug for TensorFact {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(t) = self.value.concretize() {
+            write!(formatter, "Fully determined tensor: {:?}", t)
+        } else {
+            write!(formatter, "Tensor")?;
+            if let Some(t) = self.datatype.concretize() {
+                write!(formatter, " {:?}", t)?;
+            }
+            write!(formatter, " {:?}", self.shape)?;
+            Ok(())
+        }
+    }
+}
+
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
-pub enum GenericFact<T: Debug + Clone + PartialEq> {
+pub enum GenericFact<T: fmt::Debug + Clone + PartialEq> {
     Any,
     Only(T)
 }
 
-impl<T: Debug + Clone + PartialEq> Fact for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> Fact for GenericFact<T> {
     type Concrete = T;
 
     /// Tries to transform the fact into a concrete value.
@@ -117,13 +132,13 @@ impl<T: Debug + Clone + PartialEq> Fact for GenericFact<T> {
     }
 }
 
-impl<T: Debug + Clone + PartialEq> Default for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> Default for GenericFact<T> {
     fn default() -> Self {
         GenericFact::Any
     }
 }
 
-impl<T: Debug + Clone + PartialEq> From<T> for GenericFact<T> {
+impl<T: fmt::Debug + Clone + PartialEq> From<T> for GenericFact<T> {
     fn from(t: T) -> Self {
         GenericFact::Only(t)
     }
@@ -142,7 +157,7 @@ pub type TypeFact = GenericFact<DataType>;
 /// shape that starts with `[1, 2]` (e.g. `[1, 2, i]` or `[1, 2, i, j]`), while
 /// `shapefact![..]` matches any shape.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ShapeFact {
     pub open: bool,
     pub dims: Vec<DimFact>,
@@ -257,9 +272,26 @@ impl<'a> From<&'a [Option<usize>]> for ShapeFact {
     }
 }
 
+impl fmt::Debug for ShapeFact {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "[")?;
+        for (ix, d) in self.dims.iter().enumerate() {
+            if ix != 0 {
+                write!(formatter, ",")?
+            }
+            write!(formatter, "{:?}", d)?;
+        }
+        if self.open {
+            write!(formatter, "..")
+        } else {
+            write!(formatter, "]")
+        }
+    }
+}
+
 /// Partial information about a dimension.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum DimFact {
     Any,
     Streamed,
@@ -316,6 +348,16 @@ impl Default for DimFact {
 impl From<usize> for DimFact {
     fn from(t: usize) -> DimFact {
         DimFact::Only(t)
+    }
+}
+
+impl fmt::Debug for DimFact {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DimFact::Any => write!(formatter, "?"),
+            DimFact::Streamed => write!(formatter, "S"),
+            DimFact::Only(d) => write!(formatter, "{}", d),
+        }
     }
 }
 

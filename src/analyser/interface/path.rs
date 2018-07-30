@@ -162,10 +162,14 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
         // Set the rank of the TensorFact.
         [1] => {
             if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
-                let k = k.to_usize().unwrap();
-                fact.shape = fact.shape.unify(
-                    &ShapeFact::closed(vec![dimfact!(_); k])
-                )?;
+                if k >= 0 {
+                    let k = k.to_usize().unwrap();
+                    fact.shape = fact.shape.unify(
+                        &ShapeFact::closed(vec![dimfact!(_); k])
+                    )?;
+                } else {
+                    bail!("Infered a negative rank ({})", k)
+                }
             }
 
             Ok(())

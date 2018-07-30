@@ -222,7 +222,7 @@ impl<O: InferenceRulesOp> InferenceOp for O {
         let inputs_proxy = TensorsProxy::new(vec![0].into());
         let outputs_proxy = TensorsProxy::new(vec![1].into());
 
-        let mut solver = Solver::new();
+        let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy);
         solver.infer((inputs, outputs))
     }

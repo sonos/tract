@@ -13,7 +13,7 @@ pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?.id;
 
-    info!("Starting the analysis.");
+    info!("Setting up analyser.");
 
     let mut analyser = Analyser::new(model, output)?;
 
@@ -35,6 +35,7 @@ pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
         }
     }
 
+    info!("Running analyse");
     analyser.run()?;
 
     // Prune constant nodes if needed.

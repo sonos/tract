@@ -147,8 +147,12 @@ impl<'rules> Rule<'rules> for EqualsZeroRule {
         if misses.len() > 1 {
             Ok((false, vec![]))
         } else if misses.len() == 1 {
-            misses[0].set(context, sum)?;
-            Ok((true, vec![]))
+            if let IntFact::Only(sum) = sum {
+                misses[0].set(context, IntFact::Only(-sum))?;
+                Ok((true, vec![]))
+            } else {
+                Ok((false, vec![]))
+            }
         } else if sum == 0usize.into() {
             Ok((true, vec![]))
         } else {
@@ -209,18 +213,20 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules
         //
         // Thankfully, because both T and C implement Output, the conversion
         // is as simple as wrapping and un-wrapping the value.
-        let value = C::from_wrapped(self.item.get(context)?.wrap());
+        let wrapped = self.item.get(context)?.wrap();
 
-        if let Ok(value) = value {
+        if let Ok(value) = C::from_wrapped(wrapped) {
+            trace!("    Given rule: {:?} is {:?}", self.item, value);
             // We create a new solver instance, which will be populated with
             // new rules by the code inside the closure.
-            let mut solver = Solver::new();
+            let mut solver = Solver::default();
 
             (self.closure)(&mut solver, value);
 
             Ok((true, solver.take_rules()))
         } else {
-            Ok((false, vec![]))
+            let wrapped = self.item.get(context)?.wrap();
+            bail!("In {:?}, failed to convert {:?} to expected type", self, wrapped)
         }
     }
 
@@ -237,10 +243,9 @@ impl<'s, T: Output + Fact, E: Expression<Output = T>, C: Output> fmt::Debug for 
 }
 
 /// A declarative constraint solver for tensors.
-#[derive(new)]
+#[derive(Default)]
 pub struct Solver<'rules> {
     // The rules used by the solver.
-    #[new(default)]
     pub rules: Vec<Box<Rule<'rules> + 'rules>>,
 }
 
@@ -278,7 +283,7 @@ impl<'rules> Solver<'rules> {
                     continue;
                 }
 
-                debug!("Applying rule {:?}", rule);
+                trace!("  Applying rule {:?}", rule);
                 let (step_used, mut step_added) = rule.apply(&mut context)?;
                 *used |= step_used;
 
