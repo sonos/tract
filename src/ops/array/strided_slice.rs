@@ -23,6 +23,7 @@ pub struct StridedSlice<T:Datum> {
     _phantom: PhantomData<T>,
 }
 
+#[derive(Debug)]
 struct Dim {
     begin: i32,
     stride: i32,
@@ -32,6 +33,7 @@ struct Dim {
 
 impl<T:Datum> StridedSlice<T> {
     fn prepare(&self, input_shape:&[usize], begin: &ArrayView1<i32>, end:&ArrayView1<i32>, strides:&ArrayView1<i32>) -> (Vec<Dim>, Vec<usize>, Vec<usize>) {
+        trace!("StridedSlice {:?} computing shapes: input_shape:{:?} begin:{:?} end:{:?} strides:{:?}", self, input_shape, begin, end, strides);
         let bounds: Vec<Dim> = (0..input_shape.len())
             .map(|d| {
                 let max = input_shape[d] as i32;
@@ -142,7 +144,6 @@ impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
             .equals(&inputs[1].rank, 1)
             .equals(&inputs[2].rank, 1)
             .equals(&inputs[3].rank, 1)
-            .equals(&outputs.len, 1)
             .given(&inputs[0].shape, move |solver, input_shape:Vec<usize>| {
                 solver.given(&inputs[1].value, move |solver, begin:Tensor| {
                     let input_shape = input_shape.clone();
@@ -155,6 +156,7 @@ impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
                                 &begin.as_i32s().unwrap().view().into_dimensionality().unwrap(),
                                 &end.as_i32s().unwrap().view().into_dimensionality().unwrap(),
                                 &stride.as_i32s().unwrap().view().into_dimensionality().unwrap());
+                            trace!("Computed output_shape={:?}", output_shape);
                             solver.equals(&outputs[0].shape, ShapeFact::from(output_shape));
                         });
                     });

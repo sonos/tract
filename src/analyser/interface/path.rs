@@ -152,10 +152,21 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Wrapped> {
 /// Sets the value at the given path (starting from a TensorFact).
 fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> Result<()> {
     match path {
+        // Set full TensorFact.
+        [] | [3] => {
+            let value = ValueFact::from_wrapped(value)?;
+            fact.value = fact.value.unify(&value)?;
+            if let Some(tensor) = fact.value.concretize() {
+                fact.shape = fact.shape.unify(&ShapeFact::from(tensor.shape()))?;
+                fact.datatype = fact.datatype.unify(&TypeFact::from(tensor.datatype()))?;
+            }
+            Ok(())
+        },
+
         // Set the type of the TensorFact.
         [0] => {
             let value = TypeFact::from_wrapped(value)?;
-             fact.datatype = value.unify(&fact.datatype)?;
+            fact.datatype = value.unify(&fact.datatype)?;
             Ok(())
         },
 
@@ -198,9 +209,10 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             Ok(())
         },
 
-        // Set a value of the TensorFact.
-        // FIXME(liautaud): This should do something.
-        slice if slice[0] == 3 => Ok(()),
+        slice if slice[0] == 3 => {
+            warn!("FIXME Unimplemented set_value_path for individual value");
+            Ok(())
+        }
 
         _ => bail!("The subpath {:?} should start with 0, 1, 2 or 3 (for the type, \
                     rank, dimension or value of the fact respectively).", path)

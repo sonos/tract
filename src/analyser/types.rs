@@ -92,9 +92,9 @@ impl fmt::Debug for TensorFact {
         } else {
             write!(formatter, "Tensor")?;
             if let Some(t) = self.datatype.concretize() {
-                write!(formatter, " {:?}", t)?;
+                write!(formatter, ", {:?}", t)?;
             }
-            write!(formatter, " {:?}", self.shape)?;
+            write!(formatter, ", shape={:?}", self.shape)?;
             Ok(())
         }
     }

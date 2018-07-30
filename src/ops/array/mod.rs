@@ -311,10 +311,10 @@ impl InferenceRulesOp for Shape {
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
 
-            .given(&inputs[0].rank, move |solver, ir: usize| {
-                for i in 0..ir {
-                    solver.equals(&outputs[0].value[i], &inputs[0].shape[i]);
-                }
+            .given(&inputs[0].shape, move |solver, ir: Vec<usize>| {
+                let array1:Array1<i32> = Array1::from_iter(ir.into_iter().map(|u| u as i32));
+                let tensor:Tensor = Tensor::from(array1);
+                solver.equals(&outputs[0].value, valuefact!(tensor));
             });
     }
 }
