@@ -223,19 +223,38 @@ impl<T: Datum> InferenceRulesOp for Conv2D<T> {
             .equals(&inputs[0].shape[0], &outputs[0].shape[0])
             .equals(&inputs[0].shape[3], &inputs[1].shape[2])
             .equals(&outputs[0].shape[3], &inputs[1].shape[3])
-            .given(&inputs[0].shape[1], move |solver, h| {
-                solver.given(&inputs[0].shape[2], move |solver, w| {
-                    solver.given(&inputs[1].shape[0], move |solver, kh| {
-                        solver.given(&inputs[1].shape[1], move |solver, kw| {
-                            let (oh, ow) = self.0.adjusted_dim(h, w, (kh, kw));
-                            solver
-                                .equals(&outputs[0].shape[1], oh as isize)
-                                .equals(&outputs[0].shape[2], ow as isize);
+            .given(&inputs[0].shape[1], move |solver, h:DimFact| {
+                match h {
+                    DimFact::Only(h) => {
+                        solver.given(&inputs[1].shape[0], move |solver, kh| {
+                            let oh = self.0.adjusted_dim_rows(h, kh);
+                            solver.equals(&outputs[0].shape[1], oh as isize);
                         });
-                    });
-                });
+                    },
+                    DimFact::Streamed => {
+                        solver.equals(
+                            &outputs[0].shape[1],
+                            IntFact::Special(SpecialKind::Streamed));
+                    }
+                    _ => {}
+                }
             })
-            ;
+            .given(&inputs[0].shape[2], move |solver, w:DimFact| {
+                match w {
+                    DimFact::Only(w) => {
+                        solver.given(&inputs[1].shape[1], move |solver, kw| {
+                            let ow = self.0.adjusted_dim_cols(w, kw);
+                            solver.equals(&outputs[0].shape[2], ow as isize);
+                        });
+                    },
+                    DimFact::Streamed => {
+                        solver.equals(
+                            &outputs[0].shape[2],
+                            IntFact::Special(SpecialKind::Streamed));
+                    }
+                    _ => {}
+                }
+            });
     }
 }
 
