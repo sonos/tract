@@ -225,8 +225,8 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules
 
             Ok((true, solver.take_rules()))
         } else {
-            let wrapped = self.item.get(context)?.wrap();
-            bail!("In {:?}, failed to convert {:?} to expected type", self, wrapped)
+            trace!("In {:?}, failed to convert {:?} to expected type", self, self.item.get(context)?.wrap());
+            Ok((false, vec!()))
         }
     }
 
@@ -389,7 +389,7 @@ mod tests {
     use tfpb::types::DataType;
 
     fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
-        (Solver::new(),
+        (Solver::default(),
          TensorsProxy::new(vec![0].into()),
          TensorsProxy::new(vec![1].into()))
     }
