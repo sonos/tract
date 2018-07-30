@@ -311,10 +311,13 @@ impl InferenceRulesOp for Shape {
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
 
-            .given(&inputs[0].shape, move |solver, ir: Vec<usize>| {
-                let array1:Array1<i32> = Array1::from_iter(ir.into_iter().map(|u| u as i32));
-                let tensor:Tensor = Tensor::from(array1);
-                solver.equals(&outputs[0].value, valuefact!(tensor));
+            .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
+                if !shape.open && shape.dims.iter().all(|d| *d != DimFact::Any) {
+                    let shape = shape.dims.iter().map(|d| if let DimFact::Only(d)= d { *d as i32 } else { 0 }).collect();
+                    let array1:Array1<i32> = Array1::from_vec(shape);
+                    let tensor:Tensor = Tensor::from(array1);
+                    solver.equals(&outputs[0].value, valuefact!(tensor));
+                }
             });
     }
 }

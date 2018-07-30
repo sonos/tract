@@ -1,5 +1,5 @@
 use Result;
-use analyser::types::{Fact, IntFact, TensorFact};
+use analyser::types::{Fact, IntFact, SpecialKind, TensorFact};
 use analyser::interface::path::{Path, get_path, set_path};
 use analyser::interface::expressions::Output;
 use analyser::interface::expressions::Expression;
@@ -147,16 +147,21 @@ impl<'rules> Rule<'rules> for EqualsZeroRule {
         if misses.len() > 1 {
             Ok((false, vec![]))
         } else if misses.len() == 1 {
-            if let IntFact::Only(sum) = sum {
-                misses[0].set(context, IntFact::Only(-sum))?;
-                Ok((true, vec![]))
-            } else {
-                Ok((false, vec![]))
+            match sum {
+                IntFact::Only(sum) => {
+                    misses[0].set(context, IntFact::Only(-sum))?;
+                    Ok((true, vec![]))
+                },
+                IntFact::Special(SpecialKind::Streamed) => {
+                    misses[0].set(context, IntFact::Special(SpecialKind::Streamed))?;
+                    Ok((true, vec![]))
+                },
+                IntFact::Any => Ok((false, vec!()))
             }
-        } else if sum == 0usize.into() {
+        } else if sum == 0usize.into() || sum == IntFact::Special(SpecialKind::Streamed) {
             Ok((true, vec![]))
         } else {
-            bail!("The sum of these values doesn't equal zero: {:?}.", values);
+            bail!("The sum of these values doesn't equal zero: {:?}. ({:?})", values, sum);
         }
     }
 
