@@ -62,7 +62,9 @@ impl<T:Datum> InferenceRulesOp for Pack<T> {
             })
             .given(&inputs[0].rank, move |solver, r: usize| {
                 (0..axis).for_each(|d| { solver.equals(&output.shape[d], &inputs[0].shape[d]); });
-                (axis..(r - 1)).for_each(|d| { solver.equals(&output.shape[d+1], &inputs[0].shape[d]); });
+                if r > 0 {
+                    (axis..(r - 1)).for_each(|d| { solver.equals(&output.shape[d+1], &inputs[0].shape[d]); });
+                }
             })
             .equals(&output.shape[axis], n as isize);
     }
