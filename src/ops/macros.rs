@@ -129,8 +129,14 @@ macro_rules! element_bin {
 
                 solver
                     .equals(&outputs.len, 1)
-                    .equals_all(wrap![&a.datatype, &b.datatype, &c.datatype])
-                    .equals_all(wrap![&a.shape, &b.shape, &c.shape]);
+                    .equals_all(wrap![&a.datatype, &b.datatype, &c.datatype, &T::datatype()])
+                    .given(&a.shape, move |solver, a_shape| {
+                        solver.given(&b.shape, move |solver, b_shape| {
+                            if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(vec!(&a_shape, &b_shape)) {
+                                solver.equals(&c.shape, c_shape);
+                            }
+                        });
+                    });
             }
         }
     };
