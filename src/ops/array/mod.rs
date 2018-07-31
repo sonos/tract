@@ -266,6 +266,7 @@ impl InferenceRulesOp for Reshape {
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
             .equals(&inputs[1].datatype, DataType::DT_FLOAT)
+            .equals(&outputs[0].datatype, DataType::DT_INT32)
             .equals(&inputs[1].rank, 1)
             .equals(&inputs[0].datatype, &outputs[0].datatype)
             .given(&inputs[0].rank, move |solver, input_rank| {
@@ -318,6 +319,10 @@ impl InferenceRulesOp for Shape {
                     let tensor:Tensor = Tensor::from(array1);
                     solver.equals(&outputs[0].value, valuefact!(tensor));
                 }
+            })
+            .given(&outputs[0].value, move |solver, shape:Tensor| {
+                let shape:Vec<usize> = shape.take_i32s().unwrap().iter().map(|i:&i32| *i as usize).collect();
+                solver.equals(&inputs[0].shape, ShapeFact::from(shape));
             });
     }
 }
@@ -372,8 +377,7 @@ mod tests {
         let output = TensorFact {
             datatype: typefact!(DataType::DT_INT32),
             shape: shapefact![3],
-            // FIXME(liautaud)
-            value: valuefact!(_)
+            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap())
         };
 
         assert_forward!(Shape::build(&node()).unwrap(), input, output);

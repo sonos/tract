@@ -55,6 +55,8 @@ extern crate objekt;
 
 #[cfg(feature = "serialize")]
 extern crate serde;
+#[cfg(test)]
+extern crate simplelog;
 #[cfg(feature = "serialize")]
 #[macro_use]
 extern crate serde_derive;
