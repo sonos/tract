@@ -116,7 +116,9 @@ fn main() {
             (@arg prune: --prune
                 "Prunes constant nodes and edges from the graph.")
             (@arg web: --web
-                "Displays the results of the analysis in a web interface."))
+                "Displays the results of the analysis in a web interface.")
+            (@arg noconst: --noconst
+                "Stript the constant nodes in display"))
     );
 
     let matches = app.get_matches();
@@ -338,6 +340,21 @@ impl ProfilingMode {
     }
 }
 
+pub struct WebParameters {
+    noconst: bool,
+}
+
+impl WebParameters {
+    pub fn from_clap(matches: &clap::ArgMatches) -> Result<Option<WebParameters>> {
+        if !matches.is_present("web") {
+            return Ok(None)
+        }
+        Ok(Some(WebParameters {
+            noconst: matches.is_present("noconst")
+        }))
+    }
+}
+
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> Result<()> {
     // Configure the logging level.
@@ -368,7 +385,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
         ("dump", Some(m)) => dump::handle(
             params,
-            m.is_present("web")
+            WebParameters::from_clap(m)?
         ),
 
         ("profile", Some(m)) => profile::handle(
@@ -379,7 +396,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
         ("analyse", Some(m)) => analyse::handle(
             params,
             m.is_present("prune"),
-            m.is_present("web")
+            WebParameters::from_clap(m)?
         ),
 
         (s, _) => bail!("Unknown subcommand {}.", s),

@@ -1,14 +1,11 @@
-use Parameters;
+use { Parameters, WebParameters };
 use errors::*;
-
-use std::fs::File;
-use std::io::prelude::*;
 
 use tfdeploy::analyser::Analyser;
 use tfdeploy::analyser::{TensorFact, ShapeFact, DimFact};
 
 /// Handles the `analyse` subcommand.
-pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
+pub fn handle(params: Parameters, prune: bool, web: Option<WebParameters>) -> Result<()> {
 
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?.id;
@@ -57,13 +54,8 @@ pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
     }
 
 
-    // Display an interactive view of the graph if needed.
-    let data = ::serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
-    if web {
-        ::web::open_web(data);
-    } else {
-        File::create("analyser.json")?.write_all(&data)?;
-        println!("Wrote the result of the analysis to analyser.json.");
+    if let Some(web) = web {
+        ::web::open_web(&analyser.into_model(), &web)?;
     }
 
     Ok(())

@@ -1,17 +1,14 @@
-use Parameters;
+use { Parameters, WebParameters };
 use errors::*;
 use format;
 
-use utils::generate_json;
-
-pub fn handle(params: Parameters, web: bool) -> Result<()> {
+pub fn handle(params: Parameters, web: Option<WebParameters>) -> Result<()> {
     let tfd = params.tfd_model;
     let output = tfd.get_node_by_id(params.output_node_id)?;
     let plan = output.eval_order(&tfd)?;
 
-    if web {
-        let data = generate_json(&tfd)?;
-        ::web::open_web(data);
+    if let Some(web) = web {
+        ::web::open_web(&tfd, &web)?
     } else {
         for n in plan {
             let node = tfd.get_node_by_id(n)?;
