@@ -322,7 +322,13 @@ impl InferenceRulesOp for Shape {
             })
             .given(&outputs[0].value, move |solver, shape:Tensor| {
                 let shape:Vec<usize> = shape.take_i32s().unwrap().iter().map(|i:&i32| *i as usize).collect();
-                solver.equals(&inputs[0].shape, ShapeFact::from(shape));
+                for (ix,d) in shape.iter().enumerate() {
+                    // hackish: if dim is 0, this is likely a streaming
+                    // dimension, so we don't infer
+                    if *d != 0 {
+                        solver.equals(&inputs[0].shape[ix], *d as isize);
+                    }
+                }
             });
     }
 }
