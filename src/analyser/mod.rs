@@ -51,15 +51,15 @@ pub mod interface;
 
 /// Tries to auto-detect the names of the input nodes.
 pub fn detect_inputs(model: &Model) -> Result<Option<Vec<usize>>> {
-    let inputs: Vec<usize> = model
+    let inputs: Vec<_> = model
         .nodes()
         .iter()
         .filter(|n| n.op_name == "Placeholder")
+        .inspect(|n| info!("Autodetected input node: {} {:?}.", n.id, n.name))
         .map(|n| n.id)
         .collect();
 
     if inputs.len() > 0 {
-        info!("Autodetecting input nodes: {:?}.", inputs);
         Ok(Some(inputs))
     } else {
         Ok(None)
@@ -80,7 +80,8 @@ pub fn detect_output(model: &Model) -> Result<Option<usize>> {
     for (i, s) in succs.iter().enumerate() {
         if s.len() == 0 {
             info!(
-                "Autodetecting output node: {:?}.",
+                "Autodetected output node: {} {:?}.",
+                i,
                 model.get_node_by_id(i)?.name
             );
             return Ok(Some(i));
@@ -171,7 +172,7 @@ impl Analyser {
         let current_step = 0;
         let current_direction = true;
 
-        info!("Using execution plan {:?}.", plan);
+        debug!("Using execution plan {:?}.", plan);
 
         Ok(Analyser {
             output,
