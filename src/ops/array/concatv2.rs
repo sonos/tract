@@ -125,17 +125,19 @@ impl<T:Datum> InferenceRulesOp for ConcatV2<T> {
             .equals(&outputs[0].rank, &inputs[0].rank)
             .given(&inputs[n].value, move |solver, axis:Tensor| {
                 let axis = *axis.as_i32s().unwrap().iter().next().unwrap() as usize; // both checked
+                trace!("axis for Concatv2: {}", axis);
+                (0..axis).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); });
+                (0..axis).for_each(|d| { solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]); });
                 solver
                     .given(&inputs[0].rank, move |solver, rank: usize| {
-                        (0..axis).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); });
-                        ((axis+1)..rank).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); });
-                        (0..axis).for_each(|d| { solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]); });
+                        trace!("Given rank {}", rank);
                         ((axis+1)..rank).for_each(|d| { solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]); });
+                        ((axis+1)..rank).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); });
                     });
 
                 let mut concat_dim = vec!(bexp((-1, &outputs[0].shape[axis])));
                 concat_dim.extend((0..n).map(|i| bexp((1, &inputs[i].shape[axis]))));
-                solver.equals_all(concat_dim);
+                solver.equals_zero(concat_dim);
             });
     }
 }
