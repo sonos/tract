@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use analyser::helpers::infer_forward_concrete;
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 
-use analyser::TensorFact;
-use ops::{Attr, Op, OpBuffer, TensorView};
+use analyser::interface::*;
+use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
@@ -75,47 +74,6 @@ where
         }
     }
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, mut inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        use analyser::*;
-
-        if inputs.len() != 2 {
-            bail!("Pad operation needs at least one input.");
-        }
-
-        // if we know everything...
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-        let (input_fact, padding_fact) = args_2!(inputs);
-
-        let mut output_fact = TensorFact {
-            // propagate input type to output
-            datatype: input_fact.datatype,
-            ..TensorFact::default()
-        };
-
-        if let (Some(mut shape), Some(pad)) = (
-            input_fact.shape.concretize(),
-            padding_fact.value.concretize(),
-        ) {
-            let pad = i32::tensor_to_view(pad)?;
-            shape
-                .iter_mut()
-                .zip(pad.outer_iter())
-                .for_each(|(s, p)| *s += p[0] as usize + p[1] as usize);
-            output_fact.shape = shape.into();
-        }
-
-        Ok(Some(vec![output_fact]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        // FIXME
-        Ok(Some(vec![TensorFact::default(), TensorFact::default()]))
-    }
-
     fn step(
         &self,
         mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
@@ -130,6 +88,31 @@ where
         } else {
             Ok(None)
         }
+    }
+}
+
+impl<T:Datum> InferenceRulesOp for Pad<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        let input = &inputs[0];
+        let padding = &inputs[1];
+        let output = &outputs[0];
+        solver
+            .equals(&inputs.len, 2)
+            .equals(&outputs.len, 1)
+            .equals(&output.datatype, &input.datatype)
+            .equals(&padding.datatype, DataType::DT_INT32)
+            .equals(&input.rank, &output.rank)
+            .equals(&padding.rank, 2)
+            .equals(&padding.shape[0], &input.rank)
+            .equals(&padding.shape[1], 2)
+            .given(&input.rank, move |solver, rank: usize| {
+                (0..rank).for_each(|d| {
+                    solver.equals_zero(
+                        wrap!((-1, &output.shape[d]),(1, &input.shape[d]), (1, &padding.value[d][0]), (1, &padding.value[d][1]))
+                    );
+                })
+            })
+        ;
     }
 }
 

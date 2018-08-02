@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use analyser::helpers::infer_forward_concrete;
-use analyser::TensorFact;
 use ndarray::prelude::*;
-use ops::{Attr, Op, TensorView};
-use tfpb::types::DataType;
+use analyser::interface::*;
+use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
@@ -25,23 +23,20 @@ pub struct StridedSlice<T:Datum> {
     _phantom: PhantomData<T>,
 }
 
-impl<T:Datum> Op for StridedSlice<T> {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
-        let (input, begin, end, strides) = args_4!(inputs);
-        let input = T::tensor_to_view(&input)?;
-        let begin = begin.as_i32s().ok_or("Begin expected as I32")?;
-        let end = end.as_i32s().ok_or("End expected as I32")?;
-        let strides = strides.as_i32s().ok_or("Strides expected as I32")?;
-        struct Dim {
-            begin: i32,
-            stride: i32,
-            len: usize,
-            shrink: bool,
-        };
-        let bounds: Vec<Dim> = (0..input.shape().len())
+#[derive(Debug)]
+struct Dim {
+    begin: i32,
+    stride: i32,
+    len: usize,
+    shrink: bool,
+}
+
+impl<T:Datum> StridedSlice<T> {
+    fn prepare(&self, input_shape:&[usize], begin: &ArrayView1<i32>, end:&ArrayView1<i32>, strides:&ArrayView1<i32>) -> (Vec<Dim>, Vec<usize>, Vec<usize>) {
+        trace!("StridedSlice {:?} computing shapes: input_shape:{:?} begin:{:?} end:{:?} strides:{:?}", self, input_shape, begin, end, strides);
+        let bounds: Vec<Dim> = (0..input_shape.len())
             .map(|d| {
-                let max = input.shape()[d] as i32;
+                let max = input_shape[d] as i32;
                 // deal with too small dim begin/end/stride for input rank
                 if d >= begin.len() {
                     return Dim {
@@ -99,11 +94,22 @@ impl<T:Datum> Op for StridedSlice<T> {
                 }
             })
             .collect();
-        //        println!("input shape: {:?}, bounds: {:?}", input.shape(), bounds);
-        let shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
-        let reshape: Vec<usize> = bounds.iter().filter(|d| !d.shrink).map(|d| d.len).collect();
-        //        println!("output shape: {:?}", shape);
-        let output = Array::from_shape_fn(shape, |coords| {
+        let mid_shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
+        let end_shape: Vec<usize> = bounds.iter().filter(|d| !d.shrink).map(|d| d.len).collect();
+        (bounds, mid_shape, end_shape)
+    }
+}
+
+impl<T:Datum> Op for StridedSlice<T> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+        let (input, begin, end, strides) = args_4!(inputs);
+        let input = T::tensor_to_view(&input)?;
+        let begin = begin.as_i32s().ok_or("Begin expected as I32")?;
+        let end = end.as_i32s().ok_or("End expected as I32")?;
+        let strides = strides.as_i32s().ok_or("Strides expected as I32")?;
+        let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), &begin.view().into_dimensionality()?, &end.view().into_dimensionality()?, &strides.view().into_dimensionality()?);
+        let output = Array::from_shape_fn(mid_shape, |coords| {
             let coord: Vec<_> = coords
                 .slice()
                 .iter()
@@ -112,8 +118,7 @@ impl<T:Datum> Op for StridedSlice<T> {
                 .collect();
             input[&*coord]
         });
-        let output = output.into_shape(reshape)?;
-
+        let output = output.into_shape(end_shape)?;
         Ok(vec![T::array_into_tensor(output.into()).into()])
     }
 
@@ -125,52 +130,38 @@ impl<T:Datum> Op for StridedSlice<T> {
             "shrink_axis_mask" => Attr::I64(self.shrink_axis_mask),
         }
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() != 4 {
-            bail!("StridedSlice operation only supports four inputs.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        // TODO(liautaud): It will be fun implementing this, I promess.
-        Ok(None)
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("StridedSlice operation only supports one output.");
-        }
-
-        let input = TensorFact {
-            datatype: outputs[0].datatype,
-            shape: shapefact![..],
-            value: valuefact!(_),
-        };
-
-        let begin = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
-            shape: shapefact![_],
-            value: valuefact!(_),
-        };
-
-        let end = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
-            shape: shapefact![_],
-            value: valuefact!(_),
-        };
-
-        let strides = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
-            shape: shapefact![_],
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![input, begin, end, strides]))
+impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
+    fn rules<'r, 'p: 'r, 's:'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 4)
+            .equals(&outputs.len, 1)
+            .equals(&inputs[1].datatype, DataType::DT_INT32)
+            .equals(&inputs[2].datatype, DataType::DT_INT32)
+            .equals(&inputs[3].datatype, DataType::DT_INT32)
+            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[1].rank, 1)
+            .equals(&inputs[2].rank, 1)
+            .equals(&inputs[3].rank, 1)
+            .given(&inputs[0].shape, move |solver, input_shape:Vec<usize>| {
+                solver.given(&inputs[1].value, move |solver, begin:Tensor| {
+                    let input_shape = input_shape.clone();
+                    solver.given(&inputs[2].value, move |solver, end:Tensor| {
+                        let input_shape = input_shape.clone();
+                        let begin = begin.clone();
+                        solver.given(&inputs[3].value, move |solver, stride:Tensor| {
+                            let (_, _, output_shape) = self.prepare(
+                                &*input_shape,
+                                &begin.as_i32s().unwrap().view().into_dimensionality().unwrap(),
+                                &end.as_i32s().unwrap().view().into_dimensionality().unwrap(),
+                                &stride.as_i32s().unwrap().view().into_dimensionality().unwrap());
+                            trace!("Computed output_shape={:?}", output_shape);
+                            solver.equals(&outputs[0].shape, ShapeFact::from(output_shape));
+                        });
+                    });
+                });
+            });
     }
 }
 

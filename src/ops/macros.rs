@@ -40,35 +40,21 @@ macro_rules! element_map {
                     Some(tv) => Ok(Some(self.eval(vec![tv])?))
                 }
             }
+        }
 
-            /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(
-                &self,
-                inputs: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                if inputs.len() != 1 {
-                    bail!("Unary operations only supports one input.");
-                }
-
-                $crate::analyser::helpers::infer_forward_basic(self, inputs)
-            }
-
-            /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(
-                &self,
-                outputs: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                if outputs.len() < 1 {
-                    bail!("Unary operations need at least one output.");
-                }
-
-                let input = $crate::analyser::TensorFact {
-                    datatype: outputs[0].datatype,
-                    shape: outputs[0].shape.clone(),
-                    value: valuefact!(_),
-                };
-
-                Ok(Some(vec![input]))
+        impl ::ops::InferenceRulesOp for $Struct {
+            /// Infers properties about the input and output tensors.
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
+                solver: &mut $crate::analyser::interface::Solver<'r>,
+                inputs: &'p $crate::analyser::interface::TensorsProxy,
+                outputs: &'p $crate::analyser::interface::TensorsProxy,
+            ) {
+                solver
+                    .equals(&inputs.len, 1)
+                    .equals(&outputs.len, 1)
+                    .equals(&inputs[0].datatype, &outputs[0].datatype)
+                    .equals(&inputs[0].shape, &outputs[0].shape);
             }
         }
     };
@@ -127,43 +113,30 @@ macro_rules! element_bin {
                     Ok(Some(self.eval(vec![a, b])?))
                 }
             }
+        }
 
-            /// Infers properties about the output tensors from the input tensors.
-            fn infer_forward(
-                &self,
-                inputs: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                use $crate::analyser::TypeFact::*;
+        impl<T: ::tensor::Datum> ::ops::InferenceRulesOp for $Name<T> {
+            /// Infers properties about the input and output tensors.
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
+                solver: &mut $crate::analyser::interface::Solver<'r>,
+                inputs: &'p $crate::analyser::interface::TensorsProxy,
+                outputs: &'p $crate::analyser::interface::TensorsProxy,
+            ) {
+                let a = &inputs[0];
+                let b = &inputs[1];
+                let c = &outputs[0];
 
-                if inputs.len() != 2 {
-                    bail!("Binary operations only supports two inputs.");
-                }
-
-                if let (Only(i), Only(j)) = (inputs[0].datatype, inputs[1].datatype) {
-                    if i != j {
-                        bail!("Binary operations don't support inputs of different types.");
-                    }
-                }
-
-                $crate::analyser::helpers::infer_forward_basic(self, inputs)
-            }
-
-            /// Infers properties about the input tensors from the output tensors.
-            fn infer_backward(
-                &self,
-                outputs: Vec<&$crate::analyser::TensorFact>,
-            ) -> Result<Option<Vec<$crate::analyser::TensorFact>>> {
-                if outputs.len() < 1 {
-                    bail!("Binary operations need at least one output.");
-                }
-
-                let input = $crate::analyser::TensorFact {
-                    datatype: outputs[0].datatype,
-                    shape: shapefact![..],
-                    value: valuefact!(_),
-                };
-
-                Ok(Some(vec![input.clone(), input]))
+                solver
+                    .equals(&outputs.len, 1)
+                    .equals_all(wrap![&a.datatype, &b.datatype, &c.datatype, &T::datatype()])
+                    .given(&a.shape, move |solver, a_shape| {
+                        solver.given(&b.shape, move |solver, b_shape| {
+                            if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(vec!(&a_shape, &b_shape)) {
+                                solver.equals(&c.shape, c_shape);
+                            }
+                        });
+                    });
             }
         }
     };
@@ -225,7 +198,39 @@ macro_rules! boxed_new {
             DataType::DT_INT32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
             DataType::DT_FLOAT => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
             DataType::DT_DOUBLE => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
-            _ => unimplemented!()
+            _ => unimplemented!("missing type")
         }
     } }
+}
+
+/// Asserts that forward inference results work as expected.
+#[allow(unused_macros)]
+macro_rules! assert_forward {
+    ($op:expr, $input:ident, $output:ident) => (
+        assert_eq!(
+            $op.infer(
+                vec![$input.clone()],
+                vec![TensorFact::new()],
+            ).unwrap(), (
+                vec![$input.clone()],
+                vec![$output],
+            )
+        )
+    );
+}
+
+/// Asserts that backward inference results work as expected.
+#[allow(unused_macros)]
+macro_rules! assert_backward {
+    ($op:expr, $input:ident, $output:ident) => (
+        assert_eq!(
+            $op.infer(
+                vec![TensorFact::new()],
+                vec![$output.clone()],
+            ).unwrap(), (
+                vec![$input],
+                vec![$output.clone()],
+            )
+        )
+    );
 }

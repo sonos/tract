@@ -9,89 +9,45 @@ use Plan;
 mod types;
 mod constants;
 
-pub use self::types::*;
+pub mod prelude {
+    use Result;
+    pub use super::types::*;
+    pub use super::Analyser;
+
+    /// Attempts to unify two tensor facts into a more specialized one.
+    pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two datatype facts.
+    pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two shape facts.
+    pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two dimension facts.
+    pub fn unify_dim(x: &DimFact, y: &DimFact) -> Result<DimFact> {
+        x.unify(y)
+    }
+
+    /// Attempts to unify two value facts.
+    pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
+        x.unify(y)
+    }
+}
+
+pub use self::prelude::*;
 
 #[macro_use]
 pub mod macros;
 #[macro_use]
 pub mod helpers;
-
-/// Attempts to unify two tensor facts into a more specialized one.
-pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
-    let tensor = TensorFact {
-        datatype: unify_datatype(&x.datatype, &y.datatype)?,
-        shape: unify_shape(&x.shape, &y.shape)?,
-        value: unify_value(&x.value, &y.value)?,
-    };
-
-    trace!("Unifying {:?} with {:?} into {:?}.", x, y, tensor);
-
-    Ok(tensor)
-}
-
-/// Attempts to unify two datatype facts.
-pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
-    use self::TypeFact::*;
-
-    let datatype = match (x, y) {
-        (_, Any) => x,
-        (Any, _) => y,
-        (Only(a), Only(b)) if a == b => x,
-        _ => bail!("Impossible to unify datatypes {:?} and {:?}.", x, y),
-    };
-
-    Ok(*datatype)
-}
-
-/// Attempts to unify two shape facts.
-pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
-    use self::DimFact::*;
-    use itertools::EitherOrBoth::{Both, Left, Right};
-    use itertools::Itertools;
-
-    let xi = x.dims.iter();
-    let yi = y.dims.iter();
-
-    let dimensions: Vec<_> = xi.zip_longest(yi)
-        .map(|r| match r {
-            Both(a, Any) | Both(Any, a) => Ok(*a),
-            Both(a, b) if a == b => Ok(*a),
-            Both(a, b) => bail!("Impossible to unify {:?} and {:?}.", a, b),
-
-            Left(d) if y.open => Ok(*d),
-            Right(d) if x.open => Ok(*d),
-
-            Left(_) | Right(_) => bail!(
-                "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",
-                x,
-                y
-            ),
-        })
-        .collect::<Result<_>>()?;
-
-    if x.open && y.open {
-        Ok(ShapeFact::open(dimensions))
-    } else {
-        Ok(ShapeFact::closed(dimensions))
-    }
-}
-
-/// Attempts to unify two value facts.
-pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
-    use self::ValueFact::*;
-
-    let value = match (x, y) {
-        (_, Any) => x.clone(),
-        (Any, _) => y.clone(),
-        (Only(a), Only(b)) => if a == b {
-            x.clone()
-        } else {
-            bail!("Impossible to unify values {:?} and {:?}.", x, y);
-        },
-    };
-
-    Ok(value)
-}
+#[macro_use]
+pub mod interface;
 
 /// Tries to auto-detect the names of the input nodes.
 pub fn detect_inputs(model: &Model) -> Result<Option<Vec<usize>>> {
@@ -229,6 +185,7 @@ impl Analyser {
 
     /// Adds an user-provided tensor fact to the analyser.
     pub fn hint(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
+        debug!("Hint for node \"{}\": {:?}", self.nodes[node].name, fact);
         if node >= self.next_edges.len() {
             bail!("There is no node with index {:?}.", node);
         }
@@ -407,64 +364,62 @@ impl Analyser {
             node.name, node.op_name, self.current_pass, self.current_direction, self.current_step,
         );
 
-        let (source, target) = if self.current_direction {
-            (&self.prev_edges, &self.next_edges)
-        } else {
-            (&self.next_edges, &self.prev_edges)
-        };
+        let inputs: Vec<_> = self.prev_edges[node.id]
+            .iter()
+            .map(|&i| self.edges[i].fact.clone())
+            .collect();
 
-        let inferred = {
-            let sources: Vec<_> = source[node.id]
-                .iter()
-                .map(|&i| &self.edges[i].fact)
-                .collect();
+        // FIXME(liautaud): We should handle multiple output ports in the future.
+        let mut outputs = vec![TensorFact::new()];
+        for &i in &self.next_edges[node.id] {
+            outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
+        }
 
-            let inferred = if self.current_direction {
-                node.op.infer_forward(sources)
-                    .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?
-            } else {
-                node.op.infer_backward(sources)
-                    .map_err(|e| format!("While inferring backward for {}: {}", node.name, e))?
-            };
+        for (ix, input) in inputs.iter().enumerate() {
+            trace!("  inputs : {} {:?}", ix, input);
+        }
+        for (ix, output) in outputs.iter().enumerate() {
+            trace!("  outputs: {} {:?}", ix, output);
+        }
 
-            if inferred.is_none() {
-                return Ok(false);
-            }
-
-            inferred.unwrap()
-        };
+        let inferred = node.op
+            .infer_and_propagate(inputs, outputs)
+            .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?;
 
         let mut changed = false;
 
-        // TODO(liautaud): For now, we will assume that forward inference only
-        // produces a single output. We need to know this because several nodes
-        // might want to consume that single output, so we must copy it instead
-        // of expecting the node to produce several copies itself.
-        for (i, &j) in target[node.id].iter().enumerate() {
-            let fact = if self.current_direction {
-                if inferred.len() > 1 {
-                    panic!("Forward inference should not produce more than one output.");
-                }
-
-                &inferred[0]
-            } else {
-                &inferred[i]
-            };
-
+        for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
+            let fact = &inferred.0[i];
             let unified = unify(fact, &self.edges[j].fact)
                 .map_err(|e| format!(
-                    "While unifying {} for node {:?}: {}",
-                    if self.current_direction {
-                        "forward"
-                    } else {
-                        "backward"
-                    },
+                    "While unifying inputs of node {:?}: {}",
                     node.name, e
                 ))?;
 
             if unified != self.edges[j].fact {
-                self.edges[j].fact = unified;
+                debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
                 changed = true;
+                self.edges[j].fact = unified;
+            }
+        }
+
+        for (i, &j) in self.next_edges[node.id].iter().enumerate() {
+            // FIXME(liautaud): We should handle multiple output ports in the future.
+            if inferred.1.len() != 1 {
+                panic!("Inference only supports nodes with a single output port.");
+            }
+
+            let fact = &inferred.1[0];
+            let unified = unify(fact, &self.edges[j].fact)
+                .map_err(|e| format!(
+                    "While unifying outputs of node {:?}: {}",
+                    node.name, e
+                ))?;
+
+            if unified != self.edges[j].fact {
+                debug!(" Refined {} output #{} to {:?}", node.name, i, unified);
+                changed = true;
+                self.edges[j].fact = unified;
             }
         }
 

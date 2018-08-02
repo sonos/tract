@@ -88,7 +88,7 @@ impl NodeDef {
 impl node_def::NodeDef {
     pub fn get_attr_raw_str(&self, name: &str) -> ::Result<&[u8]> {
         Ok(self.get_attr_opt_raw_str(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected string attr {}", self.get_name(), self.get_op(), name))?)
+            .ok_or_else(|| format!("Node {} ({}) expected string attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
     pub fn get_attr_opt_raw_str(&self, name: &str) -> ::Result<Option<&[u8]>> {
@@ -97,13 +97,13 @@ impl node_def::NodeDef {
 
     pub fn get_attr_str(&self, name: &str) -> ::Result<String> {
         Ok(self.get_attr_opt_str(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected UTF-8 string attr {}", self.get_name(), self.get_op(), name))?)
+            .ok_or_else(|| format!("Node {} ({}) expected UTF-8 string attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
     pub fn get_attr_opt_str(&self, name: &str) -> ::Result<Option<String>> {
         if let Some(s) = self.get_attr_opt_raw_str(name)? {
             Ok(Some(String::from_utf8(s.to_vec())
-                .map_err(|_| format!("Node {} ({}) expected an UTF-8 string for attr {}", self.get_name(), self.get_op(), name))?))
+                .map_err(|_| format!("Node {} ({}) expected an UTF-8 string for attribute '{}'", self.get_name(), self.get_op(), name))?))
         } else {
             Ok(None)
         }
@@ -111,7 +111,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_datatype(&self, name: &str) -> ::Result<types::DataType> {
         Ok(self.get_attr_opt_datatype(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected datatype attr {}", self.get_name(), self.get_op(), name))?)
+            .ok_or_else(|| format!("Node {} ({}) expected datatype attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
     pub fn get_attr_opt_datatype(&self, name: &str) -> ::Result<Option<types::DataType>> {
@@ -124,7 +124,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_tensor(&self, name: &str) -> ::Result<::tensor::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected tensor attr {}", self.get_name(), self.get_op(), name))?)
+            .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> ::Result<Option<::tensor::Tensor>> {
@@ -137,12 +137,12 @@ impl node_def::NodeDef {
 
     pub fn get_attr_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<T> {
         Ok(self.get_attr_opt_int(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected int attr {}", self.get_name(), self.get_op(), name))?)
+            .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
     pub fn get_attr_opt_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<Option<T>> {
         if let Some(i) = self.get_attr().get(name) {
             Ok(Some(T::from_i64(i.get_i())
-                .ok_or_else(|| format!("Node {} ({}) expected int attr {}", self.get_name(), self.get_op(), name))?))
+                .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
         } else {
             Ok(None)
         }
@@ -150,13 +150,13 @@ impl node_def::NodeDef {
 
     pub fn get_attr_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<Vec<T>> {
         Ok(self.get_attr_opt_list_int(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected int attr {}", self.get_name(), self.get_op(), name))?)
+            .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
     pub fn get_attr_opt_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<Option<Vec<T>>> {
         if let Some(list) = self.get_attr().get(name) {
             Ok(Some(list.get_list().get_i().iter().map(|i| T::from_i64(*i)
-                .ok_or_else(|| format!("Node {} ({}) expected list<int> attr {}", self.get_name(), self.get_op(), name).into()))
+                .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name).into()))
                 .collect::<::Result<Vec<T>>>()?))
         } else {
             Ok(None)

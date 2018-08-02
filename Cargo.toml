@@ -46,6 +46,7 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 
 [dev-dependencies]
 criterion = "0.2"
+simplelog = "0.5"
 
 [[bench]]
 name = "conv"

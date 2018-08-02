@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use Result;
 
-use super::{Attr, Op, OpRegister, TensorView};
-use analyser::TensorFact;
+use super::prelude::*;
+use analyser::interface::*;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);
@@ -33,16 +33,12 @@ impl ::ops::Op for Cast {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        unimplemented!()
+        unimplemented!("Cast op")
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        unimplemented!()
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        unimplemented!()
+impl InferenceRulesOp for Cast {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {
+        unimplemented!("Cast op")
     }
 }

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use super::{Attr, Op, OpRegister, TensorView};
-use analyser::TensorFact;
 use std::sync::Arc;
 use tfpb::types::DataType;
 use {Result, Tensor};
+use analyser::interface::*;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
@@ -49,21 +49,13 @@ impl Op for Const {
             "value" => Attr::Tensor(self.value.as_ref().clone()),
         }
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, _inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        let output = TensorFact {
-            datatype: typefact!(self.dtype),
-            shape: self.value.shape().into(),
-            value: valuefact!(self.value.as_ref().clone()),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, _outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        debug!("Const operation is a leaf, nothing to infer backwards.");
-        Ok(None)
+impl ::ops::InferenceRulesOp for Const {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        // infer will call eval as "all" inputs are known
+        solver
+            .equals(&inputs.len, 0)
+            .equals(&outputs.len, 1);
     }
 }

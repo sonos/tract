@@ -1,6 +1,6 @@
 //! `Tensor` is the equivalent of Tensorflow Tensor.
 use ndarray::prelude::*;
-use std::fmt::Debug;
+use std::fmt;
 use tfpb::types::DataType;
 
 #[cfg(feature = "serialize")]
@@ -11,7 +11,7 @@ pub trait Datum:
     + Clone
     + Send
     + Sync
-    + Debug
+    + fmt::Debug
     + Default
     + 'static
     + ::num_traits::Zero
@@ -30,7 +30,7 @@ pub trait Datum:
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Tensor {
     F32(ArrayD<f32>),
     F64(ArrayD<f64>),
@@ -56,13 +56,13 @@ impl Tensor {
             match dtype {
                 DT_FLOAT => Self::from_content::<f32, u8>(dims, content)?.into(),
                 DT_INT32 => Self::from_content::<i32, u8>(dims, content)?.into(),
-                _ => unimplemented!(),
+                _ => unimplemented!("missing type"),
             }
         } else {
             match dtype {
                 DT_INT32 => Self::from_content::<i32, i32>(dims, t.get_int_val())?.into(),
                 DT_FLOAT => Self::from_content::<f32, f32>(dims, t.get_float_val())?.into(),
-                _ => unimplemented!(),
+                _ => unimplemented!("missing type"),
             }
         };
         assert_eq!(rank, mat.shape().len());
@@ -107,7 +107,7 @@ impl Tensor {
                 tensor.set_dtype(DataType::DT_INT32);
                 tensor.set_int_val(it.iter().cloned().collect());
             },
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
         Ok(tensor)
     }
@@ -119,7 +119,7 @@ impl Tensor {
             &Tensor::I32(ref it) => it.shape(),
             &Tensor::I8(ref it) => it.shape(),
             &Tensor::U8(ref it) => it.shape(),
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
     }
 
@@ -131,19 +131,26 @@ impl Tensor {
             &Tensor::I32(_) => DataType::DT_INT32,
             &Tensor::I8(_) => DataType::DT_INT8,
             &Tensor::U8(_) => DataType::DT_UINT8,
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
     }
 
     pub fn partial_dump(&self, _single_line: bool) -> ::Result<String> {
-        if self.shape().iter().product::<usize>() > 25 {
+        if self.shape().len() == 0 {
+            Ok(match self {
+                &Tensor::I32(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
+                &Tensor::F32(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
+                &Tensor::U8(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
+                _ => unimplemented!("missing type"),
+            })
+        } else if self.shape().iter().product::<usize>() > 25 {
             Ok(format!("{:?} {:?}", self.datatype(), self.shape()))
         } else {
             Ok(match self {
                 &Tensor::I32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
                 &Tensor::F32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
                 &Tensor::U8(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
-                _ => unimplemented!(),
+                _ => unimplemented!("missing type"),
             })
         }
     }
@@ -152,7 +159,7 @@ impl Tensor {
         match self {
             &Tensor::I32(ref data) => Tensor::F32(data.map(|&a| a as f32)),
             &Tensor::F32(_) => self.clone(),
-            _ => unimplemented!(),
+            _ => unimplemented!("missing type"),
         }
     }
 
@@ -166,6 +173,13 @@ impl Tensor {
             && mb.iter()
                 .zip(ma.iter())
                 .all(|(&a, &b)| (b - a).abs() <= margin)
+    }
+}
+
+impl fmt::Debug for Tensor {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let content = self.partial_dump(true).unwrap_or("Error".to_string());
+        write!(formatter, "{}", content)
     }
 }
 

@@ -1,12 +1,9 @@
 use std::collections::HashMap;
 
 use super::local_patch::*;
-use super::{Attr, Op, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::{TensorFact, ShapeFact};
+use ops::prelude::*;
+use analyser::interface::*;
 use ndarray::prelude::*;
-use std::marker::PhantomData;
-use {Result, Tensor};
 
 pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'static {
     type State;
@@ -70,74 +67,28 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         attributes
     }
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        use analyser::DimFact::*;
+}
 
-        if inputs.len() != 1 {
-            bail!("Pool operations only supports one input.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        if inputs[0].shape.open {
-            return Ok(None)
-        }
-
-        // If we don't know the actual value, we can still compute the shape.
-        let shape = match inputs[0].shape.dims.as_slice() {
-            [batch, in_height, in_width, in_channels] => {
-                let (height, width) = match (in_height, in_width) {
-                        (&Only(ih), &Only(iw)) => {
-                            let (h, w) = self.0.adjusted_dim(ih, iw, self.1);
-                            (Only(h), Only(w))
-                        },
-                        _ => (Any, Any)
-                    };
-
-                // TODO(liautaud): Take the data_format parameter into account.
-                ShapeFact::closed(vec![(*batch), height, width, (*in_channels)])
-            }
-
-            _ if inputs[0].shape.open => shapefact![_, _, _, _],
-            _ => bail!("The input dimensions are invalid."),
-        };
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        use analyser::DimFact::*;
-
-        if outputs.len() < 1 {
-            bail!("Pool operations only supports one output.");
-        }
-
-        let shape = match outputs[0].shape.dims.as_slice() {
-            [batch, _, _, out_channels] =>
-                // TODO(liautaud): Take the data_format parameter into account.
-                ShapeFact::open(vec![*batch, Any, Any, *out_channels]),
-
-            _ if outputs[0].shape.open => shapefact![_, _, _, _],
-            _ => bail!("The output dimensions are invalid."),
-        };
-
-        let input = TensorFact {
-            datatype: outputs[0].datatype,
-            shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![input]))
+impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 1)
+            .equals(&outputs.len, 1)
+            .equals(&inputs[0].datatype, DataType::DT_FLOAT)
+            .equals(&outputs[0].datatype, DataType::DT_FLOAT)
+            .equals(&inputs[0].rank, 4)
+            .equals(&outputs[0].rank, 4)
+            .equals(&inputs[0].shape[0], &outputs[0].shape[0])
+            .given(&inputs[0].shape[1], move |solver, h| {
+                solver.given(&inputs[0].shape[2], move |solver, w| {
+                    let (oh, ow) = self.0.adjusted_dim(h, w, self.1);
+                    solver
+                        .equals(&outputs[0].shape[1], oh as isize)
+                        .equals(&outputs[0].shape[2], ow as isize);
+                });
+            })
+            ;
     }
 }
 

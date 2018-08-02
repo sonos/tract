@@ -174,8 +174,8 @@ impl Parameters {
             graph,
             tfd_model,
             tf_model,
-            inputs,
-            output,
+            input_node_ids,
+            output_node_id,
             input,
         });
 
@@ -337,7 +337,6 @@ impl ProfilingMode {
         Ok(mode)
     }
 }
-
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> Result<()> {

@@ -2,13 +2,10 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
-use ops::{Attr, Op, OpBuffer, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::{ShapeFact, TensorFact};
+use ops::prelude::*;
+use analyser::interface::*;
 use ndarray::prelude::*;
 use ndarray::{Axis, Slice, stack};
-use tensor::Datum;
-use Result;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
@@ -209,99 +206,55 @@ impl<T: Datum> Op for Conv2D<T> {
 
         Ok(Some(vec![T::array_into_tensor(result).into()]))
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        use analyser::DimFact::*;
-
-        if inputs.len() != 2 {
-            bail!("Conv2D operation only supports two inputs.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        let shape = match (inputs[0].shape.dims.as_slice(), inputs[1].shape.dims.as_slice()) {
-            ([batch, in_height, in_width, in_channels],
-             [filter_height, filter_width, in_channels_2, out_channels]) => {
-                if let (&Only(ic1), &Only(ic2)) = (in_channels, in_channels_2) {
-                    if ic1 != ic2 {
-                        bail!("The in_channels parameters of the input and filter must be equal.");
+impl<T: Datum> InferenceRulesOp for Conv2D<T> {
+    /// Registers the inference rules of the operator.
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 2)
+            .equals(&outputs.len, 1)
+            .equals(&inputs[0].datatype, T::datatype())
+            .equals(&inputs[1].datatype, T::datatype())
+            .equals(&outputs[0].datatype, T::datatype())
+            .equals(&inputs[0].rank, 4)
+            .equals(&inputs[1].rank, 4)
+            .equals(&outputs[0].rank, 4)
+            .equals(&inputs[0].shape[0], &outputs[0].shape[0])
+            .equals(&inputs[0].shape[3], &inputs[1].shape[2])
+            .equals(&outputs[0].shape[3], &inputs[1].shape[3])
+            .given(&inputs[0].shape[1], move |solver, h:DimFact| {
+                match h {
+                    DimFact::Only(h) => {
+                        solver.given(&inputs[1].shape[0], move |solver, kh| {
+                            let oh = self.0.adjusted_dim_rows(h, kh);
+                            solver.equals(&outputs[0].shape[1], oh as isize);
+                        });
+                    },
+                    DimFact::Streamed => {
+                        solver.equals(
+                            &outputs[0].shape[1],
+                            IntFact::Special(SpecialKind::Streamed));
                     }
+                    _ => {}
                 }
-
-                let (height, width) = match (in_height, in_width, filter_height, filter_width) {
-                    (_, _, &Streamed, _) | (_, _, _, &Streamed) =>
-                        bail!("The filter should not be streamed."),
-
-                    (&Streamed, &Only(iw), &Only(_), &Only(fw)) => {
-                        let w = self.0.adjusted_dim_cols(iw, fw);
-                        (Streamed, Only(w))
+            })
+            .given(&inputs[0].shape[2], move |solver, w:DimFact| {
+                match w {
+                    DimFact::Only(w) => {
+                        solver.given(&inputs[1].shape[1], move |solver, kw| {
+                            let ow = self.0.adjusted_dim_cols(w, kw);
+                            solver.equals(&outputs[0].shape[2], ow as isize);
+                        });
                     },
-
-                    (&Only(ih), &Streamed, &Only(fh), &Only(_)) => {
-                        let h = self.0.adjusted_dim_rows(ih, fh);
-                        (Only(h), Streamed)
-                    },
-
-                    (&Only(ih), &Only(iw), &Only(fh), &Only(fw)) => {
-                        let (h, w) = self.0.adjusted_dim(ih, iw, (fh, fw));
-                        (Only(h), Only(w))
-                    },
-
-                    _ => (Any, Any)
-                };
-
-                // TODO(liautaud): Take the data_format parameter into account.
-                ShapeFact::closed(vec![*batch, height, width, *out_channels])
-            }
-
-            _ if inputs[0].shape.open || inputs[1].shape.open => shapefact![_, _, _, _],
-            _ => bail!("The input and filter dimensions are invalid."),
-        };
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        use analyser::DimFact::*;
-
-        if outputs.len() < 1 {
-            bail!("Conv2D operation only supports one output.");
-        }
-
-        let (input_shape, filter_shape) = match outputs[0].shape.dims.as_slice() {
-            [batch, _, _, out_channels] =>
-                (ShapeFact::closed(vec![*batch, Any, Any, Any]),
-                 ShapeFact::closed(vec![Any, Any, Any, *out_channels])),
-
-            _ if outputs[0].shape.open =>
-                (shapefact![_, _, _, _], shapefact![_, _, _, _]),
-
-            _ => bail!("The output dimensions are invalid."),
-        };
-
-        let input = TensorFact {
-            datatype: outputs[0].datatype,
-            shape: input_shape,
-            value: valuefact!(_),
-        };
-
-        let filter = TensorFact {
-            datatype: outputs[0].datatype,
-            shape: filter_shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![input, filter]))
+                    DimFact::Streamed => {
+                        solver.equals(
+                            &outputs[0].shape[2],
+                            IntFact::Special(SpecialKind::Streamed));
+                    }
+                    _ => {}
+                }
+            });
     }
 }
 

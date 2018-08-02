@@ -2,10 +2,13 @@
 
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate log;
 extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
+extern crate simplelog;
 extern crate tensorflow;
 extern crate tfdeploy;
 
@@ -35,6 +38,7 @@ use tfdeploy::tfpb;
 use tfdeploy::Tensor as TfdTensor;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
+use tfdeploy::analyser::TensorFact;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
@@ -76,19 +80,42 @@ pub fn compare<S: AsRef<str>>(
     inputs: Vec<(S, TfdTensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    let owned_names: Vec<String> = inputs.iter().map(|s| s.0.as_ref().to_string()).collect();
-    let inputs: Vec<(&str, TfdTensor)> = inputs
-        .into_iter()
-        .zip(owned_names.iter())
-        .map(|((_, m), s)| (&**s, m))
+
+    // Run TFD
+    let model = tfdeploy::Model::for_reader(&*graph)?;
+    let mut state = model.state();
+    for (s, t) in &inputs {
+        state.set_value(model.node_id_by_name(s.as_ref()).unwrap(), t.clone()).unwrap();
+    }
+    let output_id = model.node_id_by_name(output)?;
+    state.compute_one(output_id)?;
+    let found = &state.outputs[output_id].as_ref().unwrap();
+
+    // Run Tensorflow
+    let tf_inputs: Vec<(&str, TfdTensor)> = inputs
+        .iter()
+        .map(|(s, m)| (s.as_ref(), m.clone()))
         .collect();
-    let expected = tf::for_slice(&graph)?.run(inputs.clone(), output)?;
-    let found = tfdeploy::Model::for_reader(&*graph)?.run_with_names(inputs, output)?;
+    let expected = tf::for_slice(&graph)?.run(tf_inputs.clone(), output)?;
+
     prop_assert!(
         expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0]),
         "expected: {:?} found: {:?}",
         expected,
         found
     );
+
+    // Check inference rules consistency
+    let node = model.get_node(output)?;
+    let inputs_vectors:Vec<TensorFact> = node.inputs.iter().map(|(i,p)| state.outputs[*i].as_ref().unwrap()[p.unwrap_or(0)].as_tensor().clone().into()).collect();
+    let output_vectors:Vec<TensorFact> = vec!(state.outputs[output_id].as_ref().unwrap()[0].as_tensor().clone().into());
+
+    info!("Checking inference on {}", output);
+    let op = node.op();
+    if let Err(e) = op.infer(inputs_vectors, output_vectors) {
+        error!("{:?}", e);
+        Err(e)?
+    }
+
     Ok(())
 }

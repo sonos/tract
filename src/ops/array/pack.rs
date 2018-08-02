@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use ops::{Attr, Op, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::helpers::most_specific_shape;
-use analyser::{ShapeFact, TensorFact};
+use ops::prelude::*;
+use analyser::interface::*;
 use tensor::Datum;
 use Result;
 
@@ -47,66 +45,28 @@ where
         }
     }
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() < 1 {
-            bail!("Pack operation needs at least one input.");
-        }
+}
 
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        // If we don't know the actual value, we can still compute the shape.
-        let n = inputs.len();
-        let shapes = inputs.iter().map(|t| &t.shape);
-
-        // We get the most specific shape, and replace the axis with an unknown.
-        let shape = match most_specific_shape(shapes)? {
-            Some(s) => {
-                let mut dims = s.dims.clone();
-                dims.insert(self.axis, dimfact!(n));
-                ShapeFact::closed(dims)
-            }
-
-            None => shapefact![..],
-        };
-
-        let output = TensorFact {
-            datatype: inputs[0].datatype,
-            shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![output]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("Pack operation only supports one output.");
-        }
-
-        // The operation adds a dimension, so all we have to do is remove it.
-        let mut inner = outputs[0].shape.dims.clone();
-        let shape = if outputs[0].shape.open {
-            if self.axis > inner.len() {
-                inner.remove(self.axis);
-            }
-
-            ShapeFact::open(inner)
-        } else {
-            inner.remove(self.axis);
-            ShapeFact::closed(inner)
-        };
-
-        let input = TensorFact {
-            datatype: outputs[0].datatype,
-            shape,
-            value: valuefact!(_),
-        };
-
-        Ok(Some(vec![input; self.n]))
+impl<T:Datum> InferenceRulesOp for Pack<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        let output = &outputs[0];
+        let n = self.n;
+        let axis = self.axis;
+        solver
+            .equals(&inputs.len, n as isize)
+            .equals(&outputs.len, 1)
+            .equals_all((0..n).map(|i| bexp(&inputs[i].rank)).collect())
+            .equals_zero(wrap!((-1,&output.rank),(1isize,1),(1,&inputs[0].rank)))
+            .given(&inputs[0].rank, move |solver, r: usize| {
+                (0..r).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); })
+            })
+            .given(&inputs[0].rank, move |solver, r: usize| {
+                (0..axis).for_each(|d| { solver.equals(&output.shape[d], &inputs[0].shape[d]); });
+                if r > 0 {
+                    (axis..(r - 1)).for_each(|d| { solver.equals(&output.shape[d+1], &inputs[0].shape[d]); });
+                }
+            })
+            .equals(&output.shape[axis], n as isize);
     }
 }
 

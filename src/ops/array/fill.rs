@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use ops::{Attr, Op, TensorView};
-use analyser::helpers::infer_forward_concrete;
-use analyser::TensorFact;
-use tensor::Datum;
+use ops::prelude::*;
+use analyser::interface::*;
 use Result;
 
 #[derive(Debug, Clone, Default, new)]
@@ -37,26 +35,22 @@ where
             "T"    => Attr::DataType(T::datatype()),
         }
     }
+}
 
-    /// Infers properties about the output tensors from the input tensors.
-    fn infer_forward(&self, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if inputs.len() < 2 {
-            bail!("Fill operation needs at least one input.");
-        }
-
-        if let Some(output) = infer_forward_concrete(self, &inputs)? {
-            return Ok(Some(output));
-        }
-
-        Ok(Some(vec![TensorFact::default()]))
-    }
-
-    /// Infers properties about the input tensors from the output tensors.
-    fn infer_backward(&self, outputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
-        if outputs.len() < 1 {
-            bail!("Pack operation only supports one output.");
-        }
-
-        Ok(Some(vec![TensorFact::default()]))
+impl<T:Datum> InferenceRulesOp for Fill<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+        solver
+            .equals(&inputs.len, 2)
+            .equals(&outputs.len, 1)
+            .equals(&outputs[0].datatype, T::datatype())
+            .equals(&inputs[0].rank, 1)
+            .equals(&inputs[1].rank, 0)
+            .equals(&outputs[0].rank, &inputs[0].shape[0])
+            .given(&outputs[0].rank, move |solver, rank: usize| {
+                for dim in 0..rank {
+                    solver.equals(&outputs[0].shape[dim], &inputs[0].value[dim]);
+                }
+            })
+        ;
     }
 }

@@ -2,11 +2,12 @@
 #[macro_export]
 macro_rules! typefact {
     (_) => {
-        $crate::analyser::TypeFact::Any
+        $crate::analyser::TypeFact::default()
     };
-    ($arg:expr) => {
-        $crate::analyser::TypeFact::Only($arg)
-    };
+    ($arg:expr) => ({
+        let fact: $crate::analyser::TypeFact = $crate::analyser::GenericFact::Only($arg);
+        fact
+    });
 }
 
 /// Constructs a shape fact.
@@ -26,7 +27,10 @@ macro_rules! shapefact {
 #[macro_export]
 macro_rules! dimfact {
     (_) => {
-        $crate::analyser::DimFact::Any
+        $crate::analyser::DimFact::default()
+    };
+    (S) => {
+        $crate::analyser::DimFact::Streamed
     };
     ($arg:expr) => {
         $crate::analyser::DimFact::Only($arg)
@@ -37,11 +41,12 @@ macro_rules! dimfact {
 #[macro_export]
 macro_rules! valuefact {
     (_) => {
-        $crate::analyser::ValueFact::Any
+        $crate::analyser::ValueFact::default()
     };
-    ($arg:expr) => {
-        $crate::analyser::ValueFact::Only($arg)
-    };
+    ($arg:expr) => ({
+        let fact: $crate::analyser::ValueFact = $crate::analyser::GenericFact::Only($arg);
+        fact
+    });
 }
 
 /// Tries to unwrap an option, or returns Ok(None) otherwise.
