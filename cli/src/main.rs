@@ -67,7 +67,8 @@ const DEFAULT_MAX_TIME: u64 = 200;
 
 /// Entrypoint for the command-line interface.
 fn main() {
-    let app = clap_app!(("tfdeploy-cli") =>
+    use clap::*;
+    let mut app = clap_app!(("tfdeploy-cli") =>
         (version: "1.0")
         (author: "Romain Liautaud <romain.liautaud@snips.ai>")
         (about: "A set of tools to compare tfdeploy with tensorflow.")
@@ -92,45 +93,47 @@ fn main() {
             "Loads input data from a given file.")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
+        );
 
-        (@subcommand compare =>
-            (about: "Compares the output of tfdeploy and tensorflow on randomly generated input."))
+    let compare = clap::SubCommand::with_name("compare")
+            .help("Compares the output of tfdeploy and tensorflow on randomly generated input.");
+    app = app.subcommand(output_options(compare));
 
-        (@subcommand dump =>
-            (about: "Dumps the Tensorflow graph in human readable form.")
-            (@arg web: --web
-                "Displays the dump in a web interface.")
-            (@arg konst: --const
-                "Do not inline constants nodes"))
+    let dump = clap::SubCommand::with_name("dump")
+            .help("Dumps the Tensorflow graph in human readable form.");
+    app = app.subcommand(output_options(dump));
 
-        (@subcommand profile =>
-            (about: "Benchmarks tfdeploy on randomly generated input.")
-            (@arg max_iters: --max_iters -n [max_iters]
-                "Sets the maximum number of iterations for each node [default: 10_000].")
-            (@arg max_time: --max_time -t [max_time]
-                "Sets the maximum execution time for each node (in ms) [default: 500].")
-            (@arg buffering: --buffering
-                "Profile streaming network buffering phase instead of cruise.")
-            (@arg bench: --bench
-                "Run the stream network without inner instrumentations"))
+    let profile = clap::SubCommand::with_name("profile")
+            .help("Benchmarks tfdeploy on randomly generated input.")
+            .arg(Arg::with_name("max_iters").short("n")
+                .help("Sets the maximum number of iterations for each node [default: 10_000]."))
+            .arg(Arg::with_name("max_time").short("t")
+                .help("Sets the maximum execution time for each node (in ms) [default: 500]."))
+            .arg(Arg::with_name("buffering").short("b")
+                .help("Run the stream network without inner instrumentations"));
+    app = app.subcommand(output_options(profile));
 
-        (@subcommand analyse =>
-            (about: "Analyses the graph to infer properties about tensors (experimental).")
-            (@arg prune: --prune
-                "Prunes constant nodes and edges from the graph.")
-            (@arg web: --web
-                "Displays the results of the analysis in a web interface.")
-            (@arg konst: --const
-                "Do not inline constants nodes"))
-    );
+    let analyse = clap::SubCommand::with_name("analyse")
+            .help("Analyses the graph to infer properties about tensors (experimental).");
+    app = app.subcommand(output_options(analyse));
+
+    let optimize = clap::SubCommand::with_name("optimize")
+            .help("Optimize the graph");
+    app = app.subcommand(output_options(optimize));
 
     let matches = app.get_matches();
-
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());
         process::exit(1)
     }
+}
+
+fn output_options<'a, 'b>(command:clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+    use clap::*;
+    command
+        .arg(Arg::with_name("web").long("web").help("Display int a web interface"))
+        .arg(Arg::with_name("const").long("const").help("also display consts nodes"))
 }
 
 /// Structure holding the parsed parameters.
@@ -397,7 +400,13 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
         ("analyse", Some(m)) => analyse::handle(
             params,
-            m.is_present("prune"),
+            false,
+            OutputParameters::from_clap(m)?
+        ),
+
+        ("optimize", Some(m)) => analyse::handle(
+            params,
+            true,
             OutputParameters::from_clap(m)?
         ),
 

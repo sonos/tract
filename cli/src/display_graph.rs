@@ -6,7 +6,7 @@ use tfdeploy::tfpb::graph::GraphDef;
 use OutputParameters;
 use Result as CliResult;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Edge {
     pub id: usize,
     pub src_node_id: usize,
@@ -17,7 +17,7 @@ pub struct Edge {
     pub label: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Node {
     pub id: usize,
     pub name: String,
@@ -27,7 +27,7 @@ pub struct Node {
     pub outputs: Vec<usize>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct DisplayGraph {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
@@ -102,33 +102,32 @@ impl DisplayGraph {
     }
 
     pub fn from_nodes(tfnodes: &[&tfdeploy::Node]) -> CliResult<DisplayGraph> {
-        let mut nodes:Vec<Node> = vec!();
-        let mut edges = vec!();
-        for n in tfnodes {
-            let mut incoming = vec!();
-            for (ix, i) in n.inputs.iter().enumerate() {
-                let edge = Edge {
-                    id: edges.len(),
-                    src_node_id: i.0,
-                    src_node_output: i.1.unwrap_or(0),
-                    dst_node_id: n.id,
-                    dst_node_input: ix,
-                    main: ix == 0,
-                    label: None,
-                };
-                nodes[i.0].outputs.push(edges.len());
-                incoming.push(edges.len());
-                edges.push(edge);
-            }
-            let dnode = Node {
+        let mut nodes:Vec<Node> = tfnodes.iter().map(|n|
+            Node {
                 id: n.id,
                 name: n.name.clone(),
                 op: n.op_name.clone(),
                 attrs: vec![],
-                inputs: incoming,
+                inputs: vec!(),
                 outputs: vec!()
-            };
-            nodes.push(dnode);
+            }
+        ).collect();
+        let mut edges = vec!();
+        for node in tfnodes.iter() {
+            for (ix, input) in node.inputs.iter().enumerate() {
+                let edge = Edge {
+                    id: edges.len(),
+                    src_node_id: input.0,
+                    src_node_output: input.1.unwrap_or(0),
+                    dst_node_id: node.id,
+                    dst_node_input: ix,
+                    main: ix == 0,
+                    label: tfnodes[input.0].op().const_value().map(|v| format!("Const {:?}", v))
+                };
+                nodes[edge.src_node_id].outputs.push(edges.len());
+                nodes[node.id].inputs.push(edges.len());
+                edges.push(edge);
+            }
         };
         Ok(DisplayGraph { nodes, edges })
     }

@@ -5,7 +5,7 @@ use tfdeploy::analyser::Analyser;
 use tfdeploy::analyser::{TensorFact, ShapeFact, DimFact};
 
 /// Handles the `analyse` subcommand.
-pub fn handle(params: Parameters, prune: bool, output_params: OutputParameters) -> Result<()> {
+pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameters) -> Result<()> {
 
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?.id;
@@ -35,8 +35,7 @@ pub fn handle(params: Parameters, prune: bool, output_params: OutputParameters) 
     info!("Running analyse");
     analyser.run()?;
 
-    // Prune constant nodes if needed.
-    if prune {
+    if optimize {
         info!(
             "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
             ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
