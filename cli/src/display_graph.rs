@@ -48,6 +48,10 @@ impl DisplayGraph {
             if node.op == "Const" && !params.konst {
                 continue;
             }
+            let output_ports:HashMap<usize, Option<String>> = node.outputs.iter().map(|edge| {
+                let edge = &self.edges[*edge];
+                (edge.src_node_output, edge.label.clone())
+            }).collect();
             ::format::print_box(
                 &node.id.to_string(),
                 &node.op,
@@ -79,6 +83,15 @@ impl DisplayGraph {
                                     )
                                 },
                                 edge.label.clone().unwrap_or_else(|| "".to_string()),
+                            )
+                        })
+                        .collect(),
+                    (0..output_ports.len())
+                        .map(|ix| {
+                            let edge = &output_ports[&ix];
+                            Row::Double(
+                                format!("Output {}:", ix.to_string().bold()),
+                                edge.clone().unwrap_or_else(|| "".to_string())
                             )
                         })
                         .collect(),
