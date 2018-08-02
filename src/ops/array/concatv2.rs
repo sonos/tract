@@ -119,9 +119,12 @@ impl<T:Datum> InferenceRulesOp for ConcatV2<T> {
             .equals(&outputs.len, 1)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].datatype)).collect())
             .equals(&outputs[0].datatype, &inputs[0].datatype)
+            .equals(&inputs[n].datatype, DataType::DT_INT32)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
+            .equals(&inputs[n].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].rank)
-            .given(&inputs[n].value, move |solver, axis: usize| {
+            .given(&inputs[n].value, move |solver, axis:Tensor| {
+                let axis = *axis.as_i32s().unwrap().iter().next().unwrap() as usize; // both checked
                 solver
                     .given(&inputs[0].rank, move |solver, rank: usize| {
                         (0..axis).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); });

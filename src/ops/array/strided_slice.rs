@@ -32,66 +32,72 @@ struct Dim {
 }
 
 impl<T:Datum> StridedSlice<T> {
+    fn must_shrink(&self, ix: usize) -> bool {
+        self.shrink_axis_mask & 1 << ix != 0
+    }
+    fn prepare_one_dim(&self, ix:usize, dim:usize, begin: &ArrayView1<i32>, end:&ArrayView1<i32>, strides:&ArrayView1<i32>) -> Dim {
+        let dim = dim as i32;
+        // deal with too small dim begin/end/stride for input rank
+        if ix >= begin.len() {
+            return Dim {
+                begin: 0,
+                stride: 1,
+                len: dim as usize,
+                shrink: false,
+            };
+        }
+
+        // deal with negative indexing
+        let b = if begin[ix] >= 0 {
+            begin[ix]
+        } else {
+            dim + begin[ix]
+        };
+        let e = if end[ix] >= 0 { end[ix] } else { dim + end[ix] };
+
+        // deal with shrinking
+        if self.must_shrink(ix) {
+            return Dim {
+                begin: b,
+                stride: 1,
+                len: 1,
+                shrink: true,
+            };
+        }
+
+        // deal with begin and end masks
+        let s = strides[ix];
+        let b = if (self.begin_mask >> ix) & 1 == 1 {
+            if s.signum() > 0 {
+                0
+            } else {
+                dim - 1
+            }
+        } else {
+            b
+        };
+        let e = if (self.end_mask >> ix) & 1 == 1 {
+            if s.signum() < 0 {
+                -1
+            } else {
+                dim
+            }
+        } else {
+            e
+        };
+        let len = (((s.abs() as i32 - 1) + (e - b).abs()) / s.abs()) as usize;
+        Dim {
+            begin: b,
+            stride: s,
+            len,
+            shrink: false,
+        }
+    }
     fn prepare(&self, input_shape:&[usize], begin: &ArrayView1<i32>, end:&ArrayView1<i32>, strides:&ArrayView1<i32>) -> (Vec<Dim>, Vec<usize>, Vec<usize>) {
         trace!("StridedSlice {:?} computing shapes: input_shape:{:?} begin:{:?} end:{:?} strides:{:?}", self, input_shape, begin, end, strides);
         let bounds: Vec<Dim> = (0..input_shape.len())
-            .map(|d| {
-                let max = input_shape[d] as i32;
-                // deal with too small dim begin/end/stride for input rank
-                if d >= begin.len() {
-                    return Dim {
-                        begin: 0,
-                        stride: 1,
-                        len: max as usize,
-                        shrink: false,
-                    };
-                }
-
-                // deal with negative indexing
-                let b = if begin[d] >= 0 {
-                    begin[d]
-                } else {
-                    max + begin[d]
-                };
-                let e = if end[d] >= 0 { end[d] } else { max + end[d] };
-
-                // deal with shrinking
-                if self.shrink_axis_mask & 1 << d != 0 {
-                    return Dim {
-                        begin: b,
-                        stride: 1,
-                        len: 1,
-                        shrink: true,
-                    };
-                }
-
-                // deal with begin and end masks
-                let s = strides[d];
-                let b = if (self.begin_mask >> d) & 1 == 1 {
-                    if s.signum() > 0 {
-                        0
-                    } else {
-                        max - 1
-                    }
-                } else {
-                    b
-                };
-                let e = if (self.end_mask >> d) & 1 == 1 {
-                    if s.signum() < 0 {
-                        -1
-                    } else {
-                        max
-                    }
-                } else {
-                    e
-                };
-                let len = (((s.abs() as i32 - 1) + (e - b).abs()) / s.abs()) as usize;
-                Dim {
-                    begin: b,
-                    stride: s,
-                    len,
-                    shrink: false,
-                }
+            .map(|ix| {
+                self.prepare_one_dim(ix, input_shape[ix], begin, end, strides)
             })
             .collect();
         let mid_shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
@@ -144,20 +150,29 @@ impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
             .equals(&inputs[1].rank, 1)
             .equals(&inputs[2].rank, 1)
             .equals(&inputs[3].rank, 1)
-            .given(&inputs[0].shape, move |solver, input_shape:Vec<usize>| {
+            .given(&inputs[0].shape, move |solver, input_shape:ShapeFact| {
                 solver.given(&inputs[1].value, move |solver, begin:Tensor| {
                     let input_shape = input_shape.clone();
                     solver.given(&inputs[2].value, move |solver, end:Tensor| {
                         let input_shape = input_shape.clone();
                         let begin = begin.clone();
                         solver.given(&inputs[3].value, move |solver, stride:Tensor| {
-                            let (_, _, output_shape) = self.prepare(
-                                &*input_shape,
-                                &begin.as_i32s().unwrap().view().into_dimensionality().unwrap(),
-                                &end.as_i32s().unwrap().view().into_dimensionality().unwrap(),
-                                &stride.as_i32s().unwrap().view().into_dimensionality().unwrap());
-                            trace!("Computed output_shape={:?}", output_shape);
-                            solver.equals(&outputs[0].shape, ShapeFact::from(output_shape));
+                            let mut input_shape = input_shape.clone();
+                            let begin = begin.as_i32s().unwrap().view().into_dimensionality().unwrap();
+                            let end = end.as_i32s().unwrap().view().into_dimensionality().unwrap();
+                            let stride = stride.as_i32s().unwrap().view().into_dimensionality().unwrap();
+                            let dims = input_shape.dims.iter().enumerate().filter_map(|(ix, d)|
+                                if self.must_shrink(ix) {
+                                    None
+                                } else {
+                                    match d {
+                                        DimFact::Only(d) => Some(DimFact::Only(self.prepare_one_dim(ix, *d, &begin, &end, &stride).len)),
+                                        DimFact::Streamed => Some(DimFact::Streamed),
+                                        DimFact::Any => Some(DimFact::Any),
+                                    }
+                                }).collect();
+                            input_shape.dims = dims;
+                            solver.equals(&outputs[0].shape, input_shape);
                         });
                     });
                 });
@@ -172,7 +187,7 @@ mod tests {
     use ndarray::*;
     use Tensor;
 
-    fn run<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
+    fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
     where
         I: Into<Tensor>,
         B: Into<Tensor>,
@@ -192,9 +207,9 @@ mod tests {
 
     // https://www.tensorflow.org/api_docs/python/tf/strided_slice
     #[test]
-    fn strided_slice_1() {
+    fn eval_1() {
         assert_eq!(
-            run(
+            eval(
                 StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
@@ -210,9 +225,9 @@ mod tests {
     }
 
     #[test]
-    fn strided_slice_2() {
+    fn eval_2() {
         assert_eq!(
-            run(
+            eval(
                 StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
@@ -228,9 +243,9 @@ mod tests {
     }
 
     #[test]
-    fn strided_slice_3() {
+    fn eval_3() {
         assert_eq!(
-            run(
+            eval(
                 StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
@@ -246,9 +261,9 @@ mod tests {
     }
 
     #[test]
-    fn strided_slice_4() {
+    fn eval_4() {
         assert_eq!(
-            run(
+            eval(
                 StridedSlice::default(),
                 arr3(&[
                     [[1, 1, 1], [2, 2, 2]],
@@ -264,9 +279,9 @@ mod tests {
     }
 
     #[test]
-    fn strided_slice_5() {
+    fn eval_5() {
         assert_eq!(
-            run(
+            eval(
                 StridedSlice::default(),
                 arr1(&[0, 0]),
                 arr1(&[0]),
@@ -278,9 +293,9 @@ mod tests {
     }
 
     #[test]
-    fn strided_slice_6() {
+    fn eval_6() {
         assert_eq!(
-            run(
+            eval(
                 StridedSlice::default(),
                 arr2(&[[1, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]]),
                 arr1(&[-3, -4]),
@@ -292,9 +307,9 @@ mod tests {
     }
 
     #[test]
-    fn strided_slice_7() {
+    fn eval_7() {
         assert_eq!(
-            run(
+            eval(
                 StridedSlice::default(),
                 arr2(&[[0, 6], [0, 0]]),
                 arr1(&[0]),
@@ -306,21 +321,21 @@ mod tests {
     }
 
     #[test]
-    fn strided_slice_begin_mask_1() {
+    fn eval_begin_mask_1() {
         let mut op = StridedSlice::default();
         op.begin_mask = 1;
         assert_eq!(
-            run(op, arr1(&[0, 1]), arr1(&[1]), arr1(&[1]), arr1(&[1])),
+            eval(op, arr1(&[0, 1]), arr1(&[1]), arr1(&[1]), arr1(&[1])),
             Tensor::from(arr1(&[0]))
         )
     }
 
     #[test]
-    fn strided_slice_shrink_1() {
+    fn eval_shrink_1() {
         let mut op = StridedSlice::default();
         op.shrink_axis_mask = 1;
         assert_eq!(
-            run(
+            eval(
                 op,
                 arr2(&[[0]]),
                 arr1(&[0, 0]),
@@ -330,4 +345,5 @@ mod tests {
             Tensor::I32(arr1(&[]).into_dyn())
         )
     }
+
 }
