@@ -393,7 +393,7 @@ mod tests {
     fn shape_inference_4() {
         let input = TensorFact {
             datatype: typefact!(_),
-            shape: shapefact![1, 2, 3],
+            shape: shapefact![_, 2, 3],
             value: valuefact!(_)
         };
 
