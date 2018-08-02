@@ -210,7 +210,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
         },
 
         slice if slice[0] == 3 => {
-            warn!("FIXME Unimplemented set_value_path for individual value");
+            debug!("FIXME Unimplemented set_value_path for individual value");
             Ok(())
         }
 
