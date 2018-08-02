@@ -314,7 +314,7 @@ impl InferenceRulesOp for Shape {
 
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
                 if !shape.open && shape.dims.iter().all(|d| *d != DimFact::Any) {
-                    let shape = shape.dims.iter().map(|d| if let DimFact::Only(d)= d { *d as i32 } else { 0 }).collect();
+                    let shape = shape.dims.iter().map(|d| if let DimFact::Only(d)= d { *d as i32 } else { 1 }).collect();
                     let array1:Array1<i32> = Array1::from_vec(shape);
                     let tensor:Tensor = Tensor::from(array1);
                     solver.equals(&outputs[0].value, valuefact!(tensor));
@@ -323,9 +323,9 @@ impl InferenceRulesOp for Shape {
             .given(&outputs[0].value, move |solver, shape:Tensor| {
                 let shape:Vec<usize> = shape.take_i32s().unwrap().iter().map(|i:&i32| *i as usize).collect();
                 for (ix,d) in shape.iter().enumerate() {
-                    // hackish: if dim is 0, this is likely a streaming
+                    // hackish: if dim is 1, it may be the streaming
                     // dimension, so we don't infer
-                    if *d != 0 {
+                    if *d != 1 {
                         solver.equals(&inputs[0].shape[ix], *d as isize);
                     }
                 }

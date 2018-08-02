@@ -152,17 +152,6 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Wrapped> {
 /// Sets the value at the given path (starting from a TensorFact).
 fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> Result<()> {
     match path {
-        // Set full TensorFact.
-        [] | [3] => {
-            let value = ValueFact::from_wrapped(value)?;
-            fact.value = fact.value.unify(&value)?;
-            if let Some(tensor) = fact.value.concretize() {
-                fact.shape = fact.shape.unify(&ShapeFact::from(tensor.shape()))?;
-                fact.datatype = fact.datatype.unify(&TypeFact::from(tensor.datatype()))?;
-            }
-            Ok(())
-        },
-
         // Set the type of the TensorFact.
         [0] => {
             let value = TypeFact::from_wrapped(value)?;
@@ -206,6 +195,17 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
                 &ShapeFact::open(dims)
             )?;
 
+            Ok(())
+        },
+
+        // Set full TensorFact value, also unifying type and shape.
+        [3] => {
+            let value = ValueFact::from_wrapped(value)?;
+            fact.value = fact.value.unify(&value)?;
+            if let Some(tensor) = fact.value.concretize() {
+                fact.shape = fact.shape.unify(&ShapeFact::from(tensor.shape()))?;
+                fact.datatype = fact.datatype.unify(&TypeFact::from(tensor.datatype()))?;
+            }
             Ok(())
         },
 
