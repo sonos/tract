@@ -49,6 +49,10 @@ impl Op for Const {
             "value" => Attr::Tensor(self.value.as_ref().clone()),
         }
     }
+
+    fn const_value(&self) -> Option<Tensor> {
+        Some((*self.value).clone())
+    }
 }
 
 impl ::ops::InferenceRulesOp for Const {

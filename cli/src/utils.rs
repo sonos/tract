@@ -3,6 +3,7 @@ use rand;
 use rand::Rng;
 use tfdeploy::Tensor;
 use tfdeploy::tfpb::types::DataType;
+#[allow(unused_imports)]
 use errors::Result as CliResult;
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.

@@ -69,7 +69,7 @@ pub fn handle(params: Parameters) -> Result<()> {
                     node,
                     &params.graph,
                     Some(&state),
-                    vec!["SKIP".yellow().to_string()],
+                    &["SKIP".yellow().to_string()],
                     vec![],
                 );
             }
@@ -144,7 +144,7 @@ pub fn handle(params: Parameters) -> Result<()> {
                 node,
                 &params.graph,
                 Some(&state),
-                vec![status.to_string()],
+                &[status.to_string()],
                 vec![outputs.clone(), mismatches.clone()],
             );
         }
@@ -169,7 +169,7 @@ pub fn handle(params: Parameters) -> Result<()> {
                 node,
                 &params.graph,
                 Some(&state),
-                vec![status.to_string()],
+                &[status.to_string()],
                 vec![outputs, mismatches],
             );
         }

@@ -55,6 +55,7 @@ mod errors;
 mod format;
 mod graphviz;
 mod utils;
+mod display_graph;
 mod profile;
 mod prune;
 mod rusage;
@@ -98,7 +99,9 @@ fn main() {
         (@subcommand dump =>
             (about: "Dumps the Tensorflow graph in human readable form.")
             (@arg web: --web
-                "Displays the dump in a web interface."))
+                "Displays the dump in a web interface.")
+            (@arg konst: --const
+                "Do not inline constants nodes"))
 
         (@subcommand profile =>
             (about: "Benchmarks tfdeploy on randomly generated input.")
@@ -117,8 +120,8 @@ fn main() {
                 "Prunes constant nodes and edges from the graph.")
             (@arg web: --web
                 "Displays the results of the analysis in a web interface.")
-            (@arg noconst: --noconst
-                "Stript the constant nodes in display"))
+            (@arg konst: --const
+                "Do not inline constants nodes"))
     );
 
     let matches = app.get_matches();
@@ -340,18 +343,17 @@ impl ProfilingMode {
     }
 }
 
-pub struct WebParameters {
-    noconst: bool,
+pub struct OutputParameters {
+    web: bool,
+    konst: bool,
 }
 
-impl WebParameters {
-    pub fn from_clap(matches: &clap::ArgMatches) -> Result<Option<WebParameters>> {
-        if !matches.is_present("web") {
-            return Ok(None)
-        }
-        Ok(Some(WebParameters {
-            noconst: matches.is_present("noconst")
-        }))
+impl OutputParameters {
+    pub fn from_clap(matches: &clap::ArgMatches) -> Result<OutputParameters> {
+        Ok(OutputParameters {
+            web: matches.is_present("web"),
+            konst: matches.is_present("const"),
+        })
     }
 }
 
@@ -385,7 +387,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
         ("dump", Some(m)) => dump::handle(
             params,
-            WebParameters::from_clap(m)?
+            OutputParameters::from_clap(m)?
         ),
 
         ("profile", Some(m)) => profile::handle(
@@ -396,7 +398,7 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
         ("analyse", Some(m)) => analyse::handle(
             params,
             m.is_present("prune"),
-            WebParameters::from_clap(m)?
+            OutputParameters::from_clap(m)?
         ),
 
         (s, _) => bail!("Unknown subcommand {}.", s),

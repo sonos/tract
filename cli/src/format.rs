@@ -53,23 +53,23 @@ fn format_no_right_border() -> TableFormat {
 }
 
 /// Builds a box header containing the operation, name and status on the same line.
-fn build_header(cols: usize, op: String, name: String, status: Option<String>) -> Table {
+fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str>>) -> Table {
     let mut header = if let Some(status) = status {
         let mut name_table = table!([
             " Name: ",
-            format!("{:1$}", textwrap::fill(name.as_str(), cols - 68), cols - 68),
+            format!("{:1$}", textwrap::fill(name.as_ref(), cols - 68), cols - 68),
         ]);
 
         name_table.set_format(format_none());
         table!([
             format!("Operation: {:15}", op.bold().blue()),
             name_table,
-            format!(" {:^33}", status.bold()),
+            format!(" {:^33}", status.as_ref().bold()),
         ])
     } else {
         let mut name_table = table!([
             " Name: ",
-            format!("{:1$}", textwrap::fill(name.as_str(), cols - 46), cols - 46),
+            format!("{:1$}", textwrap::fill(name.as_ref(), cols - 46), cols - 46),
         ]);
 
         name_table.set_format(format_none());
@@ -85,15 +85,13 @@ fn build_header(cols: usize, op: String, name: String, status: Option<String>) -
 
 /// Builds a box header conntaining the operation and name on one line, and a list
 /// of status messages on the other.
-fn build_header_wide(cols: usize, op: String, name: String, status: Vec<String>) -> Table {
+fn build_header_wide(cols: usize, op: &str, name: &str, status: &[impl AsRef<str>]) -> Table {
     let mut name_table = table!([
         " Name: ",
-        format!("{:1$}", textwrap::fill(name.as_str(), cols - 46), cols - 46),
+        format!("{:1$}", textwrap::fill(name.as_ref(), cols - 46), cols - 46),
     ]);
 
     name_table.set_format(format_none());
-
-    let status = pt::row::Row::new(status.iter().map(|s| pt::cell::Cell::new_align(s, pt::format::Alignment::CENTER)).collect());
 
     let mut header = table!([
         format!("Operation: {:15}", op.bold().blue()),
@@ -102,12 +100,15 @@ fn build_header_wide(cols: usize, op: String, name: String, status: Vec<String>)
     header.set_format(format_only_columns());
 
     let mut t = table![[header]];
-    t.add_row(status);
+    if status.len() > 0 {
+        let status = pt::row::Row::new(status.iter().map(|s| pt::cell::Cell::new_align(s.as_ref(), pt::format::Alignment::CENTER)).collect());
+        t.add_row(status);
+    }
     t
 }
 
 /// Prints a box containing arbitrary information.
-fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sections: Vec<Vec<Row>>) {
+pub fn print_box(id: &str, op: &str, name: &str, status: &[impl AsRef<str>], sections: Vec<Vec<Row>>) {
     // Terminal size
     let cols = match terminal_size() {
         Some((Width(w), _)) => min(w as usize, 120),
@@ -120,8 +121,8 @@ fn print_box(id: String, op: String, name: String, mut status: Vec<String>, sect
     count.set_format(format_no_right_border());
 
     // Content of the table
-    let mut right = if status.len() == 1 && status[0].len() < 10 {
-        build_header(cols, op, name, status.pop())
+    let mut right = if status.len() == 1 && status[0].as_ref().len() < 10 {
+        build_header(cols, op, name, Some(&status[0]))
     } else {
         build_header_wide(cols, op, name, status)
     };
@@ -212,14 +213,14 @@ pub fn print_node(
     node: &Node,
     graph: &GraphDef,
     state: Option<&ModelState>,
-    status: Vec<String>,
+    status: &[impl AsRef<str>],
     sections: Vec<Vec<Row>>,
 ) {
     format::print_box(
-        node.id.to_string(),
-        node.op_name.to_string(),
-        node.name.to_string(),
-        status,
+        &format!("{}", node.id),
+        &node.op_name,
+        &node.name,
+        &status,
         [format::node_info(&node, &graph, state), sections].concat(),
     );
 }

@@ -143,8 +143,8 @@ impl Tensor {
                 &Tensor::U8(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
                 _ => unimplemented!("missing type"),
             })
-        } else if self.shape().iter().product::<usize>() > 25 {
-            Ok(format!("{:?} {:?}", self.datatype(), self.shape()))
+        } else if self.shape().iter().product::<usize>() > 8 {
+            Ok(format!("shape:{:?} {:?}", self.shape(), self.datatype()))
         } else {
             Ok(match self {
                 &Tensor::I32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
@@ -179,7 +179,7 @@ impl Tensor {
 impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let content = self.partial_dump(true).unwrap_or("Error".to_string());
-        write!(formatter, "{}", content)
+        write!(formatter, "Tensor {}", content)
     }
 }
 

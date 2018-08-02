@@ -40,7 +40,7 @@ impl ProfileData {
                 node,
                 graph,
                 state,
-                vec![dur_avg_oneline_ratio(*measure, sum)],
+                &[dur_avg_oneline_ratio(*measure, sum)],
                 vec![]
             );
         }

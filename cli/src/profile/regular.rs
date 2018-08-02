@@ -105,7 +105,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
 
         if node.op_name == "Placeholder" {
             if log_enabled!(Info) {
-                print_node(node, &params.graph, Some(&state), vec!["SKIP".yellow().to_string()], vec![]);
+                print_node(node, &params.graph, Some(&state), &["SKIP".yellow().to_string()], vec![]);
             }
 
             continue;
@@ -123,7 +123,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
 
         // Print the results for the node.
         if log_enabled!(Info) {
-            print_node(node, &params.graph, Some(&state), vec![
+            print_node(node, &params.graph, Some(&state), &[
                 format!("{:.3} ms/i", measure.avg_real() * 1e3).white().to_string()
             ], vec![]);
         }

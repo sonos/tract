@@ -1,11 +1,11 @@
-use { Parameters, WebParameters };
+use { Parameters, OutputParameters };
 use errors::*;
 
 use tfdeploy::analyser::Analyser;
 use tfdeploy::analyser::{TensorFact, ShapeFact, DimFact};
 
 /// Handles the `analyse` subcommand.
-pub fn handle(params: Parameters, prune: bool, web: Option<WebParameters>) -> Result<()> {
+pub fn handle(params: Parameters, prune: bool, output_params: OutputParameters) -> Result<()> {
 
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?.id;
@@ -53,10 +53,11 @@ pub fn handle(params: Parameters, prune: bool, web: Option<WebParameters>) -> Re
         );
     }
 
-
-    if let Some(web) = web {
-        ::web::open_web(&analyser.into_model(), &web)?;
-    }
+    let nodes:Vec<_> = analyser.nodes.iter().collect();
+    let display = ::display_graph::DisplayGraph::from_nodes(&*nodes)?
+        .with_graph_def(&params.graph)?
+        .with_analyser(&analyser)?;
+    display.render(&output_params)?;
 
     Ok(())
 }
