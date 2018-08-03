@@ -50,6 +50,7 @@ use format::Row;
 mod analyse;
 mod compare;
 mod display_graph;
+mod optimize_check;
 mod dump;
 mod errors;
 mod format;
@@ -127,6 +128,10 @@ fn main() {
 
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
     app = app.subcommand(output_options(optimize));
+
+    let optimize_check = clap::SubCommand::with_name("optimize-check")
+            .help("Compare output of optimized and un-optimized graph");
+    app = app.subcommand(output_options(optimize_check));
 
     let matches = app.get_matches();
 
@@ -221,6 +226,7 @@ impl Parameters {
 }
 
 /// Structure holding the input parameters (eventually containing data).
+#[derive(Debug, Clone, PartialEq)]
 pub struct InputParameters {
     data: Option<Tensor>,
     shape: Vec<Option<usize>>,
@@ -423,7 +429,15 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
 
-        ("dump", Some(m)) => dump::handle(params, OutputParameters::from_clap(m)?),
+        ("optimize-check", Some(m)) => optimize_check::handle(
+            params,
+            OutputParameters::from_clap(m)?
+        ),
+
+        ("dump", Some(m)) => dump::handle(
+            params,
+            OutputParameters::from_clap(m)?
+        ),
 
         ("profile", Some(m)) => profile::handle(
             params,

@@ -9,8 +9,6 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?.id;
 
-    info!("Setting up analyser.");
-
     let mut analyser = Analyser::new(model, output)?;
 
     // Add hints for the input nodes.
