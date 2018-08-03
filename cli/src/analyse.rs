@@ -1,14 +1,11 @@
-use Parameters;
+use { Parameters, OutputParameters };
 use errors::*;
-
-use std::fs::File;
-use std::io::prelude::*;
 
 use tfdeploy::analyser::Analyser;
 use tfdeploy::analyser::{TensorFact, ShapeFact, DimFact};
 
 /// Handles the `analyse` subcommand.
-pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
+pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameters) -> Result<()> {
 
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?.id;
@@ -38,8 +35,7 @@ pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
     info!("Running analyse");
     analyser.run()?;
 
-    // Prune constant nodes if needed.
-    if prune {
+    if optimize {
         info!(
             "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
             ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
@@ -56,15 +52,11 @@ pub fn handle(params: Parameters, prune: bool, web: bool) -> Result<()> {
         );
     }
 
-
-    // Display an interactive view of the graph if needed.
-    let data = ::serde_json::to_vec(&(&analyser.nodes, &analyser.edges)).unwrap();
-    if web {
-        ::web::open_web(data);
-    } else {
-        File::create("analyser.json")?.write_all(&data)?;
-        println!("Wrote the result of the analysis to analyser.json.");
-    }
+    let nodes:Vec<_> = analyser.nodes.iter().collect();
+    let display = ::display_graph::DisplayGraph::from_nodes(&*nodes)?
+        .with_graph_def(&params.graph)?
+        .with_analyser(&analyser)?;
+    display.render(&output_params)?;
 
     Ok(())
 }

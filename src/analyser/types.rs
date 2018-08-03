@@ -380,7 +380,7 @@ pub type ValueFact = GenericFact<Tensor>;
 /// elements for all arithmetic operations. This is currently used to
 /// represent `DimFact::Streamed` values, but could be used for other
 /// absorbing values in the future.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntFact {
     Any,
     Only(isize),

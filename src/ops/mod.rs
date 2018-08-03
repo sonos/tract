@@ -206,6 +206,10 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
             Ok((infered_inputs, infered_outputs))
         }
     }
+
+    fn const_value(&self) -> Option<Tensor> {
+        None
+    }
 }
 
 pub trait InferenceOp {

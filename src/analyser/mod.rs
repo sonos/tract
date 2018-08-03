@@ -51,15 +51,15 @@ pub mod interface;
 
 /// Tries to auto-detect the names of the input nodes.
 pub fn detect_inputs(model: &Model) -> Result<Option<Vec<usize>>> {
-    let inputs: Vec<usize> = model
+    let inputs: Vec<_> = model
         .nodes()
         .iter()
         .filter(|n| n.op_name == "Placeholder")
+        .inspect(|n| info!("Autodetected input node: {} {:?}.", n.id, n.name))
         .map(|n| n.id)
         .collect();
 
     if inputs.len() > 0 {
-        info!("Autodetecting input nodes: {:?}.", inputs);
         Ok(Some(inputs))
     } else {
         Ok(None)
@@ -80,7 +80,8 @@ pub fn detect_output(model: &Model) -> Result<Option<usize>> {
     for (i, s) in succs.iter().enumerate() {
         if s.len() == 0 {
             info!(
-                "Autodetecting output node: {:?}.",
+                "Autodetected output node: {} {:?}.",
+                i,
                 model.get_node_by_id(i)?.name
             );
             return Ok(Some(i));
@@ -98,6 +99,7 @@ pub struct Edge {
     pub from_node: Option<usize>,
     pub from_out: usize,
     pub to_node: Option<usize>,
+    pub to_input: usize,
     pub fact: TensorFact,
 }
 
@@ -134,7 +136,7 @@ impl Analyser {
         let mut next_edges = vec![Vec::new(); nodes.len() + 1];
 
         for node in &nodes {
-            for input in &node.inputs {
+            for (ix, input) in node.inputs.iter().enumerate() {
                 let id = edges.len();
 
                 edges.push(Edge {
@@ -142,6 +144,7 @@ impl Analyser {
                     from_node: Some(input.0),
                     from_out: input.1.unwrap_or(0),
                     to_node: Some(node.id),
+                    to_input: ix,
                     fact: TensorFact::new(),
                 });
 
@@ -157,6 +160,7 @@ impl Analyser {
             from_node: Some(output),
             from_out: 0,
             to_node: None,
+            to_input: 0,
             fact: TensorFact::new(),
         });
 
@@ -168,7 +172,7 @@ impl Analyser {
         let current_step = 0;
         let current_direction = true;
 
-        info!("Using execution plan {:?}.", plan);
+        debug!("Using execution plan {:?}.", plan);
 
         Ok(Analyser {
             output,

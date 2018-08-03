@@ -3,7 +3,7 @@ use simplelog::Level::Info;
 use std::thread;
 
 use ndarray::Axis;
-use { Parameters, ProfilingMode };
+use { OutputParameters, Parameters, ProfilingMode };
 use errors::*;
 use utils::random_tensor;
 use profile::ProfileData;
@@ -51,7 +51,7 @@ fn bufferize(state: &mut StreamingModelState, chunk: &Tensor) -> Result<()> {
     Ok(())
 }
 
-pub fn handle_bench(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+pub fn handle_bench(params: Parameters, profiling: ProfilingMode, _output_params:OutputParameters) -> Result<()> {
     let (max_iters, max_time) = if let ProfilingMode::StreamBenching { max_iters, max_time } = profiling {
         (max_iters, max_time)
     } else {
@@ -75,7 +75,7 @@ pub fn handle_bench(params: Parameters, profiling: ProfilingMode) -> Result<()> 
     Ok(())
 }
 
-pub fn handle_cruise(params: Parameters) -> Result<()> {
+pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Result<()> {
     let (model, chunk) = build_streaming_model(&params)?;
     let mut state = model.state();
     bufferize(&mut state, &chunk)?;
@@ -91,7 +91,7 @@ pub fn handle_cruise(params: Parameters) -> Result<()> {
                     });
     }
 
-    profile.print_most_consuming_nodes(&model.inner_model(), &params.graph, None)?;
+    profile.print_most_consuming_nodes(&model.inner_model(), &params.graph, &output_params)?;
     println!();
 
     profile.print_most_consuming_ops(&model.inner_model())?;
@@ -100,7 +100,7 @@ pub fn handle_cruise(params: Parameters) -> Result<()> {
 }
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
-pub fn handle_buffering(params: Parameters) -> Result<()> {
+pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> Result<()> {
     let start = Instant::now();
     info!("Initializing the StreamingModelState.");
     let (streaming_model, _chunk) = build_streaming_model(&params)?;
@@ -171,7 +171,7 @@ pub fn handle_buffering(params: Parameters) -> Result<()> {
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&streaming_model.inner_model(), &params.graph, None)?;
+    profile.print_most_consuming_nodes(&streaming_model.inner_model(), &params.graph, &output_params)?;
     println!();
 
     profile.print_most_consuming_ops(&streaming_model.inner_model())?;

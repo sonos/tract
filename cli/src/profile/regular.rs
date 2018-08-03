@@ -2,7 +2,7 @@ use atty;
 use pbr::ProgressBar;
 use simplelog::Level::Info;
 
-use { Parameters, InputParameters, ProfilingMode };
+use { Parameters, InputParameters, ProfilingMode, OutputParameters };
 use errors::*;
 use utils::random_tensor;
 
@@ -31,7 +31,7 @@ fn make_state(params: &Parameters) -> Result<ModelState> {
     Ok(state)
 }
 
-pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+pub fn handle_benching(params: Parameters, profiling: ProfilingMode, _output_params:OutputParameters) -> Result<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
         (max_iters, max_time)
     } else {
@@ -57,7 +57,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> Result<(
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: OutputParameters) -> Result<()> {
     use colored::Colorize;
 
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
@@ -85,7 +85,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
     info!("Running for {} ms max. for each node.", max_time);
 
     let plan = output.eval_order(&model)?;
-    info!("Using execution plan: {:?}", plan);
+    debug!("Using execution plan: {:?}", plan);
 
     let mut profile = ProfileData::new(model);
     let mut progress = ProgressBar::new(plan.len() as u64);
@@ -105,7 +105,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
 
         if node.op_name == "Placeholder" {
             if log_enabled!(Info) {
-                print_node(node, &params.graph, Some(&state), vec!["SKIP".yellow().to_string()], vec![]);
+                print_node(node, &params.graph, Some(&state), &["SKIP".yellow().to_string()], vec![]);
             }
 
             continue;
@@ -123,7 +123,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
 
         // Print the results for the node.
         if log_enabled!(Info) {
-            print_node(node, &params.graph, Some(&state), vec![
+            print_node(node, &params.graph, Some(&state), &[
                 format!("{:.3} ms/i", measure.avg_real() * 1e3).white().to_string()
             ], vec![]);
         }
@@ -137,7 +137,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
 
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, Some(&state))?;
+    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, &output_parameters)?;
     println!();
 
     profile.print_most_consuming_ops(&params.tfd_model)?;

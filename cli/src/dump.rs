@@ -1,29 +1,15 @@
-use Parameters;
+use { Parameters, OutputParameters };
 use errors::*;
-use format;
+use display_graph::DisplayGraph;
 
-use utils::generate_json;
-
-pub fn handle(params: Parameters, web: bool) -> Result<()> {
+pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()> {
     let tfd = params.tfd_model;
     let output = tfd.get_node_by_id(params.output_node_id)?;
     let plan = output.eval_order(&tfd)?;
 
-    if web {
-        let data = generate_json(&tfd)?;
-        ::web::open_web(data);
-    } else {
-        for n in plan {
-            let node = tfd.get_node_by_id(n)?;
-            format::print_node(
-                node,
-                &params.graph,
-                None,
-                vec![],
-                vec![],
-            );
-        }
-    }
+    let nodes:Vec<_> = plan.iter().map(|i| &tfd.nodes[*i]).collect();
+    let display_graph = DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
+    display_graph.render(&output_params)?;
 
     Ok(())
 }
