@@ -157,22 +157,23 @@ impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
                         let input_shape = input_shape.clone();
                         let begin = begin.clone();
                         solver.given(&inputs[3].value, move |solver, stride:Tensor| {
-                            let mut input_shape = input_shape.clone();
                             let begin = begin.as_i32s().unwrap().view().into_dimensionality().unwrap();
                             let end = end.as_i32s().unwrap().view().into_dimensionality().unwrap();
                             let stride = stride.as_i32s().unwrap().view().into_dimensionality().unwrap();
-                            let dims = input_shape.dims.iter().enumerate().filter_map(|(ix, d)|
+                            let dims:Vec<IntFact> = input_shape.dims.iter().enumerate().filter_map(|(ix, d)|
                                 if self.must_shrink(ix) {
                                     None
                                 } else {
                                     match d {
-                                        DimFact::Only(d) => Some(DimFact::Only(self.prepare_one_dim(ix, *d, &begin, &end, &stride).len)),
-                                        DimFact::Streamed => Some(DimFact::Streamed),
-                                        DimFact::Any => Some(DimFact::Any),
+                                        DimFact::Only(d) => Some(IntFact::Only(self.prepare_one_dim(ix, *d, &begin, &end, &stride).len as _)),
+                                        DimFact::Streamed => Some(IntFact::Special(SpecialKind::Streamed)),
+                                        DimFact::Any => Some(IntFact::Any),
                                     }
                                 }).collect();
-                            input_shape.dims = dims;
-                            solver.equals(&outputs[0].shape, input_shape);
+                            solver.equals(&outputs[0].rank, dims.len() as isize);
+                            for (ix, d) in dims.iter().enumerate() {
+                                solver.equals(&outputs[0].shape[ix], *d);
+                            }
                         });
                     });
                 });
