@@ -52,7 +52,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
     // Execute the model step-by-step on tfdeploy.
     state.set_values(generated)?;
     let plan = output.eval_order(&tfd)?;
-    info!("Using execution plan: {:?}", plan);
+    debug!("Using execution plan: {:?}", plan);
 
     let nodes:Vec<_> = tfd.nodes.iter().map(|a| &*a).collect();
     let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
@@ -135,6 +135,8 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
 
     if failures > 0 {
         print_header(format!("There were {} errors:", failures), "red");
+        display_graph.render(&output_params)?;
+    } else if log_enabled!(Info) {
         display_graph.render(&output_params)?;
     } else {
         println!("{}", "Each node passed the comparison.".bold().green());

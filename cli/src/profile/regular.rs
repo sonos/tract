@@ -85,7 +85,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: O
     info!("Running for {} ms max. for each node.", max_time);
 
     let plan = output.eval_order(&model)?;
-    info!("Using execution plan: {:?}", plan);
+    debug!("Using execution plan: {:?}", plan);
 
     let mut profile = ProfileData::new(model);
     let mut progress = ProgressBar::new(plan.len() as u64);

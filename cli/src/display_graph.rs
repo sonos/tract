@@ -1,5 +1,6 @@
-use format::Row;
 use std::collections::HashMap;
+use std::fs;
+use format::Row;
 use tfdeploy;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb::graph::GraphDef;
@@ -40,6 +41,9 @@ impl DisplayGraph {
     pub fn render(&self, params: &OutputParameters) -> CliResult<()> {
         if params.web {
             ::web::open_web(&self, params)
+        } else if let Some(json) = params.json.as_ref() {
+            ::serde_json::to_writer(fs::File::create(json)?, self)?;
+            Ok(())
         } else {
             self.render_console(params)
         }

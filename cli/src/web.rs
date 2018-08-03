@@ -4,7 +4,7 @@ use errors::Result as CliResult;
 use display_graph::DisplayGraph;
 
 /// Starts a web server for TFVisualizer and opens its webroot in a browser.
-pub fn open_web(output: &DisplayGraph, params: &OutputParameters) -> CliResult<()> {
+pub fn open_web(output: &DisplayGraph, _params: &OutputParameters) -> CliResult<()> {
     use rouille::Response;
 
     let data = ::serde_json::to_vec(output)?;

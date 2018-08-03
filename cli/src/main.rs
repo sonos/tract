@@ -133,6 +133,7 @@ fn output_options<'a, 'b>(command:clap::App<'a, 'b>) -> clap::App<'a, 'b> {
     use clap::*;
     command
         .arg(Arg::with_name("web").long("web").help("Display int a web interface"))
+        .arg(Arg::with_name("json").long("json").takes_value(true).help("output to a json file"))
         .arg(Arg::with_name("const").long("const").help("also display consts nodes"))
 }
 
@@ -349,6 +350,7 @@ impl ProfilingMode {
 pub struct OutputParameters {
     web: bool,
     konst: bool,
+    json: Option<String>,
 }
 
 impl OutputParameters {
@@ -356,6 +358,7 @@ impl OutputParameters {
         Ok(OutputParameters {
             web: matches.is_present("web"),
             konst: matches.is_present("const"),
+            json: matches.value_of("json").map(String::from),
         })
     }
 }
