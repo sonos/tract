@@ -31,7 +31,7 @@ fn make_state(params: &Parameters) -> Result<ModelState> {
     Ok(state)
 }
 
-pub fn handle_benching(params: Parameters, profiling: ProfilingMode, output_params:OutputParameters) -> Result<()> {
+pub fn handle_benching(params: Parameters, profiling: ProfilingMode, _output_params:OutputParameters) -> Result<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
         (max_iters, max_time)
     } else {
@@ -137,7 +137,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: O
 
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, Some(&state), &output_parameters)?;
+    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, &output_parameters)?;
     println!();
 
     profile.print_most_consuming_ops(&params.tfd_model)?;

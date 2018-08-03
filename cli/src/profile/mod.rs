@@ -3,7 +3,7 @@ use rusage::Duration;
 use tfdeploy::tfpb::graph::GraphDef;
 use colored::Colorize;
 
-use tfdeploy::{Model, ModelState, Node};
+use tfdeploy::{Model, Node};
 use format::*;
 use errors::*;
 use itertools::Itertools;
@@ -30,7 +30,7 @@ impl ProfileData {
         Ok(())
     }
 
-    pub fn print_most_consuming_nodes(&mut self, model: &Model, graph: &GraphDef, state: Option<&ModelState>, output_params:&OutputParameters) -> Result<()> {
+    pub fn print_most_consuming_nodes(&mut self, model: &Model, graph: &GraphDef, output_params:&OutputParameters) -> Result<()> {
         let sum = self.summed();
         let nodes:Vec<&Node> = model.nodes.iter().map(|a| &*a).collect();
         let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&graph)?;

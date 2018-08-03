@@ -23,6 +23,7 @@ pub struct Node {
     pub name: String,
     pub op: String,
     pub label: Option<String>,
+    pub more_lines: Vec<String>,
     pub attrs: Vec<(String, String)>,
     pub inputs: Vec<usize>,
     pub outputs: Vec<usize>,
@@ -54,50 +55,54 @@ impl DisplayGraph {
                 let edge = &self.edges[*edge];
                 (edge.src_node_output, edge.label.clone())
             }).collect();
+            let mut sections = vec![
+                node.attrs
+                    .iter()
+                    .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))
+                    .collect(),
+                node.inputs
+                    .iter()
+                    .enumerate()
+                    .map(|(ix, a)| {
+                        let edge = &self.edges[*a];
+                        Row::Double(
+                            if edge.src_node_output == 0 {
+                                format!(
+                                    "Input {}: Node #{}",
+                                    ix.to_string().bold(),
+                                    edge.src_node_id.to_string().bold()
+                                )
+                            } else {
+                                format!(
+                                    "Input {}: Node #{}/{}",
+                                    ix.to_string().bold(),
+                                    edge.src_node_id.to_string().bold(),
+                                    edge.src_node_output.to_string().bold()
+                                )
+                            },
+                            edge.label.clone().unwrap_or_else(|| "".to_string()),
+                        )
+                    })
+                    .collect(),
+                (0..output_ports.len())
+                    .map(|ix| {
+                        let edge = &output_ports[&ix];
+                        Row::Double(
+                            format!("Output {}:", ix.to_string().bold()),
+                            edge.clone().unwrap_or_else(|| "".to_string())
+                        )
+                    })
+                    .collect(),
+            ];
+            if node.more_lines.len() > 0 {
+                sections.push(node.more_lines.iter().map(|s| Row::Simple(s.clone())).collect());
+            }
             ::format::print_box(
                 &node.id.to_string(),
                 &node.op,
                 &node.name,
                 &*node.label.as_ref().map(|a| vec!(a)).unwrap_or(vec!()),
-                vec![
-                    node.attrs
-                        .iter()
-                        .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))
-                        .collect(),
-                    node.inputs
-                        .iter()
-                        .enumerate()
-                        .map(|(ix, a)| {
-                            let edge = &self.edges[*a];
-                            Row::Double(
-                                if edge.src_node_output == 0 {
-                                    format!(
-                                        "Input {}: Node #{}",
-                                        ix.to_string().bold(),
-                                        edge.src_node_id.to_string().bold()
-                                    )
-                                } else {
-                                    format!(
-                                        "Input {}: Node #{}/{}",
-                                        ix.to_string().bold(),
-                                        edge.src_node_id.to_string().bold(),
-                                        edge.src_node_output.to_string().bold()
-                                    )
-                                },
-                                edge.label.clone().unwrap_or_else(|| "".to_string()),
-                            )
-                        })
-                        .collect(),
-                    (0..output_ports.len())
-                        .map(|ix| {
-                            let edge = &output_ports[&ix];
-                            Row::Double(
-                                format!("Output {}:", ix.to_string().bold()),
-                                edge.clone().unwrap_or_else(|| "".to_string())
-                            )
-                        })
-                        .collect(),
-                ],
+                sections
             );
         }
         Ok(())
@@ -110,6 +115,7 @@ impl DisplayGraph {
                 name: n.name.clone(),
                 op: n.op_name.clone(),
                 label: None,
+                more_lines: vec!(),
                 attrs: vec![],
                 inputs: vec!(),
                 outputs: vec!(),

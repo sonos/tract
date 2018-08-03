@@ -386,7 +386,10 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     let streaming = params.input.as_ref().map(|i| i.streaming()).unwrap_or(false);
 
     match matches.subcommand() {
-        ("compare", _) => compare::handle(params),
+        ("compare", Some(m)) => compare::handle(
+            params,
+            OutputParameters::from_clap(m)?
+        ),
 
         ("dump", Some(m)) => dump::handle(
             params,

@@ -121,7 +121,7 @@ pub fn print_box(id: &str, op: &str, name: &str, status: &[impl AsRef<str>], sec
     count.set_format(format_no_right_border());
 
     // Content of the table
-    let mut right = if status.len() == 1 && status[0].as_ref().len() < 10 {
+    let mut right = if status.len() == 1 && status[0].as_ref().len() < 15 {
         build_header(cols, op, name, Some(&status[0]))
     } else {
         build_header_wide(cols, op, name, status)

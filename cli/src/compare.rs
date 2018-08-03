@@ -2,19 +2,19 @@
 use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::Tensor;
 
-use Parameters;
+use { OutputParameters, Parameters };
 use errors::*;
 use format::*;
 use utils::*;
 
 /// Handles the `compare` subcommand.
 #[cfg(not(feature = "tensorflow"))]
-pub fn handle(_params: Parameters) -> Result<()> {
+pub fn handle(_params: Parameters, _: OutputParameters) -> Result<()> {
     bail!("Comparison requires the `tensorflow` feature.")
 }
 
 #[cfg(feature = "tensorflow")]
-pub fn handle(params: Parameters) -> Result<()> {
+pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()> {
     use colored::Colorize;
     use format::Row;
 
@@ -54,26 +54,17 @@ pub fn handle(params: Parameters) -> Result<()> {
     let plan = output.eval_order(&tfd)?;
     info!("Using execution plan: {:?}", plan);
 
-    if log_enabled!(Info) {
-        print_header(format!("Detailed comparison for {}:", params.name), "white");
-    }
+    let nodes:Vec<_> = tfd.nodes.iter().map(|a| &*a).collect();
+    let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
 
-    let mut failures = vec![];
+    let mut failures = 0;
 
     for n in plan {
         let node = tfd.get_node_by_id(n)?;
+        let dn = &mut display_graph.nodes[n];
 
         if node.op_name == "Placeholder" {
-            if log_enabled!(Info) {
-                print_node(
-                    node,
-                    &params.graph,
-                    Some(&state),
-                    &["SKIP".yellow().to_string()],
-                    vec![],
-                );
-            }
-
+            dn.hidden = false;
             continue;
         }
 
@@ -84,24 +75,25 @@ pub fn handle(params: Parameters) -> Result<()> {
             ).as_str(),
         );
 
-        let (failure, status, mismatches) = match state.compute_one(n) {
-            Err(e) => (
-                true,
-                "ERROR".red(),
-                vec![Row::Simple(format!("Error message: {:?}", e))],
-            ),
+        match state.compute_one(n) {
+            Err(e) => {
+                failures += 1;
+                dn.more_lines.push(format!("Error message: {:?}", e));
+                dn.label = Some("ERROR".red().to_string());
+                dn.hidden = false;
+            },
 
             _ => {
                 let tfd_output = state.outputs[n].as_ref().unwrap();
                 let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Tensor>>();
-
                 match compare_outputs(&tf_output, &views) {
                     Err(_) => {
+                        failures += 1;
                         let mismatches = tfd_output
                             .iter()
                             .enumerate()
                             .map(|(n, data)| {
-                                let header = format!("{} (TFD):", format!("Output {}", n).bold(),);
+                                let header = format!("Output {} TFD", n).yellow().bold();
 
                                 let reason = if n >= tf_output.len() {
                                     "Too many outputs"
@@ -115,64 +107,35 @@ pub fn handle(params: Parameters) -> Result<()> {
 
                                 let infos = data.partial_dump(false).unwrap();
 
-                                Row::Double(header, format!("{}\n{}", reason.to_string(), infos))
+                                format!("{} {} {}", header, reason.red().bold().to_string(), infos)
                             })
                             .collect::<Vec<_>>();
-
-                        (true, "MISM.".red(), mismatches)
+                        dn.more_lines.extend(mismatches);
+                        dn.label = Some("MISM.".red().to_string());
+                        dn.hidden = false;
                     }
 
-                    _ => (false, "OK".green(), vec![]),
+                    _ => {
+                        dn.hidden = true;
+                        dn.label = Some("OK".green().to_string());
+                    }
                 }
             }
         };
 
-        let outputs = tf_output
-            .iter()
-            .enumerate()
-            .map(|(n, data)| {
-                Row::Double(
-                    format!("{} (TF):", format!("Output {}", n).bold()),
-                    data.partial_dump(false).unwrap(),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        if log_enabled!(Info) {
-            // Print the results for the node.
-            print_node(
-                node,
-                &params.graph,
-                Some(&state),
-                &[status.to_string()],
-                vec![outputs.clone(), mismatches.clone()],
-            );
+        // Use the output from tensorflow to keep tfdeploy from drifting.
+        for (ix, out) in tf_output.iter().enumerate() {
+            if dn.outputs.len() > ix {
+                let edge = &mut display_graph.edges[dn.outputs[ix]];
+                edge.label = Some(format!("{:?}", out));
+            }
         }
-
-        if failure {
-            failures.push((node, status, outputs, mismatches));
-        }
-
-        // Re-use the output from tensorflow to keep tfdeploy from drifting.
         state.set_outputs(node.id, tf_output)?;
     }
 
-    if log_enabled!(Info) {
-        println!();
-    }
-
-    if failures.len() > 0 {
-        print_header(format!("There were {} errors:", failures.len()), "red");
-
-        for (node, status, outputs, mismatches) in failures {
-            print_node(
-                node,
-                &params.graph,
-                Some(&state),
-                &[status.to_string()],
-                vec![outputs, mismatches],
-            );
-        }
+    if failures > 0 {
+        print_header(format!("There were {} errors:", failures), "red");
+        display_graph.render(&output_params)?;
     } else {
         println!("{}", "Each node passed the comparison.".bold().green());
     }

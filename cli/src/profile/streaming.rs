@@ -51,7 +51,7 @@ fn bufferize(state: &mut StreamingModelState, chunk: &Tensor) -> Result<()> {
     Ok(())
 }
 
-pub fn handle_bench(params: Parameters, profiling: ProfilingMode, output_params:OutputParameters) -> Result<()> {
+pub fn handle_bench(params: Parameters, profiling: ProfilingMode, _output_params:OutputParameters) -> Result<()> {
     let (max_iters, max_time) = if let ProfilingMode::StreamBenching { max_iters, max_time } = profiling {
         (max_iters, max_time)
     } else {
@@ -91,7 +91,7 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Res
                     });
     }
 
-    profile.print_most_consuming_nodes(&model.inner_model(), &params.graph, None, &output_params)?;
+    profile.print_most_consuming_nodes(&model.inner_model(), &params.graph, &output_params)?;
     println!();
 
     profile.print_most_consuming_ops(&model.inner_model())?;
@@ -171,7 +171,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&streaming_model.inner_model(), &params.graph, None, &output_params)?;
+    profile.print_most_consuming_nodes(&streaming_model.inner_model(), &params.graph, &output_params)?;
     println!();
 
     profile.print_most_consuming_ops(&streaming_model.inner_model())?;
