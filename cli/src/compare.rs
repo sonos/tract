@@ -59,12 +59,14 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
 
     let mut failures = 0;
 
+    let hidden = !log_enabled!(Info);
+
     for n in plan {
         let node = tfd.get_node_by_id(n)?;
         let dn = &mut display_graph.nodes[n];
 
         if node.op_name == "Placeholder" {
-            dn.hidden = false;
+            dn.hidden = hidden;
             continue;
         }
 
@@ -116,7 +118,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                     }
 
                     _ => {
-                        dn.hidden = true;
+                        dn.hidden = hidden;
                         dn.label = Some("OK".green().to_string());
                     }
                 }
