@@ -2,7 +2,7 @@ use atty;
 use pbr::ProgressBar;
 use simplelog::Level::Info;
 
-use { Parameters, InputParameters, ProfilingMode };
+use { Parameters, InputParameters, ProfilingMode, OutputParameters };
 use errors::*;
 use utils::random_tensor;
 
@@ -31,7 +31,7 @@ fn make_state(params: &Parameters) -> Result<ModelState> {
     Ok(state)
 }
 
-pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+pub fn handle_benching(params: Parameters, profiling: ProfilingMode, output_params:OutputParameters) -> Result<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
         (max_iters, max_time)
     } else {
@@ -57,7 +57,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> Result<(
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
+pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: OutputParameters) -> Result<()> {
     use colored::Colorize;
 
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
@@ -137,7 +137,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode) -> Result<()> {
 
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, Some(&state))?;
+    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, Some(&state), &output_parameters)?;
     println!();
 
     profile.print_most_consuming_ops(&params.tfd_model)?;

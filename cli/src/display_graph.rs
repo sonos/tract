@@ -22,9 +22,11 @@ pub struct Node {
     pub id: usize,
     pub name: String,
     pub op: String,
+    pub label: Option<String>,
     pub attrs: Vec<(String, String)>,
     pub inputs: Vec<usize>,
     pub outputs: Vec<usize>,
+    pub hidden: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -45,7 +47,7 @@ impl DisplayGraph {
     pub fn render_console(&self, params: &OutputParameters) -> CliResult<()> {
         use colored::Colorize;
         for node in &self.nodes {
-            if node.op == "Const" && !params.konst {
+            if node.op == "Const" && !params.konst || node.hidden {
                 continue;
             }
             let output_ports:HashMap<usize, Option<String>> = node.outputs.iter().map(|edge| {
@@ -56,7 +58,7 @@ impl DisplayGraph {
                 &node.id.to_string(),
                 &node.op,
                 &node.name,
-                &[] as &[String],
+                &*node.label.as_ref().map(|a| vec!(a)).unwrap_or(vec!()),
                 vec![
                     node.attrs
                         .iter()
@@ -107,9 +109,11 @@ impl DisplayGraph {
                 id: n.id,
                 name: n.name.clone(),
                 op: n.op_name.clone(),
+                label: None,
                 attrs: vec![],
                 inputs: vec!(),
-                outputs: vec!()
+                outputs: vec!(),
+                hidden: false,
             }
         ).collect();
         let mut edges = vec!();

@@ -395,7 +395,8 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
 
         ("profile", Some(m)) => profile::handle(
             params,
-            ProfilingMode::from_clap(&m, streaming)?
+            ProfilingMode::from_clap(&m, streaming)?,
+            OutputParameters::from_clap(m)?
         ),
 
         ("analyse", Some(m)) => analyse::handle(
