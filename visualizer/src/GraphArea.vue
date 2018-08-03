@@ -153,16 +153,16 @@
           this.instance.destroy()
         }
 
-        this.hierarchy = new helpers.Hierarchy(this.graph[0])
+        this.hierarchy = new helpers.Hierarchy(this.graph.nodes)
 
-        let nodes = this.graph[0]
+        let nodes = this.graph.nodes
           .map(n => ({
             data: {
               id: n.name,
               oid: n.id,
               parent: this.hierarchy.getParent(n.name),
               label: this.hierarchy.getName(n.name),
-              op: n.op_name,
+              op: n.op,
               background: 'hsl(' + helpers.stringToColor(n.op_name) + ', 100%, 90%)',
               border: 'hsl(' + helpers.stringToColor(n.op_name) + ', 40%, 80%)',
               other: n,
@@ -171,16 +171,15 @@
 
         let metanodes = this.hierarchy.getMetanodes()
 
-        let edges = this.graph[1]
-          .filter(e => e.from_node !== null && e.to_node !== null)
+        let edges = this.graph.edges
           .map(e => ({
             data: {
               id: 'e' + e.id,
               oid: e.id,
-              source: this.hierarchy.getPath(e.from_node),
-              target: this.hierarchy.getPath(e.to_node),
-              label: (!!e.fact) ? helpers.shapeToString(e.fact.shape) : '',
-              constant: (!!e.fact) ? !!e.fact.value.Only : null,
+              source: this.hierarchy.getPath(e.scr_node_id),
+              target: this.hierarchy.getPath(e.dst_node_id),
+              label: (!!e.label) ? helpers.shapeToString(e.label) : '',
+              constant: null,
               other: e,
             }
           }))
