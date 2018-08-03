@@ -5,7 +5,7 @@ use ops::prelude::*;
 pub struct Reshape<T: Datum>(PhantomData<T>);
 
 pub fn reshape(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datatype("T")?;
+    let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Reshape(dtype)()))
 }
 
@@ -29,7 +29,7 @@ impl<T: Datum> Reshape<T> {
 
 impl<T: Datum> Op for Reshape<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (input, dims) = args_2!(inputs);
 
         let input = T::tensor_into_array(input.into_tensor())?;
@@ -56,9 +56,9 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, T::datatype())
-            .equals(&inputs[1].datatype, DataType::I32)
-            .equals(&outputs[0].datatype, T::datatype())
+            .equals(&inputs[0].datum_type, T::datum_type())
+            .equals(&inputs[1].datum_type, DatumType::I32)
+            .equals(&outputs[0].datum_type, T::datum_type())
             .equals(&inputs[1].rank, 1)
             .given(&inputs[0].rank, move |solver, input_rank| {
                 solver.given(&inputs[1].value, move |solver, dims: Tensor| {

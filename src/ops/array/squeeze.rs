@@ -7,7 +7,7 @@ pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         squeeze_dims.sort();
         squeeze_dims.reverse();
     }
-    let t = pb.get_attr_datatype("T")?;
+    let t = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Squeeze(t)(squeeze_dims)))
 }
 
@@ -44,7 +44,7 @@ impl<T: Datum> Squeeze<T> {
 
 impl<T: Datum> Op for Squeeze<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let input = args_1!(inputs);
         let data = T::tensor_into_array(input.into_tensor())?;
         let shape = self.squeeze_shape(data.shape(), None);
@@ -55,7 +55,7 @@ impl<T: Datum> Op for Squeeze<T> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        let mut attrs = hashmap!{ "T" => Attr::DataType(T::datatype()) };
+        let mut attrs = hashmap!{ "T" => Attr::DatumType(T::datum_type()) };
         if let Some(dim) = self.squeeze_dims.as_ref() {
             attrs.insert("squeeze_dims", Attr::IsizeVec(dim.clone()));
         }
@@ -65,11 +65,11 @@ impl<T: Datum> Op for Squeeze<T> {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         let input = args_1!(inputs);
-        if let (Some(stream), Some(chunk)) = input {
+        if let StepValue::Stream(stream, Some(chunk)) = input {
             let chunk = T::tensor_into_array(chunk.into_tensor())?;
             let shape = self.squeeze_shape(chunk.shape(), Some(stream));
             Ok(Some(vec![
@@ -91,8 +91,8 @@ impl<T: Datum> InferenceRulesOp for Squeeze<T> {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
-            .equals(&inputs[0].datatype, T::datatype())
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
+            .equals(&inputs[0].datum_type, T::datum_type())
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
                 if !shape.dims.iter().any(|d| *d == DimFact::Any) {
                     let stream_dim = shape.dims.iter().position(|d| *d == DimFact::Streamed);

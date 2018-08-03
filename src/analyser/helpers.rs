@@ -4,7 +4,7 @@ use tensor::Tensor;
 /// Build a TensorFact from a Tensor.
 pub fn tensor_to_fact(tensor: Tensor) -> TensorFact {
     TensorFact {
-        datatype: typefact!(tensor.datatype()),
+        datum_type: typefact!(tensor.datum_type()),
         shape: tensor.shape().into(),
         value: valuefact!(tensor),
     }
@@ -101,15 +101,15 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<V
     // Otherwise we can only deduce the type and shape of the output.
     let input_shapes: Vec<_> = inputs.iter().map(|t| &t.shape).collect();
 
-    let datatype = inputs
+    let datum_type = inputs
         .iter()
-        .filter_map(|i| i.datatype.concretize())
+        .filter_map(|i| i.datum_type.concretize())
         .next()
         .map(|t| typefact!(t))
         .unwrap_or(typefact!(_));
 
     let output = TensorFact {
-        datatype,
+        datum_type,
         shape: infer_shape_broadcasting(input_shapes)?.unwrap_or(shapefact![..]),
         value: valuefact!(_),
     };

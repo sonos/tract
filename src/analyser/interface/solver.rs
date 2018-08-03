@@ -401,7 +401,7 @@ impl<'rules> Solver<'rules> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use DataType;
+    use DatumType;
 
     use analyser::interface::TensorsProxy;
 
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn solver_dynamic_size() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[1].datatype, DataType::I32);
+        solver.equals(&inputs[1].datum_type, DatumType::I32);
 
         let facts = solver
             .infer((vec![TensorFact::new(), TensorFact::new()], vec![]))
@@ -452,7 +452,7 @@ mod tests {
             vec![
                 TensorFact::new(),
                 TensorFact {
-                    datatype: typefact!(DataType::I32),
+                    datum_type: typefact!(DatumType::I32),
                     ..TensorFact::new()
                 },
             ],

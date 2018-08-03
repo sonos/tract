@@ -38,7 +38,7 @@ impl<'a> dot::Labeller<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
         let mut label = format!(
             "[{:?}] {:?}\n{:?}\n{}",
             e.0,
-            e.1.fact.datatype,
+            e.1.fact.datum_type,
             e.1.fact.shape,
             match e.1.fact.value {
                 Any => "Any",

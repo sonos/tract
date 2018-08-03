@@ -40,7 +40,8 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
-use tfdeploy::{DataType, Tensor};
+use tfdeploy::{DatumType, Tensor};
+use tfdeploy::analyser::TensorFact;
 use tfpb::graph::GraphDef;
 
 use errors::*;
@@ -54,9 +55,11 @@ mod dump;
 mod errors;
 mod format;
 mod graphviz;
+mod optimize_check;
 mod profile;
 mod prune;
 mod rusage;
+mod stream_check;
 mod utils;
 mod web;
 
@@ -128,6 +131,14 @@ fn main() {
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
     app = app.subcommand(output_options(optimize));
 
+    let optimize_check = clap::SubCommand::with_name("optimize-check")
+            .help("Compare output of optimized and un-optimized graph");
+    app = app.subcommand(output_options(optimize_check));
+
+    let stream_check = clap::SubCommand::with_name("stream-check")
+            .help("Compare output of streamed and regular exec");
+    app = app.subcommand(output_options(stream_check));
+
     let matches = app.get_matches();
 
     if let Err(e) = handle(matches) {
@@ -167,8 +178,8 @@ pub struct Parameters {
     tf_model: conform::tf::Tensorflow,
 
     input: Option<InputParameters>,
-    input_node_ids: Vec<usize>,
-    output_node_id: usize,
+    input_nodes: Vec<String>,
+    output_node: String,
 }
 
 impl Parameters {
@@ -183,18 +194,24 @@ impl Parameters {
 
         let input = InputParameters::from_clap(matches)?;
 
-        let input_node_ids = match matches.values_of("inputs") {
-            Some(names) => names
-                .map(|s| Ok(tfd_model.node_id_by_name(s)?))
-                .collect::<Result<_>>()?,
-            None => tfdeploy::analyser::detect_inputs(&tfd_model)?
-                .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
+        let input_nodes = if let Some(inputs) = matches.values_of("inputs") {
+            for input in inputs.clone() {
+                let _ = tfd_model.node_by_name(&input)?;
+            }
+            inputs.map(|s| s.to_string()).collect()
+        } else {
+            tfdeploy::analyser::detect_inputs(&tfd_model)?
+                .iter().map(|n| n.name.to_string()).collect()
         };
 
-        let output_node_id = match matches.value_of("output") {
-            Some(name) => tfd_model.node_id_by_name(name)?,
-            None => tfdeploy::analyser::detect_output(&tfd_model)?
-                .ok_or("Impossible to auto-detect output nodes.")?,
+        let mut output_nodes:Vec<String> = if let Some(outputs) = matches.values_of("outputs") {
+            for output in outputs.clone() {
+                let _ = tfd_model.node_by_name(&output)?;
+            }
+            outputs.map(|s| s.to_string()).collect()
+        } else {
+            tfdeploy::analyser::detect_output(&tfd_model)?
+                .iter().map(|n| n.name.to_string()).collect()
         };
 
         #[cfg(feature = "tensorflow")]
@@ -203,8 +220,8 @@ impl Parameters {
             graph,
             tfd_model,
             tf_model,
-            input_node_ids,
-            output_node_id,
+            input_nodes,
+            output_node: output_nodes.remove(0),
             input,
         });
 
@@ -213,18 +230,19 @@ impl Parameters {
             name: name.to_string(),
             graph,
             tfd_model,
-            input_node_ids,
-            output_node_id,
+            input_nodes,
+            output_node: output_nodes.remove(0),
             input,
         });
     }
 }
 
 /// Structure holding the input parameters (eventually containing data).
+#[derive(Debug, Clone, PartialEq)]
 pub struct InputParameters {
     data: Option<Tensor>,
     shape: Vec<Option<usize>>,
-    datatype: DataType,
+    datum_type: DatumType,
 }
 
 impl InputParameters {
@@ -244,7 +262,7 @@ impl InputParameters {
             bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
         }
 
-        let (datatype, shape) = splits.split_last().unwrap();
+        let (datum_type, shape) = splits.split_last().unwrap();
 
         let shape = shape
             .iter()
@@ -258,19 +276,19 @@ impl InputParameters {
             bail!("The <size> argument doesn't support more than one streaming dimension.");
         }
 
-        let datatype = match datatype.to_lowercase().as_str() {
-            "f64" => DataType::F64,
-            "f32" => DataType::F32,
-            "i32" => DataType::I32,
-            "i8" => DataType::I8,
-            "u8" => DataType::U8,
+        let datum_type = match datum_type.to_lowercase().as_str() {
+            "f64" => DatumType::F64,
+            "f32" => DatumType::F32,
+            "i32" => DatumType::I32,
+            "i8" => DatumType::I8,
+            "u8" => DatumType::U8,
             _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
         };
 
         Ok(InputParameters {
             data: None,
             shape,
-            datatype,
+            datum_type,
         })
     }
 
@@ -282,7 +300,7 @@ impl InputParameters {
 
         let mut lines = data.lines();
         let InputParameters {
-            shape, datatype, ..
+            shape, datum_type, ..
         } = InputParameters::for_size(lines.next().ok_or("Empty data file")?)?;
 
         let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<_>>();
@@ -304,24 +322,59 @@ impl InputParameters {
             }};
         }
 
-        let tensor = match datatype {
-            DataType::F64 => for_type!(f64).into(),
-            DataType::F32 => for_type!(f32).into(),
-            DataType::I32 => for_type!(i32).into(),
-            DataType::I8 => for_type!(i8).into(),
-            DataType::U8 => for_type!(u8).into(),
+        let tensor = match datum_type {
+            DatumType::F64 => for_type!(f64).into(),
+            DatumType::F32 => for_type!(f32).into(),
+            DatumType::I32 => for_type!(i32).into(),
+            DatumType::I8 => for_type!(i8).into(),
+            DatumType::U8 => for_type!(u8).into(),
             _ => unimplemented!(),
         };
 
         Ok(InputParameters {
             data: Some(tensor),
             shape,
-            datatype,
+            datum_type,
         })
     }
 
     fn streaming(&self) -> bool {
         self.shape.iter().any(|dim| dim.is_none())
+    }
+
+    fn to_fact(&self) -> TensorFact {
+        use tfdeploy::analyser::interface::*;
+        if let Some(ref data) = self.data {
+            return data.clone().into()
+        }
+        let dims = self
+            .shape
+            .iter()
+            .map(|d| match d {
+                None => DimFact::Streamed,
+                Some(i) => DimFact::Only(*i),
+            })
+            .collect::<Vec<_>>();
+        TensorFact {
+            datum_type: typefact!(self.datum_type),
+            shape: ShapeFact::closed(dims.clone()),
+            value: valuefact!(_),
+        }
+    }
+
+    fn to_tensor(&self) -> Result<Tensor> {
+        self.to_tensor_with_stream_dim(None)
+    }
+
+    fn to_tensor_with_stream_dim(&self, streaming_dim: Option<usize>) -> Result<Tensor> {
+        if let Some(value) = self.data.as_ref() {
+            Ok(value.clone())
+        } else {
+            if self.streaming() && streaming_dim.is_none() {
+                Err("random tensor requires a streaming dim")?
+            }
+            Ok(utils::random_tensor(self.shape.iter().map(|d| d.unwrap_or(streaming_dim.unwrap())).collect(), self.datum_type))
+        }
     }
 }
 
@@ -423,7 +476,20 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
 
-        ("dump", Some(m)) => dump::handle(params, OutputParameters::from_clap(m)?),
+        ("optimize-check", Some(m)) => optimize_check::handle(
+            params,
+            OutputParameters::from_clap(m)?
+        ),
+
+        ("stream-check", Some(m)) => stream_check::handle(
+            params,
+            OutputParameters::from_clap(m)?
+        ),
+
+        ("dump", Some(m)) => dump::handle(
+            params,
+            OutputParameters::from_clap(m)?
+        ),
 
         ("profile", Some(m)) => profile::handle(
             params,

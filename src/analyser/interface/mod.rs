@@ -7,10 +7,10 @@
 //! Take these rules for instance:
 //! ```text
 //! solver.equals(inputs.len, 2);
-//! solver.equals(inputs[0].datatype, outputs[0].datatype);
+//! solver.equals(inputs[0].datum_type, outputs[0].datum_type);
 //! ```
-//! Here, `inputs.len`, `inputs[0].datatype` and `outputs[0].datatype` don't
-//! actually hold the values of the length and datatypes, but instead act as
+//! Here, `inputs.len`, `inputs[0].datum_type` and `outputs[0].datum_type` don't
+//! actually hold the values of the length and datum_types, but instead act as
 //! declarative placeholders for these values.
 
 #[macro_export]

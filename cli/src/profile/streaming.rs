@@ -12,29 +12,21 @@ use tfdeploy::Tensor;
 use utils::random_tensor;
 use {OutputParameters, Parameters, ProfilingMode};
 
-fn build_streaming_model(params: &Parameters) -> Result<(StreamingModel, Tensor)> {
+fn build_streaming_plan(params: &Parameters) -> Result<(StreamingPlan, Tensor)> {
     let start = Instant::now();
-    info!("Initializing the StreamingModelState.");
+    info!("Building streaming plan.");
     let input = params
         .input
         .as_ref()
         .ok_or("Exactly one of <size> or <data> must be specified.")?;
-    let inputs = params
-        .input_node_ids
-        .iter()
-        .map(|&s| {
-            (
-                s,
-                StreamingInput::Streamed(input.datatype, input.shape.clone()),
-            )
-        })
-        .collect::<Vec<_>>();
 
-    let model = StreamingModel::new(
-        params.tfd_model.clone(),
-        inputs.clone(),
-        Some(params.output_node_id),
-    )?;
+    let model = params.tfd_model.analyser(&params.output_node)?
+        .with_hint(&params.input_nodes[0], &input.to_fact())?
+        .to_optimized_model()?;
+    let plan = StreamingPlan::new(&model,
+        vec!((&params.input_nodes[0], input.to_fact())),
+        Some(&params.output_node))?;
+
     let measure = Duration::since(&start, 1);
     info!(
         "Initialized the StreamingModelState in: {}",
@@ -50,9 +42,9 @@ fn build_streaming_model(params: &Parameters) -> Result<(StreamingModel, Tensor)
         .iter()
         .map(|d| d.unwrap_or(1))
         .collect::<Vec<_>>();
-    let chunk = random_tensor(chunk_shape, input.datatype);
+    let chunk = random_tensor(chunk_shape, input.datum_type);
 
-    Ok((model, chunk))
+    Ok((plan, chunk))
 }
 
 // feed the network until it outputs something
@@ -89,8 +81,8 @@ pub fn handle_bench(
     } else {
         bail!("Expecting bench profile mode")
     };
-    let (model, chunk) = build_streaming_model(&params)?;
-    let mut state = model.state();
+    let (plan, chunk) = build_streaming_plan(&params)?;
+    let mut state = plan.state()?;
     bufferize(&mut state, &chunk)?;
 
     info!("Starting bench itself");
@@ -113,14 +105,14 @@ pub fn handle_bench(
 }
 
 pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Result<()> {
-    let (model, chunk) = build_streaming_model(&params)?;
-    let mut state = model.state();
+    let (plan, chunk) = build_streaming_plan(&params)?;
+    let mut state = plan.state()?;
     bufferize(&mut state, &chunk)?;
 
-    let mut profile = ProfileData::new(state.streaming_model().inner_model());
+    let mut profile = ProfileData::new(state.model());
     for _ in 0..100 {
         let _result = state.step_wrapping_ops(
-            params.input_node_ids[0],
+            0,
             chunk.clone(),
             |node, input, buffer| {
                 let start = Instant::now();
@@ -131,10 +123,10 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Res
         );
     }
 
-    profile.print_most_consuming_nodes(&model.inner_model(), &params.graph, &output_params)?;
+    profile.print_most_consuming_nodes(plan.model(), &params.graph, &output_params)?;
     println!();
 
-    profile.print_most_consuming_ops(&model.inner_model())?;
+    profile.print_most_consuming_ops(plan.model())?;
 
     Ok(())
 }
@@ -143,7 +135,7 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Res
 pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> Result<()> {
     let start = Instant::now();
     info!("Initializing the StreamingModelState.");
-    let (streaming_model, _chunk) = build_streaming_model(&params)?;
+    let (plan, _chunk) = build_streaming_plan(&params)?;
     let measure = Duration::since(&start, 1);
     info!(
         "Initialized the StreamingModelState in: {}",
@@ -156,7 +148,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     let axis = input.shape.iter().position(|&d| d == None).unwrap(); // checked above
 
     let mut states = (0..100)
-        .map(|_| streaming_model.state())
+        .map(|_| plan.state().unwrap())
         .collect::<Vec<_>>();
 
     if log_enabled!(Info) {
@@ -172,7 +164,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     let data = input
         .data
         .take()
-        .unwrap_or_else(|| random_tensor(shape, input.datatype));
+        .unwrap_or_else(|| random_tensor(shape, input.datum_type));
 
     // Split the input data into chunks along the streaming axis.
     macro_rules! split_inner {
@@ -193,51 +185,49 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
         Tensor::String(m) => split_inner!(Tensor::String, m),
     };
 
-    let mut profile = ProfileData::new(&streaming_model.inner_model());
+    let mut profile = ProfileData::new(&plan.model());
 
     for (step, chunk) in chunks.into_iter().enumerate() {
-        for &input in &params.input_node_ids {
-            trace!("Starting step {:?} with input {:?}.", step, chunk);
+        trace!("Starting step {:?} with input {:?}.", step, chunk);
 
-            let mut input_chunks = vec![Some(chunk.clone()); 100];
-            let mut outputs = Vec::with_capacity(100);
-            let start = Instant::now();
+        let mut input_chunks = vec![Some(chunk.clone()); 100];
+        let mut outputs = Vec::with_capacity(100);
+        let start = Instant::now();
 
-            for i in 0..100 {
-                outputs.push(states[i].step_wrapping_ops(
-                    input,
-                    input_chunks[i].take().unwrap(),
-                    |node, input, buffer| {
-                        let start = Instant::now();
-                        let r = node.op.step(input, buffer)?;
-                        profile.add(node, Duration::since(&start, 1))?;
-                        Ok(r)
-                    },
-                ));
-            }
-
-            let measure = Duration::since(&start, 100);
-            println!(
-                "Completed step {:2} with output {:?} in: {}",
-                step,
-                outputs[0],
-                dur_avg_oneline(measure)
-            );
-            thread::sleep(::std::time::Duration::from_secs(1));
+        for i in 0..100 {
+            outputs.push(states[i].step_wrapping_ops(
+                0,
+                input_chunks[i].take().unwrap(),
+                |node, input, buffer| {
+                    let start = Instant::now();
+                    let r = node.op.step(input, buffer)?;
+                    profile.add(node, Duration::since(&start, 1))?;
+                    Ok(r)
+                },
+            ));
         }
+
+        let measure = Duration::since(&start, 100);
+        println!(
+            "Completed step {:2} with output {:?} in: {}",
+            step,
+            outputs[0],
+            dur_avg_oneline(measure)
+        );
+        thread::sleep(::std::time::Duration::from_secs(1));
     }
 
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
     profile.print_most_consuming_nodes(
-        &streaming_model.inner_model(),
+        &plan.model(),
         &params.graph,
         &output_params,
     )?;
     println!();
 
-    profile.print_most_consuming_ops(&streaming_model.inner_model())?;
+    profile.print_most_consuming_ops(&plan.model())?;
 
     Ok(())
 }

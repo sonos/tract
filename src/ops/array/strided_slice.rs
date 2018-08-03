@@ -11,8 +11,8 @@ pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
-    let datatype = pb.get_attr_datatype("T")?;
-    Ok(boxed_new!(StridedSlice(datatype)(
+    let datum_type = pb.get_attr_datum_type("T")?;
+    Ok(boxed_new!(StridedSlice(datum_type)(
         begin_mask,
         end_mask,
         shrink_axis_mask
@@ -130,7 +130,7 @@ impl<T: Datum> StridedSlice<T> {
 
 impl<T: Datum> Op for StridedSlice<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let input = T::tensor_to_view(&input)?;
         let begin = begin.as_i32s().ok_or("Begin expected as I32")?;
@@ -175,14 +175,18 @@ impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
         solver
             .equals(&inputs.len, 4)
             .equals(&outputs.len, 1)
-            .equals(&inputs[1].datatype, DataType::I32)
-            .equals(&inputs[2].datatype, DataType::I32)
-            .equals(&inputs[3].datatype, DataType::I32)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[1].datum_type, DatumType::I32)
+            .equals(&inputs[2].datum_type, DatumType::I32)
+            .equals(&inputs[3].datum_type, DatumType::I32)
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[1].rank, 1)
             .equals(&inputs[2].rank, 1)
             .equals(&inputs[3].rank, 1)
+            .equals_all(wrap!(&inputs[1].shape[0], &inputs[2].shape[0], &inputs[3].shape[0]))
             .given(&inputs[0].shape, move |solver, input_shape: ShapeFact| {
+                if input_shape.open {
+                    return
+                }
                 solver.given(&inputs[1].value, move |solver, begin: Tensor| {
                     let input_shape = input_shape.clone();
                     solver.given(&inputs[2].value, move |solver, end: Tensor| {
@@ -399,6 +403,34 @@ mod tests {
             ),
             Tensor::I32(arr1(&[]).into_dyn())
         )
+    }
+
+    #[test]
+    fn inference_1() {
+        use ops::InferenceOp;
+        let op = StridedSlice::<f32>::new(5,7,0);
+        let input = TensorFact::default().with_datum_type(DatumType::F32);
+        let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
+        let end = TensorFact::from(arr1(&[0i32, 0, 0]));
+        let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+
+        let (input_facts, output_facts) = op.infer(vec!(input, begin.clone(), end.clone(), strides.clone()), vec!(TensorFact::default())).unwrap();
+        assert_eq!(input_facts, vec!(TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]), begin, end, strides));
+        assert_eq!(output_facts, vec!(TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..])));
+    }
+
+    #[test]
+    fn inference_2() {
+        use ops::InferenceOp;
+        let op = StridedSlice::<f32>::new(1,1,2);
+        let input = TensorFact::default().with_datum_type(DatumType::F32);
+        let begin = TensorFact::from(arr1(&[0i32, 0]));
+        let end = TensorFact::from(arr1(&[0i32, 1]));
+        let strides = TensorFact::from(arr1(&[1i32, 1]));
+
+        let (input_facts, output_facts) = op.infer(vec!(input, begin.clone(), end.clone(), strides.clone()), vec!(TensorFact::default())).unwrap();
+        assert_eq!(input_facts, vec!(TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]), begin, end, strides));
+        assert_eq!(output_facts, vec!(TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..])));
     }
 
 }

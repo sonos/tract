@@ -69,7 +69,7 @@ impl ProfileData {
         let mut operations = HashMap::new();
         let mut counters = HashMap::new();
         for (node, dur) in &self.nodes {
-            let node = model.get_node_by_id(*node)?;
+            let node = &model.nodes[*node];
             let mut cell = operations
                 .entry(node.op_name.to_string())
                 .or_insert(Duration::default());
