@@ -368,7 +368,7 @@ impl<'a> ModelState<'a> {
                 "Computing {}, precursor {} not done:",
                 node.name, prec_node.name
             ))?;
-            inputs.push(prec[i.1.ok_or("no output found")?].clone().into())
+            inputs.push(prec[i.1.unwrap_or(0)].clone().into())
         }
         let outputs = node.op.eval(inputs)?;
         self.outputs[node.id] = Some(outputs);
