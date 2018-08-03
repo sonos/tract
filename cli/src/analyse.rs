@@ -1,66 +1,55 @@
+use std::time;
+
 use errors::*;
 use {OutputParameters, Parameters};
 
-use tfdeploy::analyser::Analyser;
-use tfdeploy::analyser::{DimFact, ShapeFact, TensorFact};
-
 /// Handles the `analyse` subcommand.
 pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameters) -> Result<()> {
-    let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output_node_id)?.id;
+    let mut model = params.tfd_model;
 
-    info!("Setting up analyser.");
-
-    let mut analyser = Analyser::new(model, output)?;
-
-    // Add hints for the input nodes.
-    if let Some(input) = params.input {
-        let dims = input
-            .shape
-            .iter()
-            .map(|d| match d {
-                None => DimFact::Streamed,
-                Some(i) => DimFact::Only(*i),
-            })
-            .collect::<Vec<_>>();
-
-        for &i in &params.input_node_ids {
-            analyser.hint(
-                i,
-                &TensorFact {
-                    datatype: typefact!(input.datatype),
-                    shape: ShapeFact::closed(dims.clone()),
-                    value: valuefact!(_),
-                },
-            )?;
-        }
+    let mut analyser = model.analyser(&params.output_node)?;
+    if let Some(input) = params.input.as_ref() {
+        analyser.hint(&params.input_nodes[0], &input.to_fact())?;
     }
 
     info!("Running analyse");
-    analyser.run()?;
+    let start = time::Instant::now();
+    let analyse_result = analyser.analyse();
+    let elapsed = start.elapsed();
 
-    if optimize {
+    let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
+    info!("Ran analyse in {:?}ms", elapsed);
+
+    if analyse_result.is_ok() && optimize {
         info!(
             "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
             ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
             analyser.nodes.len()
         );
 
-        analyser.propagate_constants()?;
-        analyser.prune_unused();
+        model = analyser.to_optimized_model()?;
+        analyser = model.analyser(&params.output_node)?;
+        if let Some(input) = params.input.as_ref() {
+            analyser.hint(&params.input_nodes[0], &input.to_fact())?;
+        }
+        info!("Running analyse on optimized graph");
+        let start = time::Instant::now();
+        analyser.analyse()?;
+        let elapsed = start.elapsed();
+        let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
+        info!("Ran second analyse in {:?}ms", elapsed);
 
         info!(
             "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
-            ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
-            analyser.nodes.len()
+            ::bincode::serialize(&model.nodes)?.len() as f64 * 1e-3,
+            model.nodes.len()
         );
     }
 
-    let nodes: Vec<_> = analyser.nodes.iter().collect();
-    let display = ::display_graph::DisplayGraph::from_nodes(&*nodes)?
+    let display = ::display_graph::DisplayGraph::from_nodes(model.nodes())?
         .with_graph_def(&params.graph)?
         .with_analyser(&analyser)?;
     display.render(&output_params)?;
 
-    Ok(())
+    Ok(analyse_result?)
 }

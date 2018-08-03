@@ -12,16 +12,16 @@ use tfdeploy::*;
 mod utils;
 
 fn streaming_conv2d(c: &mut Criterion) {
-    let datatype = DataType::F32;
+    let datum_type = DatumType::F32;
     let model = tfdeploy::for_path("../tests/models/conv2d-large.pb").unwrap();
     let output = analyser::detect_output(&model).unwrap().unwrap();
 
-    let data = utils::random_tensor(vec![41, 40], datatype);
+    let data = utils::random_tensor(vec![41, 40], datum_type);
 
     // Streaming execution.
     {
         let streaming_dims = vec![None, Some(40)];
-        let streaming_inputs = vec![(1, StreamingInput::Streamed(datatype, streaming_dims))];
+        let streaming_inputs = vec![(1, StreamingInput::Streamed(datum_type, streaming_dims))];
         let mut streaming_state =
             StreamingState::start(model.clone(), streaming_inputs, Some(output)).unwrap();
 

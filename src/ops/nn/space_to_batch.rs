@@ -3,12 +3,12 @@ use ndarray::prelude::*;
 use ops::prelude::*;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let datatype = pb.get_attr_datatype("T")?;
-    Ok(boxed_new!(SpaceToBatch(datatype)()))
+    let datum_type = pb.get_attr_datum_type("T")?;
+    Ok(boxed_new!(SpaceToBatch(datum_type)()))
 }
 pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let datatype = pb.get_attr_datatype("T")?;
-    Ok(boxed_new!(BatchToSpace(datatype)()))
+    let datum_type = pb.get_attr_datum_type("T")?;
+    Ok(boxed_new!(BatchToSpace(datum_type)()))
 }
 
 #[derive(Debug, Clone, new)]
@@ -16,7 +16,7 @@ pub struct SpaceToBatch<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for SpaceToBatch<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let paddings = paddings.as_i32s().ok_or("paddings expected as I32")?;
@@ -67,7 +67,16 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{ "T" => Attr::DataType(T::datatype()) }
+        hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
+    }
+
+    fn step(
+        &self,
+        inputs: Vec<StepValue>,
+        _buffer: &mut Box<OpBuffer>,
+    ) -> Result<Option<Vec<Value>>> {
+        println!("inputs {:?}", inputs);
+        panic!()
     }
 }
 
@@ -92,9 +101,9 @@ fn rules<'r, 'p: 'r>(
     paddings: &'p TensorProxy,
 ) {
     solver
-        .equals(&batch.datatype, &space.datatype)
-        .equals(&block_shape.datatype, DataType::I32)
-        .equals(&paddings.datatype, DataType::I32)
+        .equals(&batch.datum_type, &space.datum_type)
+        .equals(&block_shape.datum_type, DatumType::I32)
+        .equals(&paddings.datum_type, DatumType::I32)
         .equals(&batch.rank, &space.rank)
         .equals(&block_shape.rank, 1)
         .equals(&paddings.rank, 2)
@@ -127,7 +136,7 @@ pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         use ndarray::*;
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
@@ -172,7 +181,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{ "T" => Attr::DataType(T::datatype()) }
+        hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
     }
 }
 

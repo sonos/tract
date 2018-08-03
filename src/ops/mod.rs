@@ -11,7 +11,7 @@ use std::sync::Arc;
 use analyser::interface::{Solver, TensorsProxy};
 use analyser::prelude::*;
 use ops::nn::local_patch::{DataFormat, Padding};
-use {DataType, Result, Tensor};
+use {DatumType, Result, Tensor};
 
 use downcast_rs::Downcast;
 use objekt;
@@ -31,60 +31,60 @@ pub mod nn;
 
 pub mod prelude {
     pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
-    pub use super::{OpBuffer, QueuesBuffer, TensorView};
+    pub use super::{OpBuffer, QueuesBuffer, Value, StepValue};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use tensor::{DataType, Datum, Tensor};
+    pub use tensor::{DatumType, Datum, Tensor};
     pub use Result;
 }
 
 #[derive(Debug, Clone)]
-pub enum TensorView {
+pub enum Value {
     Owned(Tensor),
     Shared(Arc<Tensor>),
 }
 
-impl TensorView {
-    /// Creates a shared TensorView from any TensorView.
-    pub fn into_shared(self) -> TensorView {
+impl Value {
+    /// Creates a shared Value from any Value.
+    pub fn into_shared(self) -> Value {
         match self {
-            TensorView::Owned(m) => TensorView::Shared(Arc::new(m)),
-            TensorView::Shared(_) => self,
+            Value::Owned(m) => Value::Shared(Arc::new(m)),
+            Value::Shared(_) => self,
         }
     }
 
-    /// Creates a Tensor from a TensorView.
+    /// Creates a Tensor from a Value.
     pub fn into_tensor(self) -> Tensor {
         match self {
-            TensorView::Owned(m) => m,
-            TensorView::Shared(m) => m.as_ref().clone(),
+            Value::Owned(m) => m,
+            Value::Shared(m) => m.as_ref().clone(),
         }
     }
 
-    /// Returns a reference to the Tensor wrapped inside a TensorView.
+    /// Returns a reference to the Tensor wrapped inside a Value.
     pub fn as_tensor(&self) -> &Tensor {
         match self {
-            &TensorView::Owned(ref m) => &m,
-            &TensorView::Shared(ref m) => m.as_ref(),
+            &Value::Owned(ref m) => &m,
+            &Value::Shared(ref m) => m.as_ref(),
         }
     }
 
-    /// Returns a shared copy of the TensorView, turning the one passed
-    /// as argument into a TensorView::Shared if necessary.
-    pub fn share(&mut self) -> TensorView {
+    /// Returns a shared copy of the Value, turning the one passed
+    /// as argument into a Value::Shared if necessary.
+    pub fn share(&mut self) -> Value {
         // This is somewhat ugly, but sadly we couldn't find any other
         // way to implement it. If we try to write something like:
-        //   *self = TensorView::Shared(Arc::new(*m))
+        //   *self = Value::Shared(Arc::new(*m))
         // the borrow checker will complain about *m being moved out of
         // borrowed content, which makes sense but doesn't apply in our
-        // case because we will "give m back" to the TensorView, except
+        // case because we will "give m back" to the Value, except
         // wrapped around an Arc. The only way to get ownership of m is
         // to use mem::replace, which means we have to create a "dummy"
         // value to replace self first.
-        if let TensorView::Owned(_) = self {
-            let dummy = TensorView::Owned(Tensor::i32s(&[], &[0]).unwrap());
+        if let Value::Owned(_) = self {
+            let dummy = Value::Owned(Tensor::i32s(&[], &[0]).unwrap());
             let shared = match mem::replace(self, dummy) {
-                TensorView::Owned(m) => TensorView::Shared(Arc::new(m)),
+                Value::Owned(m) => Value::Shared(Arc::new(m)),
                 _ => panic!(),
             };
 
@@ -95,34 +95,84 @@ impl TensorView {
     }
 }
 
-impl<M> From<M> for TensorView
+impl<M> From<M> for Value
 where
     Tensor: From<M>,
 {
-    fn from(m: M) -> TensorView {
-        TensorView::Owned(m.into())
+    fn from(m: M) -> Value {
+        Value::Owned(m.into())
     }
 }
 
-impl From<Arc<Tensor>> for TensorView {
-    fn from(m: Arc<Tensor>) -> TensorView {
-        TensorView::Shared(m)
+impl From<Arc<Tensor>> for Value {
+    fn from(m: Arc<Tensor>) -> Value {
+        Value::Shared(m)
     }
 }
 
-impl ::std::ops::Deref for TensorView {
+impl ::std::ops::Deref for Value {
     type Target = Tensor;
     fn deref(&self) -> &Tensor {
         match self {
-            &TensorView::Owned(ref m) => &m,
-            &TensorView::Shared(ref m) => m.as_ref(),
+            &Value::Owned(ref m) => &m,
+            &Value::Shared(ref m) => m.as_ref(),
         }
     }
 }
 
-impl PartialEq for TensorView {
-    fn eq(&self, other: &TensorView) -> bool {
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
         self.as_tensor() == other.as_tensor()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum StepValue {
+    Const(Value),
+    Stream(usize, Option<Value>),
+}
+
+impl StepValue {
+    pub fn as_value(&self) -> Option<&Value> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            StepValue::Stream(_, v) => v.as_ref(),
+        }
+    }
+
+    pub fn into_value(self) -> Option<Value> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            StepValue::Stream(_, v) => v,
+        }
+    }
+
+    pub fn into_const(self) -> Option<Value> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn into_stream(self) -> Option<(usize, Option<Value>)> {
+        match self {
+            StepValue::Stream(d, v) => Some((d, v)),
+            _ => None
+        }
+    }
+
+    pub fn streaming_dim(&self) -> Option<usize> {
+        match self {
+            StepValue::Const(_) => None,
+            StepValue::Stream(d, _) => Some(*d),
+        }
+    }
+
+    pub fn is_const(&self) -> bool {
+        match self {
+            StepValue::Const(_) => true,
+            StepValue::Stream(_, _) => false,
+        }
     }
 }
 
@@ -132,7 +182,7 @@ impl PartialEq for TensorView {
 pub enum Attr {
     I64(i64),
     Usize(usize),
-    DataType(DataType),
+    DatumType(DatumType),
     DataFormat(DataFormat),
     Padding(Padding),
     Tensor(Tensor),
@@ -146,7 +196,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     fn get_attributes(&self) -> HashMap<&'static str, Attr>;
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>>;
+    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>>;
 
     /// Returns a new streaming buffer for the operation.
     fn new_buffer(&self) -> Box<OpBuffer> {
@@ -161,7 +211,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// - Option(d) if the tensor is being streamed on dimension d.
     ///
     /// If an input tensor has a streaming dimension, the corresponding
-    /// TensorView will only contain a _chunk_ of input of size 1 along
+    /// Value will only contain a _chunk_ of input of size 1 along
     /// that dimension. Note that each chunk will only be passed once
     /// to the step function, so it should use the provided buffer to
     /// store whichever chunks it needs for future computations.
@@ -176,9 +226,9 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// others will receive None.
     fn step(
         &self,
-        _inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        _inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         bail!("Streaming is not available for operator {:?}", self)
     }
 
@@ -294,7 +344,7 @@ pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
 
@@ -332,9 +382,9 @@ pub struct EmptyBuffer {}
 
 impl OpBuffer for EmptyBuffer {}
 
-/// A buffer with a variable number of TensorView queues.
+/// A buffer with a variable number of Value queues.
 #[derive(Debug, Clone)]
-pub struct QueuesBuffer(Vec<VecDeque<TensorView>>);
+pub struct QueuesBuffer(Vec<VecDeque<Value>>);
 
 impl OpBuffer for QueuesBuffer {}
 
@@ -344,15 +394,15 @@ impl QueuesBuffer {
         QueuesBuffer(vec![VecDeque::new(); size])
     }
 
-    /// Appends a new TensorView to each queue in the buffer.
-    pub fn append(&mut self, views: &mut [(Option<usize>, Option<TensorView>)]) -> Result<()> {
+    /// Appends a new Value to each queue in the buffer.
+    pub fn append(&mut self, views: Vec<StepValue>) -> Result<()> {
         if views.len() > self.0.len() {
-            bail!("There are more input TensorViews than queues in the buffer.");
+            bail!("There are more input Values than queues in the buffer.");
         }
 
-        for (i, view) in views.iter_mut().enumerate() {
-            if view.1.is_some() {
-                self.0[i].push_back(view.1.take().unwrap())
+        for (i, view) in views.into_iter().enumerate() {
+            if let Some(v) = view.into_value() {
+                self.0[i].push_back(v);
             }
         }
 
@@ -360,26 +410,26 @@ impl QueuesBuffer {
     }
 
     /// Returns an iterator over all the queues in the buffer.
-    pub fn iter<'a>(&'a mut self) -> impl Iterator<Item = &'a VecDeque<TensorView>> {
+    pub fn iter<'a>(&'a mut self) -> impl Iterator<Item = &'a VecDeque<Value>> {
         self.0.iter()
     }
 
     /// Returns a mutable iterator over all the queues in the buffer.
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut VecDeque<TensorView>> {
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut VecDeque<Value>> {
         self.0.iter_mut()
     }
 }
 
 impl Index<usize> for QueuesBuffer {
-    type Output = VecDeque<TensorView>;
+    type Output = VecDeque<Value>;
 
-    fn index(&self, index: usize) -> &VecDeque<TensorView> {
+    fn index(&self, index: usize) -> &VecDeque<Value> {
         &self.0[index]
     }
 }
 
 impl IndexMut<usize> for QueuesBuffer {
-    fn index_mut(&mut self, index: usize) -> &mut VecDeque<TensorView> {
+    fn index_mut(&mut self, index: usize) -> &mut VecDeque<Value> {
         &mut self.0[index]
     }
 }

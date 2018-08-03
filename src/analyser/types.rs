@@ -6,7 +6,7 @@ use Result;
 use num_traits::cast::ToPrimitive;
 use num_traits::CheckedDiv;
 
-use DataType;
+use DatumType;
 use Tensor;
 
 /// Partial information about any value.
@@ -28,20 +28,20 @@ pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
 /// Partial information about a tensor.
 ///
 /// The task of the analyser is to tag every edge in the graph with information
-/// about the tensors that flow through it - specifically their datatype, their
+/// about the tensors that flow through it - specifically their datum_type, their
 /// shape and possibly their value. During the analysis, however, we might only
 /// know some of that information (say, for instance, that an edge only carries
 /// tensors of rank 4, but without knowing their precise dimension).
 ///
 /// This is where tensor facts come in: they hold partial information about the
-/// datatype, shape and value of tensors that might flow through an edge of the
+/// datum_type, shape and value of tensors that might flow through an edge of the
 /// graph. The analyser will first tag each edge with a fact, starting with the
 /// most general one and specializing it at each iteration. Eventually, it will
 /// reach a fixed point that - hopefully - holds enough information.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq, Default)]
 pub struct TensorFact {
-    pub datatype: TypeFact,
+    pub datum_type: TypeFact,
     pub shape: ShapeFact,
     pub value: ValueFact,
 }
@@ -50,6 +50,24 @@ impl TensorFact {
     /// Constructs the most general tensor fact possible.
     pub fn new() -> TensorFact {
         TensorFact::default()
+    }
+
+    pub fn with_datum_type(self, dt:DatumType) -> TensorFact {
+        TensorFact {
+            datum_type: dt.into(),
+            ..self
+        }
+    }
+
+    pub fn with_shape<S: Into<ShapeFact>>(self, shape:S) -> TensorFact {
+        TensorFact {
+            shape: shape.into(),
+            ..self
+        }
+    }
+
+    pub fn streaming_dim(&self) -> Result<usize> {
+        self.shape.streaming_dim()
     }
 }
 
@@ -64,7 +82,7 @@ impl Fact for TensorFact {
     /// Tries to unify the fact with another fact of the same type.
     fn unify(&self, other: &Self) -> Result<Self> {
         let tensor = TensorFact {
-            datatype: self.datatype.unify(&other.datatype)?,
+            datum_type: self.datum_type.unify(&other.datum_type)?,
             shape: self.shape.unify(&other.shape)?,
             value: self.value.unify(&other.value)?,
         };
@@ -73,12 +91,14 @@ impl Fact for TensorFact {
 
         Ok(tensor)
     }
+
 }
 
-impl From<Tensor> for TensorFact {
-    fn from(t: Tensor) -> TensorFact {
+impl<T: Into<Tensor>> From<T> for TensorFact {
+    fn from(t: T) -> TensorFact {
+        let t:Tensor = t.into();
         TensorFact {
-            datatype: GenericFact::Only(t.datatype()),
+            datum_type: GenericFact::Only(t.datum_type()),
             shape: ShapeFact::from(t.shape()),
             value: GenericFact::Only(t),
         }
@@ -91,7 +111,7 @@ impl fmt::Debug for TensorFact {
             write!(formatter, "Fully determined tensor: {:?}", t)
         } else {
             write!(formatter, "Tensor")?;
-            if let Some(t) = self.datatype.concretize() {
+            if let Some(t) = self.datum_type.concretize() {
                 write!(formatter, ", {:?}", t)?;
             }
             write!(formatter, ", shape={:?}", self.shape)?;
@@ -145,7 +165,7 @@ impl<T: fmt::Debug + Clone + PartialEq> From<T> for GenericFact<T> {
 }
 
 /// Partial information about a type.
-pub type TypeFact = GenericFact<DataType>;
+pub type TypeFact = GenericFact<DatumType>;
 
 /// Partial information about a shape.
 ///
@@ -172,6 +192,23 @@ impl ShapeFact {
     /// Constructs a closed shape fact.
     pub fn closed(dims: Vec<DimFact>) -> ShapeFact {
         ShapeFact { open: false, dims }
+    }
+
+    pub fn streaming_dim(&self) -> Result<usize> {
+        if self.open {
+            bail!("Shape is open, can not find streaming dim for sure.")
+        }
+        if self.dims.iter().any(|&d| d == DimFact::Any) {
+            bail!("Shape has unknown dims, can not find streaming dim for sure.")
+        }
+        let count = self.dims.iter().filter(|&&d| d == DimFact::Streamed).count();
+        if count > 1 {
+            bail!("Shape has more than one streaming dim. This is wrong.")
+        }
+        if count < 1 {
+            bail!("Shape has no streaming dim. This is wrong.")
+        }
+        Ok(self.dims.iter().position(|&d| d == DimFact::Streamed).unwrap())
     }
 }
 

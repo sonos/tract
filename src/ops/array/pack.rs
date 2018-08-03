@@ -14,7 +14,7 @@ pub struct Pack<T: Datum> {
 }
 
 pub fn pack(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datatype("T")?;
+    let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;
 
@@ -26,7 +26,7 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>> {
         use ndarray::Axis;
         let views = inputs
             .iter()
@@ -39,7 +39,7 @@ where
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "T"    => Attr::DataType(T::datatype()),
+            "T"    => Attr::DatumType(T::datum_type()),
             "n"    => Attr::Usize(self.n),
             "axis" => Attr::Usize(self.axis),
         }

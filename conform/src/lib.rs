@@ -82,22 +82,23 @@ pub fn compare<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let model = tfdeploy::Model::for_reader(&*graph)?;
-    let mut state = model.state();
-    for (s, t) in &inputs {
-        state
-            .set_value(model.node_id_by_name(s.as_ref()).unwrap(), t.clone())
-            .unwrap();
+    let plan = tfdeploy::SimplePlan::new(&model,
+        &inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>(),
+        &vec!(output))?;
+    let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
+    for (ix, (_, t)) in inputs.iter().enumerate() {
+        state.set_input(ix, t.clone()).unwrap();
     }
-    let output_id = model.node_id_by_name(output)?;
-    state.compute_one(output_id)?;
-    let found = &state.outputs[output_id].as_ref().unwrap();
+    let output = &model.node_by_name(output)?;
+    state.compute_one(output.id)?;
+    let found = &state.values[output.id].as_ref().unwrap();
 
     // Run Tensorflow
     let tf_inputs: Vec<(&str, TfdTensor)> = inputs
         .iter()
         .map(|(s, m)| (s.as_ref(), m.clone()))
         .collect();
-    let expected = tf::for_slice(&graph)?.run(tf_inputs.clone(), output)?;
+    let expected = tf::for_slice(&graph)?.run(tf_inputs.clone(), &output.name)?;
 
     prop_assert!(
         expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0]),
@@ -107,26 +108,24 @@ pub fn compare<S: AsRef<str>>(
     );
 
     // Check inference rules consistency
-    let node = model.get_node(output)?;
-    let inputs_vectors: Vec<TensorFact> = node.inputs
+    let inputs_vectors: Vec<TensorFact> = output.inputs
         .iter()
         .map(|(i, p)| {
-            state.outputs[*i].as_ref().unwrap()[p.unwrap_or(0)]
+            state.values[*i].as_ref().unwrap()[*p]
                 .as_tensor()
                 .clone()
                 .into()
         })
         .collect();
     let output_vectors: Vec<TensorFact> = vec![
-        state.outputs[output_id].as_ref().unwrap()[0]
+        state.values[output.id].as_ref().unwrap()[0]
             .as_tensor()
             .clone()
             .into(),
     ];
 
-    info!("Checking inference on {}", output);
-    let op = node.op();
-    if let Err(e) = op.infer(inputs_vectors, output_vectors) {
+    info!("Checking inference on {}", output.name);
+    if let Err(e) = output.op.infer(inputs_vectors, output_vectors) {
         error!("{:?}", e);
         Err(e)?
     }

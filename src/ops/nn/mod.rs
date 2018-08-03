@@ -31,7 +31,7 @@ impl Softmax {
 
 impl Op for Softmax {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
             .into_tensor()
@@ -61,7 +61,7 @@ impl InferenceRulesOp for Softmax {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[0].shape, &outputs[0].shape);
     }
 }

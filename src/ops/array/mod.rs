@@ -40,7 +40,7 @@ impl Op for ExpandDims {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (data, dims) = args_2!(inputs);
         let data = data.into_tensor()
             .take_f32s()
@@ -60,18 +60,24 @@ impl Op for ExpandDims {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         let (data, dims) = args_2!(inputs);
 
-        if dims.0.is_some() || dims.1.is_none() {
-            bail!("Dims input should not be streamed.");
-        }
+        let dims = if let StepValue::Const(dims) = dims {
+            dims
+        } else {
+            bail!("Dims input should not be streamed.")
+        };
 
-        let dims = dims.1.unwrap();
+        let data = if let StepValue::Stream(_, data) = data {
+            data
+        } else {
+            bail!("Data input should be streamed.")
+        };
 
-        match data.1 {
+        match data {
             None => Ok(None),
             Some(tv) => Ok(Some(self.eval(vec![tv, dims])?)),
         }
@@ -92,13 +98,12 @@ impl InferenceRulesOp for ExpandDims {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&dims.datatype, DataType::I32)
+            .equals(&dims.datum_type, DatumType::I32)
             .equals(&dims.rank, 0)
-            .equals(&data.datatype, &output.datatype)
+            .equals(&data.datum_type, &output.datum_type)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
             .given(&dims.value, move |solver, index: Tensor| {
-                let index = index.take_i32s().unwrap(); // already enforced
-                let index = index.as_slice().unwrap()[0] as usize; //already enforced
+                let index = index.as_i32().unwrap() as usize; // enforced
 
                 for i in 0..index {
                     solver.equals(&output.shape[i], &data.shape[i]);
@@ -131,18 +136,18 @@ impl Op for Identity {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>> {
         Ok(inputs)
     }
 
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         let input = args_1!(inputs);
-        match input.1 {
+        match input.into_value() {
             None => Ok(None),
             Some(tv) => Ok(Some(self.eval(vec![tv])?)),
         }
@@ -159,34 +164,34 @@ impl InferenceRulesOp for Identity {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[0].shape, &outputs[0].shape);
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Placeholder {
-    dtype: DataType,
+    dtype: DatumType,
 }
 
 impl Placeholder {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Placeholder {
-            dtype: node.get_attr_datatype("dtype")?,
+            dtype: node.get_attr_datum_type("dtype")?,
         }))
     }
 }
 
 impl Op for Placeholder {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
         panic!("Placeholder should not get evaluated")
     }
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "dtype" => Attr::DataType(self.dtype)
+            "dtype" => Attr::DatumType(self.dtype)
         }
     }
 
@@ -211,7 +216,7 @@ impl InferenceRulesOp for Placeholder {
         solver
             .equals(&inputs.len, 0)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datatype, self.dtype);
+            .equals(&outputs[0].datum_type, self.dtype);
     }
 }
 
@@ -231,7 +236,7 @@ impl Op for Shape {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
         Ok(vec![Tensor::from(Array1::from_vec(shape)).into()])
@@ -248,7 +253,7 @@ impl InferenceRulesOp for Shape {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datatype, DataType::I32)
+            .equals(&outputs[0].datum_type, DatumType::I32)
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
@@ -295,13 +300,13 @@ mod tests {
     #[test]
     fn shape_inference_1() {
         let input = TensorFact {
-            datatype: typefact!(DataType::F32),
+            datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, _, _; ..],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![_],
             value: valuefact!(_),
         };
@@ -312,13 +317,13 @@ mod tests {
     #[test]
     fn shape_inference_2() {
         let input = TensorFact {
-            datatype: typefact!(DataType::F32),
+            datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, _, _],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(_),
         };
@@ -329,13 +334,13 @@ mod tests {
     #[test]
     fn shape_inference_3() {
         let input = TensorFact {
-            datatype: typefact!(DataType::F32),
+            datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, 2, 3],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };
@@ -346,13 +351,13 @@ mod tests {
     #[test]
     fn shape_inference_4() {
         let input = TensorFact {
-            datatype: typefact!(_),
+            datum_type: typefact!(_),
             shape: shapefact![_, 2, 3],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };

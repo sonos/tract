@@ -23,7 +23,7 @@ pub struct Buffer<T: Datum> {
 impl<T: Datum> OpBuffer for Buffer<T> {}
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datatype("T")?;
+    let dtype = pb.get_attr_datum_type("T")?;
     let patch = LocalPatch::build(pb)?;
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
@@ -76,7 +76,7 @@ impl<T: Datum> Op for Conv2D<T> {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         let mut attributes = hashmap!{
-            "T" => Attr::DataType(T::datatype()),
+            "T" => Attr::DatumType(T::datum_type()),
         };
 
         attributes.extend(self.0.get_attributes());
@@ -84,7 +84,7 @@ impl<T: Datum> Op for Conv2D<T> {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = T::tensor_into_array(m_data.into_tensor())?;
         let filter = T::tensor_to_view(&*m_filter)?;
@@ -108,9 +108,9 @@ impl<T: Datum> Op for Conv2D<T> {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         // We only support the VALID padding strategy for now, with the
         // streaming dimension being either the width or the height.
 
@@ -122,26 +122,18 @@ impl<T: Datum> Op for Conv2D<T> {
         // the k following chunks to compte one output chunk, with k the
         // strides in the streaming dimension.
 
-        let (mut data, mut filter) = args_2!(inputs);
-
-        if filter.0.is_some() || filter.1.is_none() {
-            bail!("Filter input should not be streamed.");
-        }
-
-        if data.0.is_none() {
-            bail!("Data input should be streamed.");
-        }
-
-        // Maybe there is no incoming chunk.
-        if data.1.is_none() {
-            return Ok(None);
-        }
+        let (data, filter) = args_2!(inputs);
+        let filter = filter.into_const().ok_or("filter can not be streamed")?;
+        let (dim, chunk) = data.into_stream().ok_or("data must be streamed")?;
+        let chunk = if let Some(chunk) = chunk {
+            chunk
+        } else {
+            return Ok(None)
+        };
 
         // Maybe the data is streamed along the batch dimension.
-        let dim = data.0.unwrap();
         if dim == 0 {
-            let result = self.eval(vec![data.1.take().unwrap(), filter.1.take().unwrap()])?;
-
+            let result = self.eval(vec!(chunk, filter))?;
             return Ok(Some(result));
         }
 
@@ -149,12 +141,13 @@ impl<T: Datum> Op for Conv2D<T> {
             bail!("Conv2D only supports batch, width and height streaming.");
         }
 
-        let data = data.1.take().unwrap().into_tensor();
+        let data = chunk.into_tensor();
         let data = into_4d(T::tensor_into_array(data)?)?;
         let data_size = data.shape()[dim];
-        debug_assert!(data_size == 1);
+        if data_size != 1 {
+            bail!("Conv2D expects chunks of dim 1 in streamed dim");
+        }
 
-        let filter = filter.1.take().unwrap();
         let filter = T::tensor_to_view(&*filter)?;
         let filter_size = filter.shape()[dim - 1];
 
@@ -221,9 +214,9 @@ impl<T: Datum> InferenceRulesOp for Conv2D<T> {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, T::datatype())
-            .equals(&inputs[1].datatype, T::datatype())
-            .equals(&outputs[0].datatype, T::datatype())
+            .equals(&inputs[0].datum_type, T::datum_type())
+            .equals(&inputs[1].datum_type, T::datum_type())
+            .equals(&outputs[0].datum_type, T::datum_type())
             .equals(&inputs[0].rank, 4)
             .equals(&inputs[1].rank, 4)
             .equals(&outputs[0].rank, 4)

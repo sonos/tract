@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{ HashMap, BTreeSet };
+use std::sync::Arc;
 
 use errors::*;
 use ops::Op;
-use Model;
+use model:: {Model, RawModel };
 use Node;
-use Plan;
+use model::eval_order_for_nodes;
 
 mod constants;
 mod types;
@@ -19,8 +20,8 @@ pub mod prelude {
         x.unify(y)
     }
 
-    /// Attempts to unify two datatype facts.
-    pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
+    /// Attempts to unify two datum_type facts.
+    pub fn unify_datum_type(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
         x.unify(y)
     }
 
@@ -50,24 +51,19 @@ pub mod helpers;
 pub mod interface;
 
 /// Tries to auto-detect the names of the input nodes.
-pub fn detect_inputs(model: &Model) -> Result<Option<Vec<usize>>> {
+pub fn detect_inputs(model: &Model) -> Result<Vec<&Node>> {
     let inputs: Vec<_> = model
         .nodes()
         .iter()
         .filter(|n| n.op_name == "Placeholder")
         .inspect(|n| info!("Autodetected input node: {} {:?}.", n.id, n.name))
-        .map(|n| n.id)
         .collect();
 
-    if inputs.len() > 0 {
-        Ok(Some(inputs))
-    } else {
-        Ok(None)
-    }
+    Ok(inputs)
 }
 
 /// Tries to auto-detect the name of the output node.
-pub fn detect_output(model: &Model) -> Result<Option<usize>> {
+pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
     // We search for the only node in the graph with no successor.
     let mut succs: Vec<Vec<usize>> = vec![Vec::new(); model.nodes().len()];
 
@@ -82,9 +78,9 @@ pub fn detect_output(model: &Model) -> Result<Option<usize>> {
             info!(
                 "Autodetected output node: {} {:?}.",
                 i,
-                model.get_node_by_id(i)?.name
+                model.nodes()[i].name
             );
-            return Ok(Some(i));
+            return Ok(Some(&model.nodes[i]));
         }
     }
 
@@ -105,22 +101,19 @@ pub struct Edge {
 
 /// A graph analyser, along with its current state.
 pub struct Analyser {
-    // The original output.
+    model: Model,
+    // The output.
     pub output: usize,
 
-    // The graph being analysed.
     pub nodes: Vec<Node>,
+
+    // The graph being analysed.
     pub edges: Vec<Edge>,
     pub prev_edges: Vec<Vec<usize>>,
     pub next_edges: Vec<Vec<usize>>,
 
-    // The execution plan and unused nodes.
+    // The execution plan
     plan: Vec<usize>,
-
-    // The current state of the algorithm.
-    pub current_pass: usize,
-    pub current_step: usize,
-    pub current_direction: bool,
 }
 
 impl Analyser {
@@ -129,11 +122,12 @@ impl Analyser {
     /// The output argument is used to infer an execution plan for the graph.
     /// Changing it won't alter the correctness of the analysis, but it might
     /// take much longer to complete.
-    pub fn new(model: Model, output: usize) -> Result<Analyser> {
-        let nodes = model.nodes;
+    pub fn new(model: &Model, output: &str) -> Result<Analyser> {
+        let nodes:Vec<Node> = model.nodes().iter().cloned().collect();
         let mut edges = vec![];
-        let mut prev_edges = vec![Vec::new(); nodes.len() + 1];
-        let mut next_edges = vec![Vec::new(); nodes.len() + 1];
+        let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
+        let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
+        let output = model.node_by_name(output)?;
 
         for node in &nodes {
             for (ix, input) in node.inputs.iter().enumerate() {
@@ -142,7 +136,7 @@ impl Analyser {
                 edges.push(Edge {
                     id,
                     from_node: Some(input.0),
-                    from_out: input.1.unwrap_or(0),
+                    from_out: input.1,
                     to_node: Some(node.id),
                     to_input: ix,
                     fact: TensorFact::new(),
@@ -157,39 +151,40 @@ impl Analyser {
         let special_edge_id = edges.len();
         edges.push(Edge {
             id: special_edge_id,
-            from_node: Some(output),
+            from_node: Some(output.id),
             from_out: 0,
             to_node: None,
             to_input: 0,
             fact: TensorFact::new(),
         });
 
-        next_edges[output].push(special_edge_id);
+        next_edges[output.id].push(special_edge_id);
 
         // Compute an execution plan for the graph.
-        let plan = Plan::for_nodes(&nodes, &[output])?.order;
-        let current_pass = 0;
-        let current_step = 0;
-        let current_direction = true;
+        let plan = eval_order_for_nodes(model.nodes(), &[output.id])?;
 
-        debug!("Using execution plan {:?}.", plan);
+        trace!("Using execution plan {:?}.", plan);
 
         Ok(Analyser {
-            output,
+            model: model.clone(),
+            output: output.id,
             nodes,
             edges,
             prev_edges,
             next_edges,
             plan,
-            current_pass,
-            current_step,
-            current_direction,
         })
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn hint(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
-        debug!("Hint for node \"{}\": {:?}", self.nodes[node].name, fact);
+    pub fn hint(&mut self, node: &str, fact: &TensorFact) -> Result<()> {
+        let id = self.model.node_by_name(node)?.id;
+        self.hint_by_id(id, fact)
+    }
+
+    /// Adds an user-provided tensor fact to the analyser.
+    pub fn hint_by_id(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
+        debug!("Hint for node \"{}\": {:?}", self.model.nodes()[node].name, fact);
         if node >= self.next_edges.len() {
             bail!("There is no node with index {:?}.", node);
         }
@@ -201,22 +196,44 @@ impl Analyser {
         Ok(())
     }
 
+    /// Adds an user-provided tensor fact to the analyser.
+    pub fn with_hint(mut self, node: &str, fact: &TensorFact) -> Result<Analyser> {
+        let node = self.model.node_by_name(node)?.id;
+        self.hint_by_id(node, fact)?;
+        Ok(self)
+    }
+
     /// Returns a model from the analyser.
-    pub fn into_model(self) -> Model {
-        let mut nodes_by_name = HashMap::with_capacity(self.nodes.len());
-        self.nodes.iter().for_each(|n| {
-            nodes_by_name.insert(n.name.clone(), n.id);
+    pub fn to_model(&self) -> Result<Model> {
+        let mut nodes_by_name = HashMap::with_capacity(self.plan.len());
+        let mut nodes_mapped = HashMap::with_capacity(self.plan.len());
+        let mut nodes = Vec::with_capacity(self.plan.len());
+        self.plan.iter().enumerate().for_each(|(ix,&n)| {
+            let old_node = &self.nodes[n];
+            nodes_by_name.insert(old_node.name.clone(), ix);
+            nodes_mapped.insert(old_node.id, ix);
+            nodes.push(Node {
+                id: ix,
+                name: old_node.name.clone(),
+                op_name: old_node.op_name.clone(),
+                inputs: old_node.inputs.iter().map(|&(input, port)| (nodes_mapped[&input], port)).collect(),
+                op: old_node.op.clone(),
+            });
         });
 
-        Model {
-            nodes: self.nodes,
-            nodes_by_name,
-        }
+        Ok(Model(Arc::new(RawModel { nodes, nodes_by_name, })))
+    }
+
+    /// Returns a model from the analyser.
+    pub fn to_optimized_model(&mut self) -> Result<Model> {
+        self.analyse()?;
+        constants::propagate_constants(self)?;
+        self.to_model()
     }
 
     /// Computes a new execution plan for the graph.
     pub fn reset_plan(&mut self) -> Result<()> {
-        self.plan = Plan::for_nodes(&self.nodes, &[self.output])?.order;
+        self.plan = eval_order_for_nodes(&self.nodes, &[self.output])?;
         Ok(())
     }
 
@@ -225,171 +242,56 @@ impl Analyser {
         constants::propagate_constants(self)
     }
 
-    /// Removes the nodes and edges which are not part of the execution plan.
-    /// Returns the mapping between the old and new node indexes.
-    pub fn prune_unused(&mut self) -> Vec<Option<usize>> {
-        let mut node_used = vec![false; self.nodes.len()];
-        let mut edge_used = vec![false; self.edges.len()];
-        for &i in &self.plan {
-            node_used[i] = true;
-        }
-
-        // Remove the nodes while keeping track of the new indices.
-        let mut deleted = 0;
-        let mut node_mapping = vec![None; self.nodes.len()];
-
-        for i in 0..self.nodes.len() {
-            if !node_used[i] {
-                self.nodes.remove(i - deleted);
-
-                self.prev_edges.remove(i - deleted);
-                self.next_edges.remove(i - deleted);
-                deleted += 1;
-            } else {
-                node_mapping[i] = Some(i - deleted);
-
-                self.prev_edges[i - deleted]
-                    .iter()
-                    .for_each(|&j| edge_used[j] = true);
-                self.next_edges[i - deleted]
-                    .iter()
-                    .for_each(|&j| edge_used[j] = true);
-            }
-        }
-
-        info!("Deleted {:?} unused nodes.", deleted);
-
-        // Update the nodes and edges to use the new indices.
-        for node in &mut self.nodes {
-            node.id = node_mapping[node.id].unwrap();
-            node.inputs
-                .iter_mut()
-                .for_each(|i| i.0 = node_mapping[i.0].unwrap());
-        }
-
-        for edge in &mut self.edges {
-            if let Some(i) = edge.from_node {
-                edge.from_node = node_mapping[i];
-            }
-
-            if let Some(i) = edge.to_node {
-                edge.to_node = node_mapping[i];
-            }
-        }
-
-        // Remove the edges while keeping track of the new indices.
-        let mut deleted = 0;
-        let mut edge_mapping = vec![None; self.edges.len()];
-
-        for i in 0..self.edges.len() {
-            if !edge_used[i] {
-                self.edges.remove(i - deleted);
-                deleted += 1;
-            } else {
-                edge_mapping[i] = Some(i - deleted);
-            }
-        }
-
-        info!("Deleted {:?} unused edges.", deleted);
-
-        // Update the adjacency lists to use the new indices.
-        for i in 0..self.nodes.len() {
-            self.prev_edges[i]
-                .iter_mut()
-                .for_each(|j| *j = edge_mapping[*j].unwrap());
-            self.next_edges[i]
-                .iter_mut()
-                .for_each(|j| *j = edge_mapping[*j].unwrap());
-        }
-
-        node_mapping
-    }
-
     /// Runs the entire analysis at once.
-    pub fn run(&mut self) -> Result<()> {
-        self.current_pass = 0;
-
+    pub fn analyse(&mut self) -> Result<()> {
+        let mut nodes_to_visit:BTreeSet<usize> = (0..self.nodes.len()).collect();
         loop {
-            if !self.run_two_passes()? {
-                return Ok(());
+            trace!("Remaining nodes {}", nodes_to_visit.len());
+            let node = match nodes_to_visit.iter().next() {
+                None => return Ok(()),
+                Some(n) => *n,
+            };
+            let changed_edges = self.step(node)?;
+            for edge in changed_edges {
+                let edge = &self.edges[edge];
+                trace!("Changed edge: {:?}", edge);
+                if let Some(dst) = edge.to_node {
+                    if dst != node {
+                        trace!("Inserting node dn {}", dst);
+                        nodes_to_visit.insert(dst);
+                    }
+                }
+                if let Some(src) = edge.from_node {
+                    if src != node {
+                        trace!("Inserting node up {}", src);
+                        nodes_to_visit.insert(src);
+                    }
+                }
             }
+            nodes_to_visit.remove(&node);
         }
-    }
-
-    /// Runs two passes of the analysis.
-    pub fn run_two_passes(&mut self) -> Result<bool> {
-        let mut changed = false;
-
-        info!(
-            "Starting pass [pass={:?}, direction={:?}].",
-            self.current_pass, self.current_direction,
-        );
-
-        // We first run a forward pass.
-        self.current_step = 0;
-        for _ in 0..self.plan.len() {
-            if self.run_step()? {
-                changed = true;
-            }
-        }
-
-        info!(
-            "Starting pass [pass={:?}, direction={:?}].",
-            self.current_pass, self.current_direction,
-        );
-
-        // We then run a backward pass.
-        self.current_step = 0;
-        for _ in 0..self.plan.len() {
-            if self.run_step()? {
-                changed = true;
-            }
-        }
-
-        Ok(changed)
-    }
-
-    /// Runs a single step of the analysis.
-    pub fn run_step(&mut self) -> Result<bool> {
-        let changed = self.try_step()?;
-
-        // Switch to the next step.
-        self.current_step += 1;
-        if self.current_step == self.plan.len() {
-            self.current_pass += 1;
-            self.current_direction = !self.current_direction;
-            self.current_step = 0;
-        }
-
-        Ok(changed)
     }
 
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
-    fn try_step(&mut self) -> Result<bool> {
-        let node = if self.current_direction {
-            &self.nodes[self.plan[self.current_step]]
-        } else {
-            &self.nodes[self.plan[self.plan.len() - 1 - self.current_step]]
-        };
-
+    fn step(&mut self, node: usize) -> Result<Vec<usize>> {
+        let node = &self.nodes[node];
         debug!(
-            "Starting step for {} {} ({}) [pass={:?}, direction={:?}, step={:?}].",
+            "Starting step for {} {} ({})",
             node.id,
             node.name,
             node.op_name,
-            self.current_pass,
-            self.current_direction,
-            self.current_step,
         );
+
+        trace!("{:?}", node.op);
 
         let inputs: Vec<_> = self.prev_edges[node.id]
             .iter()
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
                 trace!(
-                    " Input {:?} from {}/{}: {:?}",
-                    edge.to_node.unwrap(),
+                    " Input {} from {}/{}: {:?}",
+                    edge.to_input,
                     edge.from_node.unwrap(),
                     edge.from_out,
                     edge.fact
@@ -407,18 +309,18 @@ impl Analyser {
 
         let inferred = node.op
             .infer_and_propagate(inputs, outputs)
-            .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?;
+            .map_err(|e| format!("While inferring forward for {} {}: {}", node.id, node.name, e))?;
 
-        let mut changed = false;
+        let mut changed_edges = vec!();
 
         for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
             let fact = &inferred.0[i];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying inputs of node {:?}: {}", node.name, e))?;
+                .map_err(|e| format!("While unifying inputs of node {} {}: {}", node.id, node.name, e))?;
 
             if unified != self.edges[j].fact {
                 debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
-                changed = true;
+                changed_edges.push(j);
                 self.edges[j].fact = unified;
             }
         }
@@ -431,44 +333,44 @@ impl Analyser {
 
             let fact = &inferred.1[0];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying outputs of node {:?}: {}", node.name, e))?;
+                .map_err(|e| format!("While unifying outputs of node {} {} {}", node.id, node.name, e))?;
 
             if unified != self.edges[j].fact {
-                debug!(" Refined {} output #{} to {:?}", node.name, i, unified);
-                changed = true;
+                debug!(" Refined {} output {}/{} to {:?}", node.name, node.id, i, unified);
+                changed_edges.push(j);
                 self.edges[j].fact = unified;
             }
         }
 
-        Ok(changed)
+        Ok(changed_edges)
     }
 }
 
 #[cfg(tests)]
 mod tests {
     #[test]
-    fn unify_same_datatype() {
-        let dt = TypeFact::Only(DataType::DT_FLOAT);
-        assert_eq!(unify_datatype(&dt, &dt).unwrap(), dt);
+    fn unify_same_datum_type() {
+        let dt = TypeFact::Only(DatumType::DT_FLOAT);
+        assert_eq!(unify_datum_type(&dt, &dt).unwrap(), dt);
     }
 
     #[test]
-    fn unify_different_datatypes_only() {
-        let dt1 = TypeFact::Only(DataType::DT_FLOAT);
-        let dt2 = TypeFact::Only(DataType::DT_DOUBLE);
-        assert!(unify_datatype(&dt1, &dt2).is_err());
+    fn unify_different_datum_types_only() {
+        let dt1 = TypeFact::Only(DatumType::DT_FLOAT);
+        let dt2 = TypeFact::Only(DatumType::DT_DOUBLE);
+        assert!(unify_datum_type(&dt1, &dt2).is_err());
     }
 
     #[test]
-    fn unify_different_datatypes_any_left() {
-        let dt = TypeFact::Only(DataType::DT_FLOAT);
-        assert_eq!(unify_datatype(&TypeFact::Any, &dt).unwrap(), dt);
+    fn unify_different_datum_types_any_left() {
+        let dt = TypeFact::Only(DatumType::DT_FLOAT);
+        assert_eq!(unify_datum_type(&TypeFact::Any, &dt).unwrap(), dt);
     }
 
     #[test]
-    fn unify_different_datatypes_any_right() {
-        let dt = TypeFact::Only(DataType::DT_FLOAT);
-        assert_eq!(unify_datatype(&dt, &TypeFact::Any).unwrap(), dt);
+    fn unify_different_datum_types_any_right() {
+        let dt = TypeFact::Only(DatumType::DT_FLOAT);
+        assert_eq!(unify_datum_type(&dt, &TypeFact::Any).unwrap(), dt);
     }
 
     #[test]

@@ -8,7 +8,7 @@ use textwrap;
 use tfdeploy;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::graph::GraphDef;
-use tfdeploy::ModelState;
+use tfdeploy::plan::SimpleState;
 use tfdeploy::Node;
 
 use colored::Colorize;
@@ -167,7 +167,7 @@ pub fn print_box(
 fn node_info(
     node: &tfdeploy::Node,
     graph: &tfpb::graph::GraphDef,
-    state: Option<&::tfdeploy::ModelState>,
+    state: Option<&SimpleState>,
 ) -> Vec<Vec<Row>> {
     // First section: node attributes.
     let mut attributes = Vec::new();
@@ -197,13 +197,13 @@ fn node_info(
 
     for (ix, &(n, i)) in node.inputs.iter().enumerate() {
         if let Some(state) = state {
-            let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
+            let data = &state.values[n].as_ref().unwrap()[i];
             inputs.push(Row::Double(
                 format!(
                     "{} ({}/{}):",
                     format!("Input {}", ix).bold(),
                     n,
-                    i.unwrap_or(0),
+                    i
                 ),
                 data.partial_dump(false).unwrap(),
             ));
@@ -217,7 +217,7 @@ fn node_info(
 pub fn print_node(
     node: &Node,
     graph: &GraphDef,
-    state: Option<&ModelState>,
+    state: Option<&SimpleState>,
     status: &[impl AsRef<str>],
     sections: Vec<Vec<Row>>,
 ) {

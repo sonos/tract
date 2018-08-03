@@ -19,7 +19,7 @@ impl Cast {
 
 impl ::ops::Op for Cast {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut _inputs: Vec<Value>) -> Result<Vec<Value>> {
         panic!(
             "nope, fixme. parse two args in build to get src and dst types, then generalize (macro ?)"
         );

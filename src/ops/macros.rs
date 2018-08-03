@@ -1,10 +1,10 @@
 macro_rules! element_map_float {
     ($Name:ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
-            let datatype = pb.get_attr_datatype("T")?;
-            let it = match datatype {
-                $crate::DataType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
-                $crate::DataType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
+            let datum_type = pb.get_attr_datum_type("T")?;
+            let it = match datum_type {
+                $crate::DatumType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
+                $crate::DatumType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
                 _ => unimplemented!("missing type"),
             };
             Ok(it)
@@ -18,14 +18,14 @@ macro_rules! element_map_float {
         impl<T: $crate::tensor::Datum + ::num_traits::Float> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DataType(T::datatype()) }
+                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
             }
 
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: Vec<$crate::ops::TensorView>,
-            ) -> $crate::Result<Vec<$crate::ops::TensorView>> {
+                mut inputs: Vec<$crate::ops::Value>,
+            ) -> $crate::Result<Vec<$crate::ops::Value>> {
                 let a = args_1!(inputs);
                 let mut a = T::tensor_into_array(a.into_tensor())?;
                 a.mapv_inplace($expr);
@@ -35,11 +35,11 @@ macro_rules! element_map_float {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                mut inputs: Vec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+            ) -> Result<Option<Vec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
-                match a.1 {
+                match a.into_value() {
                     None => Ok(None),
                     Some(tv) => Ok(Some(self.eval(vec![tv])?)),
                 }
@@ -58,9 +58,9 @@ macro_rules! element_map_float {
                     .equals(&inputs.len, 1)
                     .equals(&outputs.len, 1)
                     .equals_all(wrap![
-                        &inputs[0].datatype,
-                        &outputs[0].datatype,
-                        &T::datatype()
+                        &inputs[0].datum_type,
+                        &outputs[0].datum_type,
+                        &T::datum_type()
                     ])
                     .equals(&inputs[0].shape, &outputs[0].shape);
             }
@@ -71,11 +71,11 @@ macro_rules! element_map_float {
 macro_rules! element_map_signed {
     ($Name:ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
-            let datatype = pb.get_attr_datatype("T")?;
-            let it = match datatype {
-                $crate::DataType::I32 => Box::new($Name::<i32>::new()) as Box<Op>,
-                $crate::DataType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
-                $crate::DataType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
+            let datum_type = pb.get_attr_datum_type("T")?;
+            let it = match datum_type {
+                $crate::DatumType::I32 => Box::new($Name::<i32>::new()) as Box<Op>,
+                $crate::DatumType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
+                $crate::DatumType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
                 _ => unimplemented!("missing type"),
             };
             Ok(it)
@@ -89,14 +89,14 @@ macro_rules! element_map_signed {
         impl<T: $crate::tensor::Datum + ::num_traits::Signed> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DataType(T::datatype()) }
+                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
             }
 
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: Vec<$crate::ops::TensorView>,
-            ) -> $crate::Result<Vec<$crate::ops::TensorView>> {
+                mut inputs: Vec<$crate::ops::Value>,
+            ) -> $crate::Result<Vec<$crate::ops::Value>> {
                 let a = args_1!(inputs);
                 let mut a = T::tensor_into_array(a.into_tensor())?;
                 a.mapv_inplace($expr);
@@ -106,11 +106,11 @@ macro_rules! element_map_signed {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                mut inputs: Vec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+            ) -> Result<Option<Vec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
-                match a.1 {
+                match a.into_value() {
                     None => Ok(None),
                     Some(tv) => Ok(Some(self.eval(vec![tv])?)),
                 }
@@ -129,9 +129,9 @@ macro_rules! element_map_signed {
                     .equals(&inputs.len, 1)
                     .equals(&outputs.len, 1)
                     .equals_all(wrap![
-                        &inputs[0].datatype,
-                        &outputs[0].datatype,
-                        &T::datatype()
+                        &inputs[0].datum_type,
+                        &outputs[0].datum_type,
+                        &T::datum_type()
                     ])
                     .equals(&inputs[0].shape, &outputs[0].shape);
             }
@@ -145,21 +145,21 @@ macro_rules! element_bin {
         pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-            let dtype = pb.get_attr_datatype("T")?;
+            let dtype = pb.get_attr_datum_type("T")?;
             Ok(boxed_new!($Name(dtype)()))
         }
 
         impl<T: ::tensor::Datum> Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => ::ops::Attr::DataType(T::datatype()) }
+                hashmap!{ "T" => ::ops::Attr::DatumType(T::datum_type()) }
             }
 
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: Vec<$crate::ops::TensorView>,
-            ) -> Result<Vec<$crate::ops::TensorView>> {
+                mut inputs: Vec<$crate::ops::Value>,
+            ) -> Result<Vec<$crate::ops::Value>> {
                 let (a, b) = args_2!(inputs);
                 let a = T::tensor_into_array(a.into_tensor())?;
                 let b = T::tensor_to_view(&*b)?;
@@ -174,15 +174,15 @@ macro_rules! element_bin {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                inputs: Vec<$crate::ops::StepValue>,
                 buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+            ) -> Result<Option<Vec<$crate::ops::Value>>> {
                 let buffer = buffer.downcast_mut::<$crate::ops::QueuesBuffer>()
                     .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
 
                 // If we don't have a value for some of the inputs yet, we buffer
                 // the current values to reuse them on the next call.
-                buffer.append(&mut inputs)?;
+                buffer.append(inputs)?;
 
                 if buffer[0].is_empty() || buffer[1].is_empty() {
                     Ok(None)
@@ -208,7 +208,7 @@ macro_rules! element_bin {
 
                 solver
                     .equals(&outputs.len, 1)
-                    .equals_all(wrap![&a.datatype, &b.datatype, &c.datatype, &T::datatype()])
+                    .equals_all(wrap![&a.datum_type, &b.datum_type, &c.datum_type, &T::datum_type()])
                     .given(&a.shape, move |solver, a_shape| {
                         solver.given(&b.shape, move |solver, b_shape| {
                             if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(vec!(&a_shape, &b_shape)) {
@@ -272,11 +272,11 @@ macro_rules! args_4 {
 
 macro_rules! boxed_new {
     ($op:tt($dtype:expr)($($arg:expr),*)) => { {
-        use $crate::DataType;
+        use $crate::DatumType;
         match $dtype {
-            DataType::I32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
-            DataType::F32 => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
-            DataType::F64 => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
+            DatumType::I32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
+            DatumType::F32 => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
+            DatumType::F64 => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
             _ => unimplemented!("missing type")
         }
     } }

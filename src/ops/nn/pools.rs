@@ -26,7 +26,7 @@ pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 
 impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let m_input = args_1!(inputs);
         let data = m_input
             .into_tensor()
@@ -80,8 +80,8 @@ impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, DataType::F32)
-            .equals(&outputs[0].datatype, DataType::F32)
+            .equals(&inputs[0].datum_type, DatumType::F32)
+            .equals(&outputs[0].datum_type, DatumType::F32)
             .equals(&inputs[0].rank, 4)
             .equals(&outputs[0].rank, 4)
             .equals(&inputs[0].shape[0], &outputs[0].shape[0])

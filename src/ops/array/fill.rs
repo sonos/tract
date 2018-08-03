@@ -11,7 +11,7 @@ pub struct Fill<T: Datum> {
 }
 
 pub fn fill(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datatype("T")?;
+    let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Fill(dtype)()))
 }
 
@@ -20,7 +20,7 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (shape, value) = args_2!(inputs);
         let value = T::tensor_to_view(&value)?;
         let value = value[[]];
@@ -35,7 +35,7 @@ where
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "T"    => Attr::DataType(T::datatype()),
+            "T"    => Attr::DatumType(T::datum_type()),
         }
     }
 }
@@ -50,7 +50,7 @@ impl<T: Datum> InferenceRulesOp for Fill<T> {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datatype, T::datatype())
+            .equals(&outputs[0].datum_type, T::datum_type())
             .equals(&inputs[0].rank, 1)
             .equals(&inputs[1].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].shape[0])

@@ -3,42 +3,13 @@ use pbr::ProgressBar;
 use simplelog::Level::Info;
 
 use errors::*;
-use utils::random_tensor;
-use {InputParameters, OutputParameters, Parameters, ProfilingMode};
+use {OutputParameters, Parameters, ProfilingMode};
 
 use format::*;
 use profile::ProfileData;
 use rusage::{Duration, Instant};
 
-use tfdeploy::ModelState;
-
-fn make_state(params: &Parameters) -> Result<ModelState> {
-    let ref model = params.tfd_model;
-    let mut state = model.state();
-    let shape: Vec<usize> = params
-        .input
-        .as_ref()
-        .unwrap()
-        .shape
-        .iter()
-        .map(|s| s.unwrap())
-        .collect(); // checked by clap and dispatcher
-                    // First fill the inputs with randomly generated values.
-    for s in &params.input_node_ids {
-        let given_input: &InputParameters = params
-            .input
-            .as_ref()
-            .ok_or("Exactly one of <size> or <data> must be specified.")?;
-        let data = if let Some(value) = given_input.data.as_ref() {
-            value.clone()
-        } else {
-            random_tensor(shape.clone(), given_input.datatype)
-        };
-
-        state.set_value(*s, data)?;
-    }
-    Ok(state)
-}
+use tfdeploy::plan::{ SimplePlan, SimpleState };
 
 pub fn handle_benching(
     params: Parameters,
@@ -56,15 +27,12 @@ pub fn handle_benching(
     };
 
     let ref model = params.tfd_model;
-    let state = make_state(&params)?;
-
-    let plan = model.plan_for_one(params.output_node_id)?;
+    let plan = SimplePlan::new(model, &params.input_nodes, &[params.output_node])?;
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let mut cloned = state.clone();
-        let _ = plan.run(&mut cloned)?;
+        let _ = plan.run(vec!(params.input.as_ref().unwrap().to_tensor()?))?;
         iters += 1;
     }
     let dur = Duration::since(&start, iters);
@@ -92,16 +60,13 @@ pub fn handle(
     };
 
     let ref model = params.tfd_model;
-    let output = model.get_node_by_id(params.output_node_id)?;
-    let mut state = make_state(&params)?;
 
-    let plan = model.plan_for_one(params.output_node_id)?;
     info!("Running entire network");
+    let plan = SimplePlan::new(model, &params.input_nodes, &[params.output_node])?;
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let mut cloned = state.clone();
-        let _ = plan.run(&mut cloned)?;
+        let _ = plan.run(vec!(params.input.as_ref().unwrap().to_tensor()?))?;
         iters += 1;
     }
     let entire = Duration::since(&start, iters);
@@ -109,11 +74,11 @@ pub fn handle(
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
 
-    let plan = output.eval_order(&model)?;
+    let mut state = SimpleState::new(&plan)?;
     debug!("Using execution plan: {:?}", plan);
 
     let mut profile = ProfileData::new(model);
-    let mut progress = ProgressBar::new(plan.len() as u64);
+    let mut progress = ProgressBar::new(plan.order.len() as u64);
 
     if log_enabled!(Info) {
         println!();
@@ -121,8 +86,8 @@ pub fn handle(
     }
 
     // Then execute the plan while profiling each step.
-    for n in plan {
-        let node = model.get_node_by_id(n)?;
+    for &n in &plan.order {
+        let node = &model.nodes[n];
 
         if atty::is(atty::Stream::Stdout) {
             progress.inc();
@@ -131,7 +96,7 @@ pub fn handle(
         if node.op_name == "Placeholder" {
             if log_enabled!(Info) {
                 print_node(
-                    node,
+                    &node,
                     &params.graph,
                     Some(&state),
                     &["SKIP".yellow().to_string()],
@@ -155,7 +120,7 @@ pub fn handle(
         // Print the results for the node.
         if log_enabled!(Info) {
             print_node(
-                node,
+                &node,
                 &params.graph,
                 Some(&state),
                 &[format!("{:.3} ms/i", measure.avg_real() * 1e3)
