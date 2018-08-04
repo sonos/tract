@@ -7,8 +7,8 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 error-chain =  "0"
 log = "0.4"
 ndarray = "0"
-proptest = "0.6"
-protobuf = "~1.6"
+proptest = "0.8"
+protobuf = "2.0"
 simplelog = "0.5"
 tensorflow = "0"
 tfdeploy = { path = ".." }

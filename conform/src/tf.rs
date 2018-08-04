@@ -4,9 +4,9 @@ use std::{fs, path};
 
 use tensorflow::DataType;
 use tensorflow::Graph;
-use tensorflow::OutputToken;
+use tensorflow::FetchToken;
 use tensorflow::Session;
-use tensorflow::StepWithGraph;
+use tensorflow::SessionRunArgs;
 use tensorflow::Tensor;
 
 use tfdeploy::Tensor as TfdTensor;
@@ -85,20 +85,20 @@ impl Tensorflow {
             .map(|(name, mat)| (name, mat.into()))
             .collect();
 
-        let mut step = StepWithGraph::new();
+        let mut step = SessionRunArgs::new();
         for t in &tensors {
             let op = self.graph.operation_by_name_required(t.0)?;
             match t.1 {
-                TensorHolder::F64(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::F32(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::I32(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::U8(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::I8(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::String(ref it) => step.add_input(&op, 0, &it),
+                TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::U8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::String(ref it) => step.add_feed(&op, 0, &it),
             }
         }
 
-        let token = step.request_output(&self.graph.operation_by_name_required(output_name)?, 0);
+        let token = step.request_fetch(&self.graph.operation_by_name_required(output_name)?, 0);
         self.session.run(&mut step)?;
 
         let output_type = &self.graph
@@ -120,16 +120,16 @@ impl Tensorflow {
             excluded.insert(name.to_string());
         }
 
-        let mut step = StepWithGraph::new();
+        let mut step = SessionRunArgs::new();
         for t in &tensors {
             let op = self.graph.operation_by_name_required(t.0)?;
             match t.1 {
-                TensorHolder::F64(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::F32(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::I32(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::U8(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::I8(ref it) => step.add_input(&op, 0, &it),
-                TensorHolder::String(ref it) => step.add_input(&op, 0, &it),
+                TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::U8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::String(ref it) => step.add_feed(&op, 0, &it),
             }
         }
 
@@ -142,7 +142,7 @@ impl Tensorflow {
                 continue;
             }
 
-            tokens.insert(name, step.request_output(&operation, 0));
+            tokens.insert(name, step.request_fetch(&operation, 0));
         }
 
         // Execute the graph using tensorflow.
@@ -161,13 +161,13 @@ impl Tensorflow {
 
 /// Converts the output of a Tensorflow node into a Vec<TfdTensor>.
 fn convert_output(
-    step: &mut StepWithGraph,
+    step: &mut SessionRunArgs,
     output_type: &DataType,
-    output: OutputToken,
+    output: FetchToken,
 ) -> Result<Vec<TfdTensor>> {
     macro_rules! convert {
         ($dt:ident) => {
-            TfdTensor::$dt(tensor_to_array(&step.take_output(output)?)?)
+            TfdTensor::$dt(tensor_to_array(&step.fetch(output)?)?)
         };
     };
 
