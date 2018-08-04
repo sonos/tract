@@ -3,8 +3,8 @@ macro_rules! element_map_float {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
             let datatype = pb.get_attr_datatype("T")?;
             let it = match datatype {
-                $crate::tfpb::types::DataType::DT_FLOAT => Box::new($Name::<f32>::new()) as Box<Op>,
-                $crate::tfpb::types::DataType::DT_DOUBLE => {
+                $crate::DataType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
+                $crate::DataType::F64 => {
                     Box::new($Name::<f64>::new()) as Box<Op>
                 }
                 _ => unimplemented!("missing type"),
@@ -75,11 +75,9 @@ macro_rules! element_map_signed {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
             let datatype = pb.get_attr_datatype("T")?;
             let it = match datatype {
-                $crate::tfpb::types::DataType::DT_INT32 => Box::new($Name::<i32>::new()) as Box<Op>,
-                $crate::tfpb::types::DataType::DT_FLOAT => Box::new($Name::<f32>::new()) as Box<Op>,
-                $crate::tfpb::types::DataType::DT_DOUBLE => {
-                    Box::new($Name::<f64>::new()) as Box<Op>
-                }
+                $crate::DataType::I32 => Box::new($Name::<i32>::new()) as Box<Op>,
+                $crate::DataType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
+                $crate::DataType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
                 _ => unimplemented!("missing type"),
             };
             Ok(it)
@@ -276,11 +274,11 @@ macro_rules! args_4 {
 
 macro_rules! boxed_new {
     ($op:tt($dtype:expr)($($arg:expr),*)) => { {
-        use tfpb::types::DataType;
+        use $crate::DataType;
         match $dtype {
-            DataType::DT_INT32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
-            DataType::DT_FLOAT => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
-            DataType::DT_DOUBLE => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
+            DataType::I32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
+            DataType::F32 => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
+            DataType::F64 => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
             _ => unimplemented!("missing type")
         }
     } }

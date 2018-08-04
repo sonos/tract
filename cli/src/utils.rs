@@ -3,8 +3,7 @@ use errors::Result as CliResult;
 use ndarray;
 use rand;
 use rand::Rng;
-use tfdeploy::tfpb::types::DataType;
-use tfdeploy::Tensor;
+use tfdeploy::{ DataType, Tensor };
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]
@@ -53,11 +52,11 @@ pub fn random_tensor(sizes: Vec<usize>, datatype: DataType) -> Tensor {
     }
 
     match datatype {
-        DataType::DT_DOUBLE => for_type!(f64).into(),
-        DataType::DT_FLOAT => for_type!(f32).into(),
-        DataType::DT_INT32 => for_type!(i32).into(),
-        DataType::DT_INT8 => for_type!(i8).into(),
-        DataType::DT_UINT8 => for_type!(u8).into(),
+        DataType::F64 => for_type!(f64).into(),
+        DataType::F32 => for_type!(f32).into(),
+        DataType::I32 => for_type!(i32).into(),
+        DataType::I8 => for_type!(i8).into(),
+        DataType::U8 => for_type!(u8).into(),
         _ => unimplemented!("missing type"),
     }
 }

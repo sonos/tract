@@ -6,7 +6,7 @@ use Result;
 use num_traits::cast::ToPrimitive;
 use num_traits::CheckedDiv;
 
-use tfpb::types::DataType;
+use DataType;
 use Tensor;
 
 /// Partial information about any value.

@@ -93,8 +93,8 @@ fn rules<'r, 'p: 'r>(
 ) {
     solver
         .equals(&batch.datatype, &space.datatype)
-        .equals(&block_shape.datatype, DataType::DT_INT32)
-        .equals(&paddings.datatype, DataType::DT_INT32)
+        .equals(&block_shape.datatype, DataType::I32)
+        .equals(&paddings.datatype, DataType::I32)
         .equals(&batch.rank, &space.rank)
         .equals(&block_shape.rank, 1)
         .equals(&paddings.rank, 2)

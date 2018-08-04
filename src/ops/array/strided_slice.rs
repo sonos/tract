@@ -175,9 +175,9 @@ impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
         solver
             .equals(&inputs.len, 4)
             .equals(&outputs.len, 1)
-            .equals(&inputs[1].datatype, DataType::DT_INT32)
-            .equals(&inputs[2].datatype, DataType::DT_INT32)
-            .equals(&inputs[3].datatype, DataType::DT_INT32)
+            .equals(&inputs[1].datatype, DataType::I32)
+            .equals(&inputs[2].datatype, DataType::I32)
+            .equals(&inputs[3].datatype, DataType::I32)
             .equals(&inputs[0].datatype, &outputs[0].datatype)
             .equals(&inputs[1].rank, 1)
             .equals(&inputs[2].rank, 1)

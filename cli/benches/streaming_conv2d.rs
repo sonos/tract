@@ -6,14 +6,13 @@ extern crate tfdeploy;
 
 use criterion::Criterion;
 use ndarray::Axis;
-use tfdeploy::tfpb::types::DataType;
 use tfdeploy::*;
 
 #[path = "../src/utils.rs"]
 mod utils;
 
 fn streaming_conv2d(c: &mut Criterion) {
-    let datatype = DataType::DT_FLOAT;
+    let datatype = DataType::F32;
     let model = tfdeploy::for_path("../tests/models/conv2d-large.pb").unwrap();
     let output = analyser::detect_output(&model).unwrap().unwrap();
 

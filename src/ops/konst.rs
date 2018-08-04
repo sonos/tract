@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use super::{Attr, Op, OpRegister, TensorView};
 use analyser::interface::*;
 use std::sync::Arc;
-use tfpb::types::DataType;
-use {Result, Tensor};
+use {DataType, Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);

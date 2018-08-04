@@ -78,7 +78,7 @@ use std::{fs, path, str};
 use analyser::helpers::tensor_to_fact;
 pub use errors::*;
 use ops::{Op, OpBuffer, TensorView};
-pub use tensor::Tensor;
+pub use tensor::{ DataType, Tensor };
 
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone)]

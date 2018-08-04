@@ -40,9 +40,8 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
-use tfdeploy::Tensor;
+use tfdeploy::{ DataType, Tensor };
 use tfpb::graph::GraphDef;
-use tfpb::types::DataType;
 
 use errors::*;
 #[allow(unused_imports)]
@@ -260,11 +259,11 @@ impl InputParameters {
         }
 
         let datatype = match datatype.to_lowercase().as_str() {
-            "f64" => DataType::DT_DOUBLE,
-            "f32" => DataType::DT_FLOAT,
-            "i32" => DataType::DT_INT32,
-            "i8" => DataType::DT_INT8,
-            "u8" => DataType::DT_UINT8,
+            "f64" => DataType::F64,
+            "f32" => DataType::F32,
+            "i32" => DataType::I32,
+            "i8" => DataType::I8,
+            "u8" => DataType::U8,
             _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
         };
 
@@ -306,11 +305,11 @@ impl InputParameters {
         }
 
         let tensor = match datatype {
-            DataType::DT_DOUBLE => for_type!(f64).into(),
-            DataType::DT_FLOAT => for_type!(f32).into(),
-            DataType::DT_INT32 => for_type!(i32).into(),
-            DataType::DT_INT8 => for_type!(i8).into(),
-            DataType::DT_UINT8 => for_type!(u8).into(),
+            DataType::F64 => for_type!(f64).into(),
+            DataType::F32 => for_type!(f32).into(),
+            DataType::I32 => for_type!(i32).into(),
+            DataType::I8 => for_type!(i8).into(),
+            DataType::U8 => for_type!(u8).into(),
             _ => unimplemented!(),
         };
 

@@ -1,10 +1,48 @@
 //! `Tensor` is the equivalent of Tensorflow Tensor.
 use ndarray::prelude::*;
 use std::fmt;
-use tfpb::types::DataType;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub enum DataType {
+    U8,
+    I8,
+    I32,
+    F32,
+    F64,
+    String
+}
+
+impl DataType {
+    pub fn from_pb(t: &::tfpb::types::DataType) -> ::Result<DataType> {
+        use ::tfpb::types::DataType as Tfpb;
+        match t {
+            &Tfpb::DT_UINT8 => Ok(DataType::U8),
+            &Tfpb::DT_INT8 => Ok(DataType::I8),
+            &Tfpb::DT_INT32 => Ok(DataType::I32),
+            &Tfpb::DT_FLOAT => Ok(DataType::F32),
+            &Tfpb::DT_DOUBLE => Ok(DataType::F64),
+            &Tfpb::DT_STRING => Ok(DataType::String),
+            _ => Err(format!("Unknown DataType {:?}", t))?
+        }
+    }
+
+    pub fn to_pb(&self) -> ::tfpb::types::DataType {
+        use ::tfpb::types::DataType as Tfpb;
+        match self {
+            DataType::U8 => Tfpb::DT_UINT8,
+            DataType::I8 => Tfpb::DT_INT8,
+            DataType::I32 => Tfpb::DT_INT32,
+            DataType::F32 => Tfpb::DT_FLOAT,
+            DataType::F64 => Tfpb::DT_DOUBLE,
+            DataType::String => Tfpb::DT_STRING,
+        }
+    }
+}
+
 
 pub trait Datum:
     Copy
@@ -96,15 +134,15 @@ impl Tensor {
         tensor.set_tensor_shape(shape);
         match self {
             &Tensor::F32(ref it) => {
-                tensor.set_dtype(DataType::DT_FLOAT);
+                tensor.set_dtype(DataType::F32.to_pb());
                 tensor.set_float_val(it.iter().cloned().collect());
             }
             &Tensor::F64(ref it) => {
-                tensor.set_dtype(DataType::DT_DOUBLE);
+                tensor.set_dtype(DataType::F64.to_pb());
                 tensor.set_double_val(it.iter().cloned().collect());
             }
             &Tensor::I32(ref it) => {
-                tensor.set_dtype(DataType::DT_INT32);
+                tensor.set_dtype(DataType::I32.to_pb());
                 tensor.set_int_val(it.iter().cloned().collect());
             }
             _ => unimplemented!("missing type"),
@@ -123,14 +161,13 @@ impl Tensor {
         }
     }
 
-    pub fn datatype(&self) -> ::tfpb::types::DataType {
-        use tfpb::types::DataType;
+    pub fn datatype(&self) -> DataType {
         match self {
-            &Tensor::F64(_) => DataType::DT_DOUBLE,
-            &Tensor::F32(_) => DataType::DT_FLOAT,
-            &Tensor::I32(_) => DataType::DT_INT32,
-            &Tensor::I8(_) => DataType::DT_INT8,
-            &Tensor::U8(_) => DataType::DT_UINT8,
+            &Tensor::F64(_) => DataType::F64,
+            &Tensor::F32(_) => DataType::F32,
+            &Tensor::I32(_) => DataType::I32,
+            &Tensor::I8(_) => DataType::I8,
+            &Tensor::U8(_) => DataType::U8,
             _ => unimplemented!("missing type"),
         }
     }
@@ -245,7 +282,7 @@ impl Serialize for Tensor {
 }
 
 macro_rules! tensor {
-    ($t:ident, $pbt:ident, $v:ident, $as:ident, $take:ident, $make:ident) => {
+    ($t:ident, $v:ident, $as:ident, $take:ident, $make:ident) => {
         impl<D: ::ndarray::Dimension> From<Array<$t, D>> for Tensor {
             fn from(it: Array<$t, D>) -> Tensor {
                 Tensor::$v(it.into_dyn())
@@ -290,7 +327,7 @@ macro_rules! tensor {
             }
 
             fn datatype() -> DataType {
-                DataType::$pbt
+                DataType::$v
             }
 
             fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>> {
@@ -310,11 +347,11 @@ macro_rules! tensor {
     };
 }
 
-tensor!(f64, DT_DOUBLE, F64, as_f64s, take_f64s, f64s);
-tensor!(f32, DT_FLOAT, F32, as_f32s, take_f32s, f32s);
-tensor!(i32, DT_INT32, I32, as_i32s, take_i32s, i32s);
-tensor!(u8, DT_UINT8, U8, as_u8s, take_u8s, u8s);
-tensor!(i8, DT_INT8, I8, as_i8s, take_i8s, i8s);
+tensor!(f64, F64, as_f64s, take_f64s, f64s);
+tensor!(f32, F32, as_f32s, take_f32s, f32s);
+tensor!(i32, I32, as_i32s, take_i32s, i32s);
+tensor!(u8, U8, as_u8s, take_u8s, u8s);
+tensor!(i8, I8, as_i8s, take_i8s, i8s);
 
 #[macro_export]
 macro_rules! map_tensor {

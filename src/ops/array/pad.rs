@@ -105,7 +105,7 @@ impl<T: Datum> InferenceRulesOp for Pad<T> {
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
             .equals(&output.datatype, &input.datatype)
-            .equals(&padding.datatype, DataType::DT_INT32)
+            .equals(&padding.datatype, DataType::I32)
             .equals(&input.rank, &output.rank)
             .equals(&padding.rank, 2)
             .equals(&padding.shape[0], &input.rank)

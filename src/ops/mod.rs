@@ -11,8 +11,7 @@ use std::sync::Arc;
 use analyser::interface::{Solver, TensorsProxy};
 use analyser::prelude::*;
 use ops::nn::local_patch::{DataFormat, Padding};
-use tfpb::types::DataType;
-use {Result, Tensor};
+use {DataType, Result, Tensor};
 
 use downcast_rs::Downcast;
 use objekt;
@@ -35,8 +34,7 @@ pub mod prelude {
     pub use super::{OpBuffer, QueuesBuffer, TensorView};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use tensor::{Datum, Tensor};
-    pub use tfpb::types::DataType;
+    pub use tensor::{DataType, Datum, Tensor};
     pub use Result;
 }
 

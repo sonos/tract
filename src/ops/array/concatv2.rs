@@ -126,7 +126,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
             .equals(&outputs.len, 1)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].datatype)).collect())
             .equals(&outputs[0].datatype, &inputs[0].datatype)
-            .equals(&inputs[n].datatype, DataType::DT_INT32)
+            .equals(&inputs[n].datatype, DataType::I32)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
             .equals(&inputs[n].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].rank)

@@ -9,9 +9,7 @@ use analyser::interface::proxies::ComparableProxy;
 use analyser::interface::solver::Context;
 use analyser::types::SpecialKind;
 use analyser::types::{DimFact, Fact, IntFact, ShapeFact, TypeFact, ValueFact};
-use tensor::Tensor;
-use tfpb::types::DataType;
-use Result;
+use ::{ DataType, Tensor, Result };
 
 /// A trait for values produced by expressions.
 pub trait Output: fmt::Debug + Clone + PartialEq {

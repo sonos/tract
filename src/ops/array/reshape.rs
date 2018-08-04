@@ -57,7 +57,7 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datatype, T::datatype())
-            .equals(&inputs[1].datatype, DataType::DT_INT32)
+            .equals(&inputs[1].datatype, DataType::I32)
             .equals(&outputs[0].datatype, T::datatype())
             .equals(&inputs[1].rank, 1)
             .given(&inputs[0].rank, move |solver, input_rank| {

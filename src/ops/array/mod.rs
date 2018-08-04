@@ -92,7 +92,7 @@ impl InferenceRulesOp for ExpandDims {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&dims.datatype, DataType::DT_INT32)
+            .equals(&dims.datatype, DataType::I32)
             .equals(&dims.rank, 0)
             .equals(&data.datatype, &output.datatype)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
@@ -248,7 +248,7 @@ impl InferenceRulesOp for Shape {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datatype, DataType::DT_INT32)
+            .equals(&outputs[0].datatype, DataType::I32)
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
@@ -295,13 +295,13 @@ mod tests {
     #[test]
     fn shape_inference_1() {
         let input = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
+            datatype: typefact!(DataType::F32),
             shape: shapefact![1, _, _; ..],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![_],
             value: valuefact!(_),
         };
@@ -312,13 +312,13 @@ mod tests {
     #[test]
     fn shape_inference_2() {
         let input = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
+            datatype: typefact!(DataType::F32),
             shape: shapefact![1, _, _],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![3],
             value: valuefact!(_),
         };
@@ -329,13 +329,13 @@ mod tests {
     #[test]
     fn shape_inference_3() {
         let input = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
+            datatype: typefact!(DataType::F32),
             shape: shapefact![1, 2, 3],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };
@@ -352,7 +352,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };

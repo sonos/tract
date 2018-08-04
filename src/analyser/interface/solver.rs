@@ -403,7 +403,6 @@ mod tests {
     use super::*;
 
     use analyser::interface::TensorsProxy;
-    use tfpb::types::DataType;
 
     fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
         (
@@ -443,7 +442,7 @@ mod tests {
     #[test]
     fn solver_dynamic_size() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[1].datatype, DataType::DT_INT32);
+        solver.equals(&inputs[1].datatype, DataType::I32);
 
         let facts = solver
             .infer((vec![TensorFact::new(), TensorFact::new()], vec![]))
@@ -452,7 +451,7 @@ mod tests {
             vec![
                 TensorFact::new(),
                 TensorFact {
-                    datatype: typefact!(DataType::DT_INT32),
+                    datatype: typefact!(DataType::I32),
                     ..TensorFact::new()
                 },
             ],

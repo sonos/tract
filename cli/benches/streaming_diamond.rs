@@ -6,14 +6,13 @@ extern crate rand;
 
 use ndarray::Axis;
 use tfdeploy::*;
-use tfdeploy::tfpb::types::DataType;
 use criterion::Criterion;
 
 #[path = "../src/utils.rs"]
 mod utils;
 
 fn streaming_diamond(c: &mut Criterion) {
-    let datatype = DataType::DT_FLOAT;
+    let datatype = DataType::F32;
     let model = tfdeploy::for_path("../tests/models/diamond.pb").unwrap();
     let output = analyser::detect_output(&model).unwrap().unwrap();
 

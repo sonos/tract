@@ -6,7 +6,7 @@ use analyser::interface::*;
 pub enum StreamingInput {
     // The input is being streamed. We pass its datatype and shape along,
     // using None to denote the streaming dimension.
-    Streamed(tfpb::types::DataType, Vec<Option<usize>>),
+    Streamed(DataType, Vec<Option<usize>>),
 
     // The input will remain constant during the evaluation.
     Constant(Tensor),
