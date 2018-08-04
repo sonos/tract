@@ -7,4 +7,4 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 members = []
 
 [dependencies]
-protoc-rust = "1.5"
+protoc-rust = "2.0"

@@ -38,7 +38,12 @@ impl ::ops::Op for Cast {
 }
 
 impl InferenceRulesOp for Cast {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        _: &mut Solver<'r>,
+        _: &'p TensorsProxy,
+        _: &'p TensorsProxy,
+    ) {
         unimplemented!("Cast op")
     }
 }

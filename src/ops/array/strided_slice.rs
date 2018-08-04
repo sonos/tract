@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use ndarray::prelude::*;
 use analyser::interface::*;
+use ndarray::prelude::*;
 use ops::prelude::*;
 use tensor::Datum;
 use Result;
@@ -12,11 +12,15 @@ pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
     let datatype = pb.get_attr_datatype("T")?;
-    Ok(boxed_new!(StridedSlice(datatype)(begin_mask, end_mask, shrink_axis_mask)))
+    Ok(boxed_new!(StridedSlice(datatype)(
+        begin_mask,
+        end_mask,
+        shrink_axis_mask
+    )))
 }
 
 #[derive(Debug, Default, Clone, new)]
-pub struct StridedSlice<T:Datum> {
+pub struct StridedSlice<T: Datum> {
     begin_mask: i64,
     end_mask: i64,
     shrink_axis_mask: i64,
@@ -31,11 +35,18 @@ struct Dim {
     shrink: bool,
 }
 
-impl<T:Datum> StridedSlice<T> {
+impl<T: Datum> StridedSlice<T> {
     fn must_shrink(&self, ix: usize) -> bool {
         self.shrink_axis_mask & 1 << ix != 0
     }
-    fn prepare_one_dim(&self, ix:usize, dim:usize, begin: &ArrayView1<i32>, end:&ArrayView1<i32>, strides:&ArrayView1<i32>) -> Dim {
+    fn prepare_one_dim(
+        &self,
+        ix: usize,
+        dim: usize,
+        begin: &ArrayView1<i32>,
+        end: &ArrayView1<i32>,
+        strides: &ArrayView1<i32>,
+    ) -> Dim {
         let dim = dim as i32;
         // deal with too small dim begin/end/stride for input rank
         if ix >= begin.len() {
@@ -93,12 +104,23 @@ impl<T:Datum> StridedSlice<T> {
             shrink: false,
         }
     }
-    fn prepare(&self, input_shape:&[usize], begin: &ArrayView1<i32>, end:&ArrayView1<i32>, strides:&ArrayView1<i32>) -> (Vec<Dim>, Vec<usize>, Vec<usize>) {
-        trace!("StridedSlice {:?} computing shapes: input_shape:{:?} begin:{:?} end:{:?} strides:{:?}", self, input_shape, begin, end, strides);
+    fn prepare(
+        &self,
+        input_shape: &[usize],
+        begin: &ArrayView1<i32>,
+        end: &ArrayView1<i32>,
+        strides: &ArrayView1<i32>,
+    ) -> (Vec<Dim>, Vec<usize>, Vec<usize>) {
+        trace!(
+            "StridedSlice {:?} computing shapes: input_shape:{:?} begin:{:?} end:{:?} strides:{:?}",
+            self,
+            input_shape,
+            begin,
+            end,
+            strides
+        );
         let bounds: Vec<Dim> = (0..input_shape.len())
-            .map(|ix| {
-                self.prepare_one_dim(ix, input_shape[ix], begin, end, strides)
-            })
+            .map(|ix| self.prepare_one_dim(ix, input_shape[ix], begin, end, strides))
             .collect();
         let mid_shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
         let end_shape: Vec<usize> = bounds.iter().filter(|d| !d.shrink).map(|d| d.len).collect();
@@ -106,7 +128,7 @@ impl<T:Datum> StridedSlice<T> {
     }
 }
 
-impl<T:Datum> Op for StridedSlice<T> {
+impl<T: Datum> Op for StridedSlice<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (input, begin, end, strides) = args_4!(inputs);
@@ -114,7 +136,12 @@ impl<T:Datum> Op for StridedSlice<T> {
         let begin = begin.as_i32s().ok_or("Begin expected as I32")?;
         let end = end.as_i32s().ok_or("End expected as I32")?;
         let strides = strides.as_i32s().ok_or("Strides expected as I32")?;
-        let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), &begin.view().into_dimensionality()?, &end.view().into_dimensionality()?, &strides.view().into_dimensionality()?);
+        let (bounds, mid_shape, end_shape) = self.prepare(
+            input.shape(),
+            &begin.view().into_dimensionality()?,
+            &end.view().into_dimensionality()?,
+            &strides.view().into_dimensionality()?,
+        );
         let output = Array::from_shape_fn(mid_shape, |coords| {
             let coord: Vec<_> = coords
                 .slice()
@@ -138,38 +165,65 @@ impl<T:Datum> Op for StridedSlice<T> {
     }
 }
 
-impl<T:Datum> InferenceRulesOp for StridedSlice<T> {
-    fn rules<'r, 'p: 'r, 's:'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 4)
             .equals(&outputs.len, 1)
-            .equals(&inputs[1].datatype, DataType::DT_INT32)
-            .equals(&inputs[2].datatype, DataType::DT_INT32)
-            .equals(&inputs[3].datatype, DataType::DT_INT32)
+            .equals(&inputs[1].datatype, DataType::I32)
+            .equals(&inputs[2].datatype, DataType::I32)
+            .equals(&inputs[3].datatype, DataType::I32)
             .equals(&inputs[0].datatype, &outputs[0].datatype)
             .equals(&inputs[1].rank, 1)
             .equals(&inputs[2].rank, 1)
             .equals(&inputs[3].rank, 1)
-            .given(&inputs[0].shape, move |solver, input_shape:ShapeFact| {
-                solver.given(&inputs[1].value, move |solver, begin:Tensor| {
+            .given(&inputs[0].shape, move |solver, input_shape: ShapeFact| {
+                solver.given(&inputs[1].value, move |solver, begin: Tensor| {
                     let input_shape = input_shape.clone();
-                    solver.given(&inputs[2].value, move |solver, end:Tensor| {
+                    solver.given(&inputs[2].value, move |solver, end: Tensor| {
                         let input_shape = input_shape.clone();
                         let begin = begin.clone();
-                        solver.given(&inputs[3].value, move |solver, stride:Tensor| {
-                            let begin = begin.as_i32s().unwrap().view().into_dimensionality().unwrap();
+                        solver.given(&inputs[3].value, move |solver, stride: Tensor| {
+                            let begin = begin
+                                .as_i32s()
+                                .unwrap()
+                                .view()
+                                .into_dimensionality()
+                                .unwrap();
                             let end = end.as_i32s().unwrap().view().into_dimensionality().unwrap();
-                            let stride = stride.as_i32s().unwrap().view().into_dimensionality().unwrap();
-                            let dims:Vec<IntFact> = input_shape.dims.iter().enumerate().filter_map(|(ix, d)|
-                                if self.must_shrink(ix) {
-                                    None
-                                } else {
-                                    match d {
-                                        DimFact::Only(d) => Some(IntFact::Only(self.prepare_one_dim(ix, *d, &begin, &end, &stride).len as _)),
-                                        DimFact::Streamed => Some(IntFact::Special(SpecialKind::Streamed)),
-                                        DimFact::Any => Some(IntFact::Any),
+                            let stride = stride
+                                .as_i32s()
+                                .unwrap()
+                                .view()
+                                .into_dimensionality()
+                                .unwrap();
+                            let dims: Vec<IntFact> = input_shape
+                                .dims
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(ix, d)| {
+                                    if self.must_shrink(ix) {
+                                        None
+                                    } else {
+                                        match d {
+                                            DimFact::Only(d) => Some(IntFact::Only(
+                                                self.prepare_one_dim(ix, *d, &begin, &end, &stride)
+                                                    .len
+                                                    as _,
+                                            )),
+                                            DimFact::Streamed => {
+                                                Some(IntFact::Special(SpecialKind::Streamed))
+                                            }
+                                            DimFact::Any => Some(IntFact::Any),
+                                        }
                                     }
-                                }).collect();
+                                })
+                                .collect();
                             solver.equals(&outputs[0].rank, dims.len() as isize);
                             for (ix, d) in dims.iter().enumerate() {
                                 solver.equals(&outputs[0].shape[ix], *d);

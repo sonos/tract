@@ -4,14 +4,12 @@ use std::marker::PhantomData;
 use num_traits::cast::ToPrimitive;
 use num_traits::CheckedDiv;
 
-use Result;
-use tfpb::types::DataType;
-use tensor::Tensor;
 use analyser::interface::path::Path;
-use analyser::interface::solver::Context;
 use analyser::interface::proxies::ComparableProxy;
-use analyser::types::{Fact, IntFact, TypeFact, ShapeFact, DimFact, ValueFact};
+use analyser::interface::solver::Context;
 use analyser::types::SpecialKind;
+use analyser::types::{DimFact, Fact, IntFact, ShapeFact, TypeFact, ValueFact};
+use {DataType, Result, Tensor};
 
 /// A trait for values produced by expressions.
 pub trait Output: fmt::Debug + Clone + PartialEq {
@@ -43,7 +41,7 @@ macro_rules! impl_output {
                 }
             }
         }
-    }
+    };
 }
 
 impl_output!(IntFact, Int);
@@ -61,18 +59,19 @@ impl Output for DimFact {
         match IntFact::from_wrapped(wrapped)? {
             IntFact::Any => Ok(DimFact::Any),
 
-            IntFact::Only(i) =>
-                i.to_usize()
-                 .ok_or(format!("Tried to convert {:?} to a DimFact.", i).into())
-                 .map(|d| DimFact::Only(d)),
+            IntFact::Only(i) => i.to_usize()
+                .ok_or(format!("Tried to convert {:?} to a DimFact.", i).into())
+                .map(|d| DimFact::Only(d)),
 
-            IntFact::Special(s) =>
-                if s == SpecialKind::Streamed {
-                    Ok(DimFact::Streamed)
-                } else {
-                    bail!("Tried to convert Special({:?}) to a DimFact, but the only\
-                           special value supported by DimFact is Streamed.", s);
-                }
+            IntFact::Special(s) => if s == SpecialKind::Streamed {
+                Ok(DimFact::Streamed)
+            } else {
+                bail!(
+                    "Tried to convert Special({:?}) to a DimFact, but the only\
+                     special value supported by DimFact is Streamed.",
+                    s
+                );
+            },
         }
     }
 }
@@ -177,7 +176,11 @@ impl<T: Output> Expression for ConstantExpression<T> {
         if self.0 == value {
             Ok(())
         } else {
-            bail!("Cannot set the value of constant {:?} to {:?}.", self.0, value);
+            bail!(
+                "Cannot set the value of constant {:?} to {:?}.",
+                self.0,
+                value
+            );
         }
     }
 
@@ -225,7 +228,6 @@ impl<T: Output> fmt::Debug for VariableExpression<T> {
     }
 }
 
-
 /// A scalar product between a constant and another expression.
 pub struct ProductExpression<E>(isize, E)
 where
@@ -233,7 +235,7 @@ where
 
 impl<E> Expression for ProductExpression<E>
 where
-    E: Expression<Output = IntFact>
+    E: Expression<Output = IntFact>,
 {
     type Output = IntFact;
 
@@ -257,11 +259,11 @@ where
             // We want to set k * x <- m, where k and m != 0, so we will try
             // to set x <- m / k using a checked division. This way, if m is
             // not divisible by k, we will return Err instead of panicking.
-            let div = m
-                .checked_div(&(*k).into())
-                .ok_or(format!(
-                    "Cannot set the value of ({:?}, _) to {:?} because \
-                    {:?} is not divisible by {:?}.", k, m, m, k))?;
+            let div = m.checked_div(&(*k).into()).ok_or(format!(
+                "Cannot set the value of ({:?}, _) to {:?} because \
+                 {:?} is not divisible by {:?}.",
+                k, m, m, k
+            ))?;
 
             self.1.set(context, div)
         }
@@ -275,7 +277,7 @@ where
 
 impl<E> fmt::Debug for ProductExpression<E>
 where
-    E: Expression<Output = IntFact>
+    E: Expression<Output = IntFact>,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)
@@ -323,14 +325,20 @@ impl<'a> IntoExpression<ConstantExpression<TypeFact>> for &'a DataType {
 }
 
 /// Converts T: Fact + Output to ConstantExpression<T>.
-impl<T> IntoExpression<ConstantExpression<T>> for T where T: Fact + Output {
+impl<T> IntoExpression<ConstantExpression<T>> for T
+where
+    T: Fact + Output,
+{
     fn into_expr(self) -> ConstantExpression<T> {
         ConstantExpression(self)
     }
 }
 
 // Converts any comparable proxy to VariableExpression<Output>.
-impl<T> IntoExpression<VariableExpression<T::Output>> for T where T: ComparableProxy {
+impl<T> IntoExpression<VariableExpression<T::Output>> for T
+where
+    T: ComparableProxy,
+{
     fn into_expr(self) -> VariableExpression<T::Output> {
         VariableExpression(self.get_path().to_vec().into(), PhantomData)
     }

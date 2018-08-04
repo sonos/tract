@@ -4,10 +4,10 @@ macro_rules! typefact {
     (_) => {
         $crate::analyser::TypeFact::default()
     };
-    ($arg:expr) => ({
+    ($arg:expr) => {{
         let fact: $crate::analyser::TypeFact = $crate::analyser::GenericFact::Only($arg);
         fact
-    });
+    }};
 }
 
 /// Constructs a shape fact.
@@ -43,10 +43,10 @@ macro_rules! valuefact {
     (_) => {
         $crate::analyser::ValueFact::default()
     };
-    ($arg:expr) => ({
+    ($arg:expr) => {{
         let fact: $crate::analyser::ValueFact = $crate::analyser::GenericFact::Only($arg);
         fact
-    });
+    }};
 }
 
 /// Tries to unwrap an option, or returns Ok(None) otherwise.

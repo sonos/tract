@@ -77,8 +77,8 @@ use std::{fs, path, str};
 // use analyser::prelude::*;
 use analyser::helpers::tensor_to_fact;
 pub use errors::*;
-use ops::{Op, TensorView, OpBuffer};
-pub use tensor::Tensor;
+use ops::{Op, OpBuffer, TensorView};
+pub use tensor::{DataType, Tensor};
 
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone)]
@@ -223,12 +223,11 @@ impl Model {
                                 .get(splits[0])
                                 .ok_or(format!("No node {} found", i))?
                                 .clone(),
-
                             if splits.len() > 1 {
                                 Some(splits[1].parse::<usize>()?)
                             } else {
                                 Some(0)
-                            }
+                            },
                         )
                     };
                     Ok((input.0.clone(), input.1))
@@ -406,5 +405,3 @@ impl<'a> ModelState<'a> {
         self.model
     }
 }
-
-

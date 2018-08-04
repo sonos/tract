@@ -1,23 +1,22 @@
 //! TensorFlow Ops
-use std::ops::{Index, IndexMut};
-use std::collections::VecDeque;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt::Debug;
+use std::mem;
+use std::ops::{Index, IndexMut};
 #[cfg(feature = "serialize")]
 use std::result::Result as StdResult;
 use std::sync::Arc;
-use std::mem;
 
-use analyser::prelude::*;
 use analyser::interface::{Solver, TensorsProxy};
+use analyser::prelude::*;
 use ops::nn::local_patch::{DataFormat, Padding};
-use tfpb::types::DataType;
-use {Result, Tensor};
+use {DataType, Result, Tensor};
 
+use downcast_rs::Downcast;
+use objekt;
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
-use objekt;
-use downcast_rs::Downcast;
 
 #[macro_use]
 mod macros;
@@ -31,12 +30,11 @@ mod math;
 pub mod nn;
 
 pub mod prelude {
-    pub use std::collections::HashMap;
-    pub use tfpb::types::DataType;
-    pub use super::{Attr, Op, OpRegister, InferenceRulesOp };
+    pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
     pub use super::{OpBuffer, QueuesBuffer, TensorView};
-    pub use tensor::{Datum, Tensor};
+    pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
+    pub use tensor::{DataType, Datum, Tensor};
     pub use Result;
 }
 
@@ -87,7 +85,7 @@ impl TensorView {
             let dummy = TensorView::Owned(Tensor::i32s(&[], &[0]).unwrap());
             let shared = match mem::replace(self, dummy) {
                 TensorView::Owned(m) => TensorView::Shared(Arc::new(m)),
-                _ => panic!()
+                _ => panic!(),
             };
 
             *self = shared;
@@ -199,9 +197,17 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         let (infered_inputs, infered_outputs) = self.infer(inputs, outputs)?;
 
         if infered_inputs.iter().all(|i| i.value.is_concrete()) {
-            let input_values = infered_inputs.iter().map(|i| i.value.concretize().unwrap().clone().into()).collect(); // checked
+            let input_values = infered_inputs
+                .iter()
+                .map(|i| i.value.concretize().unwrap().clone().into())
+                .collect(); // checked
             let output_value = self.eval(input_values)?.pop().unwrap();
-            Ok((infered_inputs, vec!(::analyser::helpers::tensor_to_fact(output_value.into_tensor()))))
+            Ok((
+                infered_inputs,
+                vec![::analyser::helpers::tensor_to_fact(
+                    output_value.into_tensor(),
+                )],
+            ))
         } else {
             Ok((infered_inputs, infered_outputs))
         }
@@ -213,16 +219,29 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
 }
 
 pub trait InferenceOp {
-    fn infer(&self, inputs: Vec<TensorFact>, outputs: Vec<TensorFact>) -> Result<(Vec<TensorFact>, Vec<TensorFact>)>;
+    fn infer(
+        &self,
+        inputs: Vec<TensorFact>,
+        outputs: Vec<TensorFact>,
+    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)>;
 }
 
 pub trait InferenceRulesOp {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy);
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    );
 }
 
 impl<O: InferenceRulesOp> InferenceOp for O {
-    fn infer(&self, inputs: Vec<TensorFact>, outputs: Vec<TensorFact>) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+    fn infer(
+        &self,
+        inputs: Vec<TensorFact>,
+        outputs: Vec<TensorFact>,
+    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
         let inputs_proxy = TensorsProxy::new(vec![0].into());
         let outputs_proxy = TensorsProxy::new(vec![1].into());
 
@@ -281,14 +300,19 @@ impl Op for UnimplementedOp {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap! {} // FIXME
+        hashmap!{} // FIXME
     }
 }
 
 impl InferenceRulesOp for UnimplementedOp {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, _: &mut Solver<'r>, _: &'p TensorsProxy, _: &'p TensorsProxy) {}
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        _: &mut Solver<'r>,
+        _: &'p TensorsProxy,
+        _: &'p TensorsProxy,
+    ) {
+    }
 }
-
 
 /// A streaming buffer for a Tensorflow operation.
 ///
@@ -307,7 +331,6 @@ impl_downcast!(OpBuffer);
 pub struct EmptyBuffer {}
 
 impl OpBuffer for EmptyBuffer {}
-
 
 /// A buffer with a variable number of TensorView queues.
 #[derive(Debug, Clone)]

@@ -1,16 +1,15 @@
-use ops::prelude::*;
 use analyser::interface::*;
+use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
-pub struct Reshape<T:Datum>(PhantomData<T>);
+pub struct Reshape<T: Datum>(PhantomData<T>);
 
 pub fn reshape(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datatype("T")?;
     Ok(boxed_new!(Reshape(dtype)()))
 }
 
-impl<T:Datum> Reshape<T> {
-
+impl<T: Datum> Reshape<T> {
     /// Computes a vector of dimensions from the `dims` input.
     /// This is needed because `dims` might contain some -1 indices, in which
     /// case we need to infer the value for that index.
@@ -28,7 +27,7 @@ impl<T:Datum> Reshape<T> {
     }
 }
 
-impl<T:Datum> Op for Reshape<T> {
+impl<T: Datum> Op for Reshape<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
         let (input, dims) = args_2!(inputs);
@@ -38,7 +37,7 @@ impl<T:Datum> Op for Reshape<T> {
         let dims = Self::true_dims(dims.iter().cloned().collect(), input.len());
 
         let output = input.into_shape(&*dims)?.into_dyn();
-        Ok(vec![ T::array_into_tensor(output).into(), ])
+        Ok(vec![T::array_into_tensor(output).into()])
     }
 
     /// Returns the attributes of the operation and their values.
@@ -47,17 +46,22 @@ impl<T:Datum> Op for Reshape<T> {
     }
 }
 
-impl<T:Datum> InferenceRulesOp for Reshape<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+impl<T: Datum> InferenceRulesOp for Reshape<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datatype, T::datatype())
-            .equals(&inputs[1].datatype, DataType::DT_INT32)
+            .equals(&inputs[1].datatype, DataType::I32)
             .equals(&outputs[0].datatype, T::datatype())
             .equals(&inputs[1].rank, 1)
             .given(&inputs[0].rank, move |solver, input_rank| {
-                solver.given(&inputs[1].value, move |solver, dims:Tensor| {
+                solver.given(&inputs[1].value, move |solver, dims: Tensor| {
                     let dims = <i32 as Datum>::tensor_into_array(dims).unwrap(); // checked
                     let shape = Self::true_dims(dims.into_iter().cloned().collect(), input_rank);
                     solver.equals(&outputs[0].shape, ShapeFact::from(shape));
@@ -65,4 +69,3 @@ impl<T:Datum> InferenceRulesOp for Reshape<T> {
             });
     }
 }
-

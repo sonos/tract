@@ -1,6 +1,6 @@
+use analyser::interface::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
-use analyser::interface::*;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datatype = pb.get_attr_datatype("T")?;
@@ -73,42 +73,54 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
 impl<T: Datum> InferenceRulesOp for SpaceToBatch<T> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
-        solver
-            .equals(&inputs.len, 3)
-            .equals(&outputs.len, 1);
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
+        solver.equals(&inputs.len, 3).equals(&outputs.len, 1);
         rules(solver, &outputs[0], &inputs[0], &inputs[1], &inputs[2]);
     }
 }
 
-fn rules<'r, 'p: 'r>(solver: &mut Solver<'r>, batch: &'p TensorProxy, space: &'p TensorProxy, block_shape: &'p TensorProxy, paddings: &'p TensorProxy) {
+fn rules<'r, 'p: 'r>(
+    solver: &mut Solver<'r>,
+    batch: &'p TensorProxy,
+    space: &'p TensorProxy,
+    block_shape: &'p TensorProxy,
+    paddings: &'p TensorProxy,
+) {
     solver
         .equals(&batch.datatype, &space.datatype)
-        .equals(&block_shape.datatype, DataType::DT_INT32)
-        .equals(&paddings.datatype, DataType::DT_INT32)
+        .equals(&block_shape.datatype, DataType::I32)
+        .equals(&paddings.datatype, DataType::I32)
         .equals(&batch.rank, &space.rank)
         .equals(&block_shape.rank, 1)
         .equals(&paddings.rank, 2)
         .equals(&block_shape.shape[0], &paddings.shape[0])
-        .given(&block_shape.value, move |solver, block_shape:Tensor| {
-            let block_shape:ArrayD<i32> = block_shape.take_i32s().unwrap(); // semi-enforced by rules order (FIXME)
+        .given(&block_shape.value, move |solver, block_shape: Tensor| {
+            let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap(); // semi-enforced by rules order (FIXME)
             let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
-            solver.equals(&batch.shape[0], (block_shape_prod as isize, &space.shape[0]));
+            solver.equals(
+                &batch.shape[0],
+                (block_shape_prod as isize, &space.shape[0]),
+            );
             for d in 0..block_shape.len() {
                 solver.equals_zero(wrap!(
-                    (1, &space.shape[1+d]),
+                    (1, &space.shape[1 + d]),
                     (1, &paddings.value[d][0]),
                     (1, &paddings.value[d][1]),
-                    (-block_shape[d], &batch.shape[1+d])));
+                    (-block_shape[d], &batch.shape[1 + d])
+                ));
             }
-            solver.given(&space.rank, move |solver, rank:usize| {
-                for d in block_shape.len()+1..rank {
+            solver.given(&space.rank, move |solver, rank: usize| {
+                for d in block_shape.len() + 1..rank {
                     solver.equals(&space.shape[d], &batch.shape[d]);
                 }
             });
         });
 }
-
 
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
@@ -166,14 +178,16 @@ impl<T: Datum> Op for BatchToSpace<T> {
 
 impl<T: Datum> InferenceRulesOp for BatchToSpace<T> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
-        solver
-            .equals(&inputs.len, 3)
-            .equals(&outputs.len, 1);
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
+        solver.equals(&inputs.len, 3).equals(&outputs.len, 1);
         rules(solver, &inputs[0], &outputs[0], &inputs[1], &inputs[2]);
     }
 }
-
 
 #[cfg(test)]
 mod tests {

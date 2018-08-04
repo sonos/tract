@@ -91,8 +91,13 @@ where
     }
 }
 
-impl<T:Datum> InferenceRulesOp for Pad<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+impl<T: Datum> InferenceRulesOp for Pad<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         let input = &inputs[0];
         let padding = &inputs[1];
         let output = &outputs[0];
@@ -100,19 +105,21 @@ impl<T:Datum> InferenceRulesOp for Pad<T> {
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
             .equals(&output.datatype, &input.datatype)
-            .equals(&padding.datatype, DataType::DT_INT32)
+            .equals(&padding.datatype, DataType::I32)
             .equals(&input.rank, &output.rank)
             .equals(&padding.rank, 2)
             .equals(&padding.shape[0], &input.rank)
             .equals(&padding.shape[1], 2)
             .given(&input.rank, move |solver, rank: usize| {
                 (0..rank).for_each(|d| {
-                    solver.equals_zero(
-                        wrap!((-1, &output.shape[d]),(1, &input.shape[d]), (1, &padding.value[d][0]), (1, &padding.value[d][1]))
-                    );
+                    solver.equals_zero(wrap!(
+                        (-1, &output.shape[d]),
+                        (1, &input.shape[d]),
+                        (1, &padding.value[d][0]),
+                        (1, &padding.value[d][1])
+                    ));
                 })
-            })
-        ;
+            });
     }
 }
 

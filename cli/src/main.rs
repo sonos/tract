@@ -20,9 +20,9 @@ extern crate terminal_size;
 extern crate textwrap;
 #[macro_use]
 extern crate tfdeploy;
-extern crate pbr;
 extern crate atty;
 extern crate libc;
+extern crate pbr;
 #[macro_use]
 extern crate rouille;
 extern crate open;
@@ -40,9 +40,8 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
-use tfdeploy::Tensor;
+use tfdeploy::{DataType, Tensor};
 use tfpb::graph::GraphDef;
-use tfpb::types::DataType;
 
 use errors::*;
 #[allow(unused_imports)]
@@ -50,15 +49,15 @@ use format::Row;
 
 mod analyse;
 mod compare;
+mod display_graph;
 mod dump;
 mod errors;
 mod format;
 mod graphviz;
-mod utils;
-mod display_graph;
 mod profile;
 mod prune;
 mod rusage;
+mod utils;
 mod web;
 
 /// The default maximum for iterations and time.
@@ -96,29 +95,37 @@ fn main() {
         );
 
     let compare = clap::SubCommand::with_name("compare")
-            .help("Compares the output of tfdeploy and tensorflow on randomly generated input.");
+        .help("Compares the output of tfdeploy and tensorflow on randomly generated input.");
     app = app.subcommand(output_options(compare));
 
     let dump = clap::SubCommand::with_name("dump")
-            .help("Dumps the Tensorflow graph in human readable form.");
+        .help("Dumps the Tensorflow graph in human readable form.");
     app = app.subcommand(output_options(dump));
 
     let profile = clap::SubCommand::with_name("profile")
-            .help("Benchmarks tfdeploy on randomly generated input.")
-            .arg(Arg::with_name("max_iters").short("n")
-                .help("Sets the maximum number of iterations for each node [default: 10_000]."))
-            .arg(Arg::with_name("max_time").short("t")
-                .help("Sets the maximum execution time for each node (in ms) [default: 500]."))
-            .arg(Arg::with_name("buffering").short("b")
-                .help("Run the stream network without inner instrumentations"));
+        .help("Benchmarks tfdeploy on randomly generated input.")
+        .arg(
+            Arg::with_name("max_iters")
+                .short("n")
+                .help("Sets the maximum number of iterations for each node [default: 10_000]."),
+        )
+        .arg(
+            Arg::with_name("max_time")
+                .short("t")
+                .help("Sets the maximum execution time for each node (in ms) [default: 500]."),
+        )
+        .arg(
+            Arg::with_name("buffering")
+                .short("b")
+                .help("Run the stream network without inner instrumentations"),
+        );
     app = app.subcommand(output_options(profile));
 
     let analyse = clap::SubCommand::with_name("analyse")
-            .help("Analyses the graph to infer properties about tensors (experimental).");
+        .help("Analyses the graph to infer properties about tensors (experimental).");
     app = app.subcommand(output_options(analyse));
 
-    let optimize = clap::SubCommand::with_name("optimize")
-            .help("Optimize the graph");
+    let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
     app = app.subcommand(output_options(optimize));
 
     let matches = app.get_matches();
@@ -129,12 +136,25 @@ fn main() {
     }
 }
 
-fn output_options<'a, 'b>(command:clap::App<'a, 'b>) -> clap::App<'a, 'b> {
+fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
     use clap::*;
     command
-        .arg(Arg::with_name("web").long("web").help("Display int a web interface"))
-        .arg(Arg::with_name("json").long("json").takes_value(true).help("output to a json file"))
-        .arg(Arg::with_name("const").long("const").help("also display consts nodes"))
+        .arg(
+            Arg::with_name("web")
+                .long("web")
+                .help("Display int a web interface"),
+        )
+        .arg(
+            Arg::with_name("json")
+                .long("json")
+                .takes_value(true)
+                .help("output to a json file"),
+        )
+        .arg(
+            Arg::with_name("const")
+                .long("const")
+                .help("also display consts nodes"),
+        )
 }
 
 /// Structure holding the parsed parameters.
@@ -152,7 +172,6 @@ pub struct Parameters {
 }
 
 impl Parameters {
-
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches) -> Result<Parameters> {
         let name = matches.value_of("model").unwrap();
@@ -174,7 +193,8 @@ impl Parameters {
 
         let output_node_id = match matches.value_of("output") {
             Some(name) => tfd_model.node_id_by_name(name)?,
-            None => tfdeploy::analyser::detect_output(&tfd_model)?.ok_or("Impossible to auto-detect output nodes.")?,
+            None => tfdeploy::analyser::detect_output(&tfd_model)?
+                .ok_or("Impossible to auto-detect output nodes.")?,
         };
 
         #[cfg(feature = "tensorflow")]
@@ -209,10 +229,10 @@ pub struct InputParameters {
 
 impl InputParameters {
     fn from_clap(matches: &clap::ArgMatches) -> Result<Option<InputParameters>> {
-         let input = match (matches.value_of("size"), matches.value_of("data")) {
+        let input = match (matches.value_of("size"), matches.value_of("data")) {
             (_, Some(filename)) => Some(Self::for_data(filename)?),
-            (Some(size), _)     => Some(Self::for_size(size)?),
-            _ => None
+            (Some(size), _) => Some(Self::for_size(size)?),
+            _ => None,
         };
         Ok(input)
     }
@@ -229,8 +249,8 @@ impl InputParameters {
         let shape = shape
             .iter()
             .map(|s| match *s {
-                "S" => Ok(None),            // Streaming dimension.
-                _   => Ok(Some(s.parse()?)) // Regular dimension.
+                "S" => Ok(None),           // Streaming dimension.
+                _ => Ok(Some(s.parse()?)), // Regular dimension.
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -239,15 +259,19 @@ impl InputParameters {
         }
 
         let datatype = match datatype.to_lowercase().as_str() {
-            "f64" => DataType::DT_DOUBLE,
-            "f32" => DataType::DT_FLOAT,
-            "i32" => DataType::DT_INT32,
-            "i8" => DataType::DT_INT8,
-            "u8" => DataType::DT_UINT8,
+            "f64" => DataType::F64,
+            "f32" => DataType::F32,
+            "i32" => DataType::I32,
+            "i8" => DataType::I8,
+            "u8" => DataType::U8,
             _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
         };
 
-        Ok(InputParameters { data: None, shape, datatype })
+        Ok(InputParameters {
+            data: None,
+            shape,
+            datatype,
+        })
     }
 
     /// Parses the `data` command-line argument.
@@ -257,40 +281,43 @@ impl InputParameters {
         file.read_to_string(&mut data)?;
 
         let mut lines = data.lines();
-        let InputParameters { shape, datatype, .. } = InputParameters::for_size(lines.next().ok_or("Empty data file")?)?;
+        let InputParameters {
+            shape, datatype, ..
+        } = InputParameters::for_size(lines.next().ok_or("Empty data file")?)?;
 
-        let values = lines
-            .flat_map(|l| l.split_whitespace())
-            .collect::<Vec<_>>();
+        let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<_>>();
 
         // We know there is at most one streaming dimension, so we can deduce the
         // missing value with a simple division.
-        let product: usize =  shape.iter().map(|o| o.unwrap_or(1)).product();
+        let product: usize = shape.iter().map(|o| o.unwrap_or(1)).product();
         let missing = values.len() / product;
-        let data_shape = shape.iter()
+        let data_shape = shape
+            .iter()
             .map(|o| o.unwrap_or(missing))
             .collect::<Vec<_>>();
 
         macro_rules! for_type {
-            ($t:ty) => ({
-                let array = ndarray::Array::from_iter(
-                    values.iter().map(|v| v.parse::<$t>().unwrap())
-                );
+            ($t:ty) => {{
+                let array = ndarray::Array::from_iter(values.iter().map(|v| v.parse::<$t>().unwrap()));
 
                 array.into_shape(data_shape)?
-            });
+            }};
         }
 
         let tensor = match datatype {
-            DataType::DT_DOUBLE => for_type!(f64).into(),
-            DataType::DT_FLOAT => for_type!(f32).into(),
-            DataType::DT_INT32 => for_type!(i32).into(),
-            DataType::DT_INT8 => for_type!(i8).into(),
-            DataType::DT_UINT8 => for_type!(u8).into(),
+            DataType::F64 => for_type!(f64).into(),
+            DataType::F32 => for_type!(f32).into(),
+            DataType::I32 => for_type!(i32).into(),
+            DataType::I8 => for_type!(i8).into(),
+            DataType::U8 => for_type!(u8).into(),
             _ => unimplemented!(),
         };
 
-        Ok(InputParameters { data: Some(tensor), shape, datatype })
+        Ok(InputParameters {
+            data: Some(tensor),
+            shape,
+            datatype,
+        })
     }
 
     fn streaming(&self) -> bool {
@@ -299,26 +326,25 @@ impl InputParameters {
 }
 
 pub enum ProfilingMode {
-    Regular {
-        max_iters: u64,
-        max_time: u64,
-    },
-    RegularBenching {
-        max_iters: u64,
-        max_time: u64,
-    },
+    Regular { max_iters: u64, max_time: u64 },
+    RegularBenching { max_iters: u64, max_time: u64 },
     StreamCruising,
     StreamBuffering,
-    StreamBenching {
-        max_iters: u64,
-        max_time: u64,
-    }
+    StreamBenching { max_iters: u64, max_time: u64 },
 }
 
 impl ProfilingMode {
     pub fn from_clap(matches: &clap::ArgMatches, streaming: bool) -> Result<ProfilingMode> {
-        let max_iters = matches.value_of("max_iters").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_ITERS);
-        let max_time = matches.value_of("max_time").map(u64::from_str).inside_out()?.unwrap_or(DEFAULT_MAX_TIME);
+        let max_iters = matches
+            .value_of("max_iters")
+            .map(u64::from_str)
+            .inside_out()?
+            .unwrap_or(DEFAULT_MAX_ITERS);
+        let max_time = matches
+            .value_of("max_time")
+            .map(u64::from_str)
+            .inside_out()?
+            .unwrap_or(DEFAULT_MAX_TIME);
         let mode = if streaming {
             if matches.is_present("buffering") {
                 ProfilingMode::StreamBuffering
@@ -374,50 +400,41 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     };
 
     let log_config = Config {
-            time: None,
-            time_format: None,
-            level: Some(Error),
-            target: None,
-            location: Some(Trace),
-        };
+        time: None,
+        time_format: None,
+        level: Some(Error),
+        target: None,
+        location: Some(Trace),
+    };
 
-    if TermLogger::init(level, log_config).is_err() && simplelog::SimpleLogger::init(level, log_config).is_err() {
+    if TermLogger::init(level, log_config).is_err()
+        && simplelog::SimpleLogger::init(level, log_config).is_err()
+    {
         panic!("Could not initiatize logger")
     };
 
     let params = Parameters::from_clap(&matches)?;
-    let streaming = params.input.as_ref().map(|i| i.streaming()).unwrap_or(false);
+    let streaming = params
+        .input
+        .as_ref()
+        .map(|i| i.streaming())
+        .unwrap_or(false);
 
     match matches.subcommand() {
-        ("compare", Some(m)) => compare::handle(
-            params,
-            OutputParameters::from_clap(m)?
-        ),
+        ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
 
-        ("dump", Some(m)) => dump::handle(
-            params,
-            OutputParameters::from_clap(m)?
-        ),
+        ("dump", Some(m)) => dump::handle(params, OutputParameters::from_clap(m)?),
 
         ("profile", Some(m)) => profile::handle(
             params,
             ProfilingMode::from_clap(&m, streaming)?,
-            OutputParameters::from_clap(m)?
+            OutputParameters::from_clap(m)?,
         ),
 
-        ("analyse", Some(m)) => analyse::handle(
-            params,
-            false,
-            OutputParameters::from_clap(m)?
-        ),
+        ("analyse", Some(m)) => analyse::handle(params, false, OutputParameters::from_clap(m)?),
 
-        ("optimize", Some(m)) => analyse::handle(
-            params,
-            true,
-            OutputParameters::from_clap(m)?
-        ),
+        ("optimize", Some(m)) => analyse::handle(params, true, OutputParameters::from_clap(m)?),
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
 }
-

@@ -1,5 +1,5 @@
-use Parameters;
 use errors::*;
+use Parameters;
 
 use tfdeploy::analyser::Analyser;
 

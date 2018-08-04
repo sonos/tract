@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use ops::prelude::*;
 use analyser::interface::*;
+use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
@@ -43,25 +43,30 @@ where
     }
 }
 
-impl<T:Datum> InferenceRulesOp for AddN<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
-
+impl<T: Datum> InferenceRulesOp for AddN<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         let n = self.n as isize;
         solver
             .equals(&inputs.len, n)
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datatype, &outputs[0].datatype)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].datatype)).collect())
-
             .equals(&inputs[0].rank, &outputs[0].rank)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
-
             .given(&inputs[0].rank, move |solver, rank: usize| {
                 for dim in 0..rank {
                     solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
-                    solver.equals_all((0..n as usize).map(|i| bexp(&inputs[i].shape[dim])).collect());
+                    solver.equals_all(
+                        (0..n as usize)
+                            .map(|i| bexp(&inputs[i].shape[dim]))
+                            .collect(),
+                    );
                 }
-            })
-        ;
+            });
     }
 }

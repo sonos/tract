@@ -1,12 +1,12 @@
 use std::fmt;
 
-use analyser::types::IntFact;
-use analyser::types::TypeFact;
-use analyser::types::ShapeFact;
-use analyser::types::ValueFact;
-use analyser::interface::path::Path;
 use analyser::interface::cache::Cache;
 use analyser::interface::expressions::Output;
+use analyser::interface::path::Path;
+use analyser::types::IntFact;
+use analyser::types::ShapeFact;
+use analyser::types::TypeFact;
+use analyser::types::ValueFact;
 use std::ops::Index;
 
 use num_traits::cast::ToPrimitive;
@@ -49,21 +49,25 @@ macro_rules! impl_proxy {
                 &self.path
             }
         }
-    }
+    };
 }
 
 /// Implements the ComparableProxy trait for the proxy and references to it.
 macro_rules! impl_comparable_proxy {
     ($struct:ident, $output:ident) => {
-        impl ComparableProxy for $struct { type Output = $output; }
-        impl<'a> ComparableProxy for &'a $struct { type Output = $output; }
-    }
+        impl ComparableProxy for $struct {
+            type Output = $output;
+        }
+        impl<'a> ComparableProxy for &'a $struct {
+            type Output = $output;
+        }
+    };
 }
 
 /// A proxy for any integer-like value.
 #[derive(new)]
 pub struct IntProxy {
-    path: Path
+    path: Path,
 }
 
 impl_proxy!(IntProxy);
@@ -138,10 +142,10 @@ impl TensorProxy {
     /// Creates a new TensorProxy instance.
     pub fn new(path: Path) -> TensorProxy {
         TensorProxy {
-            datatype: TypeProxy::new([&path[..],  &[0]].concat().into()),
-            rank:     IntProxy::new([&path[..],   &[1]].concat().into()),
-            shape:    ShapeProxy::new([&path[..], &[2]].concat().into()),
-            value:    ValueProxy::new([&path[..], &[3]].concat().into()),
+            datatype: TypeProxy::new([&path[..], &[0]].concat().into()),
+            rank: IntProxy::new([&path[..], &[1]].concat().into()),
+            shape: ShapeProxy::new([&path[..], &[2]].concat().into()),
+            value: ValueProxy::new([&path[..], &[3]].concat().into()),
             path,
         }
     }
@@ -152,7 +156,7 @@ impl_proxy!(TensorProxy);
 /// A proxy for a tensor datatype.
 #[derive(new)]
 pub struct TypeProxy {
-    path: Path
+    path: Path,
 }
 
 impl_proxy!(TypeProxy);
@@ -167,7 +171,10 @@ pub struct ShapeProxy {
 impl ShapeProxy {
     /// Creates a new ShapeProxy instance.
     pub fn new(path: Path) -> ShapeProxy {
-        ShapeProxy { dims: Cache::new(), path }
+        ShapeProxy {
+            dims: Cache::new(),
+            path,
+        }
     }
 }
 
@@ -187,12 +194,11 @@ impl Index<usize> for ShapeProxy {
 /// A proxy for a dimension of a shape.
 #[derive(new)]
 pub struct DimProxy {
-    path: Path
+    path: Path,
 }
 
 impl_proxy!(DimProxy);
 impl_comparable_proxy!(DimProxy, IntFact);
-
 
 /// A proxy for the whole tensor value.
 ///
@@ -210,7 +216,11 @@ impl ValueProxy {
     /// Creates a new RootValueProxy instance.
     pub fn new(path: Path) -> ValueProxy {
         let root = IntProxy::new([&path[..], &[-1]].concat().into());
-        ValueProxy { sub: Cache::new(), root, path }
+        ValueProxy {
+            sub: Cache::new(),
+            root,
+            path,
+        }
     }
 }
 
@@ -245,7 +255,10 @@ pub struct ElementProxy {
 impl ElementProxy {
     /// Creates a new ElementProxy instance.
     pub fn new(path: Path) -> ElementProxy {
-        ElementProxy { sub: Cache::new(), path }
+        ElementProxy {
+            sub: Cache::new(),
+            path,
+        }
     }
 }
 
@@ -270,8 +283,8 @@ mod tests {
     fn test_tensors_proxy() {
         let inputs = TensorsProxy::new(vec![0].into());
         assert_eq!(inputs.len.get_path(), &vec![0, -1].into());
-        assert_eq!(inputs[0].get_path(),  &vec![0, 0].into());
-        assert_eq!(inputs[2].get_path(),  &vec![0, 2].into());
+        assert_eq!(inputs[0].get_path(), &vec![0, 0].into());
+        assert_eq!(inputs[2].get_path(), &vec![0, 2].into());
     }
 
     #[test]
@@ -307,7 +320,10 @@ mod tests {
         assert_eq!(input.value.get_path(), &vec![0, 0, 3].into());
         assert_eq!(input.value[()].get_path(), &vec![0, 0, 3, -1].into());
         assert_eq!(input.value[0].get_path(), &vec![0, 0, 3, 0].into());
-        assert_eq!(input.value[0][1].get_path(),    &vec![0, 0, 3, 0, 1].into());
-        assert_eq!(input.value[1][2][3].get_path(), &vec![0, 0, 3, 1, 2, 3].into());
+        assert_eq!(input.value[0][1].get_path(), &vec![0, 0, 3, 0, 1].into());
+        assert_eq!(
+            input.value[1][2][3].get_path(),
+            &vec![0, 0, 3, 1, 2, 3].into()
+        );
     }
 }

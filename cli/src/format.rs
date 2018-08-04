@@ -1,8 +1,8 @@
 use std::cmp::min;
 
 use prettytable as pt;
+use prettytable::format::{FormatBuilder, TableFormat};
 use prettytable::Table;
-use prettytable::format::{TableFormat, FormatBuilder};
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
@@ -11,9 +11,9 @@ use tfdeploy::tfpb::graph::GraphDef;
 use tfdeploy::ModelState;
 use tfdeploy::Node;
 
+use colored::Colorize;
 use format;
 use rusage::Duration;
-use colored::Colorize;
 
 use itertools::Itertools;
 
@@ -73,10 +73,7 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
         ]);
 
         name_table.set_format(format_none());
-        table!([
-            format!("Operation: {:15}", op.bold().blue()),
-            name_table
-        ])
+        table!([format!("Operation: {:15}", op.bold().blue()), name_table])
     };
 
     header.set_format(format_only_columns());
@@ -93,22 +90,30 @@ fn build_header_wide(cols: usize, op: &str, name: &str, status: &[impl AsRef<str
 
     name_table.set_format(format_none());
 
-    let mut header = table!([
-        format!("Operation: {:15}", op.bold().blue()),
-        name_table,
-    ]);
+    let mut header = table!([format!("Operation: {:15}", op.bold().blue()), name_table,]);
     header.set_format(format_only_columns());
 
     let mut t = table![[header]];
     if status.len() > 0 {
-        let status = pt::row::Row::new(status.iter().map(|s| pt::cell::Cell::new_align(s.as_ref(), pt::format::Alignment::CENTER)).collect());
+        let status = pt::row::Row::new(
+            status
+                .iter()
+                .map(|s| pt::cell::Cell::new_align(s.as_ref(), pt::format::Alignment::CENTER))
+                .collect(),
+        );
         t.add_row(status);
     }
     t
 }
 
 /// Prints a box containing arbitrary information.
-pub fn print_box(id: &str, op: &str, name: &str, status: &[impl AsRef<str>], sections: Vec<Vec<Row>>) {
+pub fn print_box(
+    id: &str,
+    op: &str,
+    name: &str,
+    status: &[impl AsRef<str>],
+    sections: Vec<Vec<Row>>,
+) {
     // Terminal size
     let cols = match terminal_size() {
         Some((Width(w), _)) => min(w as usize, 120),
@@ -233,22 +238,42 @@ pub fn print_header(text: String, color: &str) {
 
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg_oneline(measure: Duration) -> String {
-    format!("Real: {} User: {} Sys: {}",
-        format!("{:.3} ms/i", measure.avg_real() * 1e3).white().bold(),
-        format!("{:.3} ms/i", measure.avg_user() * 1e3).white().bold(),
-        format!("{:.3} ms/i", measure.avg_sys() * 1e3).white().bold())
+    format!(
+        "Real: {} User: {} Sys: {}",
+        format!("{:.3} ms/i", measure.avg_real() * 1e3)
+            .white()
+            .bold(),
+        format!("{:.3} ms/i", measure.avg_user() * 1e3)
+            .white()
+            .bold(),
+        format!("{:.3} ms/i", measure.avg_sys() * 1e3)
+            .white()
+            .bold()
+    )
 }
 
 /// Format a rusage::Duration showing avgtime in ms, with percentage to a global
 /// one.
-pub fn dur_avg_oneline_ratio(measure: Duration, global:Duration) -> String {
-    format!("Real: {} {} User: {} {} Sys: {} {}",
-        format!("{:7.3} ms/i", measure.avg_real() * 1e3).white().bold(),
-        format!("{:2.0}%", measure.avg_real() / global.avg_real() * 100.).yellow().bold(),
-        format!("{:7.3} ms/i", measure.avg_user() * 1e3).white().bold(),
-        format!("{:2.0}%", measure.avg_user() / global.avg_user() * 100.).yellow().bold(),
-        format!("{:7.3} ms/i", measure.avg_sys() * 1e3).white().bold(),
-        format!("{:2.0}%", measure.avg_sys() / global.avg_sys() * 100.).yellow().bold(),
-        )
+pub fn dur_avg_oneline_ratio(measure: Duration, global: Duration) -> String {
+    format!(
+        "Real: {} {} User: {} {} Sys: {} {}",
+        format!("{:7.3} ms/i", measure.avg_real() * 1e3)
+            .white()
+            .bold(),
+        format!("{:2.0}%", measure.avg_real() / global.avg_real() * 100.)
+            .yellow()
+            .bold(),
+        format!("{:7.3} ms/i", measure.avg_user() * 1e3)
+            .white()
+            .bold(),
+        format!("{:2.0}%", measure.avg_user() / global.avg_user() * 100.)
+            .yellow()
+            .bold(),
+        format!("{:7.3} ms/i", measure.avg_sys() * 1e3)
+            .white()
+            .bold(),
+        format!("{:2.0}%", measure.avg_sys() / global.avg_sys() * 100.)
+            .yellow()
+            .bold(),
+    )
 }
-

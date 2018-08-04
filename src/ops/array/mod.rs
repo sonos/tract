@@ -1,15 +1,14 @@
+use analyser::interface::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
-use analyser::interface::*;
 
 mod concatv2;
 mod fill;
-mod pad;
 mod pack;
+mod pad;
 mod reshape;
 mod squeeze;
 mod strided_slice;
-
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", concatv2::build);
@@ -74,13 +73,18 @@ impl Op for ExpandDims {
 
         match data.1 {
             None => Ok(None),
-            Some(tv) => Ok(Some(self.eval(vec![tv, dims])?))
+            Some(tv) => Ok(Some(self.eval(vec![tv, dims])?)),
         }
     }
 }
 
 impl InferenceRulesOp for ExpandDims {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         let data = &inputs[0];
         let dims = &inputs[1];
         let output = &outputs[0];
@@ -88,14 +92,11 @@ impl InferenceRulesOp for ExpandDims {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-
-            .equals(&dims.datatype, DataType::DT_INT32)
+            .equals(&dims.datatype, DataType::I32)
             .equals(&dims.rank, 0)
-
             .equals(&data.datatype, &output.datatype)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
-
-            .given(&dims.value, move |solver, index:Tensor| {
+            .given(&dims.value, move |solver, index: Tensor| {
                 let index = index.take_i32s().unwrap(); // already enforced
                 let index = index.as_slice().unwrap()[0] as usize; //already enforced
 
@@ -143,13 +144,18 @@ impl Op for Identity {
         let input = args_1!(inputs);
         match input.1 {
             None => Ok(None),
-            Some(tv) => Ok(Some(self.eval(vec![tv])?))
+            Some(tv) => Ok(Some(self.eval(vec![tv])?)),
         }
     }
 }
 
 impl InferenceRulesOp for Identity {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
@@ -196,7 +202,12 @@ impl Op for Placeholder {
 
 impl InferenceRulesOp for Placeholder {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 0)
             .equals(&outputs.len, 1)
@@ -228,26 +239,44 @@ impl Op for Shape {
 }
 
 impl InferenceRulesOp for Shape {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-
-            .equals(&outputs[0].datatype, DataType::DT_INT32)
+            .equals(&outputs[0].datatype, DataType::I32)
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
-
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
                 if !shape.open && shape.dims.iter().all(|d| *d != DimFact::Any) {
-                    let shape = shape.dims.iter().map(|d| if let DimFact::Only(d)= d { *d as i32 } else { 1 }).collect();
-                    let array1:Array1<i32> = Array1::from_vec(shape);
-                    let tensor:Tensor = Tensor::from(array1);
+                    let shape = shape
+                        .dims
+                        .iter()
+                        .map(|d| {
+                            if let DimFact::Only(d) = d {
+                                *d as i32
+                            } else {
+                                1
+                            }
+                        })
+                        .collect();
+                    let array1: Array1<i32> = Array1::from_vec(shape);
+                    let tensor: Tensor = Tensor::from(array1);
                     solver.equals(&outputs[0].value, valuefact!(tensor));
                 }
             })
-            .given(&outputs[0].value, move |solver, shape:Tensor| {
-                let shape:Vec<usize> = shape.take_i32s().unwrap().iter().map(|i:&i32| *i as usize).collect();
-                for (ix,d) in shape.iter().enumerate() {
+            .given(&outputs[0].value, move |solver, shape: Tensor| {
+                let shape: Vec<usize> = shape
+                    .take_i32s()
+                    .unwrap()
+                    .iter()
+                    .map(|i: &i32| *i as usize)
+                    .collect();
+                for (ix, d) in shape.iter().enumerate() {
                     // hackish: if dim is 1, it may be the streaming
                     // dimension, so we don't infer
                     if *d != 1 {
@@ -266,15 +295,15 @@ mod tests {
     #[test]
     fn shape_inference_1() {
         let input = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
+            datatype: typefact!(DataType::F32),
             shape: shapefact![1, _, _; ..],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![_],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         assert_forward!(Shape::build(&node()).unwrap(), input, output);
@@ -283,15 +312,15 @@ mod tests {
     #[test]
     fn shape_inference_2() {
         let input = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
+            datatype: typefact!(DataType::F32),
             shape: shapefact![1, _, _],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![3],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         assert_forward!(Shape::build(&node()).unwrap(), input, output);
@@ -300,15 +329,15 @@ mod tests {
     #[test]
     fn shape_inference_3() {
         let input = TensorFact {
-            datatype: typefact!(DataType::DT_FLOAT),
+            datatype: typefact!(DataType::F32),
             shape: shapefact![1, 2, 3],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![3],
-            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap())
+            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };
 
         assert_forward!(Shape::build(&node()).unwrap(), input, output);
@@ -319,13 +348,13 @@ mod tests {
         let input = TensorFact {
             datatype: typefact!(_),
             shape: shapefact![_, 2, 3],
-            value: valuefact!(_)
+            value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::DT_INT32),
+            datatype: typefact!(DataType::I32),
             shape: shapefact![3],
-            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap())
+            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };
 
         assert_backward!(Shape::build(&node()).unwrap(), input, output);

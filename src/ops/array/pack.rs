@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use ops::prelude::*;
 use analyser::interface::*;
+use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
@@ -44,11 +44,15 @@ where
             "axis" => Attr::Usize(self.axis),
         }
     }
-
 }
 
-impl<T:Datum> InferenceRulesOp for Pack<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+impl<T: Datum> InferenceRulesOp for Pack<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         let output = &outputs[0];
         let n = self.n;
         let axis = self.axis;
@@ -56,14 +60,20 @@ impl<T:Datum> InferenceRulesOp for Pack<T> {
             .equals(&inputs.len, n as isize)
             .equals(&outputs.len, 1)
             .equals_all((0..n).map(|i| bexp(&inputs[i].rank)).collect())
-            .equals_zero(wrap!((-1,&output.rank),(1isize,1),(1,&inputs[0].rank)))
+            .equals_zero(wrap!((-1, &output.rank), (1isize, 1), (1, &inputs[0].rank)))
             .given(&inputs[0].rank, move |solver, r: usize| {
-                (0..r).for_each(|d| { solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect()); })
+                (0..r).for_each(|d| {
+                    solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect());
+                })
             })
             .given(&inputs[0].rank, move |solver, r: usize| {
-                (0..axis).for_each(|d| { solver.equals(&output.shape[d], &inputs[0].shape[d]); });
+                (0..axis).for_each(|d| {
+                    solver.equals(&output.shape[d], &inputs[0].shape[d]);
+                });
                 if r > 0 {
-                    (axis..(r - 1)).for_each(|d| { solver.equals(&output.shape[d+1], &inputs[0].shape[d]); });
+                    (axis..(r - 1)).for_each(|d| {
+                        solver.equals(&output.shape[d + 1], &inputs[0].shape[d]);
+                    });
                 }
             })
             .equals(&output.shape[axis], n as isize);
