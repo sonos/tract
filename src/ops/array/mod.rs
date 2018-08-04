@@ -1,16 +1,15 @@
 use ndarray::prelude::*;
-// use num_traits::ToPrimitive;
+use ops::prelude::*;
+use analyser::interface::*;
 
 mod concatv2;
 mod fill;
 mod pad;
 mod pack;
+mod reshape;
 mod squeeze;
 mod strided_slice;
 
-use ops::prelude::*;
-use analyser::interface::*;
-use tfpb::types::DataType;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", concatv2::build);
@@ -20,7 +19,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
     reg.insert("Placeholder", Placeholder::build);
-    reg.insert("Reshape", Reshape::build);
+    reg.insert("Reshape", reshape::reshape);
     reg.insert("Shape", Shape::build);
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("StridedSlice", strided_slice::build);
@@ -202,80 +201,6 @@ impl InferenceRulesOp for Placeholder {
             .equals(&inputs.len, 0)
             .equals(&outputs.len, 1)
             .equals(&outputs[0].datatype, self.dtype);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Reshape {}
-
-impl Reshape {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Ok(Box::new(Reshape {}))
-    }
-
-    /// Computes a vector of dimensions from the `dims` input.
-    /// This is needed because `dims` might contain some -1 indices, in which
-    /// case we need to infer the value for that index.
-    fn true_dims(mut dims: Vec<i32>, input_length: usize) -> Vec<usize> {
-        if dims.contains(&-1) {
-            let prod: i32 = dims.iter().map(|a| *a).filter(|a| *a != -1i32).product();
-            for a in dims.iter_mut() {
-                if *a == -1 {
-                    *a = input_length as i32 / prod;
-                }
-            }
-        }
-
-        dims.into_iter().map(|a| a as usize).collect()
-    }
-}
-
-impl Op for Reshape {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
-        let (input, dims) = args_2!(inputs);
-
-        let input = input
-            .into_tensor()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
-
-        let dims = Reshape::true_dims(
-            dims.as_i32s()
-                .ok_or("Expected a i32 matrix")?
-                .iter()
-                .cloned()
-                .collect(),
-            input.len(),
-        );
-
-        Ok(vec![
-            Tensor::from(input.into_shape(&*dims)?.into_dyn()).into(),
-        ])
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
-    }
-}
-
-impl InferenceRulesOp for Reshape {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
-        solver
-            .equals(&inputs.len, 2)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[1].datatype, DataType::DT_FLOAT)
-            .equals(&outputs[0].datatype, DataType::DT_INT32)
-            .equals(&inputs[1].rank, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
-            .given(&inputs[0].rank, move |solver, input_rank| {
-                solver.given(&inputs[1].value, move |solver, dims:Vec<usize>| {
-                    let dims:Vec<i32> = dims.into_iter().map(|d| d as i32).collect();
-                    let shape = Reshape::true_dims(dims, input_rank);
-                    solver.equals(&outputs[0].shape, ShapeFact::from(shape));
-                });
-            });
     }
 }
 

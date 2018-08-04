@@ -364,13 +364,18 @@ impl Analyser {
         };
 
         debug!(
-            "Starting step for {} ({}) [pass={:?}, direction={:?}, step={:?}].",
-            node.name, node.op_name, self.current_pass, self.current_direction, self.current_step,
+            "Starting step for {} {} ({}) [pass={:?}, direction={:?}, step={:?}].",
+            node.id, node.name, node.op_name, self.current_pass, self.current_direction, self.current_step,
         );
 
         let inputs: Vec<_> = self.prev_edges[node.id]
             .iter()
-            .map(|&i| self.edges[i].fact.clone())
+            .map(|&i| &self.edges[i])
+            .inspect(|edge| {
+                trace!(" Input {:?} from {}/{}: {:?}", edge.to_node.unwrap(), edge.from_node.unwrap(), edge.from_out, 
+                       edge.fact);
+            })
+            .map(|edge| edge.fact.clone())
             .collect();
 
         // FIXME(liautaud): We should handle multiple output ports in the future.
@@ -378,13 +383,7 @@ impl Analyser {
         for &i in &self.next_edges[node.id] {
             outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
         }
-
-        for (ix, input) in inputs.iter().enumerate() {
-            trace!("  inputs : {} {:?}", ix, input);
-        }
-        for (ix, output) in outputs.iter().enumerate() {
-            trace!("  outputs: {} {:?}", ix, output);
-        }
+        trace!("  Output 0: {:?}", &outputs[0]);
 
         let inferred = node.op
             .infer_and_propagate(inputs, outputs)
