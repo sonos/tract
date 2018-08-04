@@ -4,23 +4,23 @@ use Result;
 mod add_n;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("Abs", Abs::build);
+    reg.insert("Abs", abs);
     reg.insert("Add", add);
     reg.insert("AddN", add_n::add_n);
     reg.insert("BiasAdd", add);
     reg.insert("Div", div);
     reg.insert("FloorMod", rem);
     reg.insert("Mul", mul);
-    reg.insert("Neg", Neg::build);
-    reg.insert("Rsqrt", Rsqrt::build);
+    reg.insert("Neg", neg);
+    reg.insert("Rsqrt", rsqrt);
     reg.insert("Sub", sub);
-    reg.insert("Tanh", Tanh::build);
+    reg.insert("Tanh", tanh);
 }
 
-element_map!(Abs, |x| x.abs());
-element_map!(Neg, |x| -1. * x);
-element_map!(Rsqrt, |x| 1.0 / (x.sqrt()));
-element_map!(Tanh, |x| x.tanh());
+element_map!(Abs, abs, |x| x.abs());
+element_map!(Neg, neg, |x| x.neg());
+element_map!(Rsqrt, rsqrt, |x| x.sqrt().recip());
+element_map!(Tanh, tanh, |x| x.tanh());
 
 element_bin!(Add, add, |mut a, b| {
     a += &b;

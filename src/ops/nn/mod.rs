@@ -10,15 +10,15 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AvgPool", pools::pool::<pools::AvgPooler>);
     reg.insert("Conv2D", conv2d::conv2d);
     reg.insert("MaxPool", pools::pool::<pools::MaxPooler>);
-    reg.insert("Relu", Relu::build);
-    reg.insert("Sigmoid", Sigmoid::build);
+    reg.insert("Relu", relu);
+    reg.insert("Sigmoid", sigmoid);
     reg.insert("Softmax", Softmax::build);
     reg.insert("SpaceToBatchND", space_to_batch::space_to_batch_nd);
     reg.insert("BatchToSpaceND", space_to_batch::batch_to_space_nd);
 }
 
-element_map!(Relu, |x| if x < 0.0 { 0.0 } else { x });
-element_map!(Sigmoid, |x| 1.0 / (1.0 + (-x).exp()));
+element_map!(Relu, relu, |x| x.max(T::zero()));
+element_map!(Sigmoid, sigmoid, |x| T::one() / (T::one() + x.neg().exp()));
 
 #[derive(Debug, Clone)]
 pub struct Softmax {}
