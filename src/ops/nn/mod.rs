@@ -17,8 +17,8 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("BatchToSpaceND", space_to_batch::batch_to_space_nd);
 }
 
-element_map!(Relu, relu, |x| x.max(T::zero()));
-element_map!(Sigmoid, sigmoid, |x| T::one() / (T::one() + x.neg().exp()));
+element_map_signed!(Relu, relu, |x| if x.is_negative() { T::zero() } else { x });
+element_map_float!(Sigmoid, sigmoid, |x| T::one() / (T::one() + x.neg().exp()));
 
 #[derive(Debug, Clone)]
 pub struct Softmax {}

@@ -1,10 +1,11 @@
 
-macro_rules! element_map {
+macro_rules! element_map_float {
     ($Name: ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
             let datatype = pb.get_attr_datatype("T")?;
             let it = match datatype {
                 $crate::tfpb::types::DataType::DT_FLOAT => Box::new($Name::<f32>::new()) as Box<Op>,
+                $crate::tfpb::types::DataType::DT_DOUBLE => Box::new($Name::<f64>::new()) as Box<Op>,
                 _ => unimplemented!("missing type")
             };
             Ok(it)
@@ -45,6 +46,71 @@ macro_rules! element_map {
         }
 
         impl<T:$crate::tensor::Datum + ::num_traits::Float> ::ops::InferenceRulesOp for $Name<T> {
+            /// Infers properties about the input and output tensors.
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
+                solver: &mut $crate::analyser::interface::Solver<'r>,
+                inputs: &'p $crate::analyser::interface::TensorsProxy,
+                outputs: &'p $crate::analyser::interface::TensorsProxy,
+            ) {
+                solver
+                    .equals(&inputs.len, 1)
+                    .equals(&outputs.len, 1)
+                    .equals_all(wrap![&inputs[0].datatype, &outputs[0].datatype, &T::datatype()])
+                    .equals(&inputs[0].shape, &outputs[0].shape);
+            }
+        }
+    };
+}
+
+macro_rules! element_map_signed {
+    ($Name: ident, $name:ident, $expr:expr) => {
+        pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
+            let datatype = pb.get_attr_datatype("T")?;
+            let it = match datatype {
+                $crate::tfpb::types::DataType::DT_INT32 => Box::new($Name::<i32>::new()) as Box<Op>,
+                $crate::tfpb::types::DataType::DT_FLOAT => Box::new($Name::<f32>::new()) as Box<Op>,
+                $crate::tfpb::types::DataType::DT_DOUBLE => Box::new($Name::<f64>::new()) as Box<Op>,
+                _ => unimplemented!("missing type")
+            };
+            Ok(it)
+        }
+
+        #[derive(Debug, Clone, new)]
+        pub struct $Name<T:$crate::tensor::Datum + ::num_traits::Signed>(::std::marker::PhantomData<T>);
+
+        impl<T:$crate::tensor::Datum + ::num_traits::Signed> ::ops::Op for $Name<T> {
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{ "T" => $crate::ops::Attr::DataType(T::datatype()) }
+            }
+
+            /// Evaluates the operation given the input tensors.
+            fn eval(
+                &self,
+                mut inputs: Vec<$crate::ops::TensorView>,
+            ) -> $crate::Result<Vec<$crate::ops::TensorView>> {
+                let a = args_1!(inputs);
+                let mut a = T::tensor_into_array(a.into_tensor())?;
+                a.mapv_inplace($expr);
+                Ok(vec![T::array_into_tensor(a).into()])
+            }
+
+            /// Evaluates one step of the operation on the given input tensors.
+            fn step(
+                &self,
+                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                _buffer: &mut Box<$crate::ops::OpBuffer>,
+            ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
+                let a = args_1!(inputs);
+                match a.1 {
+                    None => Ok(None),
+                    Some(tv) => Ok(Some(self.eval(vec![tv])?))
+                }
+            }
+        }
+
+        impl<T:$crate::tensor::Datum + ::num_traits::Signed> ::ops::InferenceRulesOp for $Name<T> {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,

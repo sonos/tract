@@ -17,10 +17,10 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Tanh", tanh);
 }
 
-element_map!(Abs, abs, |x| x.abs());
-element_map!(Neg, neg, |x| x.neg());
-element_map!(Rsqrt, rsqrt, |x| x.sqrt().recip());
-element_map!(Tanh, tanh, |x| x.tanh());
+element_map_signed!(Abs, abs, |x| x.abs());
+element_map_signed!(Neg, neg, |x| x.neg());
+element_map_float!(Rsqrt, rsqrt, |x| x.sqrt().recip());
+element_map_float!(Tanh, tanh, |x| x.tanh());
 
 element_bin!(Add, add, |mut a, b| {
     a += &b;
