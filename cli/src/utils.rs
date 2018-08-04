@@ -3,7 +3,7 @@ use errors::Result as CliResult;
 use ndarray;
 use rand;
 use rand::Rng;
-use tfdeploy::{ DataType, Tensor };
+use tfdeploy::{DataType, Tensor};
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]

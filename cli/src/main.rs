@@ -40,7 +40,7 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
-use tfdeploy::{ DataType, Tensor };
+use tfdeploy::{DataType, Tensor};
 use tfpb::graph::GraphDef;
 
 use errors::*;

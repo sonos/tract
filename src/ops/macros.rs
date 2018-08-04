@@ -4,9 +4,7 @@ macro_rules! element_map_float {
             let datatype = pb.get_attr_datatype("T")?;
             let it = match datatype {
                 $crate::DataType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
-                $crate::DataType::F64 => {
-                    Box::new($Name::<f64>::new()) as Box<Op>
-                }
+                $crate::DataType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
                 _ => unimplemented!("missing type"),
             };
             Ok(it)

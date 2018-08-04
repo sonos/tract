@@ -13,12 +13,12 @@ pub enum DataType {
     I32,
     F32,
     F64,
-    String
+    String,
 }
 
 impl DataType {
     pub fn from_pb(t: &::tfpb::types::DataType) -> ::Result<DataType> {
-        use ::tfpb::types::DataType as Tfpb;
+        use tfpb::types::DataType as Tfpb;
         match t {
             &Tfpb::DT_UINT8 => Ok(DataType::U8),
             &Tfpb::DT_INT8 => Ok(DataType::I8),
@@ -26,12 +26,12 @@ impl DataType {
             &Tfpb::DT_FLOAT => Ok(DataType::F32),
             &Tfpb::DT_DOUBLE => Ok(DataType::F64),
             &Tfpb::DT_STRING => Ok(DataType::String),
-            _ => Err(format!("Unknown DataType {:?}", t))?
+            _ => Err(format!("Unknown DataType {:?}", t))?,
         }
     }
 
     pub fn to_pb(&self) -> ::tfpb::types::DataType {
-        use ::tfpb::types::DataType as Tfpb;
+        use tfpb::types::DataType as Tfpb;
         match self {
             DataType::U8 => Tfpb::DT_UINT8,
             DataType::I8 => Tfpb::DT_INT8,
@@ -42,7 +42,6 @@ impl DataType {
         }
     }
 }
-
 
 pub trait Datum:
     Copy
