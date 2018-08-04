@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use ops::prelude::*;
 use analyser::interface::*;
+use ops::prelude::*;
 use Result;
 
 #[derive(Debug, Clone, Default, new)]
@@ -25,7 +25,10 @@ where
         let value = T::tensor_to_view(&value)?;
         let value = value[[]];
         let shape = i32::tensor_to_view(&shape)?;
-        let array = ::ndarray::Array::from_elem(shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(), value);
+        let array = ::ndarray::Array::from_elem(
+            shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
+            value,
+        );
         Ok(vec![T::array_into_tensor(array).into()])
     }
 
@@ -37,8 +40,13 @@ where
     }
 }
 
-impl<T:Datum> InferenceRulesOp for Fill<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+impl<T: Datum> InferenceRulesOp for Fill<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
@@ -50,7 +58,6 @@ impl<T:Datum> InferenceRulesOp for Fill<T> {
                 for dim in 0..rank {
                     solver.equals(&outputs[0].shape[dim], &inputs[0].value[dim]);
                 }
-            })
-        ;
+            });
     }
 }

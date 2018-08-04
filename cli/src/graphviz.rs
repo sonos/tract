@@ -69,13 +69,13 @@ impl<'a> dot::GraphWalk<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
     fn source(&self, e: &Ed) -> Nd {
         match e.1.from_node {
             Some(n) => self.nodes[n].clone(),
-            None => panic!("{:?}", e)
+            None => panic!("{:?}", e),
         }
     }
     fn target(&self, e: &Ed) -> Nd {
         match e.1.to_node {
             Some(n) => self.nodes[n].clone(),
-            None => self.nodes[self.nodes.len() - 1].clone()
+            None => self.nodes[self.nodes.len() - 1].clone(),
         }
     }
 }
@@ -92,24 +92,16 @@ pub fn render_dot<W: Write>(
     let mut nodes: Vec<_> = analyser
         .nodes
         .iter()
-        .map(|n| (
-            n.id,
-            &n.name,
-            &n.op_name,
-            red_nodes.contains(&n.id),
-        ))
+        .map(|n| (n.id, &n.name, &n.op_name, red_nodes.contains(&n.id)))
         .collect();
 
     // Add a special output node.
     let output_node_id = nodes.len();
-    nodes.push((
-        output_node_id,
-        &output_node_name,
-        &output_node_name,
-        false
-    ));
+    nodes.push((output_node_id, &output_node_name, &output_node_name, false));
 
-    let edges: Vec<_> = analyser.edges.iter()
+    let edges: Vec<_> = analyser
+        .edges
+        .iter()
         .enumerate()
         .map(|(i, e)| (i, e, red_edges.contains(&i)))
         .collect();
@@ -125,14 +117,22 @@ pub fn render_dot<W: Write>(
 }
 
 /// Displays a DOT export of the analysed graph on the standard output.
-pub fn display_dot(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Vec<usize>) -> Result<()> {
+pub fn display_dot(
+    analyser: &Analyser,
+    red_nodes: &Vec<usize>,
+    red_edges: &Vec<usize>,
+) -> Result<()> {
     render_dot(analyser, red_nodes, red_edges, &mut io::stdout())
 }
 
 /// Displays a render of the analysed graph using the `dot` command.
-pub fn display_graph(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Vec<usize>) -> Result<()> {
-    use std::{thread, time};
+pub fn display_graph(
+    analyser: &Analyser,
+    red_nodes: &Vec<usize>,
+    red_edges: &Vec<usize>,
+) -> Result<()> {
     use std::process::{Command, Stdio};
+    use std::{thread, time};
 
     let renderer = Command::new("dot")
         .arg("-Tpdf")
@@ -146,7 +146,10 @@ pub fn display_graph(analyser: &Analyser, red_nodes: &Vec<usize>, red_edges: &Ve
 
     thread::sleep(time::Duration::from_secs(1));
 
-    let _ = Command::new("evince").arg("--fullscreen").arg("/tmp/tfd-graph.pdf").output();
+    let _ = Command::new("evince")
+        .arg("--fullscreen")
+        .arg("/tmp/tfd-graph.pdf")
+        .output();
 
     Ok(())
 }

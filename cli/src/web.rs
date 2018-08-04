@@ -1,7 +1,7 @@
-use OutputParameters;
-use std::fs::File;
-use errors::Result as CliResult;
 use display_graph::DisplayGraph;
+use errors::Result as CliResult;
+use std::fs::File;
+use OutputParameters;
 
 /// Starts a web server for TFVisualizer and opens its webroot in a browser.
 pub fn open_web(output: &DisplayGraph, _params: &OutputParameters) -> CliResult<()> {
@@ -31,4 +31,3 @@ pub fn open_web(output: &DisplayGraph, _params: &OutputParameters) -> CliResult<
         );
     });
 }
-

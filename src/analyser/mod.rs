@@ -6,13 +6,13 @@ use Model;
 use Node;
 use Plan;
 
-mod types;
 mod constants;
+mod types;
 
 pub mod prelude {
-    use Result;
     pub use super::types::*;
     pub use super::Analyser;
+    use Result;
 
     /// Attempts to unify two tensor facts into a more specialized one.
     pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
@@ -248,8 +248,12 @@ impl Analyser {
             } else {
                 node_mapping[i] = Some(i - deleted);
 
-                self.prev_edges[i - deleted].iter().for_each(|&j| edge_used[j] = true);
-                self.next_edges[i - deleted].iter().for_each(|&j| edge_used[j] = true);
+                self.prev_edges[i - deleted]
+                    .iter()
+                    .for_each(|&j| edge_used[j] = true);
+                self.next_edges[i - deleted]
+                    .iter()
+                    .for_each(|&j| edge_used[j] = true);
             }
         }
 
@@ -258,7 +262,9 @@ impl Analyser {
         // Update the nodes and edges to use the new indices.
         for node in &mut self.nodes {
             node.id = node_mapping[node.id].unwrap();
-            node.inputs.iter_mut().for_each(|i| i.0 = node_mapping[i.0].unwrap());
+            node.inputs
+                .iter_mut()
+                .for_each(|i| i.0 = node_mapping[i.0].unwrap());
         }
 
         for edge in &mut self.edges {
@@ -288,8 +294,12 @@ impl Analyser {
 
         // Update the adjacency lists to use the new indices.
         for i in 0..self.nodes.len() {
-            self.prev_edges[i].iter_mut().for_each(|j| *j = edge_mapping[*j].unwrap());
-            self.next_edges[i].iter_mut().for_each(|j| *j = edge_mapping[*j].unwrap());
+            self.prev_edges[i]
+                .iter_mut()
+                .for_each(|j| *j = edge_mapping[*j].unwrap());
+            self.next_edges[i]
+                .iter_mut()
+                .for_each(|j| *j = edge_mapping[*j].unwrap());
         }
 
         node_mapping
@@ -365,15 +375,25 @@ impl Analyser {
 
         debug!(
             "Starting step for {} {} ({}) [pass={:?}, direction={:?}, step={:?}].",
-            node.id, node.name, node.op_name, self.current_pass, self.current_direction, self.current_step,
+            node.id,
+            node.name,
+            node.op_name,
+            self.current_pass,
+            self.current_direction,
+            self.current_step,
         );
 
         let inputs: Vec<_> = self.prev_edges[node.id]
             .iter()
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
-                trace!(" Input {:?} from {}/{}: {:?}", edge.to_node.unwrap(), edge.from_node.unwrap(), edge.from_out, 
-                       edge.fact);
+                trace!(
+                    " Input {:?} from {}/{}: {:?}",
+                    edge.to_node.unwrap(),
+                    edge.from_node.unwrap(),
+                    edge.from_out,
+                    edge.fact
+                );
             })
             .map(|edge| edge.fact.clone())
             .collect();
@@ -394,10 +414,7 @@ impl Analyser {
         for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
             let fact = &inferred.0[i];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!(
-                    "While unifying inputs of node {:?}: {}",
-                    node.name, e
-                ))?;
+                .map_err(|e| format!("While unifying inputs of node {:?}: {}", node.name, e))?;
 
             if unified != self.edges[j].fact {
                 debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
@@ -414,10 +431,7 @@ impl Analyser {
 
             let fact = &inferred.1[0];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!(
-                    "While unifying outputs of node {:?}: {}",
-                    node.name, e
-                ))?;
+                .map_err(|e| format!("While unifying outputs of node {:?}: {}", node.name, e))?;
 
             if unified != self.edges[j].fact {
                 debug!(" Refined {} output #{} to {:?}", node.name, i, unified);

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use ndarray::prelude::*;
+use std::collections::HashMap;
 use Result;
 
 use ops::Attr;
@@ -135,33 +135,27 @@ impl LocalPatch {
         in_cols: usize,
         (filter_rows, filter_cols): (usize, usize),
     ) -> (usize, usize) {
-        (self.adjusted_dim_rows(in_rows, filter_rows),
-         self.adjusted_dim_cols(in_cols, filter_cols))
+        (
+            self.adjusted_dim_rows(in_rows, filter_rows),
+            self.adjusted_dim_cols(in_cols, filter_cols),
+        )
     }
 
-    pub fn adjusted_dim_rows(
-        &self,
-        in_rows: usize,
-        filter_rows: usize,
-    ) -> usize {
+    pub fn adjusted_dim_rows(&self, in_rows: usize, filter_rows: usize) -> usize {
         match self.padding {
-            Padding::Same =>
-                (in_rows as f32 / self.v_stride as f32).ceil() as usize,
-            Padding::Valid =>
-                ((in_rows - filter_rows + 1) as f32 / self.v_stride as f32).ceil() as usize,
+            Padding::Same => (in_rows as f32 / self.v_stride as f32).ceil() as usize,
+            Padding::Valid => {
+                ((in_rows - filter_rows + 1) as f32 / self.v_stride as f32).ceil() as usize
+            }
         }
     }
 
-    pub fn adjusted_dim_cols(
-        &self,
-        in_cols: usize,
-        filter_cols: usize,
-    ) -> usize {
+    pub fn adjusted_dim_cols(&self, in_cols: usize, filter_cols: usize) -> usize {
         match self.padding {
-            Padding::Same =>
-                (in_cols as f32 / self.h_stride as f32).ceil() as usize,
-            Padding::Valid =>
-                ((in_cols - filter_cols + 1) as f32 / self.h_stride as f32).ceil() as usize,
+            Padding::Same => (in_cols as f32 / self.h_stride as f32).ceil() as usize,
+            Padding::Valid => {
+                ((in_cols - filter_cols + 1) as f32 / self.h_stride as f32).ceil() as usize
+            }
         }
     }
 
@@ -225,17 +219,31 @@ impl LocalPatch {
                 let top_padding = v_padding / 2;
                 let bottom_padding = v_padding - top_padding;
                 let top_padding = ::ndarray::Array4::<T>::from_elem(
-                    (img.count(), top_padding, padded_cols.shape()[2], img.depth()),
+                    (
+                        img.count(),
+                        top_padding,
+                        padded_cols.shape()[2],
+                        img.depth(),
+                    ),
                     item,
                 );
                 let bottom_padding = ::ndarray::Array4::<T>::from_elem(
-                    (img.count(), bottom_padding, padded_cols.shape()[2], img.depth()),
+                    (
+                        img.count(),
+                        bottom_padding,
+                        padded_cols.shape()[2],
+                        img.depth(),
+                    ),
                     item,
                 );
 
                 ::ndarray::stack(
                     ::ndarray::Axis(1),
-                    &[top_padding.view(), padded_cols.view(), bottom_padding.view()],
+                    &[
+                        top_padding.view(),
+                        padded_cols.view(),
+                        bottom_padding.view(),
+                    ],
                 )?
             } else {
                 padded_cols
@@ -268,7 +276,13 @@ impl LocalPatch {
 
         let mut patches = unsafe { ::ndarray::Array2::<T>::uninitialized(patches_size) };
         let data = data.into_shape((1, img.height(), img.width(), img.depth()))?;
-        let padded = self.pad(data, (filter_rows, filter_cols), T::zero(), pad_rows, pad_cols)?;
+        let padded = self.pad(
+            data,
+            (filter_rows, filter_cols),
+            T::zero(),
+            pad_rows,
+            pad_cols,
+        )?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         for i_x in 0..out_width {
             for i_y in 0..out_height {

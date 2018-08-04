@@ -1,5 +1,5 @@
-use ops::prelude::*;
 use analyser::interface::*;
+use ops::prelude::*;
 
 pub mod conv2d;
 pub mod local_patch;
@@ -48,12 +48,16 @@ impl Op for Softmax {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{}
     }
-
 }
 
 impl InferenceRulesOp for Softmax {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
@@ -61,8 +65,6 @@ impl InferenceRulesOp for Softmax {
             .equals(&inputs[0].shape, &outputs[0].shape);
     }
 }
-
-
 
 pub fn arr4<A, V, U, T>(xs: &[V]) -> ::ndarray::Array4<A>
 where

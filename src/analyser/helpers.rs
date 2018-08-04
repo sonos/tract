@@ -1,5 +1,5 @@
-use tensor::Tensor;
 use super::*;
+use tensor::Tensor;
 
 /// Build a TensorFact from a Tensor.
 pub fn tensor_to_fact(tensor: Tensor) -> TensorFact {
@@ -29,9 +29,7 @@ pub fn infer_forward_concrete(
     // If we know the value of all the inputs, we can deduce everything.
     let output_value = op.eval(input_values)?.pop().unwrap();
 
-    Ok(Some(vec![
-        tensor_to_fact(output_value.into_tensor())
-    ]))
+    Ok(Some(vec![tensor_to_fact(output_value.into_tensor())]))
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.

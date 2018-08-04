@@ -3,8 +3,8 @@
 use std::{fs, path};
 
 use tensorflow::DataType;
-use tensorflow::Graph;
 use tensorflow::FetchToken;
+use tensorflow::Graph;
 use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 use tensorflow::Tensor;

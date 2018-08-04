@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
-use ops::prelude::*;
 use analyser::interface::*;
 use ndarray::prelude::*;
-use ndarray::{Axis, Slice, stack};
+use ndarray::{stack, Axis, Slice};
+use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
@@ -35,7 +35,7 @@ impl<T: Datum> Conv2D<T> {
         data: &Array4<T>,
         filter: ArrayViewD<T>,
         pad_rows: bool,
-        pad_cols: bool
+        pad_cols: bool,
     ) -> Result<(Array4<T>)> {
         let images = BatchImageWrapper(data.view());
 
@@ -51,16 +51,22 @@ impl<T: Datum> Conv2D<T> {
             .view()
             .into_shape((filter_rows * filter_cols * images.d(), out_depth))?;
 
-        let mut transformed: Vec<T> = Vec::with_capacity(images.n() * out_height * out_width * out_depth);
+        let mut transformed: Vec<T> =
+            Vec::with_capacity(images.n() * out_height * out_width * out_depth);
 
         // Loop over each batch.
         for image in data.outer_iter() {
-            let patches = self.0.mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
+            let patches = self.0
+                .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
 
-        let transformed = Array::from_vec(transformed)
-            .into_shape((images.n(), out_height, out_width, out_depth))?;
+        let transformed = Array::from_vec(transformed).into_shape((
+            images.n(),
+            out_height,
+            out_width,
+            out_depth,
+        ))?;
 
         Ok(transformed)
     }
@@ -84,8 +90,8 @@ impl<T: Datum> Op for Conv2D<T> {
         let filter = T::tensor_to_view(&*m_filter)?;
         let data = into_4d(data)?;
 
-        Ok(vec![T::array_into_tensor(
-            self.convolve(&data, filter, true, true)?.into_dyn()).into()
+        Ok(vec![
+            T::array_into_tensor(self.convolve(&data, filter, true, true)?.into_dyn()).into(),
         ])
     }
 
@@ -122,7 +128,7 @@ impl<T: Datum> Op for Conv2D<T> {
             bail!("Filter input should not be streamed.");
         }
 
-        if data.0.is_none()  {
+        if data.0.is_none() {
             bail!("Data input should be streamed.");
         }
 
@@ -134,12 +140,9 @@ impl<T: Datum> Op for Conv2D<T> {
         // Maybe the data is streamed along the batch dimension.
         let dim = data.0.unwrap();
         if dim == 0 {
-            let result = self.eval(vec![
-                data.1.take().unwrap(),
-                filter.1.take().unwrap()
-            ])?;
+            let result = self.eval(vec![data.1.take().unwrap(), filter.1.take().unwrap()])?;
 
-            return Ok(Some(result))
+            return Ok(Some(result));
         }
 
         if dim < 1 || dim > 2 {
@@ -156,15 +159,14 @@ impl<T: Datum> Op for Conv2D<T> {
         let filter_size = filter.shape()[dim - 1];
 
         // Generates an empty 4-dimensional array of the right shape.
-        let empty_array = || {
-            match dim {
-                1 => Array::zeros((data.shape()[0], 0, data.shape()[2], data.shape()[3])),
-                2 => Array::zeros((data.shape()[0], data.shape()[1], 0, data.shape()[3])),
-                _ => panic!()
-            }
+        let empty_array = || match dim {
+            1 => Array::zeros((data.shape()[0], 0, data.shape()[2], data.shape()[3])),
+            2 => Array::zeros((data.shape()[0], data.shape()[1], 0, data.shape()[3])),
+            _ => panic!(),
         };
 
-        let buffer = buffer.downcast_mut::<Buffer<T>>()
+        let buffer = buffer
+            .downcast_mut::<Buffer<T>>()
             .ok_or("The buffer can't be downcasted to Buffer<T>.")?;
 
         if buffer.prev.is_none() {
@@ -176,7 +178,7 @@ impl<T: Datum> Op for Conv2D<T> {
 
         if *skip > 0 {
             *skip -= 1;
-            return Ok(None)
+            return Ok(None);
         }
 
         let mut next = stack(Axis(dim), &[prev.view(), data.view()])?;
@@ -186,7 +188,7 @@ impl<T: Datum> Op for Conv2D<T> {
         if next_size < filter_size {
             *skip = 0;
             *prev = next;
-            return Ok(None)
+            return Ok(None);
         }
 
         // Otherwise we compute the convolution using the non-streaming implementation.
@@ -210,7 +212,12 @@ impl<T: Datum> Op for Conv2D<T> {
 
 impl<T: Datum> InferenceRulesOp for Conv2D<T> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
@@ -223,37 +230,35 @@ impl<T: Datum> InferenceRulesOp for Conv2D<T> {
             .equals(&inputs[0].shape[0], &outputs[0].shape[0])
             .equals(&inputs[0].shape[3], &inputs[1].shape[2])
             .equals(&outputs[0].shape[3], &inputs[1].shape[3])
-            .given(&inputs[0].shape[1], move |solver, h:DimFact| {
-                match h {
-                    DimFact::Only(h) => {
-                        solver.given(&inputs[1].shape[0], move |solver, kh| {
-                            let oh = self.0.adjusted_dim_rows(h, kh);
-                            solver.equals(&outputs[0].shape[1], oh as isize);
-                        });
-                    },
-                    DimFact::Streamed => {
-                        solver.equals(
-                            &outputs[0].shape[1],
-                            IntFact::Special(SpecialKind::Streamed));
-                    }
-                    _ => {}
+            .given(&inputs[0].shape[1], move |solver, h: DimFact| match h {
+                DimFact::Only(h) => {
+                    solver.given(&inputs[1].shape[0], move |solver, kh| {
+                        let oh = self.0.adjusted_dim_rows(h, kh);
+                        solver.equals(&outputs[0].shape[1], oh as isize);
+                    });
                 }
+                DimFact::Streamed => {
+                    solver.equals(
+                        &outputs[0].shape[1],
+                        IntFact::Special(SpecialKind::Streamed),
+                    );
+                }
+                _ => {}
             })
-            .given(&inputs[0].shape[2], move |solver, w:DimFact| {
-                match w {
-                    DimFact::Only(w) => {
-                        solver.given(&inputs[1].shape[1], move |solver, kw| {
-                            let ow = self.0.adjusted_dim_cols(w, kw);
-                            solver.equals(&outputs[0].shape[2], ow as isize);
-                        });
-                    },
-                    DimFact::Streamed => {
-                        solver.equals(
-                            &outputs[0].shape[2],
-                            IntFact::Special(SpecialKind::Streamed));
-                    }
-                    _ => {}
+            .given(&inputs[0].shape[2], move |solver, w: DimFact| match w {
+                DimFact::Only(w) => {
+                    solver.given(&inputs[1].shape[1], move |solver, kw| {
+                        let ow = self.0.adjusted_dim_cols(w, kw);
+                        solver.equals(&outputs[0].shape[2], ow as isize);
+                    });
                 }
+                DimFact::Streamed => {
+                    solver.equals(
+                        &outputs[0].shape[2],
+                        IntFact::Special(SpecialKind::Streamed),
+                    );
+                }
+                _ => {}
             });
     }
 }

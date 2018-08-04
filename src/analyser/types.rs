@@ -1,6 +1,6 @@
-use std::ops::{Add, Sub, Mul, Div};
-use std::iter::FromIterator;
 use std::fmt;
+use std::iter::FromIterator;
+use std::ops::{Add, Div, Mul, Sub};
 use Result;
 
 use num_traits::cast::ToPrimitive;
@@ -65,8 +65,8 @@ impl Fact for TensorFact {
     fn unify(&self, other: &Self) -> Result<Self> {
         let tensor = TensorFact {
             datatype: self.datatype.unify(&other.datatype)?,
-            shape:    self.shape.unify(&other.shape)?,
-            value:    self.value.unify(&other.value)?,
+            shape: self.shape.unify(&other.shape)?,
+            value: self.value.unify(&other.value)?,
         };
 
         trace!("Unifying {:?} with {:?} into {:?}.", self, other, tensor);
@@ -105,7 +105,7 @@ impl fmt::Debug for TensorFact {
 #[derive(Debug, Clone, PartialEq)]
 pub enum GenericFact<T: fmt::Debug + Clone + PartialEq> {
     Any,
-    Only(T)
+    Only(T),
 }
 
 impl<T: fmt::Debug + Clone + PartialEq> Fact for GenericFact<T> {
@@ -124,7 +124,7 @@ impl<T: fmt::Debug + Clone + PartialEq> Fact for GenericFact<T> {
         let fact = match (self, other) {
             (_, GenericFact::Any) => self.clone(),
             (GenericFact::Any, _) => other.clone(),
-            _ if self == other    => self.clone(),
+            _ if self == other => self.clone(),
             _ => bail!("Impossible to unify {:?} with {:?}.", self, other),
         };
 
@@ -258,10 +258,14 @@ impl From<Vec<usize>> for ShapeFact {
 impl FromIterator<Option<usize>> for ShapeFact {
     /// Converts an iterator over `Option<usize>` into a closed shape.
     fn from_iter<I: IntoIterator<Item = Option<usize>>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter.into_iter().map(|d| match d {
-            Some(d) => DimFact::Only(d),
-            None => DimFact::Streamed,
-        }).collect())
+        ShapeFact::closed(
+            iter.into_iter()
+                .map(|d| match d {
+                    Some(d) => DimFact::Only(d),
+                    None => DimFact::Streamed,
+                })
+                .collect(),
+        )
     }
 }
 
@@ -329,8 +333,8 @@ impl Fact for DimFact {
     /// Tries to unify the fact with another `DimFact`.
     fn unify(&self, other: &Self) -> Result<Self> {
         let fact = match (self, other) {
-            (_, DimFact::Any)  => self.clone(),
-            (DimFact::Any, _)  => other.clone(),
+            (_, DimFact::Any) => self.clone(),
+            (DimFact::Any, _) => other.clone(),
             _ if self == other => self.clone(),
             _ => bail!("Impossible to unify {:?} with {:?}.", self, other),
         };
@@ -406,8 +410,8 @@ impl Fact for IntFact {
     /// Returns whether the IntFact is concrete.
     fn is_concrete(&self) -> bool {
         match self {
-            IntFact::Any        => false,
-            IntFact::Only(_)    => true,
+            IntFact::Any => false,
+            IntFact::Only(_) => true,
             IntFact::Special(_) => true,
         }
     }
@@ -415,8 +419,8 @@ impl Fact for IntFact {
     /// Tries to unify the fact with another fact of the same type.
     fn unify(&self, other: &IntFact) -> Result<IntFact> {
         let fact = match (self, other) {
-            (_, IntFact::Any)  => self.clone(),
-            (IntFact::Any, _)  => other.clone(),
+            (_, IntFact::Any) => self.clone(),
+            (IntFact::Any, _) => other.clone(),
             _ if self == other => self.clone(),
             _ => bail!("Impossible to unify {:?} with {:?}.", self, other),
         };
@@ -446,8 +450,8 @@ impl From<usize> for IntFact {
 impl From<DimFact> for IntFact {
     fn from(d: DimFact) -> IntFact {
         match d {
-            DimFact::Any      => IntFact::Any,
-            DimFact::Only(d)  => d.into(),
+            DimFact::Any => IntFact::Any,
+            DimFact::Only(d) => d.into(),
             DimFact::Streamed => IntFact::Special(SpecialKind::Streamed),
         }
     }
@@ -464,12 +468,14 @@ macro_rules! impl_op {
                     (IntFact::Special(a), IntFact::Special(b)) => if a == b {
                         IntFact::Special(a)
                     } else {
-                        panic!("Shouldn't perform an arithmetic operation on two\
-                                different special values ({:?} and {:?}).", a, b);
+                        panic!(
+                            "Shouldn't perform an arithmetic operation on two\
+                             different special values ({:?} and {:?}).",
+                            a, b
+                        );
                     },
 
-                    (IntFact::Special(s), _) |
-                    (_, IntFact::Special(s)) => IntFact::Special(s),
+                    (IntFact::Special(s), _) | (_, IntFact::Special(s)) => IntFact::Special(s),
 
                     (IntFact::Only($i), IntFact::Only($j)) => IntFact::Only($res),
                     _ => IntFact::Any,
@@ -483,7 +489,7 @@ macro_rules! impl_op {
             fn $method(self, other: isize) -> Self {
                 match (self, other) {
                     (IntFact::Special(s), _) => IntFact::Special(s),
-                    (IntFact::Only($i), $j)  => IntFact::Only($res),
+                    (IntFact::Only($i), $j) => IntFact::Only($res),
                     _ => IntFact::Any,
                 }
             }
@@ -495,15 +501,15 @@ macro_rules! impl_op {
             fn $method(self, other: usize) -> Self {
                 match (self, other) {
                     (IntFact::Special(s), _) => IntFact::Special(s),
-                    (IntFact::Only($i), $j)  => {
+                    (IntFact::Only($i), $j) => {
                         let $j = ($j).to_isize().unwrap();
                         IntFact::Only($res)
-                    },
+                    }
                     _ => IntFact::Any,
                 }
             }
         }
-    }
+    };
 }
 
 impl_op!(IntFact, Add, add, i, j, i + j);
@@ -517,15 +523,16 @@ impl CheckedDiv for IntFact {
             (IntFact::Special(a), IntFact::Special(b)) => if a == b {
                 Some(IntFact::Special(*a))
             } else {
-                panic!("Shouldn't perform an arithmetic operation on two\
-                        different special values ({:?} and {:?}).", a, b);
+                panic!(
+                    "Shouldn't perform an arithmetic operation on two\
+                     different special values ({:?} and {:?}).",
+                    a, b
+                );
             },
 
-            (IntFact::Special(s), _) |
-            (_, IntFact::Special(s)) => Some(IntFact::Special(*s)),
+            (IntFact::Special(s), _) | (_, IntFact::Special(s)) => Some(IntFact::Special(*s)),
 
-            (IntFact::Only(i), IntFact::Only(j)) =>
-                i.checked_div(j).map(|k| k.into()),
+            (IntFact::Only(i), IntFact::Only(j)) => i.checked_div(j).map(|k| k.into()),
 
             _ => Some(IntFact::Any),
         }

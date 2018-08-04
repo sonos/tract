@@ -4,7 +4,7 @@ use std::time::Instant as StdInstant;
 
 use Result;
 
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Instant(StdInstant, f64, f64);
 
 impl Instant {
@@ -44,7 +44,9 @@ pub struct Duration {
 impl Duration {
     /// Returns an empty measure.
     pub fn new() -> Duration {
-        Duration { ..Default::default() }
+        Duration {
+            ..Default::default()
+        }
     }
 
     /// Returns a measure from a given instant and iterations.
@@ -54,7 +56,10 @@ impl Duration {
         let total_sys = start.elapsed_sys();
 
         Duration {
-            total_real, total_user, total_sys, counter: iters
+            total_real,
+            total_user,
+            total_sys,
+            counter: iters,
         }
     }
 
@@ -82,8 +87,7 @@ impl ::std::ops::AddAssign for Duration {
     }
 }
 
-
-use libc::{getrusage, RUSAGE_SELF, rusage, timeval};
+use libc::{getrusage, rusage, timeval, RUSAGE_SELF};
 
 #[derive(Debug)]
 pub struct ResourceUsage {
@@ -96,7 +100,7 @@ pub struct ResourceUsage {
     pub major_fault: u64,
 }
 
-#[cfg(target_os="macos")]
+#[cfg(target_os = "macos")]
 mod darwin {
     use libc::*;
     #[repr(C)]
@@ -133,11 +137,12 @@ mod darwin {
         use libc::*;
         extern "C" {
             pub fn mach_task_self() -> c_uint;
-            pub fn task_info(task: c_uint,
-                             flavor: c_int,
-                             task_info: *mut super::BasicTaskInfo,
-                             count: *mut c_uint)
-                             -> c_uint;
+            pub fn task_info(
+                task: c_uint,
+                flavor: c_int,
+                task_info: *mut super::BasicTaskInfo,
+                count: *mut c_uint,
+            ) -> c_uint;
         }
     }
     pub fn task_self() -> c_uint {
@@ -154,7 +159,7 @@ mod darwin {
     }
 }
 
-#[cfg(target_os="macos")]
+#[cfg(target_os = "macos")]
 pub fn get_memory_usage() -> Result<ResourceUsage> {
     let info = darwin::task_info();
     let rusage = get_rusage();
@@ -169,7 +174,7 @@ pub fn get_memory_usage() -> Result<ResourceUsage> {
     })
 }
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 pub fn get_memory_usage() -> Result<ResourceUsage> {
     use std::fs::File;
     use std::io::Read;

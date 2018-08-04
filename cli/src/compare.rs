@@ -2,10 +2,10 @@
 use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::Tensor;
 
-use { OutputParameters, Parameters };
 use errors::*;
 use format::*;
 use utils::*;
+use {OutputParameters, Parameters};
 
 /// Handles the `compare` subcommand.
 #[cfg(not(feature = "tensorflow"))]
@@ -24,10 +24,15 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
     let output = tfd.get_node_by_id(params.output_node_id)?;
     let mut state = tfd.state();
 
-    let input = params.input
+    let input = params
+        .input
         .ok_or("Exactly one of <size> or <data> must be specified.")?;
 
-    let shape = input.shape.iter().cloned().collect::<Option<Vec<_>>>()
+    let shape = input
+        .shape
+        .iter()
+        .cloned()
+        .collect::<Option<Vec<_>>>()
         .ok_or("The compare command doesn't support streaming dimensions.")?;
 
     // First generate random values for the inputs.
@@ -39,10 +44,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
             random_tensor(shape.clone(), input.datatype)
         };
 
-        generated.push((
-            tfd.get_node_by_id(i)?.name.as_str(),
-            data,
-        ));
+        generated.push((tfd.get_node_by_id(i)?.name.as_str(), data));
     }
 
     // Execute the model on tensorflow first.
@@ -54,8 +56,9 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
     let plan = output.eval_order(&tfd)?;
     debug!("Using execution plan: {:?}", plan);
 
-    let nodes:Vec<_> = tfd.nodes.iter().map(|a| &*a).collect();
-    let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
+    let nodes: Vec<_> = tfd.nodes.iter().map(|a| &*a).collect();
+    let mut display_graph =
+        ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
 
     let mut failures = 0;
 
@@ -83,7 +86,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                 dn.more_lines.push(format!("Error message: {:?}", e));
                 dn.label = Some("ERROR".red().to_string());
                 dn.hidden = false;
-            },
+            }
 
             _ => {
                 let tfd_output = state.outputs[n].as_ref().unwrap();
@@ -146,4 +149,3 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
 
     Ok(())
 }
-

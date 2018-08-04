@@ -1,9 +1,9 @@
+use bincode;
 #[cfg(feature = "tensorflow")]
 use conform;
-use tfdeploy;
-use bincode;
-use serde_json;
 use ndarray;
+use serde_json;
+use tfdeploy;
 
 /// Configures error handling for this crate.
 error_chain! {

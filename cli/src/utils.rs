@@ -1,10 +1,10 @@
+#[allow(unused_imports)]
+use errors::Result as CliResult;
 use ndarray;
 use rand;
 use rand::Rng;
-use tfdeploy::Tensor;
 use tfdeploy::tfpb::types::DataType;
-#[allow(unused_imports)]
-use errors::Result as CliResult;
+use tfdeploy::Tensor;
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]
@@ -61,4 +61,3 @@ pub fn random_tensor(sizes: Vec<usize>, datatype: DataType) -> Tensor {
         _ => unimplemented!("missing type"),
     }
 }
-

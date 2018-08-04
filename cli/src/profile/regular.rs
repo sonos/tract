@@ -2,23 +2,32 @@ use atty;
 use pbr::ProgressBar;
 use simplelog::Level::Info;
 
-use { Parameters, InputParameters, ProfilingMode, OutputParameters };
 use errors::*;
 use utils::random_tensor;
+use {InputParameters, OutputParameters, Parameters, ProfilingMode};
 
-use profile::ProfileData;
-use rusage::{ Instant, Duration };
 use format::*;
+use profile::ProfileData;
+use rusage::{Duration, Instant};
 
 use tfdeploy::ModelState;
 
 fn make_state(params: &Parameters) -> Result<ModelState> {
     let ref model = params.tfd_model;
     let mut state = model.state();
-    let shape:Vec<usize> = params.input.as_ref().unwrap().shape.iter().map(|s| s.unwrap()).collect(); // checked by clap and dispatcher
-    // First fill the inputs with randomly generated values.
+    let shape: Vec<usize> = params
+        .input
+        .as_ref()
+        .unwrap()
+        .shape
+        .iter()
+        .map(|s| s.unwrap())
+        .collect(); // checked by clap and dispatcher
+                    // First fill the inputs with randomly generated values.
     for s in &params.input_node_ids {
-        let given_input:&InputParameters = params.input.as_ref()
+        let given_input: &InputParameters = params
+            .input
+            .as_ref()
             .ok_or("Exactly one of <size> or <data> must be specified.")?;
         let data = if let Some(value) = given_input.data.as_ref() {
             value.clone()
@@ -31,8 +40,16 @@ fn make_state(params: &Parameters) -> Result<ModelState> {
     Ok(state)
 }
 
-pub fn handle_benching(params: Parameters, profiling: ProfilingMode, _output_params:OutputParameters) -> Result<()> {
-    let (max_iters, max_time) = if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
+pub fn handle_benching(
+    params: Parameters,
+    profiling: ProfilingMode,
+    _output_params: OutputParameters,
+) -> Result<()> {
+    let (max_iters, max_time) = if let ProfilingMode::RegularBenching {
+        max_iters,
+        max_time,
+    } = profiling
+    {
         (max_iters, max_time)
     } else {
         bail!("Expecting bench profile mode")
@@ -57,10 +74,18 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode, _output_par
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: OutputParameters) -> Result<()> {
+pub fn handle(
+    params: Parameters,
+    profiling: ProfilingMode,
+    output_parameters: OutputParameters,
+) -> Result<()> {
     use colored::Colorize;
 
-    let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
+    let (max_iters, max_time) = if let ProfilingMode::Regular {
+        max_iters,
+        max_time,
+    } = profiling
+    {
         (max_iters, max_time)
     } else {
         bail!("Expecting regular profile mode")
@@ -105,7 +130,13 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: O
 
         if node.op_name == "Placeholder" {
             if log_enabled!(Info) {
-                print_node(node, &params.graph, Some(&state), &["SKIP".yellow().to_string()], vec![]);
+                print_node(
+                    node,
+                    &params.graph,
+                    Some(&state),
+                    &["SKIP".yellow().to_string()],
+                    vec![],
+                );
             }
 
             continue;
@@ -123,9 +154,15 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: O
 
         // Print the results for the node.
         if log_enabled!(Info) {
-            print_node(node, &params.graph, Some(&state), &[
-                format!("{:.3} ms/i", measure.avg_real() * 1e3).white().to_string()
-            ], vec![]);
+            print_node(
+                node,
+                &params.graph,
+                Some(&state),
+                &[format!("{:.3} ms/i", measure.avg_real() * 1e3)
+                    .white()
+                    .to_string()],
+                vec![],
+            );
         }
 
         profile.add(&node, measure)?;
@@ -144,8 +181,10 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: O
     println!();
 
     println!("Entire network performance: {}", dur_avg_oneline(entire));
-    println!("Accounted by ops: {}", dur_avg_oneline_ratio(profile.summed(), entire));
-
+    println!(
+        "Accounted by ops: {}",
+        dur_avg_oneline_ratio(profile.summed(), entire)
+    );
 
     if log_enabled!(Info) {
         println!(
@@ -158,4 +197,3 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, output_parameters: O
 
     Ok(())
 }
-

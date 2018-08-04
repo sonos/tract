@@ -1,9 +1,9 @@
-use Result;
-use analyser::types::{Fact, IntFact, SpecialKind, TensorFact};
-use analyser::interface::path::{Path, get_path, set_path};
-use analyser::interface::expressions::Output;
 use analyser::interface::expressions::Expression;
 use analyser::interface::expressions::IntoExpression;
+use analyser::interface::expressions::Output;
+use analyser::interface::path::{get_path, set_path, Path};
+use analyser::types::{Fact, IntFact, SpecialKind, TensorFact};
+use Result;
 
 use std::fmt;
 
@@ -151,17 +151,21 @@ impl<'rules> Rule<'rules> for EqualsZeroRule {
                 IntFact::Only(sum) => {
                     misses[0].set(context, IntFact::Only(-sum))?;
                     Ok((true, vec![]))
-                },
+                }
                 IntFact::Special(SpecialKind::Streamed) => {
                     misses[0].set(context, IntFact::Special(SpecialKind::Streamed))?;
                     Ok((true, vec![]))
-                },
-                IntFact::Any => Ok((false, vec!()))
+                }
+                IntFact::Any => Ok((false, vec![])),
             }
         } else if sum == 0usize.into() || sum == IntFact::Special(SpecialKind::Streamed) {
             Ok((true, vec![]))
         } else {
-            bail!("The sum of these values doesn't equal zero: {:?}. ({:?})", values, sum);
+            bail!(
+                "The sum of these values doesn't equal zero: {:?}. ({:?})",
+                values,
+                sum
+            );
         }
     }
 
@@ -200,7 +204,7 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> GivenRule<'
     /// Creates a new GivenRule instance.
     pub fn new<F>(item: E, closure: F) -> GivenRule<'rules, T, E, C>
     where
-        F: Fn(&mut Solver<'rules>, C) + 'rules
+        F: Fn(&mut Solver<'rules>, C) + 'rules,
     {
         let closure = Box::new(closure);
 
@@ -208,7 +212,9 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> GivenRule<'
     }
 }
 
-impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules> for GivenRule<'rules, T, E, C> {
+impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules>
+    for GivenRule<'rules, T, E, C>
+{
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         // When calling `self.item.get(context)?`, we get a value of type T.
@@ -230,8 +236,12 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules
 
             Ok((true, solver.take_rules()))
         } else {
-            trace!("In {:?}, failed to convert {:?} to expected type", self, self.item.get(context)?.wrap());
-            Ok((false, vec!()))
+            trace!(
+                "In {:?}, failed to convert {:?} to expected type",
+                self,
+                self.item.get(context)?.wrap()
+            );
+            Ok((false, vec![]))
         }
     }
 
@@ -241,7 +251,9 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules
     }
 }
 
-impl<'s, T: Output + Fact, E: Expression<Output = T>, C: Output> fmt::Debug for GivenRule<'s, T, E, C> {
+impl<'s, T: Output + Fact, E: Expression<Output = T>, C: Output> fmt::Debug
+    for GivenRule<'s, T, E, C>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GivenRule {{ {:?} }}", self.item)
     }
@@ -275,9 +287,7 @@ impl<'rules> Solver<'rules> {
         // Apply the rules until reaching a fixed point.
         let mut changed = true;
         let mut added_rules = vec![];
-        let mut rules: Vec<_> = self.rules.into_iter()
-            .map(|r| (false, r))
-            .collect();
+        let mut rules: Vec<_> = self.rules.into_iter().map(|r| (false, r)).collect();
 
         while changed {
             changed = false;
@@ -314,7 +324,7 @@ impl<'rules> Solver<'rules> {
     /// solver.equals(outputs[0].rank, inputs[1].shape[0]);
     /// solver.equals(outputs[1].rank, 3);
     /// ```
-    pub fn equals<T, EA , EB, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
+    pub fn equals<T, EA, EB, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
     where
         T: Output + Fact + 'static,
         EA: Expression<Output = T> + 'static,
@@ -358,7 +368,10 @@ impl<'rules> Solver<'rules> {
     ///     (-1, inputs[1].shape[0]).into(),
     /// ]);
     /// ```
-    pub fn equals_zero(&mut self, items: Vec<Box<Expression<Output = IntFact>>>) -> &mut Solver<'rules> {
+    pub fn equals_zero(
+        &mut self,
+        items: Vec<Box<Expression<Output = IntFact>>>,
+    ) -> &mut Solver<'rules> {
         let rule = EqualsZeroRule::new(items);
         self.rules.push(Box::new(rule));
         self
@@ -377,14 +390,13 @@ impl<'rules> Solver<'rules> {
         E: Expression<Output = T> + 'static,
         C: Output + 'static,
         A: IntoExpression<E>,
-        F: Fn(&mut Solver<'rules>, C) + 'rules
+        F: Fn(&mut Solver<'rules>, C) + 'rules,
     {
         let rule = GivenRule::new(item.into_expr(), closure);
         self.rules.push(Box::new(rule));
         self
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -394,9 +406,11 @@ mod tests {
     use tfpb::types::DataType;
 
     fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
-        (Solver::default(),
-         TensorsProxy::new(vec![0].into()),
-         TensorsProxy::new(vec![1].into()))
+        (
+            Solver::default(),
+            TensorsProxy::new(vec![0].into()),
+            TensorsProxy::new(vec![1].into()),
+        )
     }
 
     #[test]
@@ -420,7 +434,9 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs.len, 1);
 
-        let facts = solver.infer((vec![TensorFact::new()].into(), vec![].into())).unwrap();
+        let facts = solver
+            .infer((vec![TensorFact::new()].into(), vec![].into()))
+            .unwrap();
         assert_eq!(facts, (vec![TensorFact::new()].into(), vec![].into()));
     }
 
@@ -429,13 +445,18 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[1].datatype, DataType::DT_INT32);
 
-        let facts = solver.infer((vec![TensorFact::new(), TensorFact::new()], vec![])).unwrap();
+        let facts = solver
+            .infer((vec![TensorFact::new(), TensorFact::new()], vec![]))
+            .unwrap();
         let expected = (
             vec![
                 TensorFact::new(),
-                TensorFact {datatype: typefact!(DataType::DT_INT32), ..TensorFact::new()}
+                TensorFact {
+                    datatype: typefact!(DataType::DT_INT32),
+                    ..TensorFact::new()
+                },
             ],
-            vec![]
+            vec![],
         );
 
         assert_eq!(facts, expected);
@@ -448,8 +469,11 @@ mod tests {
 
         let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
         let expected = (
-            vec![TensorFact {shape: shapefact![_, _], ..TensorFact::new()}],
-            vec![]
+            vec![TensorFact {
+                shape: shapefact![_, _],
+                ..TensorFact::new()
+            }],
+            vec![],
         );
 
         assert_eq!(facts, expected);
@@ -462,8 +486,11 @@ mod tests {
 
         let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
         let expected = (
-            vec![TensorFact {shape: shapefact![_, 0; ..], ..TensorFact::new()}],
-            vec![]
+            vec![TensorFact {
+                shape: shapefact![_, 0; ..],
+                ..TensorFact::new()
+            }],
+            vec![],
         );
 
         assert_eq!(facts, expected);
@@ -479,8 +506,11 @@ mod tests {
 
         let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
         let expected = (
-            vec![TensorFact {shape: shapefact![3, 3, 3], ..TensorFact::new()}],
-            vec![]
+            vec![TensorFact {
+                shape: shapefact![3, 3, 3],
+                ..TensorFact::new()
+            }],
+            vec![],
         );
 
         assert_eq!(facts, expected);
@@ -506,11 +536,10 @@ mod tests {
         let (mut solver, inputs, outputs) = bootstrap();
         solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]);
 
-        let facts = solver.infer((vec![TensorFact::new()], vec![TensorFact::new()])).unwrap();
-        let expected = (
-            vec![TensorFact::new()],
-            vec![TensorFact::new()]
-        );
+        let facts = solver
+            .infer((vec![TensorFact::new()], vec![TensorFact::new()]))
+            .unwrap();
+        let expected = (vec![TensorFact::new()], vec![TensorFact::new()]);
 
         assert_eq!(facts, expected);
     }
@@ -520,11 +549,19 @@ mod tests {
         let (mut solver, inputs, outputs) = bootstrap();
         solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]);
 
-        let output = TensorFact { shape: shapefact![_, 2, _], ..TensorFact::new() };
-        let facts = solver.infer((vec![TensorFact::new()], vec![output.clone()])).unwrap();
+        let output = TensorFact {
+            shape: shapefact![_, 2, _],
+            ..TensorFact::new()
+        };
+        let facts = solver
+            .infer((vec![TensorFact::new()], vec![output.clone()]))
+            .unwrap();
         let expected = (
-            vec![TensorFact { shape: shapefact![_, 2; ..], ..TensorFact::new() }],
-            vec![output.clone()]
+            vec![TensorFact {
+                shape: shapefact![_, 2; ..],
+                ..TensorFact::new()
+            }],
+            vec![output.clone()],
         );
 
         assert_eq!(facts, expected);

@@ -154,13 +154,7 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
     for component in components {
         for i in component.outputs {
             let edge = &mut analyser.edges[i];
-            let tensor = edge
-                .fact
-                .value
-                .concretize()
-                .unwrap()
-                .to_pb()
-                .unwrap();
+            let tensor = edge.fact.value.concretize().unwrap().to_pb().unwrap();
 
             // TODO(liautaud): Implement the other strategy.
             // let area: usize = tensor.shape().iter().product();
@@ -180,7 +174,10 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
             // Detach the target node from its previous source.
             {
                 let predecessors = &mut analyser.nodes[edge.to_node.unwrap()].inputs;
-                let position = predecessors.iter().position(|&(i, _)| i == old_node_id).unwrap();
+                let position = predecessors
+                    .iter()
+                    .position(|&(i, _)| i == old_node_id)
+                    .unwrap();
                 predecessors[position] = (node_id, None);
             }
 

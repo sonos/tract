@@ -13,7 +13,6 @@
 //! actually hold the values of the length and datatypes, but instead act as
 //! declarative placeholders for these values.
 
-
 #[macro_export]
 macro_rules! wrap {
     ($($x:expr),*) => ({
@@ -23,22 +22,22 @@ macro_rules! wrap {
     ($($x:expr,)*) => (wrap![$($x),*]);
 }
 
-mod path;
 mod cache;
-mod proxies;
 mod expressions;
+mod path;
+mod proxies;
 mod solver;
 
+pub use self::expressions::{Expression, IntoExpression};
 pub use self::proxies::*;
 pub use self::solver::*;
-pub use self::expressions::{ Expression, IntoExpression };
 pub use super::prelude::*;
 
-pub fn bexp<T,IE,E>(fact: IE) -> Box<Expression<Output=T>>
+pub fn bexp<T, IE, E>(fact: IE) -> Box<Expression<Output = T>>
 where
-    E: Expression<Output=T> + 'static,
+    E: Expression<Output = T> + 'static,
     IE: IntoExpression<E>,
-    T: expressions::Output + 'static
+    T: expressions::Output + 'static,
 {
     Box::new(fact.into_expr())
 }

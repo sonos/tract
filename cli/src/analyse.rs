@@ -1,12 +1,11 @@
-use { Parameters, OutputParameters };
 use errors::*;
+use {OutputParameters, Parameters};
 
 use tfdeploy::analyser::Analyser;
-use tfdeploy::analyser::{TensorFact, ShapeFact, DimFact};
+use tfdeploy::analyser::{DimFact, ShapeFact, TensorFact};
 
 /// Handles the `analyse` subcommand.
 pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameters) -> Result<()> {
-
     let model = params.tfd_model;
     let output = model.get_node_by_id(params.output_node_id)?.id;
 
@@ -16,19 +15,24 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
 
     // Add hints for the input nodes.
     if let Some(input) = params.input {
-        let dims = input.shape.iter()
+        let dims = input
+            .shape
+            .iter()
             .map(|d| match d {
-                None    => DimFact::Streamed,
+                None => DimFact::Streamed,
                 Some(i) => DimFact::Only(*i),
             })
             .collect::<Vec<_>>();
 
         for &i in &params.input_node_ids {
-            analyser.hint(i, &TensorFact {
-                datatype: typefact!(input.datatype),
-                shape: ShapeFact::closed(dims.clone()),
-                value: valuefact!(_),
-            })?;
+            analyser.hint(
+                i,
+                &TensorFact {
+                    datatype: typefact!(input.datatype),
+                    shape: ShapeFact::closed(dims.clone()),
+                    value: valuefact!(_),
+                },
+            )?;
         }
     }
 
@@ -52,7 +56,7 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
         );
     }
 
-    let nodes:Vec<_> = analyser.nodes.iter().collect();
+    let nodes: Vec<_> = analyser.nodes.iter().collect();
     let display = ::display_graph::DisplayGraph::from_nodes(&*nodes)?
         .with_graph_def(&params.graph)?
         .with_analyser(&analyser)?;
@@ -60,4 +64,3 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
 
     Ok(())
 }
-

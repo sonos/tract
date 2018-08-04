@@ -98,15 +98,15 @@ impl Tensor {
             &Tensor::F32(ref it) => {
                 tensor.set_dtype(DataType::DT_FLOAT);
                 tensor.set_float_val(it.iter().cloned().collect());
-            },
+            }
             &Tensor::F64(ref it) => {
                 tensor.set_dtype(DataType::DT_DOUBLE);
                 tensor.set_double_val(it.iter().cloned().collect());
-            },
+            }
             &Tensor::I32(ref it) => {
                 tensor.set_dtype(DataType::DT_INT32);
                 tensor.set_int_val(it.iter().cloned().collect());
-            },
+            }
             _ => unimplemented!("missing type"),
         }
         Ok(tensor)
@@ -138,9 +138,21 @@ impl Tensor {
     pub fn partial_dump(&self, _single_line: bool) -> ::Result<String> {
         if self.shape().len() == 0 {
             Ok(match self {
-                &Tensor::I32(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
-                &Tensor::F32(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
-                &Tensor::U8(ref a) => format!("Scalar {:?} {:?}", self.datatype(), a.as_slice().unwrap()[0]),
+                &Tensor::I32(ref a) => format!(
+                    "Scalar {:?} {:?}",
+                    self.datatype(),
+                    a.as_slice().unwrap()[0]
+                ),
+                &Tensor::F32(ref a) => format!(
+                    "Scalar {:?} {:?}",
+                    self.datatype(),
+                    a.as_slice().unwrap()[0]
+                ),
+                &Tensor::U8(ref a) => format!(
+                    "Scalar {:?} {:?}",
+                    self.datatype(),
+                    a.as_slice().unwrap()[0]
+                ),
                 _ => unimplemented!("missing type"),
             })
         } else if self.shape().iter().product::<usize>() > 8 {
@@ -168,7 +180,7 @@ impl Tensor {
         let mb = other.to_f32().take_f32s().unwrap();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
-        let margin = (dev / 10.0).max(avg.abs()/10_000.0);
+        let margin = (dev / 10.0).max(avg.abs() / 10_000.0);
         ma.shape() == mb.shape()
             && mb.iter()
                 .zip(ma.iter())
@@ -204,21 +216,20 @@ where
 }
 
 #[cfg(feature = "serialize")]
-impl Serialize for Tensor
-{
+impl Serialize for Tensor {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         macro_rules! serialize_inner {
-            ($type:ident, $m:ident) => ({
+            ($type:ident, $m:ident) => {{
                 let data = (
                     stringify!($type),
                     self.shape(),
-                    $m.iter().cloned().collect::<Vec<_>>()
+                    $m.iter().cloned().collect::<Vec<_>>(),
                 );
                 data.serialize(serializer)
-            });
+            }};
         };
 
         use Tensor::*;
@@ -307,7 +318,7 @@ tensor!(i8, DT_INT8, I8, as_i8s, take_i8s, i8s);
 
 #[macro_export]
 macro_rules! map_tensor {
-    ($tensor:expr, |$array:ident| $return:expr) => ({
+    ($tensor:expr, | $array:ident | $return:expr) => {{
         use Tensor::*;
         match $tensor {
             F64($array) => F64($return),
@@ -317,5 +328,5 @@ macro_rules! map_tensor {
             U8($array) => U8($return),
             String($array) => String($return),
         }
-    })
+    }};
 }

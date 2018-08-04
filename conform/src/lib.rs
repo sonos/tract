@@ -34,11 +34,11 @@ pub mod tf;
 
 pub use protobuf::Message;
 
+use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
 use tfdeploy::Tensor as TfdTensor;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
-use tfdeploy::analyser::TensorFact;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
@@ -80,12 +80,13 @@ pub fn compare<S: AsRef<str>>(
     inputs: Vec<(S, TfdTensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-
     // Run TFD
     let model = tfdeploy::Model::for_reader(&*graph)?;
     let mut state = model.state();
     for (s, t) in &inputs {
-        state.set_value(model.node_id_by_name(s.as_ref()).unwrap(), t.clone()).unwrap();
+        state
+            .set_value(model.node_id_by_name(s.as_ref()).unwrap(), t.clone())
+            .unwrap();
     }
     let output_id = model.node_id_by_name(output)?;
     state.compute_one(output_id)?;
@@ -107,8 +108,21 @@ pub fn compare<S: AsRef<str>>(
 
     // Check inference rules consistency
     let node = model.get_node(output)?;
-    let inputs_vectors:Vec<TensorFact> = node.inputs.iter().map(|(i,p)| state.outputs[*i].as_ref().unwrap()[p.unwrap_or(0)].as_tensor().clone().into()).collect();
-    let output_vectors:Vec<TensorFact> = vec!(state.outputs[output_id].as_ref().unwrap()[0].as_tensor().clone().into());
+    let inputs_vectors: Vec<TensorFact> = node.inputs
+        .iter()
+        .map(|(i, p)| {
+            state.outputs[*i].as_ref().unwrap()[p.unwrap_or(0)]
+                .as_tensor()
+                .clone()
+                .into()
+        })
+        .collect();
+    let output_vectors: Vec<TensorFact> = vec![
+        state.outputs[output_id].as_ref().unwrap()[0]
+            .as_tensor()
+            .clone()
+            .into(),
+    ];
 
     info!("Checking inference on {}", output);
     let op = node.op();

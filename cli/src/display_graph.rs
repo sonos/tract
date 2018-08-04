@@ -1,6 +1,6 @@
+use format::Row;
 use std::collections::HashMap;
 use std::fs;
-use format::Row;
 use tfdeploy;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb::graph::GraphDef;
@@ -55,10 +55,13 @@ impl DisplayGraph {
             if node.op == "Const" && !params.konst || node.hidden {
                 continue;
             }
-            let output_ports:HashMap<usize, Option<String>> = node.outputs.iter().map(|edge| {
-                let edge = &self.edges[*edge];
-                (edge.src_node_output, edge.label.clone())
-            }).collect();
+            let output_ports: HashMap<usize, Option<String>> = node.outputs
+                .iter()
+                .map(|edge| {
+                    let edge = &self.edges[*edge];
+                    (edge.src_node_output, edge.label.clone())
+                })
+                .collect();
             let mut sections = vec![
                 node.attrs
                     .iter()
@@ -93,40 +96,46 @@ impl DisplayGraph {
                         let edge = &output_ports[&ix];
                         Row::Double(
                             format!("Output {}:", ix.to_string().bold()),
-                            edge.clone().unwrap_or_else(|| "".to_string())
+                            edge.clone().unwrap_or_else(|| "".to_string()),
                         )
                     })
                     .collect(),
             ];
             if node.more_lines.len() > 0 {
-                sections.push(node.more_lines.iter().map(|s| Row::Simple(s.clone())).collect());
+                sections.push(
+                    node.more_lines
+                        .iter()
+                        .map(|s| Row::Simple(s.clone()))
+                        .collect(),
+                );
             }
             ::format::print_box(
                 &node.id.to_string(),
                 &node.op,
                 &node.name,
-                &*node.label.as_ref().map(|a| vec!(a)).unwrap_or(vec!()),
-                sections
+                &*node.label.as_ref().map(|a| vec![a]).unwrap_or(vec![]),
+                sections,
             );
         }
         Ok(())
     }
 
     pub fn from_nodes(tfnodes: &[&tfdeploy::Node]) -> CliResult<DisplayGraph> {
-        let mut nodes:Vec<Node> = tfnodes.iter().map(|n|
-            Node {
+        let mut nodes: Vec<Node> = tfnodes
+            .iter()
+            .map(|n| Node {
                 id: n.id,
                 name: n.name.clone(),
                 op: n.op_name.clone(),
                 label: None,
-                more_lines: vec!(),
+                more_lines: vec![],
                 attrs: vec![],
-                inputs: vec!(),
-                outputs: vec!(),
+                inputs: vec![],
+                outputs: vec![],
                 hidden: false,
-            }
-        ).collect();
-        let mut edges = vec!();
+            })
+            .collect();
+        let mut edges = vec![];
         for node in tfnodes.iter() {
             for (ix, input) in node.inputs.iter().enumerate() {
                 let edge = Edge {
@@ -136,13 +145,16 @@ impl DisplayGraph {
                     dst_node_id: node.id,
                     dst_node_input: ix,
                     main: ix == 0,
-                    label: tfnodes[input.0].op().const_value().map(|v| format!("Const {:?}", v))
+                    label: tfnodes[input.0]
+                        .op()
+                        .const_value()
+                        .map(|v| format!("Const {:?}", v)),
                 };
                 nodes[edge.src_node_id].outputs.push(edges.len());
                 nodes[node.id].inputs.push(edges.len());
                 edges.push(edge);
             }
-        };
+        }
         Ok(DisplayGraph { nodes, edges })
     }
 
@@ -167,9 +179,21 @@ impl DisplayGraph {
 
     pub fn with_analyser(mut self, analyser: &Analyser) -> CliResult<DisplayGraph> {
         {
-            let index:HashMap<(usize, usize, usize, usize), usize> = self.edges.iter().enumerate().map(|(ix, edge)| {
-                ( (edge.src_node_id, edge.src_node_output, edge.dst_node_id, edge.dst_node_input), ix)
-            }).collect();
+            let index: HashMap<(usize, usize, usize, usize), usize> = self.edges
+                .iter()
+                .enumerate()
+                .map(|(ix, edge)| {
+                    (
+                        (
+                            edge.src_node_id,
+                            edge.src_node_output,
+                            edge.dst_node_id,
+                            edge.dst_node_input,
+                        ),
+                        ix,
+                    )
+                })
+                .collect();
             for an_edge in &analyser.edges {
                 if let (Some(from_node), Some(to_node)) = (an_edge.from_node, an_edge.to_node) {
                     let key = (from_node, an_edge.from_out, to_node, an_edge.to_input);

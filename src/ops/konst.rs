@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use super::{Attr, Op, OpRegister, TensorView};
+use analyser::interface::*;
 use std::sync::Arc;
 use tfpb::types::DataType;
 use {Result, Tensor};
-use analyser::interface::*;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
@@ -56,10 +56,13 @@ impl Op for Const {
 }
 
 impl ::ops::InferenceRulesOp for Const {
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         // infer will call eval as "all" inputs are known
-        solver
-            .equals(&inputs.len, 0)
-            .equals(&outputs.len, 1);
+        solver.equals(&inputs.len, 0).equals(&outputs.len, 1);
     }
 }

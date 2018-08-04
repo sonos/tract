@@ -1,5 +1,5 @@
-use analyser::interface::*;
 use super::*;
+use analyser::interface::*;
 
 /// The type of an input during streaming evaluation.
 #[derive(Debug, Clone)]
@@ -23,7 +23,6 @@ pub struct StreamingModel {
 }
 
 impl StreamingModel {
-
     /// Initializes the streaming evaluation of a model.
     ///
     /// For each input in the model, you must either provide a constant
@@ -48,12 +47,14 @@ impl StreamingModel {
         // Pre-compute the constant part of the graph using the analyser.
         for input in inputs {
             match input {
-                (i, Streamed(dt, shape)) =>
-                    analyser.hint(i, &TensorFact {
+                (i, Streamed(dt, shape)) => analyser.hint(
+                    i,
+                    &TensorFact {
                         datatype: typefact!(dt),
                         shape: shape.iter().cloned().collect(),
                         value: valuefact!(_),
-                    })?,
+                    },
+                )?,
                 (i, Constant(tensor)) => analyser.hint(i, &tensor_to_fact(tensor))?,
             }
         }
@@ -64,9 +65,12 @@ impl StreamingModel {
         // Keep track of the relation between old and new node indexes, as the
         // analyser replaces the constant parts of the graph with Const nodes.
         let mapping = analyser.prune_unused();
-        let output = mapping[output].ok_or("The output node doesn't exist in the streaming graph.")?;
+        let output =
+            mapping[output].ok_or("The output node doesn't exist in the streaming graph.")?;
 
-        let successors = analyser.next_edges.iter()
+        let successors = analyser
+            .next_edges
+            .iter()
             .map(|s| {
                 s.iter()
                     .filter_map(|&e| {
@@ -94,19 +98,25 @@ impl StreamingModel {
         }
 
         let model = analyser.into_model();
-        Ok(StreamingModel {model, output, mapping, dimensions, successors})
+        Ok(StreamingModel {
+            model,
+            output,
+            mapping,
+            dimensions,
+            successors,
+        })
     }
 
     pub fn state(&self) -> StreamingModelState {
         let mut state = StreamingModelState {
             model: &self,
-            buffers: vec!(),
+            buffers: vec![],
         };
         state.reset();
         state
     }
 
-    /// Access the simplified Model for streaming records. 
+    /// Access the simplified Model for streaming records.
     /// This is not the original model from which the StreamingModel has been
     /// generated.
     pub fn inner_model(&self) -> &Model {
@@ -130,20 +140,30 @@ impl<'a> StreamingModelState<'a> {
     /// a Vec<Tensor> for every chunk that was produced by the output
     /// during the evaluation step, with one Tensor per output port.
     pub fn step(&mut self, input: usize, input_chunk: Tensor) -> Result<Vec<Vec<Tensor>>> {
-        self.step_wrapping_ops(input, input_chunk, |node, inputs, buffers| node.op.step(inputs, buffers))
+        self.step_wrapping_ops(input, input_chunk, |node, inputs, buffers| {
+            node.op.step(inputs, buffers)
+        })
     }
 
     // This function is not part of the public API, it's public to allow
     // instrumentation and auditing from cli.
     #[inline]
     #[doc(hidden)]
-    pub fn step_wrapping_ops<W>(&mut self, input: usize, input_chunk: Tensor, mut node_step:W) -> Result<Vec<Vec<Tensor>>> 
-        where W: FnMut(&Node, Vec<(Option<usize>, Option<TensorView>)>, &mut Box<OpBuffer>) -> Result<Option<Vec<TensorView>>>
+    pub fn step_wrapping_ops<W>(
+        &mut self,
+        input: usize,
+        input_chunk: Tensor,
+        mut node_step: W,
+    ) -> Result<Vec<Vec<Tensor>>>
+    where
+        W: FnMut(&Node, Vec<(Option<usize>, Option<TensorView>)>, &mut Box<OpBuffer>)
+            -> Result<Option<Vec<TensorView>>>,
     {
         let mut queue = VecDeque::new();
         let mut outputs = vec![];
 
-        let input = self.model.mapping[input].ok_or("The input node doesn't exist in the streaming graph.")?;
+        let input = self.model.mapping[input]
+            .ok_or("The input node doesn't exist in the streaming graph.")?;
         let input_view = Into::<TensorView>::into(input_chunk).into_shared();
 
         for &(port, target) in &self.model.successors[input] {
@@ -182,7 +202,9 @@ impl<'a> StreamingModelState<'a> {
 
                     // We only allow chunks of size 1 along the streaming dimension.
                     if chunk.as_tensor().shape()[dimension.unwrap()] != 1 {
-                        bail!("Trying to consume a chunk of size != 1 along the streaming dimension.");
+                        bail!(
+                            "Trying to consume a chunk of size != 1 along the streaming dimension."
+                        );
                     }
 
                     Some(chunk)
@@ -212,11 +234,7 @@ impl<'a> StreamingModelState<'a> {
         // Convert the output TensorViews to Tensors.
         let outputs = outputs
             .into_iter()
-            .map(|chunks| chunks
-                .into_iter()
-                .map(|tv| tv.into_tensor())
-                .collect()
-            )
+            .map(|chunks| chunks.into_iter().map(|tv| tv.into_tensor()).collect())
             .collect();
 
         Ok(outputs)
@@ -228,9 +246,11 @@ impl<'a> StreamingModelState<'a> {
 
     /// Resets the model state.
     pub fn reset(&mut self) {
-        self.buffers = self.model.model.nodes.iter()
+        self.buffers = self.model
+            .model
+            .nodes
+            .iter()
             .map(|n| n.op.new_buffer())
             .collect::<Vec<_>>();
     }
 }
-

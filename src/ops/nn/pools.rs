@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use super::local_patch::*;
-use ops::prelude::*;
 use analyser::interface::*;
 use ndarray::prelude::*;
+use ops::prelude::*;
 
 pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'static {
     type State;
@@ -37,7 +37,8 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 
         let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
 
-        let padded = self.0.pad(data.view(), self.1, ::std::f32::NAN, true, true)?;
+        let padded = self.0
+            .pad(data.view(), self.1, ::std::f32::NAN, true, true)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         let out_shape = (images.count(), out_h, out_w, images.d());
 
@@ -66,12 +67,16 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         attributes.extend(self.0.get_attributes());
         attributes
     }
-
 }
 
 impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
     /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(&'s self, solver: &mut Solver<'r>, inputs: &'p TensorsProxy, outputs: &'p TensorsProxy) {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
@@ -87,8 +92,7 @@ impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
                         .equals(&outputs[0].shape[1], oh as isize)
                         .equals(&outputs[0].shape[2], ow as isize);
                 });
-            })
-            ;
+            });
     }
 }
 
