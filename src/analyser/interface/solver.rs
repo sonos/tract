@@ -401,6 +401,7 @@ impl<'rules> Solver<'rules> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use DataType;
 
     use analyser::interface::TensorsProxy;
 
