@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use super::prelude::*;
 use super::Result;
 use ops::OpBuilder;
 use tfpb;
 use tfpb::tensor::TensorProto;
-use Node;
+use { Tensor, Node };
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
 /// replaced with a constant node containing a copy of that tensor.
@@ -151,17 +152,33 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
     let components: Vec<Component> = connected_components(analyser)?;
     info!("Detected {:?} connected components.", components.len());
 
+    let mut const_int_nodes = HashMap::new();
+
     for component in components {
         for i in component.outputs {
-            let edge = &mut analyser.edges[i];
-            let tensor = edge.fact.value.concretize().unwrap().to_pb().unwrap();
+            let tensor = analyser.edges[i]
+                .fact
+                .value
+                .concretize()
+                .unwrap();
 
-            // TODO(liautaud): Implement the other strategy.
-            // let area: usize = tensor.shape().iter().product();
-            // if area <= COPY_THRESHOLD {
-            let node_id = analyser.nodes.len();
-            let node_name = format!("generated_{}", i).to_string();
-            let node = build_const_node(node_id, node_name, tensor);
+            let const_node_id:usize = if let Some(tensor) = tensor.clone().take_i32s() {
+                *const_int_nodes.entry(tensor.clone()).or_insert_with(|| {
+                    let node_id = analyser.nodes.len();
+                    let node_name = format!("generated_{}", node_id).to_string();
+                    let node = build_const_node(node_id, node_name,
+                        Tensor::I32(tensor.to_owned()).to_pb().unwrap());
+                    analyser.nodes.push(node);
+                    node_id
+                })
+            } else {
+                let node_id = analyser.nodes.len();
+                let node_name = format!("generated_{}", node_id).to_string();
+                let node = build_const_node(node_id, node_name, tensor.to_pb().unwrap());
+                analyser.nodes.push(node);
+                node_id
+            };
+            let edge = &mut analyser.edges[i];
             let old_node_id = edge.from_node.unwrap();
 
             // Detach the edge from its previous source.
@@ -174,18 +191,14 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
             // Detach the target node from its previous source.
             {
                 let predecessors = &mut analyser.nodes[edge.to_node.unwrap()].inputs;
-                let position = predecessors
-                    .iter()
-                    .position(|&(i, _)| i == old_node_id)
-                    .unwrap();
-                predecessors[position] = (node_id, None);
+                let position = predecessors.iter().position(|&(i, _)| i == old_node_id).unwrap();
+                predecessors[position] = (const_node_id, None);
             }
 
             // Attach the edge to its new source.
-            edge.from_node = Some(node_id);
+            edge.from_node = Some(const_node_id);
             analyser.prev_edges.push(vec![]);
             analyser.next_edges.push(vec![edge.id]);
-            analyser.nodes.push(node);
         }
     }
 
