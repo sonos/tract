@@ -90,7 +90,7 @@ pub fn handle_bench(
         bail!("Expecting bench profile mode")
     };
     let (model, chunk) = build_streaming_model(&params)?;
-    let mut state = model.state();
+    let mut state = model.state()?;
     bufferize(&mut state, &chunk)?;
 
     info!("Starting bench itself");
@@ -114,7 +114,7 @@ pub fn handle_bench(
 
 pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Result<()> {
     let (model, chunk) = build_streaming_model(&params)?;
-    let mut state = model.state();
+    let mut state = model.state()?;
     bufferize(&mut state, &chunk)?;
 
     let mut profile = ProfileData::new(state.streaming_model().inner_model());
@@ -156,7 +156,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     let axis = input.shape.iter().position(|&d| d == None).unwrap(); // checked above
 
     let mut states = (0..100)
-        .map(|_| streaming_model.state())
+        .map(|_| streaming_model.state().unwrap())
         .collect::<Vec<_>>();
 
     if log_enabled!(Info) {

@@ -122,13 +122,13 @@ impl StreamingModel {
         Ok(StreamingModel(Arc::new(raw)))
     }
 
-    pub fn state(&self) -> StreamingModelState {
+    pub fn state(&self) -> Result<StreamingModelState> {
         let mut state = StreamingModelState {
             model: self.clone(),
             buffers: vec![],
         };
-        state.reset();
-        state
+        state.reset()?;
+        Ok(state)
     }
 }
 
@@ -261,12 +261,13 @@ impl StreamingModelState {
     }
 
     /// Resets the model state.
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self) -> Result<()> {
         self.buffers = self.model
             .model
             .nodes
             .iter()
             .map(|n| n.op.new_buffer())
             .collect::<Vec<_>>();
+        Ok(())
     }
 }
