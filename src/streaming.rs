@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use super::*;
 use analyser::interface::*;
 
@@ -13,14 +14,27 @@ pub enum StreamingInput {
 }
 
 /// The state of a model during streaming evaluation.
-#[derive(Clone)]
-pub struct StreamingModel {
+#[derive(Clone, Debug)]
+pub struct RawStreamingModel {
     model: Model,
     output: usize,
     mapping: Vec<Option<usize>>,
     dimensions: HashMap<(usize, usize), usize>,
     successors: Vec<Vec<(usize, usize)>>,
 }
+
+impl RawStreamingModel {
+
+    /// Access the simplified Model for streaming records.
+    /// This is not the original model from which the StreamingModel has been
+    /// generated.
+    pub fn inner_model(&self) -> &Model {
+        &self.model
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamingModel(Arc<RawStreamingModel>);
 
 impl StreamingModel {
     /// Initializes the streaming evaluation of a model.
@@ -98,38 +112,40 @@ impl StreamingModel {
         }
 
         let model = analyser.into_model();
-        Ok(StreamingModel {
+        let raw = RawStreamingModel {
             model,
             output,
             mapping,
             dimensions,
             successors,
-        })
+        };
+        Ok(StreamingModel(Arc::new(raw)))
     }
 
     pub fn state(&self) -> StreamingModelState {
         let mut state = StreamingModelState {
-            model: &self,
+            model: self.clone(),
             buffers: vec![],
         };
         state.reset();
         state
     }
+}
 
-    /// Access the simplified Model for streaming records.
-    /// This is not the original model from which the StreamingModel has been
-    /// generated.
-    pub fn inner_model(&self) -> &Model {
-        &self.model
+impl std::ops::Deref for StreamingModel {
+    type Target = RawStreamingModel;
+    fn deref(&self) -> &RawStreamingModel {
+        &*self.0
     }
 }
 
-pub struct StreamingModelState<'a> {
-    model: &'a StreamingModel,
+pub struct StreamingModelState {
+    model: StreamingModel,
     buffers: Vec<Box<OpBuffer>>,
 }
 
-impl<'a> StreamingModelState<'a> {
+impl StreamingModelState {
+
     /// Runs one streaming evaluation step.
     ///
     /// The step starts by feeding a new chunk of data into one of the

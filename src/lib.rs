@@ -78,6 +78,7 @@ use std::{fs, path, str};
 use analyser::helpers::tensor_to_fact;
 pub use errors::*;
 use ops::{Op, OpBuffer, TensorView};
+use std::sync::Arc;
 pub use tensor::{DataType, Tensor};
 
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -119,7 +120,7 @@ impl Node {
 
 /// Load a Tensorflow protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
-    Model::for_path(p)
+    Ok(Model::for_path(p)?)
 }
 
 #[derive(Debug)]
@@ -128,7 +129,7 @@ pub struct Plan {
 }
 
 impl Plan {
-    pub fn for_model(model: &Model, targets: &[usize]) -> Result<Plan> {
+    pub fn for_model(model: &RawModel, targets: &[usize]) -> Result<Plan> {
         Self::for_nodes(&model.nodes, targets)
     }
 
@@ -185,13 +186,13 @@ impl Plan {
 /// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
 /// and runs the inference interpreter.
 ///
-#[derive(Clone)]
-pub struct Model {
+#[derive(Clone,Debug)]
+pub struct RawModel {
     pub nodes: Vec<Node>,
     pub nodes_by_name: HashMap<String, usize>,
 }
 
-impl Model {
+impl RawModel {
     pub fn new(graph: tfpb::graph::GraphDef) -> Result<Model> {
         let mut nodes = vec![];
         let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
@@ -246,10 +247,10 @@ impl Model {
             nodes_by_name.insert(name, nodes.len());
             nodes.push(node)
         }
-        Ok(Model {
+        Ok(Model(Arc::new(RawModel {
             nodes,
             nodes_by_name,
-        })
+        })))
     }
 
     pub fn node_id_by_name(&self, name: &str) -> Result<usize> {
@@ -257,35 +258,6 @@ impl Model {
             .get(name)
             .cloned()
             .ok_or(format!("Node named {} not found", name).into())
-    }
-
-    pub fn state(&self) -> ModelState {
-        ModelState {
-            model: self,
-            outputs: vec![None; self.nodes.len()],
-        }
-    }
-
-    /// Load a Tensorflow protobul model from a file.
-    pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
-        Self::for_reader(fs::File::open(p)?)
-    }
-
-    /// Load a Tfdeploy model from a reader.
-    pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
-        Model::new(Self::graphdef_for_reader(r)?)
-    }
-
-    /// Load a Tensorflow protobuf graph def from a reader.
-    pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph::GraphDef> {
-        Ok(::protobuf::parse_from_reader::<::tfpb::graph::GraphDef>(
-            &mut r,
-        )?)
-    }
-
-    /// Load a Tensorflow protobuf graph def from a path
-    pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<::tfpb::graph::GraphDef> {
-        Self::graphdef_for_reader(fs::File::open(p)?)
     }
 
     pub fn node_names(&self) -> Vec<&str> {
@@ -310,13 +282,26 @@ impl Model {
         Plan::for_model(&self, &[node])
     }
 
+    pub fn nodes(&self) -> &[Node] {
+        &*self.nodes
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Model(Arc<RawModel>);
+
+impl Model {
+    pub fn state(&self) -> ModelState {
+        ModelState {
+            model: self.clone(),
+            outputs: vec![None; self.nodes.len()],
+        }
+    }
+
     pub fn run(&self, inputs: Vec<(usize, Tensor)>, output: usize) -> Result<Vec<Tensor>> {
         self.state().run(inputs, output)
     }
 
-    pub fn nodes(&self) -> &[Node] {
-        &*self.nodes
-    }
 
     pub fn run_with_names(&self, inputs: Vec<(&str, Tensor)>, output: &str) -> Result<Vec<Tensor>> {
         let inputs = inputs
@@ -327,15 +312,45 @@ impl Model {
             .collect::<Result<_>>()?;
         self.run(inputs, self.node_id_by_name(output)?)
     }
+
+    /// Load a Tensorflow protobul model from a file.
+    pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
+        Self::for_reader(fs::File::open(p)?)
+    }
+
+    /// Load a Tfdeploy model from a reader.
+    pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
+        RawModel::new(Model::graphdef_for_reader(r)?)
+    }
+
+    /// Load a Tensorflow protobuf graph def from a reader.
+    pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph::GraphDef> {
+        Ok(::protobuf::parse_from_reader::<::tfpb::graph::GraphDef>(
+            &mut r,
+        )?)
+    }
+
+    /// Load a Tensorflow protobuf graph def from a path
+    pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<::tfpb::graph::GraphDef> {
+        Self::graphdef_for_reader(fs::File::open(p)?)
+    }
+
+}
+
+impl std::ops::Deref for Model {
+    type Target = RawModel;
+    fn deref(&self) -> &RawModel {
+        &*self.0
+    }
 }
 
 #[derive(Clone)]
-pub struct ModelState<'a> {
-    model: &'a Model,
+pub struct ModelState {
+    model: Model,
     pub outputs: Vec<Option<Vec<TensorView>>>,
 }
 
-impl<'a> ModelState<'a> {
+impl ModelState {
     /// Reset internal state.
     pub fn reset(&mut self) -> Result<()> {
         self.outputs = vec![None; self.model.nodes.len()];
@@ -353,7 +368,8 @@ impl<'a> ModelState<'a> {
 
     pub fn set_values(&mut self, values: Vec<(&str, Tensor)>) -> Result<()> {
         for (name, mat) in values {
-            self.set_value(self.model.node_id_by_name(name)?, mat)?;
+            let id = self.model.node_id_by_name(name)?;
+            self.set_value(id, mat)?;
         }
 
         Ok(())
@@ -397,11 +413,11 @@ impl<'a> ModelState<'a> {
         for input in inputs {
             self.set_value(input.0, input.1)?;
         }
-        Plan::for_model(self.model, &[output])?.run(self)?;
+        Plan::for_model(&self.model, &[output])?.run(self)?;
         Ok(self.take(output)?)
     }
 
     pub fn model(&self) -> &Model {
-        self.model
+        &self.model
     }
 }
