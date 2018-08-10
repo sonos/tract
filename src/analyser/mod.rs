@@ -383,13 +383,15 @@ impl Analyser {
             self.current_step,
         );
 
+        trace!("{:?}", node.op);
+
         let inputs: Vec<_> = self.prev_edges[node.id]
             .iter()
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
                 trace!(
-                    " Input {:?} from {}/{}: {:?}",
-                    edge.to_node.unwrap(),
+                    " Input {} from {}/{}: {:?}",
+                    edge.to_input,
                     edge.from_node.unwrap(),
                     edge.from_out,
                     edge.fact
@@ -407,14 +409,14 @@ impl Analyser {
 
         let inferred = node.op
             .infer_and_propagate(inputs, outputs)
-            .map_err(|e| format!("While inferring forward for {}: {}", node.name, e))?;
+            .map_err(|e| format!("While inferring forward for {} {}: {}", node.id, node.name, e))?;
 
         let mut changed = false;
 
         for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
             let fact = &inferred.0[i];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying inputs of node {:?}: {}", node.name, e))?;
+                .map_err(|e| format!("While unifying inputs of node {} {}: {}", node.id, node.name, e))?;
 
             if unified != self.edges[j].fact {
                 debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
@@ -431,10 +433,10 @@ impl Analyser {
 
             let fact = &inferred.1[0];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying outputs of node {:?}: {}", node.name, e))?;
+                .map_err(|e| format!("While unifying outputs of node {} {} {}", node.id, node.name, e))?;
 
             if unified != self.edges[j].fact {
-                debug!(" Refined {} output #{} to {:?}", node.name, i, unified);
+                debug!(" Refined {} output {}/{} to {:?}", node.name, node.id, i, unified);
                 changed = true;
                 self.edges[j].fact = unified;
             }
