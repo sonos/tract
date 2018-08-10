@@ -17,8 +17,7 @@ pub enum StreamingInput {
 #[derive(Clone, Debug)]
 pub struct RawStreamingModel {
     model: Model,
-    output: usize,
-    mapping: Vec<Option<usize>>,
+    output_node: usize,
     dimensions: HashMap<(usize, usize), usize>,
     successors: Vec<Vec<(usize, usize)>>,
 }
@@ -52,11 +51,11 @@ impl StreamingModel {
     ) -> Result<StreamingModel> {
         use self::StreamingInput::*;
 
-        let output = output
+        let output_node = output
             .or(analyser::detect_output(&model)?)
             .ok_or("Unable to auto-detect output node.")?;
 
-        let mut analyser = Analyser::new(model, output)?;
+        let mut analyser = Analyser::new(model, output_node)?;
 
         // Pre-compute the constant part of the graph using the analyser.
         for input in inputs {
@@ -78,9 +77,7 @@ impl StreamingModel {
 
         // Keep track of the relation between old and new node indexes, as the
         // analyser replaces the constant parts of the graph with Const nodes.
-        let mapping = analyser.prune_unused();
-        let output =
-            mapping[output].ok_or("The output node doesn't exist in the streaming graph.")?;
+        let _mapping = analyser.prune_unused();
 
         let successors = analyser
             .next_edges
@@ -114,10 +111,9 @@ impl StreamingModel {
         let model = analyser.into_model();
         let raw = RawStreamingModel {
             model,
-            output,
-            mapping,
             dimensions,
             successors,
+            output_node,
         };
         Ok(StreamingModel(Arc::new(raw)))
     }
@@ -178,8 +174,6 @@ impl StreamingModelState {
         let mut queue = VecDeque::new();
         let mut outputs = vec![];
 
-        let input = self.model.mapping[input]
-            .ok_or("The input node doesn't exist in the streaming graph.")?;
         let input_view = Into::<TensorView>::into(input_chunk).into_shared();
 
         for &(port, target) in &self.model.successors[input] {
@@ -235,7 +229,7 @@ impl StreamingModelState {
             let buffer = &mut self.buffers[target.id];
 
             if let Some(mut output_chunks) = node_step(target, inputs, buffer)? {
-                if target.id == self.model.output {
+                if target.id == self.model.output_node {
                     // If we've reached the output, just save the chunks.
                     outputs.push(output_chunks.clone());
                 }

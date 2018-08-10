@@ -35,9 +35,9 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
     }
 
     info!("Running analyse");
-    analyser.run()?;
+    let analyse_result = analyser.run();
 
-    if optimize {
+    if analyse_result.is_ok() && optimize {
         info!(
             "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
             ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
@@ -60,5 +60,5 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
         .with_analyser(&analyser)?;
     display.render(&output_params)?;
 
-    Ok(())
+    Ok(analyse_result?)
 }

@@ -182,7 +182,11 @@ impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
             .equals(&inputs[1].rank, 1)
             .equals(&inputs[2].rank, 1)
             .equals(&inputs[3].rank, 1)
+            .equals_all(wrap!(&inputs[1].shape[0], &inputs[2].shape[0], &inputs[3].shape[0], &inputs[0].rank, &outputs[0].rank))
             .given(&inputs[0].shape, move |solver, input_shape: ShapeFact| {
+                if input_shape.open {
+                    return
+                }
                 solver.given(&inputs[1].value, move |solver, begin: Tensor| {
                     let input_shape = input_shape.clone();
                     solver.given(&inputs[2].value, move |solver, end: Tensor| {
@@ -399,6 +403,21 @@ mod tests {
             ),
             Tensor::I32(arr1(&[]).into_dyn())
         )
+    }
+
+    #[test]
+    fn inference_1() {
+        ::setup_test_logger();
+        use ops::InferenceOp;
+        let mut op = StridedSlice::<f32>::new(5,7,0);
+        let input = TensorFact::default().with_datatype(DataType::F32);
+        let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
+        let end = TensorFact::from(arr1(&[0i32, 0, 0]));
+        let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+
+        let (input_facts, output_facts) = op.infer(vec!(input, begin.clone(), end.clone(), strides.clone()), vec!(TensorFact::default())).unwrap();
+        assert_eq!(input_facts, vec!(TensorFact::default().with_datatype(DataType::F32).with_shape(shapefact![_,_,_]), begin, end, strides));
+        assert_eq!(output_facts, vec!(TensorFact::default().with_datatype(DataType::F32).with_shape(shapefact![_,_,_])));
     }
 
 }

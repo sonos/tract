@@ -51,6 +51,20 @@ impl TensorFact {
     pub fn new() -> TensorFact {
         TensorFact::default()
     }
+
+    pub fn with_datatype(self, dt:DataType) -> TensorFact {
+        TensorFact {
+            datatype: dt.into(),
+            ..self
+        }
+    }
+
+    pub fn with_shape<S: Into<ShapeFact>>(self, shape:S) -> TensorFact {
+        TensorFact {
+            shape: shape.into(),
+            ..self
+        }
+    }
 }
 
 impl Fact for TensorFact {
@@ -75,8 +89,9 @@ impl Fact for TensorFact {
     }
 }
 
-impl From<Tensor> for TensorFact {
-    fn from(t: Tensor) -> TensorFact {
+impl<T: Into<Tensor>> From<T> for TensorFact {
+    fn from(t: T) -> TensorFact {
+        let t:Tensor = t.into();
         TensorFact {
             datatype: GenericFact::Only(t.datatype()),
             shape: ShapeFact::from(t.shape()),

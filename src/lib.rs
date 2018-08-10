@@ -421,3 +421,10 @@ impl ModelState {
         &self.model
     }
 }
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn setup_test_logger() {
+    use simplelog::{Config, LevelFilter, TermLogger};
+    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+}
