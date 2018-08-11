@@ -1,3 +1,5 @@
+use std::time;
+
 use errors::*;
 use {OutputParameters, Parameters};
 
@@ -11,7 +13,12 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
     }
 
     info!("Running analyse");
+    let start = time::Instant::now();
     let analyse_result = analyser.analyse();
+    let elapsed = start.elapsed();
+
+    let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
+    info!("Ran analyse in {:?}ms", elapsed);
 
     if analyse_result.is_ok() && optimize {
         info!(
@@ -25,7 +32,12 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
         if let Some(input) = params.input.as_ref() {
             analyser.hint(&params.input_nodes[0], &input.to_fact())?;
         }
+        info!("Running analyse on optimized graph");
+        let start = time::Instant::now();
         analyser.analyse()?;
+        let elapsed = start.elapsed();
+        let elapsed = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
+        info!("Ran second analyse in {:?}ms", elapsed);
 
         info!(
             "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",

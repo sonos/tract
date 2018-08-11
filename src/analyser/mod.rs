@@ -171,7 +171,7 @@ impl Analyser {
         let current_step = 0;
         let current_direction = true;
 
-        debug!("Using execution plan {:?}.", plan);
+        trace!("Using execution plan {:?}.", plan);
 
         Ok(Analyser {
             model: model.clone(),
@@ -252,92 +252,9 @@ impl Analyser {
         constants::propagate_constants(self)
     }
 
-    /*
-    /// Removes the nodes and edges which are not part of the execution plan.
-    /// Returns the mapping between the old and new node indexes.
-    pub fn prune_unused(&mut self) -> Vec<Option<usize>> {
-        let mut node_used = vec![false; self.nodes.len()];
-        let mut edge_used = vec![false; self.edges.len()];
-        for &i in &self.plan {
-            node_used[i] = true;
-        }
-
-        // Remove the nodes while keeping track of the new indices.
-        let mut deleted = 0;
-        let mut node_mapping = vec![None; self.nodes.len()];
-
-        for i in 0..self.nodes.len() {
-            if !node_used[i] {
-                self.nodes.remove(i - deleted);
-
-                self.prev_edges.remove(i - deleted);
-                self.next_edges.remove(i - deleted);
-                deleted += 1;
-            } else {
-                node_mapping[i] = Some(i - deleted);
-
-                self.prev_edges[i - deleted]
-                    .iter()
-                    .for_each(|&j| edge_used[j] = true);
-                self.next_edges[i - deleted]
-                    .iter()
-                    .for_each(|&j| edge_used[j] = true);
-            }
-        }
-
-        info!("Nodes: before: {}, deleted: {}, kept: {}", self.nodes.len(), deleted, self.nodes.len() - deleted);
-
-        // Update the nodes and edges to use the new indices.
-        for node in &mut self.nodes {
-            node.id = node_mapping[node.id].unwrap();
-            node.inputs
-                .iter_mut()
-                .for_each(|i| i.0 = node_mapping[i.0].unwrap());
-        }
-
-        for edge in &mut self.edges {
-            if let Some(i) = edge.from_node {
-                edge.from_node = node_mapping[i];
-            }
-
-            if let Some(i) = edge.to_node {
-                edge.to_node = node_mapping[i];
-            }
-        }
-
-        // Remove the edges while keeping track of the new indices.
-        let mut deleted = 0;
-        let mut edge_mapping = vec![None; self.edges.len()];
-
-        for i in 0..self.edges.len() {
-            if !edge_used[i] {
-                self.edges.remove(i - deleted);
-                deleted += 1;
-            } else {
-                edge_mapping[i] = Some(i - deleted);
-            }
-        }
-
-        info!("Edges: before: {}, deleted: {}, kept: {}", self.edges.len(), deleted, self.edges.len() - deleted);
-
-        // Update the adjacency lists to use the new indices.
-        for i in 0..self.nodes.len() {
-            self.prev_edges[i]
-                .iter_mut()
-                .for_each(|j| *j = edge_mapping[*j].unwrap());
-            self.next_edges[i]
-                .iter_mut()
-                .for_each(|j| *j = edge_mapping[*j].unwrap());
-        }
-
-        node_mapping
-    }
-    */
-
     /// Runs the entire analysis at once.
     pub fn analyse(&mut self) -> Result<()> {
         self.current_pass = 0;
-
         loop {
             if !self.run_two_passes()? {
                 return Ok(());
