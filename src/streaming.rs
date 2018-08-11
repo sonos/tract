@@ -1,5 +1,6 @@
 use std::ops::Deref;
 use std::sync::Arc;
+use std::collections::{HashMap, VecDeque};
 
 use super::*;
 use analyser::interface::*;
@@ -113,7 +114,7 @@ impl Deref for StreamingPlan {
 #[derive(Clone, Debug)]
 pub struct StreamingModelState {
     plan: StreamingPlan,
-    buffers: Vec<Box<OpBuffer>>,
+    buffers: Vec<Box<ops::OpBuffer>>,
 }
 
 impl StreamingModelState {
@@ -144,13 +145,13 @@ impl StreamingModelState {
         mut node_step: W,
     ) -> Result<Vec<Vec<Tensor>>>
     where
-        W: FnMut(&Node, Vec<(Option<usize>, Option<TensorView>)>, &mut Box<OpBuffer>)
-            -> Result<Option<Vec<TensorView>>>,
+        W: FnMut(&Node, Vec<(Option<usize>, Option<ops::TensorView>)>, &mut Box<ops::OpBuffer>)
+            -> Result<Option<Vec<ops::TensorView>>>,
     {
         let mut queue = VecDeque::new();
         let mut outputs = vec![];
 
-        let input_view = Into::<TensorView>::into(input_chunk).into_shared();
+        let input_view = ops::TensorView::from(input_chunk).into_shared();
 
         for dst in &self.plan.successors[input.0][input.1] {
             queue.push_back((*dst, input_view.clone()));

@@ -5,7 +5,7 @@ use errors::*;
 use ops::Op;
 use model:: {Model, RawModel };
 use Node;
-use Plan;
+use model::eval_order_for_nodes;
 
 mod constants;
 mod types;
@@ -170,7 +170,7 @@ impl Analyser {
         next_edges[output].push(special_edge_id);
 
         // Compute an execution plan for the graph.
-        let plan = Plan::for_model(model, &[output])?.order;
+        let plan = eval_order_for_nodes(model.nodes(), &[output])?;
         let current_pass = 0;
         let current_step = 0;
         let current_direction = true;
@@ -247,7 +247,7 @@ impl Analyser {
 
     /// Computes a new execution plan for the graph.
     pub fn reset_plan(&mut self) -> Result<()> {
-        self.plan = Plan::for_nodes(&self.nodes, &vec!(self.output))?.order;
+        self.plan = eval_order_for_nodes(&self.nodes, &[self.output])?;
         Ok(())
     }
 

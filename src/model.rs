@@ -1,9 +1,27 @@
 use std::{fs, path, str};
 use std::sync::Arc;
 use std::collections::HashMap;
-
-use {ops, tfpb, Result, ModelState, Node, Plan, Tensor };
 use std::ops::Deref;
+
+use bit_set;
+
+use {ops, tfpb, Result};
+
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub id: usize,
+    pub name: String,
+    pub op_name: String,
+    pub inputs: Vec<(usize, usize)>,
+    pub op: Box<ops::Op>,
+}
+
+impl Node {
+    pub fn op(&self) -> &ops::Op {
+        &*self.op
+    }
+}
 
 /// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
 /// and runs the inference interpreter.
@@ -108,28 +126,6 @@ impl RawModel {
 pub struct Model(pub Arc<RawModel>);
 
 impl Model {
-    pub fn state(&self) -> ModelState {
-        ModelState {
-            model: self.clone(),
-            outputs: vec![None; self.nodes.len()],
-        }
-    }
-
-    pub fn run(&self, inputs: Vec<(usize, Tensor)>, output: usize) -> Result<Vec<Tensor>> {
-        self.state().run(inputs, output)
-    }
-
-
-    pub fn run_with_names(&self, inputs: Vec<(&str, Tensor)>, output: &str) -> Result<Vec<Tensor>> {
-        let inputs = inputs
-            .into_iter()
-            .map(|(name, mat)| -> Result<(usize, Tensor)> {
-                Ok((self.node_id_by_name(name)?, mat))
-            })
-            .collect::<Result<_>>()?;
-        self.run(inputs, self.node_id_by_name(output)?)
-    }
-
     /// Load a Tensorflow protobul model from a file.
     pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
         Self::for_reader(fs::File::open(p)?)
@@ -152,10 +148,6 @@ impl Model {
         Self::graphdef_for_reader(fs::File::open(p)?)
     }
 
-    pub fn plan_for_one(&self, node: usize) -> Result<Plan> {
-        Plan::for_model(&self, &[node])
-    }
-
     pub fn analyser(&self, output: usize) -> Result<::analyser::Analyser> {
         ::analyser::Analyser::new(&self, output)
     }
@@ -166,5 +158,45 @@ impl Deref for Model {
     fn deref(&self) -> &RawModel {
         &*self.0
     }
+}
+
+pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> Result<Vec<usize>> {
+    let mut order: Vec<usize> = Vec::new();
+    let mut done = bit_set::BitSet::with_capacity(nodes.len());
+    let mut needed = bit_set::BitSet::with_capacity(nodes.len());
+    for &t in targets {
+        needed.insert(t);
+    }
+    loop {
+        let mut done_something = false;
+        let mut missing = needed.clone();
+        missing.difference_with(&done);
+        for node_id in missing.iter() {
+            let mut computable = true;
+            let node = &nodes[node_id];
+            for i in node.inputs.iter() {
+                if !done.contains(i.0) {
+                    computable = false;
+                    done_something = true;
+                    needed.insert(i.0.clone());
+                }
+            }
+            if computable {
+                done_something = true;
+                order.push(node_id);
+                done.insert(node_id);
+            }
+        }
+        if !done_something {
+            break;
+        }
+    }
+    for &t in targets {
+        if !done.contains(t) {
+            let node = &nodes[t];
+            Err(format!("Could not plan for node {}", node.name))?
+        }
+    }
+    Ok(order)
 }
 
