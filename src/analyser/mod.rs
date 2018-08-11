@@ -226,6 +226,7 @@ impl Analyser {
 
     /// Returns a model from the analyser.
     pub fn to_optimized_model(&mut self) -> Result<Model> {
+        self.analyse()?;
         constants::propagate_constants(self)?;
         self.to_model()
     }

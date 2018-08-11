@@ -21,8 +21,8 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()
     let optimized_model = analyser.to_optimized_model()?;
     info!(
         "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
-        ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
-        analyser.nodes.len()
+        ::bincode::serialize(&optimized_model.nodes)?.len() as f64 * 1e-3,
+        optimized_model.nodes.len()
     );
 
     // Run optimized graph
