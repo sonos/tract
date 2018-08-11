@@ -1,4 +1,5 @@
 use format::Row;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use tfdeploy;
@@ -120,13 +121,13 @@ impl DisplayGraph {
         Ok(())
     }
 
-    pub fn from_nodes(tfnodes: &[&tfdeploy::Node]) -> CliResult<DisplayGraph> {
+    pub fn from_nodes(tfnodes: &[impl Borrow<tfdeploy::Node>]) -> CliResult<DisplayGraph> {
         let mut nodes: Vec<Node> = tfnodes
             .iter()
             .map(|n| Node {
-                id: n.id,
-                name: n.name.clone(),
-                op: n.op_name.clone(),
+                id: n.borrow().id,
+                name: n.borrow().name.clone(),
+                op: n.borrow().op_name.clone(),
                 label: None,
                 more_lines: vec![],
                 attrs: vec![],
@@ -137,21 +138,21 @@ impl DisplayGraph {
             .collect();
         let mut edges = vec![];
         for node in tfnodes.iter() {
-            for (ix, input) in node.inputs.iter().enumerate() {
+            for (ix, input) in node.borrow().inputs.iter().enumerate() {
                 let edge = Edge {
                     id: edges.len(),
                     src_node_id: input.0,
                     src_node_output: input.1,
-                    dst_node_id: node.id,
+                    dst_node_id: node.borrow().id,
                     dst_node_input: ix,
                     main: ix == 0,
-                    label: tfnodes[input.0]
+                    label: tfnodes[input.0].borrow()
                         .op()
                         .const_value()
                         .map(|v| format!("Const {:?}", v)),
                 };
                 nodes[edge.src_node_id].outputs.push(edges.len());
-                nodes[node.id].inputs.push(edges.len());
+                nodes[node.borrow().id].inputs.push(edges.len());
                 edges.push(edge);
             }
         }

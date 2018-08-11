@@ -3,12 +3,10 @@ use {OutputParameters, Parameters};
 
 /// Handles the `analyse` subcommand.
 pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameters) -> Result<()> {
-    let model = params.tfd_model;
+    let mut model = params.tfd_model;
 
     let mut analyser = model.analyser(&params.output_node)?;
-
-    // Add hints for the input nodes.
-    if let Some(input) = params.input {
+    if let Some(input) = params.input.as_ref() {
         analyser.hint(&params.input_nodes[0], &input.to_fact())?;
     }
 
@@ -22,7 +20,12 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
             analyser.nodes.len()
         );
 
-        let model = analyser.to_optimized_model()?;
+        model = analyser.to_optimized_model()?;
+        analyser = model.analyser(&params.output_node)?;
+        if let Some(input) = params.input.as_ref() {
+            analyser.hint(&params.input_nodes[0], &input.to_fact())?;
+        }
+        analyser.analyse()?;
 
         info!(
             "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
@@ -31,8 +34,7 @@ pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameter
         );
     }
 
-    let nodes: Vec<_> = analyser.nodes.iter().collect();
-    let display = ::display_graph::DisplayGraph::from_nodes(&*nodes)?
+    let display = ::display_graph::DisplayGraph::from_nodes(model.nodes())?
         .with_graph_def(&params.graph)?
         .with_analyser(&analyser)?;
     display.render(&output_params)?;
