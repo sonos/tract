@@ -20,12 +20,12 @@ fn build_streaming_plan(params: &Parameters) -> Result<(StreamingPlan, Tensor)> 
         .as_ref()
         .ok_or("Exactly one of <size> or <data> must be specified.")?;
 
-    let model = params.tfd_model.analyser(params.output_node_id)?
-        .with_hint(params.input_node_ids[0], &input.to_fact())?
+    let model = params.tfd_model.analyser(&params.output_node)?
+        .with_hint(&params.input_nodes[0], &input.to_fact())?
         .to_optimized_model()?;
     let plan = StreamingPlan::new(&model,
-        vec!((params.input_node_ids[0], input.to_fact())),
-        Some(params.output_node_id))?;
+        vec!((&params.input_nodes[0], input.to_fact())),
+        Some(&params.output_node))?;
 
     let measure = Duration::since(&start, 1);
     info!(
@@ -109,10 +109,11 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Res
     let mut state = plan.state()?;
     bufferize(&mut state, &chunk)?;
 
+    let input_id = state.model().node_by_name(&params.input_nodes[0])?.id;
     let mut profile = ProfileData::new(state.model());
     for _ in 0..100 {
         let _result = state.step_wrapping_ops(
-            (params.input_node_ids[0], 0),
+            (input_id, 0),
             chunk.clone(),
             |node, input, buffer| {
                 let start = Instant::now();
@@ -188,16 +189,17 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     let mut profile = ProfileData::new(&plan.model());
 
     for (step, chunk) in chunks.into_iter().enumerate() {
-        for &input in &params.input_node_ids {
+        for ref input in &params.input_nodes {
             trace!("Starting step {:?} with input {:?}.", step, chunk);
 
             let mut input_chunks = vec![Some(chunk.clone()); 100];
+            let input = plan.model().node_by_name(&input)?;
             let mut outputs = Vec::with_capacity(100);
             let start = Instant::now();
 
             for i in 0..100 {
                 outputs.push(states[i].step_wrapping_ops(
-                    (input, 0),
+                    (input.id, 0),
                     input_chunks[i].take().unwrap(),
                     |node, input, buffer| {
                         let start = Instant::now();

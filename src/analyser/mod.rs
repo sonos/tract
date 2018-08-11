@@ -51,24 +51,19 @@ pub mod helpers;
 pub mod interface;
 
 /// Tries to auto-detect the names of the input nodes.
-pub fn detect_inputs(model: &Model) -> Result<Option<Vec<usize>>> {
+pub fn detect_inputs(model: &Model) -> Result<Vec<&Node>> {
     let inputs: Vec<_> = model
         .nodes()
         .iter()
         .filter(|n| n.op_name == "Placeholder")
         .inspect(|n| info!("Autodetected input node: {} {:?}.", n.id, n.name))
-        .map(|n| n.id)
         .collect();
 
-    if inputs.len() > 0 {
-        Ok(Some(inputs))
-    } else {
-        Ok(None)
-    }
+    Ok(inputs)
 }
 
 /// Tries to auto-detect the name of the output node.
-pub fn detect_output(model: &Model) -> Result<Option<usize>> {
+pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
     // We search for the only node in the graph with no successor.
     let mut succs: Vec<Vec<usize>> = vec![Vec::new(); model.nodes().len()];
 
@@ -83,9 +78,9 @@ pub fn detect_output(model: &Model) -> Result<Option<usize>> {
             info!(
                 "Autodetected output node: {} {:?}.",
                 i,
-                model.get_node_by_id(i)?.name
+                model.nodes()[i].name
             );
-            return Ok(Some(i));
+            return Ok(Some(&model.nodes[i]));
         }
     }
 
@@ -132,11 +127,12 @@ impl Analyser {
     /// The output argument is used to infer an execution plan for the graph.
     /// Changing it won't alter the correctness of the analysis, but it might
     /// take much longer to complete.
-    pub fn new(model: &Model, output: usize) -> Result<Analyser> {
+    pub fn new(model: &Model, output: &str) -> Result<Analyser> {
         let nodes:Vec<Node> = model.nodes().iter().cloned().collect();
         let mut edges = vec![];
         let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
         let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
+        let output = model.node_by_name(output)?;
 
         for node in &nodes {
             for (ix, input) in node.inputs.iter().enumerate() {
@@ -160,17 +156,17 @@ impl Analyser {
         let special_edge_id = edges.len();
         edges.push(Edge {
             id: special_edge_id,
-            from_node: Some(output),
+            from_node: Some(output.id),
             from_out: 0,
             to_node: None,
             to_input: 0,
             fact: TensorFact::new(),
         });
 
-        next_edges[output].push(special_edge_id);
+        next_edges[output.id].push(special_edge_id);
 
         // Compute an execution plan for the graph.
-        let plan = eval_order_for_nodes(model.nodes(), &[output])?;
+        let plan = eval_order_for_nodes(model.nodes(), &[output.id])?;
         let current_pass = 0;
         let current_step = 0;
         let current_direction = true;
@@ -179,7 +175,7 @@ impl Analyser {
 
         Ok(Analyser {
             model: model.clone(),
-            output,
+            output: output.id,
             nodes,
             edges,
             prev_edges,
@@ -192,7 +188,13 @@ impl Analyser {
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn hint(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
+    pub fn hint(&mut self, node: &str, fact: &TensorFact) -> Result<()> {
+        let id = self.model.node_by_name(node)?.id;
+        self.hint_by_id(id, fact)
+    }
+
+    /// Adds an user-provided tensor fact to the analyser.
+    pub fn hint_by_id(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
         debug!("Hint for node \"{}\": {:?}", self.model.nodes()[node].name, fact);
         if node >= self.next_edges.len() {
             bail!("There is no node with index {:?}.", node);
@@ -206,15 +208,9 @@ impl Analyser {
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn with_hint(mut self, node: usize, fact: &TensorFact) -> Result<Analyser> {
-        self.hint(node, fact)?;
-        Ok(self)
-    }
-
-    /// Adds an user-provided tensor fact to the analyser.
-    pub fn with_named_hint(mut self, node: &str, fact: &TensorFact) -> Result<Analyser> {
-        let node = self.model.node_id_by_name(node)?;
-        self.hint(node, fact)?;
+    pub fn with_hint(mut self, node: &str, fact: &TensorFact) -> Result<Analyser> {
+        let node = self.model.node_by_name(node)?.id;
+        self.hint_by_id(node, fact)?;
         Ok(self)
     }
 

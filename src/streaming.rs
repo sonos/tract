@@ -17,14 +17,16 @@ pub struct RawStreamingPlan {
 impl RawStreamingPlan {
     pub fn new(
         model: &Model,
-        inputs: Vec<(usize, TensorFact)>,
-        output: Option<usize>,
+        inputs: Vec<(&str, TensorFact)>,
+        output: Option<&str>,
     ) -> Result<RawStreamingPlan> {
-        let output_node = output
-            .or(analyser::detect_output(&model)?)
-            .ok_or("Unable to auto-detect output node.")?;
+        let output_node = match output {
+            Some(name) => model.node_by_name(name)?,
+            None => analyser::detect_inputs(&model)?.pop()
+                .ok_or("Unable to auto-detect output node.")?
+        };
 
-        let mut analyser = Analyser::new(&model, output_node)?;
+        let mut analyser = Analyser::new(&model, &output_node.name)?;
 
         // Pre-compute the constant part of the graph using the analyser.
         for input in inputs {
@@ -63,7 +65,7 @@ impl RawStreamingPlan {
             model: model.clone(),
             dimensions,
             successors,
-            output_node,
+            output_node: output_node.id,
         })
     }
 
@@ -83,8 +85,8 @@ impl StreamingPlan {
     /// guessed automatically.
     pub fn new(
         model: &Model,
-        inputs: Vec<(usize, TensorFact)>,
-        output: Option<usize>,
+        inputs: Vec<(&str, TensorFact)>,
+        output: Option<&str>,
     ) -> Result<StreamingPlan> {
         Ok(StreamingPlan(Arc::new(RawStreamingPlan::new(model, inputs, output)?)))
     }
@@ -160,7 +162,7 @@ impl StreamingModelState {
         while let Some((dst, chunk)) = queue.pop_front() {
             debug!("Executing new edge: dst={:?}, chunk={:?}", dst, chunk);
 
-            let node = self.plan.model.get_node_by_id(dst.0)?;
+            let node = &self.plan.model.nodes[dst.0];
             let mut inputs = vec![];
 
             // We wrap chunk in an option because we want to capture
@@ -169,7 +171,7 @@ impl StreamingModelState {
             let mut chunk = Some(chunk);
 
             for (ix, input) in node.inputs.iter().enumerate() {
-                let pred = self.plan.model.get_node_by_id(input.0)?;
+                let pred = &self.plan.model.nodes[input.0];
                 let dimension = self.plan.dimensions.get(&input).map(|i| *i);
 
                 let value = if let Some(v) = pred.op.const_value() {

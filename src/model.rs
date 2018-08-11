@@ -92,29 +92,15 @@ impl RawModel {
         })))
     }
 
-    pub fn node_id_by_name(&self, name: &str) -> Result<usize> {
-        self.nodes_by_name
+    pub fn node_by_name(&self, name: &str) -> Result<&Node> {
+        let id:&usize = self.nodes_by_name
             .get(name)
-            .cloned()
-            .ok_or(format!("Node named {} not found", name).into())
+            .ok_or_else(|| format!("Node named {} not found", name))?;
+        Ok(&self.nodes[*id])
     }
 
     pub fn node_names(&self) -> Vec<&str> {
         self.nodes.iter().map(|s| &*s.name).collect()
-    }
-
-    /// Get a tfdeploy Node by name.
-    pub fn get_node(&self, name: &str) -> Result<&Node> {
-        Ok(&self.nodes[self.node_id_by_name(name)?])
-    }
-
-    /// Get a tfdeploy Node by id.
-    pub fn get_node_by_id(&self, id: usize) -> Result<&Node> {
-        if id >= self.nodes.len() {
-            Err(format!("Invalid node id {}", id))?
-        } else {
-            Ok(&self.nodes[id])
-        }
     }
 
     pub fn nodes(&self) -> &[Node] {
@@ -148,7 +134,7 @@ impl Model {
         Self::graphdef_for_reader(fs::File::open(p)?)
     }
 
-    pub fn analyser(&self, output: usize) -> Result<::analyser::Analyser> {
+    pub fn analyser(&self, output: &str) -> Result<::analyser::Analyser> {
         ::analyser::Analyser::new(&self, output)
     }
 }

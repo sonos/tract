@@ -4,13 +4,12 @@ use {OutputParameters, Parameters};
 /// Handles the `analyse` subcommand.
 pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameters) -> Result<()> {
     let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output_node_id)?.id;
 
-    let mut analyser = model.analyser(output)?;
+    let mut analyser = model.analyser(&params.output_node)?;
 
     // Add hints for the input nodes.
     if let Some(input) = params.input {
-        analyser.hint(params.input_node_ids[0], &input.to_fact())?;
+        analyser.hint(&params.input_nodes[0], &input.to_fact())?;
     }
 
     info!("Running analyse");

@@ -173,8 +173,8 @@ pub struct Parameters {
     tf_model: conform::tf::Tensorflow,
 
     input: Option<InputParameters>,
-    input_node_ids: Vec<usize>,
-    output_node_id: usize,
+    input_nodes: Vec<String>,
+    output_node: String,
 }
 
 impl Parameters {
@@ -189,18 +189,24 @@ impl Parameters {
 
         let input = InputParameters::from_clap(matches)?;
 
-        let input_node_ids = match matches.values_of("inputs") {
-            Some(names) => names
-                .map(|s| Ok(tfd_model.node_id_by_name(s)?))
-                .collect::<Result<_>>()?,
-            None => tfdeploy::analyser::detect_inputs(&tfd_model)?
-                .ok_or("Impossible to auto-detect input nodes: no placeholder.")?,
+        let input_nodes = if let Some(inputs) = matches.values_of("inputs") {
+            for input in inputs.clone() {
+                let _ = tfd_model.node_by_name(&input)?;
+            }
+            inputs.map(|s| s.to_string()).collect()
+        } else {
+            tfdeploy::analyser::detect_inputs(&tfd_model)?
+                .iter().map(|n| n.name.to_string()).collect()
         };
 
-        let output_node_id = match matches.value_of("output") {
-            Some(name) => tfd_model.node_id_by_name(name)?,
-            None => tfdeploy::analyser::detect_output(&tfd_model)?
-                .ok_or("Impossible to auto-detect output nodes.")?,
+        let mut output_nodes:Vec<String> = if let Some(outputs) = matches.values_of("outputs") {
+            for output in outputs.clone() {
+                let _ = tfd_model.node_by_name(&output)?;
+            }
+            outputs.map(|s| s.to_string()).collect()
+        } else {
+            tfdeploy::analyser::detect_output(&tfd_model)?
+                .iter().map(|n| n.name.to_string()).collect()
         };
 
         #[cfg(feature = "tensorflow")]
@@ -209,8 +215,8 @@ impl Parameters {
             graph,
             tfd_model,
             tf_model,
-            input_node_ids,
-            output_node_id,
+            input_nodes,
+            output_node: output_nodes.remove(0),
             input,
         });
 
@@ -219,8 +225,8 @@ impl Parameters {
             name: name.to_string(),
             graph,
             tfd_model,
-            input_node_ids,
-            output_node_id,
+            input_nodes,
+            output_node: output_nodes.remove(0),
             input,
         });
     }
@@ -348,6 +354,17 @@ impl InputParameters {
             datatype: typefact!(self.datatype),
             shape: ShapeFact::closed(dims.clone()),
             value: valuefact!(_),
+        }
+    }
+
+    fn to_tensor(&self) -> Result<Tensor> {
+        if let Some(value) = self.data.as_ref() {
+            Ok(value.clone())
+        } else {
+            if self.streaming() {
+                Err("random tensor no available in streaming")?
+            }
+            Ok(utils::random_tensor(self.shape.iter().map(|d| d.unwrap()).collect(), self.datatype))
         }
     }
 }

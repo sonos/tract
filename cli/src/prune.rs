@@ -5,11 +5,10 @@ use Parameters;
 #[allow(dead_code)]
 pub fn handle(params: Parameters) -> Result<()> {
     let model = params.tfd_model;
-    let output = model.get_node_by_id(params.output_node_id)?.id;
 
     info!("Starting the analysis.");
 
-    let mut analyser = model.analyser(output)?;
+    let mut analyser = model.analyser(&params.output_node)?;
 
     info!(
         "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",
