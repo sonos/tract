@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{ HashMap, BTreeSet };
 use std::sync::Arc;
 
 use errors::*;
@@ -114,11 +114,6 @@ pub struct Analyser {
 
     // The execution plan
     plan: Vec<usize>,
-
-    // The current state of the algorithm.
-    pub current_pass: usize,
-    pub current_step: usize,
-    pub current_direction: bool,
 }
 
 impl Analyser {
@@ -167,9 +162,6 @@ impl Analyser {
 
         // Compute an execution plan for the graph.
         let plan = eval_order_for_nodes(model.nodes(), &[output.id])?;
-        let current_pass = 0;
-        let current_step = 0;
-        let current_direction = true;
 
         trace!("Using execution plan {:?}.", plan);
 
@@ -181,9 +173,6 @@ impl Analyser {
             prev_edges,
             next_edges,
             plan,
-            current_pass,
-            current_step,
-            current_direction,
         })
     }
 
@@ -254,85 +243,48 @@ impl Analyser {
 
     /// Runs the entire analysis at once.
     pub fn analyse(&mut self) -> Result<()> {
-        self.current_pass = 0;
+        let mut nodes_to_visit:BTreeSet<usize> = (0..self.nodes.len()).collect();
         loop {
-            if !self.run_two_passes()? {
-                return Ok(());
+            trace!("Remaining nodes {}", nodes_to_visit.len());
+            let node = match nodes_to_visit.iter().next() {
+                None => return Ok(()),
+                Some(n) => *n,
+            };
+            let changed_edges = self.step(node)?;
+            for edge in changed_edges {
+                let edge = &self.edges[edge];
+                trace!("Changed edge: {:?}", edge);
+                if let Some(dst) = edge.to_node {
+                    if dst != node {
+                        trace!("Inserting node dn {}", dst);
+                        nodes_to_visit.insert(dst);
+                    }
+                }
+                if let Some(src) = edge.from_node {
+                    if src != node {
+                        trace!("Inserting node up {}", src);
+                        nodes_to_visit.insert(src);
+                    }
+                }
             }
+            nodes_to_visit.remove(&node);
         }
-    }
-
-    /// Runs two passes of the analysis.
-    pub fn run_two_passes(&mut self) -> Result<bool> {
-        let mut changed = false;
-
-        info!(
-            "Starting pass [pass={:?}, direction={:?}].",
-            self.current_pass, self.current_direction,
-        );
-
-        // We first run a forward pass.
-        self.current_step = 0;
-        for _ in 0..self.plan.len() {
-            if self.analyse_step()? {
-                changed = true;
-            }
-        }
-
-        info!(
-            "Starting pass [pass={:?}, direction={:?}].",
-            self.current_pass, self.current_direction,
-        );
-
-        // We then run a backward pass.
-        self.current_step = 0;
-        for _ in 0..self.plan.len() {
-            if self.analyse_step()? {
-                changed = true;
-            }
-        }
-
-        Ok(changed)
-    }
-
-    /// Runs a single step of the analysis.
-    pub fn analyse_step(&mut self) -> Result<bool> {
-        let changed = self.try_step()?;
-
-        // Switch to the next step.
-        self.current_step += 1;
-        if self.current_step == self.plan.len() {
-            self.current_pass += 1;
-            self.current_direction = !self.current_direction;
-            self.current_step = 0;
-        }
-
-        Ok(changed)
     }
 
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
-    fn try_step(&mut self) -> Result<bool> {
-        let node_id = if self.current_direction {
-            self.plan[self.current_step]
-        } else {
-            self.plan[self.plan.len() - 1 - self.current_step]
-        };
-        let node = &self.nodes[node_id];
-
+    fn step(&mut self, node: usize) -> Result<Vec<usize>> {
+        let node = &self.nodes[node];
         debug!(
-            "Starting step for {} {} ({}) [pass={:?}, direction={:?}, step={:?}].",
+            "Starting step for {} {} ({})",
             node.id,
             node.name,
             node.op_name,
-            self.current_pass,
-            self.current_direction,
-            self.current_step,
         );
 
         trace!("{:?}", node.op);
 
-        let inputs: Vec<_> = self.prev_edges[node_id]
+        let inputs: Vec<_> = self.prev_edges[node.id]
             .iter()
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
@@ -349,30 +301,30 @@ impl Analyser {
 
         // FIXME(liautaud): We should handle multiple output ports in the future.
         let mut outputs = vec![TensorFact::new()];
-        for &i in &self.next_edges[node_id] {
+        for &i in &self.next_edges[node.id] {
             outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
         }
         trace!("  Output 0: {:?}", &outputs[0]);
 
         let inferred = node.op
             .infer_and_propagate(inputs, outputs)
-            .map_err(|e| format!("While inferring forward for {} {}: {}", node_id, node.name, e))?;
+            .map_err(|e| format!("While inferring forward for {} {}: {}", node.id, node.name, e))?;
 
-        let mut changed = false;
+        let mut changed_edges = vec!();
 
-        for (i, &j) in self.prev_edges[node_id].iter().enumerate() {
+        for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
             let fact = &inferred.0[i];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying inputs of node {} {}: {}", node_id, node.name, e))?;
+                .map_err(|e| format!("While unifying inputs of node {} {}: {}", node.id, node.name, e))?;
 
             if unified != self.edges[j].fact {
                 debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
-                changed = true;
+                changed_edges.push(j);
                 self.edges[j].fact = unified;
             }
         }
 
-        for (i, &j) in self.next_edges[node_id].iter().enumerate() {
+        for (i, &j) in self.next_edges[node.id].iter().enumerate() {
             // FIXME(liautaud): We should handle multiple output ports in the future.
             if inferred.1.len() != 1 {
                 panic!("Inference only supports nodes with a single output port.");
@@ -380,16 +332,16 @@ impl Analyser {
 
             let fact = &inferred.1[0];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying outputs of node {} {} {}", node_id, node.name, e))?;
+                .map_err(|e| format!("While unifying outputs of node {} {} {}", node.id, node.name, e))?;
 
             if unified != self.edges[j].fact {
-                debug!(" Refined {} output {}/{} to {:?}", node.name, node_id, i, unified);
-                changed = true;
+                debug!(" Refined {} output {}/{} to {:?}", node.name, node.id, i, unified);
+                changed_edges.push(j);
                 self.edges[j].fact = unified;
             }
         }
 
-        Ok(changed)
+        Ok(changed_edges)
     }
 }
 
