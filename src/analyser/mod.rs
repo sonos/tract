@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use errors::*;
 use ops::Op;
-use Model;
+use model:: {Model, RawModel };
 use Node;
 use Plan;
 
@@ -105,16 +106,18 @@ pub struct Edge {
 
 /// A graph analyser, along with its current state.
 pub struct Analyser {
-    // The original output.
+    model: Model,
+    // The output.
     pub output: usize,
 
+    pub additional_nodes: Vec<Node>,
+
     // The graph being analysed.
-    pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     pub prev_edges: Vec<Vec<usize>>,
     pub next_edges: Vec<Vec<usize>>,
 
-    // The execution plan and unused nodes.
+    // The execution plan
     plan: Vec<usize>,
 
     // The current state of the algorithm.
@@ -129,13 +132,12 @@ impl Analyser {
     /// The output argument is used to infer an execution plan for the graph.
     /// Changing it won't alter the correctness of the analysis, but it might
     /// take much longer to complete.
-    pub fn new(model: Model, output: usize) -> Result<Analyser> {
-        let nodes = model.nodes.clone();
+    pub fn new(model: &Model, output: usize) -> Result<Analyser> {
         let mut edges = vec![];
-        let mut prev_edges = vec![Vec::new(); nodes.len() + 1];
-        let mut next_edges = vec![Vec::new(); nodes.len() + 1];
+        let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
+        let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
 
-        for node in &nodes {
+        for node in model.nodes() {
             for (ix, input) in node.inputs.iter().enumerate() {
                 let id = edges.len();
 
@@ -167,7 +169,7 @@ impl Analyser {
         next_edges[output].push(special_edge_id);
 
         // Compute an execution plan for the graph.
-        let plan = Plan::for_nodes(&nodes, &[output])?.order;
+        let plan = Plan::for_model(model, &[output])?.order;
         let current_pass = 0;
         let current_step = 0;
         let current_direction = true;
@@ -175,8 +177,9 @@ impl Analyser {
         debug!("Using execution plan {:?}.", plan);
 
         Ok(Analyser {
+            model: model.clone(),
             output,
-            nodes,
+            additional_nodes: vec!(),
             edges,
             prev_edges,
             next_edges,
@@ -189,7 +192,7 @@ impl Analyser {
 
     /// Adds an user-provided tensor fact to the analyser.
     pub fn hint(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
-        debug!("Hint for node \"{}\": {:?}", self.nodes[node].name, fact);
+        debug!("Hint for node \"{}\": {:?}", self.model.nodes()[node].name, fact);
         if node >= self.next_edges.len() {
             bail!("There is no node with index {:?}.", node);
         }
@@ -201,22 +204,57 @@ impl Analyser {
         Ok(())
     }
 
+    /// Adds an user-provided tensor fact to the analyser.
+    pub fn with_hint(self, node: usize, fact: &TensorFact) -> Result<Analyser> {
+        self.hint(node, fact)?;
+        Ok(self)
+    }
+
+    /// Adds an user-provided tensor fact to the analyser.
+    pub fn with_named_hint(self, node: &str, fact: &TensorFact) -> Result<Analyser> {
+        let node = self.model.node_id_by_name(node)?;
+        self.hint(node, fact)?;
+        Ok(self)
+    }
+
+    pub fn get_node(&self, i: usize) -> &Node {
+        if i<self.model.nodes().len() { &self.model.nodes()[i] } else { &self.additional_nodes[i-self.model.nodes().len()]}
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.model.nodes().len() + self.additional_nodes.len()
+    }
+
     /// Returns a model from the analyser.
-    pub fn into_model(self) -> Model {
-        let mut nodes_by_name = HashMap::with_capacity(self.nodes.len());
-        self.nodes.iter().for_each(|n| {
-            nodes_by_name.insert(n.name.clone(), n.id);
+    pub fn to_model(&self) -> Result<Model> {
+        let mut nodes_by_name = HashMap::with_capacity(self.plan.len());
+        let mut nodes_mapped = HashMap::with_capacity(self.plan.len());
+        let nodes = Vec::with_capacity(self.plan.len());
+        self.plan.iter().enumerate().for_each(|(ix,&n)| {
+            let old_node = self.get_node(n);
+            nodes_by_name.insert(old_node.name.clone(), ix);
+            nodes_mapped.insert(old_node.id, ix);
+            nodes.push(Node {
+                id: ix,
+                name: old_node.name.clone(),
+                op_name: old_node.op_name.clone(),
+                inputs: old_node.inputs.iter().map(|&(input, port)| (nodes_mapped[&input], port)).collect(),
+                op: old_node.op.clone(),
+            });
         });
 
-        Model(::std::sync::Arc::new(::RawModel {
-            nodes: self.nodes,
-            nodes_by_name,
-        }))
+        Ok(Model(Arc::new(RawModel { nodes, nodes_by_name, })))
+    }
+
+    /// Returns a model from the analyser.
+    pub fn to_optimized_model(&mut self) -> Result<Model> {
+        constants::propagate_constants(&mut self)?;
+        self.to_model()
     }
 
     /// Computes a new execution plan for the graph.
     pub fn reset_plan(&mut self) -> Result<()> {
-        self.plan = Plan::for_nodes(&self.nodes, &[self.output])?.order;
+        self.plan = Plan::for_node_provider(self.node_count(), &|i| self.get_node(i), &vec!(self.output))?.order;
         Ok(())
     }
 
@@ -225,6 +263,7 @@ impl Analyser {
         constants::propagate_constants(self)
     }
 
+    /*
     /// Removes the nodes and edges which are not part of the execution plan.
     /// Returns the mapping between the old and new node indexes.
     pub fn prune_unused(&mut self) -> Vec<Option<usize>> {
@@ -257,7 +296,7 @@ impl Analyser {
             }
         }
 
-        info!("Deleted {:?} unused nodes.", deleted);
+        info!("Nodes: before: {}, deleted: {}, kept: {}", self.nodes.len(), deleted, self.nodes.len() - deleted);
 
         // Update the nodes and edges to use the new indices.
         for node in &mut self.nodes {
@@ -290,7 +329,7 @@ impl Analyser {
             }
         }
 
-        info!("Deleted {:?} unused edges.", deleted);
+        info!("Edges: before: {}, deleted: {}, kept: {}", self.edges.len(), deleted, self.edges.len() - deleted);
 
         // Update the adjacency lists to use the new indices.
         for i in 0..self.nodes.len() {
@@ -304,9 +343,10 @@ impl Analyser {
 
         node_mapping
     }
+    */
 
     /// Runs the entire analysis at once.
-    pub fn run(&mut self) -> Result<()> {
+    pub fn analyse(&mut self) -> Result<()> {
         self.current_pass = 0;
 
         loop {
@@ -328,7 +368,7 @@ impl Analyser {
         // We first run a forward pass.
         self.current_step = 0;
         for _ in 0..self.plan.len() {
-            if self.run_step()? {
+            if self.analyse_step()? {
                 changed = true;
             }
         }
@@ -341,7 +381,7 @@ impl Analyser {
         // We then run a backward pass.
         self.current_step = 0;
         for _ in 0..self.plan.len() {
-            if self.run_step()? {
+            if self.analyse_step()? {
                 changed = true;
             }
         }
@@ -350,7 +390,7 @@ impl Analyser {
     }
 
     /// Runs a single step of the analysis.
-    pub fn run_step(&mut self) -> Result<bool> {
+    pub fn analyse_step(&mut self) -> Result<bool> {
         let changed = self.try_step()?;
 
         // Switch to the next step.
@@ -368,9 +408,9 @@ impl Analyser {
     /// there was any additional information gained during the step.
     fn try_step(&mut self) -> Result<bool> {
         let node = if self.current_direction {
-            &self.nodes[self.plan[self.current_step]]
+            self.get_node(self.plan[self.current_step])
         } else {
-            &self.nodes[self.plan[self.plan.len() - 1 - self.current_step]]
+            self.get_node(self.plan[self.plan.len() - 1 - self.current_step])
         };
 
         debug!(
