@@ -197,13 +197,13 @@ fn node_info(
 
     for (ix, &(n, i)) in node.inputs.iter().enumerate() {
         if let Some(state) = state {
-            let data = &state.outputs[n].as_ref().unwrap()[i.unwrap_or(0)];
+            let data = &state.outputs[n].as_ref().unwrap()[i];
             inputs.push(Row::Double(
                 format!(
                     "{} ({}/{}):",
                     format!("Input {}", ix).bold(),
                     n,
-                    i.unwrap_or(0),
+                    i
                 ),
                 data.partial_dump(false).unwrap(),
             ));

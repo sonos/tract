@@ -76,7 +76,6 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::{path, str};
 
 // use analyser::prelude::*;
-use analyser::helpers::tensor_to_fact;
 pub use errors::*;
 use ops::{Op, OpBuffer, TensorView};
 pub use tensor::{DataType, Tensor};
@@ -88,7 +87,7 @@ pub struct Node {
     pub id: usize,
     pub name: String,
     pub op_name: String,
-    pub inputs: Vec<(usize, Option<usize>)>,
+    pub inputs: Vec<(usize, usize)>,
     pub op: Box<Op>,
 }
 
@@ -230,7 +229,7 @@ impl ModelState {
                 "Computing {}, precursor {} not done:",
                 node.name, prec_node.name
             ))?;
-            inputs.push(prec[i.1.unwrap_or(0)].clone().into())
+            inputs.push(prec[i.1].clone().into())
         }
         let outputs = node.op.eval(inputs)?;
         self.outputs[node.id] = Some(outputs);

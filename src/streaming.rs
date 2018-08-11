@@ -34,10 +34,10 @@ impl RawStreamingPlan {
         let mut successors = vec!(vec!(); model.nodes.len());
         model.nodes.iter().for_each(|node| {
             node.inputs.iter().enumerate().for_each(|(dst_inlet, (src_node, src_outlet))| {
-                while successors[*src_node].len() <= src_outlet.unwrap_or(0) {
+                while successors[*src_node].len() <= *src_outlet {
                     successors[*src_node].push(vec!());
                 }
-                successors[*src_node][src_outlet.unwrap_or(0)].push((node.id, dst_inlet));
+                successors[*src_node][*src_outlet].push((node.id, dst_inlet));
             });
         });
 
@@ -169,7 +169,7 @@ impl StreamingModelState {
 
             for (ix, input) in node.inputs.iter().enumerate() {
                 let pred = self.plan.model.get_node_by_id(input.0)?;
-                let dimension = self.plan.dimensions.get(&(input.0, input.1.unwrap_or(0))).map(|i| *i);
+                let dimension = self.plan.dimensions.get(&input).map(|i| *i);
 
                 let value = if let Some(v) = pred.op.const_value() {
                     // The input is not streamed, and so was turned into a constant

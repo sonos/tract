@@ -145,7 +145,7 @@ impl Analyser {
                 edges.push(Edge {
                     id,
                     from_node: Some(input.0),
-                    from_out: input.1.unwrap_or(0),
+                    from_out: input.1,
                     to_node: Some(node.id),
                     to_input: ix,
                     fact: TensorFact::new(),

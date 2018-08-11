@@ -408,7 +408,7 @@ mod tests {
     #[test]
     fn inference_1() {
         use ops::InferenceOp;
-        let mut op = StridedSlice::<f32>::new(5,7,0);
+        let op = StridedSlice::<f32>::new(5,7,0);
         let input = TensorFact::default().with_datatype(DataType::F32);
         let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn inference_2() {
         use ops::InferenceOp;
-        let mut op = StridedSlice::<f32>::new(1,1,2);
+        let op = StridedSlice::<f32>::new(1,1,2);
         let input = TensorFact::default().with_datatype(DataType::F32);
         let begin = TensorFact::from(arr1(&[0i32, 0]));
         let end = TensorFact::from(arr1(&[0i32, 1]));

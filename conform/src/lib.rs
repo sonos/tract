@@ -111,7 +111,7 @@ pub fn compare<S: AsRef<str>>(
     let inputs_vectors: Vec<TensorFact> = node.inputs
         .iter()
         .map(|(i, p)| {
-            state.outputs[*i].as_ref().unwrap()[p.unwrap_or(0)]
+            state.outputs[*i].as_ref().unwrap()[*p]
                 .as_tensor()
                 .clone()
                 .into()

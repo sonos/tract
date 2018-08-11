@@ -26,17 +26,17 @@ impl RawModel {
             // "src_output" indicating which output tensor to use from "node". If
             // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
             // optionally be followed by control inputs that have the format "^node".
-            let inputs: Vec<(usize, Option<usize>)> = pbnode
+            let inputs: Vec<(usize, usize)> = pbnode
                 .get_input()
                 .iter()
                 .map(|i| {
-                    let input: (usize, Option<usize>) = if i.starts_with("^") {
+                    let input: (usize, usize) = if i.starts_with("^") {
                         (
                             nodes_by_name
                                 .get(&*i.replace("^", ""))
                                 .ok_or(format!("No node {} found", i))?
                                 .clone(),
-                            None,
+                            0,
                         )
                     } else {
                         let splits: Vec<_> = i.splitn(2, ':').collect();
@@ -46,13 +46,13 @@ impl RawModel {
                                 .ok_or(format!("No node {} found", i))?
                                 .clone(),
                             if splits.len() > 1 {
-                                Some(splits[1].parse::<usize>()?)
+                                splits[1].parse::<usize>()?
                             } else {
-                                Some(0)
+                                0
                             },
                         )
                     };
-                    Ok((input.0.clone(), input.1))
+                    Ok((input.0, input.1))
                 })
                 .collect::<Result<Vec<_>>>()
                 .map_err(|e| format!("While building node {}, {}", name, e.description()))?;

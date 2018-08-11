@@ -141,7 +141,7 @@ impl DisplayGraph {
                 let edge = Edge {
                     id: edges.len(),
                     src_node_id: input.0,
-                    src_node_output: input.1.unwrap_or(0),
+                    src_node_output: input.1,
                     dst_node_id: node.id,
                     dst_node_input: ix,
                     main: ix == 0,

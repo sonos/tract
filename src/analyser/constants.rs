@@ -192,7 +192,7 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
             {
                 let predecessors = &mut analyser.nodes[edge.to_node.unwrap()].inputs;
                 let position = predecessors.iter().position(|&(i, _)| i == old_node_id).unwrap();
-                predecessors[position] = (const_node_id, None);
+                predecessors[position] = (const_node_id, 0);
             }
 
             // Attach the edge to its new source.
