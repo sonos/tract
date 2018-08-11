@@ -1,5 +1,3 @@
-use tfdeploy::analyser::Analyser;
-
 use { OutputParameters, Parameters };
 use tfdeploy::analyser::interface::*;
 use errors::*;
@@ -7,7 +5,7 @@ use utils::*;
 
 pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()> {
     let model = params.tfd_model;
-    let mut analyser = Analyser::new(model.clone(), params.output_node_id)?;
+    let mut analyser = model.analyser(params.output_node_id)?;
 
     let input = params.input.clone()
         .ok_or("Exactly one of <size> or <data> must be specified.")?;
@@ -52,17 +50,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()
     }
 
     info!("Running analyse");
-    analyser.run()?;
-
-    info!(
-        "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
-        ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
-        analyser.nodes.len()
-    );
-
-    analyser.propagate_constants()?;
-    analyser.prune_unused();
-
+    let optimized_model = analyser.to_optimized_model()?;
     info!(
         "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
         ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
@@ -70,8 +58,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()
     );
 
     // Run optimized graph
-    let optimized_model = analyser.into_model();
-    let output_name = &model.nodes()[params.output_node_id].name;
+    let output_name = &optimized_model.nodes()[params.output_node_id].name;
     let inputs = fixed_input.into_iter().map(|pair| (optimized_model.node_id_by_name(pair.0).unwrap(), pair.1)).collect();
     let optimized_model_result = optimized_model.run(inputs, optimized_model.node_id_by_name(&output_name).unwrap())?;
 

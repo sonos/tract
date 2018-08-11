@@ -41,6 +41,7 @@ use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
 use tfdeploy::{DataType, Tensor};
+use tfdeploy::analyser::TensorFact;
 use tfpb::graph::GraphDef;
 
 use errors::*;
@@ -328,6 +329,26 @@ impl InputParameters {
 
     fn streaming(&self) -> bool {
         self.shape.iter().any(|dim| dim.is_none())
+    }
+
+    fn to_fact(&self) -> TensorFact {
+        use tfdeploy::analyser::interface::*;
+        if let Some(ref data) = self.data {
+            return data.clone().into()
+        }
+        let dims = self
+            .shape
+            .iter()
+            .map(|d| match d {
+                None => DimFact::Streamed,
+                Some(i) => DimFact::Only(*i),
+            })
+            .collect::<Vec<_>>();
+        TensorFact {
+            datatype: typefact!(self.datatype),
+            shape: ShapeFact::closed(dims.clone()),
+            value: valuefact!(_),
+        }
     }
 }
 

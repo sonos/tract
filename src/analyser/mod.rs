@@ -110,7 +110,7 @@ pub struct Analyser {
     // The output.
     pub output: usize,
 
-    pub additional_nodes: Vec<Node>,
+    pub nodes: Vec<Node>,
 
     // The graph being analysed.
     pub edges: Vec<Edge>,
@@ -133,11 +133,12 @@ impl Analyser {
     /// Changing it won't alter the correctness of the analysis, but it might
     /// take much longer to complete.
     pub fn new(model: &Model, output: usize) -> Result<Analyser> {
+        let nodes:Vec<Node> = model.nodes().iter().cloned().collect();
         let mut edges = vec![];
         let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
         let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
 
-        for node in model.nodes() {
+        for node in &nodes {
             for (ix, input) in node.inputs.iter().enumerate() {
                 let id = edges.len();
 
@@ -179,7 +180,7 @@ impl Analyser {
         Ok(Analyser {
             model: model.clone(),
             output,
-            additional_nodes: vec!(),
+            nodes,
             edges,
             prev_edges,
             next_edges,
@@ -205,33 +206,25 @@ impl Analyser {
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn with_hint(self, node: usize, fact: &TensorFact) -> Result<Analyser> {
+    pub fn with_hint(mut self, node: usize, fact: &TensorFact) -> Result<Analyser> {
         self.hint(node, fact)?;
         Ok(self)
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn with_named_hint(self, node: &str, fact: &TensorFact) -> Result<Analyser> {
+    pub fn with_named_hint(mut self, node: &str, fact: &TensorFact) -> Result<Analyser> {
         let node = self.model.node_id_by_name(node)?;
         self.hint(node, fact)?;
         Ok(self)
-    }
-
-    pub fn get_node(&self, i: usize) -> &Node {
-        if i<self.model.nodes().len() { &self.model.nodes()[i] } else { &self.additional_nodes[i-self.model.nodes().len()]}
-    }
-
-    pub fn node_count(&self) -> usize {
-        self.model.nodes().len() + self.additional_nodes.len()
     }
 
     /// Returns a model from the analyser.
     pub fn to_model(&self) -> Result<Model> {
         let mut nodes_by_name = HashMap::with_capacity(self.plan.len());
         let mut nodes_mapped = HashMap::with_capacity(self.plan.len());
-        let nodes = Vec::with_capacity(self.plan.len());
+        let mut nodes = Vec::with_capacity(self.plan.len());
         self.plan.iter().enumerate().for_each(|(ix,&n)| {
-            let old_node = self.get_node(n);
+            let old_node = &self.nodes[n];
             nodes_by_name.insert(old_node.name.clone(), ix);
             nodes_mapped.insert(old_node.id, ix);
             nodes.push(Node {
@@ -248,13 +241,13 @@ impl Analyser {
 
     /// Returns a model from the analyser.
     pub fn to_optimized_model(&mut self) -> Result<Model> {
-        constants::propagate_constants(&mut self)?;
+        constants::propagate_constants(self)?;
         self.to_model()
     }
 
     /// Computes a new execution plan for the graph.
     pub fn reset_plan(&mut self) -> Result<()> {
-        self.plan = Plan::for_node_provider(self.node_count(), &|i| self.get_node(i), &vec!(self.output))?.order;
+        self.plan = Plan::for_nodes(&self.nodes, &vec!(self.output))?.order;
         Ok(())
     }
 
@@ -407,11 +400,12 @@ impl Analyser {
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
     fn try_step(&mut self) -> Result<bool> {
-        let node = if self.current_direction {
-            self.get_node(self.plan[self.current_step])
+        let node_id = if self.current_direction {
+            self.plan[self.current_step]
         } else {
-            self.get_node(self.plan[self.plan.len() - 1 - self.current_step])
+            self.plan[self.plan.len() - 1 - self.current_step]
         };
+        let node = &self.nodes[node_id];
 
         debug!(
             "Starting step for {} {} ({}) [pass={:?}, direction={:?}, step={:?}].",
@@ -425,7 +419,7 @@ impl Analyser {
 
         trace!("{:?}", node.op);
 
-        let inputs: Vec<_> = self.prev_edges[node.id]
+        let inputs: Vec<_> = self.prev_edges[node_id]
             .iter()
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
@@ -442,21 +436,21 @@ impl Analyser {
 
         // FIXME(liautaud): We should handle multiple output ports in the future.
         let mut outputs = vec![TensorFact::new()];
-        for &i in &self.next_edges[node.id] {
+        for &i in &self.next_edges[node_id] {
             outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
         }
         trace!("  Output 0: {:?}", &outputs[0]);
 
         let inferred = node.op
             .infer_and_propagate(inputs, outputs)
-            .map_err(|e| format!("While inferring forward for {} {}: {}", node.id, node.name, e))?;
+            .map_err(|e| format!("While inferring forward for {} {}: {}", node_id, node.name, e))?;
 
         let mut changed = false;
 
-        for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
+        for (i, &j) in self.prev_edges[node_id].iter().enumerate() {
             let fact = &inferred.0[i];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying inputs of node {} {}: {}", node.id, node.name, e))?;
+                .map_err(|e| format!("While unifying inputs of node {} {}: {}", node_id, node.name, e))?;
 
             if unified != self.edges[j].fact {
                 debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
@@ -465,7 +459,7 @@ impl Analyser {
             }
         }
 
-        for (i, &j) in self.next_edges[node.id].iter().enumerate() {
+        for (i, &j) in self.next_edges[node_id].iter().enumerate() {
             // FIXME(liautaud): We should handle multiple output ports in the future.
             if inferred.1.len() != 1 {
                 panic!("Inference only supports nodes with a single output port.");
@@ -473,10 +467,10 @@ impl Analyser {
 
             let fact = &inferred.1[0];
             let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying outputs of node {} {} {}", node.id, node.name, e))?;
+                .map_err(|e| format!("While unifying outputs of node {} {} {}", node_id, node.name, e))?;
 
             if unified != self.edges[j].fact {
-                debug!(" Refined {} output {}/{} to {:?}", node.name, node.id, i, unified);
+                debug!(" Refined {} output {}/{} to {:?}", node.name, node_id, i, unified);
                 changed = true;
                 self.edges[j].fact = unified;
             }

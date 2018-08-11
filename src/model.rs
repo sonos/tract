@@ -156,6 +156,9 @@ impl Model {
         Plan::for_model(&self, &[node])
     }
 
+    pub fn analyser(&self, output: usize) -> Result<::analyser::Analyser> {
+        ::analyser::Analyser::new(&self, output)
+    }
 }
 
 impl Deref for Model {
