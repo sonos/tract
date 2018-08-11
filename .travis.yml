@@ -10,8 +10,7 @@ rust:
 - nightly
 env:
 - RUST_BACKTRACE=1
-script:
-  ./travis.sh
+script: ./.travis.sh
 matrix:
   allow_failures:
   - rust: nightly
