@@ -59,24 +59,24 @@ impl<T: Datum> InferenceRulesOp for Pack<T> {
         solver
             .equals(&inputs.len, n as isize)
             .equals(&outputs.len, 1)
-            .equals_all((0..n).map(|i| bexp(&inputs[i].rank)).collect())
-            .equals_zero(wrap!((-1, &output.rank), (1isize, 1), (1, &inputs[0].rank)))
-            .given(&inputs[0].rank, move |solver, r: usize| {
-                (0..r).for_each(|d| {
-                    solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect());
+            .equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())
+            .equals(&output.rank, inputs[0].rank.bex() + 1)
+            .given(&inputs[0].rank, move |solver, r: isize| {
+                (0..r as usize).for_each(|d| {
+                    solver.equals_all((0..n).map(|i| inputs[i].shape[d].bex()).collect());
                 })
             })
-            .given(&inputs[0].rank, move |solver, r: usize| {
+            .given(&inputs[0].rank, move |solver, r: isize| {
                 (0..axis).for_each(|d| {
                     solver.equals(&output.shape[d], &inputs[0].shape[d]);
                 });
                 if r > 0 {
-                    (axis..(r - 1)).for_each(|d| {
+                    (axis..(r as usize - 1)).for_each(|d| {
                         solver.equals(&output.shape[d + 1], &inputs[0].shape[d]);
                     });
                 }
             })
-            .equals(&output.shape[axis], n as isize);
+            .equals(&output.shape[axis], n.to_dim());
     }
 }
 
@@ -120,7 +120,7 @@ mod tests {
         let found = pack.eval(vec![input.into()]).unwrap();
 
         assert!(
-            exp.close_enough(&found[0]),
+            exp.close_enough(&found[0], false),
             "expected: {:?} found: {:?}",
             exp,
             found[0]

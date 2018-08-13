@@ -6,9 +6,9 @@ use prettytable::Table;
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
+use tfdeploy::plan::SimpleState;
 use tfdeploy::tfpb;
 use tfdeploy::tfpb::graph::GraphDef;
-use tfdeploy::plan::SimpleState;
 use tfdeploy::Node;
 
 use colored::Colorize;
@@ -199,12 +199,7 @@ fn node_info(
         if let Some(state) = state {
             let data = &state.values[n].as_ref().unwrap()[i];
             inputs.push(Row::Double(
-                format!(
-                    "{} ({}/{}):",
-                    format!("Input {}", ix).bold(),
-                    n,
-                    i
-                ),
+                format!("{} ({}/{}):", format!("Input {}", ix).bold(), n, i),
                 data.partial_dump(false).unwrap(),
             ));
         }

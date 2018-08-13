@@ -20,7 +20,8 @@ pub struct Squeeze<T: Datum> {
 impl<T: Datum> Squeeze<T> {
     fn squeezable(&self, ix: usize, d: usize, stream_dim: Option<usize>) -> bool {
         stream_dim != Some(ix) && d == 1
-            && self.squeeze_dims
+            && self
+                .squeeze_dims
                 .as_ref()
                 .map(|squeeze_dims| squeeze_dims.contains(&(ix as _)))
                 .unwrap_or(true)
@@ -93,24 +94,15 @@ impl<T: Datum> InferenceRulesOp for Squeeze<T> {
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[0].datum_type, T::datum_type())
-            .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
-                if !shape.dims.iter().any(|d| *d == DimFact::Any) {
-                    let stream_dim = shape.dims.iter().position(|d| *d == DimFact::Streamed);
-                    let shape: Vec<DimFact> = shape
-                        .dims
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(ix, d)| {
-                            if self.squeezable(ix, d.concretize().unwrap_or(1), stream_dim) {
-                                None
-                            } else {
-                                Some(d)
-                            }
-                        })
-                        .collect();
-                    let fact = ShapeFact::closed(shape);
-                    solver.equals(&outputs[0].shape, fact);
-                }
+            .given(&inputs[0].shape, move |solver, shape: Vec<LinearDim>| {
+                let stream_dim = shape.iter().position(|d| d.is_stream());
+                let shape:Vec<LinearDim> = shape
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(ix, d)| self.squeezable(*ix, d.to_integer().unwrap_or(1) as usize, stream_dim))
+                    .map(|(_,d)| d)
+                    .collect();
+                solver.equals(&outputs[0].shape, shape);
             });
     }
 }

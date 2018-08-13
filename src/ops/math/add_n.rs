@@ -41,6 +41,34 @@ where
             "N"    => Attr::Usize(self.n),
         }
     }
+
+    /// Returns a new streaming buffer for the operation.
+    fn new_buffer(&self) -> Box<OpBuffer> {
+        Box::new(QueuesBuffer::new(self.n))
+    }
+
+    fn step(
+        &self,
+        inputs: Vec<StepValue>,
+        buffer: &mut Box<OpBuffer>,
+    ) -> Result<Option<Vec<Value>>> {
+        let buffer = buffer
+            .downcast_mut::<QueuesBuffer>()
+            .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
+
+        buffer.append(inputs)?;
+
+        if buffer.iter().any(|q| q.is_empty()) {
+            Ok(None)
+        } else {
+            let chunks = buffer
+                .iter_mut()
+                .map(|b| b.pop_front().unwrap())
+                .collect::<Vec<_>>();
+
+            Ok(Some(self.eval(chunks)?))
+        }
+    }
 }
 
 impl<T: Datum> InferenceRulesOp for AddN<T> {
@@ -55,15 +83,15 @@ impl<T: Datum> InferenceRulesOp for AddN<T> {
             .equals(&inputs.len, n)
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datum_type, &outputs[0].datum_type)
-            .equals_all((0..self.n).map(|i| bexp(&inputs[i].datum_type)).collect())
+            .equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())
             .equals(&inputs[0].rank, &outputs[0].rank)
-            .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
-            .given(&inputs[0].rank, move |solver, rank: usize| {
-                for dim in 0..rank {
+            .equals_all((0..self.n).map(|i| inputs[i].rank.bex()).collect())
+            .given(&inputs[0].rank, move |solver, rank: isize| {
+                for dim in 0..(rank as usize) {
                     solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
                     solver.equals_all(
                         (0..n as usize)
-                            .map(|i| bexp(&inputs[i].shape[dim]))
+                            .map(|i| inputs[i].shape[dim].bex())
                             .collect(),
                     );
                 }

@@ -1,3 +1,4 @@
+
 macro_rules! element_map_float {
     ($Name:ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
@@ -11,11 +12,11 @@ macro_rules! element_map_float {
         }
 
         #[derive(Debug, Clone, new)]
-        pub struct $Name<T: $crate::tensor::Datum + ::num_traits::Float>(
+        pub struct $Name<T: $crate::tensor::Datum + ::num::Float>(
             ::std::marker::PhantomData<T>,
         );
 
-        impl<T: $crate::tensor::Datum + ::num_traits::Float> ::ops::Op for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Float> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
                 hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
@@ -46,7 +47,7 @@ macro_rules! element_map_float {
             }
         }
 
-        impl<T: $crate::tensor::Datum + ::num_traits::Float> ::ops::InferenceRulesOp for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Float> ::ops::InferenceRulesOp for $Name<T> {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
@@ -82,11 +83,11 @@ macro_rules! element_map_signed {
         }
 
         #[derive(Debug, Clone, new)]
-        pub struct $Name<T: $crate::tensor::Datum + ::num_traits::Signed>(
+        pub struct $Name<T: $crate::tensor::Datum + ::num::Signed>(
             ::std::marker::PhantomData<T>,
         );
 
-        impl<T: $crate::tensor::Datum + ::num_traits::Signed> ::ops::Op for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Signed> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
                 hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
@@ -117,7 +118,7 @@ macro_rules! element_map_signed {
             }
         }
 
-        impl<T: $crate::tensor::Datum + ::num_traits::Signed> ::ops::InferenceRulesOp for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Signed> ::ops::InferenceRulesOp for $Name<T> {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
@@ -209,8 +210,8 @@ macro_rules! element_bin {
                 solver
                     .equals(&outputs.len, 1)
                     .equals_all(wrap![&a.datum_type, &b.datum_type, &c.datum_type, &T::datum_type()])
-                    .given(&a.shape, move |solver, a_shape| {
-                        solver.given(&b.shape, move |solver, b_shape| {
+                    .with(&a.shape, move |solver, a_shape| {
+                        solver.with(&b.shape, move |solver, b_shape| {
                             if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(vec!(&a_shape, &b_shape)) {
                                 solver.equals(&c.shape, c_shape);
                             }

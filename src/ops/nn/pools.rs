@@ -35,9 +35,11 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
-        let (out_h, out_w) = self.0.adjusted_dim(images.h(), images.w(), self.1);
+        let out_h = self.0.adjusted_rows(images.h().into(), (self.1).0).ceil().to_integer()? as usize;
+        let out_w = self.0.adjusted_cols(images.w().into(), (self.1).1).ceil().to_integer()? as usize;
 
-        let padded = self.0
+        let padded = self
+            .0
             .pad(data.view(), self.1, ::std::f32::NAN, true, true)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         let out_shape = (images.count(), out_h, out_w, images.d());
@@ -87,10 +89,11 @@ impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
             .equals(&inputs[0].shape[0], &outputs[0].shape[0])
             .given(&inputs[0].shape[1], move |solver, h| {
                 solver.given(&inputs[0].shape[2], move |solver, w| {
-                    let (oh, ow) = self.0.adjusted_dim(h, w, self.1);
+                    let oh = self.0.adjusted_rows(h, (self.1).0);
+                    let ow = self.0.adjusted_cols(w, (self.1).1);
                     solver
-                        .equals(&outputs[0].shape[1], oh as isize)
-                        .equals(&outputs[0].shape[2], ow as isize);
+                        .equals(&outputs[0].shape[1], oh)
+                        .equals(&outputs[0].shape[2], ow);
                 });
             });
     }
@@ -143,7 +146,7 @@ mod tests {
         let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(
-            exp.close_enough(&found[0]),
+            exp.close_enough(&found[0], false),
             "expected: {:?} found: {:?}",
             exp,
             found[0]
@@ -158,7 +161,7 @@ mod tests {
         let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(
-            exp.close_enough(&found[0]),
+            exp.close_enough(&found[0], true),
             "expected: {:?} found: {:?}",
             exp,
             found[0]
@@ -173,7 +176,7 @@ mod tests {
         let found = pool.eval(vec![data.into()]).unwrap();
 
         assert!(
-            exp.close_enough(&found[0]),
+            exp.close_enough(&found[0], true),
             "expected: {:?} found: {:?}",
             exp,
             found[0]

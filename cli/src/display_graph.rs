@@ -51,73 +51,91 @@ impl DisplayGraph {
     }
 
     pub fn render_console(&self, params: &OutputParameters) -> CliResult<()> {
-        use colored::Colorize;
+        if let Some(node) = params.node_id {
+            let node = &self.nodes[node];
+            return self.render_node(node, params)
+        }
+        if let Some(node_name) = &params.node_name {
+            if let Some(node) = &self.nodes.iter().find(|n| n.name == &**node_name) {
+                return self.render_node(node, params)
+            } else {
+                return Ok(())
+            }
+        }
         for node in &self.nodes {
-            if node.op == "Const" && !params.konst || node.hidden {
+            if (node.op == "Const" && !params.konst) 
+                || node.hidden
+                || params.op_name.as_ref().map(|name| name != &*node.op).unwrap_or(false) {
                 continue;
             }
-            let output_ports: HashMap<usize, Option<String>> = node.outputs
+            self.render_node(&node, params)?
+        }
+        Ok(())
+    }
+    pub fn render_node(&self, node: &Node, params:&OutputParameters) -> CliResult<()> {
+        use colored::Colorize;
+        let output_ports: HashMap<usize, Option<String>> = node
+            .outputs
+            .iter()
+            .map(|edge| {
+                let edge = &self.edges[*edge];
+                (edge.src_node_output, edge.label.clone())
+            })
+            .collect();
+        let mut sections = vec![
+            node.attrs
                 .iter()
-                .map(|edge| {
-                    let edge = &self.edges[*edge];
-                    (edge.src_node_output, edge.label.clone())
+                .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))
+                .collect(),
+            node.inputs
+                .iter()
+                .enumerate()
+                .map(|(ix, a)| {
+                    let edge = &self.edges[*a];
+                    Row::Double(
+                        if edge.src_node_output == 0 {
+                            format!(
+                                "Input {}: Node #{}",
+                                ix.to_string().bold(),
+                                edge.src_node_id.to_string().bold()
+                            )
+                        } else {
+                            format!(
+                                "Input {}: Node #{}/{}",
+                                ix.to_string().bold(),
+                                edge.src_node_id.to_string().bold(),
+                                edge.src_node_output.to_string().bold()
+                            )
+                        },
+                        edge.label.clone().unwrap_or_else(|| "".to_string()),
+                    )
                 })
-                .collect();
-            let mut sections = vec![
-                node.attrs
+                .collect(),
+            (0..output_ports.len())
+                .map(|ix| {
+                    let edge = &output_ports[&ix];
+                    Row::Double(
+                        format!("Output {}:", ix.to_string().bold()),
+                        edge.clone().unwrap_or_else(|| "".to_string()),
+                    )
+                })
+                .collect(),
+        ];
+        if node.more_lines.len() > 0 {
+            sections.push(
+                node.more_lines
                     .iter()
-                    .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))
+                    .map(|s| Row::Simple(s.clone()))
                     .collect(),
-                node.inputs
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, a)| {
-                        let edge = &self.edges[*a];
-                        Row::Double(
-                            if edge.src_node_output == 0 {
-                                format!(
-                                    "Input {}: Node #{}",
-                                    ix.to_string().bold(),
-                                    edge.src_node_id.to_string().bold()
-                                )
-                            } else {
-                                format!(
-                                    "Input {}: Node #{}/{}",
-                                    ix.to_string().bold(),
-                                    edge.src_node_id.to_string().bold(),
-                                    edge.src_node_output.to_string().bold()
-                                )
-                            },
-                            edge.label.clone().unwrap_or_else(|| "".to_string()),
-                        )
-                    })
-                    .collect(),
-                (0..output_ports.len())
-                    .map(|ix| {
-                        let edge = &output_ports[&ix];
-                        Row::Double(
-                            format!("Output {}:", ix.to_string().bold()),
-                            edge.clone().unwrap_or_else(|| "".to_string()),
-                        )
-                    })
-                    .collect(),
-            ];
-            if node.more_lines.len() > 0 {
-                sections.push(
-                    node.more_lines
-                        .iter()
-                        .map(|s| Row::Simple(s.clone()))
-                        .collect(),
-                );
-            }
-            ::format::print_box(
-                &node.id.to_string(),
-                &node.op,
-                &node.name,
-                &*node.label.as_ref().map(|a| vec![a]).unwrap_or(vec![]),
-                sections,
             );
         }
+        ::format::print_box(
+            &node.id.to_string(),
+            &node.op,
+            &node.name,
+            &*node.label.as_ref().map(|a| vec![a]).unwrap_or(vec![]),
+            sections,
+        );
         Ok(())
     }
 
@@ -146,7 +164,8 @@ impl DisplayGraph {
                     dst_node_id: node.borrow().id,
                     dst_node_input: ix,
                     main: ix == 0,
-                    label: tfnodes[input.0].borrow()
+                    label: tfnodes[input.0]
+                        .borrow()
                         .op()
                         .const_value()
                         .map(|v| format!("Const {:?}", v)),
@@ -180,7 +199,8 @@ impl DisplayGraph {
 
     pub fn with_analyser(mut self, analyser: &Analyser) -> CliResult<DisplayGraph> {
         {
-            let index: HashMap<(usize, usize, usize, usize), usize> = self.edges
+            let index: HashMap<(usize, usize, usize, usize), usize> = self
+                .edges
                 .iter()
                 .enumerate()
                 .map(|(ix, edge)| {

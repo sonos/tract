@@ -1,9 +1,17 @@
-use analyser::interface::expressions::Expression;
-use analyser::interface::expressions::IntoExpression;
-use analyser::interface::expressions::Output;
+//use analyser::interface::expressions::Exp;
+//use analyser::interface::expressions::IntoExp;
+//use analyser::interface::expressions::Output;
 use analyser::interface::path::{get_path, set_path, Path};
-use analyser::types::{Fact, IntFact, SpecialKind, TensorFact};
+use analyser::types::*;
 use Result;
+
+use analyser::interface::expressions::Output;
+use analyser::interface::exp2::TExp;
+use analyser::interface::exp2::Exp;
+use analyser::interface::exp2::IntoExp;
+
+use num::Zero;
+use std::ops::{ Add, Neg };
 
 use std::fmt;
 
@@ -55,12 +63,12 @@ pub trait Rule<'rules>: fmt::Debug {
 /// solver.equals_all(vec![a, b, ...]);
 /// ```
 struct EqualsRule<T: Output + Fact> {
-    items: Vec<Box<Expression<Output = T>>>,
+    items: Vec<Exp<T>>,
 }
 
 impl<T: Output + Fact> EqualsRule<T> {
     /// Creates a new EqualsRule instance.
-    pub fn new(items: Vec<Box<Expression<Output = T>>>) -> EqualsRule<T> {
+    pub fn new(items: Vec<Exp<T>>) -> EqualsRule<T> {
         EqualsRule { items }
     }
 }
@@ -68,26 +76,22 @@ impl<T: Output + Fact> EqualsRule<T> {
 impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
-        if self.items.len() < 1 {
-            return Ok((false, vec![]));
-        }
-
-        // Unify the value of all the expressions into one.
-        let mut value: T = Default::default();
+        let mut value = None;
         for item in &self.items {
-            value = value.unify(&item.get(context)?)?;
-        }
-
-        if value != Default::default() {
-            // Set all the values to this unified one.
-            for item in &self.items {
-                item.set(context, value.clone())?;
+            let v = item.get(context)?;
+            if v.is_concrete() {
+                value = Some(v);
+                break;
             }
-
-            Ok((true, vec![]))
-        } else {
-            Ok((false, vec![]))
+        };
+        if let Some(value) = value {
+            let mut changed = false;
+            for item in &self.items {
+                changed |= item.set(context, value.clone())?;
+            }
+            return Ok((changed, vec!()))
         }
+        Ok((false, vec!()))
     }
 
     /// Returns the paths that the rule depends on.
@@ -107,81 +111,87 @@ impl<'rules, T: Output + Fact> fmt::Debug for EqualsRule<T> {
 }
 
 /// The `equals_zero` rule.
-/// It states that the sum of the given expressions must equal zero.
+/// It states that the given expression must equal zero.
 ///
 /// It can be added to the solver via the following method:
 /// ```text
 /// solver.equals_zero(vec![a, b, ...]);
 /// ```
-struct EqualsZeroRule {
-    items: Vec<Box<Expression<Output = IntFact>>>,
-}
+struct EqualsZeroRule<F>(Exp<F>)
+where F: Fact + Zero + Add<F, Output=F> + Neg<Output=F> + Clone + ::std::fmt::Debug + Output;
 
-impl EqualsZeroRule {
-    /// Creates a new EqualsZeroRule instance.
-    pub fn new(items: Vec<Box<Expression<Output = IntFact>>>) -> EqualsZeroRule {
-        EqualsZeroRule { items }
-    }
-}
-
-impl<'rules> Rule<'rules> for EqualsZeroRule {
+impl<'rules, F> Rule<'rules> for EqualsZeroRule<F>
+where F: Fact + Zero + Add<F, Output=F> + Neg<Output=F> + Clone + ::std::fmt::Debug + Output
+{
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
-        // Find all the expressions which have a value in the context.
-        let mut values = vec![];
-        let mut sum: IntFact = 0usize.into();
-
-        let mut misses = vec![];
-
-        for item in &self.items {
-            let value = item.get(context)?;
-
-            if value.is_concrete() {
-                values.push(value.clone());
-                sum = sum + value;
-            } else {
-                misses.push(item);
-            }
-        }
-
-        if misses.len() > 1 {
-            Ok((false, vec![]))
-        } else if misses.len() == 1 {
-            match sum {
-                IntFact::Only(sum) => {
-                    misses[0].set(context, IntFact::Only(-sum))?;
-                    Ok((true, vec![]))
-                }
-                IntFact::Special(SpecialKind::Streamed) => {
-                    misses[0].set(context, IntFact::Special(SpecialKind::Streamed))?;
-                    Ok((true, vec![]))
-                }
-                IntFact::Any => Ok((false, vec![])),
-            }
-        } else if sum == 0usize.into() || sum == IntFact::Special(SpecialKind::Streamed) {
-            Ok((true, vec![]))
-        } else {
-            bail!(
-                "The sum of these values doesn't equal zero: {:?}. ({:?})",
-                values,
-                sum
-            );
-        }
+        Ok((self.0.set(context, F::zero())?, vec!()))
     }
 
     /// Returns the paths that the rule depends on.
     fn get_paths(&self) -> Vec<&Path> {
-        self.items.iter().flat_map(|e| e.get_paths()).collect()
+        self.0.get_paths()
     }
 }
 
-impl fmt::Debug for EqualsZeroRule {
+impl<F> fmt::Debug for EqualsZeroRule<F>
+where F: Fact + Zero + Add<F, Output=F> + Neg<Output=F> + Clone + ::std::fmt::Debug + Output
+{
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{:?}", self.items[0])?;
-        for item in &self.items[1..] {
-            write!(formatter, " + {:?}", item)?;
-        }
+        self.0.fmt(formatter)?;
         write!(formatter, " == 0")
+    }
+}
+
+/// The `with` rule.
+/// It allows you to add more rules to the solver using what is known about an
+/// expression.using a closure that takes the value as parameter.
+///
+/// It can be added to the solver via the following method:
+/// ```text
+/// solver.with(input.rank, |solver, ir|
+///     // Add more rules to `solver` here.
+/// );
+/// ```
+pub struct WithRule<'rules, T: Fact> {
+    pub item: Exp<T>,
+    pub closure: Box<Fn(&mut Solver<'rules>, T) + 'rules>,
+}
+
+impl<'rules, T: Output + Fact> WithRule<'rules, T> {
+    /// Creates a new GivenRule instance.
+    pub fn new<F>(item: Exp<T>, closure: F) -> WithRule<'rules, T>
+    where
+        F: Fn(&mut Solver<'rules>, T) + 'rules,
+    {
+        let closure = Box::new(closure);
+        WithRule { item, closure }
+    }
+}
+
+impl<'rules, T: Output + Fact> Rule<'rules>
+    for WithRule<'rules, T>
+{
+    /// Tries to apply the rule to a given context.
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+        let value = self.item.get(context)?;
+        trace!("    With rule: {:?} is {:?}", self.item, value);
+        let mut solver = Solver::default();
+        (self.closure)(&mut solver, value);
+        Ok((true, solver.take_rules()))
+    }
+
+    /// Returns the paths that the rule depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        self.item.get_paths()
+    }
+}
+
+impl<'s, T: Output + Fact> fmt::Debug
+    for WithRule<'s, T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "WithRule {{ {:?} }}", self.item)
     }
 }
 
@@ -195,16 +205,16 @@ impl fmt::Debug for EqualsZeroRule {
 ///     // Add more rules to `solver` here.
 /// );
 /// ```
-pub struct GivenRule<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> {
-    pub item: E,
-    pub closure: Box<Fn(&mut Solver<'rules>, C) + 'rules>,
+pub struct GivenRule<'rules, T: Fact> {
+    pub item: Exp<T>,
+    pub closure: Box<Fn(&mut Solver<'rules>, T::Concrete) + 'rules>,
 }
 
-impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> GivenRule<'rules, T, E, C> {
+impl<'rules, T: Output + Fact> GivenRule<'rules, T> {
     /// Creates a new GivenRule instance.
-    pub fn new<F>(item: E, closure: F) -> GivenRule<'rules, T, E, C>
+    pub fn new<F>(item: Exp<T>, closure: F) -> GivenRule<'rules, T>
     where
-        F: Fn(&mut Solver<'rules>, C) + 'rules,
+        F: Fn(&mut Solver<'rules>, T::Concrete) + 'rules,
     {
         let closure = Box::new(closure);
 
@@ -212,21 +222,14 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> GivenRule<'
     }
 }
 
-impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules>
-    for GivenRule<'rules, T, E, C>
+impl<'rules, T: Output + Fact> Rule<'rules>
+    for GivenRule<'rules, T>
 {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
-        // When calling `self.item.get(context)?`, we get a value of type T.
-        // However, the developer might have wanted to explicitely convert
-        // this value into a value of type C (using type annotations on the
-        // closure parameters), so we need to perform that conversion.
-        //
-        // Thankfully, because both T and C implement Output, the conversion
-        // is as simple as wrapping and un-wrapping the value.
-        let wrapped = self.item.get(context)?.wrap();
+        let value = self.item.get(context)?;
 
-        if let Ok(value) = C::from_wrapped(wrapped) {
+        if let Some(value) = value.concretize() {
             trace!("    Given rule: {:?} is {:?}", self.item, value);
             // We create a new solver instance, which will be populated with
             // new rules by the code inside the closure.
@@ -251,8 +254,8 @@ impl<'rules, T: Output + Fact, E: Expression<Output = T>, C: Output> Rule<'rules
     }
 }
 
-impl<'s, T: Output + Fact, E: Expression<Output = T>, C: Output> fmt::Debug
-    for GivenRule<'s, T, E, C>
+impl<'s, T: Output + Fact> fmt::Debug
+    for GivenRule<'s, T>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GivenRule {{ {:?} }}", self.item)
@@ -324,22 +327,20 @@ impl<'rules> Solver<'rules> {
     /// solver.equals(outputs[0].rank, inputs[1].shape[0]);
     /// solver.equals(outputs[1].rank, 3);
     /// ```
-    pub fn equals<T, EA, EB, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
+    pub fn equals<T, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
     where
         T: Output + Fact + 'static,
-        EA: Expression<Output = T> + 'static,
-        EB: Expression<Output = T> + 'static,
-        A: IntoExpression<EA>,
-        B: IntoExpression<EB>,
+        A: IntoExp<T>,
+        B: IntoExp<T>,
     {
-        let items: Vec<Box<Expression<Output = T>>> = wrap![left, right];
+        let items: Vec<Exp<T>> = vec!(left.bex(), right.bex());
 
         let rule = EqualsRule::new(items);
         self.rules.push(Box::new(rule));
         self
     }
 
-    /// Ensures that an several expressions are equal.
+    /// Ensures that several expressions are equal.
     ///
     /// For instance, one could write:
     /// ```text
@@ -349,7 +350,7 @@ impl<'rules> Solver<'rules> {
     ///     3.into(),
     /// ]);
     /// ```
-    pub fn equals_all<T>(&mut self, items: Vec<Box<Expression<Output = T>>>) -> &mut Solver<'rules>
+    pub fn equals_all<T>(&mut self, items: Vec<Exp<T>>) -> &mut Solver<'rules>
     where
         T: Output + Fact + 'static,
     {
@@ -368,11 +369,31 @@ impl<'rules> Solver<'rules> {
     ///     (-1, inputs[1].shape[0]).into(),
     /// ]);
     /// ```
-    pub fn equals_zero(
+    pub fn equals_zero<F>(
         &mut self,
-        items: Vec<Box<Expression<Output = IntFact>>>,
-    ) -> &mut Solver<'rules> {
-        let rule = EqualsZeroRule::new(items);
+        items: Exp<F>,
+    ) -> &mut Solver<'rules>
+    where F: Fact + Zero + Add<F, Output=F> + Neg<Output=F> + Clone + ::std::fmt::Debug + Output + 'rules
+    {
+        let rule = EqualsZeroRule(items);
+        self.rules.push(Box::new(rule));
+        self
+    }
+
+    /// Adds rules to the solver with a partial value.
+    ///
+    /// For instance, one could write:
+    /// ```text
+    /// solver.given(input.rank, |solver, ir|
+    ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
+    /// );
+    pub fn with<T, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
+    where
+        T: Fact + Output + 'static,
+        A: IntoExp<T>,
+        F: Fn(&mut Solver<'rules>, T) + 'rules,
+    {
+        let rule = WithRule::new(item.bex(), closure);
         self.rules.push(Box::new(rule));
         self
     }
@@ -384,15 +405,13 @@ impl<'rules> Solver<'rules> {
     /// solver.given(input.rank, |solver, ir|
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
-    pub fn given<T, E, C, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
+    pub fn given<T, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
     where
-        T: Output + Fact + 'static,
-        E: Expression<Output = T> + 'static,
-        C: Output + 'static,
-        A: IntoExpression<E>,
-        F: Fn(&mut Solver<'rules>, C) + 'rules,
+        T: Fact + Output + 'static,
+        A: IntoExp<T>,
+        F: Fn(&mut Solver<'rules>, T::Concrete) + 'rules,
     {
-        let rule = GivenRule::new(item.into_expr(), closure);
+        let rule = GivenRule::new(item.bex(), closure);
         self.rules.push(Box::new(rule));
         self
     }
@@ -402,8 +421,7 @@ impl<'rules> Solver<'rules> {
 mod tests {
     use super::*;
     use DatumType;
-
-    use analyser::interface::TensorsProxy;
+    use analyser::interface::*;
 
     fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
         (
@@ -482,7 +500,7 @@ mod tests {
     #[test]
     fn solver_dynamic_rank() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[0].shape[1], 0);
+        solver.equals(&inputs[0].shape[1], 0.to_dim());
 
         let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
         let expected = (
@@ -502,7 +520,7 @@ mod tests {
         solver.equals(&inputs[0].rank, 3);
         solver.equals(&inputs[0].shape[0], &inputs[0].shape[1]);
         solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]);
-        solver.equals(&inputs[0].shape[1], 3);
+        solver.equals(&inputs[0].shape[1], 3.to_dim());
 
         let facts = solver.infer((vec![TensorFact::new()], vec![])).unwrap();
         let expected = (

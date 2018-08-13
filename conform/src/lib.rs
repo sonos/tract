@@ -82,14 +82,20 @@ pub fn compare<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let model = tfdeploy::Model::for_reader(&*graph)?;
-    let plan = tfdeploy::SimplePlan::new(&model,
-        &inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>(),
-        &vec!(output))?;
+    let plan = tfdeploy::SimplePlan::new(
+        &model,
+        &inputs
+            .iter()
+            .map(|pair| pair.0.as_ref())
+            .collect::<Vec<&str>>(),
+        &vec![output],
+    )?;
     let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }
     let output = &model.node_by_name(output)?;
+    info!("Checking {} behaviour against tensorflow", output.name);
     state.compute_one(output.id)?;
     let found = &state.values[output.id].as_ref().unwrap();
 
@@ -101,14 +107,15 @@ pub fn compare<S: AsRef<str>>(
     let expected = tf::for_slice(&graph)?.run(tf_inputs.clone(), &output.name)?;
 
     prop_assert!(
-        expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0]),
+        expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true),
         "expected: {:?} found: {:?}",
         expected,
         found
     );
 
-    // Check inference rules consistency
-    let inputs_vectors: Vec<TensorFact> = output.inputs
+    info!("Checking inference consistency on {}", output.name);
+    let inputs_vectors: Vec<TensorFact> = output
+        .inputs
         .iter()
         .map(|(i, p)| {
             state.values[*i].as_ref().unwrap()[*p]
@@ -124,11 +131,11 @@ pub fn compare<S: AsRef<str>>(
             .into(),
     ];
 
-    info!("Checking inference on {}", output.name);
     if let Err(e) = output.op.infer(inputs_vectors, output_vectors) {
         error!("{:?}", e);
         Err(e)?
     }
 
+    info!("Done with {}", output.name);
     Ok(())
 }

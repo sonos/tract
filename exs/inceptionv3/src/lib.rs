@@ -95,7 +95,9 @@ mod tests {
     fn grace_hopper_is_a_military_uniform() {
         download();
         let tfd = ::tfdeploy::for_path(inception_v3_2016_08_28_frozen()).unwrap();
-        let plan = ::tfdeploy::SimplePlan::new(&tfd, &["input"], &["InceptionV3/Predictions/Reshape_1"]).unwrap();
+        let plan =
+            ::tfdeploy::SimplePlan::new(&tfd, &["input"], &["InceptionV3/Predictions/Reshape_1"])
+                .unwrap();
         let input = load_image(hopper());
         let outputs = plan.run(vec![input]).unwrap();
         let labels = load_labels();

@@ -31,10 +31,10 @@ pub mod nn;
 
 pub mod prelude {
     pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
-    pub use super::{OpBuffer, QueuesBuffer, Value, StepValue};
+    pub use super::{OpBuffer, QueuesBuffer, StepValue, Value};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use tensor::{DatumType, Datum, Tensor};
+    pub use tensor::{Datum, DatumType, Tensor};
     pub use Result;
 }
 
@@ -147,6 +147,13 @@ impl StepValue {
         }
     }
 
+    pub fn as_const(&self) -> Option<&Value> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn into_const(self) -> Option<Value> {
         match self {
             StepValue::Const(v) => Some(v),
@@ -154,10 +161,17 @@ impl StepValue {
         }
     }
 
+    pub fn as_stream(&self) -> Option<(usize, Option<&Value>)> {
+        match self {
+            StepValue::Stream(d, v) => Some((*d, v.as_ref())),
+            _ => None,
+        }
+    }
+
     pub fn into_stream(self) -> Option<(usize, Option<Value>)> {
         match self {
             StepValue::Stream(d, v) => Some((d, v)),
-            _ => None
+            _ => None,
         }
     }
 
@@ -265,6 +279,10 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
 
     fn const_value(&self) -> Option<Tensor> {
         None
+    }
+
+    fn rounding_errors(&self) -> bool {
+        false
     }
 }
 

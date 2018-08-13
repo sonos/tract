@@ -28,7 +28,10 @@ impl<T: Datum> Op for ConcatV2<T> {
 
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
-        let axis: i32 = inputs.pop().and_then(|t| t.as_i32()).ok_or("Expected a i32 scalar")?;
+        let axis: i32 = inputs
+            .pop()
+            .and_then(|t| t.as_i32())
+            .ok_or("Expected a i32 scalar")?;
         let mats: Result<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| T::tensor_to_view(&mat)).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
@@ -59,11 +62,16 @@ impl<T: Datum> Op for ConcatV2<T> {
         //   until we have a chunk for each, and we push their concatenation
         //   as the output chunk.
 
-        let n = inputs.pop().ok_or("Unexpectedly found zero inputs in ConcatV2")?;
+        let n = inputs
+            .pop()
+            .ok_or("Unexpectedly found zero inputs in ConcatV2")?;
         let axis_tensor = n.into_const().ok_or("Axis input should not be streamed.")?;
         let axis: i32 = axis_tensor.as_i32().ok_or("Expected a i32 scalar")?;
 
-        if inputs.iter().all(|i| i.streaming_dim() == Some(axis as usize)) {
+        if inputs
+            .iter()
+            .all(|i| i.streaming_dim() == Some(axis as usize))
+        {
             // All the input tensors are streamed along `axis`.
             let chunk = inputs
                 .into_iter()
@@ -106,33 +114,35 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         solver
             .equals(&inputs.len, n as isize + 1)
             .equals(&outputs.len, 1)
-            .equals_all((0..self.n).map(|i| bexp(&inputs[i].datum_type)).collect())
+            .equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())
             .equals(&outputs[0].datum_type, &inputs[0].datum_type)
             .equals(&inputs[n].datum_type, DatumType::I32)
-            .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
+            .equals_all((0..self.n).map(|i| (&inputs[i].rank).bex()).collect())
             .equals(&inputs[n].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].rank)
             .given(&inputs[n].value, move |solver, axis: Tensor| {
                 let axis = axis.as_i32().unwrap() as usize; // checked
                 trace!("axis for Concatv2: {}", axis);
                 (0..axis).for_each(|d| {
-                    solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect());
+                    solver.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect());
                 });
                 (0..axis).for_each(|d| {
                     solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]);
                 });
-                solver.given(&inputs[0].rank, move |solver, rank: usize| {
+                solver.given(&inputs[0].rank, move |solver, rank: isize| {
                     trace!("Given rank {}", rank);
-                    ((axis + 1)..rank).for_each(|d| {
+                    ((axis + 1)..(rank as usize)).for_each(|d| {
                         solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]);
                     });
-                    ((axis + 1)..rank).for_each(|d| {
-                        solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect());
+                    ((axis + 1)..(rank as usize)).for_each(|d| {
+                        solver.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect());
                     });
                 });
 
-                let mut concat_dim = vec![bexp((-1, &outputs[0].shape[axis]))];
-                concat_dim.extend((0..n).map(|i| bexp((1, &inputs[i].shape[axis]))));
+                let mut concat_dim = -1isize * outputs[0].shape[axis].bex();
+                for i in 0..n {
+                    concat_dim = concat_dim + inputs[i].shape[axis].bex();
+                }
                 solver.equals_zero(concat_dim);
             });
     }
