@@ -227,6 +227,10 @@ impl StreamingModelState {
             }
 
             let output = node_step(node, inputs, &mut self.buffers[node.id])?;
+            debug!(
+                "Node: {} {:?} ({}), generated chunk={:?} (stream dim: {})",
+                node.id, node.name, node.op_name, &output, dst.1
+            );
             if let Some(mut output_chunks) = output {
                 if node.id == self.plan.output_node {
                     // If we've reached the output, just save the chunks.
@@ -243,7 +247,9 @@ impl StreamingModelState {
                         }
                     });
             }
+
         }
+
 
         // Convert the output Values to Tensors.
         let outputs = outputs

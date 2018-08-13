@@ -19,6 +19,12 @@ pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     )))
 }
 
+#[derive(Debug, Clone)]
+struct StrideSliceBuffer {
+    skip: Option<usize>
+}
+impl OpBuffer for StrideSliceBuffer {}
+
 #[derive(Debug, Default, Clone, new)]
 pub struct StridedSlice<T: Datum> {
     begin_mask: i64,
@@ -37,7 +43,13 @@ struct Dim {
 
 impl<T: Datum> StridedSlice<T> {
     fn must_shrink(&self, ix: usize) -> bool {
-        self.shrink_axis_mask & 1 << ix != 0
+        self.shrink_axis_mask & (1 << ix) != 0
+    }
+    fn ignore_begin(&self, ix: usize) -> bool {
+        self.begin_mask & (1 << ix) != 0
+    }
+    fn ignore_end(&self, ix: usize) -> bool {
+        self.end_mask & (1 << ix) != 0
     }
     fn prepare_one_dim(
         &self,
@@ -78,7 +90,7 @@ impl<T: Datum> StridedSlice<T> {
 
         // deal with begin and end masks
         let s = strides[ix];
-        let b = if (self.begin_mask >> ix) & 1 == 1 {
+        let b = if self.ignore_begin(ix) {
             if s.signum() > 0 {
                 0
             } else {
@@ -87,7 +99,7 @@ impl<T: Datum> StridedSlice<T> {
         } else {
             b
         };
-        let e = if (self.end_mask >> ix) & 1 == 1 {
+        let e = if self.ignore_end(ix) {
             if s.signum() < 0 {
                 -1
             } else {
@@ -104,6 +116,7 @@ impl<T: Datum> StridedSlice<T> {
             shrink: false,
         }
     }
+
     fn prepare(
         &self,
         input_shape: &[usize],
@@ -122,6 +135,7 @@ impl<T: Datum> StridedSlice<T> {
         let bounds: Vec<Dim> = (0..input_shape.len())
             .map(|ix| self.prepare_one_dim(ix, input_shape[ix], begin, end, strides))
             .collect();
+        trace!("StridedSlice bounds {:?}", bounds);
         let mid_shape: Vec<usize> = bounds.iter().map(|d| d.len).collect();
         let end_shape: Vec<usize> = bounds.iter().filter(|d| !d.shrink).map(|d| d.len).collect();
         (bounds, mid_shape, end_shape)
@@ -152,6 +166,7 @@ impl<T: Datum> Op for StridedSlice<T> {
             input[&*coord]
         });
         let output = output.into_shape(end_shape)?;
+        trace!("StrideSlice output: {:?}", output);
         Ok(vec![T::array_into_tensor(output.into()).into()])
     }
 
@@ -161,6 +176,60 @@ impl<T: Datum> Op for StridedSlice<T> {
             "begin_mask"       => Attr::I64(self.begin_mask),
             "end_mask"         => Attr::I64(self.end_mask),
             "shrink_axis_mask" => Attr::I64(self.shrink_axis_mask),
+        }
+    }
+
+    /// Returns a new streaming buffer for the operation.
+    fn new_buffer(&self) -> Box<OpBuffer> {
+        Box::new(StrideSliceBuffer { skip: None })
+    }
+
+    fn step(
+        &self,
+        mut inputs: Vec<StepValue>,
+        buffer: &mut Box<OpBuffer>,
+    ) -> Result<Option<Vec<Value>>> {
+        let (input, begin, end, strides) = args_4!(inputs);
+
+        let begin = begin.into_const().ok_or("begin can not be streamed")?;
+        let end = end.into_const().ok_or("end can not be streamed")?;
+        let strides = strides.into_const().ok_or("strides can not be streamed")?;
+
+        let mut begin = begin.into_tensor().take_i32s().ok_or("Begin expected as I32")?;
+        let mut end = end.into_tensor().take_i32s().ok_or("End expected as I32")?;
+        let mut strides = strides.into_tensor().take_i32s().ok_or("Strides expected as I32")?;
+
+        let (dim, input) = input.into_stream().ok_or("data must be streamed")?;
+
+        let input = if let Some(input) = input {
+            input
+        } else {
+            return Ok(None)
+        };
+
+        if input.shape()[dim] != 1 {
+            bail!("StridedSlice assumes streaming chunk of 1")
+        }
+        let buffer = buffer
+            .downcast_mut::<StrideSliceBuffer>()
+            .ok_or("The buffer can't be downcasted to Buffer<T>.")?;
+        if buffer.skip.is_none() {
+            buffer.skip = if self.ignore_begin(dim) || begin[dim] < 0 {
+                    Some(0)
+                } else {
+                    Some(begin[dim] as usize)
+                }
+        };
+        let skip = buffer.skip.as_mut().unwrap();
+        if *skip > 0 {
+            *skip -= 1;
+            Ok(None)
+        } else {
+            *skip = strides[dim] as usize - 1;
+            begin[dim] = 0;
+            end[dim] = 1;
+            strides[dim] = 1;
+            Ok(Some(self.eval(vec!(input, begin.into(), end.into(), strides.into()))?))
         }
     }
 }

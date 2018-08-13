@@ -69,6 +69,10 @@ impl SimplePlan {
         }
         state.take_outputs()
     }
+
+    pub fn state(&self) -> Result<SimpleState> {
+        SimpleState::new(self)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -124,9 +128,13 @@ impl SimpleState {
         Ok(v)
     }
 
-    pub fn set_value(&mut self, id: usize, value: Tensor) -> Result<()> {
-        self.values[id] = Some(vec![value.into()]);
+    pub fn set_values(&mut self, id: usize, values: Vec<Tensor>) -> Result<()> {
+        self.values[id] = Some(values.into_iter().map(|t| t.into()).collect());
         Ok(())
+    }
+
+    pub fn set_value(&mut self, id: usize, value: Tensor) -> Result<()> {
+        self.set_values(id, vec!(value))
     }
 
     pub fn compute_one(&mut self, node: usize) -> Result<()> {

@@ -380,7 +380,7 @@ impl InputParameters {
             Ok(utils::random_tensor(
                 self.shape
                     .iter()
-                    .map(|d| d.unwrap_or(streaming_dim.unwrap()))
+                    .map(|d| d.or(streaming_dim).unwrap())
                     .collect(),
                 self.datum_type,
             ))

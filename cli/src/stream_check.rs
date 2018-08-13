@@ -52,6 +52,10 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()
             }
         }
     }
-    info!("Looks good, matched {} outputs chunks", matched);
+    if matched == 0 {
+        bail!("Network did not output anything")
+    } else {
+        info!("Looks good, matched {} outputs chunks", matched);
+    }
     Ok(())
 }
