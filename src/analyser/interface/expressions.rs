@@ -1,13 +1,14 @@
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::{ Div, Mul };
 
-use num_traits::cast::ToPrimitive;
-use num_traits::CheckedDiv;
+use num::cast::ToPrimitive;
+use num::Zero;
 
 use analyser::interface::path::Path;
 use analyser::interface::proxies::ComparableProxy;
 use analyser::interface::solver::Context;
-use analyser::types::SpecialKind;
+use linear::LinearDim;
 use analyser::types::{DimFact, Fact, IntFact, ShapeFact, TypeFact, ValueFact};
 use {DatumType, Result, Tensor};
 
@@ -48,7 +49,9 @@ impl_output!(IntFact, Int);
 impl_output!(TypeFact, Type);
 impl_output!(ShapeFact, Shape);
 impl_output!(ValueFact, Value);
+impl_output!(DimFact, Dim);
 
+/*
 // Converts back and forth between Wrapped and DimFact.
 impl Output for DimFact {
     fn into_wrapped(source: DimFact) -> Wrapped {
@@ -57,11 +60,12 @@ impl Output for DimFact {
 
     fn from_wrapped(wrapped: Wrapped) -> Result<DimFact> {
         match IntFact::from_wrapped(wrapped)? {
-            IntFact::Any => Ok(DimFact::Any),
+            GenericFact::Any => Ok(GenericFact::Any),
 
-            IntFact::Only(i) => i.to_usize()
+            GenericFact::Only(i) => i
+                .to_usize()
                 .ok_or(format!("Tried to convert {:?} to a DimFact.", i).into())
-                .map(|d| DimFact::Only(d)),
+                .map(|d| GenericFact::Only(d)),
 
             IntFact::Special(s) => if s == SpecialKind::Streamed {
                 Ok(DimFact::Streamed)
@@ -75,11 +79,12 @@ impl Output for DimFact {
         }
     }
 }
+*/
 
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {
     fn into_wrapped(source: usize) -> Wrapped {
-        IntFact::into_wrapped(source.into())
+        IntFact::into_wrapped((source as isize).into())
     }
 
     fn from_wrapped(wrapped: Wrapped) -> Result<usize> {
@@ -122,6 +127,22 @@ impl Output for Tensor {
     }
 }
 
+// Converts back and forth between Wrapped and usize.
+impl Output for LinearDim {
+    fn into_wrapped(source: LinearDim) -> Wrapped {
+        DimFact::into_wrapped(source.into())
+    }
+
+    fn from_wrapped(wrapped: Wrapped) -> Result<LinearDim> {
+        let message = format!("Tried to convert {:?} to a usize.", wrapped);
+
+        DimFact::from_wrapped(wrapped)?
+            .concretize()
+            .ok_or(message.into())
+    }
+}
+
+/*
 // Converts back and forth between Wrapped and a Vec<usize> shape.
 impl Output for Vec<usize> {
     fn into_wrapped(source: Vec<usize>) -> Wrapped {
@@ -136,6 +157,7 @@ impl Output for Vec<usize> {
             .ok_or(message.into())
     }
 }
+*/
 
 /// A wrapper for all the types of values that expressions can produce.
 #[derive(Debug, Clone)]
@@ -144,6 +166,7 @@ pub enum Wrapped {
     Type(TypeFact),
     Shape(ShapeFact),
     Value(ValueFact),
+    Dim(DimFact),
 }
 
 /// An expression that can be compared by the solver.
@@ -229,42 +252,48 @@ impl<T: Output> fmt::Debug for VariableExpression<T> {
 }
 
 /// A scalar product between a constant and another expression.
-pub struct ProductExpression<E>(isize, E)
+pub struct ProductExpression<E,V>(isize, E)
 where
-    E: Expression<Output = IntFact>;
+    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    E: Expression<Output = V>;
 
-impl<E> Expression for ProductExpression<E>
+impl<E,V> Expression for ProductExpression<E,V>
 where
-    E: Expression<Output = IntFact>,
+    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    E: Expression<Output = V>
 {
-    type Output = IntFact;
+    type Output = V;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<IntFact> {
-        Ok(self.1.get(context)? * self.0)
+    fn get(&self, context: &Context) -> Result<V> {
+        let v:V = self.1.get(context)?;
+        Ok(v*self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: IntFact) -> Result<()> {
+    fn set(&self, context: &mut Context, value: V) -> Result<()> {
         let k = &self.0;
         let m = value;
 
-        if m == 0usize.into() && *k == 0 {
+        if m.is_zero() && k.is_zero() {
             // We want to set 0 * x <- 0, so we don't have to do anything.
             Ok(())
-        } else if m == 0usize.into() {
+        } else if m.is_zero() {
             // We want to set k * x <- 0, where k != 0, so we have to set x <- 0.
-            self.1.set(context, 0usize.into())
+            self.1.set(context, V::zero())
         } else {
+            /*
             // We want to set k * x <- m, where k and m != 0, so we will try
             // to set x <- m / k using a checked division. This way, if m is
             // not divisible by k, we will return Err instead of panicking.
-            let div = m.checked_div(&(*k).into()).ok_or(format!(
+            let div = m.div(&V::from(*k)).ok_or(format!(
                 "Cannot set the value of ({:?}, _) to {:?} because \
                  {:?} is not divisible by {:?}.",
                 k, m, m, k
             ))?;
+            */
 
+            let div = m.div(*k);
             self.1.set(context, div)
         }
     }
@@ -275,9 +304,10 @@ where
     }
 }
 
-impl<E> fmt::Debug for ProductExpression<E>
+impl<E,V> fmt::Debug for ProductExpression<E,V>
 where
-    E: Expression<Output = IntFact>,
+    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    E: Expression<Output = V>
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)
@@ -302,6 +332,14 @@ impl IntoExpression<ConstantExpression<IntFact>> for isize {
         ConstantExpression(self.into())
     }
 }
+
+/*
+impl IntoExpression<ConstantExpression<DimFact>> for isize {
+    fn into_expr(self) -> ConstantExpression<DimFact> {
+        ConstantExpression(self.into())
+    }
+}
+*/
 
 /// Converts &isize to ConstantExpression.
 impl<'a> IntoExpression<ConstantExpression<IntFact>> for &'a isize {
@@ -334,6 +372,13 @@ where
     }
 }
 
+/// Converts LinearDim to ConstantExpression.
+impl IntoExpression<ConstantExpression<DimFact>> for LinearDim {
+    fn into_expr(self) -> ConstantExpression<DimFact> {
+        ConstantExpression(self.into())
+    }
+}
+
 // Converts any comparable proxy to VariableExpression<Output>.
 impl<T> IntoExpression<VariableExpression<T::Output>> for T
 where
@@ -345,24 +390,26 @@ where
 }
 
 /// Converts (isize, IntoExpression<Output = IntFact>) to ProductExpression.
-impl<E, I> IntoExpression<ProductExpression<E>> for (isize, I)
+impl<E, V, I> IntoExpression<ProductExpression<E,V>> for (isize, I)
 where
-    E: Expression<Output = IntFact>,
+    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    E: Expression<Output = V>,
     I: IntoExpression<E>,
 {
-    fn into_expr(self) -> ProductExpression<E> {
+    fn into_expr(self) -> ProductExpression<E,V> {
         let (k, e) = self;
         ProductExpression(k, e.into_expr())
     }
 }
 
 /// Converts (i32, IntoExpression<Output = IntFact>) to ProductExpression.
-impl<E, I> IntoExpression<ProductExpression<E>> for (i32, I)
+impl<E, V, I> IntoExpression<ProductExpression<E,V>> for (i32, I)
 where
-    E: Expression<Output = IntFact>,
+    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    E: Expression<Output = V>,
     I: IntoExpression<E>,
 {
-    fn into_expr(self) -> ProductExpression<E> {
+    fn into_expr(self) -> ProductExpression<E,V> {
         let (k, e) = self;
         ProductExpression(k as isize, e.into_expr())
     }

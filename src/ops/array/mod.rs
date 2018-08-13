@@ -11,17 +11,17 @@ mod squeeze;
 mod strided_slice;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("ConcatV2", concatv2::build);
-    reg.insert("ExpandDims", ExpandDims::build);
-    reg.insert("Identity", Identity::build);
-    reg.insert("Fill", fill::fill);
-    reg.insert("Pack", pack::pack);
-    reg.insert("Pad", pad::pad);
-    reg.insert("Placeholder", Placeholder::build);
-    reg.insert("Reshape", reshape::reshape);
-    reg.insert("Shape", Shape::build);
-    reg.insert("Squeeze", squeeze::squeeze);
-    reg.insert("StridedSlice", strided_slice::build);
+     reg.insert("ConcatV2", concatv2::build);
+     reg.insert("ExpandDims", ExpandDims::build);
+     reg.insert("Identity", Identity::build);
+     reg.insert("Fill", fill::fill);
+     reg.insert("Pack", pack::pack);
+     reg.insert("Pad", pad::pad);
+     reg.insert("Placeholder", Placeholder::build);
+     reg.insert("Reshape", reshape::reshape);
+     reg.insert("Shape", Shape::build);
+     reg.insert("Squeeze", squeeze::squeeze);
+     reg.insert("StridedSlice", strided_slice::build);
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +42,8 @@ impl Op for ExpandDims {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (data, dims) = args_2!(inputs);
-        let data = data.into_tensor()
+        let data = data
+            .into_tensor()
             .take_f32s()
             .ok_or("Expected a f32 matrix")?;
         let dims = dims.as_i32s().ok_or("Expected a i32 matrix")?;
@@ -101,7 +102,7 @@ impl InferenceRulesOp for ExpandDims {
             .equals(&dims.datum_type, DatumType::I32)
             .equals(&dims.rank, 0)
             .equals(&data.datum_type, &output.datum_type)
-            .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
+            .equals_zero(data.rank.bex() + 1 - &output.rank)
             .given(&dims.value, move |solver, index: Tensor| {
                 let index = index.as_i32().unwrap() as usize; // enforced
 
@@ -109,10 +110,10 @@ impl InferenceRulesOp for ExpandDims {
                     solver.equals(&output.shape[i], &data.shape[i]);
                 }
 
-                solver.equals(&output.shape[index], 1);
+                solver.equals(output.shape[index].bex(), 1i32.to_dim().bex());
 
                 solver.given(&data.rank, move |solver, rank| {
-                    for i in index..rank {
+                    for i in index..(rank as usize) {
                         solver.equals(&output.shape[i + 1], &data.shape[i]);
                     }
                 });
@@ -253,41 +254,27 @@ impl InferenceRulesOp for Shape {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datum_type, DatumType::I32)
+            .equals(&outputs[0].datum_type, DatumType::Dim)
             .equals(&outputs[0].rank, 1)
-            .equals(&outputs[0].shape[0], &inputs[0].rank)
-            .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
-                if !shape.open && shape.dims.iter().all(|d| *d != DimFact::Any) {
-                    let shape = shape
-                        .dims
-                        .iter()
-                        .map(|d| {
-                            if let DimFact::Only(d) = d {
-                                *d as i32
-                            } else {
-                                1
-                            }
-                        })
-                        .collect();
-                    let array1: Array1<i32> = Array1::from_vec(shape);
-                    let tensor: Tensor = Tensor::from(array1);
-                    solver.equals(&outputs[0].value, valuefact!(tensor));
+            .given(&inputs[0].rank, move |solver,r| {
+                solver.equals(&outputs[0].shape[0], r.to_dim());
+            })
+            .given(&outputs[0].shape[0], move |solver,r| {
+                if let Ok(d) = r.to_integer() {
+                   solver.equals(&inputs[0].rank, d);
                 }
             })
+            .given(&inputs[0].shape, move |solver, shape: Vec<LinearDim>| {
+                let array1: Array1<LinearDim> = Array1::from_vec(shape);
+                let tensor: Tensor = Tensor::from(array1);
+                solver.equals(&outputs[0].value, tensor);
+            })
             .given(&outputs[0].value, move |solver, shape: Tensor| {
-                let shape: Vec<usize> = shape
-                    .take_i32s()
-                    .unwrap()
-                    .iter()
-                    .map(|i: &i32| *i as usize)
-                    .collect();
-                for (ix, d) in shape.iter().enumerate() {
-                    // hackish: if dim is 1, it may be the streaming
-                    // dimension, so we don't infer
-                    if *d != 1 {
-                        solver.equals(&inputs[0].shape[ix], *d as isize);
-                    }
-                }
+                let shape = shape.take_dims().unwrap(); // checked
+                solver.equals(
+                    &inputs[0].shape,
+                    shape.into_iter().cloned().collect::<Vec<LinearDim>>()
+                );
             });
     }
 }
@@ -306,7 +293,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::Dim),
             shape: shapefact![_],
             value: valuefact!(_),
         };
@@ -323,7 +310,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::Dim),
             shape: shapefact![3],
             value: valuefact!(_),
         };
@@ -340,9 +327,9 @@ mod tests {
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::Dim),
             shape: shapefact![3],
-            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
+            value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };
 
         assert_forward!(Shape::build(&node()).unwrap(), input, output);
@@ -352,14 +339,14 @@ mod tests {
     fn shape_inference_4() {
         let input = TensorFact {
             datum_type: typefact!(_),
-            shape: shapefact![_, 2, 3],
+            shape: shapefact![1, 2, 3],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::Dim),
             shape: shapefact![3],
-            value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
+            value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };
 
         assert_backward!(Shape::build(&node()).unwrap(), input, output);

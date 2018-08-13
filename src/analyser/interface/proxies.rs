@@ -3,13 +3,10 @@ use std::fmt;
 use analyser::interface::cache::Cache;
 use analyser::interface::expressions::Output;
 use analyser::interface::path::Path;
-use analyser::types::IntFact;
-use analyser::types::ShapeFact;
-use analyser::types::TypeFact;
-use analyser::types::ValueFact;
+use analyser::types::*;
 use std::ops::Index;
 
-use num_traits::cast::ToPrimitive;
+use num::cast::ToPrimitive;
 
 /// A proxy for any value.
 pub trait Proxy {
@@ -198,7 +195,7 @@ pub struct DimProxy {
 }
 
 impl_proxy!(DimProxy);
-impl_comparable_proxy!(DimProxy, IntFact);
+impl_comparable_proxy!(DimProxy, DimFact);
 
 /// A proxy for the whole tensor value.
 ///

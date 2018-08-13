@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::Tensor;
+use tfdeploy::plan::{SimplePlan, SimpleState};
 
 use errors::*;
 use format::*;
@@ -21,39 +22,23 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
     let tfd = params.tfd_model;
     let mut tf = params.tf_model;
 
-    let output = tfd.get_node_by_id(params.output_node_id)?;
-    let mut state = tfd.state();
-
     let input = params
         .input
+        .as_ref()
         .ok_or("Exactly one of <size> or <data> must be specified.")?;
 
-    let shape = input
-        .shape
-        .iter()
-        .cloned()
-        .collect::<Option<Vec<_>>>()
-        .ok_or("The compare command doesn't support streaming dimensions.")?;
-
     // First generate random values for the inputs.
-    let mut generated = Vec::new();
-    for i in params.input_node_ids {
-        let data = if input.data.is_some() {
-            input.data.as_ref().unwrap().clone()
-        } else {
-            random_tensor(shape.clone(), input.datum_type)
-        };
-
-        generated.push((tfd.get_node_by_id(i)?.name.as_str(), data));
-    }
+    let generated = input.to_tensor()?;
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
-    let mut tf_outputs = tf.run_get_all(generated.clone())?;
+    let mut tf_outputs = tf.run_get_all(vec!((&params.input_nodes[0], generated.clone())))?;
 
     // Execute the model step-by-step on tfdeploy.
-    state.set_values(generated)?;
-    let plan = output.eval_order(&tfd)?;
+    let plan = SimplePlan::new(&tfd, &params.input_nodes, &[&params.output_node])?;
+    let mut state = plan.state()?;
+    state.set_input(0, generated.clone())?;
+    let plan = ::tfdeploy::model::eval_order_for_nodes(&tfd.nodes, &[tfd.node_by_name(&params.output_node)?.id])?;
     debug!("Using execution plan: {:?}", plan);
 
     let nodes: Vec<_> = tfd.nodes.iter().map(|a| &*a).collect();
@@ -65,7 +50,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
     let hidden = !log_enabled!(Info);
 
     for n in plan {
-        let node = tfd.get_node_by_id(n)?;
+        let node = &tfd.nodes[n];
         let dn = &mut display_graph.nodes[n];
 
         if node.op_name == "Placeholder" {
@@ -89,7 +74,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
             }
 
             _ => {
-                let tfd_output = state.outputs[n].as_ref().unwrap();
+                let tfd_output = state.values[n].as_ref().unwrap();
                 let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Tensor>>();
                 match compare_outputs(&tf_output, &views) {
                     Err(_) => {
@@ -135,7 +120,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                 edge.label = Some(format!("{:?}", out));
             }
         }
-        state.set_outputs(node.id, tf_output)?;
+        state.set_values(node.id, tf_output)?;
     }
 
     if failures > 0 {

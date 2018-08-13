@@ -16,7 +16,7 @@
 #[macro_export]
 macro_rules! wrap {
     ($($x:expr),*) => ({
-        vec![$( $crate::analyser::interface::bexp($x) ),*]
+        vec![$( $crate::analyser::interface::exp2::IntoExp::bex($x) ),*]
     });
 
     ($($x:expr,)*) => (wrap![$($x),*]);
@@ -24,6 +24,7 @@ macro_rules! wrap {
 
 mod cache;
 mod expressions;
+pub mod exp2;
 mod path;
 mod proxies;
 mod solver;
@@ -32,6 +33,9 @@ pub use self::expressions::{Expression, IntoExpression};
 pub use self::proxies::*;
 pub use self::solver::*;
 pub use super::prelude::*;
+pub use linear::{ LinearDim, ToDim };
+pub use analyser::interface::exp2::{ IntoExp, ToDimExp };
+
 
 pub fn bexp<T, IE, E>(fact: IE) -> Box<Expression<Output = T>>
 where

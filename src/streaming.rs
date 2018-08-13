@@ -1,10 +1,11 @@
+use std::collections::{HashMap, VecDeque};
 use std::ops::Deref;
 use std::sync::Arc;
-use std::collections::{HashMap, VecDeque};
 
 use super::*;
 use analyser::interface::*;
 use ops::StepValue;
+use linear::LinearDim;
 
 #[derive(Clone, Debug)]
 pub struct RawStreamingPlan {
@@ -12,7 +13,7 @@ pub struct RawStreamingPlan {
     // inputs nodes in the form (id, streaming dim)
     input_nodes: Vec<(usize, usize)>,
     output_node: usize,
-    streaming_dimensions: HashMap<(usize, usize), usize>,
+    streaming_dimensions: HashMap<(usize, usize), (usize, LinearDim)>,
     // successors[src_node][src_port] -> vec<(dst_input, dst_ports)>
     successors: Vec<Vec<Vec<(usize, usize)>>>,
 }
@@ -25,44 +26,52 @@ impl RawStreamingPlan {
     ) -> Result<RawStreamingPlan> {
         let output_node = match output {
             Some(name) => model.node_by_name(name)?,
-            None => analyser::detect_inputs(&model)?.pop()
-                .ok_or("Unable to auto-detect output node.")?
+            None => analyser::detect_inputs(&model)?
+                .pop()
+                .ok_or("Unable to auto-detect output node.")?,
         };
 
         let mut analyser = Analyser::new(&model, &output_node.name)?;
-        let mut input_nodes = vec!();
+        let mut input_nodes = vec![];
 
         // Pre-compute the constant part of the graph using the analyser.
         for input in inputs {
             analyser.hint(input.0, &input.1)?;
-            input_nodes.push((model.node_by_name(input.0)?.id, input.1.streaming_dim()?));
+            input_nodes.push((model.node_by_name(input.0)?.id, input.1.stream_dim()?
+                              .ok_or_else(|| format!("No streaming dim for {:?}", input))?.0));
         }
         analyser.analyse()?;
 
-        let mut successors = vec!(vec!(); model.nodes.len());
+        let mut successors = vec![vec![]; model.nodes.len()];
         model.nodes.iter().for_each(|node| {
-            node.inputs.iter().enumerate().for_each(|(dst_inlet, (src_node, src_outlet))| {
-                while successors[*src_node].len() <= *src_outlet {
-                    successors[*src_node].push(vec!());
-                }
-                successors[*src_node][*src_outlet].push((node.id, dst_inlet));
-            });
+            node.inputs
+                .iter()
+                .enumerate()
+                .for_each(|(dst_inlet, (src_node, src_outlet))| {
+                    while successors[*src_node].len() <= *src_outlet {
+                        successors[*src_node].push(vec![]);
+                    }
+                    successors[*src_node][*src_outlet].push((node.id, dst_inlet));
+                });
         });
 
         let mut streaming_dimensions = HashMap::with_capacity(analyser.edges.len());
         for edge in &analyser.edges {
             let source = &analyser.nodes[edge.from_node.unwrap()];
-            let streamed = edge.fact.shape.dims.iter().position(|d| d.is_streamed());
+            if source.op_name == "Const" {
+                continue;
+            }
 
-            if source.op_name != "Const" && streamed.is_some() {
+            let stream:Option<(usize, LinearDim)> = edge.fact.stream_dim()?;
+            if let Some(stream) = stream {
                 debug!(
                     "Found streaming dimension {:?} for ({}, {:?}).",
-                    streamed.unwrap(),
+                    stream,
                     source.name,
                     edge.from_out,
                 );
 
-                streaming_dimensions.insert((source.id, edge.from_out), streamed.unwrap());
+                streaming_dimensions.insert((source.id, edge.from_out), stream);
             }
         }
 
@@ -75,8 +84,8 @@ impl RawStreamingPlan {
         })
     }
 
-    pub fn output_streaming_dim(&self) -> Result<usize> {
-        Ok(self.streaming_dimensions[&(self.output_node,0)])
+    pub fn output_streaming_dim(&self) -> Result<(usize, LinearDim)> {
+        Ok(self.streaming_dimensions[&(self.output_node, 0)])
     }
 }
 
@@ -97,7 +106,9 @@ impl StreamingPlan {
         inputs: Vec<(&str, TensorFact)>,
         output: Option<&str>,
     ) -> Result<StreamingPlan> {
-        Ok(StreamingPlan(Arc::new(RawStreamingPlan::new(model, inputs, output)?)))
+        Ok(StreamingPlan(Arc::new(RawStreamingPlan::new(
+            model, inputs, output,
+        )?)))
     }
 
     pub fn state(&self) -> Result<StreamingModelState> {
@@ -121,7 +132,6 @@ impl Deref for StreamingPlan {
     }
 }
 
-
 #[derive(Clone, Debug)]
 pub struct StreamingModelState {
     plan: StreamingPlan,
@@ -129,7 +139,6 @@ pub struct StreamingModelState {
 }
 
 impl StreamingModelState {
-
     /// Runs one streaming evaluation step.
     ///
     /// The step starts by feeding a new chunk of data into one of the
@@ -156,8 +165,7 @@ impl StreamingModelState {
         mut node_step: W,
     ) -> Result<Vec<Vec<Tensor>>>
     where
-        W: FnMut(&Node, Vec<StepValue>, &mut Box<ops::OpBuffer>)
-            -> Result<Option<Vec<ops::Value>>>,
+        W: FnMut(&Node, Vec<StepValue>, &mut Box<ops::OpBuffer>) -> Result<Option<Vec<ops::Value>>>,
     {
         let mut queue = VecDeque::new();
         let mut outputs = vec![];
@@ -171,9 +179,13 @@ impl StreamingModelState {
 
         while let Some((dst, chunk)) = queue.pop_front() {
             let node = &self.plan.model.nodes[dst.0];
-            debug!("Feeding node: {} {:?} ({}), chunk={:?} (stream dim: {})", node.id, node.name, node.op_name, chunk, dst.1);
+            debug!(
+                "Feeding node: {} {:?} ({}), chunk={:?} (port:{}, stream dim: {:?})",
+                node.id, node.name, node.op_name, chunk, dst.1, 
+                    self.plan.streaming_dimensions.get(&dst)
+            );
 
-            let mut inputs:Vec<StepValue> = vec![];
+            let mut inputs: Vec<StepValue> = vec![];
 
             // We wrap chunk in an option because we want to capture
             // its value in one and only one of the iterations, but
@@ -183,7 +195,9 @@ impl StreamingModelState {
             for (ix, input) in node.inputs.iter().enumerate() {
                 let pred = &self.plan.model.nodes[input.0];
 
-                let value = if let Some(dimension) = self.plan.streaming_dimensions.get(&input).map(|i| *i) {
+                let value = if let Some(dimension) =
+                    self.plan.streaming_dimensions.get(&input).map(|i| *i)
+                {
                     if ix == dst.1 {
                         // The input is streamed, and we've got a new chunk to give it.
                         // FIXME(liautaud): This doesn't work well if there are multiple
@@ -193,42 +207,56 @@ impl StreamingModelState {
                         let chunk = chunk.take().ok_or("streamable edge used twice")?;
 
                         // We only allow chunks of size 1 along the streaming dimension.
-                        if chunk.as_tensor().shape()[dimension] != 1 {
+                        if chunk.as_tensor().shape()[dimension.0] != 1 {
                             bail!(
                                 "Trying to consume a chunk of size != 1 along the streaming dimension."
                             );
                         }
 
-                        StepValue::Stream(dimension, Some(chunk))
+                        StepValue::Stream(dimension.0, Some(chunk))
                     } else {
                         // The input is streamed, but this chunk is for another input.
-                        StepValue::Stream(dimension, None)
+                        StepValue::Stream(dimension.0, None)
                     }
                 } else {
                     // The input is not streamed, and so was turned into a constant
                     // node by the analyser when performing StreamingState::start.
-                    StepValue::Const(pred.op.const_value()
-                        .ok_or("Streaming mode should have only const or streamable edges.")?.into())
+                    StepValue::Const(
+                        pred.op
+                            .const_value()
+                            .ok_or("Streaming mode should have only const or streamable edges.")?
+                            .into(),
+                    )
                 };
 
                 inputs.push(value);
             }
 
             let output = node_step(node, inputs, &mut self.buffers[node.id])?;
+            debug!(
+                "Node: {} {:?} ({}), generated chunk={:?}",
+                node.id, node.name, node.op_name, &output
+            );
             if let Some(mut output_chunks) = output {
                 if node.id == self.plan.output_node {
                     // If we've reached the output, just save the chunks.
                     outputs.push(output_chunks.clone());
                 }
-                output_chunks.into_iter().enumerate().for_each(|(port, mut tensor)| {
-                    if let Some(dst) = self.plan.successors[node.id].get(port) {
-                        for dst in dst.iter() {
-                            queue.push_back((*dst, tensor.share()));
+                output_chunks
+                    .into_iter()
+                    .enumerate()
+                    .for_each(|(port, mut tensor)| {
+                        assert_eq!(tensor.shape()[self.plan.streaming_dimensions[&(node.id,port)].0], 1);
+                        if let Some(dst) = self.plan.successors[node.id].get(port) {
+                            for dst in dst.iter() {
+                                queue.push_back((*dst, tensor.share()));
+                            }
                         }
-                    }
-                });
+                    });
             }
+
         }
+
 
         // Convert the output Values to Tensors.
         let outputs = outputs
@@ -245,7 +273,8 @@ impl StreamingModelState {
 
     /// Resets the model state.
     pub fn reset(&mut self) -> Result<()> {
-        self.buffers = self.model()
+        self.buffers = self
+            .model()
             .nodes
             .iter()
             .map(|n| n.op.new_buffer())

@@ -135,11 +135,11 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<T> {
+    pub fn get_attr_int<T: ::num::FromPrimitive>(&self, name: &str) -> ::Result<T> {
         Ok(self.get_attr_opt_int(name)?
             .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
-    pub fn get_attr_opt_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<Option<T>> {
+    pub fn get_attr_opt_int<T: ::num::FromPrimitive>(&self, name: &str) -> ::Result<Option<T>> {
         if let Some(i) = self.get_attr().get(name) {
             Ok(Some(T::from_i64(i.get_i())
                 .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
@@ -148,12 +148,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<Vec<T>> {
+    pub fn get_attr_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> ::Result<Vec<T>> {
         Ok(self.get_attr_opt_list_int(name)?
             .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> ::Result<Option<Vec<T>>> {
+    pub fn get_attr_opt_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> ::Result<Option<Vec<T>>> {
         if let Some(list) = self.get_attr().get(name) {
             Ok(Some(list.get_list().get_i().iter().map(|i| T::from_i64(*i)
                 .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name).into()))
@@ -161,12 +161,6 @@ impl node_def::NodeDef {
         } else {
             Ok(None)
         }
-    }
-}
-
-impl From<::DatumType> for AttrValue {
-    fn from(t: ::DatumType) -> AttrValue {
-        t.to_pb().into()
     }
 }
 

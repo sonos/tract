@@ -2,6 +2,8 @@ use ndarray::prelude::*;
 use std::collections::HashMap;
 use Result;
 
+use linear::LinearDim;
+
 use ops::Attr;
 
 #[derive(Debug, Clone, Copy)]
@@ -28,6 +30,12 @@ impl<'a, T> ImageWrapper<'a, T> {
     }
     pub fn depth(&self) -> usize {
         self.0.shape()[2]
+    }
+    pub fn h(&self) -> usize {
+        self.0.shape()[0]
+    }
+    pub fn w(&self) -> usize {
+        self.0.shape()[1]
     }
 }
 
@@ -129,33 +137,17 @@ impl LocalPatch {
         }
     }
 
-    pub fn adjusted_dim(
-        &self,
-        in_rows: usize,
-        in_cols: usize,
-        (filter_rows, filter_cols): (usize, usize),
-    ) -> (usize, usize) {
-        (
-            self.adjusted_dim_rows(in_rows, filter_rows),
-            self.adjusted_dim_cols(in_cols, filter_cols),
-        )
-    }
-
-    pub fn adjusted_dim_rows(&self, in_rows: usize, filter_rows: usize) -> usize {
+    pub fn adjusted_rows(&self, in_rows: LinearDim, filter_rows: usize) -> LinearDim {
         match self.padding {
-            Padding::Same => (in_rows as f32 / self.v_stride as f32).ceil() as usize,
-            Padding::Valid => {
-                ((in_rows - filter_rows + 1) as f32 / self.v_stride as f32).ceil() as usize
-            }
+            Padding::Same => (in_rows / self.v_stride).ceil(),
+            Padding::Valid => ((in_rows - filter_rows + 1) / self.v_stride).ceil()
         }
     }
 
-    pub fn adjusted_dim_cols(&self, in_cols: usize, filter_cols: usize) -> usize {
+    pub fn adjusted_cols(&self, in_cols: LinearDim, filter_cols: usize) -> LinearDim {
         match self.padding {
-            Padding::Same => (in_cols as f32 / self.h_stride as f32).ceil() as usize,
-            Padding::Valid => {
-                ((in_cols - filter_cols + 1) as f32 / self.h_stride as f32).ceil() as usize
-            }
+            Padding::Same => (in_cols / self.h_stride).ceil(),
+            Padding::Valid => ((in_cols - filter_cols + 1) / self.h_stride).ceil(),
         }
     }
 
@@ -168,7 +160,7 @@ impl LocalPatch {
         pad_cols: bool,
     ) -> Result<Option<Array4<T>>>
     where
-        T: Copy + ::num_traits::Zero + ::std::fmt::Debug,
+        T: Copy + ::num::Zero + ::std::fmt::Debug,
     {
         // The pad_rows and pad_cols arguments are used for streaming evaluation,
         // where we don't want to pad along the streaming dimension, even if the
@@ -256,7 +248,7 @@ impl LocalPatch {
     }
 
     // data is expected in HWC
-    pub fn mk_patches<T: Copy + ::num_traits::Zero + ::std::fmt::Debug>(
+    pub fn mk_patches<T: Copy + ::num::Zero + ::std::fmt::Debug>(
         &self,
         data: ArrayView<T, Ix3>,
         shape: (usize, usize),
@@ -266,8 +258,8 @@ impl LocalPatch {
         let img = ImageWrapper(data);
         let (filter_rows, filter_cols) = shape;
 
-        let (out_height, out_width) =
-            self.adjusted_dim(img.height(), img.width(), (filter_rows, filter_cols));
+        let out_height = self.adjusted_rows(img.h().into(), filter_rows).ceil().to_integer()? as usize;
+        let out_width = self.adjusted_cols(img.w().into(), filter_cols).ceil().to_integer()? as usize;
 
         let patches_size = (
             (out_height * out_width) as usize,

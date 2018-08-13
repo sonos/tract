@@ -39,9 +39,9 @@ use std::str::FromStr;
 use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
+use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
 use tfdeploy::{DatumType, Tensor};
-use tfdeploy::analyser::TensorFact;
 use tfpb::graph::GraphDef;
 
 use errors::*;
@@ -132,11 +132,11 @@ fn main() {
     app = app.subcommand(output_options(optimize));
 
     let optimize_check = clap::SubCommand::with_name("optimize-check")
-            .help("Compare output of optimized and un-optimized graph");
+        .help("Compare output of optimized and un-optimized graph");
     app = app.subcommand(output_options(optimize_check));
 
     let stream_check = clap::SubCommand::with_name("stream-check")
-            .help("Compare output of streamed and regular exec");
+        .help("Compare output of streamed and regular exec");
     app = app.subcommand(output_options(stream_check));
 
     let matches = app.get_matches();
@@ -160,6 +160,24 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .long("json")
                 .takes_value(true)
                 .help("output to a json file"),
+        )
+        .arg(
+            Arg::with_name("node_id")
+                .long("node_id")
+                .takes_value(true)
+                .help("Select a node to dump")
+        )
+        .arg(
+            Arg::with_name("op_name")
+                .long("op_name")
+                .takes_value(true)
+                .help("Select one op to dump")
+        )
+        .arg(
+            Arg::with_name("node_name")
+                .long("node_name")
+                .takes_value(true)
+                .help("Select one node to dump")
         )
         .arg(
             Arg::with_name("const")
@@ -201,17 +219,21 @@ impl Parameters {
             inputs.map(|s| s.to_string()).collect()
         } else {
             tfdeploy::analyser::detect_inputs(&tfd_model)?
-                .iter().map(|n| n.name.to_string()).collect()
+                .iter()
+                .map(|n| n.name.to_string())
+                .collect()
         };
 
-        let mut output_nodes:Vec<String> = if let Some(outputs) = matches.values_of("outputs") {
+        let mut output_nodes: Vec<String> = if let Some(outputs) = matches.values_of("outputs") {
             for output in outputs.clone() {
                 let _ = tfd_model.node_by_name(&output)?;
             }
             outputs.map(|s| s.to_string()).collect()
         } else {
             tfdeploy::analyser::detect_output(&tfd_model)?
-                .iter().map(|n| n.name.to_string()).collect()
+                .iter()
+                .map(|n| n.name.to_string())
+                .collect()
         };
 
         #[cfg(feature = "tensorflow")]
@@ -345,15 +367,12 @@ impl InputParameters {
     fn to_fact(&self) -> TensorFact {
         use tfdeploy::analyser::interface::*;
         if let Some(ref data) = self.data {
-            return data.clone().into()
+            return data.clone().into();
         }
         let dims = self
             .shape
             .iter()
-            .map(|d| match d {
-                None => DimFact::Streamed,
-                Some(i) => DimFact::Only(*i),
-            })
+            .map(|d| d.map(|i| i.into()).unwrap_or(LinearDim::stream()).into())
             .collect::<Vec<_>>();
         TensorFact {
             datum_type: typefact!(self.datum_type),
@@ -373,7 +392,13 @@ impl InputParameters {
             if self.streaming() && streaming_dim.is_none() {
                 Err("random tensor requires a streaming dim")?
             }
-            Ok(utils::random_tensor(self.shape.iter().map(|d| d.unwrap_or(streaming_dim.unwrap())).collect(), self.datum_type))
+            Ok(utils::random_tensor(
+                self.shape
+                    .iter()
+                    .map(|d| d.or(streaming_dim).unwrap())
+                    .collect(),
+                self.datum_type,
+            ))
         }
     }
 }
@@ -430,6 +455,9 @@ pub struct OutputParameters {
     web: bool,
     konst: bool,
     json: Option<String>,
+    node_id: Option<usize>,
+    op_name: Option<String>,
+    node_name: Option<String>,
 }
 
 impl OutputParameters {
@@ -438,6 +466,9 @@ impl OutputParameters {
             web: matches.is_present("web"),
             konst: matches.is_present("const"),
             json: matches.value_of("json").map(String::from),
+            node_id: matches.value_of("node_id").map(|id| id.parse().unwrap()),
+            node_name: matches.value_of("node_name").map(String::from),
+            op_name: matches.value_of("op_name").map(String::from),
         })
     }
 }
@@ -476,20 +507,13 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
 
-        ("optimize-check", Some(m)) => optimize_check::handle(
-            params,
-            OutputParameters::from_clap(m)?
-        ),
+        ("optimize-check", Some(m)) => {
+            optimize_check::handle(params, OutputParameters::from_clap(m)?)
+        }
 
-        ("stream-check", Some(m)) => stream_check::handle(
-            params,
-            OutputParameters::from_clap(m)?
-        ),
+        ("stream-check", Some(m)) => stream_check::handle(params, OutputParameters::from_clap(m)?),
 
-        ("dump", Some(m)) => dump::handle(
-            params,
-            OutputParameters::from_clap(m)?
-        ),
+        ("dump", Some(m)) => dump::handle(params, OutputParameters::from_clap(m)?),
 
         ("profile", Some(m)) => profile::handle(
             params,

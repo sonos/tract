@@ -63,7 +63,7 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
             .given(&inputs[0].rank, move |solver, input_rank| {
                 solver.given(&inputs[1].value, move |solver, dims: Tensor| {
                     let dims = <i32 as Datum>::tensor_into_array(dims).unwrap(); // checked
-                    let shape = Self::true_dims(dims.into_iter().cloned().collect(), input_rank);
+                    let shape = Self::true_dims(dims.into_iter().cloned().collect(), input_rank as usize);
                     solver.equals(&outputs[0].shape, ShapeFact::from(shape));
                 });
             });

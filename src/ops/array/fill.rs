@@ -53,10 +53,10 @@ impl<T: Datum> InferenceRulesOp for Fill<T> {
             .equals(&outputs[0].datum_type, T::datum_type())
             .equals(&inputs[0].rank, 1)
             .equals(&inputs[1].rank, 0)
-            .equals(&outputs[0].rank, &inputs[0].shape[0])
-            .given(&outputs[0].rank, move |solver, rank: usize| {
-                for dim in 0..rank {
-                    solver.equals(&outputs[0].shape[dim], &inputs[0].value[dim]);
+            .equals(outputs[0].rank.bex().to_dim(), &inputs[0].shape[0])
+            .given(&outputs[0].rank, move |solver, rank: isize| {
+                for dim in 0..(rank as usize) {
+                    solver.equals(&outputs[0].shape[dim], inputs[0].value[dim].bex().to_dim());
                 }
             });
     }

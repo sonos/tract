@@ -42,13 +42,12 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
     let dims: Vec<_> = shapes.iter().map(|s| &s.dims).collect();
     let bound = dims.iter().map(|s| s.len()).max().unwrap();
 
-    let mut output_shape = vec![];
+    let mut output_shape:Vec<DimFact> = vec![];
 
     // FIXME(liautaud): Rewrite more clearly and test.
     for i in 1..(bound + 1) {
         let mut previous = None;
         let mut unknown = 0;
-        let mut streamed = 0;
 
         for shape in &dims {
             if shape.len() < i {
@@ -56,17 +55,15 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
             }
 
             match &shape[shape.len() - i] {
-                DimFact::Any => unknown += 1,
-                DimFact::Streamed => streamed += 1,
-                DimFact::Only(1) => (),
-                DimFact::Only(j) => match previous {
-                    Some(k) if k != j => bail!(
-                        "Invalid shape (broadcasting): {} is not compatible with {}.",
-                        j,
-                        k
-                    ),
-                    _ => previous = Some(j),
-                },
+                GenericFact::Any => unknown += 1,
+                GenericFact::Only(d) if d.is_one() => (),
+                GenericFact::Only(d) => {
+                    if previous.is_some() && previous != Some(d) {
+                        bail!("Invalid shape (broadcasting): {:?} is not compatible with {:?}.", d, previous)
+                    } else {
+                        previous = Some(d)
+                    }
+                }
             };
         }
 
@@ -77,13 +74,11 @@ pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeF
             debug!("Can't infer shape (broadcasting): there are both unknown and known values at same index.");
             return Ok(None);
         } else if unknown == 1 && previous == None {
-            output_shape.push(DimFact::Any);
-        } else if streamed > 0 {
-            output_shape.push(DimFact::Streamed);
-        } else if previous != None {
-            output_shape.push(DimFact::Only(*previous.unwrap()));
+            output_shape.push(GenericFact::Any);
+        } else if let Some(previous) = previous {
+            output_shape.push(GenericFact::Only(*previous));
         } else {
-            output_shape.push(DimFact::Only(1));
+            output_shape.push(GenericFact::Only(1.into()));
         }
     }
 

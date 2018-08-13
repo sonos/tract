@@ -9,10 +9,10 @@ use std::fmt;
 use Result;
 use Tensor;
 
-use num_traits::cast::ToPrimitive;
+use num::cast::ToPrimitive;
 
 /// A symbolic path for a value.
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct Path(Vec<isize>);
 
 impl From<Vec<isize>> for Path {

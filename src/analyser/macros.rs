@@ -33,7 +33,7 @@ macro_rules! dimfact {
         $crate::analyser::DimFact::Streamed
     };
     ($arg:expr) => {
-        $crate::analyser::DimFact::Only($arg)
+        $crate::analyser::GenericFact::Only($arg.to_dim())
     };
 }
 
@@ -71,14 +71,14 @@ mod tests {
 
     #[test]
     fn shape_macro_closed_2() {
-        assert_eq!(shapefact![1], ShapeFact::closed(vec![DimFact::Only(1)]));
+        assert_eq!(shapefact![1], ShapeFact::closed(vec![GenericFact::Only(1)]));
     }
 
     #[test]
     fn shape_macro_closed_3() {
         assert_eq!(
             shapefact![(1 + 1)],
-            ShapeFact::closed(vec![DimFact::Only(2)])
+            ShapeFact::closed(vec![GenericFact::Only(2)])
         );
     }
 
@@ -86,7 +86,7 @@ mod tests {
     fn shape_macro_closed_4() {
         assert_eq!(
             shapefact![_, 2],
-            ShapeFact::closed(vec![DimFact::Any, DimFact::Only(2)])
+            ShapeFact::closed(vec![GenericFact::Any, GenericFact::Only(2)])
         );
     }
 
@@ -94,7 +94,7 @@ mod tests {
     fn shape_macro_closed_5() {
         assert_eq!(
             shapefact![(1 + 1), _, 2],
-            ShapeFact::closed(vec![DimFact::Only(2), DimFact::Any, DimFact::Only(2)])
+            ShapeFact::closed(vec![GenericFact::Only(2), GenericFact::Any, GenericFact::Only(2)])
         );
     }
 
@@ -105,14 +105,14 @@ mod tests {
 
     #[test]
     fn shape_macro_open_2() {
-        assert_eq!(shapefact![1; ..], ShapeFact::open(vec![DimFact::Only(1)]));
+        assert_eq!(shapefact![1; ..], ShapeFact::open(vec![GenericFact::Only(1)]));
     }
 
     #[test]
     fn shape_macro_open_3() {
         assert_eq!(
             shapefact![(1 + 1); ..],
-            ShapeFact::open(vec![DimFact::Only(2)])
+            ShapeFact::open(vec![GenericFact::Only(2)])
         );
     }
 
@@ -120,7 +120,7 @@ mod tests {
     fn shape_macro_open_4() {
         assert_eq!(
             shapefact![_, 2; ..],
-            ShapeFact::open(vec![DimFact::Any, DimFact::Only(2)])
+            ShapeFact::open(vec![GenericFact::Any, GenericFact::Only(2)])
         );
     }
 
@@ -128,7 +128,7 @@ mod tests {
     fn shape_macro_open_5() {
         assert_eq!(
             shapefact![(1 + 1), _, 2; ..],
-            ShapeFact::open(vec![DimFact::Only(2), DimFact::Any, DimFact::Only(2)])
+            ShapeFact::open(vec![GenericFact::Only(2), GenericFact::Any, GenericFact::Only(2)])
         );
     }
 }

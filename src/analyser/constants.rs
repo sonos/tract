@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use super::prelude::*;
 use super::Result;
 use ops::OpBuilder;
+use std::collections::HashMap;
 use tfpb;
 use tfpb::tensor::TensorProto;
-use { Tensor, Node };
+use {Node, Tensor};
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
 /// replaced with a constant node containing a copy of that tensor.
@@ -156,18 +156,17 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
 
     for component in components {
         for i in component.outputs {
-            let tensor = analyser.edges[i]
-                .fact
-                .value
-                .concretize()
-                .unwrap();
+            let tensor = analyser.edges[i].fact.value.concretize().unwrap();
 
-            let const_node_id:usize = if let Some(tensor) = tensor.clone().take_i32s() {
+            let const_node_id: usize = if let Some(tensor) = tensor.clone().take_i32s() {
                 *const_int_nodes.entry(tensor.clone()).or_insert_with(|| {
                     let node_id = analyser.nodes.len();
                     let node_name = format!("generated_{}", node_id).to_string();
-                    let node = build_const_node(node_id, node_name,
-                        Tensor::I32(tensor.to_owned()).to_pb().unwrap());
+                    let node = build_const_node(
+                        node_id,
+                        node_name,
+                        Tensor::I32(tensor.to_owned()).to_pb().unwrap(),
+                    );
                     analyser.nodes.push(node);
                     node_id
                 })
@@ -191,7 +190,10 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
             // Detach the target node from its previous source.
             {
                 let predecessors = &mut analyser.nodes[edge.to_node.unwrap()].inputs;
-                let position = predecessors.iter().position(|&(i, _)| i == old_node_id).unwrap();
+                let position = predecessors
+                    .iter()
+                    .position(|&(i, _)| i == old_node_id)
+                    .unwrap();
                 predecessors[position] = (const_node_id, 0);
             }
 

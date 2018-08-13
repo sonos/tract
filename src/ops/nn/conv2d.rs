@@ -43,9 +43,8 @@ impl<T: Datum> Conv2D<T> {
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
-        let (out_height, out_width) =
-            self.0
-                .adjusted_dim(images.h(), images.w(), (filter_rows, filter_cols));
+        let out_height = self.0.adjusted_rows(images.h().into(), filter_rows).ceil().to_integer()? as usize;
+        let out_width = self.0.adjusted_cols(images.w().into(), filter_cols).ceil().to_integer()? as usize;
 
         let filter = filter
             .view()
@@ -56,7 +55,8 @@ impl<T: Datum> Conv2D<T> {
 
         // Loop over each batch.
         for image in data.outer_iter() {
-            let patches = self.0
+            let patches = self
+                .0
                 .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
@@ -128,12 +128,12 @@ impl<T: Datum> Op for Conv2D<T> {
         let chunk = if let Some(chunk) = chunk {
             chunk
         } else {
-            return Ok(None)
+            return Ok(None);
         };
 
         // Maybe the data is streamed along the batch dimension.
         if dim == 0 {
-            let result = self.eval(vec!(chunk, filter))?;
+            let result = self.eval(vec![chunk, filter])?;
             return Ok(Some(result));
         }
 
@@ -223,35 +223,21 @@ impl<T: Datum> InferenceRulesOp for Conv2D<T> {
             .equals(&inputs[0].shape[0], &outputs[0].shape[0])
             .equals(&inputs[0].shape[3], &inputs[1].shape[2])
             .equals(&outputs[0].shape[3], &inputs[1].shape[3])
-            .given(&inputs[0].shape[1], move |solver, h: DimFact| match h {
-                DimFact::Only(h) => {
-                    solver.given(&inputs[1].shape[0], move |solver, kh| {
-                        let oh = self.0.adjusted_dim_rows(h, kh);
-                        solver.equals(&outputs[0].shape[1], oh as isize);
-                    });
-                }
-                DimFact::Streamed => {
-                    solver.equals(
-                        &outputs[0].shape[1],
-                        IntFact::Special(SpecialKind::Streamed),
-                    );
-                }
-                _ => {}
+            .given(&inputs[0].shape[1], move |solver, h| {
+                solver.given(&inputs[1].shape[0], move |solver, kh| {
+                    if let Ok(kh) = kh.to_integer() {
+                        let oh = self.0.adjusted_rows(h, kh as usize);
+                        solver.equals(&outputs[0].shape[1], oh);
+                    }
+                });
             })
-            .given(&inputs[0].shape[2], move |solver, w: DimFact| match w {
-                DimFact::Only(w) => {
-                    solver.given(&inputs[1].shape[1], move |solver, kw| {
-                        let ow = self.0.adjusted_dim_cols(w, kw);
-                        solver.equals(&outputs[0].shape[2], ow as isize);
-                    });
-                }
-                DimFact::Streamed => {
-                    solver.equals(
-                        &outputs[0].shape[2],
-                        IntFact::Special(SpecialKind::Streamed),
-                    );
-                }
-                _ => {}
+            .given(&inputs[0].shape[2], move |solver, w| {
+                solver.given(&inputs[1].shape[1], move |solver, kw| {
+                    if let Ok(kw) = kw.to_integer() {
+                        let ow = self.0.adjusted_cols(w, kw as usize);
+                        solver.equals(&outputs[0].shape[2], ow);
+                    }
+                });
             });
     }
 }
@@ -346,7 +332,8 @@ mod tests {
         let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        let result = conv.eval(vec![data.into(), filter.into()])
+        let result = conv
+            .eval(vec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
         assert_eq!(exp, result.into_tensor());
@@ -369,6 +356,6 @@ mod tests {
         let exp: Tensor =
             Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
-        assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0]))
+        assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0], true))
     }
 }
