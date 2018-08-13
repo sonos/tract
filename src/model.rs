@@ -1,7 +1,7 @@
-use std::{fs, path, str};
-use std::sync::Arc;
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::Arc;
+use std::{fs, path, str};
 
 use bit_set;
 
@@ -25,7 +25,7 @@ impl Node {
 
 /// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
 /// and runs the inference interpreter.
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct RawModel {
     pub nodes: Vec<Node>,
     pub nodes_by_name: HashMap<String, usize>,
@@ -93,7 +93,8 @@ impl RawModel {
     }
 
     pub fn node_by_name(&self, name: &str) -> Result<&Node> {
-        let id:&usize = self.nodes_by_name
+        let id: &usize = self
+            .nodes_by_name
             .get(name)
             .ok_or_else(|| format!("Node named {} not found", name))?;
         Ok(&self.nodes[*id])
@@ -185,4 +186,3 @@ pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> Result<Vec<usi
     }
     Ok(order)
 }
-

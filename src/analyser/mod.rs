@@ -1,11 +1,11 @@
-use std::collections::{ HashMap, BTreeSet };
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use errors::*;
-use ops::Op;
-use model:: {Model, RawModel };
-use Node;
 use model::eval_order_for_nodes;
+use model::{Model, RawModel};
+use ops::Op;
+use Node;
 
 mod constants;
 mod types;
@@ -123,7 +123,7 @@ impl Analyser {
     /// Changing it won't alter the correctness of the analysis, but it might
     /// take much longer to complete.
     pub fn new(model: &Model, output: &str) -> Result<Analyser> {
-        let nodes:Vec<Node> = model.nodes().iter().cloned().collect();
+        let nodes: Vec<Node> = model.nodes().iter().cloned().collect();
         let mut edges = vec![];
         let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
         let mut next_edges = vec![Vec::new(); model.nodes().len() + 1];
@@ -184,7 +184,11 @@ impl Analyser {
 
     /// Adds an user-provided tensor fact to the analyser.
     pub fn hint_by_id(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
-        debug!("Hint for node \"{}\": {:?}", self.model.nodes()[node].name, fact);
+        debug!(
+            "Hint for node \"{}\": {:?}",
+            self.model.nodes()[node].name,
+            fact
+        );
         if node >= self.next_edges.len() {
             bail!("There is no node with index {:?}.", node);
         }
@@ -208,7 +212,7 @@ impl Analyser {
         let mut nodes_by_name = HashMap::with_capacity(self.plan.len());
         let mut nodes_mapped = HashMap::with_capacity(self.plan.len());
         let mut nodes = Vec::with_capacity(self.plan.len());
-        self.plan.iter().enumerate().for_each(|(ix,&n)| {
+        self.plan.iter().enumerate().for_each(|(ix, &n)| {
             let old_node = &self.nodes[n];
             nodes_by_name.insert(old_node.name.clone(), ix);
             nodes_mapped.insert(old_node.id, ix);
@@ -216,12 +220,19 @@ impl Analyser {
                 id: ix,
                 name: old_node.name.clone(),
                 op_name: old_node.op_name.clone(),
-                inputs: old_node.inputs.iter().map(|&(input, port)| (nodes_mapped[&input], port)).collect(),
+                inputs: old_node
+                    .inputs
+                    .iter()
+                    .map(|&(input, port)| (nodes_mapped[&input], port))
+                    .collect(),
                 op: old_node.op.clone(),
             });
         });
 
-        Ok(Model(Arc::new(RawModel { nodes, nodes_by_name, })))
+        Ok(Model(Arc::new(RawModel {
+            nodes,
+            nodes_by_name,
+        })))
     }
 
     /// Returns a model from the analyser.
@@ -244,7 +255,7 @@ impl Analyser {
 
     /// Runs the entire analysis at once.
     pub fn analyse(&mut self) -> Result<()> {
-        let mut nodes_to_visit:BTreeSet<usize> = (0..self.nodes.len()).collect();
+        let mut nodes_to_visit: BTreeSet<usize> = (0..self.nodes.len()).collect();
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
             let node = match nodes_to_visit.iter().next() {
@@ -278,9 +289,7 @@ impl Analyser {
         let node = &self.nodes[node];
         debug!(
             "Starting step for {} {} ({})",
-            node.id,
-            node.name,
-            node.op_name,
+            node.id, node.name, node.op_name,
         );
 
         trace!("{:?}", node.op);
@@ -307,16 +316,23 @@ impl Analyser {
         }
         trace!("  Output 0: {:?}", &outputs[0]);
 
-        let inferred = node.op
-            .infer_and_propagate(inputs, outputs)
-            .map_err(|e| format!("While inferring forward for {} {}: {}", node.id, node.name, e))?;
+        let inferred = node.op.infer_and_propagate(inputs, outputs).map_err(|e| {
+            format!(
+                "While inferring forward for {} {}: {}",
+                node.id, node.name, e
+            )
+        })?;
 
-        let mut changed_edges = vec!();
+        let mut changed_edges = vec![];
 
         for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
             let fact = &inferred.0[i];
-            let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying inputs of node {} {}: {}", node.id, node.name, e))?;
+            let unified = unify(fact, &self.edges[j].fact).map_err(|e| {
+                format!(
+                    "While unifying inputs of node {} {}: {}",
+                    node.id, node.name, e
+                )
+            })?;
 
             if unified != self.edges[j].fact {
                 debug!(" Refined {} input #{} to {:?}", node.name, i, unified);
@@ -332,11 +348,18 @@ impl Analyser {
             }
 
             let fact = &inferred.1[0];
-            let unified = unify(fact, &self.edges[j].fact)
-                .map_err(|e| format!("While unifying outputs of node {} {} {}", node.id, node.name, e))?;
+            let unified = unify(fact, &self.edges[j].fact).map_err(|e| {
+                format!(
+                    "While unifying outputs of node {} {} {}",
+                    node.id, node.name, e
+                )
+            })?;
 
             if unified != self.edges[j].fact {
-                debug!(" Refined {} output {}/{} to {:?}", node.name, node.id, i, unified);
+                debug!(
+                    " Refined {} output {}/{} to {:?}",
+                    node.name, node.id, i, unified
+                );
                 changed_edges.push(j);
                 self.edges[j].fact = unified;
             }

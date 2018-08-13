@@ -82,9 +82,14 @@ pub fn compare<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let model = tfdeploy::Model::for_reader(&*graph)?;
-    let plan = tfdeploy::SimplePlan::new(&model,
-        &inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>(),
-        &vec!(output))?;
+    let plan = tfdeploy::SimplePlan::new(
+        &model,
+        &inputs
+            .iter()
+            .map(|pair| pair.0.as_ref())
+            .collect::<Vec<&str>>(),
+        &vec![output],
+    )?;
     let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
@@ -108,7 +113,8 @@ pub fn compare<S: AsRef<str>>(
     );
 
     // Check inference rules consistency
-    let inputs_vectors: Vec<TensorFact> = output.inputs
+    let inputs_vectors: Vec<TensorFact> = output
+        .inputs
         .iter()
         .map(|(i, p)| {
             state.values[*i].as_ref().unwrap()[*p]

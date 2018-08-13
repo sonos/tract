@@ -52,14 +52,14 @@ impl TensorFact {
         TensorFact::default()
     }
 
-    pub fn with_datum_type(self, dt:DatumType) -> TensorFact {
+    pub fn with_datum_type(self, dt: DatumType) -> TensorFact {
         TensorFact {
             datum_type: dt.into(),
             ..self
         }
     }
 
-    pub fn with_shape<S: Into<ShapeFact>>(self, shape:S) -> TensorFact {
+    pub fn with_shape<S: Into<ShapeFact>>(self, shape: S) -> TensorFact {
         TensorFact {
             shape: shape.into(),
             ..self
@@ -91,12 +91,11 @@ impl Fact for TensorFact {
 
         Ok(tensor)
     }
-
 }
 
 impl<T: Into<Tensor>> From<T> for TensorFact {
     fn from(t: T) -> TensorFact {
-        let t:Tensor = t.into();
+        let t: Tensor = t.into();
         TensorFact {
             datum_type: GenericFact::Only(t.datum_type()),
             shape: ShapeFact::from(t.shape()),
@@ -201,14 +200,22 @@ impl ShapeFact {
         if self.dims.iter().any(|&d| d == DimFact::Any) {
             bail!("Shape has unknown dims, can not find streaming dim for sure.")
         }
-        let count = self.dims.iter().filter(|&&d| d == DimFact::Streamed).count();
+        let count = self
+            .dims
+            .iter()
+            .filter(|&&d| d == DimFact::Streamed)
+            .count();
         if count > 1 {
             bail!("Shape has more than one streaming dim. This is wrong.")
         }
         if count < 1 {
             bail!("Shape has no streaming dim. This is wrong.")
         }
-        Ok(self.dims.iter().position(|&d| d == DimFact::Streamed).unwrap())
+        Ok(self
+            .dims
+            .iter()
+            .position(|&d| d == DimFact::Streamed)
+            .unwrap())
     }
 }
 
@@ -242,7 +249,8 @@ impl Fact for ShapeFact {
         let xi = x.dims.iter();
         let yi = y.dims.iter();
 
-        let dimensions: Vec<_> = xi.zip_longest(yi)
+        let dimensions: Vec<_> = xi
+            .zip_longest(yi)
             .map(|r| match r {
                 Both(a, b) => a.unify(b),
                 Left(d) if y.open => Ok(*d),

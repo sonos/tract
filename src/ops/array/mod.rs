@@ -42,7 +42,8 @@ impl Op for ExpandDims {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (data, dims) = args_2!(inputs);
-        let data = data.into_tensor()
+        let data = data
+            .into_tensor()
             .take_f32s()
             .ok_or("Expected a f32 matrix")?;
         let dims = dims.as_i32s().ok_or("Expected a i32 matrix")?;

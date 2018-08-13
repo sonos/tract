@@ -56,7 +56,8 @@ impl<T: Datum> Conv2D<T> {
 
         // Loop over each batch.
         for image in data.outer_iter() {
-            let patches = self.0
+            let patches = self
+                .0
                 .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
@@ -128,12 +129,12 @@ impl<T: Datum> Op for Conv2D<T> {
         let chunk = if let Some(chunk) = chunk {
             chunk
         } else {
-            return Ok(None)
+            return Ok(None);
         };
 
         // Maybe the data is streamed along the batch dimension.
         if dim == 0 {
-            let result = self.eval(vec!(chunk, filter))?;
+            let result = self.eval(vec![chunk, filter])?;
             return Ok(Some(result));
         }
 
@@ -346,7 +347,8 @@ mod tests {
         let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        let result = conv.eval(vec![data.into(), filter.into()])
+        let result = conv
+            .eval(vec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
         assert_eq!(exp, result.into_tensor());

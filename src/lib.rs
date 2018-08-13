@@ -77,19 +77,17 @@ pub mod streaming;
 pub mod tensor;
 pub mod tfpb;
 
-
 pub use errors::*;
 use std::path;
 
-pub use tensor::{DatumType, Tensor};
-pub use model::{ Model, Node };
+pub use model::{Model, Node};
 pub use plan::SimplePlan;
+pub use tensor::{DatumType, Tensor};
 
 /// Load a Tensorflow protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
     Ok(Model::for_path(p)?)
 }
-
 
 #[cfg(test)]
 #[allow(dead_code)]

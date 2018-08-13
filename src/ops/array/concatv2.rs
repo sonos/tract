@@ -28,7 +28,10 @@ impl<T: Datum> Op for ConcatV2<T> {
 
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
-        let axis: i32 = inputs.pop().and_then(|t| t.as_i32()).ok_or("Expected a i32 scalar")?;
+        let axis: i32 = inputs
+            .pop()
+            .and_then(|t| t.as_i32())
+            .ok_or("Expected a i32 scalar")?;
         let mats: Result<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| T::tensor_to_view(&mat)).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
@@ -59,11 +62,16 @@ impl<T: Datum> Op for ConcatV2<T> {
         //   until we have a chunk for each, and we push their concatenation
         //   as the output chunk.
 
-        let n = inputs.pop().ok_or("Unexpectedly found zero inputs in ConcatV2")?;
+        let n = inputs
+            .pop()
+            .ok_or("Unexpectedly found zero inputs in ConcatV2")?;
         let axis_tensor = n.into_const().ok_or("Axis input should not be streamed.")?;
         let axis: i32 = axis_tensor.as_i32().ok_or("Expected a i32 scalar")?;
 
-        if inputs.iter().all(|i| i.streaming_dim() == Some(axis as usize)) {
+        if inputs
+            .iter()
+            .all(|i| i.streaming_dim() == Some(axis as usize))
+        {
             // All the input tensors are streamed along `axis`.
             let chunk = inputs
                 .into_iter()

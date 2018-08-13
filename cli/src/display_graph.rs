@@ -56,7 +56,8 @@ impl DisplayGraph {
             if node.op == "Const" && !params.konst || node.hidden {
                 continue;
             }
-            let output_ports: HashMap<usize, Option<String>> = node.outputs
+            let output_ports: HashMap<usize, Option<String>> = node
+                .outputs
                 .iter()
                 .map(|edge| {
                     let edge = &self.edges[*edge];
@@ -146,7 +147,8 @@ impl DisplayGraph {
                     dst_node_id: node.borrow().id,
                     dst_node_input: ix,
                     main: ix == 0,
-                    label: tfnodes[input.0].borrow()
+                    label: tfnodes[input.0]
+                        .borrow()
                         .op()
                         .const_value()
                         .map(|v| format!("Const {:?}", v)),
@@ -180,7 +182,8 @@ impl DisplayGraph {
 
     pub fn with_analyser(mut self, analyser: &Analyser) -> CliResult<DisplayGraph> {
         {
-            let index: HashMap<(usize, usize, usize, usize), usize> = self.edges
+            let index: HashMap<(usize, usize, usize, usize), usize> = self
+                .edges
                 .iter()
                 .enumerate()
                 .map(|(ix, edge)| {

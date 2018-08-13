@@ -59,7 +59,8 @@ impl Output for DimFact {
         match IntFact::from_wrapped(wrapped)? {
             IntFact::Any => Ok(DimFact::Any),
 
-            IntFact::Only(i) => i.to_usize()
+            IntFact::Only(i) => i
+                .to_usize()
                 .ok_or(format!("Tried to convert {:?} to a DimFact.", i).into())
                 .map(|d| DimFact::Only(d)),
 

@@ -20,12 +20,16 @@ fn build_streaming_plan(params: &Parameters) -> Result<(StreamingPlan, Tensor)> 
         .as_ref()
         .ok_or("Exactly one of <size> or <data> must be specified.")?;
 
-    let model = params.tfd_model.analyser(&params.output_node)?
+    let model = params
+        .tfd_model
+        .analyser(&params.output_node)?
         .with_hint(&params.input_nodes[0], &input.to_fact())?
         .to_optimized_model()?;
-    let plan = StreamingPlan::new(&model,
-        vec!((&params.input_nodes[0], input.to_fact())),
-        Some(&params.output_node))?;
+    let plan = StreamingPlan::new(
+        &model,
+        vec![(&params.input_nodes[0], input.to_fact())],
+        Some(&params.output_node),
+    )?;
 
     let measure = Duration::since(&start, 1);
     info!(
@@ -111,16 +115,12 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Res
 
     let mut profile = ProfileData::new(state.model());
     for _ in 0..100 {
-        let _result = state.step_wrapping_ops(
-            0,
-            chunk.clone(),
-            |node, input, buffer| {
-                let start = Instant::now();
-                let r = node.op.step(input, buffer)?;
-                profile.add(node, Duration::since(&start, 1))?;
-                Ok(r)
-            },
-        );
+        let _result = state.step_wrapping_ops(0, chunk.clone(), |node, input, buffer| {
+            let start = Instant::now();
+            let r = node.op.step(input, buffer)?;
+            profile.add(node, Duration::since(&start, 1))?;
+            Ok(r)
+        });
     }
 
     profile.print_most_consuming_nodes(plan.model(), &params.graph, &output_params)?;
@@ -147,9 +147,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
         .ok_or("Exactly one of <size> or <data> must be specified.")?;
     let axis = input.shape.iter().position(|&d| d == None).unwrap(); // checked above
 
-    let mut states = (0..100)
-        .map(|_| plan.state().unwrap())
-        .collect::<Vec<_>>();
+    let mut states = (0..100).map(|_| plan.state().unwrap()).collect::<Vec<_>>();
 
     if log_enabled!(Info) {
         println!();
@@ -220,11 +218,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(
-        &plan.model(),
-        &params.graph,
-        &output_params,
-    )?;
+    profile.print_most_consuming_nodes(&plan.model(), &params.graph, &output_params)?;
     println!();
 
     profile.print_most_consuming_ops(&plan.model())?;

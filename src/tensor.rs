@@ -120,7 +120,8 @@ impl Tensor {
 
     pub fn to_pb(&self) -> ::Result<::tfpb::tensor::TensorProto> {
         let mut shape = ::tfpb::tensor_shape::TensorShapeProto::new();
-        let dims = self.shape()
+        let dims = self
+            .shape()
             .iter()
             .map(|d| {
                 let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
@@ -195,8 +196,12 @@ impl Tensor {
             Ok(format!("shape:{:?} {:?}", self.shape(), self.datum_type()))
         } else {
             Ok(match self {
-                &Tensor::I32(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
-                &Tensor::F32(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
+                &Tensor::I32(ref a) => {
+                    format!("{:?} {:?}", self.datum_type(), a).replace("\n", " ")
+                }
+                &Tensor::F32(ref a) => {
+                    format!("{:?} {:?}", self.datum_type(), a).replace("\n", " ")
+                }
                 &Tensor::U8(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
                 _ => unimplemented!("missing type"),
             })
@@ -218,7 +223,8 @@ impl Tensor {
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
         let margin = (dev / 10.0).max(avg.abs() / 10_000.0);
         ma.shape() == mb.shape()
-            && mb.iter()
+            && mb
+                .iter()
                 .zip(ma.iter())
                 .all(|(&a, &b)| (b - a).abs() <= margin)
     }

@@ -20,7 +20,8 @@ pub struct Squeeze<T: Datum> {
 impl<T: Datum> Squeeze<T> {
     fn squeezable(&self, ix: usize, d: usize, stream_dim: Option<usize>) -> bool {
         stream_dim != Some(ix) && d == 1
-            && self.squeeze_dims
+            && self
+                .squeeze_dims
                 .as_ref()
                 .map(|squeeze_dims| squeeze_dims.contains(&(ix as _)))
                 .unwrap_or(true)

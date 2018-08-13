@@ -31,10 +31,10 @@ pub mod nn;
 
 pub mod prelude {
     pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
-    pub use super::{OpBuffer, QueuesBuffer, Value, StepValue};
+    pub use super::{OpBuffer, QueuesBuffer, StepValue, Value};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use tensor::{DatumType, Datum, Tensor};
+    pub use tensor::{Datum, DatumType, Tensor};
     pub use Result;
 }
 
@@ -157,7 +157,7 @@ impl StepValue {
     pub fn into_stream(self) -> Option<(usize, Option<Value>)> {
         match self {
             StepValue::Stream(d, v) => Some((d, v)),
-            _ => None
+            _ => None,
         }
     }
 

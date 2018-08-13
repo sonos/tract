@@ -79,7 +79,9 @@ where
         mut inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<Value>>> {
-        if let (StepValue::Stream(stream_dim, Some(chunk)), StepValue::Const(paddings)) = args_2!(inputs) {
+        if let (StepValue::Stream(stream_dim, Some(chunk)), StepValue::Const(paddings)) =
+            args_2!(inputs)
+        {
             let chunk = T::tensor_to_view(&chunk)?;
             let paddings = i32::tensor_to_view(&paddings)?.into_dimensionality()?;
             Ok(Some(vec![
