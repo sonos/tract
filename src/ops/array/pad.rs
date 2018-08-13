@@ -14,7 +14,7 @@ pub struct Pad<T: Datum> {
 }
 
 pub fn pad(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datatype("T")?;
+    let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }
 
@@ -70,7 +70,7 @@ where
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "T"    => Attr::DatumType(T::datatype()),
+            "T"    => Attr::DatumType(T::datum_type()),
         }
     }
 
@@ -104,8 +104,8 @@ impl<T: Datum> InferenceRulesOp for Pad<T> {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&output.datatype, &input.datatype)
-            .equals(&padding.datatype, DatumType::I32)
+            .equals(&output.datum_type, &input.datum_type)
+            .equals(&padding.datum_type, DatumType::I32)
             .equals(&input.rank, &output.rank)
             .equals(&padding.rank, 2)
             .equals(&padding.shape[0], &input.rank)

@@ -13,7 +13,7 @@ pub struct AddN<T: Datum> {
 }
 
 pub fn add_n(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datatype("T")?;
+    let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_attr_int("N")?;
     Ok(boxed_new!(AddN(dtype)(n)))
 }
@@ -37,7 +37,7 @@ where
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "T"    => Attr::DatumType(T::datatype()),
+            "T"    => Attr::DatumType(T::datum_type()),
             "N"    => Attr::Usize(self.n),
         }
     }
@@ -54,8 +54,8 @@ impl<T: Datum> InferenceRulesOp for AddN<T> {
         solver
             .equals(&inputs.len, n)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
-            .equals_all((0..self.n).map(|i| bexp(&inputs[i].datatype)).collect())
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
+            .equals_all((0..self.n).map(|i| bexp(&inputs[i].datum_type)).collect())
             .equals(&inputs[0].rank, &outputs[0].rank)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
             .given(&inputs[0].rank, move |solver, rank: usize| {

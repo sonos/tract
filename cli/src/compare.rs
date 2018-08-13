@@ -41,7 +41,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         let data = if input.data.is_some() {
             input.data.as_ref().unwrap().clone()
         } else {
-            random_tensor(shape.clone(), input.datatype)
+            random_tensor(shape.clone(), input.datum_type)
         };
 
         generated.push((tfd.get_node_by_id(i)?.name.as_str(), data));

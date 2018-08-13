@@ -23,7 +23,7 @@ pub struct Buffer<T: Datum> {
 impl<T: Datum> OpBuffer for Buffer<T> {}
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datatype("T")?;
+    let dtype = pb.get_attr_datum_type("T")?;
     let patch = LocalPatch::build(pb)?;
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
@@ -76,7 +76,7 @@ impl<T: Datum> Op for Conv2D<T> {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         let mut attributes = hashmap!{
-            "T" => Attr::DatumType(T::datatype()),
+            "T" => Attr::DatumType(T::datum_type()),
         };
 
         attributes.extend(self.0.get_attributes());
@@ -214,9 +214,9 @@ impl<T: Datum> InferenceRulesOp for Conv2D<T> {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, T::datatype())
-            .equals(&inputs[1].datatype, T::datatype())
-            .equals(&outputs[0].datatype, T::datatype())
+            .equals(&inputs[0].datum_type, T::datum_type())
+            .equals(&inputs[1].datum_type, T::datum_type())
+            .equals(&outputs[0].datum_type, T::datum_type())
             .equals(&inputs[0].rank, 4)
             .equals(&inputs[1].rank, 4)
             .equals(&outputs[0].rank, 4)

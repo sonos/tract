@@ -3,12 +3,12 @@ use ndarray::prelude::*;
 use ops::prelude::*;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let datatype = pb.get_attr_datatype("T")?;
-    Ok(boxed_new!(SpaceToBatch(datatype)()))
+    let datum_type = pb.get_attr_datum_type("T")?;
+    Ok(boxed_new!(SpaceToBatch(datum_type)()))
 }
 pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let datatype = pb.get_attr_datatype("T")?;
-    Ok(boxed_new!(BatchToSpace(datatype)()))
+    let datum_type = pb.get_attr_datum_type("T")?;
+    Ok(boxed_new!(BatchToSpace(datum_type)()))
 }
 
 #[derive(Debug, Clone, new)]
@@ -67,7 +67,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{ "T" => Attr::DatumType(T::datatype()) }
+        hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
     }
 
     fn step(
@@ -101,9 +101,9 @@ fn rules<'r, 'p: 'r>(
     paddings: &'p TensorProxy,
 ) {
     solver
-        .equals(&batch.datatype, &space.datatype)
-        .equals(&block_shape.datatype, DatumType::I32)
-        .equals(&paddings.datatype, DatumType::I32)
+        .equals(&batch.datum_type, &space.datum_type)
+        .equals(&block_shape.datum_type, DatumType::I32)
+        .equals(&paddings.datum_type, DatumType::I32)
         .equals(&batch.rank, &space.rank)
         .equals(&block_shape.rank, 1)
         .equals(&paddings.rank, 2)
@@ -181,7 +181,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{ "T" => Attr::DatumType(T::datatype()) }
+        hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
     }
 }
 

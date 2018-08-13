@@ -1,8 +1,8 @@
 macro_rules! element_map_float {
     ($Name:ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
-            let datatype = pb.get_attr_datatype("T")?;
-            let it = match datatype {
+            let datum_type = pb.get_attr_datum_type("T")?;
+            let it = match datum_type {
                 $crate::DatumType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
                 $crate::DatumType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
                 _ => unimplemented!("missing type"),
@@ -18,7 +18,7 @@ macro_rules! element_map_float {
         impl<T: $crate::tensor::Datum + ::num_traits::Float> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datatype()) }
+                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
             }
 
             /// Evaluates the operation given the input tensors.
@@ -58,9 +58,9 @@ macro_rules! element_map_float {
                     .equals(&inputs.len, 1)
                     .equals(&outputs.len, 1)
                     .equals_all(wrap![
-                        &inputs[0].datatype,
-                        &outputs[0].datatype,
-                        &T::datatype()
+                        &inputs[0].datum_type,
+                        &outputs[0].datum_type,
+                        &T::datum_type()
                     ])
                     .equals(&inputs[0].shape, &outputs[0].shape);
             }
@@ -71,8 +71,8 @@ macro_rules! element_map_float {
 macro_rules! element_map_signed {
     ($Name:ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
-            let datatype = pb.get_attr_datatype("T")?;
-            let it = match datatype {
+            let datum_type = pb.get_attr_datum_type("T")?;
+            let it = match datum_type {
                 $crate::DatumType::I32 => Box::new($Name::<i32>::new()) as Box<Op>,
                 $crate::DatumType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
                 $crate::DatumType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
@@ -89,7 +89,7 @@ macro_rules! element_map_signed {
         impl<T: $crate::tensor::Datum + ::num_traits::Signed> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datatype()) }
+                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
             }
 
             /// Evaluates the operation given the input tensors.
@@ -129,9 +129,9 @@ macro_rules! element_map_signed {
                     .equals(&inputs.len, 1)
                     .equals(&outputs.len, 1)
                     .equals_all(wrap![
-                        &inputs[0].datatype,
-                        &outputs[0].datatype,
-                        &T::datatype()
+                        &inputs[0].datum_type,
+                        &outputs[0].datum_type,
+                        &T::datum_type()
                     ])
                     .equals(&inputs[0].shape, &outputs[0].shape);
             }
@@ -145,14 +145,14 @@ macro_rules! element_bin {
         pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-            let dtype = pb.get_attr_datatype("T")?;
+            let dtype = pb.get_attr_datum_type("T")?;
             Ok(boxed_new!($Name(dtype)()))
         }
 
         impl<T: ::tensor::Datum> Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => ::ops::Attr::DatumType(T::datatype()) }
+                hashmap!{ "T" => ::ops::Attr::DatumType(T::datum_type()) }
             }
 
             /// Evaluates the operation given the input tensors.
@@ -208,7 +208,7 @@ macro_rules! element_bin {
 
                 solver
                     .equals(&outputs.len, 1)
-                    .equals_all(wrap![&a.datatype, &b.datatype, &c.datatype, &T::datatype()])
+                    .equals_all(wrap![&a.datum_type, &b.datum_type, &c.datum_type, &T::datum_type()])
                     .given(&a.shape, move |solver, a_shape| {
                         solver.given(&b.shape, move |solver, b_shape| {
                             if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(vec!(&a_shape, &b_shape)) {

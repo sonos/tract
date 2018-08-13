@@ -61,7 +61,7 @@ pub trait Datum:
     + ::std::ops::RemAssign
 {
     fn name() -> &'static str;
-    fn datatype() -> DatumType;
+    fn datum_type() -> DatumType;
     fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
     fn tensor_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
@@ -160,7 +160,7 @@ impl Tensor {
         }
     }
 
-    pub fn datatype(&self) -> DatumType {
+    pub fn datum_type(&self) -> DatumType {
         match self {
             &Tensor::F64(_) => DatumType::F64,
             &Tensor::F32(_) => DatumType::F32,
@@ -176,28 +176,28 @@ impl Tensor {
             Ok(match self {
                 &Tensor::I32(ref a) => format!(
                     "Scalar {:?} {:?}",
-                    self.datatype(),
+                    self.datum_type(),
                     a.as_slice().unwrap()[0]
                 ),
                 &Tensor::F32(ref a) => format!(
                     "Scalar {:?} {:?}",
-                    self.datatype(),
+                    self.datum_type(),
                     a.as_slice().unwrap()[0]
                 ),
                 &Tensor::U8(ref a) => format!(
                     "Scalar {:?} {:?}",
-                    self.datatype(),
+                    self.datum_type(),
                     a.as_slice().unwrap()[0]
                 ),
                 _ => unimplemented!("missing type"),
             })
         } else if self.shape().iter().product::<usize>() > 8 {
-            Ok(format!("shape:{:?} {:?}", self.shape(), self.datatype()))
+            Ok(format!("shape:{:?} {:?}", self.shape(), self.datum_type()))
         } else {
             Ok(match self {
-                &Tensor::I32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
-                &Tensor::F32(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
-                &Tensor::U8(ref a) => format!("{:?} {:?}", self.datatype(), a).replace("\n", " "),
+                &Tensor::I32(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
+                &Tensor::F32(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
+                &Tensor::U8(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
                 _ => unimplemented!("missing type"),
             })
         }
@@ -337,7 +337,7 @@ macro_rules! tensor {
                 stringify!($t)
             }
 
-            fn datatype() -> DatumType {
+            fn datum_type() -> DatumType {
                 DatumType::$v
             }
 

@@ -7,7 +7,7 @@ pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         squeeze_dims.sort();
         squeeze_dims.reverse();
     }
-    let t = pb.get_attr_datatype("T")?;
+    let t = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Squeeze(t)(squeeze_dims)))
 }
 
@@ -55,7 +55,7 @@ impl<T: Datum> Op for Squeeze<T> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        let mut attrs = hashmap!{ "T" => Attr::DatumType(T::datatype()) };
+        let mut attrs = hashmap!{ "T" => Attr::DatumType(T::datum_type()) };
         if let Some(dim) = self.squeeze_dims.as_ref() {
             attrs.insert("squeeze_dims", Attr::IsizeVec(dim.clone()));
         }
@@ -91,8 +91,8 @@ impl<T: Datum> InferenceRulesOp for Squeeze<T> {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
-            .equals(&inputs[0].datatype, T::datatype())
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
+            .equals(&inputs[0].datum_type, T::datum_type())
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
                 if !shape.dims.iter().any(|d| *d == DimFact::Any) {
                     let stream_dim = shape.dims.iter().position(|d| *d == DimFact::Streamed);

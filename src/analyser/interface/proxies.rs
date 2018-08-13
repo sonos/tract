@@ -123,15 +123,15 @@ impl Index<usize> for TensorsProxy {
 
 /// A proxy for a tensor.
 ///
-/// This is used for rules involving the datatype, rank, shape or value of a
+/// This is used for rules involving the datum_type, rank, shape or value of a
 /// tensor. Here are a few examples of constraints that can be expressed:
 /// ```text
-/// solver.equals(input.datatype, DTYPE_I32)
+/// solver.equals(input.datum_type, DTYPE_I32)
 /// solver.equals(input.rank, 2)
 /// solver.equals(input.shape[1], output.value[0][1])
 /// ```
 pub struct TensorProxy {
-    pub datatype: TypeProxy,
+    pub datum_type: TypeProxy,
     pub rank: IntProxy,
     pub shape: ShapeProxy,
     pub value: ValueProxy,
@@ -142,7 +142,7 @@ impl TensorProxy {
     /// Creates a new TensorProxy instance.
     pub fn new(path: Path) -> TensorProxy {
         TensorProxy {
-            datatype: TypeProxy::new([&path[..], &[0]].concat().into()),
+            datum_type: TypeProxy::new([&path[..], &[0]].concat().into()),
             rank: IntProxy::new([&path[..], &[1]].concat().into()),
             shape: ShapeProxy::new([&path[..], &[2]].concat().into()),
             value: ValueProxy::new([&path[..], &[3]].concat().into()),
@@ -153,7 +153,7 @@ impl TensorProxy {
 
 impl_proxy!(TensorProxy);
 
-/// A proxy for a tensor datatype.
+/// A proxy for a tensor datum_type.
 #[derive(new)]
 pub struct TypeProxy {
     path: Path,
@@ -288,11 +288,11 @@ mod tests {
     }
 
     #[test]
-    fn test_tensor_proxy_datatype() {
+    fn test_tensor_proxy_datum_type() {
         let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
-        assert_eq!(input.datatype.get_path(), &vec![0, 0, 0].into());
+        assert_eq!(input.datum_type.get_path(), &vec![0, 0, 0].into());
     }
 
     #[test]

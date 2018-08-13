@@ -242,7 +242,7 @@ impl Parameters {
 pub struct InputParameters {
     data: Option<Tensor>,
     shape: Vec<Option<usize>>,
-    datatype: DatumType,
+    datum_type: DatumType,
 }
 
 impl InputParameters {
@@ -262,7 +262,7 @@ impl InputParameters {
             bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
         }
 
-        let (datatype, shape) = splits.split_last().unwrap();
+        let (datum_type, shape) = splits.split_last().unwrap();
 
         let shape = shape
             .iter()
@@ -276,7 +276,7 @@ impl InputParameters {
             bail!("The <size> argument doesn't support more than one streaming dimension.");
         }
 
-        let datatype = match datatype.to_lowercase().as_str() {
+        let datum_type = match datum_type.to_lowercase().as_str() {
             "f64" => DatumType::F64,
             "f32" => DatumType::F32,
             "i32" => DatumType::I32,
@@ -288,7 +288,7 @@ impl InputParameters {
         Ok(InputParameters {
             data: None,
             shape,
-            datatype,
+            datum_type,
         })
     }
 
@@ -300,7 +300,7 @@ impl InputParameters {
 
         let mut lines = data.lines();
         let InputParameters {
-            shape, datatype, ..
+            shape, datum_type, ..
         } = InputParameters::for_size(lines.next().ok_or("Empty data file")?)?;
 
         let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<_>>();
@@ -322,7 +322,7 @@ impl InputParameters {
             }};
         }
 
-        let tensor = match datatype {
+        let tensor = match datum_type {
             DatumType::F64 => for_type!(f64).into(),
             DatumType::F32 => for_type!(f32).into(),
             DatumType::I32 => for_type!(i32).into(),
@@ -334,7 +334,7 @@ impl InputParameters {
         Ok(InputParameters {
             data: Some(tensor),
             shape,
-            datatype,
+            datum_type,
         })
     }
 
@@ -356,7 +356,7 @@ impl InputParameters {
             })
             .collect::<Vec<_>>();
         TensorFact {
-            datatype: typefact!(self.datatype),
+            datum_type: typefact!(self.datum_type),
             shape: ShapeFact::closed(dims.clone()),
             value: valuefact!(_),
         }
@@ -373,7 +373,7 @@ impl InputParameters {
             if self.streaming() && streaming_dim.is_none() {
                 Err("random tensor requires a streaming dim")?
             }
-            Ok(utils::random_tensor(self.shape.iter().map(|d| d.unwrap_or(streaming_dim.unwrap())).collect(), self.datatype))
+            Ok(utils::random_tensor(self.shape.iter().map(|d| d.unwrap_or(streaming_dim.unwrap())).collect(), self.datum_type))
         }
     }
 }

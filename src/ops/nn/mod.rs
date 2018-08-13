@@ -61,7 +61,7 @@ impl InferenceRulesOp for Softmax {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[0].shape, &outputs[0].shape);
     }
 }

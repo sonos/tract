@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn solver_dynamic_size() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[1].datatype, DatumType::I32);
+        solver.equals(&inputs[1].datum_type, DatumType::I32);
 
         let facts = solver
             .infer((vec![TensorFact::new(), TensorFact::new()], vec![]))
@@ -452,7 +452,7 @@ mod tests {
             vec![
                 TensorFact::new(),
                 TensorFact {
-                    datatype: typefact!(DatumType::I32),
+                    datum_type: typefact!(DatumType::I32),
                     ..TensorFact::new()
                 },
             ],

@@ -109,12 +109,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_datatype(&self, name: &str) -> ::Result<::DatumType> {
-        Ok(self.get_attr_opt_datatype(name)?
-            .ok_or_else(|| format!("Node {} ({}) expected datatype attribute '{}'", self.get_name(), self.get_op(), name))?)
+    pub fn get_attr_datum_type(&self, name: &str) -> ::Result<::DatumType> {
+        Ok(self.get_attr_opt_datum_type(name)?
+            .ok_or_else(|| format!("Node {} ({}) expected datum_type attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_datatype(&self, name: &str) -> ::Result<Option<::DatumType>> {
+    pub fn get_attr_opt_datum_type(&self, name: &str) -> ::Result<Option<::DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
             Ok(Some(::DatumType::from_pb(&t.get_field_type())?))
         } else {

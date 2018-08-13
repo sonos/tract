@@ -162,7 +162,7 @@ fn debug_tensorfacts_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt
 fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> Result<Wrapped> {
     match path {
         // Get the type of the TensorFact.
-        [0] => Ok(fact.datatype.clone().wrap()),
+        [0] => Ok(fact.datum_type.clone().wrap()),
 
         // Get the rank of the TensorFact.
         [1] => if fact.shape.open {
@@ -188,7 +188,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
         // Set the type of the TensorFact.
         [0] => {
             let value = TypeFact::from_wrapped(value)?;
-            fact.datatype = value.unify(&fact.datatype)?;
+            fact.datum_type = value.unify(&fact.datum_type)?;
             Ok(())
         }
 
@@ -233,7 +233,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             fact.value = fact.value.unify(&value)?;
             if let Some(tensor) = fact.value.concretize() {
                 fact.shape = fact.shape.unify(&ShapeFact::from(tensor.shape()))?;
-                fact.datatype = fact.datatype.unify(&TypeFact::from(tensor.datatype()))?;
+                fact.datum_type = fact.datum_type.unify(&TypeFact::from(tensor.datum_type()))?;
             }
             Ok(())
         }
@@ -254,7 +254,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
 fn debug_tensorfact_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
     match path {
         [] => Ok(()),
-        [0] => write!(formatter, ".datatype"),
+        [0] => write!(formatter, ".datum_type"),
         [1] => write!(formatter, ".rank"),
         [2] => write!(formatter, ".shape"),
         [2, k] => write!(formatter, ".shape[{}]", k),

@@ -20,8 +20,8 @@ pub mod prelude {
         x.unify(y)
     }
 
-    /// Attempts to unify two datatype facts.
-    pub fn unify_datatype(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
+    /// Attempts to unify two datum_type facts.
+    pub fn unify_datum_type(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
         x.unify(y)
     }
 
@@ -349,28 +349,28 @@ impl Analyser {
 #[cfg(tests)]
 mod tests {
     #[test]
-    fn unify_same_datatype() {
+    fn unify_same_datum_type() {
         let dt = TypeFact::Only(DatumType::DT_FLOAT);
-        assert_eq!(unify_datatype(&dt, &dt).unwrap(), dt);
+        assert_eq!(unify_datum_type(&dt, &dt).unwrap(), dt);
     }
 
     #[test]
-    fn unify_different_datatypes_only() {
+    fn unify_different_datum_types_only() {
         let dt1 = TypeFact::Only(DatumType::DT_FLOAT);
         let dt2 = TypeFact::Only(DatumType::DT_DOUBLE);
-        assert!(unify_datatype(&dt1, &dt2).is_err());
+        assert!(unify_datum_type(&dt1, &dt2).is_err());
     }
 
     #[test]
-    fn unify_different_datatypes_any_left() {
+    fn unify_different_datum_types_any_left() {
         let dt = TypeFact::Only(DatumType::DT_FLOAT);
-        assert_eq!(unify_datatype(&TypeFact::Any, &dt).unwrap(), dt);
+        assert_eq!(unify_datum_type(&TypeFact::Any, &dt).unwrap(), dt);
     }
 
     #[test]
-    fn unify_different_datatypes_any_right() {
+    fn unify_different_datum_types_any_right() {
         let dt = TypeFact::Only(DatumType::DT_FLOAT);
-        assert_eq!(unify_datatype(&dt, &TypeFact::Any).unwrap(), dt);
+        assert_eq!(unify_datum_type(&dt, &TypeFact::Any).unwrap(), dt);
     }
 
     #[test]

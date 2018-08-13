@@ -98,9 +98,9 @@ impl InferenceRulesOp for ExpandDims {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&dims.datatype, DatumType::I32)
+            .equals(&dims.datum_type, DatumType::I32)
             .equals(&dims.rank, 0)
-            .equals(&data.datatype, &output.datatype)
+            .equals(&data.datum_type, &output.datum_type)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
             .given(&dims.value, move |solver, index: Tensor| {
                 let index = index.as_i32().unwrap() as usize; // enforced
@@ -164,7 +164,7 @@ impl InferenceRulesOp for Identity {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&inputs[0].datatype, &outputs[0].datatype)
+            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[0].shape, &outputs[0].shape);
     }
 }
@@ -177,7 +177,7 @@ pub struct Placeholder {
 impl Placeholder {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Placeholder {
-            dtype: node.get_attr_datatype("dtype")?,
+            dtype: node.get_attr_datum_type("dtype")?,
         }))
     }
 }
@@ -216,7 +216,7 @@ impl InferenceRulesOp for Placeholder {
         solver
             .equals(&inputs.len, 0)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datatype, self.dtype);
+            .equals(&outputs[0].datum_type, self.dtype);
     }
 }
 
@@ -253,7 +253,7 @@ impl InferenceRulesOp for Shape {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datatype, DatumType::I32)
+            .equals(&outputs[0].datum_type, DatumType::I32)
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
@@ -300,13 +300,13 @@ mod tests {
     #[test]
     fn shape_inference_1() {
         let input = TensorFact {
-            datatype: typefact!(DatumType::F32),
+            datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, _, _; ..],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![_],
             value: valuefact!(_),
         };
@@ -317,13 +317,13 @@ mod tests {
     #[test]
     fn shape_inference_2() {
         let input = TensorFact {
-            datatype: typefact!(DatumType::F32),
+            datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, _, _],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(_),
         };
@@ -334,13 +334,13 @@ mod tests {
     #[test]
     fn shape_inference_3() {
         let input = TensorFact {
-            datatype: typefact!(DatumType::F32),
+            datum_type: typefact!(DatumType::F32),
             shape: shapefact![1, 2, 3],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };
@@ -351,13 +351,13 @@ mod tests {
     #[test]
     fn shape_inference_4() {
         let input = TensorFact {
-            datatype: typefact!(_),
+            datum_type: typefact!(_),
             shape: shapefact![_, 2, 3],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DatumType::I32),
+            datum_type: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };

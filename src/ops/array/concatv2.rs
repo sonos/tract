@@ -4,8 +4,8 @@ use ops::prelude::*;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let n = pb.get_attr_int("N")?;
-    let t = pb.get_attr_datatype("T")?;
-    let tidx = pb.get_attr_datatype("Tidx")?;
+    let t = pb.get_attr_datum_type("T")?;
+    let tidx = pb.get_attr_datum_type("Tidx")?;
     Ok(boxed_new!(ConcatV2(t)(n, tidx)))
 }
 
@@ -21,7 +21,7 @@ impl<T: Datum> Op for ConcatV2<T> {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
             "n" => Attr::Usize(self.n),
-            "t" => Attr::DatumType(T::datatype()),
+            "t" => Attr::DatumType(T::datum_type()),
             "tidx" => Attr::DatumType(self.tidx),
         }
     }
@@ -106,9 +106,9 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         solver
             .equals(&inputs.len, n as isize + 1)
             .equals(&outputs.len, 1)
-            .equals_all((0..self.n).map(|i| bexp(&inputs[i].datatype)).collect())
-            .equals(&outputs[0].datatype, &inputs[0].datatype)
-            .equals(&inputs[n].datatype, DatumType::I32)
+            .equals_all((0..self.n).map(|i| bexp(&inputs[i].datum_type)).collect())
+            .equals(&outputs[0].datum_type, &inputs[0].datum_type)
+            .equals(&inputs[n].datum_type, DatumType::I32)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
             .equals(&inputs[n].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].rank)

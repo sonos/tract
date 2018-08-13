@@ -42,7 +42,7 @@ fn build_streaming_plan(params: &Parameters) -> Result<(StreamingPlan, Tensor)> 
         .iter()
         .map(|d| d.unwrap_or(1))
         .collect::<Vec<_>>();
-    let chunk = random_tensor(chunk_shape, input.datatype);
+    let chunk = random_tensor(chunk_shape, input.datum_type);
 
     Ok((plan, chunk))
 }
@@ -164,7 +164,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     let data = input
         .data
         .take()
-        .unwrap_or_else(|| random_tensor(shape, input.datatype));
+        .unwrap_or_else(|| random_tensor(shape, input.datum_type));
 
     // Split the input data into chunks along the streaming axis.
     macro_rules! split_inner {

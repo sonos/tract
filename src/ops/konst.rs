@@ -17,10 +17,10 @@ pub struct Const {
 
 impl Const {
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let dtype = node.get_attr_datatype("dtype")?;
+        let dtype = node.get_attr_datum_type("dtype")?;
         let mat = node.get_attr_tensor("value")?;
 
-        if mat.datatype() != dtype {
+        if mat.datum_type() != dtype {
             bail!(
                 "Const node {:?} doesn't have the expected {:?} type.",
                 mat,
