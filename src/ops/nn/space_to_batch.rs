@@ -69,6 +69,15 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{ "T" => Attr::DataType(T::datatype()) }
     }
+
+    fn step(
+        &self,
+        inputs: Vec<StepValue>,
+        _buffer: &mut Box<OpBuffer>,
+    ) -> Result<Option<Vec<TensorView>>> {
+        println!("inputs {:?}", inputs);
+        panic!()
+    }
 }
 
 impl<T: Datum> InferenceRulesOp for SpaceToBatch<T> {

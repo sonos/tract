@@ -108,7 +108,7 @@ impl<T: Datum> Op for Conv2D<T> {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         // We only support the VALID padding strategy for now, with the
@@ -122,26 +122,18 @@ impl<T: Datum> Op for Conv2D<T> {
         // the k following chunks to compte one output chunk, with k the
         // strides in the streaming dimension.
 
-        let (mut data, mut filter) = args_2!(inputs);
-
-        if filter.0.is_some() || filter.1.is_none() {
-            bail!("Filter input should not be streamed.");
-        }
-
-        if data.0.is_none() {
-            bail!("Data input should be streamed.");
-        }
-
-        // Maybe there is no incoming chunk.
-        if data.1.is_none() {
-            return Ok(None);
-        }
+        let (data, filter) = args_2!(inputs);
+        let filter = filter.into_const().ok_or("filter can not be streamed")?;
+        let (dim, chunk) = data.into_stream().ok_or("data must be streamed")?;
+        let chunk = if let Some(chunk) = chunk {
+            chunk
+        } else {
+            return Ok(None)
+        };
 
         // Maybe the data is streamed along the batch dimension.
-        let dim = data.0.unwrap();
         if dim == 0 {
-            let result = self.eval(vec![data.1.take().unwrap(), filter.1.take().unwrap()])?;
-
+            let result = self.eval(vec!(chunk, filter))?;
             return Ok(Some(result));
         }
 
@@ -149,12 +141,13 @@ impl<T: Datum> Op for Conv2D<T> {
             bail!("Conv2D only supports batch, width and height streaming.");
         }
 
-        let data = data.1.take().unwrap().into_tensor();
+        let data = chunk.into_tensor();
         let data = into_4d(T::tensor_into_array(data)?)?;
         let data_size = data.shape()[dim];
-        debug_assert!(data_size == 1);
+        if data_size != 1 {
+            bail!("Conv2D expects chunks of dim 1 in streamed dim");
+        }
 
-        let filter = filter.1.take().unwrap();
         let filter = T::tensor_to_view(&*filter)?;
         let filter_size = filter.shape()[dim - 1];
 

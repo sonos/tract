@@ -4,6 +4,7 @@ use std::collections::{HashMap, VecDeque};
 
 use super::*;
 use analyser::interface::*;
+use ops::StepValue;
 
 #[derive(Clone, Debug)]
 pub struct RawStreamingPlan {
@@ -155,7 +156,7 @@ impl StreamingModelState {
         mut node_step: W,
     ) -> Result<Vec<Vec<Tensor>>>
     where
-        W: FnMut(&Node, Vec<(Option<usize>, Option<ops::TensorView>)>, &mut Box<ops::OpBuffer>)
+        W: FnMut(&Node, Vec<StepValue>, &mut Box<ops::OpBuffer>)
             -> Result<Option<Vec<ops::TensorView>>>,
     {
         let mut queue = VecDeque::new();
@@ -172,7 +173,7 @@ impl StreamingModelState {
             let node = &self.plan.model.nodes[dst.0];
             debug!("Feeding node: {} {:?} ({}), chunk={:?} (stream dim: {})", node.id, node.name, node.op_name, chunk, dst.1);
 
-            let mut inputs = vec![];
+            let mut inputs:Vec<StepValue> = vec![];
 
             // We wrap chunk in an option because we want to capture
             // its value in one and only one of the iterations, but
@@ -181,34 +182,36 @@ impl StreamingModelState {
 
             for (ix, input) in node.inputs.iter().enumerate() {
                 let pred = &self.plan.model.nodes[input.0];
-                let dimension = self.plan.streaming_dimensions.get(&input).map(|i| *i);
 
-                let value = if let Some(v) = pred.op.const_value() {
+                let value = if let Some(dimension) = self.plan.streaming_dimensions.get(&input).map(|i| *i) {
+                    if ix == dst.1 {
+                        // The input is streamed, and we've got a new chunk to give it.
+                        // FIXME(liautaud): This doesn't work well if there are multiple
+                        // edges from node source to node k, because the condition above
+                        // will get verified for all edges but only one actually "holds"
+                        // the chunk. The others will be None, and the unwrap will fail.
+                        let chunk = chunk.take().ok_or("streamable edge used twice")?;
+
+                        // We only allow chunks of size 1 along the streaming dimension.
+                        if chunk.as_tensor().shape()[dimension] != 1 {
+                            bail!(
+                                "Trying to consume a chunk of size != 1 along the streaming dimension."
+                            );
+                        }
+
+                        StepValue::Stream(dimension, Some(chunk))
+                    } else {
+                        // The input is streamed, but this chunk is for another input.
+                        StepValue::Stream(dimension, None)
+                    }
+                } else {
                     // The input is not streamed, and so was turned into a constant
                     // node by the analyser when performing StreamingState::start.
-                    Some(v.into())
-                } else if ix == dst.1 {
-                    // The input is streamed, and we've got a new chunk to give it.
-                    // FIXME(liautaud): This doesn't work well if there are multiple
-                    // edges from node source to node k, because the condition above
-                    // will get verified for all edges but only one actually "holds"
-                    // the chunk. The others will be None, and the unwrap will fail.
-                    let chunk = chunk.take().unwrap();
-
-                    // We only allow chunks of size 1 along the streaming dimension.
-                    if chunk.as_tensor().shape()[dimension.unwrap()] != 1 {
-                        bail!(
-                            "Trying to consume a chunk of size != 1 along the streaming dimension."
-                        );
-                    }
-
-                    Some(chunk)
-                } else {
-                    // The input is streamed, but we don't have anything to give it yet.
-                    None
+                    StepValue::Const(pred.op.const_value()
+                        .ok_or("Streaming mode should have only const or streamable edges.")?.into())
                 };
 
-                inputs.push((dimension, value));
+                inputs.push(value);
             }
 
             let output = node_step(node, inputs, &mut self.buffers[node.id])?;

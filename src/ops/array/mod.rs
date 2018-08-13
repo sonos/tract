@@ -60,18 +60,24 @@ impl Op for ExpandDims {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         _: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         let (data, dims) = args_2!(inputs);
 
-        if dims.0.is_some() || dims.1.is_none() {
-            bail!("Dims input should not be streamed.");
-        }
+        let dims = if let StepValue::Const(dims) = dims {
+            dims
+        } else {
+            bail!("Dims input should not be streamed.")
+        };
 
-        let dims = dims.1.unwrap();
+        let data = if let StepValue::Stream(_, data) = data {
+            data
+        } else {
+            bail!("Data input should be streamed.")
+        };
 
-        match data.1 {
+        match data {
             None => Ok(None),
             Some(tv) => Ok(Some(self.eval(vec![tv, dims])?)),
         }
@@ -97,8 +103,7 @@ impl InferenceRulesOp for ExpandDims {
             .equals(&data.datatype, &output.datatype)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
             .given(&dims.value, move |solver, index: Tensor| {
-                let index = index.take_i32s().unwrap(); // already enforced
-                let index = index.as_slice().unwrap()[0] as usize; //already enforced
+                let index = index.as_i32().unwrap() as usize; // enforced
 
                 for i in 0..index {
                     solver.equals(&output.shape[i], &data.shape[i]);
@@ -138,11 +143,11 @@ impl Op for Identity {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         _: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         let input = args_1!(inputs);
-        match input.1 {
+        match input.into_value() {
             None => Ok(None),
             Some(tv) => Ok(Some(self.eval(vec![tv])?)),
         }

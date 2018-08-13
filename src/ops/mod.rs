@@ -31,7 +31,7 @@ pub mod nn;
 
 pub mod prelude {
     pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
-    pub use super::{OpBuffer, QueuesBuffer, TensorView};
+    pub use super::{OpBuffer, QueuesBuffer, TensorView, StepValue};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{DataType, Datum, Tensor};
@@ -126,6 +126,56 @@ impl PartialEq for TensorView {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum StepValue {
+    Const(TensorView),
+    Stream(usize, Option<TensorView>),
+}
+
+impl StepValue {
+    pub fn as_value(&self) -> Option<&TensorView> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            StepValue::Stream(_, v) => v.as_ref(),
+        }
+    }
+
+    pub fn into_value(self) -> Option<TensorView> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            StepValue::Stream(_, v) => v,
+        }
+    }
+
+    pub fn into_const(self) -> Option<TensorView> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn into_stream(self) -> Option<(usize, Option<TensorView>)> {
+        match self {
+            StepValue::Stream(d, v) => Some((d, v)),
+            _ => None
+        }
+    }
+
+    pub fn streaming_dim(&self) -> Option<usize> {
+        match self {
+            StepValue::Const(_) => None,
+            StepValue::Stream(d, _) => Some(*d),
+        }
+    }
+
+    pub fn is_const(&self) -> bool {
+        match self {
+            StepValue::Const(_) => true,
+            StepValue::Stream(_, _) => false,
+        }
+    }
+}
+
 // TODO(liautaud): Find a more generic way to do this.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone)]
@@ -176,7 +226,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// others will receive None.
     fn step(
         &self,
-        _inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        _inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         bail!("Streaming is not available for operator {:?}", self)
@@ -345,14 +395,14 @@ impl QueuesBuffer {
     }
 
     /// Appends a new TensorView to each queue in the buffer.
-    pub fn append(&mut self, views: &mut [(Option<usize>, Option<TensorView>)]) -> Result<()> {
+    pub fn append(&mut self, views: Vec<StepValue>) -> Result<()> {
         if views.len() > self.0.len() {
             bail!("There are more input TensorViews than queues in the buffer.");
         }
 
-        for (i, view) in views.iter_mut().enumerate() {
-            if view.1.is_some() {
-                self.0[i].push_back(view.1.take().unwrap())
+        for (i, view) in views.into_iter().enumerate() {
+            if let Some(v) = view.into_value() {
+                self.0[i].push_back(v);
             }
         }
 

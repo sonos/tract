@@ -28,13 +28,7 @@ impl<T: Datum> Op for ConcatV2<T> {
 
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
-        let axis: i32 = *inputs
-            .remove(self.n)
-            .as_i32s()
-            .ok_or("Expected a i32 matrix")?
-            .into_iter()
-            .next()
-            .unwrap();
+        let axis: i32 = inputs.pop().and_then(|t| t.as_i32()).ok_or("Expected a i32 scalar")?;
         let mats: Result<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| T::tensor_to_view(&mat)).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
@@ -51,7 +45,7 @@ impl<T: Datum> Op for ConcatV2<T> {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         // According to https://www.tensorflow.org/api_docs/python/tf/concat,
@@ -65,37 +59,25 @@ impl<T: Datum> Op for ConcatV2<T> {
         //   until we have a chunk for each, and we push their concatenation
         //   as the output chunk.
 
-        if inputs[self.n].0.is_some() || inputs[self.n].1.is_none() {
-            bail!("Axis input should not be streamed.");
-        }
+        let n = inputs.pop().ok_or("Unexpectedly found zero inputs in ConcatV2")?;
+        let axis_tensor = n.into_const().ok_or("Axis input should not be streamed.")?;
+        let axis: i32 = axis_tensor.as_i32().ok_or("Expected a i32 scalar")?;
 
-        let axis_tensor = inputs[self.n].1.take().unwrap();
-        let axis: i32 = axis_tensor
-            .as_i32s()
-            .ok_or("Expected a i32 matrix")?
-            .iter()
-            .next()
-            .unwrap()
-            .clone();
-
-        if inputs[0..self.n].iter().all(|i| i.0 == Some(axis as usize)) {
+        if inputs.iter().all(|i| i.streaming_dim() == Some(axis as usize)) {
             // All the input tensors are streamed along `axis`.
-            let chunk = inputs[0..self.n]
-                .iter_mut()
-                .find(|i| i.1.is_some())
-                .unwrap()
-                .1
-                .take()
-                .unwrap();
+            let chunk = inputs
+                .into_iter()
+                .map(|sv| sv.into_value().ok_or("Expected a value".into()))
+                .collect::<Result<Vec<TensorView>>>()?;
 
-            Ok(Some(vec![chunk]))
+            Ok(Some(chunk))
         } else {
             // All the input tensors are streamed along a non-`axis` dimension.
             let buffer = buffer
                 .downcast_mut::<QueuesBuffer>()
                 .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
 
-            buffer.append(&mut inputs[0..self.n])?;
+            buffer.append(inputs)?;
 
             if buffer.iter_mut().any(|q| q.is_empty()) {
                 Ok(None)
@@ -131,7 +113,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
             .equals(&inputs[n].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].rank)
             .given(&inputs[n].value, move |solver, axis: Tensor| {
-                let axis = *axis.as_i32s().unwrap().iter().next().unwrap() as usize; // both checked
+                let axis = axis.as_i32().unwrap() as usize; // checked
                 trace!("axis for Concatv2: {}", axis);
                 (0..axis).for_each(|d| {
                     solver.equals_all((0..n).map(|i| bexp(&inputs[i].shape[d])).collect());

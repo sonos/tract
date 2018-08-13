@@ -281,7 +281,7 @@ impl Serialize for Tensor {
 }
 
 macro_rules! tensor {
-    ($t:ident, $v:ident, $as:ident, $take:ident, $make:ident) => {
+    ($t:ident, $v:ident, $as_one:ident, $as:ident, $take:ident, $make:ident) => {
         impl<D: ::ndarray::Dimension> From<Array<$t, D>> for Tensor {
             fn from(it: Array<$t, D>) -> Tensor {
                 Tensor::$v(it.into_dyn())
@@ -289,6 +289,18 @@ macro_rules! tensor {
         }
 
         impl Tensor {
+            pub fn $as_one(&self) -> Option<$t> {
+                if let &Tensor::$v(ref it) = self {
+                    if it.shape().len() == 0 {
+                        Some(*it.iter().next().unwrap())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+
             pub fn $as(&self) -> Option<&ArrayD<$t>> {
                 if let &Tensor::$v(ref it) = self {
                     Some(it)
@@ -346,11 +358,11 @@ macro_rules! tensor {
     };
 }
 
-tensor!(f64, F64, as_f64s, take_f64s, f64s);
-tensor!(f32, F32, as_f32s, take_f32s, f32s);
-tensor!(i32, I32, as_i32s, take_i32s, i32s);
-tensor!(u8, U8, as_u8s, take_u8s, u8s);
-tensor!(i8, I8, as_i8s, take_i8s, i8s);
+tensor!(f64, F64, as_f64, as_f64s, take_f64s, f64s);
+tensor!(f32, F32, as_f32, as_f32s, take_f32s, f32s);
+tensor!(i32, I32, as_i32, as_i32s, take_i32s, i32s);
+tensor!(u8, U8, as_u8, as_u8s, take_u8s, u8s);
+tensor!(i8, I8, as_i8, as_i8s, take_i8s, i8s);
 
 #[macro_export]
 macro_rules! map_tensor {

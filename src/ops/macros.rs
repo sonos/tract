@@ -35,11 +35,11 @@ macro_rules! element_map_float {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                mut inputs: Vec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
             ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
                 let a = args_1!(inputs);
-                match a.1 {
+                match a.into_value() {
                     None => Ok(None),
                     Some(tv) => Ok(Some(self.eval(vec![tv])?)),
                 }
@@ -106,11 +106,11 @@ macro_rules! element_map_signed {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                mut inputs: Vec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
             ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
                 let a = args_1!(inputs);
-                match a.1 {
+                match a.into_value() {
                     None => Ok(None),
                     Some(tv) => Ok(Some(self.eval(vec![tv])?)),
                 }
@@ -174,7 +174,7 @@ macro_rules! element_bin {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<(Option<usize>, Option<$crate::ops::TensorView>)>,
+                inputs: Vec<$crate::ops::StepValue>,
                 buffer: &mut Box<$crate::ops::OpBuffer>,
             ) -> Result<Option<Vec<$crate::ops::TensorView>>> {
                 let buffer = buffer.downcast_mut::<$crate::ops::QueuesBuffer>()
@@ -182,7 +182,7 @@ macro_rules! element_bin {
 
                 // If we don't have a value for some of the inputs yet, we buffer
                 // the current values to reuse them on the next call.
-                buffer.append(&mut inputs)?;
+                buffer.append(inputs)?;
 
                 if buffer[0].is_empty() || buffer[1].is_empty() {
                     Ok(None)

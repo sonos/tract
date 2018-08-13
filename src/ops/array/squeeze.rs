@@ -65,11 +65,11 @@ impl<T: Datum> Op for Squeeze<T> {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<(Option<usize>, Option<TensorView>)>,
+        mut inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<TensorView>>> {
         let input = args_1!(inputs);
-        if let (Some(stream), Some(chunk)) = input {
+        if let StepValue::Stream(stream, Some(chunk)) = input {
             let chunk = T::tensor_into_array(chunk.into_tensor())?;
             let shape = self.squeeze_shape(chunk.shape(), Some(stream));
             Ok(Some(vec![
