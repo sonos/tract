@@ -41,6 +41,34 @@ where
             "N"    => Attr::Usize(self.n),
         }
     }
+
+    /// Returns a new streaming buffer for the operation.
+    fn new_buffer(&self) -> Box<OpBuffer> {
+        Box::new(QueuesBuffer::new(self.n))
+    }
+
+    fn step(
+        &self,
+        inputs: Vec<StepValue>,
+        buffer: &mut Box<OpBuffer>,
+    ) -> Result<Option<Vec<Value>>> {
+        let buffer = buffer
+            .downcast_mut::<QueuesBuffer>()
+            .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
+
+        buffer.append(inputs)?;
+
+        if buffer.iter().any(|q| q.is_empty()) {
+            Ok(None)
+        } else {
+            let chunks = buffer
+                .iter_mut()
+                .map(|b| b.pop_front().unwrap())
+                .collect::<Vec<_>>();
+
+            Ok(Some(self.eval(chunks)?))
+        }
+    }
 }
 
 impl<T: Datum> InferenceRulesOp for AddN<T> {
