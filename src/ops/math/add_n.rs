@@ -23,7 +23,7 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         if inputs.len() != self.n || self.n == 0 {
             bail!("Expected {} inputs", self.n);
         }
@@ -37,7 +37,7 @@ where
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "T"    => Attr::DataType(T::datatype()),
+            "T"    => Attr::DatumType(T::datatype()),
             "N"    => Attr::Usize(self.n),
         }
     }

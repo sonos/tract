@@ -109,14 +109,14 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_datatype(&self, name: &str) -> ::Result<::DataType> {
+    pub fn get_attr_datatype(&self, name: &str) -> ::Result<::DatumType> {
         Ok(self.get_attr_opt_datatype(name)?
             .ok_or_else(|| format!("Node {} ({}) expected datatype attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_datatype(&self, name: &str) -> ::Result<Option<::DataType>> {
+    pub fn get_attr_opt_datatype(&self, name: &str) -> ::Result<Option<::DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
-            Ok(Some(::DataType::from_pb(&t.get_field_type())?))
+            Ok(Some(::DatumType::from_pb(&t.get_field_type())?))
         } else {
             Ok(None)
         }
@@ -164,8 +164,8 @@ impl node_def::NodeDef {
     }
 }
 
-impl From<::DataType> for AttrValue {
-    fn from(t: ::DataType) -> AttrValue {
+impl From<::DatumType> for AttrValue {
+    fn from(t: ::DatumType) -> AttrValue {
         t.to_pb().into()
     }
 }

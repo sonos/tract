@@ -31,7 +31,7 @@ impl Softmax {
 
 impl Op for Softmax {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
             .into_tensor()

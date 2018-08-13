@@ -40,7 +40,7 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::tfpb;
-use tfdeploy::{DataType, Tensor};
+use tfdeploy::{DatumType, Tensor};
 use tfdeploy::analyser::TensorFact;
 use tfpb::graph::GraphDef;
 
@@ -242,7 +242,7 @@ impl Parameters {
 pub struct InputParameters {
     data: Option<Tensor>,
     shape: Vec<Option<usize>>,
-    datatype: DataType,
+    datatype: DatumType,
 }
 
 impl InputParameters {
@@ -277,11 +277,11 @@ impl InputParameters {
         }
 
         let datatype = match datatype.to_lowercase().as_str() {
-            "f64" => DataType::F64,
-            "f32" => DataType::F32,
-            "i32" => DataType::I32,
-            "i8" => DataType::I8,
-            "u8" => DataType::U8,
+            "f64" => DatumType::F64,
+            "f32" => DatumType::F32,
+            "i32" => DatumType::I32,
+            "i8" => DatumType::I8,
+            "u8" => DatumType::U8,
             _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
         };
 
@@ -323,11 +323,11 @@ impl InputParameters {
         }
 
         let tensor = match datatype {
-            DataType::F64 => for_type!(f64).into(),
-            DataType::F32 => for_type!(f32).into(),
-            DataType::I32 => for_type!(i32).into(),
-            DataType::I8 => for_type!(i8).into(),
-            DataType::U8 => for_type!(u8).into(),
+            DatumType::F64 => for_type!(f64).into(),
+            DatumType::F32 => for_type!(f32).into(),
+            DatumType::I32 => for_type!(i32).into(),
+            DatumType::I8 => for_type!(i8).into(),
+            DatumType::U8 => for_type!(u8).into(),
             _ => unimplemented!(),
         };
 

@@ -76,7 +76,7 @@ impl<T: Datum> Op for Conv2D<T> {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         let mut attributes = hashmap!{
-            "T" => Attr::DataType(T::datatype()),
+            "T" => Attr::DatumType(T::datatype()),
         };
 
         attributes.extend(self.0.get_attributes());
@@ -84,7 +84,7 @@ impl<T: Datum> Op for Conv2D<T> {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = T::tensor_into_array(m_data.into_tensor())?;
         let filter = T::tensor_to_view(&*m_filter)?;
@@ -110,7 +110,7 @@ impl<T: Datum> Op for Conv2D<T> {
         &self,
         mut inputs: Vec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         // We only support the VALID padding strategy for now, with the
         // streaming dimension being either the width or the height.
 

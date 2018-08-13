@@ -157,12 +157,12 @@ impl StreamingModelState {
     ) -> Result<Vec<Vec<Tensor>>>
     where
         W: FnMut(&Node, Vec<StepValue>, &mut Box<ops::OpBuffer>)
-            -> Result<Option<Vec<ops::TensorView>>>,
+            -> Result<Option<Vec<ops::Value>>>,
     {
         let mut queue = VecDeque::new();
         let mut outputs = vec![];
 
-        let input_view = ops::TensorView::from(input_chunk).into_shared();
+        let input_view = ops::Value::from(input_chunk).into_shared();
 
         let input = self.plan.input_nodes[input_id];
         for dst in &self.plan.successors[input.0][input.1] {
@@ -230,7 +230,7 @@ impl StreamingModelState {
             }
         }
 
-        // Convert the output TensorViews to Tensors.
+        // Convert the output Values to Tensors.
         let outputs = outputs
             .into_iter()
             .map(|chunks| chunks.into_iter().map(|tv| tv.into_tensor()).collect())

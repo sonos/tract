@@ -7,7 +7,7 @@ use serde::ser::{Serialize, Serializer};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub enum DataType {
+pub enum DatumType {
     U8,
     I8,
     I32,
@@ -16,29 +16,29 @@ pub enum DataType {
     String,
 }
 
-impl DataType {
-    pub fn from_pb(t: &::tfpb::types::DataType) -> ::Result<DataType> {
+impl DatumType {
+    pub fn from_pb(t: &::tfpb::types::DataType) -> ::Result<DatumType> {
         use tfpb::types::DataType as Tfpb;
         match t {
-            &Tfpb::DT_UINT8 => Ok(DataType::U8),
-            &Tfpb::DT_INT8 => Ok(DataType::I8),
-            &Tfpb::DT_INT32 => Ok(DataType::I32),
-            &Tfpb::DT_FLOAT => Ok(DataType::F32),
-            &Tfpb::DT_DOUBLE => Ok(DataType::F64),
-            &Tfpb::DT_STRING => Ok(DataType::String),
-            _ => Err(format!("Unknown DataType {:?}", t))?,
+            &Tfpb::DT_UINT8 => Ok(DatumType::U8),
+            &Tfpb::DT_INT8 => Ok(DatumType::I8),
+            &Tfpb::DT_INT32 => Ok(DatumType::I32),
+            &Tfpb::DT_FLOAT => Ok(DatumType::F32),
+            &Tfpb::DT_DOUBLE => Ok(DatumType::F64),
+            &Tfpb::DT_STRING => Ok(DatumType::String),
+            _ => Err(format!("Unknown DatumType {:?}", t))?,
         }
     }
 
     pub fn to_pb(&self) -> ::tfpb::types::DataType {
         use tfpb::types::DataType as Tfpb;
         match self {
-            DataType::U8 => Tfpb::DT_UINT8,
-            DataType::I8 => Tfpb::DT_INT8,
-            DataType::I32 => Tfpb::DT_INT32,
-            DataType::F32 => Tfpb::DT_FLOAT,
-            DataType::F64 => Tfpb::DT_DOUBLE,
-            DataType::String => Tfpb::DT_STRING,
+            DatumType::U8 => Tfpb::DT_UINT8,
+            DatumType::I8 => Tfpb::DT_INT8,
+            DatumType::I32 => Tfpb::DT_INT32,
+            DatumType::F32 => Tfpb::DT_FLOAT,
+            DatumType::F64 => Tfpb::DT_DOUBLE,
+            DatumType::String => Tfpb::DT_STRING,
         }
     }
 }
@@ -61,7 +61,7 @@ pub trait Datum:
     + ::std::ops::RemAssign
 {
     fn name() -> &'static str;
-    fn datatype() -> DataType;
+    fn datatype() -> DatumType;
     fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
     fn tensor_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
@@ -133,15 +133,15 @@ impl Tensor {
         tensor.set_tensor_shape(shape);
         match self {
             &Tensor::F32(ref it) => {
-                tensor.set_dtype(DataType::F32.to_pb());
+                tensor.set_dtype(DatumType::F32.to_pb());
                 tensor.set_float_val(it.iter().cloned().collect());
             }
             &Tensor::F64(ref it) => {
-                tensor.set_dtype(DataType::F64.to_pb());
+                tensor.set_dtype(DatumType::F64.to_pb());
                 tensor.set_double_val(it.iter().cloned().collect());
             }
             &Tensor::I32(ref it) => {
-                tensor.set_dtype(DataType::I32.to_pb());
+                tensor.set_dtype(DatumType::I32.to_pb());
                 tensor.set_int_val(it.iter().cloned().collect());
             }
             _ => unimplemented!("missing type"),
@@ -160,13 +160,13 @@ impl Tensor {
         }
     }
 
-    pub fn datatype(&self) -> DataType {
+    pub fn datatype(&self) -> DatumType {
         match self {
-            &Tensor::F64(_) => DataType::F64,
-            &Tensor::F32(_) => DataType::F32,
-            &Tensor::I32(_) => DataType::I32,
-            &Tensor::I8(_) => DataType::I8,
-            &Tensor::U8(_) => DataType::U8,
+            &Tensor::F64(_) => DatumType::F64,
+            &Tensor::F32(_) => DatumType::F32,
+            &Tensor::I32(_) => DatumType::I32,
+            &Tensor::I8(_) => DatumType::I8,
+            &Tensor::U8(_) => DatumType::U8,
             _ => unimplemented!("missing type"),
         }
     }
@@ -337,8 +337,8 @@ macro_rules! tensor {
                 stringify!($t)
             }
 
-            fn datatype() -> DataType {
-                DataType::$v
+            fn datatype() -> DatumType {
+                DatumType::$v
             }
 
             fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>> {

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use super::{Attr, Op, OpRegister, TensorView};
+use super::{Attr, Op, OpRegister, Value};
 use analyser::interface::*;
 use std::sync::Arc;
-use {DataType, Result, Tensor};
+use {DatumType, Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
@@ -11,7 +11,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 
 #[derive(Debug, Clone)]
 pub struct Const {
-    dtype: DataType,
+    dtype: DatumType,
     value: Arc<Tensor>,
 }
 
@@ -37,14 +37,14 @@ impl Const {
 
 impl Op for Const {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
         Ok(vec![self.value.clone().into()])
     }
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "dtype" => Attr::DataType(self.dtype),
+            "dtype" => Attr::DatumType(self.dtype),
             "value" => Attr::Tensor(self.value.as_ref().clone()),
         }
     }

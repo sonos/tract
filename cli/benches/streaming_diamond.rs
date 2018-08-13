@@ -12,7 +12,7 @@ use criterion::Criterion;
 mod utils;
 
 fn streaming_diamond(c: &mut Criterion) {
-    let datatype = DataType::F32;
+    let datatype = DatumType::F32;
     let model = tfdeploy::for_path("../tests/models/diamond.pb").unwrap();
     let output = analyser::detect_output(&model).unwrap().unwrap();
 

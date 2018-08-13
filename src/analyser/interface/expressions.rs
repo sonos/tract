@@ -9,7 +9,7 @@ use analyser::interface::proxies::ComparableProxy;
 use analyser::interface::solver::Context;
 use analyser::types::SpecialKind;
 use analyser::types::{DimFact, Fact, IntFact, ShapeFact, TypeFact, ValueFact};
-use {DataType, Result, Tensor};
+use {DatumType, Result, Tensor};
 
 /// A trait for values produced by expressions.
 pub trait Output: fmt::Debug + Clone + PartialEq {
@@ -160,7 +160,7 @@ pub trait Expression: fmt::Debug {
     fn get_paths(&self) -> Vec<&Path>;
 }
 
-/// A constant expression (e.g. `2` or `DataType::DT_INT32`).
+/// A constant expression (e.g. `2` or `DatumType::DT_INT32`).
 pub struct ConstantExpression<T: Output>(T);
 
 impl<T: Output> Expression for ConstantExpression<T> {
@@ -310,15 +310,15 @@ impl<'a> IntoExpression<ConstantExpression<IntFact>> for &'a isize {
     }
 }
 
-/// Converts DataType to ConstantExpression.
-impl IntoExpression<ConstantExpression<TypeFact>> for DataType {
+/// Converts DatumType to ConstantExpression.
+impl IntoExpression<ConstantExpression<TypeFact>> for DatumType {
     fn into_expr(self) -> ConstantExpression<TypeFact> {
         ConstantExpression(self.into())
     }
 }
 
-/// Converts &DataType to ConstantExpression.
-impl<'a> IntoExpression<ConstantExpression<TypeFact>> for &'a DataType {
+/// Converts &DatumType to ConstantExpression.
+impl<'a> IntoExpression<ConstantExpression<TypeFact>> for &'a DatumType {
     fn into_expr(self) -> ConstantExpression<TypeFact> {
         ConstantExpression((*self).into())
     }

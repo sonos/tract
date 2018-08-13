@@ -12,7 +12,7 @@ pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 #[derive(Debug, Clone, new)]
 pub struct ConcatV2<T: Datum> {
     n: usize,
-    tidx: DataType,
+    tidx: DatumType,
     t: PhantomData<T>,
 }
 
@@ -21,13 +21,13 @@ impl<T: Datum> Op for ConcatV2<T> {
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
             "n" => Attr::Usize(self.n),
-            "t" => Attr::DataType(T::datatype()),
-            "tidx" => Attr::DataType(self.tidx),
+            "t" => Attr::DatumType(T::datatype()),
+            "tidx" => Attr::DatumType(self.tidx),
         }
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let axis: i32 = inputs.pop().and_then(|t| t.as_i32()).ok_or("Expected a i32 scalar")?;
         let mats: Result<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| T::tensor_to_view(&mat)).collect();
@@ -47,7 +47,7 @@ impl<T: Datum> Op for ConcatV2<T> {
         &self,
         mut inputs: Vec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         // According to https://www.tensorflow.org/api_docs/python/tf/concat,
         // the number of dimensions of each input tensor must match, and all
         // dimensions except `axis` must be equal. In particular, this means
@@ -68,7 +68,7 @@ impl<T: Datum> Op for ConcatV2<T> {
             let chunk = inputs
                 .into_iter()
                 .map(|sv| sv.into_value().ok_or("Expected a value".into()))
-                .collect::<Result<Vec<TensorView>>>()?;
+                .collect::<Result<Vec<Value>>>()?;
 
             Ok(Some(chunk))
         } else {
@@ -108,7 +108,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
             .equals(&outputs.len, 1)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].datatype)).collect())
             .equals(&outputs[0].datatype, &inputs[0].datatype)
-            .equals(&inputs[n].datatype, DataType::I32)
+            .equals(&inputs[n].datatype, DatumType::I32)
             .equals_all((0..self.n).map(|i| bexp(&inputs[i].rank)).collect())
             .equals(&inputs[n].rank, 0)
             .equals(&outputs[0].rank, &inputs[0].rank)

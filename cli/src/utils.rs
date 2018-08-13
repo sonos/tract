@@ -3,7 +3,7 @@ use errors::Result as CliResult;
 use ndarray;
 use rand;
 use rand::Rng;
-use tfdeploy::{DataType, Tensor};
+use tfdeploy::{DatumType, Tensor};
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]
@@ -43,7 +43,7 @@ where
 }
 
 /// Generates a random tensor of a given size and type.
-pub fn random_tensor(sizes: Vec<usize>, datatype: DataType) -> Tensor {
+pub fn random_tensor(sizes: Vec<usize>, datatype: DatumType) -> Tensor {
     macro_rules! for_type {
         ($t:ty) => {
             ndarray::Array::from_shape_fn(sizes, |_| rand::thread_rng().gen())
@@ -52,11 +52,11 @@ pub fn random_tensor(sizes: Vec<usize>, datatype: DataType) -> Tensor {
     }
 
     match datatype {
-        DataType::F64 => for_type!(f64).into(),
-        DataType::F32 => for_type!(f32).into(),
-        DataType::I32 => for_type!(i32).into(),
-        DataType::I8 => for_type!(i8).into(),
-        DataType::U8 => for_type!(u8).into(),
+        DatumType::F64 => for_type!(f64).into(),
+        DatumType::F32 => for_type!(f32).into(),
+        DatumType::I32 => for_type!(i32).into(),
+        DatumType::I8 => for_type!(i8).into(),
+        DatumType::U8 => for_type!(u8).into(),
         _ => unimplemented!("missing type"),
     }
 }

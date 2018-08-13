@@ -44,7 +44,7 @@ impl<T: Datum> Squeeze<T> {
 
 impl<T: Datum> Op for Squeeze<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let input = args_1!(inputs);
         let data = T::tensor_into_array(input.into_tensor())?;
         let shape = self.squeeze_shape(data.shape(), None);
@@ -55,7 +55,7 @@ impl<T: Datum> Op for Squeeze<T> {
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        let mut attrs = hashmap!{ "T" => Attr::DataType(T::datatype()) };
+        let mut attrs = hashmap!{ "T" => Attr::DatumType(T::datatype()) };
         if let Some(dim) = self.squeeze_dims.as_ref() {
             attrs.insert("squeeze_dims", Attr::IsizeVec(dim.clone()));
         }
@@ -67,7 +67,7 @@ impl<T: Datum> Op for Squeeze<T> {
         &self,
         mut inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         let input = args_1!(inputs);
         if let StepValue::Stream(stream, Some(chunk)) = input {
             let chunk = T::tensor_into_array(chunk.into_tensor())?;

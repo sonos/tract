@@ -81,7 +81,7 @@ pub mod tfpb;
 pub use errors::*;
 use std::path;
 
-pub use tensor::{DataType, Tensor};
+pub use tensor::{DatumType, Tensor};
 pub use model::{ Model, Node };
 pub use plan::SimplePlan;
 

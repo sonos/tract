@@ -350,26 +350,26 @@ impl Analyser {
 mod tests {
     #[test]
     fn unify_same_datatype() {
-        let dt = TypeFact::Only(DataType::DT_FLOAT);
+        let dt = TypeFact::Only(DatumType::DT_FLOAT);
         assert_eq!(unify_datatype(&dt, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_datatypes_only() {
-        let dt1 = TypeFact::Only(DataType::DT_FLOAT);
-        let dt2 = TypeFact::Only(DataType::DT_DOUBLE);
+        let dt1 = TypeFact::Only(DatumType::DT_FLOAT);
+        let dt2 = TypeFact::Only(DatumType::DT_DOUBLE);
         assert!(unify_datatype(&dt1, &dt2).is_err());
     }
 
     #[test]
     fn unify_different_datatypes_any_left() {
-        let dt = TypeFact::Only(DataType::DT_FLOAT);
+        let dt = TypeFact::Only(DatumType::DT_FLOAT);
         assert_eq!(unify_datatype(&TypeFact::Any, &dt).unwrap(), dt);
     }
 
     #[test]
     fn unify_different_datatypes_any_right() {
-        let dt = TypeFact::Only(DataType::DT_FLOAT);
+        let dt = TypeFact::Only(DatumType::DT_FLOAT);
         assert_eq!(unify_datatype(&dt, &TypeFact::Any).unwrap(), dt);
     }
 

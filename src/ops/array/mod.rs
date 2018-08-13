@@ -40,7 +40,7 @@ impl Op for ExpandDims {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (data, dims) = args_2!(inputs);
         let data = data.into_tensor()
             .take_f32s()
@@ -62,7 +62,7 @@ impl Op for ExpandDims {
         &self,
         mut inputs: Vec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         let (data, dims) = args_2!(inputs);
 
         let dims = if let StepValue::Const(dims) = dims {
@@ -98,7 +98,7 @@ impl InferenceRulesOp for ExpandDims {
         solver
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
-            .equals(&dims.datatype, DataType::I32)
+            .equals(&dims.datatype, DatumType::I32)
             .equals(&dims.rank, 0)
             .equals(&data.datatype, &output.datatype)
             .equals_zero(wrap![&data.rank, 1, (-1, &output.rank)])
@@ -136,7 +136,7 @@ impl Op for Identity {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>> {
         Ok(inputs)
     }
 
@@ -145,7 +145,7 @@ impl Op for Identity {
         &self,
         mut inputs: Vec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<TensorView>>> {
+    ) -> Result<Option<Vec<Value>>> {
         let input = args_1!(inputs);
         match input.into_value() {
             None => Ok(None),
@@ -171,7 +171,7 @@ impl InferenceRulesOp for Identity {
 
 #[derive(Debug, Clone)]
 pub struct Placeholder {
-    dtype: DataType,
+    dtype: DatumType,
 }
 
 impl Placeholder {
@@ -184,14 +184,14 @@ impl Placeholder {
 
 impl Op for Placeholder {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
         panic!("Placeholder should not get evaluated")
     }
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
-            "dtype" => Attr::DataType(self.dtype)
+            "dtype" => Attr::DatumType(self.dtype)
         }
     }
 
@@ -236,7 +236,7 @@ impl Op for Shape {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
         Ok(vec![Tensor::from(Array1::from_vec(shape)).into()])
@@ -253,7 +253,7 @@ impl InferenceRulesOp for Shape {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datatype, DataType::I32)
+            .equals(&outputs[0].datatype, DatumType::I32)
             .equals(&outputs[0].rank, 1)
             .equals(&outputs[0].shape[0], &inputs[0].rank)
             .given(&inputs[0].shape, move |solver, shape: ShapeFact| {
@@ -300,13 +300,13 @@ mod tests {
     #[test]
     fn shape_inference_1() {
         let input = TensorFact {
-            datatype: typefact!(DataType::F32),
+            datatype: typefact!(DatumType::F32),
             shape: shapefact![1, _, _; ..],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datatype: typefact!(DatumType::I32),
             shape: shapefact![_],
             value: valuefact!(_),
         };
@@ -317,13 +317,13 @@ mod tests {
     #[test]
     fn shape_inference_2() {
         let input = TensorFact {
-            datatype: typefact!(DataType::F32),
+            datatype: typefact!(DatumType::F32),
             shape: shapefact![1, _, _],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datatype: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(_),
         };
@@ -334,13 +334,13 @@ mod tests {
     #[test]
     fn shape_inference_3() {
         let input = TensorFact {
-            datatype: typefact!(DataType::F32),
+            datatype: typefact!(DatumType::F32),
             shape: shapefact![1, 2, 3],
             value: valuefact!(_),
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datatype: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };
@@ -357,7 +357,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datatype: typefact!(DataType::I32),
+            datatype: typefact!(DatumType::I32),
             shape: shapefact![3],
             value: valuefact!(Tensor::i32s(&[3], &[1, 2, 3]).unwrap()),
         };

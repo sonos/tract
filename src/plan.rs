@@ -4,7 +4,7 @@ use std::sync::Arc;
 use Result;
 use tensor::Tensor;
 use model::{ Model, Node, eval_order_for_nodes };
-use ops::{ TensorView };
+use ops::{ Value };
 
 #[derive(Debug,Clone)]
 pub struct RawSimplePlan {
@@ -53,7 +53,7 @@ impl SimplePlan {
 #[derive(Clone,Debug)]
 pub struct SimpleState {
     plan: SimplePlan,
-    pub values: Vec<Option<Vec<TensorView>>>,
+    pub values: Vec<Option<Vec<Value>>>,
 }
 
 impl SimpleState {
@@ -89,7 +89,7 @@ impl SimpleState {
                 .take()
                 .ok_or("Value is not computed")?
                 .into_iter()
-                .map(TensorView::into_tensor)
+                .map(Value::into_tensor)
                 .collect())
         }
         Ok(v)
@@ -102,7 +102,7 @@ impl SimpleState {
 
     pub fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.plan.model.nodes[node];
-        let mut inputs: Vec<TensorView> = vec![];
+        let mut inputs: Vec<Value> = vec![];
         for i in &node.inputs {
             let prec_node = &self.model().nodes[i.0];
             let prec = self.values[i.0].as_ref().ok_or(format!(
@@ -126,7 +126,7 @@ impl SimpleState {
             .take()
             .ok_or("Value is not computed")?
             .into_iter()
-            .map(TensorView::into_tensor)
+            .map(Value::into_tensor)
             .collect())
     }
 

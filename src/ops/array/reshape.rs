@@ -29,7 +29,7 @@ impl<T: Datum> Reshape<T> {
 
 impl<T: Datum> Op for Reshape<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<TensorView>) -> Result<Vec<TensorView>> {
+    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (input, dims) = args_2!(inputs);
 
         let input = T::tensor_into_array(input.into_tensor())?;
@@ -57,7 +57,7 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datatype, T::datatype())
-            .equals(&inputs[1].datatype, DataType::I32)
+            .equals(&inputs[1].datatype, DatumType::I32)
             .equals(&outputs[0].datatype, T::datatype())
             .equals(&inputs[1].rank, 1)
             .given(&inputs[0].rank, move |solver, input_rank| {

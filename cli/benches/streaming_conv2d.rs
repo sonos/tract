@@ -12,7 +12,7 @@ use tfdeploy::*;
 mod utils;
 
 fn streaming_conv2d(c: &mut Criterion) {
-    let datatype = DataType::F32;
+    let datatype = DatumType::F32;
     let model = tfdeploy::for_path("../tests/models/conv2d-large.pb").unwrap();
     let output = analyser::detect_output(&model).unwrap().unwrap();
 

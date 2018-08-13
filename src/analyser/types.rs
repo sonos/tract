@@ -6,7 +6,7 @@ use Result;
 use num_traits::cast::ToPrimitive;
 use num_traits::CheckedDiv;
 
-use DataType;
+use DatumType;
 use Tensor;
 
 /// Partial information about any value.
@@ -52,7 +52,7 @@ impl TensorFact {
         TensorFact::default()
     }
 
-    pub fn with_datatype(self, dt:DataType) -> TensorFact {
+    pub fn with_datatype(self, dt:DatumType) -> TensorFact {
         TensorFact {
             datatype: dt.into(),
             ..self
@@ -165,7 +165,7 @@ impl<T: fmt::Debug + Clone + PartialEq> From<T> for GenericFact<T> {
 }
 
 /// Partial information about a type.
-pub type TypeFact = GenericFact<DataType>;
+pub type TypeFact = GenericFact<DatumType>;
 
 /// Partial information about a shape.
 ///
