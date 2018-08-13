@@ -37,15 +37,21 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()
 
     let values = fixed_input[0].as_f32s().unwrap();
     let streaming_dim = input.to_fact().streaming_dim()?;
+    let mut matched = 0;
     for chunk in values.axis_chunks_iter(Axis(streaming_dim), 1) {
         let output = state.step(0, f32::array_into_tensor(chunk.to_owned()))?;
         if output.len() > 0 {
             let found: &Tensor = &output[0][0];
-            let expected: Tensor = expected_output.next().unwrap().to_owned().into();
-            assert!(found.close_enough(&expected));
+            // end padding may deprive us of some expected records
+            if let Some(expected) = expected_output.next() {
+                let expected = expected.to_owned().into();
+                assert!(found.close_enough(&expected));
+                matched += 1;
+            } else {
+                break;
+            }
         }
     }
-    assert!(expected_output.next().is_none());
-    info!("Looks good!");
+    info!("Looks good, matched {} outputs chunks", matched);
     Ok(())
 }

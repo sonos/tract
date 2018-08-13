@@ -72,11 +72,21 @@ impl<T: Datum> Op for SpaceToBatch<T> {
 
     fn step(
         &self,
-        inputs: Vec<StepValue>,
+        mut inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<Value>>> {
-        println!("inputs {:?}", inputs);
-        panic!()
+        let (input, block_shape, paddings) = args_3!(inputs);
+        let block_shape = block_shape.into_const().ok_or("Expected block_shape to be const")?;
+        let paddings = paddings.into_const().ok_or("Expected block_shape to be const")?;
+        let (dim, data) = input.into_stream().ok_or("Expected input to be a stream")?;
+        if let Some(data) = data {
+            if data.shape()[dim] != 1 {
+                bail!("Expected streaming dim to be 1")
+            }
+            Ok(Some(self.eval(vec!(data, block_shape, paddings))?))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -183,6 +193,25 @@ impl<T: Datum> Op for BatchToSpace<T> {
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
+    }
+
+    fn step(
+        &self,
+        mut inputs: Vec<StepValue>,
+        _buffer: &mut Box<OpBuffer>,
+    ) -> Result<Option<Vec<Value>>> {
+        let (input, block_shape, paddings) = args_3!(inputs);
+        let block_shape = block_shape.into_const().ok_or("Expected block_shape to be const")?;
+        let paddings = paddings.into_const().ok_or("Expected block_shape to be const")?;
+        let (dim, data) = input.into_stream().ok_or("Expected input to be a stream")?;
+        if let Some(data) = data {
+            if data.shape()[dim] != 1 {
+                bail!("Expected streaming dim to be 1")
+            }
+            Ok(Some(self.eval(vec!(data, block_shape, paddings))?))
+        } else {
+            Ok(None)
+        }
     }
 }
 

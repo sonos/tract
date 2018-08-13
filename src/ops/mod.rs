@@ -147,9 +147,23 @@ impl StepValue {
         }
     }
 
+    pub fn as_const(&self) -> Option<&Value> {
+        match self {
+            StepValue::Const(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn into_const(self) -> Option<Value> {
         match self {
             StepValue::Const(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn as_stream(&self) -> Option<(usize, Option<&Value>)> {
+        match self {
+            StepValue::Stream(d, v) => Some((*d, v.as_ref())),
             _ => None,
         }
     }
