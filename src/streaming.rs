@@ -8,8 +8,10 @@ use analyser::interface::*;
 #[derive(Clone, Debug)]
 pub struct RawStreamingPlan {
     model: Model,
+    // inputs nodes in the form (id, streaming dim)
+    input_nodes: Vec<(usize, usize)>,
     output_node: usize,
-    dimensions: HashMap<(usize, usize), usize>,
+    streaming_dimensions: HashMap<(usize, usize), usize>,
     // successors[src_node][src_port] -> vec<(dst_input, dst_ports)>
     successors: Vec<Vec<Vec<(usize, usize)>>>,
 }
@@ -27,10 +29,12 @@ impl RawStreamingPlan {
         };
 
         let mut analyser = Analyser::new(&model, &output_node.name)?;
+        let mut input_nodes = vec!();
 
         // Pre-compute the constant part of the graph using the analyser.
         for input in inputs {
             analyser.hint(input.0, &input.1)?;
+            input_nodes.push((model.node_by_name(input.0)?.id, input.1.streaming_dim()?));
         }
         analyser.analyse()?;
 
@@ -44,7 +48,7 @@ impl RawStreamingPlan {
             });
         });
 
-        let mut dimensions = HashMap::with_capacity(analyser.edges.len());
+        let mut streaming_dimensions = HashMap::with_capacity(analyser.edges.len());
         for edge in &analyser.edges {
             let source = &analyser.nodes[edge.from_node.unwrap()];
             let streamed = edge.fact.shape.dims.iter().position(|d| d.is_streamed());
@@ -57,18 +61,22 @@ impl RawStreamingPlan {
                     edge.from_out,
                 );
 
-                dimensions.insert((source.id, edge.from_out), streamed.unwrap());
+                streaming_dimensions.insert((source.id, edge.from_out), streamed.unwrap());
             }
         }
 
         Ok(RawStreamingPlan {
             model: model.clone(),
-            dimensions,
+            streaming_dimensions,
             successors,
             output_node: output_node.id,
+            input_nodes,
         })
     }
 
+    pub fn output_streaming_dim(&self) -> Result<usize> {
+        Ok(self.streaming_dimensions[&(self.output_node,0)])
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -130,8 +138,8 @@ impl StreamingModelState {
     /// The method will return a Vec<Vec<Tensor>>, which will contain
     /// a Vec<Tensor> for every chunk that was produced by the output
     /// during the evaluation step, with one Tensor per output port.
-    pub fn step(&mut self, input: (usize, usize), input_chunk: Tensor) -> Result<Vec<Vec<Tensor>>> {
-        self.step_wrapping_ops(input, input_chunk, |node, inputs, buffers| {
+    pub fn step(&mut self, input_id: usize, input_chunk: Tensor) -> Result<Vec<Vec<Tensor>>> {
+        self.step_wrapping_ops(input_id, input_chunk, |node, inputs, buffers| {
             node.op.step(inputs, buffers)
         })
     }
@@ -142,7 +150,7 @@ impl StreamingModelState {
     #[doc(hidden)]
     pub fn step_wrapping_ops<W>(
         &mut self,
-        input: (usize, usize),
+        input_id: usize,
         input_chunk: Tensor,
         mut node_step: W,
     ) -> Result<Vec<Vec<Tensor>>>
@@ -155,14 +163,15 @@ impl StreamingModelState {
 
         let input_view = ops::TensorView::from(input_chunk).into_shared();
 
+        let input = self.plan.input_nodes[input_id];
         for dst in &self.plan.successors[input.0][input.1] {
             queue.push_back((*dst, input_view.clone()));
         }
 
         while let Some((dst, chunk)) = queue.pop_front() {
-            debug!("Executing new edge: dst={:?}, chunk={:?}", dst, chunk);
-
             let node = &self.plan.model.nodes[dst.0];
+            debug!("Feeding node: {} {:?} ({}), chunk={:?} (stream dim: {})", node.id, node.name, node.op_name, chunk, dst.1);
+
             let mut inputs = vec![];
 
             // We wrap chunk in an option because we want to capture
@@ -172,7 +181,7 @@ impl StreamingModelState {
 
             for (ix, input) in node.inputs.iter().enumerate() {
                 let pred = &self.plan.model.nodes[input.0];
-                let dimension = self.plan.dimensions.get(&input).map(|i| *i);
+                let dimension = self.plan.streaming_dimensions.get(&input).map(|i| *i);
 
                 let value = if let Some(v) = pred.op.const_value() {
                     // The input is not streamed, and so was turned into a constant
@@ -209,8 +218,10 @@ impl StreamingModelState {
                     outputs.push(output_chunks.clone());
                 }
                 output_chunks.into_iter().enumerate().for_each(|(port, mut tensor)| {
-                    for dst in self.plan.successors[node.id][port].iter() {
-                        queue.push_back((*dst, tensor.share()));
+                    if let Some(dst) = self.plan.successors[node.id].get(port) {
+                        for dst in dst.iter() {
+                            queue.push_back((*dst, tensor.share()));
+                        }
                     }
                 });
             }

@@ -51,14 +51,15 @@ use format::Row;
 mod analyse;
 mod compare;
 mod display_graph;
-mod optimize_check;
 mod dump;
 mod errors;
 mod format;
 mod graphviz;
+mod optimize_check;
 mod profile;
 mod prune;
 mod rusage;
+mod stream_check;
 mod utils;
 mod web;
 
@@ -133,6 +134,10 @@ fn main() {
     let optimize_check = clap::SubCommand::with_name("optimize-check")
             .help("Compare output of optimized and un-optimized graph");
     app = app.subcommand(output_options(optimize_check));
+
+    let stream_check = clap::SubCommand::with_name("stream-check")
+            .help("Compare output of streamed and regular exec");
+    app = app.subcommand(output_options(stream_check));
 
     let matches = app.get_matches();
 
@@ -358,13 +363,17 @@ impl InputParameters {
     }
 
     fn to_tensor(&self) -> Result<Tensor> {
+        self.to_tensor_with_stream_dim(None)
+    }
+
+    fn to_tensor_with_stream_dim(&self, streaming_dim: Option<usize>) -> Result<Tensor> {
         if let Some(value) = self.data.as_ref() {
             Ok(value.clone())
         } else {
-            if self.streaming() {
-                Err("random tensor no available in streaming")?
+            if self.streaming() && streaming_dim.is_none() {
+                Err("random tensor requires a streaming dim")?
             }
-            Ok(utils::random_tensor(self.shape.iter().map(|d| d.unwrap()).collect(), self.datatype))
+            Ok(utils::random_tensor(self.shape.iter().map(|d| d.unwrap_or(streaming_dim.unwrap())).collect(), self.datatype))
         }
     }
 }
@@ -468,6 +477,11 @@ fn handle(matches: clap::ArgMatches) -> Result<()> {
         ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
 
         ("optimize-check", Some(m)) => optimize_check::handle(
+            params,
+            OutputParameters::from_clap(m)?
+        ),
+
+        ("stream-check", Some(m)) => stream_check::handle(
             params,
             OutputParameters::from_clap(m)?
         ),

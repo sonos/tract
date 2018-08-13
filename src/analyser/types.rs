@@ -65,6 +65,10 @@ impl TensorFact {
             ..self
         }
     }
+
+    pub fn streaming_dim(&self) -> Result<usize> {
+        self.shape.streaming_dim()
+    }
 }
 
 impl Fact for TensorFact {
@@ -87,6 +91,7 @@ impl Fact for TensorFact {
 
         Ok(tensor)
     }
+
 }
 
 impl<T: Into<Tensor>> From<T> for TensorFact {
@@ -187,6 +192,23 @@ impl ShapeFact {
     /// Constructs a closed shape fact.
     pub fn closed(dims: Vec<DimFact>) -> ShapeFact {
         ShapeFact { open: false, dims }
+    }
+
+    pub fn streaming_dim(&self) -> Result<usize> {
+        if self.open {
+            bail!("Shape is open, can not find streaming dim for sure.")
+        }
+        if self.dims.iter().any(|&d| d == DimFact::Any) {
+            bail!("Shape has unknown dims, can not find streaming dim for sure.")
+        }
+        let count = self.dims.iter().filter(|&&d| d == DimFact::Streamed).count();
+        if count > 1 {
+            bail!("Shape has more than one streaming dim. This is wrong.")
+        }
+        if count < 1 {
+            bail!("Shape has no streaming dim. This is wrong.")
+        }
+        Ok(self.dims.iter().position(|&d| d == DimFact::Streamed).unwrap())
     }
 }
 

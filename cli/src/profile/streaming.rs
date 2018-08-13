@@ -53,7 +53,7 @@ fn bufferize(state: &mut StreamingModelState, chunk: &Tensor) -> Result<()> {
     info!("Buffering...");
     let mut buffered = 0;
     loop {
-        let result = state.step((0, 0), chunk.clone())?;
+        let result = state.step(0, chunk.clone())?;
         if result.len() != 0 {
             break;
         }
@@ -90,7 +90,7 @@ pub fn handle_bench(
     let mut fed = 0;
     let mut read = 0;
     while fed < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let result = state.step((0,0), chunk.clone())?;
+        let result = state.step(0, chunk.clone())?;
         read += result.len();
         fed += 1;
     }
@@ -109,11 +109,10 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Res
     let mut state = plan.state()?;
     bufferize(&mut state, &chunk)?;
 
-    let input_id = state.model().node_by_name(&params.input_nodes[0])?.id;
     let mut profile = ProfileData::new(state.model());
     for _ in 0..100 {
         let _result = state.step_wrapping_ops(
-            (input_id, 0),
+            0,
             chunk.clone(),
             |node, input, buffer| {
                 let start = Instant::now();
@@ -189,36 +188,33 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     let mut profile = ProfileData::new(&plan.model());
 
     for (step, chunk) in chunks.into_iter().enumerate() {
-        for ref input in &params.input_nodes {
-            trace!("Starting step {:?} with input {:?}.", step, chunk);
+        trace!("Starting step {:?} with input {:?}.", step, chunk);
 
-            let mut input_chunks = vec![Some(chunk.clone()); 100];
-            let input = plan.model().node_by_name(&input)?;
-            let mut outputs = Vec::with_capacity(100);
-            let start = Instant::now();
+        let mut input_chunks = vec![Some(chunk.clone()); 100];
+        let mut outputs = Vec::with_capacity(100);
+        let start = Instant::now();
 
-            for i in 0..100 {
-                outputs.push(states[i].step_wrapping_ops(
-                    (input.id, 0),
-                    input_chunks[i].take().unwrap(),
-                    |node, input, buffer| {
-                        let start = Instant::now();
-                        let r = node.op.step(input, buffer)?;
-                        profile.add(node, Duration::since(&start, 1))?;
-                        Ok(r)
-                    },
-                ));
-            }
-
-            let measure = Duration::since(&start, 100);
-            println!(
-                "Completed step {:2} with output {:?} in: {}",
-                step,
-                outputs[0],
-                dur_avg_oneline(measure)
-            );
-            thread::sleep(::std::time::Duration::from_secs(1));
+        for i in 0..100 {
+            outputs.push(states[i].step_wrapping_ops(
+                0,
+                input_chunks[i].take().unwrap(),
+                |node, input, buffer| {
+                    let start = Instant::now();
+                    let r = node.op.step(input, buffer)?;
+                    profile.add(node, Duration::since(&start, 1))?;
+                    Ok(r)
+                },
+            ));
         }
+
+        let measure = Duration::since(&start, 100);
+        println!(
+            "Completed step {:2} with output {:?} in: {}",
+            step,
+            outputs[0],
+            dur_avg_oneline(measure)
+        );
+        thread::sleep(::std::time::Duration::from_secs(1));
     }
 
     println!();
