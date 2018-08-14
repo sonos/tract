@@ -230,8 +230,8 @@ impl StreamingModelState {
 
             let output = node_step(node, inputs, &mut self.buffers[node.id])?;
             debug!(
-                "Node: {} {:?} ({}), generated chunk={:?} (stream dim: {})",
-                node.id, node.name, node.op_name, &output, dst.1
+                "Node: {} {:?} ({}), generated chunk={:?}",
+                node.id, node.name, node.op_name, &output
             );
             if let Some(mut output_chunks) = output {
                 if node.id == self.plan.output_node {
@@ -242,6 +242,7 @@ impl StreamingModelState {
                     .into_iter()
                     .enumerate()
                     .for_each(|(port, mut tensor)| {
+                        assert_eq!(tensor.shape()[self.plan.streaming_dimensions[&(node.id,port)]], 1);
                         if let Some(dst) = self.plan.successors[node.id].get(port) {
                             for dst in dst.iter() {
                                 queue.push_back((*dst, tensor.share()));

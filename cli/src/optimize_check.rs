@@ -47,7 +47,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()
             )
         }
         for (a, b) in a.iter().zip(b.iter()) {
-            if !a.close_enough(b) {
+            if !a.close_enough(b, true) {
                 bail!("Different output {:?} and {:?}", a, b)
             }
         }

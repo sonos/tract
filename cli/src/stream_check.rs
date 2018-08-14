@@ -15,6 +15,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
 
     // First generate random values for the inputs.
     let fixed_input = input.to_tensor_with_stream_dim(Some(500))?;
+    let wanted_matches = 20;
 
     let regular_input_fact = TensorFact::default()
         .with_shape(fixed_input.shape())
@@ -39,6 +40,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
 
     let mut display_graph =
         ::display_graph::DisplayGraph::from_nodes(&stream_model.nodes)?
+        .with_graph_def(&params.graph)?
         .with_analyser(&analyser)?;
 
     let eval_order = ::tfdeploy::model::eval_order_for_nodes(&stream_model.nodes(), &[stream_model.node_by_name(&params.output_node)?.id])?;
@@ -67,9 +69,10 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         let batch_expected = &batch_state.values[batch_node.id].as_ref().unwrap()[0];
         let out_edge_id = analyser.next_edges[node.id][0];
         let out_edge_fact = &analyser.edges[out_edge_id].fact;
+        let out_stream_dim = out_edge_fact.streaming_dim()?.unwrap();
 
         let mut batch_expected = batch_expected.as_f32s().unwrap()
-            .axis_chunks_iter(Axis(out_edge_fact.streaming_dim()?.unwrap()), 1);
+            .axis_chunks_iter(Axis(out_stream_dim), 1);
 
         // Run streaming node
         let op = &node.op;
@@ -80,6 +83,8 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         let mut input_offset = 0;
         let mut lines = vec!();
         let mut matched = 0;
+
+        'stream:
         loop {
             let mut inputs = vec!();
             for edge in &edges {
@@ -99,23 +104,28 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
             input_offset += 1;
             let output = if let Some(output) = output { output } else { continue };
             let found: &Tensor = &output[0];
-            lines.push(format!("found: {:?}", f32::tensor_to_view(found).unwrap()));
-            if let Some(expected) = batch_expected.next() {
-                lines.push(format!("expected: {:?}", expected));
-                let expected = expected.to_owned().into();
-                if found.close_enough(&expected) {
-                    matched += 1;
-                    if matched > 10 {
-                        break;
+            let found = found.as_f32s().unwrap();
+            for found in found.axis_chunks_iter(Axis(out_stream_dim), 1) {
+                let found: Tensor = found.to_owned().into();
+                lines.push(format!("found: {:?}", found));
+                if let Some(expected) = batch_expected.next() {
+                    lines.push(format!("expected: {:?}", Tensor::from(expected.to_owned())));
+                    lines.push("".into());
+                    let expected = expected.to_owned().into();
+                    if found.close_enough(&expected, op.rounding_errors()) {
+                        matched += 1;
+                        if matched == wanted_matches {
+                            break 'stream;
+                        }
+                    } else {
+                        break 'stream;
                     }
                 } else {
-                    break;
+                    break 'stream;
                 }
-            } else {
-                break;
             }
         }
-        if matched > 10 {
+        if matched == wanted_matches {
             dn.label = Some("OK".green().to_string());
         } else {
             dn.label = Some("MISMATCH".red().to_string());

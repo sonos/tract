@@ -280,6 +280,10 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     fn const_value(&self) -> Option<Tensor> {
         None
     }
+
+    fn rounding_errors(&self) -> bool {
+        false
+    }
 }
 
 pub trait InferenceOp {

@@ -162,6 +162,24 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .help("output to a json file"),
         )
         .arg(
+            Arg::with_name("node_id")
+                .long("node_id")
+                .takes_value(true)
+                .help("Select a node to dump")
+        )
+        .arg(
+            Arg::with_name("op_name")
+                .long("op_name")
+                .takes_value(true)
+                .help("Select one op to dump")
+        )
+        .arg(
+            Arg::with_name("node_name")
+                .long("node_name")
+                .takes_value(true)
+                .help("Select one node to dump")
+        )
+        .arg(
             Arg::with_name("const")
                 .long("const")
                 .help("also display consts nodes"),
@@ -440,6 +458,9 @@ pub struct OutputParameters {
     web: bool,
     konst: bool,
     json: Option<String>,
+    node_id: Option<usize>,
+    op_name: Option<String>,
+    node_name: Option<String>,
 }
 
 impl OutputParameters {
@@ -448,6 +469,9 @@ impl OutputParameters {
             web: matches.is_present("web"),
             konst: matches.is_present("const"),
             json: matches.value_of("json").map(String::from),
+            node_id: matches.value_of("node_id").map(|id| id.parse().unwrap()),
+            node_name: matches.value_of("node_name").map(String::from),
+            op_name: matches.value_of("op_name").map(String::from),
         })
     }
 }

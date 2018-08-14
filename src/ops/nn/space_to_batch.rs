@@ -122,7 +122,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
             coords[dim] = 0;
             buf[coords]
         });
-        buffer.buffer.remove(0);
+        buffer.buffer.clear();
         Ok(Some(self.eval(vec!(T::array_into_tensor(data).into(), Tensor::from(block_shape).into(), Tensor::from(paddings).into()))?))
     }
 }
@@ -178,6 +178,12 @@ fn rules<'r, 'p: 'r>(
         });
 }
 
+#[derive(Debug, Clone)]
+struct BatchToSpaceBuffer {
+    cropped: usize
+}
+impl OpBuffer for BatchToSpaceBuffer {}
+
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
@@ -232,23 +238,40 @@ impl<T: Datum> Op for BatchToSpace<T> {
         hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
     }
 
+    /// Returns a new streaming buffer for the operation.
+    fn new_buffer(&self) -> Box<OpBuffer> {
+        Box::new(BatchToSpaceBuffer { cropped:0 })
+    }
+
     fn step(
         &self,
         mut inputs: Vec<StepValue>,
-        _buffer: &mut Box<OpBuffer>,
+        buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<Value>>> {
-        let (input, block_shape, paddings) = args_3!(inputs);
+        let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.into_const().ok_or("Expected block_shape to be const")?;
-        let paddings = paddings.into_const().ok_or("Expected block_shape to be const")?;
+        let block_shape = block_shape.into_tensor().take_i32s().ok_or("Expected block_shape to be i32s")?;
+        let block_shape:Array1<i32> = block_shape.into_dimensionality()?;
+
+        let crops = crops.into_const().ok_or("Expected block_shape to be const")?;
+        let crops = crops.into_tensor().take_i32s().ok_or("Expected crops to be i32s")?;
+        let mut crops:Array2<i32> = crops.into_dimensionality()?;
+
         let (dim, data) = input.into_stream().ok_or("Expected input to be a stream")?;
-        if let Some(data) = data {
-            if data.shape()[dim] != 1 {
-                bail!("Expected streaming dim to be 1")
-            }
-            Ok(Some(self.eval(vec!(data, block_shape, paddings))?))
-        } else {
-            Ok(None)
+        let data = if let Some(data) = data { data } else { return Ok(None) };
+        if data.shape()[dim] != 1 {
+            bail!("Expected streaming dim to be 1")
         }
+        let buffer = buffer
+            .downcast_mut::<BatchToSpaceBuffer>()
+            .ok_or("The buffer can't be downcasted to Buffer<T>.")?;
+        if buffer.cropped < crops[(dim-1,0)] as usize {
+            buffer.cropped += 1;
+            return Ok(None)
+        }
+        crops[(dim-1,0)] = 0;
+        crops[(dim-1,1)] = 0;
+        Ok(Some(self.eval(vec!(data.into(), Tensor::from(block_shape).into(), Tensor::from(crops).into()))?))
     }
 }
 

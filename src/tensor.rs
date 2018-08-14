@@ -193,7 +193,19 @@ impl Tensor {
                 _ => unimplemented!("missing type"),
             })
         } else if self.shape().iter().product::<usize>() > 8 {
-            Ok(format!("shape:{:?} {:?}", self.shape(), self.datum_type()))
+            use itertools::Itertools;
+            Ok(match self {
+                &Tensor::I32(ref a) => {
+                    format!("shape:{:?} {:?} {}...", self.shape(), self.datum_type(), a.iter().take(4).join(", "))
+                }
+                &Tensor::F32(ref a) => {
+                    format!("shape:{:?} {:?} {}...", self.shape(), self.datum_type(), a.iter().take(4).join(", "))
+                }
+                &Tensor::U8(ref a) => {
+                    format!("shape:{:?} {:?} {}...", self.shape(), self.datum_type(), a.iter().take(4).join(", "))
+                }
+                _ => unimplemented!("missing type"),
+            })
         } else {
             Ok(match self {
                 &Tensor::I32(ref a) => {
@@ -216,12 +228,12 @@ impl Tensor {
         }
     }
 
-    pub fn close_enough(&self, other: &Self) -> bool {
+    pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
         let ma = self.to_f32().take_f32s().unwrap();
         let mb = other.to_f32().take_f32s().unwrap();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
-        let margin = (dev / 10.0).max(avg.abs() / 10_000.0);
+        let margin = if approx { (dev / 10.0).max(avg.abs() / 10_000.0) } else { 0.0 };
         ma.shape() == mb.shape()
             && mb
                 .iter()

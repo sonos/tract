@@ -106,7 +106,7 @@ pub fn compare<S: AsRef<str>>(
     let expected = tf::for_slice(&graph)?.run(tf_inputs.clone(), &output.name)?;
 
     prop_assert!(
-        expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0]),
+        expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true),
         "expected: {:?} found: {:?}",
         expected,
         found
