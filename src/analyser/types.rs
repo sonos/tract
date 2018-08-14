@@ -66,7 +66,7 @@ impl TensorFact {
         }
     }
 
-    pub fn streaming_dim(&self) -> Result<usize> {
+    pub fn streaming_dim(&self) -> Result<Option<usize>> {
         self.shape.streaming_dim()
     }
 }
@@ -193,7 +193,7 @@ impl ShapeFact {
         ShapeFact { open: false, dims }
     }
 
-    pub fn streaming_dim(&self) -> Result<usize> {
+    pub fn streaming_dim(&self) -> Result<Option<usize>> {
         if self.open {
             bail!("Shape is open, can not find streaming dim for sure.")
         }
@@ -206,16 +206,12 @@ impl ShapeFact {
             .filter(|&&d| d == DimFact::Streamed)
             .count();
         if count > 1 {
-            bail!("Shape has more than one streaming dim. This is wrong.")
-        }
-        if count < 1 {
-            bail!("Shape has no streaming dim. This is wrong.")
+            bail!("Shape has more than one streaming dim. This is terribly wrong.")
         }
         Ok(self
             .dims
             .iter()
-            .position(|&d| d == DimFact::Streamed)
-            .unwrap())
+            .position(|&d| d == DimFact::Streamed))
     }
 }
 

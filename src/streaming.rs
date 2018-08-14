@@ -36,7 +36,8 @@ impl RawStreamingPlan {
         // Pre-compute the constant part of the graph using the analyser.
         for input in inputs {
             analyser.hint(input.0, &input.1)?;
-            input_nodes.push((model.node_by_name(input.0)?.id, input.1.streaming_dim()?));
+            input_nodes.push((model.node_by_name(input.0)?.id, input.1.streaming_dim()?
+                              .ok_or_else(|| format!("No streaming dim for {:?}", input))?));
         }
         analyser.analyse()?;
 

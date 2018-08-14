@@ -4,6 +4,7 @@ use ndarray::Axis;
 use tfdeploy::analyser::TensorFact;
 use tfdeploy::streaming::StreamingPlan;
 use tfdeploy::tensor::Datum;
+use tfdeploy::ops::StepValue;
 use tfdeploy::{SimplePlan, Tensor};
 use {OutputParameters, Parameters};
 use errors::*;
@@ -19,16 +20,16 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         .with_shape(fixed_input.shape())
         .with_datum_type(fixed_input.datum_type());
 
-    /*
-    let optimized_model = model
-        .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], &regular_input_fact)?
-        .to_optimized_model()?;
-    */
-
+    // streaming model
     let stream_model = model
         .analyser(&params.output_node)?
         .with_hint(&params.input_nodes[0], &input.to_fact())?
+        .to_optimized_model()?;
+
+    // batch model
+    let batch_model = model
+        .analyser(&params.output_node)?
+        .with_hint(&params.input_nodes[0], &regular_input_fact)?
         .to_optimized_model()?;
 
     let mut analyser = stream_model
@@ -46,60 +47,72 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         dn.hidden = true;
     }
 
+    // plan and state for reference batch mode
+    let batch_plan = SimplePlan::new(&batch_model, &params.input_nodes, &[&params.output_node])?;
+    let mut batch_state = batch_plan.state()?;
+    batch_state.set_input(0, fixed_input.clone())?;
+
     let mut failure = false;
 
     for node in eval_order.iter() {
         let dn = &mut display_graph.nodes[*node];
         let node = &stream_model.nodes()[*node];
 
-        if !model.node_by_name(&node.name).is_ok() || node.op_name == "Placeholder" {
+        if node.op_name == "Placeholder" || node.op_name == "Const" {
             continue;
         }
 
-        info!("Checking node {} {} output", node.id, node.name);
+        let batch_node = &batch_model.node_by_name(&node.name)?;
+        batch_state.compute_recursively(batch_node.id)?;
+        let batch_expected = &batch_state.values[batch_node.id].as_ref().unwrap()[0];
+        let out_edge_id = analyser.next_edges[node.id][0];
+        let out_edge_fact = &analyser.edges[out_edge_id].fact;
 
-        // Run unmodified graph
-        let original_plan = SimplePlan::new(&model, &params.input_nodes, &[&node.name])?;
-        let original_output = original_plan.run(vec!(fixed_input.clone()))?;
+        let mut batch_expected = batch_expected.as_f32s().unwrap()
+            .axis_chunks_iter(Axis(out_edge_fact.streaming_dim()?.unwrap()), 1);
 
-        // Run streaming graph
-        let streaming_plan = StreamingPlan::new(
-            &stream_model,
-            vec![(&params.input_nodes[0].as_ref(), input.to_fact())],
-            Some(&node.name),
-        )?;
-        let mut state = streaming_plan.state()?;
+        // Run streaming node
+        let op = &node.op;
+        let mut buffers = op.new_buffer();
 
-        let output_streaming_dim = streaming_plan.output_streaming_dim()?;
-        let mut expected_output = original_output[0][0]
-            .as_f32s()
-            .unwrap()
-            .axis_chunks_iter(Axis(output_streaming_dim), 1);
+        let edges:Vec<_> = analyser.prev_edges[node.id].iter().map(|id| &analyser.edges[*id]).collect();
 
-        let values = fixed_input.as_f32s().unwrap();
-        let streaming_dim = input.to_fact().streaming_dim()?;
-
-        let mut matched = 0;
+        let mut input_offset = 0;
         let mut lines = vec!();
-        for chunk in values.axis_chunks_iter(Axis(streaming_dim), 1) {
-            let output = state.step(0, f32::array_into_tensor(chunk.to_owned()))?;
-            if output.len() > 0 {
-                let found: &Tensor = &output[0][0];
-                lines.push(format!("found: {:?}", f32::tensor_to_view(found).unwrap()));
-                if let Some(expected) = expected_output.next() {
-                    lines.push(format!("expected: {:?}", expected));
-                    let expected = expected.to_owned().into();
-                    if found.close_enough(&expected) {
-                        matched += 1;
-                        if matched > 10 {
-                            break;
-                        }
-                    } else {
+        let mut matched = 0;
+        loop {
+            let mut inputs = vec!();
+            for edge in &edges {
+                if let Some(sdim) = edge.fact.streaming_dim()? {
+                    let prec_name = &stream_model.nodes()[edge.from_node.unwrap()].name;
+                    let batch_prec_node = batch_state.model().node_by_name(&prec_name)?;
+                    let data = &batch_state.values[batch_prec_node.id].as_ref().unwrap()[edge.from_out];
+                    let data = data.as_f32s().unwrap();
+                    let chunk = data.axis_chunks_iter(Axis(sdim), 1).skip(input_offset).next().unwrap();
+                    inputs.push(StepValue::Stream(sdim, Some(Tensor::from(chunk.to_owned()).into())));
+                } else {
+                    let value = stream_model.nodes[edge.from_node.unwrap()].op().const_value().ok_or("Not a const")?;
+                    inputs.push(StepValue::Const(value.into()))
+                }
+            }
+            let output = op.step(inputs, &mut buffers)?;
+            input_offset += 1;
+            let output = if let Some(output) = output { output } else { continue };
+            let found: &Tensor = &output[0];
+            lines.push(format!("found: {:?}", f32::tensor_to_view(found).unwrap()));
+            if let Some(expected) = batch_expected.next() {
+                lines.push(format!("expected: {:?}", expected));
+                let expected = expected.to_owned().into();
+                if found.close_enough(&expected) {
+                    matched += 1;
+                    if matched > 10 {
                         break;
                     }
                 } else {
                     break;
                 }
+            } else {
+                break;
             }
         }
         if matched > 10 {
@@ -107,10 +120,9 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         } else {
             dn.label = Some("MISMATCH".red().to_string());
             dn.hidden = false;
-            dn.more_lines.push(format!("matched {} records streaming dim {}", matched, streaming_dim));
+            dn.more_lines.push(format!("matched {} records streaming dim {:?}", matched, out_edge_fact.streaming_dim()?));
             dn.more_lines.extend(lines.into_iter());
             failure = true;
-            break;
         }
     }
 

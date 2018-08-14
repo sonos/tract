@@ -153,6 +153,23 @@ impl SimpleState {
         Ok(())
     }
 
+    pub fn compute_recursively(&mut self, node: usize) -> Result<()> {
+        let precs:Vec<usize> = self.plan.model.nodes[node].inputs.iter().map(|i| i.0).collect();
+        for i in precs.into_iter() {
+            if self.values[i].is_none() {
+                self.compute_recursively(i)?
+            }
+        }
+        let mut inputs: Vec<Value> = vec![];
+        let node: &Node = &self.plan.model.nodes[node];
+        for i in &node.inputs {
+            inputs.push(self.values[i.0].as_ref().unwrap()[i.1].clone().into())
+        }
+        let values = node.op.eval(inputs)?;
+        self.values[node.id] = Some(values);
+        Ok(())
+    }
+
     pub fn take_by_name(&mut self, name: &str) -> Result<Vec<Tensor>> {
         let id = self.model().node_by_name(name)?.id;
         Self::take(self, id)
