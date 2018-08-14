@@ -175,8 +175,9 @@ impl StreamingModelState {
         while let Some((dst, chunk)) = queue.pop_front() {
             let node = &self.plan.model.nodes[dst.0];
             debug!(
-                "Feeding node: {} {:?} ({}), chunk={:?} (stream dim: {})",
-                node.id, node.name, node.op_name, chunk, dst.1
+                "Feeding node: {} {:?} ({}), chunk={:?} (port:{}, stream dim: {:?})",
+                node.id, node.name, node.op_name, chunk, dst.1, 
+                    self.plan.streaming_dimensions.get(&dst)
             );
 
             let mut inputs: Vec<StepValue> = vec![];
