@@ -59,6 +59,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
     for node in eval_order.iter() {
         let dn = &mut display_graph.nodes[*node];
         let node = &stream_model.nodes()[*node];
+        println!("node: {:?}", node);
 
         if node.op_name == "Placeholder" || node.op_name == "Const" {
             continue;
@@ -70,6 +71,11 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         let out_edge_id = analyser.next_edges[node.id][0];
         let out_edge_fact = &analyser.edges[out_edge_id].fact;
         let out_stream_dim = out_edge_fact.streaming_dim()?.unwrap();
+
+        println!("expected: {:?}", batch_expected.shape());
+        for line in batch_expected.as_f32s().unwrap().axis_chunks_iter(Axis(out_stream_dim), 1).take(10) {
+            println!("  expected: {:?}", line.iter().take(5).cloned().collect::<Vec<f32>>());
+        }
 
         let mut batch_expected = batch_expected.as_f32s().unwrap()
             .axis_chunks_iter(Axis(out_stream_dim), 1);
@@ -118,7 +124,9 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                             break 'stream;
                         }
                     } else {
-                        break 'stream;
+                        use itertools::Itertools;
+                        println!("found: {:?}", found.as_f32s().unwrap().iter().take(5).join(" "));
+                    //    break 'stream;
                     }
                 } else {
                     break 'stream;
@@ -133,6 +141,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
             dn.more_lines.push(format!("matched {} records streaming dim {:?}", matched, out_edge_fact.streaming_dim()?));
             dn.more_lines.extend(lines.into_iter());
             failure = true;
+            panic!();
         }
     }
 

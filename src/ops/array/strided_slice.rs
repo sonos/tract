@@ -215,10 +215,10 @@ impl<T: Datum> Op for StridedSlice<T> {
             .ok_or("The buffer can't be downcasted to Buffer<T>.")?;
         if buffer.skip.is_none() {
             buffer.skip = if self.ignore_begin(dim) || begin[dim] < 0 {
-                    Some(0)
-                } else {
-                    Some(begin[dim] as usize)
-                }
+                Some(0)
+            } else {
+                Some(begin[dim] as usize)
+            }
         };
         let skip = buffer.skip.as_mut().unwrap();
         if *skip > 0 {
