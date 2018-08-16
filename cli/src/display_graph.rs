@@ -63,9 +63,18 @@ impl DisplayGraph {
             }
         }
         for node in &self.nodes {
-            if (node.op == "Const" && !params.konst) 
-                || node.hidden
-                || params.op_name.as_ref().map(|name| name != &*node.op).unwrap_or(false) {
+            if node.op == "Const" && !params.konst {
+                continue;
+            }
+            if node.hidden {
+                continue;
+            }
+            if params.op_name.as_ref().map(|name| name != &*node.op).unwrap_or(false) {
+                continue;
+            }
+            if params.successors.as_ref().map(|id| {
+                !node.inputs.iter().any(|i| self.edges[*i].src_node_id == *id)
+            }).unwrap_or(false) {
                 continue;
             }
             self.render_node(&node, params)?

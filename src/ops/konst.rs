@@ -16,6 +16,12 @@ pub struct Const {
 }
 
 impl Const {
+    pub fn for_tensor(tensor: Tensor) -> Const {
+        Const {
+            dtype: tensor.datum_type(),
+            value: Arc::new(tensor),
+        }
+    }
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         let dtype = node.get_attr_datum_type("dtype")?;
         let mat = node.get_attr_tensor("value")?;
@@ -61,7 +67,6 @@ impl ::ops::InferenceRulesOp for Const {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) {
-        // infer will call eval as "all" inputs are known
         solver.equals(&inputs.len, 0).equals(&outputs.len, 1);
     }
 }

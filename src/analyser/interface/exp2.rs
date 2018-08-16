@@ -5,7 +5,7 @@ use Result;
 use num::Zero;
 use std::ops::{ Add, Neg, Sub, Div, Mul };
 use tensor::{ Tensor, DatumType };
-use linear::LinearDim;
+use dim::TDim;
 use analyser::types::*;
 use analyser::interface::path::Path;
 use analyser::interface::solver::Context;
@@ -254,7 +254,7 @@ pub struct IntoDimExp(Exp<IntFact>);
 impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> Result<DimFact> {
-        use linear::ToDim;
+        use dim::ToDim;
         let v:IntFact = self.0.get(context)?;
         match v {
             GenericFact::Only(i) => Ok(GenericFact::Only(i.to_dim())),
@@ -367,7 +367,7 @@ impl<'a> IntoExp<DimFact> for &'a DimProxy {
     }
 }
 
-impl IntoExp<DimFact> for LinearDim {
+impl IntoExp<DimFact> for TDim {
     fn bex(self) -> Exp<DimFact> {
         ConstantExp(self.into()).bex()
     }
@@ -427,7 +427,7 @@ impl<'a> IntoExp<ShapeFact> for &'a ShapeProxy {
     }
 }
 
-impl IntoExp<ShapeFact> for Vec<LinearDim> {
+impl IntoExp<ShapeFact> for Vec<TDim> {
     fn bex(self) -> Exp<ShapeFact> {
         ConstantExp(self.into_iter().collect()).bex()
     }

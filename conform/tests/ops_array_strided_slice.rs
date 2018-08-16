@@ -111,7 +111,8 @@ proptest! {
             ).write_to_bytes().unwrap();
 
         let inputs = vec!(("input", i.clone()),("begin", b.clone()), ("end", e.clone()), ("stride", s.clone()));
-        compare(&graph, inputs, "op")?
+        let res = compare(&graph, inputs, "op")?;
+        res
     }
 }
 
@@ -140,6 +141,37 @@ fn strided_slice_1() {
         ("input", arr2(&[[0, 6], [0, 0]]).into()),
         ("begin", arr1(&[0]).into()),
         ("end", arr1(&[2]).into()),
+        ("stride", arr1(&[1]).into()),
+    ];
+    compare(&graph, inputs, "op").unwrap()
+}
+
+#[test]
+fn strided_slice_2() {
+    let graph = tfpb::graph()
+        .node(placeholder_i32("input"))
+        .node(placeholder_i32("begin"))
+        .node(placeholder_i32("end"))
+        .node(placeholder_i32("stride"))
+        .node(
+            tfpb::node()
+                .name("op")
+                .attr("T", DT_INT32)
+                .attr("Index", DT_INT32)
+                .attr("shrink_axis_mask", 1 as i64)
+                .input("input")
+                .input("begin")
+                .input("end")
+                .input("stride")
+                .op("StridedSlice"),
+        )
+        .write_to_bytes()
+        .unwrap();
+
+    let inputs = vec![
+        ("input", arr1(&[0]).into()),
+        ("begin", arr1(&[0]).into()),
+        ("end", arr1(&[0]).into()),
         ("stride", arr1(&[1]).into()),
     ];
     compare(&graph, inputs, "op").unwrap()

@@ -2,7 +2,7 @@ use ndarray::prelude::*;
 use std::collections::HashMap;
 use Result;
 
-use linear::LinearDim;
+use dim::TDim;
 
 use ops::Attr;
 
@@ -137,17 +137,17 @@ impl LocalPatch {
         }
     }
 
-    pub fn adjusted_rows(&self, in_rows: LinearDim, filter_rows: usize) -> LinearDim {
+    pub fn adjusted_rows(&self, in_rows: TDim, filter_rows: usize) -> TDim {
         match self.padding {
-            Padding::Same => (in_rows / self.v_stride).ceil(),
-            Padding::Valid => ((in_rows - filter_rows + 1) / self.v_stride).ceil()
+            Padding::Same => in_rows.div_ceil(self.v_stride.into()),
+            Padding::Valid => (in_rows - filter_rows + 1).div_ceil(self.v_stride.into()),
         }
     }
 
-    pub fn adjusted_cols(&self, in_cols: LinearDim, filter_cols: usize) -> LinearDim {
+    pub fn adjusted_cols(&self, in_cols: TDim, filter_cols: usize) -> TDim {
         match self.padding {
-            Padding::Same => (in_cols / self.h_stride).ceil(),
-            Padding::Valid => ((in_cols - filter_cols + 1) / self.h_stride).ceil(),
+            Padding::Same => in_cols.div_ceil(self.h_stride.into()),
+            Padding::Valid => (in_cols - filter_cols + 1).div_ceil(self.h_stride.into()),
         }
     }
 
@@ -258,8 +258,8 @@ impl LocalPatch {
         let img = ImageWrapper(data);
         let (filter_rows, filter_cols) = shape;
 
-        let out_height = self.adjusted_rows(img.h().into(), filter_rows).ceil().to_integer()? as usize;
-        let out_width = self.adjusted_cols(img.w().into(), filter_cols).ceil().to_integer()? as usize;
+        let out_height = self.adjusted_rows(img.h().into(), filter_rows).to_integer()? as usize;
+        let out_width = self.adjusted_cols(img.w().into(), filter_cols).to_integer()? as usize;
 
         let patches_size = (
             (out_height * out_width) as usize,

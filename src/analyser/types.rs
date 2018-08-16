@@ -7,7 +7,8 @@ use num::Zero;
 
 use DatumType;
 use Tensor;
-use linear::LinearDim;
+use dim::TDim;
+use ops::StreamInfo;
 
 /// Partial information about any value.
 pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
@@ -52,6 +53,22 @@ impl TensorFact {
         TensorFact::default()
     }
 
+    pub fn any() -> TensorFact {
+        TensorFact::default()
+    }
+
+    pub fn dt(dt:DatumType) -> TensorFact {
+        TensorFact::default().with_datum_type(dt)
+    }
+
+    pub fn dt_shape<S: Into<ShapeFact>>(dt:DatumType, shape:S) -> TensorFact {
+        TensorFact::dt(dt).with_shape(shape)
+    }
+
+    pub fn shape<S: Into<ShapeFact>>(shape:S) -> TensorFact {
+        TensorFact::default().with_shape(shape)
+    }
+
     pub fn with_datum_type(self, dt: DatumType) -> TensorFact {
         TensorFact {
             datum_type: dt.into(),
@@ -66,8 +83,23 @@ impl TensorFact {
         }
     }
 
-    pub fn stream_dim(&self) -> Result<Option<(usize, LinearDim)>> {
-        self.shape.stream_dim()
+    pub fn with_streaming_shape<S: IntoIterator<Item=Option<usize>>>(self, shape:S) -> TensorFact {
+        use dim::ToDim;
+        let shape:ShapeFact = shape.into_iter()
+            .map(|d| d.map(|d| (d as isize).to_dim()).unwrap_or(TDim::s()))
+            .collect();
+        self.with_shape(shape)
+    }
+
+    pub fn stream_info(&self) -> Result<Option<StreamInfo>> {
+        self.shape.stream_info()
+    }
+
+    pub fn reduce(&mut self) {
+        self.shape.reduce();
+        if let GenericFact::Only(ref mut tensor) = self.value {
+            tensor.reduce()
+        }
     }
 }
 
@@ -121,7 +153,7 @@ impl fmt::Debug for TensorFact {
 
 /// Partial information about a value of type T.
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum GenericFact<T: fmt::Debug + Clone + PartialEq> {
     Only(T),
     Any,
@@ -165,6 +197,15 @@ impl<T: fmt::Debug + Clone + PartialEq> From<T> for GenericFact<T> {
     }
 }
 
+impl<T: fmt::Debug + Clone + PartialEq> fmt::Debug for GenericFact<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GenericFact::Any => write!(formatter, "?"),
+            GenericFact::Only(u) => write!(formatter, "{:?}", u),
+        }
+    }
+}
+
 /// Partial information about a type.
 pub type TypeFact = GenericFact<DatumType>;
 
@@ -195,7 +236,7 @@ impl ShapeFact {
         ShapeFact { open: false, dims }
     }
 
-    pub fn stream_dim(&self) -> Result<Option<(usize, LinearDim)>> {
+    pub fn stream_info(&self) -> Result<Option<StreamInfo>> {
         let concrete = self.concretize().ok_or("Shape has unknown dims, can not find streaming dim for sure.")?;
         let count = concrete
             .iter()
@@ -207,15 +248,25 @@ impl ShapeFact {
         Ok(concrete
             .into_iter()
             .enumerate()
-            .find(|(_,d)| d.is_stream()))
+            .find(|(_,d)| d.is_stream())
+            .map(|(axis, len)| StreamInfo { axis, len }))
+    }
+
+    pub fn reduce(&mut self) {
+        for dim in &mut self.dims {
+            match dim {
+                GenericFact::Only(ref mut it) => it.reduce(),
+                _ => ()
+            }
+        }
     }
 }
 
 impl Fact for ShapeFact {
-    type Concrete = Vec<LinearDim>;
+    type Concrete = Vec<TDim>;
 
     /// Tries to transform the fact into a `Vec<usize>`, or returns `None`.
-        fn concretize(self: &ShapeFact) -> Option<Vec<LinearDim>> {
+        fn concretize(self: &ShapeFact) -> Option<Vec<TDim>> {
         if self.open {
             debug!("Impossible to concretize an open shape.");
             return None;
@@ -271,9 +322,9 @@ impl Default for ShapeFact {
     }
 }
 
-impl FromIterator<LinearDim> for ShapeFact {
+impl FromIterator<TDim> for ShapeFact {
     /// Converts an iterator over usize into a closed shape.
-    fn from_iter<I: IntoIterator<Item = LinearDim>>(iter: I) -> ShapeFact {
+    fn from_iter<I: IntoIterator<Item = TDim>>(iter: I) -> ShapeFact {
         ShapeFact::closed(iter.into_iter().map(|d| GenericFact::Only(d)).collect())
     }
 }
@@ -281,14 +332,14 @@ impl FromIterator<LinearDim> for ShapeFact {
 impl<'a> From<&'a [usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
     fn from(slice: &'a [usize]) -> ShapeFact {
-        slice.into_iter().map(|i| LinearDim::from(*i)).collect()
+        slice.into_iter().map(|i| TDim::from(*i)).collect()
     }
 }
 
 impl From<Vec<usize>> for ShapeFact {
     /// Converts an vector of usize into a closed shape.
     fn from(shape: Vec<usize>) -> ShapeFact {
-        shape.into_iter().map(|i| LinearDim::from(i)).collect()
+        shape.into_iter().map(|i| TDim::from(i)).collect()
     }
 }
 
@@ -309,148 +360,12 @@ impl fmt::Debug for ShapeFact {
     }
 }
 
-/*
-/// Partial information about a dimension.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Clone, Copy, PartialEq)]
-pub enum DimFact {
-    Any,
-    Streamed,
-    Only(usize),
-}
-
-impl DimFact {
-    /// Returns whether the dimension is streamed.
-    pub fn is_streamed(&self) -> bool {
-        self == &DimFact::Streamed
-    }
-}
-
-impl Fact for DimFact {
-    type Concrete = usize;
-
-    /// Tries to transform the dimension fact into an `usize`, or returns `None`.
-    fn concretize(&self) -> Option<usize> {
-        match self {
-            GenericFact::Any => None,
-            DimFact::Streamed => None,
-            GenericFact::Only(i) => Some(*i),
-        }
-    }
-
-    /// Returns whether the dimension is concrete.
-    fn is_concrete(&self) -> bool {
-        match self {
-            GenericFact::Any => false,
-            DimFact::Streamed => true,
-            GenericFact::Only(_) => true,
-        }
-    }
-
-    /// Tries to unify the fact with another `DimFact`.
-    fn unify(&self, other: &Self) -> Result<Self> {
-        let fact = match (self, other) {
-            (_, GenericFact::Any) => self.clone(),
-            (GenericFact::Any, _) => other.clone(),
-            _ if self == other => self.clone(),
-            _ => bail!("Impossible to unify {:?} with {:?}.", self, other),
-        };
-
-        Ok(fact)
-    }
-}
-
-impl Default for DimFact {
-    fn default() -> DimFact {
-        GenericFact::Any
-    }
-}
-
-impl From<usize> for DimFact {
-    fn from(t: usize) -> DimFact {
-        GenericFact::Only(t)
-    }
-}
-
-impl fmt::Debug for DimFact {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            GenericFact::Any => write!(formatter, "?"),
-            DimFact::Streamed => write!(formatter, "S"),
-            GenericFact::Only(d) => write!(formatter, "{}", d),
-        }
-    }
-}
-*/
-
-pub type DimFact = GenericFact<LinearDim>;
+pub type DimFact = GenericFact<TDim>;
 
 /// Partial information about a value.
 pub type ValueFact = GenericFact<Tensor>;
 
 pub type IntFact = GenericFact<isize>;
-
-/*
-impl Fact for IntFact {
-    type Concrete = isize;
-
-    /// Tries to transform the fact into a concrete value.
-    fn concretize(&self) -> Option<isize> {
-        match self {
-            GenericFact::Only(i) => Some(*i),
-            _ => None,
-        }
-    }
-
-    /// Returns whether the IntFact is concrete.
-    fn is_concrete(&self) -> bool {
-        match self {
-            GenericFact::Any => false,
-            GenericFact::Only(_) => true,
-            IntFact::Special(_) => true,
-        }
-    }
-
-    /// Tries to unify the fact with another fact of the same type.
-    fn unify(&self, other: &IntFact) -> Result<IntFact> {
-        let fact = match (self, other) {
-            (_, GenericFact::Any) => self.clone(),
-            (GenericFact::Any, _) => other.clone(),
-            _ if self == other => self.clone(),
-            _ => bail!("Impossible to unify {:?} with {:?}.", self, other),
-        };
-
-        Ok(fact)
-    }
-}
-
-impl Default for IntFact {
-    fn default() -> IntFact {
-        GenericFact::Any
-    }
-}
-
-impl From<isize> for IntFact {
-    fn from(i: isize) -> IntFact {
-        GenericFact::Only(i)
-    }
-}
-
-impl From<usize> for IntFact {
-    fn from(u: usize) -> IntFact {
-        GenericFact::Only(u.to_isize().unwrap())
-    }
-}
-impl From<DimFact> for IntFact {
-    fn from(d: DimFact) -> IntFact {
-        match d {
-            GenericFact::Any => GenericFact::Any,
-            GenericFact::Only(d) => d.into(),
-            DimFact::Streamed => IntFact::Special(SpecialKind::Streamed),
-        }
-    }
-}
-*/
 
 impl<T> Zero for GenericFact<T>
 where T: Add<T, Output=T> + Zero + PartialEq + Copy + Clone + ::std::fmt::Debug,
@@ -577,27 +492,3 @@ where   T: Div<T, Output=T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
         }
     }
 }
-
-/*
-impl CheckedDiv for IntFact {V
-    fn checked_div(&self, other: &Self) -> Option<Self> {
-        match (self, other) {
-            (IntFact::Special(a), IntFact::Special(b)) => if a == b {
-                Some(IntFact::Special(*a))
-            } else {
-                panic!(
-                    "Shouldn't perform an arithmetic operation on two\
-                     different special values ({:?} and {:?}).",
-                    a, b
-                );
-            },
-
-            (IntFact::Special(s), _) | (_, IntFact::Special(s)) => Some(IntFact::Special(*s)),
-
-            (GenericFact::Only(i), IntFact::Only(j)) => i.checked_div(j).map(|k| k.into()),
-
-            _ => Some(GenericFact::Any),
-        }
-    }
-}
-*/

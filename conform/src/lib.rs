@@ -112,6 +112,32 @@ pub fn compare<S: AsRef<str>>(
         expected,
         found
     );
+    Ok(())
+}
+
+pub fn infer<S: AsRef<str>>(
+    graph: &[u8],
+    inputs: Vec<(S, TfdTensor)>,
+    output: &str,
+) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
+    // Run TFD
+    let model = tfdeploy::Model::for_reader(&*graph)?;
+    let plan = tfdeploy::SimplePlan::new(
+        &model,
+        &inputs
+            .iter()
+            .map(|pair| pair.0.as_ref())
+            .collect::<Vec<&str>>(),
+        &vec![output],
+    )?;
+    let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
+    for (ix, (_, t)) in inputs.iter().enumerate() {
+        state.set_input(ix, t.clone()).unwrap();
+    }
+    let output = &model.node_by_name(output)?;
+    info!("Checking {} behaviour against tensorflow", output.name);
+    state.compute_one(output.id)?;
+    let _found = &state.values[output.id].as_ref().unwrap();
 
     info!("Checking inference consistency on {}", output.name);
     let inputs_vectors: Vec<TensorFact> = output
@@ -131,11 +157,14 @@ pub fn compare<S: AsRef<str>>(
             .into(),
     ];
 
-    if let Err(e) = output.op.infer(inputs_vectors, output_vectors) {
-        error!("{:?}", e);
-        Err(e)?
-    }
+    let e = output.op.infer(inputs_vectors, output_vectors);
+    prop_assert!(e.is_ok(), "{:?}", e);
 
-    info!("Done with {}", output.name);
     Ok(())
+}
+
+#[allow(dead_code)]
+pub fn setup_test_logger() {
+    use simplelog::{Config, LevelFilter, TermLogger};
+    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
 }

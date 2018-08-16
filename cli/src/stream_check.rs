@@ -2,9 +2,7 @@ use colored::Colorize;
 use simplelog::Level::Info;
 use ndarray::Axis;
 use tfdeploy::analyser::TensorFact;
-use tfdeploy::streaming::StreamingPlan;
-use tfdeploy::tensor::Datum;
-use tfdeploy::ops::StepValue;
+use tfdeploy::ops::{ StepValue, Stream };
 use tfdeploy::{SimplePlan, Tensor};
 use {OutputParameters, Parameters};
 use errors::*;
@@ -59,7 +57,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
     for node in eval_order.iter() {
         let dn = &mut display_graph.nodes[*node];
         let node = &stream_model.nodes()[*node];
-        println!("node: {:?}", node);
+//        println!("node: {:?}", node);
 
         if node.op_name == "Placeholder" || node.op_name == "Const" {
             continue;
@@ -70,18 +68,21 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         let batch_expected = &batch_state.values[batch_node.id].as_ref().unwrap()[0];
         let out_edge_id = analyser.next_edges[node.id][0];
         let out_edge_fact = &analyser.edges[out_edge_id].fact;
-        let out_stream_dim = out_edge_fact.stream_dim()?.unwrap().0;
+        let out_stream_axis = out_edge_fact.stream_info()?.unwrap().axis;
 
-        println!("expected: {:?}", batch_expected.shape());
-        for line in batch_expected.as_f32s().unwrap().axis_chunks_iter(Axis(out_stream_dim), 1).take(10) {
-            println!("  expected: {:?}", line.iter().take(5).cloned().collect::<Vec<f32>>());
-        }
-
+//         println!("expected: {:?}", batch_expected.shape());
+//         for line in batch_expected.as_f32s().unwrap().axis_chunks_iter(Axis(out_stream_axis), 1).take(10) {
+//             println!("  expected: {:?}", line.iter().take(5).cloned().collect::<Vec<f32>>());
+//         }
+// 
         let mut batch_expected = batch_expected.as_f32s().unwrap()
-            .axis_chunks_iter(Axis(out_stream_dim), 1);
+            .axis_chunks_iter(Axis(out_stream_axis), 1);
 
         // Run streaming node
-        let op = &node.op;
+        let facts = analyser.facts(node.id)?;
+        let new_op = node.op.final_prep(facts.0, facts.1)?;
+
+        let op = new_op.as_ref().unwrap_or(&node.op);
         let mut buffers = op.new_buffer();
 
         let edges:Vec<_> = analyser.prev_edges[node.id].iter().map(|id| &analyser.edges[*id]).collect();
@@ -94,24 +95,26 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
         loop {
             let mut inputs = vec!();
             for edge in &edges {
-                if let Some((sdim, _stream_info)) = edge.fact.stream_dim()? {
+                if let Some(info) = edge.fact.stream_info()? {
                     let prec_name = &stream_model.nodes()[edge.from_node.unwrap()].name;
                     let batch_prec_node = batch_state.model().node_by_name(&prec_name)?;
                     let data = &batch_state.values[batch_prec_node.id].as_ref().unwrap()[edge.from_out];
                     let data = data.as_f32s().unwrap();
-                    let chunk = data.axis_chunks_iter(Axis(sdim), 1).skip(input_offset).next().unwrap();
-                    inputs.push(StepValue::Stream(sdim, Some(Tensor::from(chunk.to_owned()).into())));
+                    let chunk = data.axis_chunks_iter(Axis(info.axis), 1).skip(input_offset).next().unwrap();
+                    let stream = Stream { info, offset: input_offset as _, chunk: Some(chunk.to_owned().into()) };
+                    inputs.push(StepValue::Stream(stream));
                 } else {
                     let value = stream_model.nodes[edge.from_node.unwrap()].op().const_value().ok_or("Not a const")?;
                     inputs.push(StepValue::Const(value.into()))
                 }
+//                println!("input {:?}", inputs.last().unwrap());
             }
             let output = op.step(inputs, &mut buffers)?;
             input_offset += 1;
             let output = if let Some(output) = output { output } else { continue };
             let found: &Tensor = &output[0];
             let found = found.as_f32s().unwrap();
-            for found in found.axis_chunks_iter(Axis(out_stream_dim), 1) {
+            for found in found.axis_chunks_iter(Axis(out_stream_axis), 1) {
                 let found: Tensor = found.to_owned().into();
                 lines.push(format!("found: {:?}", found));
                 if let Some(expected) = batch_expected.next() {
@@ -124,8 +127,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                             break 'stream;
                         }
                     } else {
-                        use itertools::Itertools;
-                        println!("found: {:?}", found.as_f32s().unwrap().iter().take(5).join(" "));
+                     //   println!("found: {:?}", found.as_f32s().unwrap().iter().take(5).join(" "));
                     //    break 'stream;
                     }
                 } else {
@@ -133,15 +135,15 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                 }
             }
         }
+        println!("matched : {}", matched);
         if matched == wanted_matches {
             dn.label = Some("OK".green().to_string());
         } else {
             dn.label = Some("MISMATCH".red().to_string());
             dn.hidden = false;
-            dn.more_lines.push(format!("matched {} records streaming dim {:?}", matched, out_edge_fact.stream_dim()?));
-            dn.more_lines.extend(lines.into_iter());
+//            dn.more_lines.push(format!("matched {} records streaming dim {:?}", matched, out_edge_fact.stream_dim()?));
+//            dn.more_lines.extend(lines.into_iter());
             failure = true;
-            panic!();
         }
     }
 

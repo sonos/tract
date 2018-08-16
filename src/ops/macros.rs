@@ -69,6 +69,73 @@ macro_rules! element_map_float {
     };
 }
 
+macro_rules! element_map {
+    ($Name:ident, $name:ident, [$($type:tt),*], $expr:expr) => {
+        pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<$crate::ops::Op>> {
+            let datum_type = pb.get_attr_datum_type("T")?;
+            Ok(Box::new($Name::new(datum_type)) as _)
+        }
+
+        #[derive(Debug, Clone, new)]
+        pub struct $Name($crate::tensor::DatumType);
+
+        impl ::ops::Op for $Name {
+            /// Returns the attributes of the operation and their values.
+            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
+                hashmap!{ "T" => $crate::ops::Attr::DatumType(self.0) }
+            }
+
+            /// Evaluates the operation given the input tensors.
+            fn eval(
+                &self,
+                mut inputs: Vec<$crate::ops::Value>,
+            ) -> $crate::Result<Vec<$crate::ops::Value>> {
+                use $crate::tensor::Datum;
+                let a = args_1!(inputs);
+                let dt = a.datum_type();
+                $(if dt == $type::datum_type() {
+                    let mut a = $type::tensor_into_array(a.into_tensor())?;
+                    a.mapv_inplace($expr);
+                    return Ok(vec![$type::array_into_tensor(a).into()])
+                })*
+                bail!("{} not covering {:?}", stringify!($Name), dt)
+            }
+
+            /// Evaluates one step of the operation on the given input tensors.
+            fn step(
+                &self,
+                mut inputs: Vec<$crate::ops::StepValue>,
+                _buffer: &mut Box<$crate::ops::OpBuffer>,
+            ) -> $crate::Result<Option<Vec<$crate::ops::Value>>> {
+                let a = args_1!(inputs);
+                match a.into_value() {
+                    None => Ok(None),
+                    Some(tv) => Ok(Some(self.eval(vec![tv])?)),
+                }
+            }
+        }
+
+        impl ::ops::InferenceRulesOp for $Name {
+            /// Infers properties about the input and output tensors.
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
+                solver: &mut $crate::analyser::interface::Solver<'r>,
+                inputs: &'p $crate::analyser::interface::TensorsProxy,
+                outputs: &'p $crate::analyser::interface::TensorsProxy,
+            ) {
+                solver
+                    .equals(&inputs.len, 1)
+                    .equals(&outputs.len, 1)
+                    .equals_all(wrap![
+                        &inputs[0].datum_type,
+                        &outputs[0].datum_type,
+                    ])
+                    .equals(&inputs[0].shape, &outputs[0].shape);
+            }
+        }
+    };
+}
+
 macro_rules! element_map_signed {
     ($Name:ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
@@ -141,30 +208,49 @@ macro_rules! element_map_signed {
 }
 
 macro_rules! element_bin {
-    ($Name:ident, $name:ident, $expr:expr) => {
+    ($Name:ident, $name:ident, [$($type:tt),*], $expr:expr) => {
         #[derive(Debug, Clone, new)]
-        pub struct $Name<T: ::tensor::Datum>(::std::marker::PhantomData<T>);
+        pub struct $Name($crate::tensor::DatumType);
 
         pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
             let dtype = pb.get_attr_datum_type("T")?;
-            Ok(boxed_new!($Name(dtype)()))
+            Ok(Box::new($Name::new(dtype)))
         }
 
-        impl<T: ::tensor::Datum> Op for $Name<T> {
+        impl $Name {
+            /// Evaluates the operation given the input tensors.
+            fn eval_t<T: ::tensor::Datum>(
+                &self,
+                mut inputs: Vec<$crate::ops::Value>,
+            ) -> Result<Vec<$crate::ops::Value>> {
+                let (a, b) = args_2!(inputs);
+                let a = T::tensor_cast_to_array(&*a)?.view().to_owned();
+                let b = T::tensor_cast_to_array(&*b)?;
+                Ok(vec![T::array_into_tensor($expr(a, b.view())).into()])
+            }
+        }
+
+        impl Op for $Name {
             /// Returns the attributes of the operation and their values.
             fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => ::ops::Attr::DatumType(T::datum_type()) }
+                hashmap!{ "T" => $crate::ops::Attr::DatumType(self.0) }
             }
 
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: Vec<$crate::ops::Value>,
+                inputs: Vec<$crate::ops::Value>,
             ) -> Result<Vec<$crate::ops::Value>> {
-                let (a, b) = args_2!(inputs);
-                let a = T::tensor_into_array(a.into_tensor())?;
-                let b = T::tensor_to_view(&*b)?;
-                Ok(vec![T::array_into_tensor($expr(a, b)).into()])
+                use $crate::tensor::Datum;
+                if let Some(dt) = inputs[0].datum_type().common_super_type(inputs[1].datum_type()) {
+                    $(if dt == $type::datum_type() {
+                        return self.eval_t::<$type>(inputs);
+                    })*
+                    bail!("{} not covering {:?}", stringify!($Name), dt)
+                } else {
+                    bail!("Could not find a supertype accomodating {:?} and {:?}",
+                          inputs[0].datum_type(), inputs[1].datum_type());
+                }
             }
 
             /// Returns a new streaming buffer for the operation.
@@ -195,7 +281,7 @@ macro_rules! element_bin {
             }
         }
 
-        impl<T: ::tensor::Datum> ::ops::InferenceRulesOp for $Name<T> {
+        impl ::ops::InferenceRulesOp for $Name {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
@@ -207,12 +293,18 @@ macro_rules! element_bin {
                 let b = &inputs[1];
                 let c = &outputs[0];
 
+                solver.given(&inputs[0].datum_type, move |solver, dta| {
+                    solver.given(&inputs[1].datum_type, move |solver, dtb| {
+                        if let Some(dt) = dta.common_super_type(dtb) {
+                            solver.equals(&outputs[0].datum_type, dt);
+                        }
+                    });
+                });
                 solver
                     .equals(&outputs.len, 1)
-                    .equals_all(wrap![&a.datum_type, &b.datum_type, &c.datum_type, &T::datum_type()])
                     .with(&a.shape, move |solver, a_shape| {
                         solver.with(&b.shape, move |solver, b_shape| {
-                            if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(vec!(&a_shape, &b_shape)) {
+                            if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape]) {
                                 solver.equals(&c.shape, c_shape);
                             }
                         });

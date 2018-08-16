@@ -8,7 +8,7 @@ use num::Zero;
 use analyser::interface::path::Path;
 use analyser::interface::proxies::ComparableProxy;
 use analyser::interface::solver::Context;
-use linear::LinearDim;
+use dim::TDim;
 use analyser::types::{DimFact, Fact, IntFact, ShapeFact, TypeFact, ValueFact};
 use {DatumType, Result, Tensor};
 
@@ -128,12 +128,12 @@ impl Output for Tensor {
 }
 
 // Converts back and forth between Wrapped and usize.
-impl Output for LinearDim {
-    fn into_wrapped(source: LinearDim) -> Wrapped {
+impl Output for TDim {
+    fn into_wrapped(source: TDim) -> Wrapped {
         DimFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> Result<LinearDim> {
+    fn from_wrapped(wrapped: Wrapped) -> Result<TDim> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
         DimFact::from_wrapped(wrapped)?
@@ -372,8 +372,8 @@ where
     }
 }
 
-/// Converts LinearDim to ConstantExpression.
-impl IntoExpression<ConstantExpression<DimFact>> for LinearDim {
+/// Converts TDim to ConstantExpression.
+impl IntoExpression<ConstantExpression<DimFact>> for TDim {
     fn into_expr(self) -> ConstantExpression<DimFact> {
         ConstantExpression(self.into())
     }

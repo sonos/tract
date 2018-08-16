@@ -11,17 +11,17 @@ mod squeeze;
 mod strided_slice;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
-     reg.insert("ConcatV2", concatv2::build);
-     reg.insert("ExpandDims", ExpandDims::build);
-     reg.insert("Identity", Identity::build);
-     reg.insert("Fill", fill::fill);
-     reg.insert("Pack", pack::pack);
-     reg.insert("Pad", pad::pad);
-     reg.insert("Placeholder", Placeholder::build);
-     reg.insert("Reshape", reshape::reshape);
-     reg.insert("Shape", Shape::build);
-     reg.insert("Squeeze", squeeze::squeeze);
-     reg.insert("StridedSlice", strided_slice::build);
+    reg.insert("ConcatV2", concatv2::build);
+    reg.insert("ExpandDims", ExpandDims::build);
+    reg.insert("Identity", Identity::build);
+    reg.insert("Fill", fill::fill);
+    reg.insert("Pack", pack::pack);
+    reg.insert("Pad", pad::pad);
+    reg.insert("Placeholder", Placeholder::build);
+    reg.insert("Reshape", reshape::reshape);
+    reg.insert("Shape", Shape::build);
+    reg.insert("Squeeze", squeeze::squeeze);
+    reg.insert("StridedSlice", strided_slice::build);
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +63,7 @@ impl Op for ExpandDims {
         &self,
         mut inputs: Vec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<Value>>> {
+        ) -> Result<Option<Vec<Value>>> {
         let (data, dims) = args_2!(inputs);
 
         let dims = if let StepValue::Const(dims) = dims {
@@ -72,13 +72,9 @@ impl Op for ExpandDims {
             bail!("Dims input should not be streamed.")
         };
 
-        let data = if let StepValue::Stream(_, data) = data {
-            data
-        } else {
-            bail!("Data input should be streamed.")
-        };
+        let data = data.into_stream().ok_or("Data input should be streamed.")?;
 
-        match data {
+        match data.chunk {
             None => Ok(None),
             Some(tv) => Ok(Some(self.eval(vec![tv, dims])?)),
         }
@@ -91,7 +87,7 @@ impl InferenceRulesOp for ExpandDims {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+        ) {
         let data = &inputs[0];
         let dims = &inputs[1];
         let output = &outputs[0];
@@ -254,7 +250,7 @@ impl InferenceRulesOp for Shape {
         solver
             .equals(&inputs.len, 1)
             .equals(&outputs.len, 1)
-            .equals(&outputs[0].datum_type, DatumType::Dim)
+            .equals(&outputs[0].datum_type, DatumType::TDim)
             .equals(&outputs[0].rank, 1)
             .given(&inputs[0].rank, move |solver,r| {
                 solver.equals(&outputs[0].shape[0], r.to_dim());
@@ -264,8 +260,8 @@ impl InferenceRulesOp for Shape {
                    solver.equals(&inputs[0].rank, d);
                 }
             })
-            .given(&inputs[0].shape, move |solver, shape: Vec<LinearDim>| {
-                let array1: Array1<LinearDim> = Array1::from_vec(shape);
+            .given(&inputs[0].shape, move |solver, shape: Vec<TDim>| {
+                let array1: Array1<TDim> = Array1::from_vec(shape);
                 let tensor: Tensor = Tensor::from(array1);
                 solver.equals(&outputs[0].value, tensor);
             })
@@ -273,7 +269,7 @@ impl InferenceRulesOp for Shape {
                 let shape = shape.take_dims().unwrap(); // checked
                 solver.equals(
                     &inputs[0].shape,
-                    shape.into_iter().cloned().collect::<Vec<LinearDim>>()
+                    shape.into_iter().cloned().collect::<Vec<TDim>>()
                 );
             });
     }
@@ -293,7 +289,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::Dim),
+            datum_type: typefact!(DatumType::TDim),
             shape: shapefact![_],
             value: valuefact!(_),
         };
@@ -310,7 +306,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::Dim),
+            datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
             value: valuefact!(_),
         };
@@ -327,7 +323,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::Dim),
+            datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
             value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };
@@ -344,7 +340,7 @@ mod tests {
         };
 
         let output = TensorFact {
-            datum_type: typefact!(DatumType::Dim),
+            datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
             value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };

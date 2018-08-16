@@ -25,6 +25,7 @@ fn build_streaming_plan(params: &Parameters) -> Result<(StreamingPlan, Tensor)> 
         .analyser(&params.output_node)?
         .with_hint(&params.input_nodes[0], &input.to_fact())?
         .to_optimized_model()?;
+
     let plan = StreamingPlan::new(
         &model,
         vec![(&params.input_nodes[0], input.to_fact())],
@@ -89,7 +90,7 @@ pub fn handle_bench(
     let mut state = plan.state()?;
     bufferize(&mut state, &chunk)?;
 
-    info!("Starting bench itself");
+    info!("Starting bench itself {} {}", max_time, max_iters );
     let start = Instant::now();
     let mut fed = 0;
     let mut read = 0;
@@ -180,7 +181,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
         Tensor::I32(m) => split_inner!(Tensor::I32, m),
         Tensor::I8(m) => split_inner!(Tensor::I8, m),
         Tensor::U8(m) => split_inner!(Tensor::U8, m),
-        Tensor::Dim(m) => split_inner!(Tensor::Dim, m),
+        Tensor::TDim(m) => split_inner!(Tensor::TDim, m),
         Tensor::String(m) => split_inner!(Tensor::String, m),
     };
 

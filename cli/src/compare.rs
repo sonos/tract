@@ -89,7 +89,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                                     "Too many outputs"
                                 } else if tf_output[n].shape() != data.shape() {
                                     "Wrong shape"
-                                } else if !tf_output[n].close_enough(data) {
+                                } else if !tf_output[n].close_enough(data, node.op.rounding_errors()) {
                                     "Too far away"
                                 } else {
                                     "Other error"

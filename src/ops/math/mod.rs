@@ -1,5 +1,4 @@
-use super::{Op, OpRegister};
-use Result;
+use ops::prelude::*;
 
 mod add_n;
 
@@ -18,27 +17,28 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 }
 
 element_map_signed!(Abs, abs, |x| x.abs());
-element_map_signed!(Neg, neg, |x| x.neg());
 element_map_float!(Rsqrt, rsqrt, |x| x.sqrt().recip());
 element_map_float!(Tanh, tanh, |x| x.tanh());
 
-element_bin!(Add, add, |mut a, b| {
+element_map!(Neg, neg, [i32, f32, TDim], |x| -x);
+
+element_bin!(Add, add, [i32, f32, TDim], |mut a, b| {
     a += &b;
     a
 });
-element_bin!(Div, div, |mut a, b| {
+element_bin!(Div, div, [i32, f32, TDim], |mut a, b| {
     a /= &b;
     a
 });
-element_bin!(Mul, mul, |mut a, b| {
+element_bin!(Mul, mul, [i32, f32, TDim], |mut a, b| {
     a *= &b;
     a
 });
-element_bin!(Sub, sub, |mut a, b| {
+element_bin!(Sub, sub, [i32, f32, TDim], |mut a, b| {
     a -= &b;
     a
 });
-element_bin!(Rem, rem, |mut a, b| {
+element_bin!(Rem, rem, [i32, f32, TDim], |mut a, b| {
     a %= &b;
     a
 });

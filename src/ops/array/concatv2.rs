@@ -70,7 +70,7 @@ impl<T: Datum> Op for ConcatV2<T> {
 
         if inputs
             .iter()
-            .all(|i| i.streaming_dim() == Some(axis as usize))
+            .all(|i| i.stream_info().map(|i| i.axis) == Some(axis as usize))
         {
             // All the input tensors are streamed along `axis`.
             let chunk = inputs

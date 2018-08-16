@@ -65,7 +65,7 @@ mod web;
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u64 = 100_000;
-const DEFAULT_MAX_TIME: u64 = 200;
+const DEFAULT_MAX_TIME: u64 = 5000;
 
 /// Entrypoint for the command-line interface.
 fn main() {
@@ -108,14 +108,22 @@ fn main() {
     let profile = clap::SubCommand::with_name("profile")
         .help("Benchmarks tfdeploy on randomly generated input.")
         .arg(
-            Arg::with_name("max_iters")
-                .short("n")
-                .help("Sets the maximum number of iterations for each node [default: 10_000]."),
+            Arg::with_name("bench")
+                .long("bench")
+                .help("Run as an overall bench")
         )
         .arg(
-            Arg::with_name("max_time")
-                .short("t")
-                .help("Sets the maximum execution time for each node (in ms) [default: 500]."),
+            Arg::with_name("max_iters")
+                .takes_value(true)
+                .long("max-iters")
+                .short("n")
+                .help("Sets the maximum number of iterations for each node [default: 100_000]."),
+        )
+        .arg(
+            Arg::with_name("max-time")
+                .takes_value(true)
+                .long("max-time")
+                .help("Sets the maximum execution time for each node (in ms) [default: 5000]."),
         )
         .arg(
             Arg::with_name("buffering")
@@ -163,19 +171,25 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         )
         .arg(
             Arg::with_name("node_id")
-                .long("node_id")
+                .long("node-id")
                 .takes_value(true)
                 .help("Select a node to dump")
         )
         .arg(
+            Arg::with_name("successors")
+                .long("successors")
+                .takes_value(true)
+                .help("Show successors of node")
+        )
+        .arg(
             Arg::with_name("op_name")
-                .long("op_name")
+                .long("op-name")
                 .takes_value(true)
                 .help("Select one op to dump")
         )
         .arg(
             Arg::with_name("node_name")
-                .long("node_name")
+                .long("node-name")
                 .takes_value(true)
                 .help("Select one node to dump")
         )
@@ -372,7 +386,7 @@ impl InputParameters {
         let dims = self
             .shape
             .iter()
-            .map(|d| d.map(|i| i.into()).unwrap_or(LinearDim::stream()).into())
+            .map(|d| d.map(|i| i.into()).unwrap_or(TDim::stream()).into())
             .collect::<Vec<_>>();
         TensorFact {
             datum_type: typefact!(self.datum_type),
@@ -458,6 +472,7 @@ pub struct OutputParameters {
     node_id: Option<usize>,
     op_name: Option<String>,
     node_name: Option<String>,
+    successors: Option<usize>,
 }
 
 impl OutputParameters {
@@ -469,6 +484,7 @@ impl OutputParameters {
             node_id: matches.value_of("node_id").map(|id| id.parse().unwrap()),
             node_name: matches.value_of("node_name").map(String::from),
             op_name: matches.value_of("op_name").map(String::from),
+            successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
         })
     }
 }

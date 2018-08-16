@@ -29,7 +29,7 @@ where
                 mtfd.borrow().shape()
             )
         } else {
-            if !mtf.borrow().close_enough(mtfd.borrow()) {
+            if !mtf.borrow().close_enough(mtfd.borrow(), true) {
                 bail!(
                     "Data mismatch: tf={:?}, tfd={:?}",
                     mtf.borrow(),

@@ -262,6 +262,67 @@ impl<'s, T: Output + Fact> fmt::Debug
     }
 }
 
+/// The `given` rule.
+/// It allows you to add more rules to the solver once the value of a given
+/// expression is known, using a closure that takes the value as parameter.
+///
+/// It can be added to the solver via the following method:
+/// ```text
+/// solver.given(input.rank, |solver, ir|
+///     // Add more rules to `solver` here.
+/// );
+/// ```
+pub struct GivenAllRule<'rules, T: Fact> {
+    pub items: Vec<Exp<T>>,
+    pub closure: Box<Fn(&mut Solver<'rules>, Vec<T::Concrete>) + 'rules>,
+}
+
+impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
+    /// Creates a new GivenRule instance.
+    pub fn new<F>(items: Vec<Exp<T>>, closure: F) -> GivenAllRule<'rules, T>
+    where
+        F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) + 'rules,
+    {
+        let closure = Box::new(closure);
+
+        GivenAllRule { items, closure }
+    }
+}
+
+impl<'rules, T: Output + Fact> Rule<'rules>
+    for GivenAllRule<'rules, T>
+{
+    /// Tries to apply the rule to a given context.
+    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+        let values:Vec<T> = self.items.iter().map(|it| it.get(context)).collect::<Result<Vec<T>>>()?;
+        let concrete:Vec<_> = values.iter().filter_map(|it| it.concretize()).collect();
+
+        if concrete.len() == self.items.len() {
+            trace!("    Given all rule: {:?} is {:?}", self.items, values);
+            // We create a new solver instance, which will be populated with
+            // new rules by the code inside the closure.
+            let mut solver = Solver::default();
+            (self.closure)(&mut solver, concrete);
+            Ok((true, solver.take_rules()))
+        } else {
+            Ok((false, vec!()))
+        }
+    }
+
+    /// Returns the paths that the rule depends on.
+    fn get_paths(&self) -> Vec<&Path> {
+        self.items.iter().flat_map(|it| it.get_paths()).collect()
+    }
+}
+
+impl<'s, T: Output + Fact> fmt::Debug
+    for GivenAllRule<'s, T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "GivenAllRule {:?}", self.items)
+    }
+}
+
 /// A declarative constraint solver for tensors.
 #[derive(Default)]
 pub struct Solver<'rules> {
@@ -283,8 +344,14 @@ impl<'rules> Solver<'rules> {
     /// - Ok(Some(facts)) otherwise, with `facts` the new TensorFacts.
     pub fn infer(
         self,
-        facts: (Vec<TensorFact>, Vec<TensorFact>),
+        mut facts: (Vec<TensorFact>, Vec<TensorFact>),
     ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        for f in &mut facts.0 {
+            f.reduce();
+        }
+        for f in &mut facts.1 {
+            f.reduce();
+        }
         let mut context = Context::new(facts.0, facts.1);
 
         // Apply the rules until reaching a fixed point.
@@ -312,11 +379,20 @@ impl<'rules> Solver<'rules> {
                 added_rules.append(&mut step_added);
             }
 
+            trace!("  Applyingall rules");
+
             for rule in added_rules.drain(..) {
                 rules.push((false, rule));
             }
         }
 
+        trace!("  Solver exiting {:?}", context);
+        for i in &mut context.inputs {
+            i.reduce();
+        }
+        for o in &mut context.outputs {
+            o.reduce();
+        }
         Ok((context.inputs, context.outputs))
     }
 
@@ -412,6 +488,25 @@ impl<'rules> Solver<'rules> {
         F: Fn(&mut Solver<'rules>, T::Concrete) + 'rules,
     {
         let rule = GivenRule::new(item.bex(), closure);
+        self.rules.push(Box::new(rule));
+        self
+    }
+
+    /// Adds rules to the solver once the value of all expressions are known.
+    ///
+    /// For instance, one could write:
+    /// ```text
+    /// solver.given(input.rank, |solver, ir|
+    ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
+    /// );
+    pub fn given_all<T, I, A, F>(&mut self, items: I, closure: F) -> &mut Solver<'rules>
+    where
+        T: Fact + Output + 'static,
+        A: IntoExp<T>,
+        I: IntoIterator<Item=A>,
+        F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) + 'rules,
+    {
+        let rule = GivenAllRule::new(items.into_iter().map(|it| it.bex()).collect(), closure);
         self.rules.push(Box::new(rule));
         self
     }

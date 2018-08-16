@@ -1,9 +1,6 @@
 use super::prelude::*;
 use super::Result;
-use ops::OpBuilder;
 use std::collections::HashMap;
-use tfpb;
-use tfpb::tensor::TensorProto;
 use {Node, Tensor};
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
@@ -99,19 +96,13 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
 }
 
 /// Creates a new Const node with the given Tensor value.
-fn build_const_node(id: usize, name: String, tensor: TensorProto) -> Node {
-    let node_def = tfpb::node()
-        .name(name.clone())
-        .op("Const")
-        .attr("dtype", tensor.get_dtype())
-        .attr("value", tensor);
-
+fn build_const_node(id: usize, name: String, tensor: Tensor) -> Node {
     Node {
         id,
         name,
         op_name: "Const".to_string(),
         inputs: vec![],
-        op: OpBuilder::new().build(&node_def).unwrap(),
+        op: Box::new(::ops::konst::Const::for_tensor(tensor)),
     }
 }
 
@@ -165,7 +156,7 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
                     let node = build_const_node(
                         node_id,
                         node_name,
-                        Tensor::I32(tensor.to_owned()).to_pb().unwrap(),
+                        tensor.into()
                     );
                     analyser.nodes.push(node);
                     node_id
@@ -173,7 +164,7 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
             } else {
                 let node_id = analyser.nodes.len();
                 let node_name = format!("generated_{}", node_id).to_string();
-                let node = build_const_node(node_id, node_name, tensor.to_pb().unwrap());
+                let node = build_const_node(node_id, node_name, tensor);
                 analyser.nodes.push(node);
                 node_id
             };

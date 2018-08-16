@@ -43,8 +43,8 @@ impl<T: Datum> Conv2D<T> {
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
-        let out_height = self.0.adjusted_rows(images.h().into(), filter_rows).ceil().to_integer()? as usize;
-        let out_width = self.0.adjusted_cols(images.w().into(), filter_cols).ceil().to_integer()? as usize;
+        let out_height = self.0.adjusted_rows(images.h().into(), filter_rows).to_integer()? as usize;
+        let out_width = self.0.adjusted_cols(images.w().into(), filter_cols).to_integer()? as usize;
 
         let filter = filter
             .view()
@@ -124,12 +124,13 @@ impl<T: Datum> Op for Conv2D<T> {
 
         let (data, filter) = args_2!(inputs);
         let filter = filter.into_const().ok_or("filter can not be streamed")?;
-        let (dim, chunk) = data.into_stream().ok_or("data must be streamed")?;
+        let Stream { info, chunk, .. } = data.into_stream().ok_or("data must be streamed")?;
         let chunk = if let Some(chunk) = chunk {
             chunk
         } else {
             return Ok(None);
         };
+        let dim = info.axis;
 
         // Maybe the data is streamed along the batch dimension.
         if dim == 0 {
@@ -357,5 +358,50 @@ mod tests {
             Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
         assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0], true))
+    }
+
+    #[test]
+    fn inference_1() {
+        use ops::InferenceOp;
+        let op = Conv2D::<f32>::new(LocalPatch {
+            padding: Padding::Valid,
+            h_stride: 1,
+            v_stride: 3,
+            _data_format: DataFormat::NHWC,
+        });
+        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]));
+        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
+
+        let (_, mut output_facts) = op.infer(
+                vec![img, ker],
+                vec![TensorFact::default()],
+            ).unwrap();
+
+        output_facts[0].reduce();
+        assert_eq!(output_facts, vec![
+                TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, (7-3+1), 1))
+            ]);
+    }
+
+    #[test]
+    fn inference_2() {
+        use ops::InferenceOp;
+        let op = Conv2D::<f32>::new(LocalPatch {
+            padding: Padding::Same,
+            h_stride: 1,
+            v_stride: 1,
+            _data_format: DataFormat::NHWC,
+        });
+        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
+        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
+
+        let (_, output_facts) = op.infer(
+                vec![img, ker],
+                vec![TensorFact::default()]
+            ).unwrap();
+
+        assert_eq!(output_facts, vec![
+                TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1, 1))
+            ]);
     }
 }
