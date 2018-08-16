@@ -69,8 +69,8 @@ extern crate downcast_rs;
 
 #[macro_use]
 pub mod analyser;
+pub mod dim;
 pub mod errors;
-pub mod linear;
 pub mod model;
 pub mod ops;
 pub mod plan;

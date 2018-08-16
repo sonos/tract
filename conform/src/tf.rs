@@ -63,7 +63,7 @@ impl From<TfdTensor> for TensorHolder {
             TfdTensor::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
             TfdTensor::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
             TfdTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
-            TfdTensor::Dim(dims) => {
+            TfdTensor::TDim(dims) => {
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
                     let dims:ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
                     TensorHolder::I32(Self::to_tensor(dims))

@@ -33,7 +33,7 @@ pub use self::expressions::{Expression, IntoExpression};
 pub use self::proxies::*;
 pub use self::solver::*;
 pub use super::prelude::*;
-pub use linear::{ LinearDim, ToDim };
+pub use dim::{ TDim, ToDim };
 pub use analyser::interface::exp2::{ IntoExp, ToDimExp };
 
 

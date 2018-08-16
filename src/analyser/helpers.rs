@@ -33,7 +33,7 @@ pub fn infer_forward_concrete(
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.
-pub fn infer_shape_broadcasting(shapes: Vec<&ShapeFact>) -> Result<Option<ShapeFact>> {
+pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> Result<Option<ShapeFact>> {
     if shapes.iter().any(|s| s.open) {
         debug!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
         return Ok(None);
@@ -105,7 +105,7 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<V
 
     let output = TensorFact {
         datum_type,
-        shape: infer_shape_broadcasting(input_shapes)?.unwrap_or(shapefact![..]),
+        shape: infer_shape_broadcasting(&input_shapes)?.unwrap_or(shapefact![..]),
         value: valuefact!(_),
     };
 

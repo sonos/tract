@@ -63,13 +63,28 @@ fn img_and_ker() -> BoxedStrategy<(TfdTensor, TfdTensor, (usize, usize))> {
 
 proptest! {
     #[test]
-    fn conv((ref i, ref k, ref strides) in img_and_ker(),
+    fn conv_compare((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
+//        ::conform::setup_test_logger();
         if valid {
             prop_assume!(i.shape()[1] >= k.shape()[0]);
             prop_assume!(i.shape()[2] >= k.shape()[1]);
         }
         let model = convolution_pb(strides.0, strides.1, valid).unwrap();
         compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
+    }
+}
+
+proptest! {
+    #[test]
+    fn conv_infer((ref i, ref k, ref strides) in img_and_ker(),
+                       valid in ::proptest::bool::ANY) {
+//        ::conform::setup_test_logger();
+        if valid {
+            prop_assume!(i.shape()[1] >= k.shape()[0]);
+            prop_assume!(i.shape()[2] >= k.shape()[1]);
+        }
+        let model = convolution_pb(strides.0, strides.1, valid).unwrap();
+        infer(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
     }
 }

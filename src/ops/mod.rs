@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use analyser::interface::{Solver, TensorsProxy};
 use analyser::prelude::*;
+use dim::TDim;
 use ops::nn::local_patch::{DataFormat, Padding};
 use {DatumType, Result, Tensor};
 
@@ -31,10 +32,11 @@ pub mod nn;
 
 pub mod prelude {
     pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
-    pub use super::{OpBuffer, QueuesBuffer, StepValue, Value};
+    pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{Datum, DatumType, Tensor};
+    pub use dim::{  TDim };
     pub use Result;
 }
 
@@ -129,21 +131,34 @@ impl PartialEq for Value {
 #[derive(Debug, Clone)]
 pub enum StepValue {
     Const(Value),
-    Stream(usize, Option<Value>),
+    Stream(Stream),
+}
+
+#[derive(Debug, Clone)]
+pub struct Stream {
+    pub info: StreamInfo,
+    pub offset: u64,
+    pub chunk: Option<Value>
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct StreamInfo {
+    pub axis: usize,
+    pub len: TDim,
 }
 
 impl StepValue {
     pub fn as_value(&self) -> Option<&Value> {
         match self {
             StepValue::Const(v) => Some(v),
-            StepValue::Stream(_, v) => v.as_ref(),
+            StepValue::Stream(s) => s.chunk.as_ref(),
         }
     }
 
     pub fn into_value(self) -> Option<Value> {
         match self {
             StepValue::Const(v) => Some(v),
-            StepValue::Stream(_, v) => v,
+            StepValue::Stream(s) => s.chunk,
         }
     }
 
@@ -161,31 +176,28 @@ impl StepValue {
         }
     }
 
-    pub fn as_stream(&self) -> Option<(usize, Option<&Value>)> {
+    pub fn as_stream(&self) -> Option<&Stream> {
         match self {
-            StepValue::Stream(d, v) => Some((*d, v.as_ref())),
+            StepValue::Stream(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn into_stream(self) -> Option<(usize, Option<Value>)> {
+    pub fn into_stream(self) -> Option<Stream> {
         match self {
-            StepValue::Stream(d, v) => Some((d, v)),
+            StepValue::Stream(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn streaming_dim(&self) -> Option<usize> {
-        match self {
-            StepValue::Const(_) => None,
-            StepValue::Stream(d, _) => Some(*d),
-        }
+    pub fn stream_info(&self) -> Option<StreamInfo> {
+        self.as_stream().map(|s| s.info)
     }
 
     pub fn is_const(&self) -> bool {
         match self {
             StepValue::Const(_) => true,
-            StepValue::Stream(_, _) => false,
+            StepValue::Stream(_) => false,
         }
     }
 }
@@ -207,10 +219,14 @@ pub enum Attr {
 /// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr>;
+    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
+        hashmap!()
+    }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>>;
+    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
+        bail!("Unexpected call on op.eval(). {:?}", self)
+    }
 
     /// Returns a new streaming buffer for the operation.
     fn new_buffer(&self) -> Box<OpBuffer> {
@@ -275,6 +291,11 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         } else {
             Ok((infered_inputs, infered_outputs))
         }
+    }
+
+    fn final_prep(&self, _inputs: Vec<TensorFact>, _outputs: Vec<TensorFact>)
+            -> Result<Option<Box<Op>>> {
+        Ok(None)
     }
 
     fn const_value(&self) -> Option<Tensor> {

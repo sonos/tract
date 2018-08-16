@@ -70,9 +70,9 @@ impl<T: Datum> Op for Squeeze<T> {
         _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<Value>>> {
         let input = args_1!(inputs);
-        if let StepValue::Stream(stream, Some(chunk)) = input {
+        if let Some(Stream { info, chunk: Some(chunk), .. }) = input.into_stream() {
             let chunk = T::tensor_into_array(chunk.into_tensor())?;
-            let shape = self.squeeze_shape(chunk.shape(), Some(stream));
+            let shape = self.squeeze_shape(chunk.shape(), Some(info.axis));
             Ok(Some(vec![
                 T::array_into_tensor(chunk.into_shape(shape)?).into(),
             ]))
@@ -94,12 +94,12 @@ impl<T: Datum> InferenceRulesOp for Squeeze<T> {
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[0].datum_type, T::datum_type())
-            .given(&inputs[0].shape, move |solver, shape: Vec<LinearDim>| {
+            .given(&inputs[0].shape, move |solver, shape: Vec<TDim>| {
                 let stream_dim = shape.iter().position(|d| d.is_stream());
-                let shape:Vec<LinearDim> = shape
+                let shape:Vec<TDim> = shape
                     .into_iter()
                     .enumerate()
-                    .filter(|(ix, d)| self.squeezable(*ix, d.to_integer().unwrap_or(1) as usize, stream_dim))
+                    .filter(|(ix, d)| !self.squeezable(*ix, d.to_integer().unwrap_or(1) as usize, stream_dim))
                     .map(|(_,d)| d)
                     .collect();
                 solver.equals(&outputs[0].shape, shape);
@@ -113,6 +113,8 @@ mod tests {
     use super::*;
     use ndarray::*;
     use Tensor;
+    use dim::TDim;
+    use ops::InferenceOp;
 
     fn run<I>(op: Squeeze<i32>, input: I) -> Tensor
     where
@@ -142,5 +144,22 @@ mod tests {
             ).shape(),
             &[1, 2, 3, 1]
         );
+    }
+
+
+    #[test]
+    fn squeeze_inference_1() {
+        let input = TensorFact::default()
+            .with_datum_type(DatumType::TDim)
+            .with_shape(shapefact![1, 1, (TDim::stream()-2), 16]);
+
+        let op = Squeeze::<TDim>::new(Some(vec![1]));
+        let inferred = op.infer(vec!(input), vec!(TensorFact::default())).unwrap();
+
+        let expect = TensorFact::default()
+            .with_datum_type(DatumType::TDim)
+            .with_shape(shapefact![1, (TDim::stream()-2), 16]);
+
+        assert_eq!(inferred.1, vec!(expect));
     }
 }

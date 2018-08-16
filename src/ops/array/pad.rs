@@ -79,17 +79,17 @@ where
         mut inputs: Vec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
     ) -> Result<Option<Vec<Value>>> {
-        if let (StepValue::Stream(stream_dim, Some(chunk)), StepValue::Const(paddings)) =
-            args_2!(inputs)
+        if let (StepValue::Stream(stream), StepValue::Const(paddings)) = args_2!(inputs)
         {
-            let chunk = T::tensor_to_view(&chunk)?;
-            let paddings = i32::tensor_to_view(&paddings)?.into_dimensionality()?;
-            Ok(Some(vec![
-                T::array_into_tensor(Self::compute(&chunk, paddings, Some(stream_dim))?).into(),
-            ]))
-        } else {
-            Ok(None)
+            if let Some(chunk) = stream.chunk {
+                let chunk = T::tensor_to_view(&chunk)?;
+                let paddings = i32::tensor_to_view(&paddings)?.into_dimensionality()?;
+                return Ok(Some(vec![
+                    T::array_into_tensor(Self::compute(&chunk, paddings, Some(stream.info.axis))?).into(),
+                ]))
+            }
         }
+        Ok(None)
     }
 }
 
@@ -107,7 +107,7 @@ impl<T: Datum> InferenceRulesOp for Pad<T> {
             .equals(&inputs.len, 2)
             .equals(&outputs.len, 1)
             .equals(&output.datum_type, &input.datum_type)
-            .equals(&padding.datum_type, DatumType::Dim)
+            .equals(&padding.datum_type, DatumType::TDim)
             .equals(&input.rank, &output.rank)
             .equals(&padding.rank, 2)
             .equals(&padding.shape[0], input.rank.bex().to_dim())

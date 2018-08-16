@@ -26,10 +26,10 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
-        let paddings = paddings.as_i32s().ok_or("paddings expected as I32")?;
+        let paddings = i32::tensor_cast_to_array(&paddings)?;
         let mut data = T::tensor_into_array(input.into_tensor())?;
 
-        for (ix, pad) in paddings.outer_iter().enumerate() {
+        for (ix, pad) in paddings.view().outer_iter().enumerate() {
             if pad[0] != 0 {
                 let mut pad_shape = data.shape().to_vec();
                 pad_shape[ix + 1] = pad[0] as usize;
@@ -91,35 +91,35 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         let block_shape = block_shape.into_tensor().take_i32s().ok_or("Expected block_shape to be i32s")?;
         let block_shape:Array1<i32> = block_shape.into_dimensionality()?;
 
-        let paddings = paddings.into_const().ok_or("Expected block_shape to be const")?;
-        let paddings = paddings.into_tensor().take_i32s().ok_or("Expected paddings to be i32s")?;
-        let mut paddings:Array2<i32> = paddings.into_dimensionality()?;
+        let paddings = paddings.into_const().ok_or("Expected paddings to be const")?;
+        let casted_paddings = TDim::tensor_cast_to_array(&paddings)?;
+        let mut paddings = casted_paddings.view().into_dimensionality()?.to_owned();
 
-        let (dim, data) = input.into_stream().ok_or("Expected input to be a stream")?;
-        let data = if let Some(data) = data { data } else { return Ok(None) };
-        if data.shape()[dim] != 1 {
+        let Stream { info, chunk, .. } = input.into_stream().ok_or("Expected input to be a stream")?;
+        let data = if let Some(data) = chunk { data } else { return Ok(None) };
+        if data.shape()[info.axis] != 1 {
             bail!("Expected streaming dim to be 1")
         }
         let buffer = buffer
             .downcast_mut::<SpaceToBatchBuffer<T>>()
             .ok_or("The buffer can't be downcasted to Buffer<T>.")?;
         if !buffer.inited {
-            for _ in 0..paddings[(dim-1,0)] {
+            for _ in 0..paddings[(info.axis-1,0)].to_integer()? {
                 buffer.buffer.push(Array::zeros(data.shape()));
             }
             buffer.inited = true;
         };
         buffer.buffer.push(T::tensor_into_array(data.into_tensor())?);
-        if buffer.buffer.len() < block_shape[dim-1] as usize {
+        if buffer.buffer.len() < block_shape[info.axis-1] as usize {
             return Ok(None)
         }
-        paddings[(dim-1,0)] = 0;
-        paddings[(dim-1,1)] = 0;
+        paddings[(info.axis-1,0)] = 0.to_dim();
+        paddings[(info.axis-1,1)] = 0.to_dim();
         let mut shape = buffer.buffer[0].shape().to_vec();
-        shape[dim] = block_shape[dim-1] as usize;
+        shape[info.axis] = block_shape[info.axis-1] as usize;
         let data = Array::from_shape_fn(shape, |mut coords| -> T {
-            let buf = &buffer.buffer[coords[dim]];
-            coords[dim] = 0;
+            let buf = &buffer.buffer[coords[info.axis]];
+            coords[info.axis] = 0;
             buf[coords]
         });
         buffer.buffer.clear();
@@ -150,21 +150,27 @@ fn rules<'r, 'p: 'r>(
     solver
         .equals(&batch.datum_type, &space.datum_type)
         .equals(&block_shape.datum_type, DatumType::I32)
-        .equals(&paddings.datum_type, DatumType::I32)
         .equals(&batch.rank, &space.rank)
         .equals(&block_shape.rank, 1)
         .equals(&paddings.rank, 2)
         .equals(&block_shape.shape[0], &paddings.shape[0])
         .given(&block_shape.value, move |solver, block_shape: Tensor| {
-            let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap(); // semi-enforced by rules order (FIXME)
+            let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
             let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
             solver.equals(&batch.shape[0], (block_shape_prod as isize) * space.shape[0].bex());
-            for d in 0..block_shape.len() {
-                solver.equals_zero(space.shape[1 + d].bex() + paddings.value[d][0].bex().to_dim()
-                    + paddings.value[d][1].bex().to_dim()
-                    - (block_shape[d] as isize) * batch.shape[1 + d].bex()
-                );
-            }
+            solver.given(&paddings.value, move |solver, paddings: Tensor| {
+                let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
+                let paddings = paddings.view().into_dimensionality().unwrap();
+                for d in 0..block_shape.len() {
+                    solver.equals(
+                        space.shape[1 + d].bex() + paddings[(d,0)] + paddings[(d,1)],
+                        (block_shape[d] as isize) * batch.shape[1 + d].bex()
+                    );
+                }
+            });
+        })
+        .given(&block_shape.value, move |solver, block_shape: Tensor| {
+            let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
             solver.given(&space.rank, move |solver, rank: isize| {
                 for d in block_shape.len() + 1..(rank as usize) {
                     solver.equals(&space.shape[d], &batch.shape[d]);
@@ -188,10 +194,10 @@ impl<T: Datum> Op for BatchToSpace<T> {
         use ndarray::*;
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
-        let crops = crops.as_i32s().ok_or("crops expected as I32")?;
+        let crops = i32::tensor_cast_to_array(&crops)?;
         let data = T::tensor_into_array(input.into_tensor())?;
         let input_shape = data.shape().to_vec();
-        let crops = crops.clone().into_shape((block_shape.len(), 2))?;
+        let crops:ArrayView2<i32> = crops.view().into_dimensionality()?;
 
         let block_size = block_shape.iter().map(|a| *a as usize).product::<usize>();
 
@@ -248,24 +254,24 @@ impl<T: Datum> Op for BatchToSpace<T> {
         let block_shape = block_shape.into_tensor().take_i32s().ok_or("Expected block_shape to be i32s")?;
         let block_shape:Array1<i32> = block_shape.into_dimensionality()?;
 
-        let crops = crops.into_const().ok_or("Expected block_shape to be const")?;
-        let crops = crops.into_tensor().take_i32s().ok_or("Expected crops to be i32s")?;
-        let mut crops:Array2<i32> = crops.into_dimensionality()?;
+        let crops = crops.into_const().ok_or("Expected crops to be const")?;
+        let casted_crops = TDim::tensor_cast_to_array(&crops)?;
+        let mut crops = casted_crops.view().into_dimensionality()?.to_owned();
 
-        let (dim, data) = input.into_stream().ok_or("Expected input to be a stream")?;
-        let data = if let Some(data) = data { data } else { return Ok(None) };
-        if data.shape()[dim] != 1 {
+        let Stream { info, chunk, ..} = input.into_stream().ok_or("Expected input to be a stream")?;
+        let data = if let Some(data) = chunk { data } else { return Ok(None) };
+        if data.shape()[info.axis] != 1 {
             bail!("Expected streaming dim to be 1")
         }
         let buffer = buffer
             .downcast_mut::<BatchToSpaceBuffer>()
             .ok_or("The buffer can't be downcasted to Buffer<T>.")?;
-        if buffer.cropped < crops[(dim-1,0)] as usize {
+        if buffer.cropped < crops[(info.axis-1,0)].to_integer()? as usize {
             buffer.cropped += 1;
             return Ok(None)
         }
-        crops[(dim-1,0)] = 0;
-        crops[(dim-1,1)] = 0;
+        crops[(info.axis-1,0)] = 0.to_dim();
+        crops[(info.axis-1,1)] = 0.to_dim();
         Ok(Some(self.eval(vec!(data.into(), Tensor::from(block_shape).into(), Tensor::from(crops).into()))?))
     }
 }
@@ -377,6 +383,41 @@ mod tests {
                 ]).into(),
             ],
         )
+    }
+
+    #[test]
+    fn space_to_batch_nd_infer_1() {
+        use ops::InferenceOp;
+        let op = SpaceToBatch::<f32>::new();
+        let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 4, 16));
+        let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
+        let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
+
+        let (_, outputs) = op.infer(
+            vec!(data, block_shape, paddings),
+            vec!(TensorFact::default())).unwrap();
+
+        assert_eq!(outputs[0],
+                   TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 16)));
+    }
+
+    #[test]
+    fn space_to_batch_nd_infer_2() {
+        use ops::InferenceOp;
+        let op = SpaceToBatch::<f32>::new();
+        let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::s()-4), 16));
+        let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
+        let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s()%2)]])));
+
+        let (_, mut outputs) = op.infer(
+            vec!(data, block_shape, paddings),
+            vec!(TensorFact::default())).unwrap();
+        println!("raw: {:?}", outputs[0]);
+        outputs[0].reduce();
+        println!("reduced: {:?}", outputs[0]);
+        assert_eq!(outputs[0],
+                   TensorFact::dt_shape(DatumType::F32,
+                                        shapefact!(2, ((TDim::s() + TDim::s()%2 - 4) / 2), 16)));
     }
 
     #[test]
