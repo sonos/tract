@@ -27,17 +27,15 @@ impl<T: Datum> Op for ConcatV2<T> {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let axis: i32 = inputs
             .pop()
             .and_then(|t| t.as_i32())
             .ok_or("Expected a i32 scalar")?;
         let mats: Result<Vec<ArrayViewD<T>>> =
-            inputs.iter().map(|mat| T::tensor_to_view(&mat)).collect();
+            inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
-        let result = T::array_into_tensor(result);
-
-        Ok(vec![result.into()])
+        Ok(tvec![result.into()])
     }
 
     /// Returns a new streaming buffer for the operation.
@@ -48,9 +46,9 @@ impl<T: Datum> Op for ConcatV2<T> {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<StepValue>,
+        mut inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<Value>>> {
+    ) -> Result<Option<TVec<Value>>> {
         // According to https://www.tensorflow.org/api_docs/python/tf/concat,
         // the number of dimensions of each input tensor must match, and all
         // dimensions except `axis` must be equal. In particular, this means
@@ -76,7 +74,7 @@ impl<T: Datum> Op for ConcatV2<T> {
             let chunk = inputs
                 .into_iter()
                 .map(|sv| sv.into_value().ok_or("Expected a value".into()))
-                .collect::<Result<Vec<Value>>>()?;
+                .collect::<Result<TVec<Value>>>()?;
 
             Ok(Some(chunk))
         } else {
@@ -93,7 +91,7 @@ impl<T: Datum> Op for ConcatV2<T> {
                 let mut chunks = buffer
                     .iter_mut()
                     .map(|b| b.pop_front().unwrap())
-                    .collect::<Vec<_>>();
+                    .collect::<TVec<_>>();
 
                 chunks.push(axis_tensor);
 

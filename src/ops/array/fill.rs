@@ -20,16 +20,16 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let (shape, value) = args_2!(inputs);
-        let value = T::tensor_to_view(&value)?;
-        let value = value[[]];
-        let shape = i32::tensor_to_view(&shape)?;
+        let value = value.to_array_view()?;
+        let value:T = value[[]];
+        let shape = shape.to_array_view::<i32>()?;
         let array = ::ndarray::Array::from_elem(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             value,
         );
-        Ok(vec![T::array_into_tensor(array).into()])
+        Ok(tvec![array.into()])
     }
 
     /// Returns the attributes of the operation and their values.

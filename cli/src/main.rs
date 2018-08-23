@@ -110,7 +110,7 @@ fn main() {
         .arg(
             Arg::with_name("bench")
                 .long("bench")
-                .help("Run as an overall bench")
+                .help("Run as an overall bench"),
         )
         .arg(
             Arg::with_name("max_iters")
@@ -173,25 +173,25 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
             Arg::with_name("node_id")
                 .long("node-id")
                 .takes_value(true)
-                .help("Select a node to dump")
+                .help("Select a node to dump"),
         )
         .arg(
             Arg::with_name("successors")
                 .long("successors")
                 .takes_value(true)
-                .help("Show successors of node")
+                .help("Show successors of node"),
         )
         .arg(
             Arg::with_name("op_name")
                 .long("op-name")
                 .takes_value(true)
-                .help("Select one op to dump")
+                .help("Select one op to dump"),
         )
         .arg(
             Arg::with_name("node_name")
                 .long("node-name")
                 .takes_value(true)
-                .help("Select one node to dump")
+                .help("Select one node to dump"),
         )
         .arg(
             Arg::with_name("const")
@@ -383,8 +383,7 @@ impl InputParameters {
         if let Some(ref data) = self.data {
             return data.clone().into();
         }
-        let dims = self
-            .shape
+        let dims = self.shape
             .iter()
             .map(|d| d.map(|i| i.into()).unwrap_or(TDim::stream()).into())
             .collect::<Vec<_>>();

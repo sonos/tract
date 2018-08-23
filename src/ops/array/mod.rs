@@ -40,10 +40,9 @@ impl Op for ExpandDims {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let (data, dims) = args_2!(inputs);
-        let data = data
-            .into_tensor()
+        let data = data.into_tensor()
             .take_f32s()
             .ok_or("Expected a f32 matrix")?;
         let dims = dims.as_i32s().ok_or("Expected a i32 matrix")?;
@@ -55,15 +54,15 @@ impl Op for ExpandDims {
                 Err(format!("unimplemented ExpandDims with negative parameter"))?
             }
         }
-        Ok(vec![Tensor::from(data.into_shape(shape)?).into()])
+        Ok(tvec![Tensor::from(data.into_shape(shape)?).into()])
     }
 
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<StepValue>,
+        mut inputs: TVec<StepValue>,
         _: &mut Box<OpBuffer>,
-        ) -> Result<Option<Vec<Value>>> {
+    ) -> Result<Option<TVec<Value>>> {
         let (data, dims) = args_2!(inputs);
 
         let dims = if let StepValue::Const(dims) = dims {
@@ -76,7 +75,7 @@ impl Op for ExpandDims {
 
         match data.chunk {
             None => Ok(None),
-            Some(tv) => Ok(Some(self.eval(vec![tv, dims])?)),
+            Some(tv) => Ok(Some(self.eval(tvec![tv, dims])?)),
         }
     }
 }
@@ -87,7 +86,7 @@ impl InferenceRulesOp for ExpandDims {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-        ) {
+    ) {
         let data = &inputs[0];
         let dims = &inputs[1];
         let output = &outputs[0];
@@ -133,20 +132,20 @@ impl Op for Identity {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
         Ok(inputs)
     }
 
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<StepValue>,
+        mut inputs: TVec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<Value>>> {
+    ) -> Result<Option<TVec<Value>>> {
         let input = args_1!(inputs);
         match input.into_value() {
             None => Ok(None),
-            Some(tv) => Ok(Some(self.eval(vec![tv])?)),
+            Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
         }
     }
 }
@@ -181,7 +180,7 @@ impl Placeholder {
 
 impl Op for Placeholder {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
         panic!("Placeholder should not get evaluated")
     }
 
@@ -194,9 +193,9 @@ impl Op for Placeholder {
 
     fn infer_and_propagate(
         &self,
-        inputs: Vec<TensorFact>,
-        outputs: Vec<TensorFact>,
-    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        inputs: TVec<TensorFact>,
+        outputs: TVec<TensorFact>,
+    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
         use ops::InferenceOp;
         self.infer(inputs, outputs)
     }
@@ -233,10 +232,10 @@ impl Op for Shape {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
-        Ok(vec![Tensor::from(Array1::from_vec(shape)).into()])
+        Ok(tvec![Tensor::from(Array1::from_vec(shape)).into()])
     }
 }
 
@@ -252,12 +251,12 @@ impl InferenceRulesOp for Shape {
             .equals(&outputs.len, 1)
             .equals(&outputs[0].datum_type, DatumType::TDim)
             .equals(&outputs[0].rank, 1)
-            .given(&inputs[0].rank, move |solver,r| {
+            .given(&inputs[0].rank, move |solver, r| {
                 solver.equals(&outputs[0].shape[0], r.to_dim());
             })
-            .given(&outputs[0].shape[0], move |solver,r| {
+            .given(&outputs[0].shape[0], move |solver, r| {
                 if let Ok(d) = r.to_integer() {
-                   solver.equals(&inputs[0].rank, d);
+                    solver.equals(&inputs[0].rank, d);
                 }
             })
             .given(&inputs[0].shape, move |solver, shape: Vec<TDim>| {
@@ -269,7 +268,7 @@ impl InferenceRulesOp for Shape {
                 let shape = shape.take_dims().unwrap(); // checked
                 solver.equals(
                     &inputs[0].shape,
-                    shape.into_iter().cloned().collect::<Vec<TDim>>()
+                    shape.into_iter().cloned().collect::<Vec<TDim>>(),
                 );
             });
     }

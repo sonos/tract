@@ -1,4 +1,3 @@
-
 macro_rules! element_map_float {
     ($Name:ident, $name:ident, $expr:expr) => {
         pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
@@ -12,9 +11,7 @@ macro_rules! element_map_float {
         }
 
         #[derive(Debug, Clone, new)]
-        pub struct $Name<T: $crate::tensor::Datum + ::num::Float>(
-            ::std::marker::PhantomData<T>,
-        );
+        pub struct $Name<T: $crate::tensor::Datum + ::num::Float>(::std::marker::PhantomData<T>);
 
         impl<T: $crate::tensor::Datum + ::num::Float> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
@@ -25,24 +22,24 @@ macro_rules! element_map_float {
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: Vec<$crate::ops::Value>,
-            ) -> $crate::Result<Vec<$crate::ops::Value>> {
+                mut inputs: TVec<$crate::ops::Value>,
+            ) -> $crate::Result<TVec<$crate::ops::Value>> {
                 let a = args_1!(inputs);
-                let mut a = T::tensor_into_array(a.into_tensor())?;
+                let mut a = a.into_array::<T>()?;
                 a.mapv_inplace($expr);
-                Ok(vec![T::array_into_tensor(a).into()])
+                Ok(tvec![a.into()])
             }
 
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<$crate::ops::StepValue>,
+                mut inputs: TVec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<Vec<$crate::ops::Value>>> {
+            ) -> Result<Option<TVec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
                 match a.into_value() {
                     None => Ok(None),
-                    Some(tv) => Ok(Some(self.eval(vec![tv])?)),
+                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
                 }
             }
         }
@@ -88,15 +85,15 @@ macro_rules! element_map {
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: Vec<$crate::ops::Value>,
-            ) -> $crate::Result<Vec<$crate::ops::Value>> {
+                mut inputs: TVec<$crate::ops::Value>,
+            ) -> $crate::Result<TVec<$crate::ops::Value>> {
                 use $crate::tensor::Datum;
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == $type::datum_type() {
-                    let mut a = $type::tensor_into_array(a.into_tensor())?;
+                    let mut a = a.into_array::<$type>()?;
                     a.mapv_inplace($expr);
-                    return Ok(vec![$type::array_into_tensor(a).into()])
+                    return Ok(tvec![a.into()])
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
@@ -104,13 +101,13 @@ macro_rules! element_map {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<$crate::ops::StepValue>,
+                mut inputs: TVec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> $crate::Result<Option<Vec<$crate::ops::Value>>> {
+            ) -> $crate::Result<Option<TVec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
                 match a.into_value() {
                     None => Ok(None),
-                    Some(tv) => Ok(Some(self.eval(vec![tv])?)),
+                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
                 }
             }
         }
@@ -150,9 +147,7 @@ macro_rules! element_map_signed {
         }
 
         #[derive(Debug, Clone, new)]
-        pub struct $Name<T: $crate::tensor::Datum + ::num::Signed>(
-            ::std::marker::PhantomData<T>,
-        );
+        pub struct $Name<T: $crate::tensor::Datum + ::num::Signed>(::std::marker::PhantomData<T>);
 
         impl<T: $crate::tensor::Datum + ::num::Signed> ::ops::Op for $Name<T> {
             /// Returns the attributes of the operation and their values.
@@ -163,24 +158,24 @@ macro_rules! element_map_signed {
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: Vec<$crate::ops::Value>,
-            ) -> $crate::Result<Vec<$crate::ops::Value>> {
+                mut inputs: TVec<$crate::ops::Value>,
+            ) -> $crate::Result<TVec<$crate::ops::Value>> {
                 let a = args_1!(inputs);
-                let mut a = T::tensor_into_array(a.into_tensor())?;
+                let mut a = a.into_array::<T>()?;
                 a.mapv_inplace($expr);
-                Ok(vec![T::array_into_tensor(a).into()])
+                Ok(tvec![a.into()])
             }
 
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: Vec<$crate::ops::StepValue>,
+                mut inputs: TVec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<Vec<$crate::ops::Value>>> {
+            ) -> Result<Option<TVec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
                 match a.into_value() {
                     None => Ok(None),
-                    Some(tv) => Ok(Some(self.eval(vec![tv])?)),
+                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
                 }
             }
         }
@@ -221,12 +216,12 @@ macro_rules! element_bin {
             /// Evaluates the operation given the input tensors.
             fn eval_t<T: ::tensor::Datum>(
                 &self,
-                mut inputs: Vec<$crate::ops::Value>,
-            ) -> Result<Vec<$crate::ops::Value>> {
+                mut inputs: TVec<$crate::ops::Value>,
+            ) -> Result<TVec<$crate::ops::Value>> {
                 let (a, b) = args_2!(inputs);
-                let a = T::tensor_cast_to_array(&*a)?.view().to_owned();
-                let b = T::tensor_cast_to_array(&*b)?;
-                Ok(vec![T::array_into_tensor($expr(a, b.view())).into()])
+                let a = a.cast_to_array::<T>()?.into_owned();
+                let b = b.cast_to_array::<T>()?;
+                Ok(tvec![$expr(a, b.view()).into()])
             }
         }
 
@@ -239,8 +234,8 @@ macro_rules! element_bin {
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                inputs: Vec<$crate::ops::Value>,
-            ) -> Result<Vec<$crate::ops::Value>> {
+                inputs: TVec<$crate::ops::Value>,
+            ) -> Result<TVec<$crate::ops::Value>> {
                 use $crate::tensor::Datum;
                 if let Some(dt) = inputs[0].datum_type().common_super_type(inputs[1].datum_type()) {
                     $(if dt == $type::datum_type() {
@@ -261,9 +256,9 @@ macro_rules! element_bin {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                inputs: Vec<$crate::ops::StepValue>,
+                inputs: TVec<$crate::ops::StepValue>,
                 buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<Vec<$crate::ops::Value>>> {
+            ) -> Result<Option<TVec<$crate::ops::Value>>> {
                 let buffer = buffer.downcast_mut::<$crate::ops::QueuesBuffer>()
                     .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
 
@@ -276,7 +271,7 @@ macro_rules! element_bin {
                 } else {
                     let a = buffer[0].pop_front().unwrap();
                     let b = buffer[1].pop_front().unwrap();
-                    Ok(Some(self.eval(vec![a, b])?))
+                    Ok(Some(self.eval(tvec![a, b])?))
                 }
             }
         }
@@ -380,9 +375,9 @@ macro_rules! boxed_new {
 macro_rules! assert_forward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(
-            $op.infer(vec![$input.clone()], vec![TensorFact::new()])
+            $op.infer(tvec![$input.clone()], tvec![TensorFact::new()])
                 .unwrap(),
-            (vec![$input.clone()], vec![$output])
+            (tvec![$input.clone()], tvec![$output])
         )
     };
 }
@@ -392,9 +387,9 @@ macro_rules! assert_forward {
 macro_rules! assert_backward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(
-            $op.infer(vec![TensorFact::new()], vec![$output.clone()])
+            $op.infer(tvec![TensorFact::new()], tvec![$output.clone()])
                 .unwrap(),
-            (vec![$input], vec![$output.clone()])
+            (tvec![$input], tvec![$output.clone()])
         )
     };
 }

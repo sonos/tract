@@ -23,8 +23,8 @@ macro_rules! wrap {
 }
 
 mod cache;
-mod expressions;
 pub mod exp2;
+mod expressions;
 mod path;
 mod proxies;
 mod solver;
@@ -33,9 +33,8 @@ pub use self::expressions::{Expression, IntoExpression};
 pub use self::proxies::*;
 pub use self::solver::*;
 pub use super::prelude::*;
-pub use dim::{ TDim, ToDim };
-pub use analyser::interface::exp2::{ IntoExp, ToDimExp };
-
+pub use analyser::interface::exp2::{IntoExp, ToDimExp};
+pub use dim::{TDim, ToDim};
 
 pub fn bexp<T, IE, E>(fact: IE) -> Box<Expression<Output = T>>
 where

@@ -43,8 +43,12 @@ impl<T: Datum> Conv2D<T> {
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
-        let out_height = self.0.adjusted_rows(images.h().into(), filter_rows).to_integer()? as usize;
-        let out_width = self.0.adjusted_cols(images.w().into(), filter_cols).to_integer()? as usize;
+        let out_height = self.0
+            .adjusted_rows(images.h().into(), filter_rows)
+            .to_integer()? as usize;
+        let out_width = self.0
+            .adjusted_cols(images.w().into(), filter_cols)
+            .to_integer()? as usize;
 
         let filter = filter
             .view()
@@ -55,8 +59,7 @@ impl<T: Datum> Conv2D<T> {
 
         // Loop over each batch.
         for image in data.outer_iter() {
-            let patches = self
-                .0
+            let patches = self.0
                 .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
@@ -84,14 +87,13 @@ impl<T: Datum> Op for Conv2D<T> {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
-        let data = T::tensor_into_array(m_data.into_tensor())?;
-        let filter = T::tensor_to_view(&*m_filter)?;
+        let data = m_data.into_array()?;
+        let filter = m_filter.to_array_view()?;
         let data = into_4d(data)?;
 
-        Ok(vec![
-            T::array_into_tensor(self.convolve(&data, filter, true, true)?.into_dyn()).into(),
+        Ok(tvec![self.convolve(&data, filter, true, true)?.into_dyn().into(),
         ])
     }
 
@@ -108,9 +110,9 @@ impl<T: Datum> Op for Conv2D<T> {
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
-        mut inputs: Vec<StepValue>,
+        mut inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<Value>>> {
+    ) -> Result<Option<TVec<Value>>> {
         // We only support the VALID padding strategy for now, with the
         // streaming dimension being either the width or the height.
 
@@ -134,7 +136,7 @@ impl<T: Datum> Op for Conv2D<T> {
 
         // Maybe the data is streamed along the batch dimension.
         if dim == 0 {
-            let result = self.eval(vec![chunk, filter])?;
+            let result = self.eval(tvec![chunk, filter])?;
             return Ok(Some(result));
         }
 
@@ -142,14 +144,13 @@ impl<T: Datum> Op for Conv2D<T> {
             bail!("Conv2D only supports batch, width and height streaming.");
         }
 
-        let data = chunk.into_tensor();
-        let data = into_4d(T::tensor_into_array(data)?)?;
+        let data = into_4d(chunk.into_array()?)?;
         let data_size = data.shape()[dim];
         if data_size != 1 {
             bail!("Conv2D expects chunks of dim 1 in streamed dim");
         }
 
-        let filter = T::tensor_to_view(&*filter)?;
+        let filter = filter.to_array_view()?;
         let filter_size = filter.shape()[dim - 1];
 
         // Generates an empty 4-dimensional array of the right shape.
@@ -200,7 +201,7 @@ impl<T: Datum> Op for Conv2D<T> {
             *prev = next;
         }
 
-        Ok(Some(vec![T::array_into_tensor(result).into()]))
+        Ok(Some(tvec![result.into()]))
     }
 }
 
@@ -262,7 +263,7 @@ mod tests {
             h_stride: stride,
             v_stride: stride,
             _data_format: DataFormat::NHWC,
-        }).eval(vec![mk(input).into(), mk(filter).into()])
+        }).eval(tvec![mk(input).into(), mk(filter).into()])
             .unwrap()
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
@@ -333,8 +334,7 @@ mod tests {
         let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        let result = conv
-            .eval(vec![data.into(), filter.into()])
+        let result = conv.eval(tvec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
         assert_eq!(exp, result.into_tensor());
@@ -357,7 +357,10 @@ mod tests {
         let exp: Tensor =
             Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
-        assert!(exp.close_enough(&conv.eval(vec![data.into(), filter.into()]).unwrap()[0], true))
+        assert!(exp.close_enough(
+            &conv.eval(tvec![data.into(), filter.into()]).unwrap()[0],
+            true
+        ))
     }
 
     #[test]
@@ -372,15 +375,17 @@ mod tests {
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
 
-        let (_, mut output_facts) = op.infer(
-                vec![img, ker],
-                vec![TensorFact::default()],
-            ).unwrap();
+        let (_, mut output_facts) = op.infer(tvec![img, ker], tvec![TensorFact::default()])
+            .unwrap();
 
         output_facts[0].reduce();
-        assert_eq!(output_facts, vec![
-                TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, (7-3+1), 1))
-            ]);
+        assert_eq!(
+            output_facts,
+            tvec![TensorFact::dt_shape(
+                DatumType::F32,
+                shapefact!(1, 1, (7 - 3 + 1), 1)
+            )]
+        );
     }
 
     #[test]
@@ -395,13 +400,12 @@ mod tests {
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
 
-        let (_, output_facts) = op.infer(
-                vec![img, ker],
-                vec![TensorFact::default()]
-            ).unwrap();
+        let (_, output_facts) = op.infer(tvec![img, ker], tvec![TensorFact::default()])
+            .unwrap();
 
-        assert_eq!(output_facts, vec![
-                TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1, 1))
-            ]);
+        assert_eq!(
+            output_facts,
+            tvec![TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1, 1))]
+        );
     }
 }

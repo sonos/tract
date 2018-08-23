@@ -43,8 +43,7 @@ impl ProfileData {
         for (ix, measure) in self.nodes.iter() {
             display_graph.nodes[*ix].label = Some(dur_avg_oneline_ratio(*measure, sum));
         }
-        let top5: Vec<usize> = self
-            .nodes
+        let top5: Vec<usize> = self.nodes
             .iter()
             .sorted_by(|(_, a), (_, b)| {
                 a.avg_real()

@@ -1,6 +1,6 @@
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{ Div, Mul };
+use std::ops::{Div, Mul};
 
 use num::cast::ToPrimitive;
 use num::Zero;
@@ -8,8 +8,8 @@ use num::Zero;
 use analyser::interface::path::Path;
 use analyser::interface::proxies::ComparableProxy;
 use analyser::interface::solver::Context;
-use dim::TDim;
 use analyser::types::{DimFact, Fact, IntFact, ShapeFact, TypeFact, ValueFact};
+use dim::TDim;
 use {DatumType, Result, Tensor};
 
 /// A trait for values produced by expressions.
@@ -252,22 +252,22 @@ impl<T: Output> fmt::Debug for VariableExpression<T> {
 }
 
 /// A scalar product between a constant and another expression.
-pub struct ProductExpression<E,V>(isize, E)
+pub struct ProductExpression<E, V>(isize, E)
 where
-    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
     E: Expression<Output = V>;
 
-impl<E,V> Expression for ProductExpression<E,V>
+impl<E, V> Expression for ProductExpression<E, V>
 where
-    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
-    E: Expression<Output = V>
+    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
+    E: Expression<Output = V>,
 {
     type Output = V;
 
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> Result<V> {
-        let v:V = self.1.get(context)?;
-        Ok(v*self.0)
+        let v: V = self.1.get(context)?;
+        Ok(v * self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -304,10 +304,10 @@ where
     }
 }
 
-impl<E,V> fmt::Debug for ProductExpression<E,V>
+impl<E, V> fmt::Debug for ProductExpression<E, V>
 where
-    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
-    E: Expression<Output = V>
+    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
+    E: Expression<Output = V>,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)
@@ -385,31 +385,31 @@ where
     T: ComparableProxy,
 {
     fn into_expr(self) -> VariableExpression<T::Output> {
-        VariableExpression(self.get_path().to_vec().into(), PhantomData)
+        VariableExpression(self.get_path().clone().into(), PhantomData)
     }
 }
 
 /// Converts (isize, IntoExpression<Output = IntFact>) to ProductExpression.
-impl<E, V, I> IntoExpression<ProductExpression<E,V>> for (isize, I)
+impl<E, V, I> IntoExpression<ProductExpression<E, V>> for (isize, I)
 where
-    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
     E: Expression<Output = V>,
     I: IntoExpression<E>,
 {
-    fn into_expr(self) -> ProductExpression<E,V> {
+    fn into_expr(self) -> ProductExpression<E, V> {
         let (k, e) = self;
         ProductExpression(k, e.into_expr())
     }
 }
 
 /// Converts (i32, IntoExpression<Output = IntFact>) to ProductExpression.
-impl<E, V, I> IntoExpression<ProductExpression<E,V>> for (i32, I)
+impl<E, V, I> IntoExpression<ProductExpression<E, V>> for (i32, I)
 where
-    V: Zero + Mul<isize, Output=V> + Div<isize, Output=V> + Clone + Output,
+    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
     E: Expression<Output = V>,
     I: IntoExpression<E>,
 {
-    fn into_expr(self) -> ProductExpression<E,V> {
+    fn into_expr(self) -> ProductExpression<E, V> {
         let (k, e) = self;
         ProductExpression(k as isize, e.into_expr())
     }

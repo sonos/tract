@@ -1,6 +1,6 @@
+use super::tree::ExpNode;
 use std::collections::HashMap;
 use std::{fmt, ops};
-use super::tree::ExpNode;
 
 const EXP_LEN: usize = 128;
 
@@ -43,10 +43,10 @@ impl ::serde::Serialize for Stack {
     }
 }
 
-impl Eq for Stack { }
+impl Eq for Stack {}
 
 impl PartialEq for Stack {
-    fn eq(&self, other:&Stack) -> bool {
+    fn eq(&self, other: &Stack) -> bool {
         self.as_ops() == other.as_ops()
     }
 }
@@ -55,11 +55,11 @@ impl Stack {
     pub fn empty() -> Stack {
         Stack {
             len: 0,
-            array: unsafe { ::std::mem::uninitialized() }
+            array: unsafe { ::std::mem::uninitialized() },
         }
     }
 
-    pub fn sym(s:char) -> Stack {
+    pub fn sym(s: char) -> Stack {
         let mut e = Self::empty();
         e.push(StackOp::Sym(s));
         e
@@ -99,7 +99,7 @@ impl Stack {
                     use num::Integer;
                     let b = stack.pop().ok_or("Too short stack")?;
                     let a = stack.pop().ok_or("Too short stack")?;
-                    let (d,r) = a.div_rem(&b);
+                    let (d, r) = a.div_rem(&b);
                     stack.push(d + (r > 0) as isize);
                 }
                 Rem => {
@@ -145,19 +145,19 @@ impl Stack {
     pub fn val(&self) -> Option<&isize> {
         if let StackOp::Val(ref v) = &self.array[0] {
             if self.len == 1 {
-                return Some(v)
+                return Some(v);
             }
         }
-        return None
+        return None;
     }
 
     pub fn mut_val(&mut self) -> Option<&mut isize> {
         if let StackOp::Val(ref mut v) = &mut self.array[0] {
             if self.len == 1 {
-                return Some(v)
+                return Some(v);
             }
         }
-        return None
+        return None;
     }
 
     pub fn div_ceil(mut self, other: &Stack) -> Stack {
@@ -187,15 +187,14 @@ impl Stack {
 
     pub fn try_reduce(self) -> ::Result<Stack> {
         if let Some(_) = self.val() {
-            return Ok(self)
+            return Ok(self);
         }
         let red = ExpNode::from_ops(&self)?.reduce()?.to_ops()?;
         Ok(red)
     }
 }
 
-impl From<isize> for Stack
-{
+impl From<isize> for Stack {
     fn from(v: isize) -> Stack {
         let mut e = Stack::empty();
         e.push(StackOp::Val(v));
@@ -203,8 +202,7 @@ impl From<isize> for Stack
     }
 }
 
-impl From<char> for Stack
-{
+impl From<char> for Stack {
     fn from(s: char) -> Stack {
         let mut e = Stack::empty();
         e.push(StackOp::Sym(s));
@@ -212,13 +210,12 @@ impl From<char> for Stack
     }
 }
 
-impl ops::Neg for Stack
-{
+impl ops::Neg for Stack {
     type Output = Self;
     fn neg(mut self) -> Self {
         if let Some(v) = self.mut_val() {
             *v = -*v;
-            return (*v).into()
+            return (*v).into();
         }
         self.push(StackOp::Neg);
         self.reduce();
@@ -234,7 +231,7 @@ where
         let rhs = rhs.into();
         if let (Some(a), Some(b)) = (self.mut_val(), rhs.val()) {
             *a += b;
-            return
+            return;
         }
         self.push_all(rhs.as_ops());
         self.push(StackOp::Add);
@@ -261,7 +258,7 @@ where
         let rhs = rhs.into();
         if let (Some(a), Some(b)) = (self.mut_val(), rhs.val()) {
             *a -= b;
-            return
+            return;
         }
         self.push_all(rhs.as_ops());
         self.push(StackOp::Sub);
@@ -288,7 +285,7 @@ where
         let rhs = rhs.into();
         if let (Some(a), Some(b)) = (self.mut_val(), rhs.val()) {
             *a *= b;
-            return
+            return;
         }
         self.push_all(rhs.as_ops());
         self.push(StackOp::Mul);
@@ -315,7 +312,7 @@ where
         let rhs = rhs.into();
         if let (Some(a), Some(b)) = (self.mut_val(), rhs.val()) {
             *a /= b;
-            return
+            return;
         }
         self.push_all(rhs.as_ops());
         self.push(StackOp::Div);
@@ -342,7 +339,7 @@ where
         let rhs = rhs.into();
         if let (Some(a), Some(b)) = (self.mut_val(), rhs.val()) {
             *a %= b;
-            return
+            return;
         }
         self.push_all(rhs.as_ops());
         self.push(StackOp::Rem);
@@ -363,8 +360,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::StackOp::*;
+    use super::*;
 
     #[test]
     fn const_and_add() {
@@ -455,7 +452,10 @@ mod tests {
     #[test]
     fn reduce_neg_mul_() {
         let e: Stack = Stack::from(1) - Stack::from(2) * Stack::sym('S');
-        assert_eq!(e.reduced(), Stack::from(1) + -Stack::from(2) * Stack::sym('S'));
+        assert_eq!(
+            e.reduced(),
+            Stack::from(1) + -Stack::from(2) * Stack::sym('S')
+        );
     }
 
     #[test]

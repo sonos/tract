@@ -1,4 +1,5 @@
 use super::*;
+use ops::TVec;
 use tensor::Tensor;
 
 /// Build a TensorFact from a Tensor.
@@ -14,8 +15,8 @@ pub fn tensor_to_fact(tensor: Tensor) -> TensorFact {
 pub fn infer_forward_concrete(
     op: &Op,
     inputs: &Vec<&TensorFact>,
-) -> Result<Option<Vec<TensorFact>>> {
-    let input_values: Vec<_> = inputs
+) -> Result<Option<TVec<TensorFact>>> {
+    let input_values: TVec<_> = inputs
         .iter()
         .filter_map(|t| t.value.concretize())
         .map(|v| v.clone().into())
@@ -29,7 +30,7 @@ pub fn infer_forward_concrete(
     // If we know the value of all the inputs, we can deduce everything.
     let output_value = op.eval(input_values)?.pop().unwrap();
 
-    Ok(Some(vec![tensor_to_fact(output_value.into_tensor())]))
+    Ok(Some(tvec![tensor_to_fact(output_value.into_tensor())]))
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.
@@ -42,7 +43,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> Result<Option<ShapeFac
     let dims: Vec<_> = shapes.iter().map(|s| &s.dims).collect();
     let bound = dims.iter().map(|s| s.len()).max().unwrap();
 
-    let mut output_shape:Vec<DimFact> = vec![];
+    let mut output_shape: Vec<DimFact> = vec![];
 
     // FIXME(liautaud): Rewrite more clearly and test.
     for i in 1..(bound + 1) {
@@ -59,7 +60,11 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> Result<Option<ShapeFac
                 GenericFact::Only(d) if d.is_one() => (),
                 GenericFact::Only(d) => {
                     if previous.is_some() && previous != Some(d) {
-                        bail!("Invalid shape (broadcasting): {:?} is not compatible with {:?}.", d, previous)
+                        bail!(
+                            "Invalid shape (broadcasting): {:?} is not compatible with {:?}.",
+                            d,
+                            previous
+                        )
                     } else {
                         previous = Some(d)
                     }
@@ -88,7 +93,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> Result<Option<ShapeFac
 }
 
 /// Infers basic facts in the case of unary or binary operators.
-pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<Vec<TensorFact>>> {
+pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<TVec<TensorFact>>> {
     if let Some(output) = infer_forward_concrete(op, &inputs)? {
         return Ok(Some(output));
     }
@@ -109,7 +114,7 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<V
         value: valuefact!(_),
     };
 
-    Ok(Some(vec![output]))
+    Ok(Some(tvec![output]))
 }
 
 /// Returns the most specific closed shape out of an iterator.

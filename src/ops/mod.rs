@@ -32,13 +32,15 @@ pub mod nn;
 
 pub mod prelude {
     pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
-    pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
+    pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, TVec, Value};
+    pub use dim::TDim;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{Datum, DatumType, Tensor};
-    pub use dim::{  TDim };
     pub use Result;
 }
+
+pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -95,6 +97,14 @@ impl Value {
 
         self.clone()
     }
+
+    pub fn into_array<'a, D: ::tensor::Datum>(self) -> ::Result<::ndarray::ArrayD<D>> {
+        self.into_tensor().into_array()
+    }
+
+    pub fn to_array_view<'a, D: ::tensor::Datum>(&'a self) -> ::Result<::ndarray::ArrayViewD<'a, D>> {
+        self.as_tensor().to_array_view()
+    }
 }
 
 impl<M> From<M> for Value
@@ -138,10 +148,10 @@ pub enum StepValue {
 pub struct Stream {
     pub info: StreamInfo,
     pub offset: u64,
-    pub chunk: Option<Value>
+    pub chunk: Option<Value>,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct StreamInfo {
     pub axis: usize,
     pub len: TDim,
@@ -224,7 +234,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
         bail!("Unexpected call on op.eval(). {:?}", self)
     }
 
@@ -256,9 +266,9 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// others will receive None.
     fn step(
         &self,
-        _inputs: Vec<StepValue>,
+        _inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<Value>>> {
+    ) -> Result<Option<TVec<Value>>> {
         bail!("Streaming is not available for operator {:?}", self)
     }
 
@@ -271,9 +281,9 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// and the refined properties about the inputs and outputs otherwise.
     fn infer_and_propagate(
         &self,
-        inputs: Vec<TensorFact>,
-        outputs: Vec<TensorFact>,
-    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        inputs: TVec<TensorFact>,
+        outputs: TVec<TensorFact>,
+    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
         let (infered_inputs, infered_outputs) = self.infer(inputs, outputs)?;
 
         if infered_inputs.iter().all(|i| i.value.is_concrete()) {
@@ -284,7 +294,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
             let output_value = self.eval(input_values)?.pop().unwrap();
             Ok((
                 infered_inputs,
-                vec![::analyser::helpers::tensor_to_fact(
+                tvec![::analyser::helpers::tensor_to_fact(
                     output_value.into_tensor(),
                 )],
             ))
@@ -293,12 +303,15 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         }
     }
 
-    fn final_prep(&self, _inputs: Vec<TensorFact>, _outputs: Vec<TensorFact>)
-            -> Result<Option<Box<Op>>> {
+    fn final_prep(
+        &self,
+        _inputs: TVec<TensorFact>,
+        _outputs: TVec<TensorFact>,
+    ) -> Result<Option<Box<Op>>> {
         Ok(None)
     }
 
-    fn const_value(&self) -> Option<Tensor> {
+    fn const_value(&self) -> Option<Value> {
         None
     }
 
@@ -310,9 +323,9 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
 pub trait InferenceOp {
     fn infer(
         &self,
-        inputs: Vec<TensorFact>,
-        outputs: Vec<TensorFact>,
-    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)>;
+        inputs: TVec<TensorFact>,
+        outputs: TVec<TensorFact>,
+    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)>;
 }
 
 pub trait InferenceRulesOp {
@@ -328,9 +341,9 @@ pub trait InferenceRulesOp {
 impl<O: InferenceRulesOp> InferenceOp for O {
     fn infer(
         &self,
-        inputs: Vec<TensorFact>,
-        outputs: Vec<TensorFact>,
-    ) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+        inputs: TVec<TensorFact>,
+        outputs: TVec<TensorFact>,
+    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
         let inputs_proxy = TensorsProxy::new(vec![0].into());
         let outputs_proxy = TensorsProxy::new(vec![1].into());
 
@@ -383,7 +396,7 @@ pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
 
@@ -423,18 +436,18 @@ impl OpBuffer for EmptyBuffer {}
 
 /// A buffer with a variable number of Value queues.
 #[derive(Debug, Clone)]
-pub struct QueuesBuffer(Vec<VecDeque<Value>>);
+pub struct QueuesBuffer(TVec<VecDeque<Value>>);
 
 impl OpBuffer for QueuesBuffer {}
 
 impl QueuesBuffer {
     /// Creates a new buffer with a given number of queues.
     pub fn new(size: usize) -> QueuesBuffer {
-        QueuesBuffer(vec![VecDeque::new(); size])
+        QueuesBuffer(tvec![VecDeque::new(); size])
     }
 
     /// Appends a new Value to each queue in the buffer.
-    pub fn append(&mut self, views: Vec<StepValue>) -> Result<()> {
+    pub fn append(&mut self, views: TVec<StepValue>) -> Result<()> {
         if views.len() > self.0.len() {
             bail!("There are more input Values than queues in the buffer.");
         }

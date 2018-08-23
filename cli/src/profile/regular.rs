@@ -32,7 +32,7 @@ pub fn handle_benching(
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(vec![params.input.as_ref().unwrap().to_tensor()?])?;
+        let _ = plan.run(tvec![params.input.as_ref().unwrap().to_tensor()?])?;
         iters += 1;
     }
     let dur = Duration::since(&start, iters);
@@ -66,7 +66,7 @@ pub fn handle(
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(vec![params.input.as_ref().unwrap().to_tensor()?])?;
+        let _ = plan.run(tvec![params.input.as_ref().unwrap().to_tensor()?])?;
         iters += 1;
     }
     let entire = Duration::since(&start, iters);

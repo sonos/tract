@@ -26,7 +26,7 @@ pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
 
 impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let m_input = args_1!(inputs);
         let data = m_input
             .into_tensor()
@@ -35,11 +35,14 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
-        let out_h = self.0.adjusted_rows(images.h().into(), (self.1).0).to_integer()? as usize;
-        let out_w = self.0.adjusted_cols(images.w().into(), (self.1).1).to_integer()? as usize;
+        let out_h = self.0
+            .adjusted_rows(images.h().into(), (self.1).0)
+            .to_integer()? as usize;
+        let out_w = self.0
+            .adjusted_cols(images.w().into(), (self.1).1)
+            .to_integer()? as usize;
 
-        let padded = self
-            .0
+        let padded = self.0
             .pad(data.view(), self.1, ::std::f32::NAN, true, true)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         let out_shape = (images.count(), out_h, out_w, images.d());
@@ -57,7 +60,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
             P::digest(&mut state)
         });
 
-        Ok(vec![Tensor::from(transformed.into_dyn()).into()])
+        Ok(tvec![Tensor::from(transformed.into_dyn()).into()])
     }
 
     /// Returns the attributes of the operation and their values.
@@ -143,7 +146,7 @@ mod tests {
         let pool = Pool::<MaxPooler>(LocalPatch::same(1, 1), (2, 1), PhantomData);
         let data = Tensor::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
-        let found = pool.eval(vec![data.into()]).unwrap();
+        let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
             exp.close_enough(&found[0], false),
@@ -158,7 +161,7 @@ mod tests {
         let pool = Pool::<MaxPooler>(LocalPatch::same(3, 3), (3, 3), PhantomData);
         let data = Tensor::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
-        let found = pool.eval(vec![data.into()]).unwrap();
+        let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
             exp.close_enough(&found[0], true),
@@ -173,7 +176,7 @@ mod tests {
         let pool = Pool::<AvgPooler>(LocalPatch::same(1, 1), (1, 2), PhantomData);
         let data = Tensor::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
-        let found = pool.eval(vec![data.into()]).unwrap();
+        let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
             exp.close_enough(&found[0], true),

@@ -1,5 +1,5 @@
-use std::fmt;
 use itertools::Itertools;
+use std::fmt;
 // use std::collections::HashMap;
 
 use super::stack::*;
@@ -22,8 +22,15 @@ impl fmt::Debug for ExpNode {
             Sym(it) => write!(fmt, "{}", it),
             Val(it) => write!(fmt, "{}", it),
             Add(it) => write!(fmt, "({})", it.iter().map(|x| format!("{:?}", x)).join("+")),
-            Mul(a,b) if *a == 1 => write!(fmt, "{}", b.iter().map(|x| format!("{:?}", x)).join("*")),
-            Mul(a,b) => write!(fmt, "{}.{}", a, b.iter().map(|x| format!("{:?}", x)).join("")),
+            Mul(a, b) if *a == 1 => {
+                write!(fmt, "{}", b.iter().map(|x| format!("{:?}", x)).join("*"))
+            }
+            Mul(a, b) => write!(
+                fmt,
+                "{}.{}",
+                a,
+                b.iter().map(|x| format!("{:?}", x)).join("")
+            ),
             Div(a, b) => write!(fmt, "{:?}/{:?}", a, b),
             Rem(a, b) => write!(fmt, "{:?}%{:?}", a, b),
             DivCeil(a, b) => write!(fmt, "({:?}/{:?}).ceil()", a, b),
@@ -54,12 +61,12 @@ impl ExpNode {
                 }
                 Neg => {
                     let a = stack.pop().ok_or("Too short stack")?;
-                    stack.push(ExpNode::Mul(-1, vec!(a)));
+                    stack.push(ExpNode::Mul(-1, vec![a]));
                 }
                 Sub => {
                     let b = stack.pop().ok_or("Too short stack")?;
                     let a = stack.pop().ok_or("Too short stack")?;
-                    stack.push(ExpNode::Add(vec![a, ExpNode::Mul(-1, vec!(b))]));
+                    stack.push(ExpNode::Add(vec![a, ExpNode::Mul(-1, vec![b])]));
                 }
                 Div => {
                     let b = stack.pop().ok_or("Too short stack")?;
@@ -167,8 +174,8 @@ impl ExpNode {
     }
     */
 
-   pub fn reduce(self) -> ::Result<ExpNode> {
-       macro_rules! b( ($e:expr) => { Box::new($e) } );
+    pub fn reduce(self) -> ::Result<ExpNode> {
+        macro_rules! b( ($e:expr) => { Box::new($e) } );
         use self::ExpNode::*;
         let res = match self {
             Div(a, b) => {
@@ -176,7 +183,7 @@ impl ExpNode {
                 let red_b = b.reduce()?;
                 match (red_a, red_b) {
                     (a, Val(1)) => a,
-                    (Val(a), Val(b)) => Val(a/b),
+                    (Val(a), Val(b)) => Val(a / b),
                     (Add(vals), Val(b)) => {
                         let mut out: Vec<ExpNode> = vec![];
                         let mut kept: Vec<ExpNode> = vec![];
@@ -186,14 +193,14 @@ impl ExpNode {
                                     out.push(Val(num / b));
                                     continue;
                                 }
-                                Mul(m,factors) => {
+                                Mul(m, factors) => {
                                     if m % b == 0 {
                                         out.push(Mul(m / b, factors));
                                     } else {
                                         kept.push(Mul(m, factors))
                                     }
                                 }
-                                v => kept.push(v)
+                                v => kept.push(v),
                             }
                         }
                         if kept.len() == 1 {
@@ -215,12 +222,12 @@ impl ExpNode {
                         if gcd == b {
                             Mul(v / gcd, factors).reduce()?
                         } else if gcd == 1 {
-                            Mul(v, vec!(Div(b!(Mul(1,factors).reduce()?), b!(Val(b)))))
+                            Mul(v, vec![Div(b!(Mul(1, factors).reduce()?), b!(Val(b)))])
                         } else {
                             Div(b!(Mul(v / gcd, factors)), b!(Val(b / gcd)))
                         }
                     }
-                    (a,b) => Div(b!(a), b!(b)),
+                    (a, b) => Div(b!(a), b!(b)),
                 }
             }
             Rem(a, b) => {
@@ -230,14 +237,17 @@ impl ExpNode {
                 if b == ExpNode::Val(1) {
                     a
                 } else {
-                    Add(vec!(a.clone(), Mul(-1, vec![b.clone(), Div(b!(a.clone()), b!(b))]))).reduce()?
+                    Add(vec![
+                        a.clone(),
+                        Mul(-1, vec![b.clone(), Div(b!(a.clone()), b!(b))]),
+                    ]).reduce()?
                 }
             }
             DivCeil(a, b) => {
                 // ceiling(j/m) = floor(j+m-1/m)
                 let red_a = a.reduce()?;
                 let red_b = b.reduce()?;
-                Div(b!(Add(vec!(red_a, red_b.clone(), Val(-1)))), b!(red_b)).reduce()?
+                Div(b!(Add(vec![red_a, red_b.clone(), Val(-1)])), b!(red_b)).reduce()?
             }
             Add(mut vec) => {
                 use std::collections::HashMap;
@@ -308,7 +318,7 @@ impl ExpNode {
                     if let Add(items) = item {
                         let mut items = items
                             .into_iter()
-                            .map(|f| Mul(value, vec!(f)).reduce())
+                            .map(|f| Mul(value, vec![f]).reduce())
                             .collect::<::Result<Vec<ExpNode>>>()?;
                         items.sort();
                         Add(items)
@@ -316,7 +326,7 @@ impl ExpNode {
                         if value == 1 {
                             item
                         } else {
-                            Mul(value, vec!(item))
+                            Mul(value, vec![item])
                         }
                     }
                 } else {
@@ -332,8 +342,8 @@ impl ExpNode {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::ExpNode::*;
+    use super::*;
 
     fn neg(a: &ExpNode) -> ExpNode {
         mul(-1, a)
@@ -413,7 +423,11 @@ mod tests {
     #[test]
     fn reduce_cplx_ex_1() {
         assert_eq!(
-            Add(vec![add(&Sym('S'), &Val(-4)), add(&Val(4), &Mul(1, vec![Val(-2), div(&Sym('S'), &Val(2))]))]).reduce().unwrap(),
+            Add(vec![
+                add(&Sym('S'), &Val(-4)),
+                add(&Val(4), &Mul(1, vec![Val(-2), div(&Sym('S'), &Val(2))])),
+            ]).reduce()
+                .unwrap(),
             add(&Sym('S'), &mul(-2, &div(&Sym('S'), &Val(2))))
         )
     }
@@ -424,7 +438,8 @@ mod tests {
             add(
                 &add(&Val(-4), &mul(-2, &div(&Sym('S'), &Val(4)))),
                 &mul(-2, &mul(-1, &div(&Sym('S'), &Val(4))))
-            ).reduce().unwrap(),
+            ).reduce()
+                .unwrap(),
             Val(-4)
         )
     }
@@ -432,7 +447,9 @@ mod tests {
     #[test]
     fn reduce_cplx_ex_3() {
         assert_eq!(
-            div(&Mul(1, vec!(Sym('S'), Val(4))), &Val(4)).reduce().unwrap(),
+            div(&Mul(1, vec![Sym('S'), Val(4)]), &Val(4))
+                .reduce()
+                .unwrap(),
             Sym('S')
         )
     }
@@ -441,11 +458,16 @@ mod tests {
     fn reduce_cplx_ex_4() {
         assert_eq!(
             div(
-                &Mul(1, vec![
-                    add(&Val(-4), &Mul(1, vec![Val(-8), div(&Sym('S'), &Val(8))])),
-                    Val(8)]),
+                &Mul(
+                    1,
+                    vec![
+                        add(&Val(-4), &Mul(1, vec![Val(-8), div(&Sym('S'), &Val(8))])),
+                        Val(8),
+                    ]
+                ),
                 &Val(8)
-            ).reduce().unwrap(),
+            ).reduce()
+                .unwrap(),
             add(&Val(-4), &mul(-8, &div(&Sym('S'), &Val(8))))
         )
     }
@@ -454,11 +476,11 @@ mod tests {
     fn reduce_cplx_ex_5() {
         assert_eq!(
             mul(-1, &add(&Sym('S'), &Val(-182))).reduce().unwrap(),
-            add(&Mul(1, vec![Val(-1), Sym('S')]),&Val(182)).reduce().unwrap()
+            add(&Mul(1, vec![Val(-1), Sym('S')]), &Val(182))
+                .reduce()
+                .unwrap()
         )
     }
-
-
 
     #[test]
     fn reduce_mul_1() {

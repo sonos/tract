@@ -65,12 +65,12 @@ impl From<TfdTensor> for TensorHolder {
             TfdTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
             TfdTensor::TDim(dims) => {
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
-                    let dims:ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
+                    let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
                     TensorHolder::I32(Self::to_tensor(dims))
                 } else {
                     panic!("Streaming used in tensorflow settings")
                 }
-            },
+            }
             TfdTensor::String(a) => TensorHolder::String(Self::to_tensor(a)),
         }
     }
@@ -109,8 +109,7 @@ impl Tensorflow {
         let token = step.request_fetch(&self.graph.operation_by_name_required(output_name)?, 0);
         self.session.run(&mut step)?;
 
-        let output_type = &self
-            .graph
+        let output_type = &self.graph
             .operation_by_name_required(&output_name)?
             .output_type(0);
         convert_output(&mut step, output_type, token)

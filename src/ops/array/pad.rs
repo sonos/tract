@@ -58,13 +58,11 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let (input, paddings) = args_2!(inputs);
-        let input = T::tensor_to_view(&input)?;
-        let paddings = i32::tensor_to_view(&paddings)?.into_dimensionality()?;
-        Ok(vec![
-            T::array_into_tensor(Self::compute(&input, paddings, None)?).into(),
-        ])
+        let input = input.to_array_view::<T>()?;
+        let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
+        Ok(tvec![Self::compute(&input, paddings, None)?.into()])
     }
 
     /// Returns the attributes of the operation and their values.
@@ -76,17 +74,17 @@ where
 
     fn step(
         &self,
-        mut inputs: Vec<StepValue>,
+        mut inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<Value>>> {
-        if let (StepValue::Stream(stream), StepValue::Const(paddings)) = args_2!(inputs)
-        {
+    ) -> Result<Option<TVec<Value>>> {
+        if let (StepValue::Stream(stream), StepValue::Const(paddings)) = args_2!(inputs) {
             if let Some(chunk) = stream.chunk {
-                let chunk = T::tensor_to_view(&chunk)?;
+                let chunk = chunk.to_array_view::<T>()?;
                 let paddings = i32::tensor_to_view(&paddings)?.into_dimensionality()?;
-                return Ok(Some(vec![
-                    T::array_into_tensor(Self::compute(&chunk, paddings, Some(stream.info.axis))?).into(),
-                ]))
+                return Ok(Some(tvec![
+                    Self::compute(&chunk, paddings, Some(stream.info.axis))?
+                        .into(),
+                ]));
             }
         }
         Ok(None)
@@ -116,7 +114,10 @@ impl<T: Datum> InferenceRulesOp for Pad<T> {
                 (0..rank as usize).for_each(|d| {
                     solver.equals(
                         &output.shape[d],
-                        input.shape[d].bex() + padding.value[d][0].bex().to_dim() + padding.value[d][1].bex().to_dim()); // FIXME
+                        input.shape[d].bex()
+                            + padding.value[d][0].bex().to_dim()
+                            + padding.value[d][1].bex().to_dim(),
+                    ); // FIXME
                 });
             });
     }
@@ -130,21 +131,20 @@ mod tests {
 
     #[test]
     fn pad_0() {
-        let inputs = vec![
+        let inputs = tvec![
             Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]])).into(),
             Tensor::from(arr2(&[[1, 1], [2, 2]])).into(),
         ];
 
-        let expected = Tensor::from(arr2(&[
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 2, 3, 0, 0],
-            [0, 0, 4, 5, 6, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-        ]));
-
-        assert_eq!(
-            Pad::<i32>::new().eval(inputs).unwrap(),
-            vec![expected.into()]
+        let expected: TVec<_> = tvec!(
+            Tensor::from(arr2(&[
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 2, 3, 0, 0],
+                [0, 0, 4, 5, 6, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+            ])).into()
         );
+
+        assert_eq!(Pad::<i32>::new().eval(inputs).unwrap(), expected);
     }
 }

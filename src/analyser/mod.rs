@@ -13,6 +13,7 @@ pub mod types;
 pub mod prelude {
     pub use super::types::*;
     pub use super::Analyser;
+    pub use ops::TVec;
     use Result;
 
     /// Attempts to unify two tensor facts into a more specialized one.
@@ -229,7 +230,9 @@ impl Analyser {
             let new_op = if prep {
                 let facts = self.facts(old_node.id)?;
                 old_node.op.final_prep(facts.0, facts.1)?
-            } else { None };
+            } else {
+                None
+            };
             nodes.push(Node {
                 id: ix,
                 name: old_node.name.clone(),
@@ -239,7 +242,7 @@ impl Analyser {
                     .iter()
                     .map(|&(input, port)| (nodes_mapped[&input], port))
                     .collect(),
-                op: new_op.unwrap_or_else(|| old_node.op.clone())
+                op: new_op.unwrap_or_else(|| old_node.op.clone()),
             });
         }
 
@@ -304,10 +307,10 @@ impl Analyser {
         }
     }
 
-    pub fn facts(&self, node:usize) -> Result<(Vec<TensorFact>, Vec<TensorFact>)> {
+    pub fn facts(&self, node: usize) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
         let node = &self.nodes[node];
 
-        let inputs: Vec<_> = self.prev_edges[node.id]
+        let inputs: TVec<_> = self.prev_edges[node.id]
             .iter()
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
@@ -323,7 +326,7 @@ impl Analyser {
             .collect();
 
         // FIXME(liautaud): We should handle multiple output ports in the future.
-        let mut outputs = vec![TensorFact::new()];
+        let mut outputs = tvec![TensorFact::new()];
         for &i in &self.next_edges[node.id] {
             outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
         }

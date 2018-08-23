@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use simplelog::Level::{Error, Info, Trace};
-use tfdeploy::Tensor;
 use tfdeploy::plan::{SimplePlan, SimpleState};
+use tfdeploy::Tensor;
 
 use errors::*;
 use format::*;
@@ -32,13 +32,16 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
-    let mut tf_outputs = tf.run_get_all(vec!((&params.input_nodes[0], generated.clone())))?;
+    let mut tf_outputs = tf.run_get_all(vec![(&params.input_nodes[0], generated.clone())])?;
 
     // Execute the model step-by-step on tfdeploy.
     let plan = SimplePlan::new(&tfd, &params.input_nodes, &[&params.output_node])?;
     let mut state = plan.state()?;
     state.set_input(0, generated.clone())?;
-    let plan = ::tfdeploy::model::eval_order_for_nodes(&tfd.nodes, &[tfd.node_by_name(&params.output_node)?.id])?;
+    let plan = ::tfdeploy::model::eval_order_for_nodes(
+        &tfd.nodes,
+        &[tfd.node_by_name(&params.output_node)?.id],
+    )?;
     debug!("Using execution plan: {:?}", plan);
 
     let nodes: Vec<_> = tfd.nodes.iter().map(|a| &*a).collect();
@@ -89,7 +92,9 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                                     "Too many outputs"
                                 } else if tf_output[n].shape() != data.shape() {
                                     "Wrong shape"
-                                } else if !tf_output[n].close_enough(data, node.op.rounding_errors()) {
+                                } else if !tf_output[n]
+                                    .close_enough(data, node.op.rounding_errors())
+                                {
                                     "Too far away"
                                 } else {
                                     "Other error"

@@ -23,15 +23,15 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         if inputs.len() != self.n || self.n == 0 {
             bail!("Expected {} inputs", self.n);
         }
-        let mut result = T::tensor_into_array(inputs.pop().unwrap().into_tensor())?; // checked, non empty
+        let mut result = inputs.pop().unwrap().into_array::<T>()?; // checked, non empty
         for input in &inputs[0..] {
-            result += &T::tensor_to_view(input.as_tensor())?;
+            result += &input.to_array_view()?;
         }
-        Ok(vec![T::array_into_tensor(result).into()])
+        Ok(tvec![result.into()])
     }
 
     /// Returns the attributes of the operation and their values.
@@ -49,9 +49,9 @@ where
 
     fn step(
         &self,
-        inputs: Vec<StepValue>,
+        inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<Vec<Value>>> {
+    ) -> Result<Option<TVec<Value>>> {
         let buffer = buffer
             .downcast_mut::<QueuesBuffer>()
             .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
@@ -64,7 +64,7 @@ where
             let chunks = buffer
                 .iter_mut()
                 .map(|b| b.pop_front().unwrap())
-                .collect::<Vec<_>>();
+                .collect::<TVec<_>>();
 
             Ok(Some(self.eval(chunks)?))
         }
