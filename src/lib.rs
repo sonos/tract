@@ -19,7 +19,7 @@
 //!
 //! // run the computation.
 //! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
-//! let mut outputs = plan.run(vec![input.into()]).unwrap();
+//! let mut outputs = plan.run(tvec![input.into()]).unwrap();
 //!
 //! // take the tensors coming out of the only output node
 //! let mut tensors = outputs.pop().unwrap();
@@ -61,11 +61,15 @@ extern crate objekt;
 extern crate serde;
 #[cfg(test)]
 extern crate simplelog;
+extern crate smallvec;
 #[cfg(feature = "serialize")]
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
 extern crate downcast_rs;
+
+#[macro_use]
+pub mod macros;
 
 #[macro_use]
 pub mod analyser;
@@ -82,6 +86,7 @@ pub use errors::*;
 use std::path;
 
 pub use model::{Model, Node};
+pub use ops::TVec;
 pub use plan::SimplePlan;
 pub use tensor::{DatumType, Tensor};
 

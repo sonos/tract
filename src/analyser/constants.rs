@@ -153,11 +153,7 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
                 *const_int_nodes.entry(tensor.clone()).or_insert_with(|| {
                     let node_id = analyser.nodes.len();
                     let node_name = format!("generated_{}", node_id).to_string();
-                    let node = build_const_node(
-                        node_id,
-                        node_name,
-                        tensor.into()
-                    );
+                    let node = build_const_node(node_id, node_name, tensor.into());
                     analyser.nodes.push(node);
                     node_id
                 })

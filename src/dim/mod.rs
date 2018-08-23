@@ -59,7 +59,7 @@ impl TDim {
         self.0.eval(&hashmap!())
     }
 
-    pub fn div_ceil(&self, other:TDim) -> TDim {
+    pub fn div_ceil(&self, other: TDim) -> TDim {
         TDim(self.0.div_ceil(&other.0))
     }
 }

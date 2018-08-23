@@ -1,7 +1,7 @@
 //! `Tensor` is the equivalent of Tensorflow Tensor.
+use dim::TDim;
 use ndarray::prelude::*;
 use std::fmt;
-use dim::TDim;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
@@ -41,8 +41,7 @@ impl DatumType {
             DatumType::F32 => Ok(Tfpb::DT_FLOAT),
             DatumType::F64 => Ok(Tfpb::DT_DOUBLE),
             DatumType::String => Ok(Tfpb::DT_STRING),
-            DatumType::TDim =>
-                bail!("Dimension is not translatable in protobuf"),
+            DatumType::TDim => bail!("Dimension is not translatable in protobuf"),
         }
     }
 
@@ -58,7 +57,7 @@ impl DatumType {
         }
     }
 
-    pub fn super_type_for<I: IntoIterator<Item=DatumType>>(i: I) -> Option<DatumType> {
+    pub fn super_type_for<I: IntoIterator<Item = DatumType>>(i: I) -> Option<DatumType> {
         let mut iter = i.into_iter();
         let mut current = match iter.next() {
             None => return None,
@@ -77,11 +76,11 @@ impl DatumType {
         for mine in self.super_types() {
             for theirs in rhs.super_types() {
                 if mine == theirs {
-                    return Some(*mine)
+                    return Some(*mine);
                 }
             }
         }
-        return None
+        return None;
     }
 }
 
@@ -95,6 +94,15 @@ impl<'a, T: 'a> MaybeOwnedArray<'a, T> {
         match self {
             MaybeOwnedArray::Owned(it) => it.view(),
             MaybeOwnedArray::View(it) => it.view(),
+        }
+    }
+}
+
+impl<'a, T: Clone + 'a> MaybeOwnedArray<'a, T> {
+    pub fn into_owned(self) -> ArrayD<T> {
+        match self {
+            MaybeOwnedArray::Owned(it) => it,
+            MaybeOwnedArray::View(it) => it.view().to_owned(),
         }
     }
 }
@@ -179,8 +187,7 @@ impl Tensor {
 
     pub fn to_pb(&self) -> ::Result<::tfpb::tensor::TensorProto> {
         let mut shape = ::tfpb::tensor_shape::TensorShapeProto::new();
-        let dims = self
-            .shape()
+        let dims = self.shape()
             .iter()
             .map(|d| {
                 let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
@@ -257,9 +264,12 @@ impl Tensor {
         }
     }
 
-    pub fn axis_chunks_t<T:Datum>(&self, axis: usize, size: usize) -> ::Result<Vec<Tensor>> {
+    pub fn axis_chunks_t<T: Datum>(&self, axis: usize, size: usize) -> ::Result<Vec<Tensor>> {
         let array = T::tensor_to_view(self)?;
-        Ok(array.axis_chunks_iter(Axis(axis), size).map(|v| T::array_into_tensor(v.to_owned())).collect())
+        Ok(array
+            .axis_chunks_iter(Axis(axis), size)
+            .map(|v| T::array_into_tensor(v.to_owned()))
+            .collect())
     }
 
     pub fn partial_dump(&self, _single_line: bool) -> ::Result<String> {
@@ -290,18 +300,30 @@ impl Tensor {
         } else if self.shape().iter().product::<usize>() > 8 {
             use itertools::Itertools;
             Ok(match self {
-                &Tensor::I32(ref a) => {
-                    format!("shape:{:?} {:?} {}...", self.shape(), self.datum_type(), a.iter().take(4).join(", "))
-                }
-                &Tensor::F32(ref a) => {
-                    format!("shape:{:?} {:?} {}...", self.shape(), self.datum_type(), a.iter().take(4).join(", "))
-                }
-                &Tensor::U8(ref a) => {
-                    format!("shape:{:?} {:?} {}...", self.shape(), self.datum_type(), a.iter().take(4).join(", "))
-                }
-                &Tensor::TDim(ref a) => {
-                    format!("shape:{:?} {:?} {}...", self.shape(), self.datum_type(), a.iter().take(4).map(|s| format!("{:?}", s)).join(", "))
-                }
+                &Tensor::I32(ref a) => format!(
+                    "shape:{:?} {:?} {}...",
+                    self.shape(),
+                    self.datum_type(),
+                    a.iter().take(4).join(", ")
+                ),
+                &Tensor::F32(ref a) => format!(
+                    "shape:{:?} {:?} {}...",
+                    self.shape(),
+                    self.datum_type(),
+                    a.iter().take(4).join(", ")
+                ),
+                &Tensor::U8(ref a) => format!(
+                    "shape:{:?} {:?} {}...",
+                    self.shape(),
+                    self.datum_type(),
+                    a.iter().take(4).join(", ")
+                ),
+                &Tensor::TDim(ref a) => format!(
+                    "shape:{:?} {:?} {}...",
+                    self.shape(),
+                    self.datum_type(),
+                    a.iter().take(4).map(|s| format!("{:?}", s)).join(", ")
+                ),
                 _ => unimplemented!("missing type"),
             })
         } else {
@@ -313,7 +335,9 @@ impl Tensor {
                     format!("{:?} {:?}", self.datum_type(), a).replace("\n", " ")
                 }
                 &Tensor::U8(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
-                &Tensor::TDim(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
+                &Tensor::TDim(ref a) => {
+                    format!("{:?} {:?}", self.datum_type(), a).replace("\n", " ")
+                }
                 _ => unimplemented!("missing type"),
             })
         }
@@ -332,12 +356,27 @@ impl Tensor {
         let mb = other.to_f32().take_f32s().unwrap();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
-        let margin = if approx { (dev / 10.0).max(avg.abs() / 10_000.0) } else { 0.0 };
+        let margin = if approx {
+            (dev / 10.0).max(avg.abs() / 10_000.0)
+        } else {
+            0.0
+        };
         ma.shape() == mb.shape()
-            && mb
-                .iter()
+            && mb.iter()
                 .zip(ma.iter())
                 .all(|(&a, &b)| (b - a).abs() <= margin)
+    }
+
+    pub fn into_array<D:Datum>(self) -> ::Result<ArrayD<D>> {
+        <D as Datum>::tensor_into_array(self)
+    }
+
+    pub fn to_array_view<'a, D:Datum>(&'a self) -> ::Result<ArrayViewD<'a, D>> {
+        <D as Datum>::tensor_to_view(self)
+    }
+
+    pub fn cast_to_array<D:Datum>(&self) -> ::Result<MaybeOwnedArray<D>> {
+        <D as Datum>::tensor_cast_to_array(self)
     }
 }
 
@@ -378,14 +417,15 @@ impl Serialize for Tensor {
     }
 }
 
+impl<D: ::ndarray::Dimension, T:Datum> From<Array<T, D>> for Tensor {
+    fn from(it: Array<T, D>) -> Tensor {
+        T::array_into_tensor(it.into_dyn())
+    }
+}
+
+
 macro_rules! tensor {
     ($t:ident, $v:ident, $as_one:ident, $as:ident, $take:ident, $make:ident, [$(($cast:ident, $as_cast:ident)),*]) => {
-        impl<D: ::ndarray::Dimension> From<Array<$t, D>> for Tensor {
-            fn from(it: Array<$t, D>) -> Tensor {
-                Tensor::$v(it.into_dyn())
-            }
-        }
-
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
                 Tensor::$v(arr0(it).into_dyn())
@@ -447,7 +487,7 @@ macro_rules! tensor {
             }
 
             fn array_into_tensor(m: ArrayD<Self>) -> Tensor {
-                Tensor::from(m)
+                Tensor::$v(m)
             }
 
             fn tensor_cast_to_array(m: &Tensor) -> ::Result<MaybeOwnedArray<$t>> {
@@ -468,11 +508,11 @@ macro_rules! tensor {
     };
 }
 
-trait TryInto<D:Datum> {
+trait TryInto<D: Datum> {
     fn try_into(self) -> ::Result<D>;
 }
 
-impl<A: Into<D>, D:Datum> TryInto<D> for A {
+impl<A: Into<D>, D: Datum> TryInto<D> for A {
     fn try_into(self) -> ::Result<D> {
         Ok(self.into())
     }
@@ -480,16 +520,32 @@ impl<A: Into<D>, D:Datum> TryInto<D> for A {
 
 impl TryInto<i32> for TDim {
     fn try_into(self) -> ::Result<i32> {
-        self.to_integer().map(|i|i as i32)
+        self.to_integer().map(|i| i as i32)
     }
 }
 
 tensor!(f64, F64, as_f64, as_f64s, take_f64s, f64s, []);
 tensor!(f32, F32, as_f32, as_f32s, take_f32s, f32s, []);
-tensor!(i32, I32, as_i32, as_i32s, take_i32s, i32s, [(TDim, as_dims)]);
+tensor!(
+    i32,
+    I32,
+    as_i32,
+    as_i32s,
+    take_i32s,
+    i32s,
+    [(TDim, as_dims)]
+);
 tensor!(u8, U8, as_u8, as_u8s, take_u8s, u8s, []);
 tensor!(i8, I8, as_i8, as_i8s, take_i8s, i8s, []);
-tensor!(TDim, TDim, as_dim, as_dims, take_dims, dims, [(I32,as_i32s)]);
+tensor!(
+    TDim,
+    TDim,
+    as_dim,
+    as_dims,
+    take_dims,
+    dims,
+    [(I32, as_i32s)]
+);
 
 #[macro_export]
 macro_rules! map_tensor {
@@ -508,18 +564,18 @@ macro_rules! map_tensor {
 
 #[cfg(test)]
 mod tests {
-    use tensor::*;
     use dim::ToDim;
+    use tensor::*;
 
     #[test]
     fn test_cast_dim_to_dim() {
-        let t_dim:Tensor = arr1(&[0isize.to_dim(), 0isize.to_dim()]).into();
-        let _dims:MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_dim).unwrap();
+        let t_dim: Tensor = arr1(&[0isize.to_dim(), 0isize.to_dim()]).into();
+        let _dims: MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_dim).unwrap();
     }
 
     #[test]
     fn test_cast_i32_to_dim() {
-        let t_i32:Tensor = arr1(&[0i32, 0]).into();
-        let _dims:MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_i32).unwrap();
+        let t_i32: Tensor = arr1(&[0i32, 0]).into();
+        let _dims: MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_i32).unwrap();
     }
 }

@@ -93,8 +93,7 @@ impl RawModel {
     }
 
     pub fn node_by_name(&self, name: &str) -> Result<&Node> {
-        let id: &usize = self
-            .nodes_by_name
+        let id: &usize = self.nodes_by_name
             .get(name)
             .ok_or_else(|| format!("Node named {} not found", name))?;
         Ok(&self.nodes[*id])

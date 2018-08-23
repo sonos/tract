@@ -6,7 +6,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()
     let model = params.tfd_model;
 
     // First generate random values for the inputs.
-    let fixed_input = vec![params.input.as_ref().unwrap().to_tensor()?];
+    let fixed_input = tvec![params.input.as_ref().unwrap().to_tensor()?];
 
     // Run unmodified graph
     let original_plan = SimplePlan::new(&model, &params.input_nodes, &[&params.output_node])?;

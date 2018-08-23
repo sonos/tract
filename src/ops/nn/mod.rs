@@ -31,7 +31,7 @@ impl Softmax {
 
 impl Op for Softmax {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: Vec<Value>) -> Result<Vec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
             .into_tensor()
@@ -41,7 +41,7 @@ impl Op for Softmax {
         let norm: f32 = input.iter().sum();
         input.map_inplace(|a| *a = *a / norm);
         let result = Tensor::from(input);
-        Ok(vec![result.into()])
+        Ok(tvec![result.into()])
     }
 
     /// Returns the attributes of the operation and their values.

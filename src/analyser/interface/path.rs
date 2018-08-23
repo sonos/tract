@@ -13,11 +13,17 @@ use num::cast::ToPrimitive;
 
 /// A symbolic path for a value.
 #[derive(PartialEq, Clone)]
-pub struct Path(Vec<isize>);
+pub struct Path(TVec<isize>);
+
+impl From<TVec<isize>> for Path {
+    fn from(v: TVec<isize>) -> Path {
+        Path(v)
+    }
+}
 
 impl From<Vec<isize>> for Path {
     fn from(v: Vec<isize>) -> Path {
-        Path(v)
+        Path(v.into())
     }
 }
 
@@ -74,7 +80,7 @@ fn debug_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
 }
 
 /// Returns the value at the given path (starting from a set of TensorFacts).
-fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Wrapped> {
+fn get_tensorfacts_path(facts: &TVec<TensorFact>, path: &[isize]) -> Result<Wrapped> {
     match path {
         // Get the number of facts in the set.
         [-1] => Ok(facts.len().wrap()),
@@ -103,7 +109,11 @@ fn get_tensorfacts_path(facts: &Vec<TensorFact>, path: &[isize]) -> Result<Wrapp
 }
 
 /// Sets the value at the given path (starting from a set of TensorFacts).
-fn set_tensorfacts_path(facts: &mut Vec<TensorFact>, path: &[isize], value: Wrapped) -> Result<()> {
+fn set_tensorfacts_path(
+    facts: &mut TVec<TensorFact>,
+    path: &[isize],
+    value: Wrapped,
+) -> Result<()> {
     match path {
         // Set the number of facts in the set.
         [-1] => {

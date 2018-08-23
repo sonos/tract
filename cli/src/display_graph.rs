@@ -53,13 +53,13 @@ impl DisplayGraph {
     pub fn render_console(&self, params: &OutputParameters) -> CliResult<()> {
         if let Some(node) = params.node_id {
             let node = &self.nodes[node];
-            return self.render_node(node, params)
+            return self.render_node(node, params);
         }
         if let Some(node_name) = &params.node_name {
             if let Some(node) = &self.nodes.iter().find(|n| n.name == &**node_name) {
-                return self.render_node(node, params)
+                return self.render_node(node, params);
             } else {
-                return Ok(())
+                return Ok(());
             }
         }
         for node in &self.nodes {
@@ -69,22 +69,33 @@ impl DisplayGraph {
             if node.hidden {
                 continue;
             }
-            if params.op_name.as_ref().map(|name| name != &*node.op).unwrap_or(false) {
+            if params
+                .op_name
+                .as_ref()
+                .map(|name| name != &*node.op)
+                .unwrap_or(false)
+            {
                 continue;
             }
-            if params.successors.as_ref().map(|id| {
-                !node.inputs.iter().any(|i| self.edges[*i].src_node_id == *id)
-            }).unwrap_or(false) {
+            if params
+                .successors
+                .as_ref()
+                .map(|id| {
+                    !node.inputs
+                        .iter()
+                        .any(|i| self.edges[*i].src_node_id == *id)
+                })
+                .unwrap_or(false)
+            {
                 continue;
             }
             self.render_node(&node, params)?
         }
         Ok(())
     }
-    pub fn render_node(&self, node: &Node, params:&OutputParameters) -> CliResult<()> {
+    pub fn render_node(&self, node: &Node, _params: &OutputParameters) -> CliResult<()> {
         use colored::Colorize;
-        let output_ports: HashMap<usize, Option<String>> = node
-            .outputs
+        let output_ports: HashMap<usize, Option<String>> = node.outputs
             .iter()
             .map(|edge| {
                 let edge = &self.edges[*edge];
@@ -208,8 +219,7 @@ impl DisplayGraph {
 
     pub fn with_analyser(mut self, analyser: &Analyser) -> CliResult<DisplayGraph> {
         {
-            let index: HashMap<(usize, usize, usize, usize), usize> = self
-                .edges
+            let index: HashMap<(usize, usize, usize, usize), usize> = self.edges
                 .iter()
                 .enumerate()
                 .map(|(ix, edge)| {

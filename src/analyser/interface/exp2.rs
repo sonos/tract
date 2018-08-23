@@ -2,15 +2,15 @@ use std::fmt;
 use std::marker::PhantomData;
 use Result;
 
-use num::Zero;
-use std::ops::{ Add, Neg, Sub, Div, Mul };
-use tensor::{ Tensor, DatumType };
-use dim::TDim;
-use analyser::types::*;
-use analyser::interface::path::Path;
-use analyser::interface::solver::Context;
 use analyser::interface::expressions::Output;
+use analyser::interface::path::Path;
 use analyser::interface::proxies::*;
+use analyser::interface::solver::Context;
+use analyser::types::*;
+use dim::TDim;
+use num::Zero;
+use std::ops::{Add, Div, Mul, Neg, Sub};
+use tensor::{DatumType, Tensor};
 
 /// An expression that can be compared by the solver.
 pub trait TExp<T>: fmt::Debug {
@@ -43,7 +43,8 @@ impl<T: Fact + Output + Clone + fmt::Debug> TExp<T> for Exp<T> {
 }
 
 impl<T> fmt::Debug for Exp<T>
-where T: Fact + Output + Clone + ::std::fmt::Debug
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.0)
@@ -56,14 +57,18 @@ pub trait IntoExp<T> {
 }
 
 pub struct SumExp<T>(Vec<Exp<T>>)
-where T: Fact + Output + Clone + ::std::fmt::Debug;
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug;
 
 impl<T> TExp<T> for SumExp<T>
-where T: Fact + Output + Zero + Add<T> + Neg<Output=T> + Clone + ::std::fmt::Debug
+where
+    T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> Result<T> {
-        self.0.iter().try_fold(T::zero(), |acc, it| Ok(acc+it.0.get(context)?))
+        self.0
+            .iter()
+            .try_fold(T::zero(), |acc, it| Ok(acc + it.0.get(context)?))
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -99,7 +104,8 @@ where T: Fact + Output + Zero + Add<T> + Neg<Output=T> + Clone + ::std::fmt::Deb
 }
 
 impl<T> fmt::Debug for SumExp<T>
-where T: Fact + Output + Clone + ::std::fmt::Debug
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         for (ix, t) in self.0.iter().enumerate() {
@@ -114,10 +120,12 @@ where T: Fact + Output + Clone + ::std::fmt::Debug
 
 /// A constant expression (e.g. `2` or `DatumType::DT_INT32`).
 pub struct ConstantExp<T>(T)
-where T: Fact + Output + Clone + ::std::fmt::Debug;
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug;
 
 impl<T> TExp<T> for ConstantExp<T>
-where T: Fact + Output + Clone + ::std::fmt::Debug
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, _: &Context) -> Result<T> {
@@ -144,7 +152,8 @@ where T: Fact + Output + Clone + ::std::fmt::Debug
 }
 
 impl<T> fmt::Debug for ConstantExp<T>
-where T: Fact + Output + Clone + ::std::fmt::Debug
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.0)
@@ -157,10 +166,12 @@ where T: Fact + Output + Clone + ::std::fmt::Debug
 /// input. Internally, a reference holds a Vec<usize> called a path (see
 /// the documentation for `Proxy::get_path`).
 pub struct VariableExp<T>(Path, PhantomData<T>)
-where T: Fact + Output + Clone + ::std::fmt::Debug;
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug;
 
 impl<T> TExp<T> for VariableExp<T>
-where T: Fact + Output + Clone + ::std::fmt::Debug
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> Result<T> {
@@ -183,7 +194,8 @@ where T: Fact + Output + Clone + ::std::fmt::Debug
 }
 
 impl<T> fmt::Debug for VariableExp<T>
-where T: Fact + Output + Clone + ::std::fmt::Debug
+where
+    T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{:?}", self.0)
@@ -193,16 +205,16 @@ where T: Fact + Output + Clone + ::std::fmt::Debug
 /// A scalar product between a constant and another expression.
 pub struct ScaledExp<T>(isize, Exp<T>)
 where
-    T: Fact + Output + Zero + Mul<isize, Output=T> + Div<isize, Output=T> + Clone;
+    T: Fact + Output + Zero + Mul<isize, Output = T> + Div<isize, Output = T> + Clone;
 
 impl<T> TExp<T> for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<isize, Output=T> + Div<isize, Output=T> + Clone
+    T: Fact + Output + Zero + Mul<isize, Output = T> + Div<isize, Output = T> + Clone,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> Result<T> {
-        let v:T = self.1.get(context)?;
-        Ok(v*self.0)
+        let v: T = self.1.get(context)?;
+        Ok(v * self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -241,7 +253,7 @@ where
 
 impl<T> fmt::Debug for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<isize, Output=T> + Div<isize, Output=T> + Clone
+    T: Fact + Output + Zero + Mul<isize, Output = T> + Div<isize, Output = T> + Clone,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)
@@ -255,7 +267,7 @@ impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> Result<DimFact> {
         use dim::ToDim;
-        let v:IntFact = self.0.get(context)?;
+        let v: IntFact = self.0.get(context)?;
         match v {
             GenericFact::Only(i) => Ok(GenericFact::Only(i.to_dim())),
             GenericFact::Any => Ok(GenericFact::Any),
@@ -266,7 +278,7 @@ impl TExp<DimFact> for IntoDimExp {
     fn set(&self, context: &mut Context, value: DimFact) -> Result<bool> {
         if let Some(concrete) = value.concretize() {
             if let Ok(int) = concrete.to_integer() {
-                return self.0.set(context, GenericFact::Only(int))
+                return self.0.set(context, GenericFact::Only(int));
             }
         }
         Ok(false)
@@ -280,7 +292,7 @@ impl TExp<DimFact> for IntoDimExp {
 
 impl fmt::Debug for IntoDimExp {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{{({:?}) as dim}}" , self.0)
+        write!(formatter, "{{({:?}) as dim}}", self.0)
     }
 }
 
@@ -338,23 +350,23 @@ impl IntoExp<IntFact> for isize {
     }
 }
 
-impl<IE:IntoExp<IntFact>> Add<IE> for Exp<IntFact> {
+impl<IE: IntoExp<IntFact>> Add<IE> for Exp<IntFact> {
     type Output = Exp<IntFact>;
-    fn add(self, other:IE) -> Exp<IntFact> {
-        SumExp(vec!(self.bex(), other.bex())).bex()
+    fn add(self, other: IE) -> Exp<IntFact> {
+        SumExp(vec![self.bex(), other.bex()]).bex()
     }
 }
 
-impl<IE:IntoExp<IntFact>> Sub<IE> for Exp<IntFact> {
+impl<IE: IntoExp<IntFact>> Sub<IE> for Exp<IntFact> {
     type Output = Exp<IntFact>;
-    fn sub(self, other:IE) -> Exp<IntFact> {
-        SumExp(vec!(self.bex(), -1 * other.bex())).bex()
+    fn sub(self, other: IE) -> Exp<IntFact> {
+        SumExp(vec![self.bex(), -1 * other.bex()]).bex()
     }
 }
 
 impl Mul<Exp<IntFact>> for isize {
     type Output = Exp<IntFact>;
-    fn mul(self, other:Exp<IntFact>) -> Exp<IntFact> {
+    fn mul(self, other: Exp<IntFact>) -> Exp<IntFact> {
         ScaledExp(self, other).bex()
     }
 }
@@ -373,23 +385,23 @@ impl IntoExp<DimFact> for TDim {
     }
 }
 
-impl<IE:IntoExp<DimFact>> Add<IE> for Exp<DimFact> {
+impl<IE: IntoExp<DimFact>> Add<IE> for Exp<DimFact> {
     type Output = Exp<DimFact>;
-    fn add(self, other:IE) -> Exp<DimFact> {
-        SumExp(vec!(self.bex(), other.bex())).bex()
+    fn add(self, other: IE) -> Exp<DimFact> {
+        SumExp(vec![self.bex(), other.bex()]).bex()
     }
 }
 
-impl<IE:IntoExp<DimFact>> Sub<IE> for Exp<DimFact> {
+impl<IE: IntoExp<DimFact>> Sub<IE> for Exp<DimFact> {
     type Output = Exp<DimFact>;
-    fn sub(self, other:IE) -> Exp<DimFact> {
-        SumExp(vec!(self.bex(), -1 * other.bex())).bex()
+    fn sub(self, other: IE) -> Exp<DimFact> {
+        SumExp(vec![self.bex(), -1 * other.bex()]).bex()
     }
 }
 
 impl Mul<Exp<DimFact>> for isize {
     type Output = Exp<DimFact>;
-    fn mul(self, other:Exp<DimFact>) -> Exp<DimFact> {
+    fn mul(self, other: Exp<DimFact>) -> Exp<DimFact> {
         ScaledExp(self, other).bex()
     }
 }
@@ -405,7 +417,6 @@ impl ToDimExp for Exp<IntFact> {
         IntoDimExp(self).bex()
     }
 }
-
 
 // Shape
 

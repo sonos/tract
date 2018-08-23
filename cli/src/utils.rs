@@ -1,8 +1,5 @@
 #[allow(unused_imports)]
 use errors::Result as CliResult;
-use ndarray;
-use rand;
-use rand::Rng;
 use tfdeploy::{DatumType, Tensor};
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
@@ -44,19 +41,19 @@ where
 
 /// Generates a random tensor of a given size and type.
 pub fn random_tensor(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
-    macro_rules! for_type {
-        ($t:ty) => {
-            ndarray::Array::from_shape_fn(sizes, |_| rand::thread_rng().gen())
-                as ndarray::ArrayD<$t>
-        };
+    use std::iter::repeat_with;
+    use rand;
+    let len = sizes.iter().product();
+    macro_rules! r {($t:ty) =>
+        { repeat_with(|| rand::random::<$t>()).take(len).collect::<Vec<_>>() }
     }
 
     match datum_type {
-        DatumType::F64 => for_type!(f64).into(),
-        DatumType::F32 => for_type!(f32).into(),
-        DatumType::I32 => for_type!(i32).into(),
-        DatumType::I8 => for_type!(i8).into(),
-        DatumType::U8 => for_type!(u8).into(),
+        DatumType::F64 => Tensor::f64s(&*sizes, &*r!(f64)),
+        DatumType::F32 => Tensor::f32s(&*sizes, &*r!(f32)),
+        DatumType::I32 => Tensor::i32s(&*sizes, &*r!(i32)),
+        DatumType::I8 => Tensor::i8s(&*sizes, &*r!(i8)),
+        DatumType::U8 => Tensor::u8s(&*sizes, &*r!(u8)),
         _ => unimplemented!("missing type"),
-    }
+    }.unwrap()
 }

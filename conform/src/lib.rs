@@ -10,6 +10,7 @@ extern crate proptest;
 extern crate protobuf;
 extern crate simplelog;
 extern crate tensorflow;
+#[macro_use]
 extern crate tfdeploy;
 
 error_chain! {
@@ -36,6 +37,7 @@ pub use protobuf::Message;
 
 use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
+use tfdeploy::TVec;
 use tfdeploy::Tensor as TfdTensor;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
@@ -140,7 +142,7 @@ pub fn infer<S: AsRef<str>>(
     let _found = &state.values[output.id].as_ref().unwrap();
 
     info!("Checking inference consistency on {}", output.name);
-    let inputs_vectors: Vec<TensorFact> = output
+    let inputs_vectors: TVec<TensorFact> = output
         .inputs
         .iter()
         .map(|(i, p)| {
@@ -150,7 +152,7 @@ pub fn infer<S: AsRef<str>>(
                 .into()
         })
         .collect();
-    let output_vectors: Vec<TensorFact> = vec![
+    let output_vectors: TVec<TensorFact> = tvec![
         state.values[output.id].as_ref().unwrap()[0]
             .as_tensor()
             .clone()

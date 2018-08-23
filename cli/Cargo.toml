@@ -13,7 +13,7 @@ error-chain = "0.12"
 insideout = "0.1.0"
 lazy_static = "1.0"
 log = "0.4"
-ndarray = "0.11"
+ndarray = "0.12"
 prettytable-rs = { git = "https://github.com/liautaud/prettytable-rs" }
 rand = "0.5"
 simplelog = "0.5"

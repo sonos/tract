@@ -5,6 +5,7 @@ extern crate image;
 extern crate mio_httpc;
 extern crate ndarray;
 extern crate tar;
+#[macro_use]
 extern crate tfdeploy;
 
 use std::{fs, io, path};
@@ -99,7 +100,7 @@ mod tests {
             ::tfdeploy::SimplePlan::new(&tfd, &["input"], &["InceptionV3/Predictions/Reshape_1"])
                 .unwrap();
         let input = load_image(hopper());
-        let outputs = plan.run(vec![input]).unwrap();
+        let outputs = plan.run(tvec![input]).unwrap();
         let labels = load_labels();
         let label_id = outputs[0][0]
             .as_f32s()

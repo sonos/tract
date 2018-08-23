@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use super::{Attr, Op, OpRegister, Value};
 use analyser::interface::*;
-use std::sync::Arc;
 use {DatumType, Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -12,14 +11,16 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 #[derive(Debug, Clone)]
 pub struct Const {
     dtype: DatumType,
-    value: Arc<Tensor>,
+    value: Value,
 }
 
 impl Const {
     pub fn for_tensor(tensor: Tensor) -> Const {
+        let dtype = tensor.datum_type();
+        let value: Value = tensor.into();
         Const {
-            dtype: tensor.datum_type(),
-            value: Arc::new(tensor),
+            dtype,
+            value: value.into_shared(),
         }
     }
     pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
@@ -36,27 +37,27 @@ impl Const {
 
         Ok(Box::new(Const {
             dtype,
-            value: Arc::new(mat),
+            value: Value::from(mat).into_shared(),
         }))
     }
 }
 
 impl Op for Const {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: Vec<Value>) -> Result<Vec<Value>> {
-        Ok(vec![self.value.clone().into()])
+    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
+        Ok(tvec![self.value.clone()])
     }
 
     /// Returns the attributes of the operation and their values.
     fn get_attributes(&self) -> HashMap<&'static str, Attr> {
         hashmap!{
             "dtype" => Attr::DatumType(self.dtype),
-            "value" => Attr::Tensor(self.value.as_ref().clone()),
+            "value" => Attr::Tensor(self.value.as_tensor().clone()),
         }
     }
 
-    fn const_value(&self) -> Option<Tensor> {
-        Some((*self.value).clone())
+    fn const_value(&self) -> Option<Value> {
+        Some(self.value.clone())
     }
 }
 

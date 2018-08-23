@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use model::{eval_order_for_nodes, Model, Node};
-use ops::Value;
+use ops::{TVec, Value};
 use tensor::Tensor;
 use Result;
 
@@ -59,7 +59,7 @@ impl SimplePlan {
         )?)))
     }
 
-    pub fn run(&self, inputs: Vec<Tensor>) -> Result<Vec<Vec<Tensor>>> {
+    pub fn run(&self, inputs: TVec<Tensor>) -> Result<Vec<TVec<Tensor>>> {
         let mut state = SimpleState::new(&self)?;
         state.set_inputs(inputs)?;
         for &n in &self.order {
@@ -78,7 +78,7 @@ impl SimplePlan {
 #[derive(Clone, Debug)]
 pub struct SimpleState {
     plan: SimplePlan,
-    pub values: Vec<Option<Vec<Value>>>,
+    pub values: Vec<Option<TVec<Value>>>,
 }
 
 impl SimpleState {
@@ -95,7 +95,7 @@ impl SimpleState {
         Ok(())
     }
 
-    pub fn set_inputs(&mut self, inputs: Vec<Tensor>) -> Result<()> {
+    pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> Result<()> {
         let SimpleState {
             ref plan,
             ref mut values,
@@ -103,17 +103,17 @@ impl SimpleState {
         inputs
             .into_iter()
             .zip(plan.input_ids.iter())
-            .for_each(|(t, &id)| values[id] = Some(vec![t.into()]));
+            .for_each(|(t, &id)| values[id] = Some(tvec![t.into()]));
         Ok(())
     }
 
     pub fn set_input(&mut self, input: usize, t: Tensor) -> Result<()> {
         let id = self.plan.input_ids[input];
-        self.values[id] = Some(vec![t.into()]);
+        self.values[id] = Some(tvec![t.into()]);
         Ok(())
     }
 
-    pub fn take_outputs(&mut self) -> Result<Vec<Vec<Tensor>>> {
+    pub fn take_outputs(&mut self) -> Result<Vec<TVec<Tensor>>> {
         let mut v = vec![];
         for &id in &self.plan.output_ids {
             v.push(
@@ -128,18 +128,18 @@ impl SimpleState {
         Ok(v)
     }
 
-    pub fn set_values(&mut self, id: usize, values: Vec<Tensor>) -> Result<()> {
+    pub fn set_values(&mut self, id: usize, values: TVec<Tensor>) -> Result<()> {
         self.values[id] = Some(values.into_iter().map(|t| t.into()).collect());
         Ok(())
     }
 
     pub fn set_value(&mut self, id: usize, value: Tensor) -> Result<()> {
-        self.set_values(id, vec!(value))
+        self.set_values(id, tvec!(value))
     }
 
     pub fn compute_one(&mut self, node: usize) -> Result<()> {
         let node: &Node = &self.plan.model.nodes[node];
-        let mut inputs: Vec<Value> = vec![];
+        let mut inputs: TVec<Value> = tvec![];
         for i in &node.inputs {
             let prec_node = &self.model().nodes[i.0];
             let prec = self.values[i.0].as_ref().ok_or(format!(
@@ -154,13 +154,17 @@ impl SimpleState {
     }
 
     pub fn compute_recursively(&mut self, node: usize) -> Result<()> {
-        let precs:Vec<usize> = self.plan.model.nodes[node].inputs.iter().map(|i| i.0).collect();
+        let precs: Vec<usize> = self.plan.model.nodes[node]
+            .inputs
+            .iter()
+            .map(|i| i.0)
+            .collect();
         for i in precs.into_iter() {
             if self.values[i].is_none() {
                 self.compute_recursively(i)?
             }
         }
-        let mut inputs: Vec<Value> = vec![];
+        let mut inputs: TVec<Value> = tvec![];
         let node: &Node = &self.plan.model.nodes[node];
         for i in &node.inputs {
             inputs.push(self.values[i.0].as_ref().unwrap()[i.1].clone().into())
@@ -170,12 +174,12 @@ impl SimpleState {
         Ok(())
     }
 
-    pub fn take_by_name(&mut self, name: &str) -> Result<Vec<Tensor>> {
+    pub fn take_by_name(&mut self, name: &str) -> Result<TVec<Tensor>> {
         let id = self.model().node_by_name(name)?.id;
         Self::take(self, id)
     }
 
-    pub fn take(&mut self, id: usize) -> Result<Vec<Tensor>> {
+    pub fn take(&mut self, id: usize) -> Result<TVec<Tensor>> {
         Ok(self.values[id]
             .take()
             .ok_or("Value is not computed")?

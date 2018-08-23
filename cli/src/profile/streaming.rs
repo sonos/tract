@@ -90,7 +90,7 @@ pub fn handle_bench(
     let mut state = plan.state()?;
     bufferize(&mut state, &chunk)?;
 
-    info!("Starting bench itself {} {}", max_time, max_iters );
+    info!("Starting bench itself {} {}", max_time, max_iters);
     let start = Instant::now();
     let mut fed = 0;
     let mut read = 0;
