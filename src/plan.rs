@@ -1,8 +1,8 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use model::{eval_order_for_nodes, Model, Node};
-use ops::{TVec, Value};
+use model::{eval_order_for_nodes, Model, Node, TVec};
+use ops::Value;
 use tensor::Tensor;
 use Result;
 
@@ -141,12 +141,12 @@ impl SimpleState {
         let node: &Node = &self.plan.model.nodes[node];
         let mut inputs: TVec<Value> = tvec![];
         for i in &node.inputs {
-            let prec_node = &self.model().nodes[i.0];
-            let prec = self.values[i.0].as_ref().ok_or(format!(
+            let prec_node = &self.model().nodes[i.node];
+            let prec = self.values[i.node].as_ref().ok_or(format!(
                 "Computing {}, precursor {} not done:",
                 node.name, prec_node.name
             ))?;
-            inputs.push(prec[i.1].clone().into())
+            inputs.push(prec[i.slot].clone().into())
         }
         let values = node.op.eval(inputs)?;
         self.values[node.id] = Some(values);
@@ -157,7 +157,7 @@ impl SimpleState {
         let precs: Vec<usize> = self.plan.model.nodes[node]
             .inputs
             .iter()
-            .map(|i| i.0)
+            .map(|i| i.node)
             .collect();
         for i in precs.into_iter() {
             if self.values[i].is_none() {
@@ -167,7 +167,7 @@ impl SimpleState {
         let mut inputs: TVec<Value> = tvec![];
         let node: &Node = &self.plan.model.nodes[node];
         for i in &node.inputs {
-            inputs.push(self.values[i.0].as_ref().unwrap()[i.1].clone().into())
+            inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
         }
         let values = node.op.eval(inputs)?;
         self.values[node.id] = Some(values);

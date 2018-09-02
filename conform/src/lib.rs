@@ -83,7 +83,7 @@ pub fn compare<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let model = tfdeploy::Model::for_reader(&*graph)?;
+    let model = tfdeploy::tf::for_reader(&*graph)?;
     let plan = tfdeploy::SimplePlan::new(
         &model,
         &inputs
@@ -123,7 +123,7 @@ pub fn infer<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let model = tfdeploy::Model::for_reader(&*graph)?;
+    let model = tfdeploy::tf::for_reader(&*graph)?;
     let plan = tfdeploy::SimplePlan::new(
         &model,
         &inputs
@@ -145,8 +145,8 @@ pub fn infer<S: AsRef<str>>(
     let inputs_vectors: TVec<TensorFact> = output
         .inputs
         .iter()
-        .map(|(i, p)| {
-            state.values[*i].as_ref().unwrap()[*p]
+        .map(|outlet| {
+            state.values[outlet.node].as_ref().unwrap()[outlet.slot]
                 .as_tensor()
                 .clone()
                 .into()

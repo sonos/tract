@@ -67,7 +67,7 @@ impl<'a> dot::GraphWalk<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
         self.edges.into()
     }
     fn source(&self, e: &Ed) -> Nd {
-        match e.1.from_node {
+        match e.1.from.map(|e| e.node) {
             Some(n) => self.nodes[n].clone(),
             None => panic!("{:?}", e),
         }
@@ -86,7 +86,7 @@ pub fn render_dot<W: Write>(
     red_nodes: &Vec<usize>,
     red_edges: &Vec<usize>,
     writer: &mut W,
-) -> Result<()> {
+) -> CliResult<()> {
     let output_node_name = "output".to_string();
 
     let mut nodes: Vec<_> = analyser
@@ -121,7 +121,7 @@ pub fn display_dot(
     analyser: &Analyser,
     red_nodes: &Vec<usize>,
     red_edges: &Vec<usize>,
-) -> Result<()> {
+) -> CliResult<()> {
     render_dot(analyser, red_nodes, red_edges, &mut io::stdout())
 }
 
@@ -130,7 +130,7 @@ pub fn display_graph(
     analyser: &Analyser,
     red_nodes: &Vec<usize>,
     red_edges: &Vec<usize>,
-) -> Result<()> {
+) -> CliResult<()> {
     use std::process::{Command, Stdio};
     use std::{thread, time};
 

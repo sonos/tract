@@ -2,7 +2,7 @@
 
 use std::time::Instant as StdInstant;
 
-use Result;
+use CliResult;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Instant(StdInstant, f64, f64);
@@ -160,7 +160,7 @@ mod darwin {
 }
 
 #[cfg(target_os = "macos")]
-pub fn get_memory_usage() -> Result<ResourceUsage> {
+pub fn get_memory_usage() -> CliResult<ResourceUsage> {
     let info = darwin::task_info();
     let rusage = get_rusage();
     Ok(ResourceUsage {
@@ -175,7 +175,7 @@ pub fn get_memory_usage() -> Result<ResourceUsage> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn get_memory_usage() -> Result<ResourceUsage> {
+pub fn get_memory_usage() -> CliResult<ResourceUsage> {
     use std::fs::File;
     use std::io::Read;
     let mut proc_stat = String::new();

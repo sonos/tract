@@ -1,5 +1,5 @@
 use display_graph::DisplayGraph;
-use errors::Result as CliResult;
+use CliResult;
 use std::fs::File;
 use OutputParameters;
 

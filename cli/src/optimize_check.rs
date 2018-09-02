@@ -2,7 +2,7 @@ use errors::*;
 use tfdeploy::plan::SimplePlan;
 use {OutputParameters, Parameters};
 
-pub fn handle(params: Parameters, _output_params: OutputParameters) -> Result<()> {
+pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult<()> {
     let model = params.tfd_model;
 
     // First generate random values for the inputs.

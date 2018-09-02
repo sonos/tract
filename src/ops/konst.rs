@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::{Attr, Op, OpRegister, Value};
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use {DatumType, Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -61,7 +61,7 @@ impl Op for Const {
     }
 }
 
-impl ::ops::InferenceRulesOp for Const {
+impl InferenceRulesOp for Const {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,

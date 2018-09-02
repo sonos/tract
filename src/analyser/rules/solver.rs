@@ -1,17 +1,14 @@
-use analyser::interface::path::{get_path, set_path, Path};
-use analyser::types::*;
-use ops::TVec;
-use Result;
-
-use analyser::interface::exp2::Exp;
-use analyser::interface::exp2::IntoExp;
-use analyser::interface::exp2::TExp;
-use analyser::interface::expressions::Output;
+use std::ops::{Add, Neg};
+use std::fmt;
 
 use num::Zero;
-use std::ops::{Add, Neg};
 
-use std::fmt;
+use analyser::prelude::*;
+use analyser::rules::prelude::*;
+use model::TVec;
+use Result;
+
+
 
 /// A structure that holds the current sets of TensorFacts.
 ///
@@ -512,7 +509,6 @@ impl<'rules> Solver<'rules> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use analyser::interface::*;
     use DatumType;
 
     fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {

@@ -1,4 +1,4 @@
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {

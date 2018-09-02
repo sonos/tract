@@ -12,7 +12,7 @@ use tfdeploy::Tensor;
 use utils::random_tensor;
 use {OutputParameters, Parameters, ProfilingMode};
 
-fn build_streaming_plan(params: &Parameters) -> Result<(StreamingPlan, Tensor)> {
+fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan, Tensor)> {
     let start = Instant::now();
     info!("Building streaming plan.");
     let input = params
@@ -53,7 +53,7 @@ fn build_streaming_plan(params: &Parameters) -> Result<(StreamingPlan, Tensor)> 
 }
 
 // feed the network until it outputs something
-fn bufferize(state: &mut StreamingModelState, chunk: &Tensor) -> Result<()> {
+fn bufferize(state: &mut StreamingModelState, chunk: &Tensor) -> CliResult<()> {
     let buffering = Instant::now();
     info!("Buffering...");
     let mut buffered = 0;
@@ -76,7 +76,7 @@ pub fn handle_bench(
     params: Parameters,
     profiling: ProfilingMode,
     _output_params: OutputParameters,
-) -> Result<()> {
+) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::StreamBenching {
         max_iters,
         max_time,
@@ -109,7 +109,7 @@ pub fn handle_bench(
     Ok(())
 }
 
-pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Result<()> {
+pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
     let (plan, chunk) = build_streaming_plan(&params)?;
     let mut state = plan.state()?;
     bufferize(&mut state, &chunk)?;
@@ -133,7 +133,7 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Res
 }
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
-pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> Result<()> {
+pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
     let start = Instant::now();
     info!("Initializing the StreamingModelState.");
     let (plan, _chunk) = build_streaming_plan(&params)?;

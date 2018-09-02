@@ -44,13 +44,13 @@ macro_rules! element_map_float {
             }
         }
 
-        impl<T: $crate::tensor::Datum + ::num::Float> ::ops::InferenceRulesOp for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Float> $crate::analyser::rules::InferenceRulesOp for $Name<T> {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
-                solver: &mut $crate::analyser::interface::Solver<'r>,
-                inputs: &'p $crate::analyser::interface::TensorsProxy,
-                outputs: &'p $crate::analyser::interface::TensorsProxy,
+                solver: &mut $crate::analyser::rules::prelude::Solver<'r>,
+                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
             ) {
                 solver
                     .equals(&inputs.len, 1)
@@ -112,13 +112,13 @@ macro_rules! element_map {
             }
         }
 
-        impl ::ops::InferenceRulesOp for $Name {
+        impl $crate::analyser::rules::InferenceRulesOp for $Name {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
-                solver: &mut $crate::analyser::interface::Solver<'r>,
-                inputs: &'p $crate::analyser::interface::TensorsProxy,
-                outputs: &'p $crate::analyser::interface::TensorsProxy,
+                solver: &mut $crate::analyser::rules::prelude::Solver<'r>,
+                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
             ) {
                 solver
                     .equals(&inputs.len, 1)
@@ -180,13 +180,13 @@ macro_rules! element_map_signed {
             }
         }
 
-        impl<T: $crate::tensor::Datum + ::num::Signed> ::ops::InferenceRulesOp for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Signed> $crate::analyser::rules::InferenceRulesOp for $Name<T> {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
-                solver: &mut $crate::analyser::interface::Solver<'r>,
-                inputs: &'p $crate::analyser::interface::TensorsProxy,
-                outputs: &'p $crate::analyser::interface::TensorsProxy,
+                solver: &mut $crate::analyser::rules::prelude::Solver<'r>,
+                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
             ) {
                 solver
                     .equals(&inputs.len, 1)
@@ -276,13 +276,13 @@ macro_rules! element_bin {
             }
         }
 
-        impl ::ops::InferenceRulesOp for $Name {
+        impl $crate::analyser::rules::InferenceRulesOp for $Name {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
-                solver: &mut $crate::analyser::interface::Solver<'r>,
-                inputs: &'p $crate::analyser::interface::TensorsProxy,
-                outputs: &'p $crate::analyser::interface::TensorsProxy,
+                solver: &mut $crate::analyser::rules::prelude::Solver<'r>,
+                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
             ) {
                 let a = &inputs[0];
                 let b = &inputs[1];

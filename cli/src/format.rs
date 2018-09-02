@@ -195,11 +195,11 @@ fn node_info(
 
     let mut inputs = Vec::new();
 
-    for (ix, &(n, i)) in node.inputs.iter().enumerate() {
+    for (ix, outlet) in node.inputs.iter().enumerate() {
         if let Some(state) = state {
-            let data = &state.values[n].as_ref().unwrap()[i];
+            let data = &state.values[outlet.node].as_ref().unwrap()[outlet.slot];
             inputs.push(Row::Double(
-                format!("{} ({}/{}):", format!("Input {}", ix).bold(), n, i),
+                format!("{} ({}/{}):", format!("Input {}", ix).bold(), outlet.node, outlet.slot),
                 data.partial_dump(false).unwrap(),
             ));
         }

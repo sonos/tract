@@ -2,6 +2,7 @@ use super::prelude::*;
 use super::Result;
 use std::collections::HashMap;
 use {Node, Tensor};
+use model::OutletId;
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
 /// replaced with a constant node containing a copy of that tensor.
@@ -44,7 +45,7 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
     let mut stack = vec![];
 
     macro_rules! process_edges {
-        ($from:ident, $field:ident, $component:expr, $node:expr) => {{
+        ($from:ident, $other:expr, $component:expr, $node:expr) => {{
             for &edge in &analyser.$from[$node] {
                 if !is_edge_const[edge] || is_edge_colored[edge] {
                     continue;
@@ -53,7 +54,7 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
                 is_edge_colored[edge] = true;
                 $component.elements.push(Element::Edge(edge));
 
-                let target = analyser.edges[edge].$field;
+                let target = $other(edge);
                 if target.is_none() {
                     continue;
                 }
@@ -84,8 +85,8 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
                 is_node_colored[node] = true;
                 component.elements.push(Element::Node(node));
 
-                process_edges!(prev_edges, from_node, component, node);
-                process_edges!(next_edges, to_node, component, node);
+                process_edges!(prev_edges, |e:usize| -> Option<usize> { analyser.edges[e].from.map(|n| n.node) }, component, node);
+                process_edges!(next_edges, |e:usize| analyser.edges[e].to_node, component, node);
             }
 
             components.push(component);
@@ -165,7 +166,7 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
                 node_id
             };
             let edge = &mut analyser.edges[i];
-            let old_node_id = edge.from_node.unwrap();
+            let old_node_id = edge.from.unwrap().node;
 
             // Detach the edge from its previous source.
             {
@@ -179,13 +180,13 @@ pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
                 let predecessors = &mut analyser.nodes[edge.to_node.unwrap()].inputs;
                 let position = predecessors
                     .iter()
-                    .position(|&(i, _)| i == old_node_id)
+                    .position(|outlet| outlet.node == old_node_id)
                     .unwrap();
-                predecessors[position] = (const_node_id, 0);
+                predecessors[position] = OutletId::new(const_node_id, 0);
             }
 
             // Attach the edge to its new source.
-            edge.from_node = Some(const_node_id);
+            edge.from = Some(OutletId::new(const_node_id, 0));
             analyser.prev_edges.push(vec![]);
             analyser.next_edges.push(vec![edge.id]);
         }

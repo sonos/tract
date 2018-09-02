@@ -1,4 +1,4 @@
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 pub mod conv2d;

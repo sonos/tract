@@ -7,7 +7,7 @@ use tfdeploy::ops::{StepValue, Stream};
 use tfdeploy::{SimplePlan, Tensor};
 use {OutputParameters, Parameters};
 
-pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()> {
+pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
     let model = params.tfd_model;
     let input = params.input.as_ref().unwrap();
 
@@ -102,10 +102,10 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
             let mut inputs = tvec!();
             for edge in &edges {
                 if let Some(info) = edge.fact.stream_info()? {
-                    let prec_name = &stream_model.nodes()[edge.from_node.unwrap()].name;
+                    let prec_name = &stream_model.nodes()[edge.from.unwrap().node].name;
                     let batch_prec_node = batch_state.model().node_by_name(&prec_name)?;
                     let data =
-                        &batch_state.values[batch_prec_node.id].as_ref().unwrap()[edge.from_out];
+                        &batch_state.values[batch_prec_node.id].as_ref().unwrap()[edge.from.unwrap().slot];
                     let data = data.as_f32s().unwrap();
                     let chunk = data.axis_chunks_iter(Axis(info.axis), 1)
                         .skip(input_offset)
@@ -118,7 +118,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()>
                     };
                     inputs.push(StepValue::Stream(stream));
                 } else {
-                    let value = stream_model.nodes[edge.from_node.unwrap()]
+                    let value = stream_model.nodes[edge.from.unwrap().node]
                         .op()
                         .const_value()
                         .ok_or("Not a const")?;

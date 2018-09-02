@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::local_patch::*;
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 

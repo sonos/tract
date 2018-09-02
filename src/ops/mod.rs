@@ -8,11 +8,11 @@ use std::ops::{Index, IndexMut};
 use std::result::Result as StdResult;
 use std::sync::Arc;
 
-use analyser::interface::{Solver, TensorsProxy};
 use analyser::prelude::*;
 use dim::TDim;
 use ops::nn::local_patch::{DataFormat, Padding};
 use {DatumType, Result, Tensor};
+use model::TVec;
 
 use downcast_rs::Downcast;
 use objekt;
@@ -29,18 +29,18 @@ pub mod image;
 pub mod konst;
 mod math;
 pub mod nn;
+mod unimpl;
 
 pub mod prelude {
-    pub use super::{Attr, InferenceRulesOp, Op, OpRegister};
-    pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, TVec, Value};
+    pub use super::{Attr, Op, OpRegister};
+    pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
     pub use dim::TDim;
+    pub use model::TVec;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{Datum, DatumType, Tensor};
     pub use Result;
 }
-
-pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -328,31 +328,6 @@ pub trait InferenceOp {
     ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)>;
 }
 
-pub trait InferenceRulesOp {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
-    );
-}
-
-impl<O: InferenceRulesOp> InferenceOp for O {
-    fn infer(
-        &self,
-        inputs: TVec<TensorFact>,
-        outputs: TVec<TensorFact>,
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let inputs_proxy = TensorsProxy::new(vec![0].into());
-        let outputs_proxy = TensorsProxy::new(vec![1].into());
-
-        let mut solver = Solver::default();
-        self.rules(&mut solver, &inputs_proxy, &outputs_proxy);
-        solver.infer((inputs, outputs))
-    }
-}
-
 clone_trait_object!(Op);
 
 #[cfg(feature = "serialize")]
@@ -383,36 +358,11 @@ impl OpBuilder {
     pub fn build(&self, pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         match self.0.get(pb.get_op()) {
             Some(builder) => builder(pb),
-            None => Ok(Box::new(UnimplementedOp(
+            None => Ok(Box::new(unimpl::UnimplementedOp(
                 pb.get_op().to_string(),
                 pb.to_owned(),
             ))),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct UnimplementedOp(String, ::tfpb::node_def::NodeDef);
-
-impl Op for UnimplementedOp {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
-        Err(format!("unimplemented operation: {}", self.0))?
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{} // FIXME
-    }
-}
-
-impl InferenceRulesOp for UnimplementedOp {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _: &mut Solver<'r>,
-        _: &'p TensorsProxy,
-        _: &'p TensorsProxy,
-    ) {
     }
 }
 

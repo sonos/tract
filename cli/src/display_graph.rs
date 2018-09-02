@@ -3,16 +3,16 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use tfdeploy;
+use tfdeploy::model::OutletId;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::tfpb::graph::GraphDef;
 use OutputParameters;
-use Result as CliResult;
+use CliResult;
 
 #[derive(Debug, Serialize)]
 pub struct Edge {
     pub id: usize,
-    pub src_node_id: usize,
-    pub src_node_output: usize,
+    pub src: OutletId,
     pub dst_node_id: usize,
     pub dst_node_input: usize,
     pub main: bool,
@@ -83,7 +83,7 @@ impl DisplayGraph {
                 .map(|id| {
                     !node.inputs
                         .iter()
-                        .any(|i| self.edges[*i].src_node_id == *id)
+                        .any(|i| self.edges[*i].src.slot == *id)
                 })
                 .unwrap_or(false)
             {
@@ -99,7 +99,7 @@ impl DisplayGraph {
             .iter()
             .map(|edge| {
                 let edge = &self.edges[*edge];
-                (edge.src_node_output, edge.label.clone())
+                (edge.src.node, edge.label.clone())
             })
             .collect();
         let mut sections = vec![
@@ -113,18 +113,18 @@ impl DisplayGraph {
                 .map(|(ix, a)| {
                     let edge = &self.edges[*a];
                     Row::Double(
-                        if edge.src_node_output == 0 {
+                        if edge.src.slot == 0 {
                             format!(
                                 "Input {}: Node #{}",
                                 ix.to_string().bold(),
-                                edge.src_node_id.to_string().bold()
+                                edge.src.node.to_string().bold()
                             )
                         } else {
                             format!(
                                 "Input {}: Node #{}/{}",
                                 ix.to_string().bold(),
-                                edge.src_node_id.to_string().bold(),
-                                edge.src_node_output.to_string().bold()
+                                edge.src.node.to_string().bold(),
+                                edge.src.slot.to_string().bold()
                             )
                         },
                         edge.label.clone().unwrap_or_else(|| "".to_string()),
@@ -179,18 +179,17 @@ impl DisplayGraph {
             for (ix, input) in node.borrow().inputs.iter().enumerate() {
                 let edge = Edge {
                     id: edges.len(),
-                    src_node_id: input.0,
-                    src_node_output: input.1,
+                    src: *input,
                     dst_node_id: node.borrow().id,
                     dst_node_input: ix,
                     main: ix == 0,
-                    label: tfnodes[input.0]
+                    label: tfnodes[input.node]
                         .borrow()
                         .op()
                         .const_value()
                         .map(|v| format!("Const {:?}", v)),
                 };
-                nodes[edge.src_node_id].outputs.push(edges.len());
+                nodes[edge.src.node].outputs.push(edges.len());
                 nodes[node.borrow().id].inputs.push(edges.len());
                 edges.push(edge);
             }
@@ -219,14 +218,13 @@ impl DisplayGraph {
 
     pub fn with_analyser(mut self, analyser: &Analyser) -> CliResult<DisplayGraph> {
         {
-            let index: HashMap<(usize, usize, usize, usize), usize> = self.edges
+            let index: HashMap<(OutletId, usize, usize), usize> = self.edges
                 .iter()
                 .enumerate()
                 .map(|(ix, edge)| {
                     (
                         (
-                            edge.src_node_id,
-                            edge.src_node_output,
+                            edge.src,
                             edge.dst_node_id,
                             edge.dst_node_input,
                         ),
@@ -235,8 +233,8 @@ impl DisplayGraph {
                 })
                 .collect();
             for an_edge in &analyser.edges {
-                if let (Some(from_node), Some(to_node)) = (an_edge.from_node, an_edge.to_node) {
-                    let key = (from_node, an_edge.from_out, to_node, an_edge.to_input);
+                if let (Some(from), Some(to_node)) = (an_edge.from, an_edge.to_node) {
+                    let key = (from, to_node, an_edge.to_input);
                     self.edges[index[&key]].label = Some(format!("{:?}", an_edge.fact));
                 }
             }

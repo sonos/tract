@@ -3,43 +3,18 @@ use std::sync::Arc;
 
 use errors::*;
 use model::eval_order_for_nodes;
-use model::{Model, RawModel};
+use model::{Model, OutletId, RawModel, TVec};
 use ops::Op;
 use Node;
 
 mod constants;
 pub mod types;
 
+#[allow(unused_imports)]
 pub mod prelude {
     pub use super::types::*;
     pub use super::Analyser;
-    pub use ops::TVec;
     use Result;
-
-    /// Attempts to unify two tensor facts into a more specialized one.
-    pub fn unify(x: &TensorFact, y: &TensorFact) -> Result<TensorFact> {
-        x.unify(y)
-    }
-
-    /// Attempts to unify two datum_type facts.
-    pub fn unify_datum_type(x: &TypeFact, y: &TypeFact) -> Result<TypeFact> {
-        x.unify(y)
-    }
-
-    /// Attempts to unify two shape facts.
-    pub fn unify_shape(x: &ShapeFact, y: &ShapeFact) -> Result<ShapeFact> {
-        x.unify(y)
-    }
-
-    /// Attempts to unify two dimension facts.
-    pub fn unify_dim(x: &DimFact, y: &DimFact) -> Result<DimFact> {
-        x.unify(y)
-    }
-
-    /// Attempts to unify two value facts.
-    pub fn unify_value(x: &ValueFact, y: &ValueFact) -> Result<ValueFact> {
-        x.unify(y)
-    }
 }
 
 pub use self::prelude::*;
@@ -49,7 +24,7 @@ pub mod macros;
 #[macro_use]
 pub mod helpers;
 #[macro_use]
-pub mod interface;
+pub mod rules;
 
 /// Tries to auto-detect the names of the input nodes.
 pub fn detect_inputs(model: &Model) -> Result<Vec<&Node>> {
@@ -70,7 +45,7 @@ pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
 
     for node in model.nodes() {
         for &link in &node.inputs {
-            succs[link.0].push(node.id);
+            succs[link.node].push(node.id);
         }
     }
 
@@ -93,8 +68,7 @@ pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
     pub id: usize,
-    pub from_node: Option<usize>,
-    pub from_out: usize,
+    pub from: Option<OutletId>,
     pub to_node: Option<usize>,
     pub to_input: usize,
     pub fact: TensorFact,
@@ -136,15 +110,14 @@ impl Analyser {
 
                 edges.push(Edge {
                     id,
-                    from_node: Some(input.0),
-                    from_out: input.1,
+                    from: Some(*input),
                     to_node: Some(node.id),
                     to_input: ix,
                     fact: TensorFact::new(),
                 });
 
                 prev_edges[node.id].push(id);
-                next_edges[input.0].push(id);
+                next_edges[input.node].push(id);
             }
         }
 
@@ -152,8 +125,7 @@ impl Analyser {
         let special_edge_id = edges.len();
         edges.push(Edge {
             id: special_edge_id,
-            from_node: Some(output.id),
-            from_out: 0,
+            from: Some(OutletId::new(output.id, 0)),
             to_node: None,
             to_input: 0,
             fact: TensorFact::new(),
@@ -195,7 +167,7 @@ impl Analyser {
         }
 
         for &j in &self.next_edges[node] {
-            self.edges[j].fact = unify(fact, &self.edges[j].fact)?;
+            self.edges[j].fact = fact.unify(&self.edges[j].fact)?;
         }
 
         Ok(())
@@ -240,7 +212,7 @@ impl Analyser {
                 inputs: old_node
                     .inputs
                     .iter()
-                    .map(|&(input, port)| (nodes_mapped[&input], port))
+                    .map(|outlet| OutletId::new(nodes_mapped[&outlet.node], outlet.slot))
                     .collect(),
                 op: new_op.unwrap_or_else(|| old_node.op.clone()),
             });
@@ -296,7 +268,7 @@ impl Analyser {
                         nodes_to_visit.insert(dst);
                     }
                 }
-                if let Some(src) = edge.from_node {
+                if let Some(src) = edge.from.map(|e| e.node) {
                     if src != node {
                         trace!("Inserting node up {}", src);
                         nodes_to_visit.insert(src);
@@ -315,10 +287,9 @@ impl Analyser {
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
                 trace!(
-                    " Input {} from {}/{}: {:?}",
+                    " Input {} from {:?}: {:?}",
                     edge.to_input,
-                    edge.from_node.unwrap(),
-                    edge.from_out,
+                    edge.from,
                     edge.fact
                 );
             })
@@ -328,7 +299,7 @@ impl Analyser {
         // FIXME(liautaud): We should handle multiple output ports in the future.
         let mut outputs = tvec![TensorFact::new()];
         for &i in &self.next_edges[node.id] {
-            outputs[0] = unify(&self.edges[i].fact, &outputs[0])?;
+            outputs[0] = self.edges[i].fact.unify(&outputs[0])?;
         }
 
         Ok((inputs, outputs))
@@ -356,7 +327,7 @@ impl Analyser {
 
         for (i, &j) in self.prev_edges[node.id].iter().enumerate() {
             let fact = &inferred.0[i];
-            let mut unified = unify(fact, &self.edges[j].fact).map_err(|e| {
+            let mut unified = fact.unify(&self.edges[j].fact).map_err(|e| {
                 format!(
                     "While unifying inputs of node {} {}: {}",
                     node.id, node.name, e
@@ -378,7 +349,7 @@ impl Analyser {
             }
 
             let fact = &inferred.1[0];
-            let mut unified = unify(fact, &self.edges[j].fact).map_err(|e| {
+            let mut unified = fact.unify(&self.edges[j].fact).map_err(|e| {
                 format!(
                     "While unifying outputs of node {} {} {}",
                     node.id, node.name, e

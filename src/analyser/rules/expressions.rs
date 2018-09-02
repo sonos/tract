@@ -5,10 +5,8 @@ use std::ops::{Div, Mul};
 use num::cast::ToPrimitive;
 use num::Zero;
 
-use analyser::interface::path::Path;
-use analyser::interface::proxies::ComparableProxy;
-use analyser::interface::solver::Context;
-use analyser::types::{DimFact, Fact, IntFact, ShapeFact, TypeFact, ValueFact};
+use analyser::prelude::*;
+use analyser::rules::prelude::*;
 use dim::TDim;
 use {DatumType, Result, Tensor};
 
@@ -50,36 +48,6 @@ impl_output!(TypeFact, Type);
 impl_output!(ShapeFact, Shape);
 impl_output!(ValueFact, Value);
 impl_output!(DimFact, Dim);
-
-/*
-// Converts back and forth between Wrapped and DimFact.
-impl Output for DimFact {
-    fn into_wrapped(source: DimFact) -> Wrapped {
-        IntFact::into_wrapped(source.into())
-    }
-
-    fn from_wrapped(wrapped: Wrapped) -> Result<DimFact> {
-        match IntFact::from_wrapped(wrapped)? {
-            GenericFact::Any => Ok(GenericFact::Any),
-
-            GenericFact::Only(i) => i
-                .to_usize()
-                .ok_or(format!("Tried to convert {:?} to a DimFact.", i).into())
-                .map(|d| GenericFact::Only(d)),
-
-            IntFact::Special(s) => if s == SpecialKind::Streamed {
-                Ok(DimFact::Streamed)
-            } else {
-                bail!(
-                    "Tried to convert Special({:?}) to a DimFact, but the only\
-                     special value supported by DimFact is Streamed.",
-                    s
-                );
-            },
-        }
-    }
-}
-*/
 
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {
@@ -141,23 +109,6 @@ impl Output for TDim {
             .ok_or(message.into())
     }
 }
-
-/*
-// Converts back and forth between Wrapped and a Vec<usize> shape.
-impl Output for Vec<usize> {
-    fn into_wrapped(source: Vec<usize>) -> Wrapped {
-        ShapeFact::into_wrapped(source.into())
-    }
-
-    fn from_wrapped(wrapped: Wrapped) -> Result<Vec<usize>> {
-        let message = format!("Tried to convert {:?} to a shape.", wrapped);
-
-        ShapeFact::from_wrapped(wrapped)?
-            .concretize()
-            .ok_or(message.into())
-    }
-}
-*/
 
 /// A wrapper for all the types of values that expressions can produce.
 #[derive(Debug, Clone)]
