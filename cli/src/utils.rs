@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use errors::Result as CliResult;
+use CliResult;
 use tfdeploy::{DatumType, Tensor};
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.

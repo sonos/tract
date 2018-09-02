@@ -1,4 +1,4 @@
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ops::prelude::*;
 use std::collections::HashMap;
 use tensor::Datum;

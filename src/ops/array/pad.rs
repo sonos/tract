@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ops::prelude::*;
 use tensor::Datum;
 use Result;

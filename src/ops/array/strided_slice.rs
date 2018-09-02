@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use analyser::interface::*;
+use analyser::prelude::*;
+use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 use tensor::Datum;

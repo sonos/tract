@@ -3,32 +3,9 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use super::*;
-use analyser::interface::*;
+use analyser::prelude::*;
 use ops::{StepValue, Stream, StreamInfo, Value};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct OutletId {
-    pub node: usize,
-    pub outlet: usize,
-}
-
-impl OutletId {
-    pub fn new(node: usize, outlet: usize) -> OutletId {
-        OutletId { node, outlet }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct InletId {
-    pub node: usize,
-    pub inlet: usize,
-}
-
-impl InletId {
-    pub fn new(node: usize, inlet: usize) -> InletId {
-        InletId { node, inlet }
-    }
-}
+use model::*;
 
 #[derive(Clone, Debug)]
 pub struct RawStreamingPlan {
@@ -90,10 +67,11 @@ impl RawStreamingPlan {
                         .into();
                     inputs.push(StepValue::Const(value.into_shared()))
                 }
-                while successors[edge.from_node.unwrap()].len() <= edge.from_out {
-                    successors[edge.from_node.unwrap()].push(tvec!())
+                let from = edge.from.unwrap(); //checked
+                while successors[from.node].len() <= from.slot {
+                    successors[from.node].push(tvec!())
                 }
-                successors[edge.from_node.unwrap()][edge.from_out].push(InletId::new(node.id, ix));
+                successors[from.node][from.slot].push(InletId::new(node.id, ix));
             }
             proto_inputs.push(inputs);
             let mut outputs = tvec!();
@@ -115,7 +93,7 @@ impl RawStreamingPlan {
     }
 
     pub fn stream_info(&self, outlet: &OutletId) -> Option<StreamInfo> {
-        *self.stream_infos.get(outlet.node)?.get(outlet.outlet)?
+        *self.stream_infos.get(outlet.node)?.get(outlet.slot)?
     }
 
     pub fn output_stream_info(&self) -> ::Result<StreamInfo> {
@@ -125,7 +103,7 @@ impl RawStreamingPlan {
 
     pub fn successors(&self, edge: OutletId) -> &[InletId] {
         self.successors[edge.node]
-            .get(edge.outlet)
+            .get(edge.slot)
             .map(|v| &v[..])
             .unwrap_or(&[])
     }

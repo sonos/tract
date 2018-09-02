@@ -1,5 +1,5 @@
 use super::*;
-use ops::TVec;
+use model::TVec;
 use tensor::Tensor;
 
 /// Build a TensorFact from a Tensor.

@@ -2,11 +2,8 @@ use std::fmt;
 use std::marker::PhantomData;
 use Result;
 
-use analyser::interface::expressions::Output;
-use analyser::interface::path::Path;
-use analyser::interface::proxies::*;
-use analyser::interface::solver::Context;
-use analyser::types::*;
+use analyser::prelude::*;
+use analyser::rules::prelude::*;
 use dim::TDim;
 use num::Zero;
 use std::ops::{Add, Div, Mul, Neg, Sub};

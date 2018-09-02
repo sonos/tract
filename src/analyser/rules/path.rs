@@ -1,10 +1,9 @@
 //! TODO(liautaud):
 //! Right now most of the code in this module is duplicated to handle both
 //! &T and &mut T, so I should find a way to abstract this.
-use analyser::interface::expressions::Output;
-use analyser::interface::expressions::Wrapped;
-use analyser::interface::solver::Context;
 use analyser::prelude::*;
+use analyser::rules::prelude::*;
+use model::TVec;
 use std::fmt;
 use Result;
 use Tensor;

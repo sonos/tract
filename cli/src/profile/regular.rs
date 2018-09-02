@@ -15,7 +15,7 @@ pub fn handle_benching(
     params: Parameters,
     profiling: ProfilingMode,
     _output_params: OutputParameters,
-) -> Result<()> {
+) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching {
         max_iters,
         max_time,
@@ -46,7 +46,7 @@ pub fn handle(
     params: Parameters,
     profiling: ProfilingMode,
     output_parameters: OutputParameters,
-) -> Result<()> {
+) -> CliResult<()> {
     use colored::Colorize;
 
     let (max_iters, max_time) = if let ProfilingMode::Regular {

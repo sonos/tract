@@ -35,7 +35,7 @@ impl ProfileData {
         model: &Model,
         graph: &GraphDef,
         output_params: &OutputParameters,
-    ) -> Result<()> {
+    ) -> CliResult<()> {
         let sum = self.summed();
         let nodes: Vec<&Node> = model.nodes.iter().map(|a| &*a).collect();
         let mut display_graph =
@@ -63,7 +63,7 @@ impl ProfileData {
         Ok(())
     }
 
-    pub fn print_most_consuming_ops(&self, model: &Model) -> Result<()> {
+    pub fn print_most_consuming_ops(&self, model: &Model) -> CliResult<()> {
         let sum = self.summed();
         println!("Most time consuming operations:");
         let mut operations = HashMap::new();
@@ -118,7 +118,7 @@ pub fn handle(
     params: Parameters,
     profiling: ProfilingMode,
     output_params: OutputParameters,
-) -> Result<()> {
+) -> CliResult<()> {
     match &profiling {
         ProfilingMode::Regular { .. } => regular::handle(params, profiling, output_params),
         ProfilingMode::RegularBenching { .. } => {

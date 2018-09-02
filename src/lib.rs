@@ -11,7 +11,7 @@
 //! use tfdeploy::*;
 //!
 //! // load a simple model that just add 3 to each input component
-//! let model = tfdeploy::for_path("tests/models/plus3.pb").unwrap();
+//! let model = tfdeploy::tf::for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // "input" and "output" are tensorflow graph node names.
 //! // we build an execution plan for computing output from input
@@ -83,17 +83,14 @@ pub mod tensor;
 pub mod tfpb;
 
 pub use errors::*;
-use std::path;
 
-pub use model::{Model, Node};
-pub use ops::TVec;
+pub use model::{Model, Node, TVec};
 pub use plan::SimplePlan;
 pub use tensor::{DatumType, Tensor};
+pub use dim::TDim;
+pub use analyser::TensorFact;
 
-/// Load a Tensorflow protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
-    Ok(Model::for_path(p)?)
-}
+pub use model::tf;
 
 #[cfg(test)]
 #[allow(dead_code)]

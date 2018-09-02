@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ndarray::{stack, Axis, Slice};
 use ops::prelude::*;

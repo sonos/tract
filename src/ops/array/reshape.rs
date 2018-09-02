@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]

@@ -3,7 +3,7 @@ use Parameters;
 
 /// Handles the `prune` subcommand.
 #[allow(dead_code)]
-pub fn handle(params: Parameters) -> Result<()> {
+pub fn handle(params: Parameters) -> CliResult<()> {
     let model = params.tfd_model;
 
     info!("Starting the analysis.");

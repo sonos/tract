@@ -5,6 +5,7 @@ extern crate image;
 extern crate mio_httpc;
 extern crate ndarray;
 extern crate tar;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate tfdeploy;
 
@@ -95,7 +96,7 @@ mod tests {
     #[test]
     fn grace_hopper_is_a_military_uniform() {
         download();
-        let tfd = ::tfdeploy::for_path(inception_v3_2016_08_28_frozen()).unwrap();
+        let tfd = ::tfdeploy::tf::for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan =
             ::tfdeploy::SimplePlan::new(&tfd, &["input"], &["InceptionV3/Predictions/Reshape_1"])
                 .unwrap();

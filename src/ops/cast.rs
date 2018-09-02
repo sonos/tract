@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use Result;
 
 use super::prelude::*;
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Cast", Cast::build);

@@ -39,6 +39,7 @@ use std::str::FromStr;
 use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
+use tfdeploy::*;
 use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
 use tfdeploy::{DatumType, Tensor};
@@ -216,10 +217,10 @@ pub struct Parameters {
 
 impl Parameters {
     /// Parses the command-line arguments.
-    pub fn from_clap(matches: &clap::ArgMatches) -> Result<Parameters> {
+    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<Parameters> {
         let name = matches.value_of("model").unwrap();
-        let graph = tfdeploy::Model::graphdef_for_path(&name)?;
-        let tfd_model = tfdeploy::for_path(&name)?;
+        let graph = tfdeploy::tf::graphdef_for_path(&name)?;
+        let tfd_model = tfdeploy::tf::for_path(&name)?;
 
         #[cfg(feature = "tensorflow")]
         let tf_model = conform::tf::for_path(&name)?;
@@ -282,7 +283,7 @@ pub struct InputParameters {
 }
 
 impl InputParameters {
-    fn from_clap(matches: &clap::ArgMatches) -> Result<Option<InputParameters>> {
+    fn from_clap(matches: &clap::ArgMatches) -> CliResult<Option<InputParameters>> {
         let input = match (matches.value_of("size"), matches.value_of("data")) {
             (_, Some(filename)) => Some(Self::for_data(filename)?),
             (Some(size), _) => Some(Self::for_size(size)?),
@@ -291,7 +292,7 @@ impl InputParameters {
         Ok(input)
     }
 
-    fn for_size(size: &str) -> std::result::Result<InputParameters, errors::Error> {
+    fn for_size(size: &str) -> CliResult<InputParameters> {
         let splits = size.split("x").collect::<Vec<_>>();
 
         if splits.len() < 1 {
@@ -329,7 +330,7 @@ impl InputParameters {
     }
 
     /// Parses the `data` command-line argument.
-    fn for_data(filename: &str) -> Result<InputParameters> {
+    fn for_data(filename: &str) -> CliResult<InputParameters> {
         let mut file = File::open(filename)?;
         let mut data = String::new();
         file.read_to_string(&mut data)?;
@@ -379,7 +380,6 @@ impl InputParameters {
     }
 
     fn to_fact(&self) -> TensorFact {
-        use tfdeploy::analyser::interface::*;
         if let Some(ref data) = self.data {
             return data.clone().into();
         }
@@ -389,16 +389,16 @@ impl InputParameters {
             .collect::<Vec<_>>();
         TensorFact {
             datum_type: typefact!(self.datum_type),
-            shape: ShapeFact::closed(dims.clone()),
+            shape: tfdeploy::analyser::ShapeFact::closed(dims.clone()),
             value: valuefact!(_),
         }
     }
 
-    fn to_tensor(&self) -> Result<Tensor> {
+    fn to_tensor(&self) -> CliResult<Tensor> {
         self.to_tensor_with_stream_dim(None)
     }
 
-    fn to_tensor_with_stream_dim(&self, streaming_dim: Option<usize>) -> Result<Tensor> {
+    fn to_tensor_with_stream_dim(&self, streaming_dim: Option<usize>) -> CliResult<Tensor> {
         if let Some(value) = self.data.as_ref() {
             Ok(value.clone())
         } else {
@@ -425,7 +425,7 @@ pub enum ProfilingMode {
 }
 
 impl ProfilingMode {
-    pub fn from_clap(matches: &clap::ArgMatches, streaming: bool) -> Result<ProfilingMode> {
+    pub fn from_clap(matches: &clap::ArgMatches, streaming: bool) -> CliResult<ProfilingMode> {
         let max_iters = matches
             .value_of("max_iters")
             .map(u64::from_str)
@@ -475,7 +475,7 @@ pub struct OutputParameters {
 }
 
 impl OutputParameters {
-    pub fn from_clap(matches: &clap::ArgMatches) -> Result<OutputParameters> {
+    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<OutputParameters> {
         Ok(OutputParameters {
             web: matches.is_present("web"),
             konst: matches.is_present("const"),
@@ -489,7 +489,7 @@ impl OutputParameters {
 }
 
 /// Handles the command-line input.
-fn handle(matches: clap::ArgMatches) -> Result<()> {
+fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     // Configure the logging level.
     let level = match matches.occurrences_of("verbosity") {
         0 => LevelFilter::Warn,

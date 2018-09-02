@@ -1,9 +1,7 @@
 use std::fmt;
 
-use analyser::interface::cache::Cache;
-use analyser::interface::expressions::Output;
-use analyser::interface::path::Path;
-use analyser::types::*;
+use analyser::prelude::*;
+use analyser::rules::prelude::*;
 use std::ops::Index;
 
 use num::cast::ToPrimitive;

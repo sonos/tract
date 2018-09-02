@@ -10,12 +10,12 @@ use {OutputParameters, Parameters};
 
 /// Handles the `compare` subcommand.
 #[cfg(not(feature = "tensorflow"))]
-pub fn handle(_params: Parameters, _: OutputParameters) -> Result<()> {
+pub fn handle(_params: Parameters, _: OutputParameters) -> CliResult<()> {
     bail!("Comparison requires the `tensorflow` feature.")
 }
 
 #[cfg(feature = "tensorflow")]
-pub fn handle(params: Parameters, output_params: OutputParameters) -> Result<()> {
+pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
     use colored::Colorize;
     use format::Row;
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use analyser::interface::*;
+use analyser::rules::prelude::*;
 use ops::prelude::*;
 use Result;
 
