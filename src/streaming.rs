@@ -132,14 +132,9 @@ impl StreamingPlan {
     }
 
     pub fn state(&self) -> Result<StreamingModelState> {
-        let inlets_offset = self.model
-            .nodes
-            .iter()
-            .map(|node| tvec!(0; node.inputs.len()))
-            .collect();
         let mut state = StreamingModelState {
             plan: self.clone(),
-            inlets_offset,
+            inlets_offset: vec!(),
             buffers: vec![],
             queue: VecDeque::new(),
             outputs: vec![],
@@ -285,11 +280,14 @@ impl StreamingModelState {
 
     /// Resets the model state.
     pub fn reset(&mut self) -> Result<()> {
-        self.buffers = self.model()
+        self.inlets_offset = self.model().nodes.iter().map(|node| tvec!(0; node.inputs.len())).collect();
+        self.buffers = self
+            .model()
             .nodes
             .iter()
             .map(|n| n.op.new_buffer())
             .collect::<Vec<_>>();
+        self.queue.clear();
         Ok(())
     }
 }
