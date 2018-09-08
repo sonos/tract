@@ -1,6 +1,5 @@
 use analyser::rules::prelude::*;
 use ops::prelude::*;
-use std::collections::HashMap;
 use tensor::Datum;
 use Result;
 
@@ -46,15 +45,6 @@ impl Op for Pack {
             DatumType::I32 => self.eval_t::<i32>(inputs),
             DatumType::F32 => self.eval_t::<f32>(inputs),
             _ => panic!("unsupported type"),
-        }
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "T"    => Attr::DatumType(self.t),
-            "n"    => Attr::Usize(self.n),
-            "axis" => Attr::Usize(self.axis),
         }
     }
 }

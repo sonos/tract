@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::local_patch::*;
 use analyser::rules::prelude::*;
 use ndarray::prelude::*;
@@ -64,16 +62,6 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         });
 
         Ok(tvec![Tensor::from(transformed.into_dyn()).into()])
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        let mut attributes = hashmap!{
-            "ksize" => Attr::UsizeVec(vec![(self.1).0, (self.1).1]),
-        };
-
-        attributes.extend(self.0.get_attributes());
-        attributes
     }
 }
 

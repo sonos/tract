@@ -17,15 +17,6 @@ pub struct ConcatV2<T: Datum> {
 }
 
 impl<T: Datum> Op for ConcatV2<T> {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "n" => Attr::Usize(self.n),
-            "t" => Attr::DatumType(T::datum_type()),
-            "tidx" => Attr::DatumType(self.tidx),
-        }
-    }
-
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let axis: i32 = inputs

@@ -4,26 +4,20 @@ use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::mem;
 use std::ops::{Index, IndexMut};
-#[cfg(feature = "serialize")]
-use std::result::Result as StdResult;
 use std::sync::Arc;
 
 use analyser::prelude::*;
 use dim::TDim;
 use model::TVec;
-use ops::nn::local_patch::{DataFormat, Padding};
-use {DatumType, Result, Tensor};
+use {Result, Tensor};
 
 use downcast_rs::Downcast;
 use objekt;
-#[cfg(feature = "serialize")]
-use serde::ser::{Serialize, Serializer};
 
 #[macro_use]
 mod macros;
 
 mod array;
-mod cast;
 #[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;
@@ -32,7 +26,7 @@ pub mod nn;
 mod unimpl;
 
 pub mod prelude {
-    pub use super::{Attr, Op, OpRegister};
+    pub use super::{Op, OpRegister};
     pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
     pub use dim::TDim;
     pub use model::TVec;
@@ -214,27 +208,8 @@ impl StepValue {
     }
 }
 
-// TODO(liautaud): Find a more generic way to do this.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone)]
-pub enum Attr {
-    I64(i64),
-    Usize(usize),
-    DatumType(DatumType),
-    DataFormat(DataFormat),
-    Padding(Padding),
-    Tensor(Tensor),
-    UsizeVec(Vec<usize>),
-    IsizeVec(Vec<isize>),
-}
-
 /// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!()
-    }
-
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
         bail!("Unexpected call on op.eval(). {:?}", self)
@@ -332,16 +307,6 @@ pub trait InferenceOp {
 
 clone_trait_object!(Op);
 
-#[cfg(feature = "serialize")]
-impl Serialize for Op {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.get_attributes().serialize(serializer)
-    }
-}
-
 pub type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
 
 pub struct OpBuilder(OpRegister);
@@ -350,7 +315,6 @@ impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
         array::register_all_ops(&mut reg);
-        cast::register_all_ops(&mut reg);
         konst::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);

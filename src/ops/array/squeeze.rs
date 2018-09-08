@@ -53,15 +53,6 @@ impl<T: Datum> Op for Squeeze<T> {
         Ok(tvec![data.into_shape(shape)?.into()])
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        let mut attrs = hashmap!{ "T" => Attr::DatumType(T::datum_type()) };
-        if let Some(dim) = self.squeeze_dims.as_ref() {
-            attrs.insert("squeeze_dims", Attr::IsizeVec(dim.clone()));
-        }
-        attrs
-    }
-
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,

@@ -9,9 +9,17 @@ use tfdeploy::tfpb::graph::GraphDef;
 use CliResult;
 use OutputParameters;
 
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "OutletId")]
+struct OutletIdDef {
+    node: usize,
+    slot: usize,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Edge {
     pub id: usize,
+    #[serde(with = "OutletIdDef")]
     pub src: OutletId,
     pub dst_node_id: usize,
     pub dst_node_input: usize,

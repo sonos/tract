@@ -9,13 +9,14 @@ pub use self::order::eval_order_for_nodes;
 
 use {ops, Result};
 
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct Node {
     pub id: usize,
     pub name: String,
     pub op_name: String,
     pub inputs: Vec<OutletId>,
+    #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: Box<ops::Op>,
 }
 
@@ -51,36 +52,6 @@ impl InletId {
 }
 
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
-
-/*
-pub struct OutletIndex<T>(Vec<TVec<T>>);
-
-impl<T:Default> OutletIndex<T> {
-    pub fn at(&mut self, idx: OutletId) -> &mut T {
-        while self.0.len() < idx.node {
-            self.0.push(tvec!());
-        }
-        let tv = self.0[idx.node];
-        while tv.len() < idx.slot {
-            tv.push(T::default())
-        }
-        &mut tv[idx.slot]
-    }
-}
-
-impl<T> OutletIndex<T> {
-    pub fn get(&self, idx: OutletId) -> Option<&T> {
-        self.get(idx.node).and_then(|v| v.get(idx.slot))
-    }
-}
-
-impl<T> ::std::ops::Index<OutletId> for OutletIndex<T> {
-    type Output = T;
-    fn index(&self, idx: OutletId) -> &T {
-        self.get(idx.node).and_then(idx.port)
-    }
-}
-*/
 
 /// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
 /// and runs the inference interpreter.

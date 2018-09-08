@@ -9,11 +9,6 @@ impl Op for UnimplementedOp {
     fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{} // FIXME
-    }
 }
 
 impl InferenceRulesOp for UnimplementedOp {

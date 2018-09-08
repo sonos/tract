@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use analyser::prelude::*;
@@ -206,15 +205,6 @@ impl BaseStridedSlice {
         Ok(tvec![output.into()])
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "begin_mask"       => Attr::I64(self.begin_mask),
-            "end_mask"         => Attr::I64(self.end_mask),
-            "shrink_axis_mask" => Attr::I64(self.shrink_axis_mask),
-        }
-    }
-
     fn step<T: Datum>(
         &self,
         mut inputs: TVec<StepValue>,
@@ -381,10 +371,6 @@ impl<T: Datum> Op for StridedSlice<T> {
         self.base.eval::<T>(inputs)
     }
 
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        self.base.get_attributes()
-    }
-
     fn step(
         &self,
         inputs: TVec<StepValue>,
@@ -427,10 +413,6 @@ impl Op for StridedSliceD {
             DatumType::I32 => self.base.eval::<i32>(inputs),
             _ => panic!("StridedSliceD only covering i32 and Dim"),
         }
-    }
-
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        self.base.get_attributes()
     }
 
     fn step(

@@ -43,11 +43,6 @@ impl<T: Datum> Op for Reshape<T> {
         let output = input.into_shape(&*dims)?.into_dyn();
         Ok(tvec![output.into()])
     }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
-    }
 }
 
 impl<T: Datum> InferenceRulesOp for Reshape<T> {

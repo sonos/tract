@@ -1,8 +1,5 @@
-use std::collections::HashMap;
-
-use super::{Attr, Op, OpRegister, Value};
+use ops::prelude::*;
 use analyser::rules::prelude::*;
-use {DatumType, Result, Tensor};
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Const", Const::build);
@@ -46,14 +43,6 @@ impl Op for Const {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
         Ok(tvec![self.value.clone()])
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "dtype" => Attr::DatumType(self.dtype),
-            "value" => Attr::Tensor(self.value.as_tensor().clone()),
-        }
     }
 
     fn const_value(&self) -> Option<Value> {

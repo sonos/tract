@@ -26,8 +26,7 @@ pub fn handle(
 
     if analyse_result.is_ok() && optimize {
         info!(
-            "Size of the graph before pruning: approx. {:.2?} Ko for {:?} nodes.",
-            ::bincode::serialize(&analyser.nodes)?.len() as f64 * 1e-3,
+            "Size of the graph before pruning: {:?} nodes.",
             analyser.nodes.len()
         );
 
@@ -44,8 +43,7 @@ pub fn handle(
         info!("Ran second analyse in {:?}ms", elapsed);
 
         info!(
-            "Size of the graph after pruning: approx. {:.2?} Ko for {:?} nodes.",
-            ::bincode::serialize(&model.nodes)?.len() as f64 * 1e-3,
+            "Size of the graph after pruning: approx. {:?} nodes.",
             model.nodes.len()
         );
     }

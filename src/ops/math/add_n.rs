@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use analyser::rules::prelude::*;
@@ -32,14 +31,6 @@ where
             result += &input.to_array_view()?;
         }
         Ok(tvec![result.into()])
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "T"    => Attr::DatumType(T::datum_type()),
-            "N"    => Attr::Usize(self.n),
-        }
     }
 
     /// Returns a new streaming buffer for the operation.

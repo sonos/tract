@@ -72,11 +72,6 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         Ok(tvec![data.into()])
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
-    }
-
     /// Returns a new streaming buffer for the operation.
     fn new_buffer(&self) -> Box<OpBuffer> {
         Box::new(SpaceToBatchBuffer::<T> {
@@ -255,11 +250,6 @@ impl<T: Datum> Op for BatchToSpace<T> {
             }
         }
         Ok(tvec![data.into()])
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{ "T" => Attr::DatumType(T::datum_type()) }
     }
 
     /// Returns a new streaming buffer for the operation.

@@ -43,11 +43,6 @@ impl Op for Softmax {
         let result = Tensor::from(input);
         Ok(tvec![result.into()])
     }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
-    }
 }
 
 impl InferenceRulesOp for Softmax {

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
@@ -63,13 +62,6 @@ where
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
         Ok(tvec![Self::compute(&input, paddings, None)?.into()])
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "T"    => Attr::DatumType(T::datum_type()),
-        }
     }
 
     fn step(

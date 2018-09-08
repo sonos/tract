@@ -34,11 +34,6 @@ impl ExpandDims {
 }
 
 impl Op for ExpandDims {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
-    }
-
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let (data, dims) = args_2!(inputs);
@@ -127,11 +122,6 @@ impl Identity {
 }
 
 impl Op for Identity {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
-    }
-
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
         Ok(inputs)
@@ -185,13 +175,6 @@ impl Op for Placeholder {
         panic!("Placeholder should not get evaluated")
     }
 
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{
-            "dtype" => Attr::DatumType(self.dtype)
-        }
-    }
-
     fn infer_and_propagate(
         &self,
         inputs: TVec<TensorFact>,
@@ -227,11 +210,6 @@ impl Shape {
 }
 
 impl Op for Shape {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{}
-    }
-
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;

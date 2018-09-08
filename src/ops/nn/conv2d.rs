@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use super::local_patch::*;
@@ -79,16 +78,6 @@ impl<T: Datum> Conv2D<T> {
 }
 
 impl<T: Datum> Op for Conv2D<T> {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        let mut attributes = hashmap!{
-            "T" => Attr::DatumType(T::datum_type()),
-        };
-
-        attributes.extend(self.0.get_attributes());
-        attributes
-    }
-
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);

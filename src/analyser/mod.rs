@@ -64,7 +64,6 @@ pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
 }
 
 /// An edge of the analysed graph, annotated by a fact.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
     pub id: usize,

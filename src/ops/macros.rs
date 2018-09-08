@@ -14,11 +14,6 @@ macro_rules! element_map_float {
         pub struct $Name<T: $crate::tensor::Datum + ::num::Float>(::std::marker::PhantomData<T>);
 
         impl<T: $crate::tensor::Datum + ::num::Float> ::ops::Op for $Name<T> {
-            /// Returns the attributes of the operation and their values.
-            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
-            }
-
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -79,11 +74,6 @@ macro_rules! element_map {
         pub struct $Name($crate::tensor::DatumType);
 
         impl ::ops::Op for $Name {
-            /// Returns the attributes of the operation and their values.
-            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DatumType(self.0) }
-            }
-
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -152,11 +142,6 @@ macro_rules! element_map_signed {
         pub struct $Name<T: $crate::tensor::Datum + ::num::Signed>(::std::marker::PhantomData<T>);
 
         impl<T: $crate::tensor::Datum + ::num::Signed> ::ops::Op for $Name<T> {
-            /// Returns the attributes of the operation and their values.
-            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DatumType(T::datum_type()) }
-            }
-
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -230,10 +215,6 @@ macro_rules! element_bin {
         }
 
         impl Op for $Name {
-            /// Returns the attributes of the operation and their values.
-            fn get_attributes(&self) -> ::std::collections::HashMap<&'static str, ::ops::Attr> {
-                hashmap!{ "T" => $crate::ops::Attr::DatumType(self.0) }
-            }
 
             /// Evaluates the operation given the input tensors.
             fn eval(

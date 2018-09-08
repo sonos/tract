@@ -29,7 +29,6 @@ open = "1.2"
 serde = { "version" = "1.0" }
 serde_derive = { "version" = "1.0" }
 serde_json = { "version" = "1.0" }
-bincode = { "version" = "1.0" }
 
 [features]
 default = []

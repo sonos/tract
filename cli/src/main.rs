@@ -1,4 +1,3 @@
-extern crate bincode;
 #[macro_use]
 extern crate clap;
 extern crate colored;
