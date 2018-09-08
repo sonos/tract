@@ -39,9 +39,9 @@ use std::str::FromStr;
 use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
-use tfdeploy::*;
 use tfdeploy::analyser::TensorFact;
 use tfdeploy::tfpb;
+use tfdeploy::*;
 use tfdeploy::{DatumType, Tensor};
 use tfpb::graph::GraphDef;
 
@@ -383,7 +383,8 @@ impl InputParameters {
         if let Some(ref data) = self.data {
             return data.clone().into();
         }
-        let dims = self.shape
+        let dims = self
+            .shape
             .iter()
             .map(|d| d.map(|i| i.into()).unwrap_or(TDim::stream()).into())
             .collect::<Vec<_>>();

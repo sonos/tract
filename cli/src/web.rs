@@ -1,6 +1,6 @@
 use display_graph::DisplayGraph;
-use CliResult;
 use std::fs::File;
+use CliResult;
 use OutputParameters;
 
 /// Starts a web server for TFVisualizer and opens its webroot in a browser.

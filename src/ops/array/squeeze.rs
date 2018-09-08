@@ -20,7 +20,8 @@ pub struct Squeeze<T: Datum> {
 impl<T: Datum> Squeeze<T> {
     fn squeezable(&self, ix: usize, d: usize, stream_dim: Option<usize>) -> bool {
         stream_dim != Some(ix) && d == 1
-            && self.squeeze_dims
+            && self
+                .squeeze_dims
                 .as_ref()
                 .filter(|v| v.len() > 0)
                 .map(|squeeze_dims| squeeze_dims.contains(&(ix as _)))
@@ -76,9 +77,7 @@ impl<T: Datum> Op for Squeeze<T> {
         {
             let chunk = chunk.into_tensor().into_array::<T>()?;
             let shape = self.squeeze_shape(chunk.shape(), Some(info.axis));
-            Ok(Some(tvec![
-                Tensor::from(chunk.into_shape(shape)?).into(),
-            ]))
+            Ok(Some(tvec![Tensor::from(chunk.into_shape(shape)?).into(),]))
         } else {
             Ok(None)
         }
@@ -170,7 +169,8 @@ mod tests {
             .with_shape(shapefact![1, 1, (TDim::stream() - 2), 16]);
 
         let op = Squeeze::<TDim>::new(Some(vec![1]));
-        let inferred = op.infer(tvec!(input), tvec!(TensorFact::default()))
+        let inferred = op
+            .infer(tvec!(input), tvec!(TensorFact::default()))
             .unwrap();
 
         let expect: TVec<_> = tvec!(

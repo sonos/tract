@@ -241,7 +241,8 @@ impl ShapeFact {
     }
 
     pub fn stream_info(&self) -> Result<Option<StreamInfo>> {
-        let concrete = self.concretize()
+        let concrete = self
+            .concretize()
             .ok_or("Shape has unknown dims, can not find streaming dim for sure.")?;
         let count = concrete.iter().filter(|&d| d.is_stream()).count();
         if count > 1 {
@@ -294,7 +295,8 @@ impl Fact for ShapeFact {
         let xi = x.dims.iter();
         let yi = y.dims.iter();
 
-        let dimensions: Vec<_> = xi.zip_longest(yi)
+        let dimensions: Vec<_> = xi
+            .zip_longest(yi)
             .map(|r| match r {
                 Both(a, b) => a.unify(b),
                 Left(d) if y.open => Ok(*d),

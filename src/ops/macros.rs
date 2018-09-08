@@ -44,7 +44,9 @@ macro_rules! element_map_float {
             }
         }
 
-        impl<T: $crate::tensor::Datum + ::num::Float> $crate::analyser::rules::InferenceRulesOp for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Float> $crate::analyser::rules::InferenceRulesOp
+            for $Name<T>
+        {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
@@ -180,7 +182,9 @@ macro_rules! element_map_signed {
             }
         }
 
-        impl<T: $crate::tensor::Datum + ::num::Signed> $crate::analyser::rules::InferenceRulesOp for $Name<T> {
+        impl<T: $crate::tensor::Datum + ::num::Signed> $crate::analyser::rules::InferenceRulesOp
+            for $Name<T>
+        {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,

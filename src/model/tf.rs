@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use std::{fs, path};
 
-use Result;
-use tfpb;
 use model::{Model, Node, OutletId, RawModel};
 use ops;
+use tfpb;
+use Result;
 
 /// Load a Tensorflow protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
@@ -29,7 +29,6 @@ pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph
 pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<::tfpb::graph::GraphDef> {
     graphdef_for_reader(fs::File::open(p)?)
 }
-
 
 pub fn from_tf(graph: tfpb::graph::GraphDef) -> Result<Model> {
     let mut nodes = vec![];

@@ -1,6 +1,6 @@
 use bit_set;
+use model::Node;
 use Result;
-use model::{Node};
 
 pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> Result<Vec<usize>> {
     let mut order: Vec<usize> = Vec::new();

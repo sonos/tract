@@ -43,10 +43,12 @@ impl<T: Datum> Conv2D<T> {
         let filter_cols = filter.shape()[1];
         let out_depth = filter.shape()[3];
 
-        let out_height = self.0
+        let out_height = self
+            .0
             .adjusted_rows(images.h().into(), filter_rows)
             .to_integer()? as usize;
-        let out_width = self.0
+        let out_width = self
+            .0
             .adjusted_cols(images.w().into(), filter_cols)
             .to_integer()? as usize;
 
@@ -59,7 +61,8 @@ impl<T: Datum> Conv2D<T> {
 
         // Loop over each batch.
         for image in data.outer_iter() {
-            let patches = self.0
+            let patches = self
+                .0
                 .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
@@ -93,7 +96,8 @@ impl<T: Datum> Op for Conv2D<T> {
         let filter = m_filter.to_array_view()?;
         let data = into_4d(data)?;
 
-        Ok(tvec![self.convolve(&data, filter, true, true)?.into_dyn().into(),
+        Ok(tvec![
+            self.convolve(&data, filter, true, true)?.into_dyn().into(),
         ])
     }
 
@@ -334,7 +338,8 @@ mod tests {
         let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        let result = conv.eval(tvec![data.into(), filter.into()])
+        let result = conv
+            .eval(tvec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
         assert_eq!(exp, result.into_tensor());
@@ -375,7 +380,8 @@ mod tests {
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
 
-        let (_, mut output_facts) = op.infer(tvec![img, ker], tvec![TensorFact::default()])
+        let (_, mut output_facts) = op
+            .infer(tvec![img, ker], tvec![TensorFact::default()])
             .unwrap();
 
         output_facts[0].reduce();
@@ -400,7 +406,8 @@ mod tests {
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
 
-        let (_, output_facts) = op.infer(tvec![img, ker], tvec![TensorFact::default()])
+        let (_, output_facts) = op
+            .infer(tvec![img, ker], tvec![TensorFact::default()])
             .unwrap();
 
         assert_eq!(

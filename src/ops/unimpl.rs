@@ -1,5 +1,5 @@
-use ops::prelude::*;
 use analyser::rules::prelude::*;
+use ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct UnimplementedOp(pub String, pub ::tfpb::node_def::NodeDef);
@@ -25,4 +25,3 @@ impl InferenceRulesOp for UnimplementedOp {
     ) {
     }
 }
-

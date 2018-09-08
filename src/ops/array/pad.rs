@@ -82,8 +82,7 @@ where
                 let chunk = chunk.to_array_view::<T>()?;
                 let paddings = i32::tensor_to_view(&paddings)?.into_dimensionality()?;
                 return Ok(Some(tvec![
-                    Self::compute(&chunk, paddings, Some(stream.info.axis))?
-                        .into(),
+                    Self::compute(&chunk, paddings, Some(stream.info.axis))?.into(),
                 ]));
             }
         }

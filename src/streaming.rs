@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use super::*;
 use analyser::prelude::*;
-use ops::{StepValue, Stream, StreamInfo, Value};
 use model::*;
+use ops::{StepValue, Stream, StreamInfo, Value};
 
 #[derive(Clone, Debug)]
 pub struct RawStreamingPlan {
@@ -61,7 +61,8 @@ impl RawStreamingPlan {
                         chunk: None,
                     }));
                 } else {
-                    let value: Value = edge.fact
+                    let value: Value = edge
+                        .fact
                         .concretize()
                         .ok_or_else(|| "Failed analysis")?
                         .into();
@@ -134,7 +135,7 @@ impl StreamingPlan {
     pub fn state(&self) -> Result<StreamingModelState> {
         let mut state = StreamingModelState {
             plan: self.clone(),
-            inlets_offset: vec!(),
+            inlets_offset: vec![],
             buffers: vec![],
             queue: VecDeque::new(),
             outputs: vec![],
@@ -242,7 +243,8 @@ impl StreamingModelState {
                 for (port, value) in output_chunks.into_iter().enumerate() {
                     let tensor = value.into_tensor();
                     let outlet = OutletId::new(inlet.node, port);
-                    let info = self.plan
+                    let info = self
+                        .plan
                         .stream_info(&outlet)
                         .ok_or_else(|| "Expected a stream")?;
 
@@ -280,7 +282,12 @@ impl StreamingModelState {
 
     /// Resets the model state.
     pub fn reset(&mut self) -> Result<()> {
-        self.inlets_offset = self.model().nodes.iter().map(|node| tvec!(0; node.inputs.len())).collect();
+        self.inlets_offset = self
+            .model()
+            .nodes
+            .iter()
+            .map(|node| tvec!(0; node.inputs.len()))
+            .collect();
         self.buffers = self
             .model()
             .nodes

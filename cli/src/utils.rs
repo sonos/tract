@@ -1,6 +1,6 @@
+use tfdeploy::{DatumType, Tensor};
 #[allow(unused_imports)]
 use CliResult;
-use tfdeploy::{DatumType, Tensor};
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
 #[cfg(feature = "tensorflow")]
@@ -41,11 +41,15 @@ where
 
 /// Generates a random tensor of a given size and type.
 pub fn random_tensor(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
-    use std::iter::repeat_with;
     use rand;
+    use std::iter::repeat_with;
     let len = sizes.iter().product();
-    macro_rules! r {($t:ty) =>
-        { repeat_with(|| rand::random::<$t>()).take(len).collect::<Vec<_>>() }
+    macro_rules! r {
+        ($t:ty) => {
+            repeat_with(|| rand::random::<$t>())
+                .take(len)
+                .collect::<Vec<_>>()
+        };
     }
 
     match datum_type {

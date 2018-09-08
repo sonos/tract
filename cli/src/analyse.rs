@@ -4,7 +4,11 @@ use errors::*;
 use {OutputParameters, Parameters};
 
 /// Handles the `analyse` subcommand.
-pub fn handle(params: Parameters, optimize: bool, output_params: OutputParameters) -> CliResult<()> {
+pub fn handle(
+    params: Parameters,
+    optimize: bool,
+    output_params: OutputParameters,
+) -> CliResult<()> {
     let mut model = params.tfd_model;
 
     let mut analyser = model.analyser(&params.output_node)?;

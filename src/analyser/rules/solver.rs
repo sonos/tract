@@ -1,5 +1,5 @@
-use std::ops::{Add, Neg};
 use std::fmt;
+use std::ops::{Add, Neg};
 
 use num::Zero;
 
@@ -7,8 +7,6 @@ use analyser::prelude::*;
 use analyser::rules::prelude::*;
 use model::TVec;
 use Result;
-
-
 
 /// A structure that holds the current sets of TensorFacts.
 ///
@@ -282,7 +280,8 @@ impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
 impl<'rules, T: Output + Fact> Rule<'rules> for GivenAllRule<'rules, T> {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
-        let values: Vec<T> = self.items
+        let values: Vec<T> = self
+            .items
             .iter()
             .map(|it| it.get(context))
             .collect::<Result<Vec<T>>>()?;

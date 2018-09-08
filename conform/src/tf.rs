@@ -109,7 +109,8 @@ impl Tensorflow {
         let token = step.request_fetch(&self.graph.operation_by_name_required(output_name)?, 0);
         self.session.run(&mut step)?;
 
-        let output_type = &self.graph
+        let output_type = &self
+            .graph
             .operation_by_name_required(&output_name)?
             .output_type(0);
         convert_output(&mut step, output_type, token)

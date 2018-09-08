@@ -104,10 +104,11 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
                 if let Some(info) = edge.fact.stream_info()? {
                     let prec_name = &stream_model.nodes()[edge.from.unwrap().node].name;
                     let batch_prec_node = batch_state.model().node_by_name(&prec_name)?;
-                    let data =
-                        &batch_state.values[batch_prec_node.id].as_ref().unwrap()[edge.from.unwrap().slot];
+                    let data = &batch_state.values[batch_prec_node.id].as_ref().unwrap()
+                        [edge.from.unwrap().slot];
                     let data = data.as_f32s().unwrap();
-                    let chunk = data.axis_chunks_iter(Axis(info.axis), 1)
+                    let chunk = data
+                        .axis_chunks_iter(Axis(info.axis), 1)
                         .skip(input_offset)
                         .next()
                         .unwrap();

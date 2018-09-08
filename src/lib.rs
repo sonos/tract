@@ -84,11 +84,11 @@ pub mod tfpb;
 
 pub use errors::*;
 
+pub use analyser::TensorFact;
+pub use dim::TDim;
 pub use model::{Model, Node, TVec};
 pub use plan::SimplePlan;
 pub use tensor::{DatumType, Tensor};
-pub use dim::TDim;
-pub use analyser::TensorFact;
 
 pub use model::tf;
 

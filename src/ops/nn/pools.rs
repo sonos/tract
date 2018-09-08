@@ -35,14 +35,17 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
-        let out_h = self.0
+        let out_h = self
+            .0
             .adjusted_rows(images.h().into(), (self.1).0)
             .to_integer()? as usize;
-        let out_w = self.0
+        let out_w = self
+            .0
             .adjusted_cols(images.w().into(), (self.1).1)
             .to_integer()? as usize;
 
-        let padded = self.0
+        let padded = self
+            .0
             .pad(data.view(), self.1, ::std::f32::NAN, true, true)?;
         let data = padded.as_ref().map(|a| a.view()).unwrap_or(data.view());
         let out_shape = (images.count(), out_h, out_w, images.d());

@@ -1,8 +1,8 @@
 use super::prelude::*;
 use super::Result;
+use model::OutletId;
 use std::collections::HashMap;
 use {Node, Tensor};
-use model::OutletId;
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
 /// replaced with a constant node containing a copy of that tensor.
@@ -85,8 +85,18 @@ pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
                 is_node_colored[node] = true;
                 component.elements.push(Element::Node(node));
 
-                process_edges!(prev_edges, |e:usize| -> Option<usize> { analyser.edges[e].from.map(|n| n.node) }, component, node);
-                process_edges!(next_edges, |e:usize| analyser.edges[e].to_node, component, node);
+                process_edges!(
+                    prev_edges,
+                    |e: usize| -> Option<usize> { analyser.edges[e].from.map(|n| n.node) },
+                    component,
+                    node
+                );
+                process_edges!(
+                    next_edges,
+                    |e: usize| analyser.edges[e].to_node,
+                    component,
+                    node
+                );
             }
 
             components.push(component);

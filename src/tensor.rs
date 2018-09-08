@@ -187,7 +187,8 @@ impl Tensor {
 
     pub fn to_pb(&self) -> ::Result<::tfpb::tensor::TensorProto> {
         let mut shape = ::tfpb::tensor_shape::TensorShapeProto::new();
-        let dims = self.shape()
+        let dims = self
+            .shape()
             .iter()
             .map(|d| {
                 let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
@@ -362,20 +363,21 @@ impl Tensor {
             0.0
         };
         ma.shape() == mb.shape()
-            && mb.iter()
+            && mb
+                .iter()
                 .zip(ma.iter())
                 .all(|(&a, &b)| (b - a).abs() <= margin)
     }
 
-    pub fn into_array<D:Datum>(self) -> ::Result<ArrayD<D>> {
+    pub fn into_array<D: Datum>(self) -> ::Result<ArrayD<D>> {
         <D as Datum>::tensor_into_array(self)
     }
 
-    pub fn to_array_view<'a, D:Datum>(&'a self) -> ::Result<ArrayViewD<'a, D>> {
+    pub fn to_array_view<'a, D: Datum>(&'a self) -> ::Result<ArrayViewD<'a, D>> {
         <D as Datum>::tensor_to_view(self)
     }
 
-    pub fn cast_to_array<D:Datum>(&self) -> ::Result<MaybeOwnedArray<D>> {
+    pub fn cast_to_array<D: Datum>(&self) -> ::Result<MaybeOwnedArray<D>> {
         <D as Datum>::tensor_cast_to_array(self)
     }
 }
@@ -417,12 +419,11 @@ impl Serialize for Tensor {
     }
 }
 
-impl<D: ::ndarray::Dimension, T:Datum> From<Array<T, D>> for Tensor {
+impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
     fn from(it: Array<T, D>) -> Tensor {
         T::array_into_tensor(it.into_dyn())
     }
 }
-
 
 macro_rules! tensor {
     ($t:ident, $v:ident, $as_one:ident, $as:ident, $take:ident, $make:ident, [$(($cast:ident, $as_cast:ident)),*]) => {

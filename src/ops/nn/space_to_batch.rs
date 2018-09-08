@@ -139,7 +139,11 @@ impl<T: Datum> Op for SpaceToBatch<T> {
             buf[coords]
         });
         buffer.buffer.clear();
-        Ok(Some(self.eval(tvec!(data.into(), block_shape.into(), paddings.into()))?))
+        Ok(Some(self.eval(tvec!(
+            data.into(),
+            block_shape.into(),
+            paddings.into()
+        ))?))
     }
 }
 
@@ -244,7 +248,8 @@ impl<T: Datum> Op for BatchToSpace<T> {
             if crop[0] != 0 || crop[1] != 0 {
                 let end = data.shape()[1 + i] as usize;
                 let range = (crop[0] as usize)..(end - crop[1] as usize);
-                data = data.slice_axis(Axis(i + 1), range.into())
+                data = data
+                    .slice_axis(Axis(i + 1), range.into())
                     .map(|x| *x)
                     .to_owned();
             }
@@ -425,10 +430,11 @@ mod tests {
         let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
 
-        let (_, outputs) = op.infer(
-            tvec!(data, block_shape, paddings),
-            tvec!(TensorFact::default()),
-        ).unwrap();
+        let (_, outputs) =
+            op.infer(
+                tvec!(data, block_shape, paddings),
+                tvec!(TensorFact::default()),
+            ).unwrap();
 
         assert_eq!(
             outputs[0],
@@ -444,10 +450,11 @@ mod tests {
         let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
 
-        let (_, mut outputs) = op.infer(
-            tvec!(data, block_shape, paddings),
-            tvec!(TensorFact::default()),
-        ).unwrap();
+        let (_, mut outputs) =
+            op.infer(
+                tvec!(data, block_shape, paddings),
+                tvec!(TensorFact::default()),
+            ).unwrap();
         println!("raw: {:?}", outputs[0]);
         outputs[0].reduce();
         println!("reduced: {:?}", outputs[0]);

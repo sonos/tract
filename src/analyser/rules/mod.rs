@@ -30,16 +30,16 @@ mod proxies;
 mod solver;
 
 pub mod prelude {
-    pub use self::super::InferenceRulesOp;
     pub use self::super::cache::*;
-    pub use self::super::expressions::*;
     pub use self::super::exp2::*;
+    pub use self::super::expressions::*;
     pub use self::super::path::*;
     pub use self::super::proxies::*;
     pub use self::super::solver::*;
+    pub use self::super::InferenceRulesOp;
     pub use analyser::prelude::*;
-    pub use model::TVec;
     pub use dim::{TDim, ToDim};
+    pub use model::TVec;
 }
 
 use self::prelude::*;

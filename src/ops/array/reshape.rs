@@ -1,5 +1,5 @@
-use ndarray::prelude::*;
 use analyser::rules::prelude::*;
+use ndarray::prelude::*;
 use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
@@ -15,11 +15,20 @@ impl<T: Datum> Reshape<T> {
     /// This is needed because `dims` might contain some -1 indices, in which
     /// case we need to infer the value for that index.
     fn true_dims(dims: ArrayViewD<i32>, input_length: usize) -> Vec<usize> {
-        let prod: usize = dims.iter()
+        let prod: usize = dims
+            .iter()
             .filter(|a| **a != -1)
             .map(|&a| a as usize)
             .product();
-        dims.iter().map(|&a| if a == -1 { input_length/prod } else { a as usize } ).collect()
+        dims.iter()
+            .map(|&a| {
+                if a == -1 {
+                    input_length / prod
+                } else {
+                    a as usize
+                }
+            })
+            .collect()
     }
 }
 
@@ -59,7 +68,10 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
                 solver.given(&inputs[1].value, move |solver, dims: Tensor| {
                     let dims = dims.to_array_view::<i32>().unwrap(); // checked
                     if shape.iter().all(|d| !d.is_stream()) {
-                        let len = shape.iter().map(|d| d.as_const().unwrap() as usize).product();
+                        let len = shape
+                            .iter()
+                            .map(|d| d.as_const().unwrap() as usize)
+                            .product();
                         let shape = Self::true_dims(dims, len);
                         solver.equals(&outputs[0].shape, ShapeFact::from(shape));
                     }

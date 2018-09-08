@@ -258,9 +258,11 @@ impl LocalPatch {
         let img = ImageWrapper(data);
         let (filter_rows, filter_cols) = shape;
 
-        let out_height = self.adjusted_rows(img.h().into(), filter_rows)
+        let out_height = self
+            .adjusted_rows(img.h().into(), filter_rows)
             .to_integer()? as usize;
-        let out_width = self.adjusted_cols(img.w().into(), filter_cols)
+        let out_width = self
+            .adjusted_cols(img.w().into(), filter_cols)
             .to_integer()? as usize;
 
         let patches_size = (

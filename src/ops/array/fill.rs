@@ -23,7 +23,7 @@ where
     fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_array_view()?;
-        let value:T = value[[]];
+        let value: T = value[[]];
         let shape = shape.to_array_view::<i32>()?;
         let array = ::ndarray::Array::from_elem(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),

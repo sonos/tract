@@ -3,11 +3,11 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use tfdeploy;
-use tfdeploy::model::OutletId;
 use tfdeploy::analyser::Analyser;
+use tfdeploy::model::OutletId;
 use tfdeploy::tfpb::graph::GraphDef;
-use OutputParameters;
 use CliResult;
+use OutputParameters;
 
 #[derive(Debug, Serialize)]
 pub struct Edge {
@@ -80,11 +80,7 @@ impl DisplayGraph {
             if params
                 .successors
                 .as_ref()
-                .map(|id| {
-                    !node.inputs
-                        .iter()
-                        .any(|i| self.edges[*i].src.slot == *id)
-                })
+                .map(|id| !node.inputs.iter().any(|i| self.edges[*i].src.slot == *id))
                 .unwrap_or(false)
             {
                 continue;
@@ -95,7 +91,8 @@ impl DisplayGraph {
     }
     pub fn render_node(&self, node: &Node, _params: &OutputParameters) -> CliResult<()> {
         use colored::Colorize;
-        let output_ports: HashMap<usize, Option<String>> = node.outputs
+        let output_ports: HashMap<usize, Option<String>> = node
+            .outputs
             .iter()
             .map(|edge| {
                 let edge = &self.edges[*edge];
@@ -218,19 +215,11 @@ impl DisplayGraph {
 
     pub fn with_analyser(mut self, analyser: &Analyser) -> CliResult<DisplayGraph> {
         {
-            let index: HashMap<(OutletId, usize, usize), usize> = self.edges
+            let index: HashMap<(OutletId, usize, usize), usize> = self
+                .edges
                 .iter()
                 .enumerate()
-                .map(|(ix, edge)| {
-                    (
-                        (
-                            edge.src,
-                            edge.dst_node_id,
-                            edge.dst_node_input,
-                        ),
-                        ix,
-                    )
-                })
+                .map(|(ix, edge)| ((edge.src, edge.dst_node_id, edge.dst_node_input), ix))
                 .collect();
             for an_edge in &analyser.edges {
                 if let (Some(from), Some(to_node)) = (an_edge.from, an_edge.to_node) {

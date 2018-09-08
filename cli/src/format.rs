@@ -199,7 +199,12 @@ fn node_info(
         if let Some(state) = state {
             let data = &state.values[outlet.node].as_ref().unwrap()[outlet.slot];
             inputs.push(Row::Double(
-                format!("{} ({}/{}):", format!("Input {}", ix).bold(), outlet.node, outlet.slot),
+                format!(
+                    "{} ({}/{}):",
+                    format!("Input {}", ix).bold(),
+                    outlet.node,
+                    outlet.slot
+                ),
                 data.partial_dump(false).unwrap(),
             ));
         }

@@ -10,9 +10,9 @@ use std::sync::Arc;
 
 use analyser::prelude::*;
 use dim::TDim;
+use model::TVec;
 use ops::nn::local_patch::{DataFormat, Padding};
 use {DatumType, Result, Tensor};
-use model::TVec;
 
 use downcast_rs::Downcast;
 use objekt;
@@ -102,7 +102,9 @@ impl Value {
         self.into_tensor().into_array()
     }
 
-    pub fn to_array_view<'a, D: ::tensor::Datum>(&'a self) -> ::Result<::ndarray::ArrayViewD<'a, D>> {
+    pub fn to_array_view<'a, D: ::tensor::Datum>(
+        &'a self,
+    ) -> ::Result<::ndarray::ArrayViewD<'a, D>> {
         self.as_tensor().to_array_view()
     }
 }

@@ -691,10 +691,11 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
-        let (input_facts, output_facts) = op.infer(
-            tvec![input, begin.clone(), end.clone(), strides.clone()],
-            tvec![TensorFact::default()],
-        ).unwrap();
+        let (input_facts, output_facts) =
+            op.infer(
+                tvec![input, begin.clone(), end.clone(), strides.clone()],
+                tvec![TensorFact::default()],
+            ).unwrap();
         assert_eq!(
             input_facts,
             tvec![
@@ -725,10 +726,11 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 1]));
         let strides = TensorFact::from(arr1(&[1i32, 1]));
 
-        let (input_facts, output_facts) = op.infer(
-            tvec![input, begin.clone(), end.clone(), strides.clone()],
-            tvec![TensorFact::default()],
-        ).unwrap();
+        let (input_facts, output_facts) =
+            op.infer(
+                tvec![input, begin.clone(), end.clone(), strides.clone()],
+                tvec![TensorFact::default()],
+            ).unwrap();
         assert_eq!(
             input_facts,
             tvec![
@@ -759,10 +761,11 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
-        let (_, output_facts) = op.infer(
-            tvec![input, begin, end, strides],
-            tvec![TensorFact::default()],
-        ).unwrap();
+        let (_, output_facts) =
+            op.infer(
+                tvec![input, begin, end, strides],
+                tvec![TensorFact::default()],
+            ).unwrap();
 
         assert_eq!(
             output_facts,
@@ -782,10 +785,11 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
-        let (_, output_facts) = op.infer(
-            tvec![input, begin, end, strides],
-            tvec![TensorFact::default()],
-        ).unwrap();
+        let (_, output_facts) =
+            op.infer(
+                tvec![input, begin, end, strides],
+                tvec![TensorFact::default()],
+            ).unwrap();
 
         assert_eq!(
             output_facts,

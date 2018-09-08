@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::Arc;
 use std::str;
+use std::sync::Arc;
 
-pub mod tf;
 mod order;
+pub mod tf;
 pub use self::order::eval_order_for_nodes;
 
 use {ops, Result};
@@ -92,7 +92,8 @@ pub struct RawModel {
 
 impl RawModel {
     pub fn node_by_name(&self, name: &str) -> Result<&Node> {
-        let id: &usize = self.nodes_by_name
+        let id: &usize = self
+            .nodes_by_name
             .get(name)
             .ok_or_else(|| format!("Node named {} not found", name))?;
         Ok(&self.nodes[*id])
@@ -122,4 +123,3 @@ impl Deref for Model {
         &*self.0
     }
 }
-
