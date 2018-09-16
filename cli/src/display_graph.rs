@@ -6,6 +6,7 @@ use tfdeploy;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::model::OutletId;
 use tfdeploy::tf::tfpb::graph::GraphDef;
+use tfdeploy::tf::Protobuf;
 use CliResult;
 use OutputParameters;
 

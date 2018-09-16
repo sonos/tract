@@ -1,6 +1,7 @@
 extern crate ndarray;
 extern crate tfdeploy;
 use tfdeploy::tf::tfpb;
+use tfdeploy::tf::Protobuf;
 use tfdeploy::tf::tfpb::types::DataType::DT_FLOAT;
 
 fn main() {

@@ -31,6 +31,8 @@ pub mod versions;
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
+use tf::Protobuf;
+
 pub fn graph() -> graph::GraphDef {
     graph::GraphDef::new()
 }

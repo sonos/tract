@@ -3,9 +3,6 @@ use dim::TDim;
 use ndarray::prelude::*;
 use std::fmt;
 
-use tf::tfpb;
-use tf::tfpb::types::DataType as DataType;
-
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 
@@ -22,30 +19,6 @@ pub enum DatumType {
 }
 
 impl DatumType {
-    pub fn from_pb(t: &tfpb::types::DataType) -> ::Result<DatumType> {
-        match t {
-            &DataType::DT_UINT8 => Ok(DatumType::U8),
-            &DataType::DT_INT8 => Ok(DatumType::I8),
-            &DataType::DT_INT32 => Ok(DatumType::I32),
-            &DataType::DT_FLOAT => Ok(DatumType::F32),
-            &DataType::DT_DOUBLE => Ok(DatumType::F64),
-            &DataType::DT_STRING => Ok(DatumType::String),
-            _ => Err(format!("Unknown DatumType {:?}", t))?,
-        }
-    }
-
-    pub fn to_pb(&self) -> ::Result<tfpb::types::DataType> {
-        match self {
-            DatumType::U8 => Ok(DataType::DT_UINT8),
-            DatumType::I8 => Ok(DataType::DT_INT8),
-            DatumType::I32 => Ok(DataType::DT_INT32),
-            DatumType::F32 => Ok(DataType::DT_FLOAT),
-            DatumType::F64 => Ok(DataType::DT_DOUBLE),
-            DatumType::String => Ok(DataType::DT_STRING),
-            DatumType::TDim => bail!("Dimension is not translatable in protobuf"),
-        }
-    }
-
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
             DatumType::U8 => &[DatumType::U8, DatumType::I32],
@@ -146,34 +119,6 @@ pub enum Tensor {
 }
 
 impl Tensor {
-    pub fn from_pb(t: &tfpb::tensor::TensorProto) -> ::Result<Tensor> {
-        use tf::tfpb::types::DataType::*;
-        let dtype = t.get_dtype();
-        let shape = t.get_tensor_shape();
-        let dims = shape
-            .get_dim()
-            .iter()
-            .map(|d| d.size as usize)
-            .collect::<Vec<_>>();
-        let rank = dims.len();
-        let content = t.get_tensor_content();
-        let mat: Tensor = if content.len() != 0 {
-            match dtype {
-                DT_FLOAT => Self::from_content::<f32, u8>(dims, content)?.into(),
-                DT_INT32 => Self::from_content::<i32, u8>(dims, content)?.into(),
-                _ => unimplemented!("missing type"),
-            }
-        } else {
-            match dtype {
-                DT_INT32 => Self::from_content::<i32, i32>(dims, t.get_int_val())?.into(),
-                DT_FLOAT => Self::from_content::<f32, f32>(dims, t.get_float_val())?.into(),
-                _ => unimplemented!("missing type"),
-            }
-        };
-        assert_eq!(rank, mat.shape().len());
-        Ok(mat)
-    }
-
     pub fn from_content<T: Copy, V: Copy>(dims: Vec<usize>, content: &[V]) -> ::Result<ArrayD<T>> {
         let value: &[T] = unsafe {
             ::std::slice::from_raw_parts(
@@ -184,38 +129,6 @@ impl Tensor {
         Ok(Array1::from_iter(value.iter().cloned())
             .into_shape(dims)?
             .into_dyn())
-    }
-
-    pub fn to_pb(&self) -> ::Result<tfpb::tensor::TensorProto> {
-        let mut shape = tfpb::tensor_shape::TensorShapeProto::new();
-        let dims = self
-            .shape()
-            .iter()
-            .map(|d| {
-                let mut dim = tfpb::tensor_shape::TensorShapeProto_Dim::new();
-                dim.size = *d as _;
-                dim
-            })
-            .collect();
-        shape.set_dim(::protobuf::RepeatedField::from_vec(dims));
-        let mut tensor = tfpb::tensor::TensorProto::new();
-        tensor.set_tensor_shape(shape);
-        match self {
-            &Tensor::F32(ref it) => {
-                tensor.set_dtype(DatumType::F32.to_pb()?);
-                tensor.set_float_val(it.iter().cloned().collect());
-            }
-            &Tensor::F64(ref it) => {
-                tensor.set_dtype(DatumType::F64.to_pb()?);
-                tensor.set_double_val(it.iter().cloned().collect());
-            }
-            &Tensor::I32(ref it) => {
-                tensor.set_dtype(DatumType::I32.to_pb()?);
-                tensor.set_int_val(it.iter().cloned().collect());
-            }
-            _ => unimplemented!("missing type"),
-        }
-        Ok(tensor)
     }
 
     pub fn shape(&self) -> &[usize] {
