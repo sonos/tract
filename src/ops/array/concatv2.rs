@@ -2,7 +2,7 @@ use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn build(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let n = pb.get_attr_int("N")?;
     let t = pb.get_attr_datum_type("T")?;
     let tidx = pb.get_attr_datum_type("Tidx")?;

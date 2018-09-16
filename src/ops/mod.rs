@@ -307,7 +307,7 @@ pub trait InferenceOp {
 
 clone_trait_object!(Op);
 
-pub type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
+pub type OpRegister = HashMap<&'static str, fn(&::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
 
 pub struct OpBuilder(OpRegister);
 
@@ -321,7 +321,7 @@ impl OpBuilder {
         OpBuilder(reg)
     }
 
-    pub fn build(&self, pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(&self, pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         match self.0.get(pb.get_op()) {
             Some(builder) => builder(pb),
             None => Ok(Box::new(unimpl::UnimplementedOp(

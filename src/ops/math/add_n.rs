@@ -11,7 +11,7 @@ pub struct AddN<T: Datum> {
     _phantom: PhantomData<T>,
 }
 
-pub fn add_n(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn add_n(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_attr_int("N")?;
     Ok(boxed_new!(AddN(dtype)(n)))

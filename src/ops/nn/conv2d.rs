@@ -21,7 +21,7 @@ pub struct Buffer<T: Datum> {
 
 impl<T: Datum> OpBuffer for Buffer<T> {}
 
-pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn conv2d(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let patch = LocalPatch::build(pb)?;
     Ok(boxed_new!(Conv2D(dtype)(patch)))

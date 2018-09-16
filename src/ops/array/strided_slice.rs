@@ -7,7 +7,7 @@ use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn build(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);

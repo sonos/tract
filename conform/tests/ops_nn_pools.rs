@@ -9,8 +9,8 @@ extern crate tfdeploy;
 use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
-use tfdeploy::tfpb;
-use tfdeploy::tfpb::types::DataType::DT_FLOAT;
+use tfdeploy::tf::tfpb;
+use tfdeploy::tf::tfpb::types::DataType::DT_FLOAT;
 
 use tfdeploy::Tensor as TfdTensor;
 

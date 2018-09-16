@@ -1,7 +1,7 @@
 use colored::Colorize;
 use rusage::Duration;
 use std::collections::HashMap;
-use tfdeploy::tfpb::graph::GraphDef;
+use tfdeploy::tf::tfpb::graph::GraphDef;
 
 use errors::*;
 use format::*;

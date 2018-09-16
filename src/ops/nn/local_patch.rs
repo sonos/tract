@@ -93,7 +93,7 @@ impl LocalPatch {
         }
     }
 
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<LocalPatch> {
+    pub fn build(pb: &::tf::tfpb::node_def::NodeDef) -> Result<LocalPatch> {
         let data_format = pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC");
         if data_format == b"NCHW" {
             Err("NCHW data_format not implemented")?

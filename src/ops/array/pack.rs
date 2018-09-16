@@ -3,7 +3,7 @@ use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
-pub fn pack(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn pack(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;

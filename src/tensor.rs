@@ -3,6 +3,9 @@ use dim::TDim;
 use ndarray::prelude::*;
 use std::fmt;
 
+use tf::tfpb;
+use tf::tfpb::types::DataType as DataType;
+
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 
@@ -19,28 +22,26 @@ pub enum DatumType {
 }
 
 impl DatumType {
-    pub fn from_pb(t: &::tfpb::types::DataType) -> ::Result<DatumType> {
-        use tfpb::types::DataType as Tfpb;
+    pub fn from_pb(t: &tfpb::types::DataType) -> ::Result<DatumType> {
         match t {
-            &Tfpb::DT_UINT8 => Ok(DatumType::U8),
-            &Tfpb::DT_INT8 => Ok(DatumType::I8),
-            &Tfpb::DT_INT32 => Ok(DatumType::I32),
-            &Tfpb::DT_FLOAT => Ok(DatumType::F32),
-            &Tfpb::DT_DOUBLE => Ok(DatumType::F64),
-            &Tfpb::DT_STRING => Ok(DatumType::String),
+            &DataType::DT_UINT8 => Ok(DatumType::U8),
+            &DataType::DT_INT8 => Ok(DatumType::I8),
+            &DataType::DT_INT32 => Ok(DatumType::I32),
+            &DataType::DT_FLOAT => Ok(DatumType::F32),
+            &DataType::DT_DOUBLE => Ok(DatumType::F64),
+            &DataType::DT_STRING => Ok(DatumType::String),
             _ => Err(format!("Unknown DatumType {:?}", t))?,
         }
     }
 
-    pub fn to_pb(&self) -> ::Result<::tfpb::types::DataType> {
-        use tfpb::types::DataType as Tfpb;
+    pub fn to_pb(&self) -> ::Result<tfpb::types::DataType> {
         match self {
-            DatumType::U8 => Ok(Tfpb::DT_UINT8),
-            DatumType::I8 => Ok(Tfpb::DT_INT8),
-            DatumType::I32 => Ok(Tfpb::DT_INT32),
-            DatumType::F32 => Ok(Tfpb::DT_FLOAT),
-            DatumType::F64 => Ok(Tfpb::DT_DOUBLE),
-            DatumType::String => Ok(Tfpb::DT_STRING),
+            DatumType::U8 => Ok(DataType::DT_UINT8),
+            DatumType::I8 => Ok(DataType::DT_INT8),
+            DatumType::I32 => Ok(DataType::DT_INT32),
+            DatumType::F32 => Ok(DataType::DT_FLOAT),
+            DatumType::F64 => Ok(DataType::DT_DOUBLE),
+            DatumType::String => Ok(DataType::DT_STRING),
             DatumType::TDim => bail!("Dimension is not translatable in protobuf"),
         }
     }
@@ -145,8 +146,8 @@ pub enum Tensor {
 }
 
 impl Tensor {
-    pub fn from_pb(t: &::tfpb::tensor::TensorProto) -> ::Result<Tensor> {
-        use tfpb::types::DataType::*;
+    pub fn from_pb(t: &tfpb::tensor::TensorProto) -> ::Result<Tensor> {
+        use tf::tfpb::types::DataType::*;
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
         let dims = shape
@@ -185,19 +186,19 @@ impl Tensor {
             .into_dyn())
     }
 
-    pub fn to_pb(&self) -> ::Result<::tfpb::tensor::TensorProto> {
-        let mut shape = ::tfpb::tensor_shape::TensorShapeProto::new();
+    pub fn to_pb(&self) -> ::Result<tfpb::tensor::TensorProto> {
+        let mut shape = tfpb::tensor_shape::TensorShapeProto::new();
         let dims = self
             .shape()
             .iter()
             .map(|d| {
-                let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
+                let mut dim = tfpb::tensor_shape::TensorShapeProto_Dim::new();
                 dim.size = *d as _;
                 dim
             })
             .collect();
         shape.set_dim(::protobuf::RepeatedField::from_vec(dims));
-        let mut tensor = ::tfpb::tensor::TensorProto::new();
+        let mut tensor = tfpb::tensor::TensorProto::new();
         tensor.set_tensor_shape(shape);
         match self {
             &Tensor::F32(ref it) => {

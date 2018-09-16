@@ -24,7 +24,7 @@ element_map_float!(Sigmoid, sigmoid, |x| T::one() / (T::one() + x.neg().exp()));
 pub struct Softmax {}
 
 impl Softmax {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(_pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Softmax {}))
     }
 }

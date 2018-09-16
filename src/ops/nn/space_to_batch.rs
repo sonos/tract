@@ -2,11 +2,11 @@ use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn space_to_batch_nd(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(SpaceToBatch(datum_type)()))
 }
-pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn batch_to_space_nd(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(BatchToSpace(datum_type)()))
 }

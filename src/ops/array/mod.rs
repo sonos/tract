@@ -28,7 +28,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 pub struct ExpandDims;
 
 impl ExpandDims {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(_pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(ExpandDims))
     }
 }
@@ -116,7 +116,7 @@ impl InferenceRulesOp for ExpandDims {
 pub struct Identity;
 
 impl Identity {
-    pub fn build(_: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(_: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Identity))
     }
 }
@@ -162,7 +162,7 @@ pub struct Placeholder {
 }
 
 impl Placeholder {
-    pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(node: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Placeholder {
             dtype: node.get_attr_datum_type("dtype")?,
         }))
@@ -204,7 +204,7 @@ impl InferenceRulesOp for Placeholder {
 pub struct Shape;
 
 impl Shape {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(_pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         Ok(Box::new(Shape))
     }
 }
@@ -256,7 +256,7 @@ impl InferenceRulesOp for Shape {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tfpb::node;
+    use tf::tfpb::node;
 
     #[test]
     fn shape_inference_1() {

@@ -80,7 +80,8 @@ pub mod ops;
 pub mod plan;
 pub mod streaming;
 pub mod tensor;
-pub mod tfpb;
+
+pub mod tf;
 
 pub use errors::*;
 
@@ -90,7 +91,6 @@ pub use model::{Model, Node, TVec};
 pub use plan::SimplePlan;
 pub use tensor::{DatumType, Tensor};
 
-pub use model::tf;
 
 #[cfg(test)]
 #[allow(dead_code)]

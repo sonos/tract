@@ -39,7 +39,7 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::TensorFact;
-use tfdeploy::tfpb;
+use tfdeploy::tf::tfpb;
 use tfdeploy::*;
 use tfdeploy::{DatumType, Tensor};
 use tfpb::graph::GraphDef;
@@ -218,7 +218,7 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<Parameters> {
         let name = matches.value_of("model").unwrap();
-        let graph = tfdeploy::tf::graphdef_for_path(&name)?;
+        let graph = tfdeploy::tf::model::graphdef_for_path(&name)?;
         let tfd_model = tfdeploy::tf::for_path(&name)?;
 
         #[cfg(feature = "tensorflow")]

@@ -7,8 +7,8 @@ use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
 use tfdeploy::plan::SimpleState;
-use tfdeploy::tfpb;
-use tfdeploy::tfpb::graph::GraphDef;
+use tfdeploy::tf::tfpb;
+use tfdeploy::tf::tfpb::graph::GraphDef;
 use tfdeploy::Node;
 
 use colored::Colorize;

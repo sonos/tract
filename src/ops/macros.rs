@@ -1,6 +1,6 @@
 macro_rules! element_map_float {
     ($Name:ident, $name:ident, $expr:expr) => {
-        pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
+        pub fn $name(pb: &$crate::tf::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
             let datum_type = pb.get_attr_datum_type("T")?;
             let it = match datum_type {
                 $crate::DatumType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
@@ -65,7 +65,7 @@ macro_rules! element_map_float {
 
 macro_rules! element_map {
     ($Name:ident, $name:ident, [$($type:tt),*], $expr:expr) => {
-        pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<$crate::ops::Op>> {
+        pub fn $name(pb: &$crate::tf::tfpb::node_def::NodeDef) -> $crate::Result<Box<$crate::ops::Op>> {
             let datum_type = pb.get_attr_datum_type("T")?;
             Ok(Box::new($Name::new(datum_type)) as _)
         }
@@ -127,7 +127,7 @@ macro_rules! element_map {
 
 macro_rules! element_map_signed {
     ($Name:ident, $name:ident, $expr:expr) => {
-        pub fn $name(pb: &$crate::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
+        pub fn $name(pb: &$crate::tf::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
             let datum_type = pb.get_attr_datum_type("T")?;
             let it = match datum_type {
                 $crate::DatumType::I32 => Box::new($Name::<i32>::new()) as Box<Op>,
@@ -196,7 +196,7 @@ macro_rules! element_bin {
         #[derive(Debug, Clone, new)]
         pub struct $Name($crate::tensor::DatumType);
 
-        pub fn $name(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+        pub fn $name(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
             let dtype = pb.get_attr_datum_type("T")?;
             Ok(Box::new($Name::new(dtype)))
         }

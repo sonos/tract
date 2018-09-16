@@ -36,7 +36,7 @@ pub mod tf;
 pub use protobuf::Message;
 
 use tfdeploy::analyser::TensorFact;
-use tfdeploy::tfpb;
+use tfdeploy::tf::tfpb;
 use tfdeploy::TVec;
 use tfdeploy::Tensor as TfdTensor;
 use tfpb::tensor_shape::TensorShapeProto;

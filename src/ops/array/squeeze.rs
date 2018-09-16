@@ -1,7 +1,7 @@
 use analyser::rules::prelude::*;
 use ops::prelude::*;
 
-pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn squeeze(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let mut squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
     if let Some(ref mut squeeze_dims) = squeeze_dims {
         squeeze_dims.sort();

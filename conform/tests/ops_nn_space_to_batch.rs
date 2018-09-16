@@ -11,9 +11,9 @@ use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use tfdeploy::ops::nn::arr4;
-use tfdeploy::tfpb;
-use tfdeploy::tfpb::types::DataType::DT_INT32;
-use tfdeploy::tfpb::types::DataType::DT_FLOAT;
+use tfdeploy::tf::tfpb;
+use tfdeploy::tf::tfpb::types::DataType::DT_INT32;
+use tfdeploy::tf::tfpb::types::DataType::DT_FLOAT;
 use tfdeploy::Tensor as TfdTensor;
 
 fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {

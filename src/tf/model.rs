@@ -5,7 +5,7 @@ use std::{fs, path};
 
 use model::{Model, Node, OutletId, RawModel};
 use ops;
-use tfpb;
+use tf::tfpb;
 use Result;
 
 /// Load a Tensorflow protobul model from a file.
@@ -19,14 +19,14 @@ pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
 }
 
 /// Load a Tensorflow protobuf graph def from a reader.
-pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<::tfpb::graph::GraphDef> {
-    Ok(::protobuf::parse_from_reader::<::tfpb::graph::GraphDef>(
+pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<tfpb::graph::GraphDef> {
+    Ok(::protobuf::parse_from_reader::<tfpb::graph::GraphDef>(
         &mut r,
     )?)
 }
 
 /// Load a Tensorflow protobuf graph def from a path
-pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<::tfpb::graph::GraphDef> {
+pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<tfpb::graph::GraphDef> {
     graphdef_for_reader(fs::File::open(p)?)
 }
 

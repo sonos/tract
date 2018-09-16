@@ -12,7 +12,7 @@ pub struct Pad<T: Datum> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn pad(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }

@@ -9,7 +9,7 @@ pub struct Fill<T: Datum> {
     _phantom: PhantomData<T>,
 }
 
-pub fn fill(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn fill(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Fill(dtype)()))
 }

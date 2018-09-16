@@ -20,7 +20,7 @@ impl Const {
             value: value.into_shared(),
         }
     }
-    pub fn build(node: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(node: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
         let dtype = node.get_attr_datum_type("dtype")?;
         let mat = node.get_attr_tensor("value")?;
 

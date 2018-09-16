@@ -2,7 +2,7 @@ use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 #[derive(Debug, Clone)]
-pub struct UnimplementedOp(pub String, pub ::tfpb::node_def::NodeDef);
+pub struct UnimplementedOp(pub String, pub ::tf::tfpb::node_def::NodeDef);
 
 impl Op for UnimplementedOp {
     /// Evaluates the operation given the input tensors.

@@ -5,7 +5,7 @@ use ops::prelude::*;
 #[derive(Debug, Clone, new)]
 pub struct Reshape<T: Datum>(PhantomData<T>);
 
-pub fn reshape(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn reshape(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Reshape(dtype)()))
 }

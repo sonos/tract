@@ -4,7 +4,6 @@ use std::str;
 use std::sync::Arc;
 
 mod order;
-pub mod tf;
 pub use self::order::eval_order_for_nodes;
 
 use {ops, Result};
