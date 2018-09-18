@@ -76,11 +76,13 @@ pub mod analyser;
 pub mod dim;
 pub mod errors;
 pub mod model;
+#[macro_use]
 pub mod ops;
 pub mod plan;
 pub mod streaming;
 pub mod tensor;
 
+pub mod onnx;
 pub mod tf;
 
 pub use errors::*;

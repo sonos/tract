@@ -17,7 +17,6 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Fill", fill::fill);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
-    reg.insert("Placeholder", Placeholder::build);
     reg.insert("Reshape", reshape::reshape);
     reg.insert("Shape", Shape::build);
     reg.insert("Squeeze", squeeze::squeeze);
@@ -153,50 +152,6 @@ impl InferenceRulesOp for Identity {
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datum_type, &outputs[0].datum_type)
             .equals(&inputs[0].shape, &outputs[0].shape);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Placeholder {
-    dtype: DatumType,
-}
-
-impl Placeholder {
-    pub fn build(node: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        Ok(Box::new(Placeholder {
-            dtype: node.get_attr_datum_type("dtype")?,
-        }))
-    }
-}
-
-impl Op for Placeholder {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
-        panic!("Placeholder should not get evaluated")
-    }
-
-    fn infer_and_propagate(
-        &self,
-        inputs: TVec<TensorFact>,
-        outputs: TVec<TensorFact>,
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
-        use ops::InferenceOp;
-        self.infer(inputs, outputs)
-    }
-}
-
-impl InferenceRulesOp for Placeholder {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 0)
-            .equals(&outputs.len, 1)
-            .equals(&outputs[0].datum_type, self.dtype);
     }
 }
 

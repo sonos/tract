@@ -21,9 +21,10 @@ mod array;
 #[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;
-mod math;
+pub mod math;
 pub mod nn;
-mod unimpl;
+pub mod placeholder;
+pub mod unimpl;
 
 pub mod prelude {
     pub use super::{Op, OpRegister};
@@ -318,6 +319,7 @@ impl OpBuilder {
         konst::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
+        reg.insert("Placeholder", placeholder::Placeholder::build);
         OpBuilder(reg)
     }
 
@@ -326,7 +328,7 @@ impl OpBuilder {
             Some(builder) => builder(pb),
             None => Ok(Box::new(unimpl::UnimplementedOp(
                 pb.get_op().to_string(),
-                pb.to_owned(),
+                format!("{:?}", pb)
             ))),
         }
     }

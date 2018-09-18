@@ -294,6 +294,7 @@ macro_rules! element_bin {
     };
 }
 
+#[macro_export]
 macro_rules! args_1 {
     ($inputs:expr) => {{
         if $inputs.len() != 1 {

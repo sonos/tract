@@ -2,12 +2,12 @@ use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 #[derive(Debug, Clone)]
-pub struct UnimplementedOp(pub String, pub ::tf::tfpb::node_def::NodeDef);
+pub struct UnimplementedOp(pub String, pub String);
 
 impl Op for UnimplementedOp {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
-        Err(format!("unimplemented operation: {}", self.0))?
+        Err(format!("unimplemented operation: {} {:?}", self.0, self.1))?
     }
 }
 
