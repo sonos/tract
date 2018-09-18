@@ -22,7 +22,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult
     let optimized_model = analyser.to_optimized_model()?;
     info!(
         "Size of the graph after pruning: {:?} nodes.",
-        optimized_model.nodes.len()
+        optimized_model.nodes().len()
     );
 
     // Run optimized graph

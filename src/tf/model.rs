@@ -84,8 +84,5 @@ pub fn from_tf(graph: tfpb::graph::GraphDef) -> Result<Model> {
         nodes_by_name.insert(name, nodes.len());
         nodes.push(node)
     }
-    Ok(Model(Arc::new(RawModel {
-        nodes,
-        nodes_by_name,
-    })))
+    Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
 }

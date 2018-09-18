@@ -85,7 +85,7 @@ impl SimpleState {
     pub fn new(plan: &SimplePlan) -> Result<SimpleState> {
         Ok(SimpleState {
             plan: plan.clone(),
-            values: vec![None; plan.model.nodes.len()],
+            values: vec![None; plan.model.nodes().len()],
         })
     }
 
@@ -138,10 +138,10 @@ impl SimpleState {
     }
 
     pub fn compute_one(&mut self, node: usize) -> Result<()> {
-        let node: &Node = &self.plan.model.nodes[node];
+        let node: &Node = &self.plan.model.nodes()[node];
         let mut inputs: TVec<Value> = tvec![];
         for i in &node.inputs {
-            let prec_node = &self.model().nodes[i.node];
+            let prec_node = &self.model().nodes()[i.node];
             let prec = self.values[i.node].as_ref().ok_or(format!(
                 "Computing {}, precursor {} not done:",
                 node.name, prec_node.name
@@ -154,7 +154,7 @@ impl SimpleState {
     }
 
     pub fn compute_recursively(&mut self, node: usize) -> Result<()> {
-        let precs: Vec<usize> = self.plan.model.nodes[node]
+        let precs: Vec<usize> = self.plan.model.nodes()[node]
             .inputs
             .iter()
             .map(|i| i.node)
@@ -165,7 +165,7 @@ impl SimpleState {
             }
         }
         let mut inputs: TVec<Value> = tvec![];
-        let node: &Node = &self.plan.model.nodes[node];
+        let node: &Node = &self.plan.model.nodes()[node];
         for i in &node.inputs {
             inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
         }

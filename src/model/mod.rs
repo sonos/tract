@@ -54,10 +54,10 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
 /// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
 /// and runs the inference interpreter.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, new)]
 pub struct RawModel {
-    pub nodes: Vec<Node>,
-    pub nodes_by_name: HashMap<String, usize>,
+    nodes: Vec<Node>,
+    nodes_by_name: HashMap<String, usize>,
 }
 
 impl RawModel {

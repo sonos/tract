@@ -44,7 +44,7 @@ pub fn handle(
 
         info!(
             "Size of the graph after pruning: approx. {:?} nodes.",
-            model.nodes.len()
+            model.nodes().len()
         );
     }
 

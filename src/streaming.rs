@@ -46,10 +46,10 @@ impl RawStreamingPlan {
         }
         analyser.analyse()?;
 
-        let mut stream_infos = Vec::with_capacity(model.nodes.len());
-        let mut proto_inputs = Vec::with_capacity(model.nodes.len());
-        let mut successors: Vec<TVec<TVec<InletId>>> = vec![tvec![]; model.nodes.len()];
-        for node in model.nodes.iter() {
+        let mut stream_infos = Vec::with_capacity(model.nodes().len());
+        let mut proto_inputs = Vec::with_capacity(model.nodes().len());
+        let mut successors: Vec<TVec<TVec<InletId>>> = vec![tvec![]; model.nodes().len()];
+        for node in model.nodes() {
             let mut inputs = tvec!();
             for ix in 0..node.inputs.len() {
                 let edge_id = analyser.prev_edges[node.id][ix];
@@ -200,7 +200,7 @@ impl StreamingModelState {
 
         while let Some((inlet, chunk)) = self.queue.pop_front() {
             let output = {
-                let node = &self.plan.model.nodes[inlet.node];
+                let node = &self.plan.model.nodes()[inlet.node];
                 debug!(
                     "Feeding node: {} {:?} ({}), chunk={:?} inlet:{:?}",
                     node.id, node.name, node.op_name, chunk, inlet,
@@ -222,7 +222,7 @@ impl StreamingModelState {
                 );
                 let output = node_step(node, inputs, &mut self.buffers[node.id])?;
 
-                let node = &self.plan.model.nodes[inlet.node];
+                let node = &self.plan.model.nodes()[inlet.node];
                 debug!(
                     "Node: {} {:?} ({}), generated chunk={:?}",
                     node.id, node.name, node.op_name, &output
@@ -284,13 +284,13 @@ impl StreamingModelState {
     pub fn reset(&mut self) -> Result<()> {
         self.inlets_offset = self
             .model()
-            .nodes
+            .nodes()
             .iter()
             .map(|node| tvec!(0; node.inputs.len()))
             .collect();
         self.buffers = self
             .model()
-            .nodes
+            .nodes()
             .iter()
             .map(|n| n.op.new_buffer())
             .collect::<Vec<_>>();

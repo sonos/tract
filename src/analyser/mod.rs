@@ -56,7 +56,7 @@ pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
                 i,
                 model.nodes()[i].name
             );
-            return Ok(Some(&model.nodes[i]));
+            return Ok(Some(&model.nodes()[i]));
         }
     }
 
@@ -217,10 +217,7 @@ impl Analyser {
             });
         }
 
-        Ok(Model(Arc::new(RawModel {
-            nodes,
-            nodes_by_name,
-        })))
+        Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
     }
 
     /// Returns a model from the analyser.

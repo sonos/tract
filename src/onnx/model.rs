@@ -85,10 +85,7 @@ pub fn from_onnx(proto: pb::ModelProto) -> Result<Model> {
             )
         }
     }
-    Ok(Model(Arc::new(RawModel {
-        nodes,
-        nodes_by_name,
-    })))
+    Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
 }
 
 #[cfg(test)]
@@ -96,6 +93,7 @@ mod tests {
     use std::{fs, path};
 
     #[test]
+    #[ignore]
     fn onnx_abs() {
         let root = path::PathBuf::from("test_abs");
         let model = ::onnx::for_path(root.join("model.onnx")).unwrap();

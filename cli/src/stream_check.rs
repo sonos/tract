@@ -36,7 +36,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
         .with_hint(&params.input_nodes[0], &input.to_fact())?;
     analyser.analyse()?;
 
-    let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&stream_model.nodes)?
+    let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&stream_model.nodes())?
         .with_graph_def(&params.graph)?
         .with_analyser(&analyser)?;
 
@@ -119,7 +119,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
                     };
                     inputs.push(StepValue::Stream(stream));
                 } else {
-                    let value = stream_model.nodes[edge.from.unwrap().node]
+                    let value = stream_model.nodes()[edge.from.unwrap().node]
                         .op()
                         .const_value()
                         .ok_or("Not a const")?;

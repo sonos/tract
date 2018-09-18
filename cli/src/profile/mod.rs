@@ -21,7 +21,7 @@ pub struct ProfileData {
 impl ProfileData {
     pub fn new(model: &Model) -> ProfileData {
         ProfileData {
-            nodes: HashMap::with_capacity(model.nodes.len()),
+            nodes: HashMap::with_capacity(model.nodes().len()),
         }
     }
 
@@ -37,7 +37,7 @@ impl ProfileData {
         output_params: &OutputParameters,
     ) -> CliResult<()> {
         let sum = self.summed();
-        let nodes: Vec<&Node> = model.nodes.iter().map(|a| &*a).collect();
+        let nodes: Vec<&Node> = model.nodes().iter().map(|a| &*a).collect();
         let mut display_graph =
             ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&graph)?;
         for (ix, measure) in self.nodes.iter() {
@@ -70,7 +70,7 @@ impl ProfileData {
         let mut operations = HashMap::new();
         let mut counters = HashMap::new();
         for (node, dur) in &self.nodes {
-            let node = &model.nodes[*node];
+            let node = &model.nodes()[*node];
             let mut cell = operations
                 .entry(node.op_name.to_string())
                 .or_insert(Duration::default());
