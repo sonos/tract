@@ -92,7 +92,7 @@ impl TfdFrom<pb::ModelProto> for Model {
             let outlet = outlets_index[output.get_name()];
             let source = Node {
                 id: nodes.len(),
-                name: output.get_name().to_owned(),
+                name: format!("Sink-{}", output.get_name()),
                 op: Box::new(::ops::sink::Sink::new(fact)),
                 op_name: "Sink".to_string(),
                 inputs: vec![outlet],
@@ -111,8 +111,36 @@ mod tests {
     use ToTfd;
     use {TVec, Tensor};
 
+    pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
+        let mut vec = tvec!();
+        let len = fs::read_dir(path)
+            .unwrap()
+            .filter(|d| {
+                d.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_str()
+                    .unwrap()
+                    .starts_with(prefix)
+            })
+            .count();
+        for i in 0..len {
+            let filename = path.join(format!("{}_{}.pb", prefix, i));
+            let mut file = fs::File::open(filename).unwrap();
+            let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
+            vec.push(tensor.to_tfd().unwrap())
+        }
+        vec
+    }
+
+    pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
+        (
+            load_half_dataset("input", path),
+            load_half_dataset("output", path),
+        )
+    }
+
     #[test]
-    #[ignore]
     fn onnx_abs() {
         let root = path::PathBuf::from("test_abs");
         let model = ::onnx::for_path(root.join("model.onnx")).unwrap();
@@ -127,16 +155,14 @@ mod tests {
                     .unwrap()
                     .starts_with("test_data_set_")
             {
-                let inputs: TVec<Tensor> = (0..model.guess_inputs().len())
-                    .map(|i| {
-                        let filename = format!("input_{}", i);
-                        let mut file = fs::File::open(filename).unwrap();
-                        let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
-                        tensor.to_tfd().unwrap()
-                    })
-                    .collect();
+                let (inputs, expected) = load_dataset(&d.path());
+                let computed = plan.run(inputs).unwrap().remove(0);
+                assert_eq!(computed.len(), expected.len());
+                computed
+                    .iter()
+                    .zip(expected.iter())
+                    .for_each(|(a, b)| assert!(a.close_enough(b, true)));
             }
         }
-        panic!();
     }
 }

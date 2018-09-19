@@ -1,5 +1,5 @@
-use *;
 use onnx::pb::*;
+use *;
 
 impl TfdFrom<TensorProto_DataType> for DatumType {
     fn tfd_from(t: &TensorProto_DataType) -> Result<DatumType> {
@@ -39,7 +39,11 @@ impl TfdFrom<TypeProto_Tensor> for TensorFact {
         }
         if t.has_shape() {
             let shape = t.get_shape();
-            let shape:Vec<usize> = shape.get_dim().iter().map(|d| d.get_dim_value() as usize).collect();
+            let shape: Vec<usize> = shape
+                .get_dim()
+                .iter()
+                .map(|d| d.get_dim_value() as usize)
+                .collect();
             fact = fact.with_shape(shape)
         }
         Ok(fact)
@@ -49,10 +53,19 @@ impl TfdFrom<TypeProto_Tensor> for TensorFact {
 impl TfdFrom<TensorProto> for Tensor {
     fn tfd_from(t: &TensorProto) -> Result<Tensor> {
         let dt = t.get_data_type().to_tfd()?;
-        let shape:Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
-        match dt {
-            DatumType::F32 => Tensor::f32s(&*shape, t.get_float_data()),
-            _ => unimplemented!("FIXME")
+        let shape: Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
+        if t.has_raw_data() {
+            unsafe {
+                match dt {
+                    DatumType::F32 => Tensor::from_raw::<f32>(&*shape, t.get_raw_data()),
+                    _ => unimplemented!("FIXME"),
+                }
+            }
+        } else {
+            match dt {
+                DatumType::F32 => Tensor::f32s(&*shape, t.get_float_data()),
+                _ => unimplemented!("FIXME"),
+            }
         }
     }
 }

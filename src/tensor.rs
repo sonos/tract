@@ -119,16 +119,14 @@ pub enum Tensor {
 }
 
 impl Tensor {
-    pub fn from_content<T: Copy, V: Copy>(dims: Vec<usize>, content: &[V]) -> ::Result<ArrayD<T>> {
-        let value: &[T] = unsafe {
+    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> ::Result<Tensor> {
+        let value: Vec<T> = 
             ::std::slice::from_raw_parts(
                 content.as_ptr() as _,
-                content.len() * ::std::mem::size_of::<V>() / ::std::mem::size_of::<T>(),
+                content.len() / ::std::mem::size_of::<T>(),
             )
-        };
-        Ok(Array1::from_iter(value.iter().cloned())
-            .into_shape(dims)?
-            .into_dyn())
+        .to_vec();
+        Ok(ArrayD::from_shape_vec(shape, value)?.into())
     }
 
     pub fn shape(&self) -> &[usize] {

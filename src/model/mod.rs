@@ -61,7 +61,7 @@ pub struct RawModel {
 
 impl RawModel {
     pub fn new(mut nodes: Vec<Node>, nodes_by_name: HashMap<String, usize>) -> RawModel {
-        let outlets: HashSet<OutletId> = nodes.iter().map(|n| OutletId::new(n.id, 0)).collect();
+        let outlets: HashSet<OutletId> = nodes.iter().filter(|n| n.op_name != "Sink").map(|n| OutletId::new(n.id, 0)).collect();
         let used: HashSet<OutletId> = nodes
             .iter()
             .flat_map(|n| n.inputs.iter().cloned())
@@ -99,11 +99,19 @@ impl RawModel {
     }
 
     pub fn guess_inputs(&self) -> Vec<&Node> {
-        self.nodes.iter().filter(|n| n.op_name == "Source").collect()
+        self.nodes
+            .iter()
+            .filter(|n| n.op_name == "Source")
+            .collect()
     }
 
     pub fn guess_outputs(&self) -> Vec<&Node> {
-        self.nodes.iter().filter(|n| n.op_name == "Sink").collect()
+        self.nodes
+            .iter()
+            .filter(|n| n.op_name == "Sink")
+            .flat_map(|n|
+                      n.inputs.iter().map(|i| &self.nodes[i.node]))
+            .collect()
     }
 }
 

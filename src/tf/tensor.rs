@@ -45,17 +45,17 @@ impl TfdFrom<TensorProto> for Tensor {
         let rank = dims.len();
         let content = t.get_tensor_content();
         let mat: Tensor = if content.len() != 0 {
-            match dtype {
-                DataType::DT_FLOAT => Self::from_content::<f32, u8>(dims, content)?.into(),
-                DataType::DT_INT32 => Self::from_content::<i32, u8>(dims, content)?.into(),
-                _ => unimplemented!("missing type"),
+            unsafe {
+                match dtype {
+                    DataType::DT_FLOAT => Self::from_raw::<f32>(&dims, content)?,
+                    DataType::DT_INT32 => Self::from_raw::<i32>(&dims, content)?,
+                    _ => unimplemented!("missing type"),
+                }
             }
         } else {
             match dtype {
-                DataType::DT_INT32 => Self::from_content::<i32, i32>(dims, t.get_int_val())?.into(),
-                DataType::DT_FLOAT => {
-                    Self::from_content::<f32, f32>(dims, t.get_float_val())?.into()
-                }
+                DataType::DT_INT32 => Tensor::i32s(&dims, t.get_int_val())?.into(),
+                DataType::DT_FLOAT => Tensor::f32s(&dims, t.get_float_val())?.into(),
                 _ => unimplemented!("missing type"),
             }
         };

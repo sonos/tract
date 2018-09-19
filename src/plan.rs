@@ -119,7 +119,7 @@ impl SimpleState {
             v.push(
                 self.values[id]
                     .take()
-                    .ok_or("Value is not computed")?
+                    .ok_or_else(|| format!("Value for {:?} is not computed", &self.model().nodes()[id]))?
                     .into_iter()
                     .map(Value::into_tensor)
                     .collect(),
