@@ -141,6 +141,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn onnx_abs() {
         let root = path::PathBuf::from("test_abs");
         let model = ::onnx::for_path(root.join("model.onnx")).unwrap();
