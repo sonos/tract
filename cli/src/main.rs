@@ -232,7 +232,7 @@ impl Parameters {
             }
             inputs.map(|s| s.to_string()).collect()
         } else {
-            tfdeploy::analyser::detect_inputs(&tfd_model)?
+            tfd_model.guess_inputs()
                 .iter()
                 .map(|n| n.name.to_string())
                 .collect()
@@ -244,7 +244,7 @@ impl Parameters {
             }
             outputs.map(|s| s.to_string()).collect()
         } else {
-            tfdeploy::analyser::detect_output(&tfd_model)?
+            tfd_model.guess_outputs()
                 .iter()
                 .map(|n| n.name.to_string())
                 .collect()

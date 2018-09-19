@@ -23,7 +23,8 @@ pub mod image;
 pub mod konst;
 pub mod math;
 pub mod nn;
-pub mod placeholder;
+pub mod sink;
+pub mod source;
 pub mod unimpl;
 
 pub mod prelude {
@@ -319,7 +320,7 @@ impl OpBuilder {
         konst::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
-        reg.insert("Placeholder", placeholder::Placeholder::build);
+        reg.insert("Placeholder", source::Source::build);
         OpBuilder(reg)
     }
 

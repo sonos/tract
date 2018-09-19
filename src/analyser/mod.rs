@@ -26,43 +26,6 @@ pub mod helpers;
 #[macro_use]
 pub mod rules;
 
-/// Tries to auto-detect the names of the input nodes.
-pub fn detect_inputs(model: &Model) -> Result<Vec<&Node>> {
-    let inputs: Vec<_> = model
-        .nodes()
-        .iter()
-        .filter(|n| n.op_name == "Placeholder")
-        .inspect(|n| info!("Autodetected input node: {} {:?}.", n.id, n.name))
-        .collect();
-
-    Ok(inputs)
-}
-
-/// Tries to auto-detect the name of the output node.
-pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
-    // We search for the only node in the graph with no successor.
-    let mut succs: Vec<Vec<usize>> = vec![Vec::new(); model.nodes().len()];
-
-    for node in model.nodes() {
-        for &link in &node.inputs {
-            succs[link.node].push(node.id);
-        }
-    }
-
-    for (i, s) in succs.iter().enumerate() {
-        if s.len() == 0 {
-            info!(
-                "Autodetected output node: {} {:?}.",
-                i,
-                model.nodes()[i].name
-            );
-            return Ok(Some(&model.nodes()[i]));
-        }
-    }
-
-    Ok(None)
-}
-
 /// An edge of the analysed graph, annotated by a fact.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {

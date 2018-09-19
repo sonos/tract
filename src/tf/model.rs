@@ -33,6 +33,7 @@ pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<tfpb::graph::Grap
 pub fn from_tf(graph: tfpb::graph::GraphDef) -> Result<Model> {
     let mut nodes = vec![];
     let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
+    let mut model_inputs = vec!();
     let op_builder = ops::OpBuilder::new();
     for pbnode in graph.get_node().iter() {
         let name = pbnode.get_name().to_string();
@@ -81,8 +82,12 @@ pub fn from_tf(graph: tfpb::graph::GraphDef) -> Result<Model> {
                 .build(&pbnode)
                 .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
         };
+        if node.op_name == "Placeholder" {
+            model_inputs.push(nodes.len());
+        }
         nodes_by_name.insert(name, nodes.len());
         nodes.push(node)
     }
+
     Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
 }

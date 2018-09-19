@@ -25,9 +25,7 @@ impl RawStreamingPlan {
     ) -> Result<RawStreamingPlan> {
         let output_node = match output {
             Some(name) => model.node_by_name(name)?,
-            None => analyser::detect_inputs(&model)?
-                .pop()
-                .ok_or_else(|| "Unable to auto-detect output node.")?,
+            None => model.nodes().last().unwrap(),
         };
 
         let mut analyser = Analyser::new(&model, &output_node.name)?;

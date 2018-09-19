@@ -1,6 +1,5 @@
 use std::fmt;
 
-use ndarray::prelude::*;
 use ops::prelude::*;
 use analyser::rules::prelude::*;
 

@@ -32,6 +32,7 @@ pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> Result<pb::ModelP
 
 pub fn from_onnx(proto: pb::ModelProto) -> Result<Model> {
     let mut nodes = vec![];
+    let mut model_inputs = vec![];
     let mut outlets_index: HashMap<String, OutletId> = HashMap::new();
     let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
     let op_builder = ::ops::OpBuilder::new();
@@ -39,15 +40,16 @@ pub fn from_onnx(proto: pb::ModelProto) -> Result<Model> {
     for input in graph.get_input().iter() {
         outlets_index.insert(input.get_name().to_owned(), OutletId::new(nodes.len(), 0));
         let fact = TensorFact::from_pb(input.get_field_type().get_tensor_type())?;
-        let placeholder = Node {
+        let source = Node {
             id: nodes.len(),
             name: input.get_name().to_owned(),
-            op: Box::new(::ops::placeholder::Placeholder::new(fact)),
-            op_name: "Placeholder".to_string(),
+            op: Box::new(::ops::source::Source::new(fact)),
+            op_name: "Source".to_string(),
             inputs: vec![],
         };
         nodes_by_name.insert(input.get_name().to_owned(), nodes.len());
-        nodes.push(placeholder);
+        model_inputs.push(nodes.len());
+        nodes.push(source);
     }
     for pbnode in graph.get_node().iter() {
         let name = if pbnode.get_name() != "" {
@@ -85,7 +87,23 @@ pub fn from_onnx(proto: pb::ModelProto) -> Result<Model> {
             )
         }
     }
-    Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
+    for output in graph.get_output().iter() {
+        let fact = TensorFact::from_pb(output.get_field_type().get_tensor_type())?;
+        let outlet = outlets_index[output.get_name()];
+        let source = Node {
+            id: nodes.len(),
+            name: output.get_name().to_owned(),
+            op: Box::new(::ops::sink::Sink::new(fact)),
+            op_name: "Sink".to_string(),
+            inputs: vec![outlet],
+        };
+        nodes_by_name.insert(format!("Output-{}", output.get_name()), nodes.len());
+        nodes.push(source);
+    }
+    Ok(Model(Arc::new(RawModel::new(
+        nodes,
+        nodes_by_name,
+    ))))
 }
 
 #[cfg(test)]
@@ -104,8 +122,7 @@ mod tests {
                     .to_str()
                     .unwrap()
                     .starts_with("test_data_set_")
-            {
-            }
+            {}
         }
         panic!();
     }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::str;
 use std::sync::Arc;
@@ -52,15 +52,36 @@ impl InletId {
 
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
-/// Model is Tfdeploy workhouse. It wraps a protobuf tensorflow model,
-/// and runs the inference interpreter.
-#[derive(Clone, Debug, new)]
+/// Model is Tfdeploy workhouse.
+#[derive(Clone, Debug)]
 pub struct RawModel {
     nodes: Vec<Node>,
     nodes_by_name: HashMap<String, usize>,
 }
 
 impl RawModel {
+    pub fn new(mut nodes: Vec<Node>, nodes_by_name: HashMap<String, usize>) -> RawModel {
+        let outlets: HashSet<OutletId> = nodes.iter().map(|n| OutletId::new(n.id, 0)).collect();
+        let used: HashSet<OutletId> = nodes
+            .iter()
+            .flat_map(|n| n.inputs.iter().cloned())
+            .collect();
+        for &missing in outlets.difference(&used) {
+            let id = nodes.len();
+            nodes.push(Node {
+                id,
+                name: format!("Sink-{}", id),
+                op_name: "Sink".to_string(),
+                inputs: vec![missing],
+                op: Box::new(ops::sink::Sink::new(::analyser::TensorFact::default())),
+            });
+        }
+        RawModel {
+            nodes,
+            nodes_by_name,
+        }
+    }
+
     pub fn node_by_name(&self, name: &str) -> Result<&Node> {
         let id: &usize = self
             .nodes_by_name
@@ -75,6 +96,14 @@ impl RawModel {
 
     pub fn nodes(&self) -> &[Node] {
         &*self.nodes
+    }
+
+    pub fn guess_inputs(&self) -> Vec<&Node> {
+        self.nodes.iter().filter(|n| n.op_name == "Source").collect()
+    }
+
+    pub fn guess_outputs(&self) -> Vec<&Node> {
+        self.nodes.iter().filter(|n| n.op_name == "Sink").collect()
     }
 }
 
