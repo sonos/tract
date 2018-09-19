@@ -31,7 +31,7 @@ pub mod versions;
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
-use tf::Protobuf;
+use ::ToTfd;
 
 pub fn graph() -> graph::GraphDef {
     graph::GraphDef::new()
@@ -118,7 +118,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_opt_datum_type(&self, name: &str) -> ::Result<Option<::DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
-            Ok(Some(::DatumType::from_pb(&t.get_field_type())?))
+            Ok(Some(t.get_field_type().to_tfd()?))
         } else {
             Ok(None)
         }
@@ -131,7 +131,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> ::Result<Option<::tensor::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
-            Ok(Some(::tensor::Tensor::from_pb(&t)?))
+            Ok(Some(t.to_tfd()?))
         } else {
             Ok(None)
         }

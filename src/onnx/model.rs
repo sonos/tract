@@ -5,10 +5,9 @@ use std::{fs, path};
 use model::{Model, Node, OutletId, RawModel};
 use Result;
 
-use analyser::prelude::*;
-
 use onnx::pb;
-use onnx::Protobuf;
+use TfdFrom;
+use ToTfd;
 
 /// Load a ONNX protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
@@ -17,7 +16,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
 
 /// Load a ONNX model from a reader.
 pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
-    from_onnx(model_proto_for_reader(r)?)
+    model_proto_for_reader(r)?.to_tfd()
 }
 
 /// Load a ONNX protobuf graph def from a path
@@ -30,91 +29,96 @@ pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> Result<pb::ModelP
     Ok(::protobuf::parse_from_reader(&mut r)?)
 }
 
-pub fn from_onnx(proto: pb::ModelProto) -> Result<Model> {
-    let mut nodes = vec![];
-    let mut model_inputs = vec![];
-    let mut outlets_index: HashMap<String, OutletId> = HashMap::new();
-    let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
-    let op_builder = ::ops::OpBuilder::new();
-    let graph = proto.get_graph();
-    for input in graph.get_input().iter() {
-        outlets_index.insert(input.get_name().to_owned(), OutletId::new(nodes.len(), 0));
-        let fact = TensorFact::from_pb(input.get_field_type().get_tensor_type())?;
-        let source = Node {
-            id: nodes.len(),
-            name: input.get_name().to_owned(),
-            op: Box::new(::ops::source::Source::new(fact)),
-            op_name: "Source".to_string(),
-            inputs: vec![],
-        };
-        nodes_by_name.insert(input.get_name().to_owned(), nodes.len());
-        model_inputs.push(nodes.len());
-        nodes.push(source);
-    }
-    for pbnode in graph.get_node().iter() {
-        let name = if pbnode.get_name() != "" {
-            pbnode.get_name().to_string()
-        } else if pbnode.get_output().len() > 0 && pbnode.get_output()[0] != "" {
-            pbnode.get_output()[0].to_owned()
-        } else {
-            format!("{}-{}", nodes.len(), pbnode.get_op_type())
-        };
-        for (ix, output) in pbnode.get_output().iter().enumerate() {
-            outlets_index.insert(output.to_string(), OutletId::new(nodes.len(), ix));
+impl TfdFrom<pb::ModelProto> for Model {
+    fn tfd_from(proto: &pb::ModelProto) -> Result<Model> {
+        let mut nodes = vec![];
+        let mut model_inputs = vec![];
+        let mut outlets_index: HashMap<String, OutletId> = HashMap::new();
+        let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
+        let op_builder = ::ops::OpBuilder::new();
+        let graph = proto.get_graph();
+        for input in graph.get_input().iter() {
+            outlets_index.insert(input.get_name().to_owned(), OutletId::new(nodes.len(), 0));
+            let fact = input.get_field_type().get_tensor_type().to_tfd()?;
+            let source = Node {
+                id: nodes.len(),
+                name: input.get_name().to_owned(),
+                op: Box::new(::ops::source::Source::new(fact)),
+                op_name: "Source".to_string(),
+                inputs: vec![],
+            };
+            nodes_by_name.insert(input.get_name().to_owned(), nodes.len());
+            model_inputs.push(nodes.len());
+            nodes.push(source);
         }
-        let op_name = pbnode.get_op_type().to_owned();
-        let node = Node {
-            id: nodes.len(),
-            name: name.clone(),
-            op: super::ops::build(&*op_name),
-            op_name,
-            inputs: vec![],
-        };
-        nodes_by_name.insert(name, nodes.len());
-        nodes.push(node)
-    }
-    for (pbnode, mut node) in graph
-        .get_node()
-        .iter()
-        .zip(&mut nodes.iter_mut().skip(graph.get_input().len()))
-    {
-        for pbinput in pbnode.get_input() {
-            node.inputs.push(
-                outlets_index
-                    .get(pbinput)
-                    .ok_or_else(|| format!("Can not find matching outlet for {}", pbinput))?
-                    .clone(),
-            )
+        for pbnode in graph.get_node().iter() {
+            let name = if pbnode.get_name() != "" {
+                pbnode.get_name().to_string()
+            } else if pbnode.get_output().len() > 0 && pbnode.get_output()[0] != "" {
+                pbnode.get_output()[0].to_owned()
+            } else {
+                format!("{}-{}", nodes.len(), pbnode.get_op_type())
+            };
+            for (ix, output) in pbnode.get_output().iter().enumerate() {
+                outlets_index.insert(output.to_string(), OutletId::new(nodes.len(), ix));
+            }
+            let op_name = pbnode.get_op_type().to_owned();
+            let node = Node {
+                id: nodes.len(),
+                name: name.clone(),
+                op: super::ops::build(&*op_name),
+                op_name,
+                inputs: vec![],
+            };
+            nodes_by_name.insert(name, nodes.len());
+            nodes.push(node)
         }
+        for (pbnode, mut node) in graph
+            .get_node()
+            .iter()
+            .zip(&mut nodes.iter_mut().skip(graph.get_input().len()))
+        {
+            for pbinput in pbnode.get_input() {
+                node.inputs.push(
+                    outlets_index
+                        .get(pbinput)
+                        .ok_or_else(|| format!("Can not find matching outlet for {}", pbinput))?
+                        .clone(),
+                )
+            }
+        }
+        for output in graph.get_output().iter() {
+            let fact = output.get_field_type().get_tensor_type().to_tfd()?;
+            let outlet = outlets_index[output.get_name()];
+            let source = Node {
+                id: nodes.len(),
+                name: output.get_name().to_owned(),
+                op: Box::new(::ops::sink::Sink::new(fact)),
+                op_name: "Sink".to_string(),
+                inputs: vec![outlet],
+            };
+            nodes_by_name.insert(format!("Output-{}", output.get_name()), nodes.len());
+            nodes.push(source);
+        }
+        Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
     }
-    for output in graph.get_output().iter() {
-        let fact = TensorFact::from_pb(output.get_field_type().get_tensor_type())?;
-        let outlet = outlets_index[output.get_name()];
-        let source = Node {
-            id: nodes.len(),
-            name: output.get_name().to_owned(),
-            op: Box::new(::ops::sink::Sink::new(fact)),
-            op_name: "Sink".to_string(),
-            inputs: vec![outlet],
-        };
-        nodes_by_name.insert(format!("Output-{}", output.get_name()), nodes.len());
-        nodes.push(source);
-    }
-    Ok(Model(Arc::new(RawModel::new(
-        nodes,
-        nodes_by_name,
-    ))))
 }
 
 #[cfg(test)]
 mod tests {
+    use onnx::pb::TensorProto;
     use std::{fs, path};
+    use ToTfd;
+    use {TVec, Tensor};
 
     #[test]
     #[ignore]
     fn onnx_abs() {
         let root = path::PathBuf::from("test_abs");
         let model = ::onnx::for_path(root.join("model.onnx")).unwrap();
+        let inputs: Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
+        let outputs: Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
+        let plan = ::SimplePlan::new(&model, &*inputs, &*outputs).unwrap();
         for d in fs::read_dir(root).unwrap() {
             let d = d.unwrap();
             if d.metadata().unwrap().is_dir()
@@ -122,7 +126,16 @@ mod tests {
                     .to_str()
                     .unwrap()
                     .starts_with("test_data_set_")
-            {}
+            {
+                let inputs: TVec<Tensor> = (0..model.guess_inputs().len())
+                    .map(|i| {
+                        let filename = format!("input_{}", i);
+                        let mut file = fs::File::open(filename).unwrap();
+                        let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
+                        tensor.to_tfd().unwrap()
+                    })
+                    .collect();
+            }
         }
         panic!();
     }

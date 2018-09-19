@@ -6,7 +6,7 @@ use tfdeploy;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::model::OutletId;
 use tfdeploy::tf::tfpb::graph::GraphDef;
-use tfdeploy::tf::Protobuf;
+use tfdeploy::TfdFrom;
 use CliResult;
 use OutputParameters;
 
@@ -210,7 +210,7 @@ impl DisplayGraph {
             if let Some(node_id) = index_to_graph_def.get(gnode.get_name()) {
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", tfdeploy::tensor::Tensor::from_pb(a.1.get_tensor())?)
+                        format!("{:?}", tfdeploy::tensor::Tensor::tfd_from(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };

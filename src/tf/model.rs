@@ -6,7 +6,7 @@ use std::{fs, path};
 use model::{Model, Node, OutletId, RawModel};
 use ops;
 use tf::tfpb;
-use Result;
+use {TfdFrom, ToTfd, Result };
 
 /// Load a Tensorflow protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
@@ -15,7 +15,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
 
 /// Load a Tfdeploy model from a reader.
 pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
-    from_tf(graphdef_for_reader(r)?)
+    graphdef_for_reader(r)?.to_tfd()
 }
 
 /// Load a Tensorflow protobuf graph def from a reader.
@@ -30,7 +30,8 @@ pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<tfpb::graph::Grap
     graphdef_for_reader(fs::File::open(p)?)
 }
 
-pub fn from_tf(graph: tfpb::graph::GraphDef) -> Result<Model> {
+impl TfdFrom<tfpb::graph::GraphDef> for Model {
+    fn tfd_from(graph: &tfpb::graph::GraphDef) -> ::Result<Model> {
     let mut nodes = vec![];
     let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
     let mut model_inputs = vec!();
@@ -90,4 +91,5 @@ pub fn from_tf(graph: tfpb::graph::GraphDef) -> Result<Model> {
     }
 
     Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
+}
 }

@@ -1,7 +1,7 @@
 extern crate ndarray;
 extern crate tfdeploy;
 use tfdeploy::tf::tfpb;
-use tfdeploy::tf::Protobuf;
+use tfdeploy::tf::ToTensorflow;
 use tfdeploy::tf::tfpb::types::DataType::DT_FLOAT;
 
 fn main() {
@@ -18,7 +18,7 @@ fn main() {
         .attr(
             "value",
             tfdeploy::tensor::Tensor::from(::ndarray::arr1(&[3.0f32]))
-                .to_pb()
+                .to_tf()
                 .unwrap(),
         );
     let input = tfpb::node()

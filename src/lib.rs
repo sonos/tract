@@ -100,3 +100,17 @@ fn setup_test_logger() {
     use simplelog::{Config, LevelFilter, TermLogger};
     TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
 }
+
+pub trait TfdFrom<Tf>: Sized {
+    fn tfd_from(t:&Tf) -> ::Result<Self>;
+}
+
+pub trait ToTfd<Tfd>: Sized {
+    fn to_tfd(&self) -> ::Result<Tfd>;
+}
+
+impl<PB, Tfd: TfdFrom<PB>> ::ToTfd<Tfd> for PB {
+    fn to_tfd(&self) -> ::Result<Tfd> {
+        Tfd::tfd_from(self)
+    }
+}

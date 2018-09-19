@@ -1,9 +1,8 @@
 use *;
-use onnx::Protobuf;
 use onnx::pb::*;
 
-impl Protobuf<TensorProto_DataType> for DatumType {
-    fn from_pb(t: &TensorProto_DataType) -> Result<DatumType> {
+impl TfdFrom<TensorProto_DataType> for DatumType {
+    fn tfd_from(t: &TensorProto_DataType) -> Result<DatumType> {
         use self::TensorProto_DataType::*;
         match t {
             &UINT8 => Ok(DatumType::U8),
@@ -16,7 +15,8 @@ impl Protobuf<TensorProto_DataType> for DatumType {
         }
     }
 
-    fn to_pb(&self) -> Result<TensorProto_DataType> {
+    /*
+    fn to_onnx(&self) -> Result<TensorProto_DataType> {
         use self::TensorProto_DataType::*;
         match self {
             DatumType::U8 => Ok(UINT8),
@@ -28,13 +28,14 @@ impl Protobuf<TensorProto_DataType> for DatumType {
             DatumType::TDim => bail!("Dimension is not translatable in protobuf"),
         }
     }
+    */
 }
 
-impl Protobuf<TypeProto_Tensor> for TensorFact {
-    fn from_pb(t: &TypeProto_Tensor) -> Result<TensorFact> {
+impl TfdFrom<TypeProto_Tensor> for TensorFact {
+    fn tfd_from(t: &TypeProto_Tensor) -> Result<TensorFact> {
         let mut fact = TensorFact::default();
         if t.has_elem_type() {
-            fact = fact.with_datum_type(DatumType::from_pb(&t.get_elem_type())?);
+            fact = fact.with_datum_type(t.get_elem_type().to_tfd()?);
         }
         if t.has_shape() {
             let shape = t.get_shape();
@@ -43,8 +44,15 @@ impl Protobuf<TypeProto_Tensor> for TensorFact {
         }
         Ok(fact)
     }
+}
 
-    fn to_pb(&self) -> Result<TypeProto_Tensor> {
-        unimplemented!("FIXME");
+impl TfdFrom<TensorProto> for Tensor {
+    fn tfd_from(t: &TensorProto) -> Result<Tensor> {
+        let dt = t.get_data_type().to_tfd()?;
+        let shape:Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
+        match dt {
+            DatumType::F32 => Tensor::f32s(&*shape, t.get_float_data()),
+            _ => unimplemented!("FIXME")
+        }
     }
 }
