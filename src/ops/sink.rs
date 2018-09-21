@@ -6,15 +6,6 @@ pub struct Sink {
     fact: TensorFact,
 }
 
-impl Sink {
-    pub fn build(node: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let dt = node.get_attr_datum_type("dtype")?;
-        Ok(Box::new(Sink {
-            fact: TensorFact::dt(dt.into()),
-        }))
-    }
-}
-
 impl Op for Sink {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {

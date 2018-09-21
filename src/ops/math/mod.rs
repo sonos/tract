@@ -3,31 +3,16 @@ use ops::prelude::*;
 pub mod add_n;
 
 element_map!(Abs, [f32, i32], |x| x.abs());
-element_map!(Rsqrt, [f32], |x| x.sqrt().recip());
-element_map!(Tanh, [f32], |x| x.tanh());
-
 element_map!(Neg, [i32, f32, TDim], |x| -x);
 
-element_bin!(Add, add, [i32, f32, TDim], |mut a, b| {
-    a += &b;
-    a
-});
-element_bin!(Div, div, [i32, f32, TDim], |mut a, b| {
-    a /= &b;
-    a
-});
-element_bin!(Mul, mul, [i32, f32, TDim], |mut a, b| {
-    a *= &b;
-    a
-});
-element_bin!(Sub, sub, [i32, f32, TDim], |mut a, b| {
-    a -= &b;
-    a
-});
-element_bin!(Rem, rem, [i32, f32, TDim], |mut a, b| {
-    a %= &b;
-    a
-});
+element_bin!(Add, [i32, f32, TDim], |mut a, b| { a += &b; a });
+element_bin!(Sub, [i32, f32, TDim], |mut a, b| { a -= &b; a });
+element_bin!(Mul, [i32, f32, TDim], |mut a, b| { a *= &b; a });
+element_bin!(Div, [i32, f32, TDim], |mut a, b| { a /= &b; a });
+element_bin!(Rem, [i32, f32, TDim], |mut a, b| { a %= &b; a });
+
+element_map!(Rsqrt, [f32], |x| x.sqrt().recip());
+element_map!(Tanh, [f32], |x| x.tanh());
 
 #[cfg(test)]
 mod tests {

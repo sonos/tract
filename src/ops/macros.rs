@@ -56,14 +56,9 @@ macro_rules! element_map {
 }
 
 macro_rules! element_bin {
-    ($Name:ident, $name:ident, [$($type:tt),*], $expr:expr) => {
+    ($Name:ident, [$($type:tt),*], $expr:expr) => {
         #[derive(Debug, Clone, new)]
         pub struct $Name($crate::tensor::DatumType);
-
-        pub fn $name(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-            let dtype = pb.get_attr_datum_type("T")?;
-            Ok(Box::new($Name::new(dtype)))
-        }
 
         impl $Name {
             /// Evaluates the operation given the input tensors.
