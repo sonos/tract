@@ -1,41 +1,17 @@
 use ops::prelude::*;
 use analyser::rules::prelude::*;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("Const", Const::build);
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, new)]
 pub struct Const {
-    dtype: DatumType,
     value: Value,
 }
 
 impl Const {
     pub fn for_tensor(tensor: Tensor) -> Const {
-        let dtype = tensor.datum_type();
         let value: Value = tensor.into();
         Const {
-            dtype,
             value: value.into_shared(),
         }
-    }
-    pub fn build(node: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let dtype = node.get_attr_datum_type("dtype")?;
-        let mat = node.get_attr_tensor("value")?;
-
-        if mat.datum_type() != dtype {
-            bail!(
-                "Const node {:?} doesn't have the expected {:?} type.",
-                mat,
-                dtype
-            );
-        }
-
-        Ok(Box::new(Const {
-            dtype,
-            value: Value::from(mat).into_shared(),
-        }))
     }
 }
 

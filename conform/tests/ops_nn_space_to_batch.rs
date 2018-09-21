@@ -10,7 +10,7 @@ extern crate tfdeploy;
 use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
-use tfdeploy::ops::nn::arr4;
+use tfdeploy::ops::arr4;
 use tfdeploy::tf::tfpb;
 use tfdeploy::tf::tfpb::types::DataType::DT_INT32;
 use tfdeploy::tf::tfpb::types::DataType::DT_FLOAT;
@@ -87,7 +87,7 @@ fn batch_to_space_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
             use tfdeploy::ops::Op;
-            let batches: TfdTensor = tfdeploy::ops::nn::space_to_batch::SpaceToBatch::<f32>::new()
+            let batches: TfdTensor = tfdeploy::tf::ops::nn::space_to_batch::SpaceToBatch::<f32>::new()
                 .eval(tvec![i.into(), bs.clone().into(), p.clone().into()])
                 .unwrap()
                 .remove(0)

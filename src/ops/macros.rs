@@ -1,75 +1,5 @@
-macro_rules! element_map_float {
-    ($Name:ident, $name:ident, $expr:expr) => {
-        pub fn $name(pb: &$crate::tf::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
-            let datum_type = pb.get_attr_datum_type("T")?;
-            let it = match datum_type {
-                $crate::DatumType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
-                $crate::DatumType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
-                _ => unimplemented!("missing type"),
-            };
-            Ok(it)
-        }
-
-        #[derive(Debug, Clone, new)]
-        pub struct $Name<T: $crate::tensor::Datum + ::num::Float>(::std::marker::PhantomData<T>);
-
-        impl<T: $crate::tensor::Datum + ::num::Float> ::ops::Op for $Name<T> {
-            /// Evaluates the operation given the input tensors.
-            fn eval(
-                &self,
-                mut inputs: TVec<$crate::ops::Value>,
-            ) -> $crate::Result<TVec<$crate::ops::Value>> {
-                let a = args_1!(inputs);
-                let mut a = a.into_array::<T>()?;
-                a.mapv_inplace($expr);
-                Ok(tvec![a.into()])
-            }
-
-            /// Evaluates one step of the operation on the given input tensors.
-            fn step(
-                &self,
-                mut inputs: TVec<$crate::ops::StepValue>,
-                _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<TVec<$crate::ops::Value>>> {
-                let a = args_1!(inputs);
-                match a.into_value() {
-                    None => Ok(None),
-                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
-                }
-            }
-        }
-
-        impl<T: $crate::tensor::Datum + ::num::Float> $crate::analyser::rules::InferenceRulesOp
-            for $Name<T>
-        {
-            /// Infers properties about the input and output tensors.
-            fn rules<'r, 'p: 'r, 's: 'r>(
-                &'s self,
-                solver: &mut $crate::analyser::rules::prelude::Solver<'r>,
-                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-            ) {
-                solver
-                    .equals(&inputs.len, 1)
-                    .equals(&outputs.len, 1)
-                    .equals_all(wrap![
-                        &inputs[0].datum_type,
-                        &outputs[0].datum_type,
-                        &T::datum_type()
-                    ])
-                    .equals(&inputs[0].shape, &outputs[0].shape);
-            }
-        }
-    };
-}
-
 macro_rules! element_map {
-    ($Name:ident, $name:ident, [$($type:tt),*], $expr:expr) => {
-        pub fn $name(pb: &$crate::tf::tfpb::node_def::NodeDef) -> $crate::Result<Box<$crate::ops::Op>> {
-            let datum_type = pb.get_attr_datum_type("T")?;
-            Ok(Box::new($Name::new(datum_type)) as _)
-        }
-
+    ($Name:ident, [$($type:tt),*], $expr:expr) => {
         #[derive(Debug, Clone, new)]
         pub struct $Name($crate::tensor::DatumType);
 
@@ -77,8 +7,8 @@ macro_rules! element_map {
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                mut inputs: TVec<$crate::ops::Value>,
-            ) -> $crate::Result<TVec<$crate::ops::Value>> {
+                mut inputs: $crate::TVec<$crate::ops::Value>,
+            ) -> $crate::Result<$crate::TVec<$crate::ops::Value>> {
                 use $crate::tensor::Datum;
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
@@ -93,9 +23,9 @@ macro_rules! element_map {
             /// Evaluates one step of the operation on the given input tensors.
             fn step(
                 &self,
-                mut inputs: TVec<$crate::ops::StepValue>,
+                mut inputs: $crate::TVec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> $crate::Result<Option<TVec<$crate::ops::Value>>> {
+            ) -> $crate::Result<Option<$crate::TVec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
                 match a.into_value() {
                     None => Ok(None),
@@ -118,72 +48,6 @@ macro_rules! element_map {
                     .equals_all(wrap![
                         &inputs[0].datum_type,
                         &outputs[0].datum_type,
-                    ])
-                    .equals(&inputs[0].shape, &outputs[0].shape);
-            }
-        }
-    };
-}
-
-macro_rules! element_map_signed {
-    ($Name:ident, $name:ident, $expr:expr) => {
-        pub fn $name(pb: &$crate::tf::tfpb::node_def::NodeDef) -> $crate::Result<Box<Op>> {
-            let datum_type = pb.get_attr_datum_type("T")?;
-            let it = match datum_type {
-                $crate::DatumType::I32 => Box::new($Name::<i32>::new()) as Box<Op>,
-                $crate::DatumType::F32 => Box::new($Name::<f32>::new()) as Box<Op>,
-                $crate::DatumType::F64 => Box::new($Name::<f64>::new()) as Box<Op>,
-                _ => unimplemented!("missing type"),
-            };
-            Ok(it)
-        }
-
-        #[derive(Debug, Clone, new)]
-        pub struct $Name<T: $crate::tensor::Datum + ::num::Signed>(::std::marker::PhantomData<T>);
-
-        impl<T: $crate::tensor::Datum + ::num::Signed> ::ops::Op for $Name<T> {
-            /// Evaluates the operation given the input tensors.
-            fn eval(
-                &self,
-                mut inputs: TVec<$crate::ops::Value>,
-            ) -> $crate::Result<TVec<$crate::ops::Value>> {
-                let a = args_1!(inputs);
-                let mut a = a.into_array::<T>()?;
-                a.mapv_inplace($expr);
-                Ok(tvec![a.into()])
-            }
-
-            /// Evaluates one step of the operation on the given input tensors.
-            fn step(
-                &self,
-                mut inputs: TVec<$crate::ops::StepValue>,
-                _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<TVec<$crate::ops::Value>>> {
-                let a = args_1!(inputs);
-                match a.into_value() {
-                    None => Ok(None),
-                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
-                }
-            }
-        }
-
-        impl<T: $crate::tensor::Datum + ::num::Signed> $crate::analyser::rules::InferenceRulesOp
-            for $Name<T>
-        {
-            /// Infers properties about the input and output tensors.
-            fn rules<'r, 'p: 'r, 's: 'r>(
-                &'s self,
-                solver: &mut $crate::analyser::rules::prelude::Solver<'r>,
-                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-            ) {
-                solver
-                    .equals(&inputs.len, 1)
-                    .equals(&outputs.len, 1)
-                    .equals_all(wrap![
-                        &inputs[0].datum_type,
-                        &outputs[0].datum_type,
-                        &T::datum_type()
                     ])
                     .equals(&inputs[0].shape, &outputs[0].shape);
             }

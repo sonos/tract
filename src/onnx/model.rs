@@ -35,7 +35,7 @@ impl TfdFrom<pb::ModelProto> for Model {
         let mut model_inputs = vec![];
         let mut outlets_index: HashMap<String, OutletId> = HashMap::new();
         let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
-        let op_builder = ::ops::OpBuilder::new();
+        let op_builder = super::ops::OpBuilder::new();
         let graph = proto.get_graph();
         for input in graph.get_input().iter() {
             outlets_index.insert(input.get_name().to_owned(), OutletId::new(nodes.len(), 0));
@@ -66,7 +66,7 @@ impl TfdFrom<pb::ModelProto> for Model {
             let node = Node {
                 id: nodes.len(),
                 name: name.clone(),
-                op: super::ops::build(&*op_name),
+                op: op_builder.build(pbnode)?,
                 op_name,
                 inputs: vec![],
             };

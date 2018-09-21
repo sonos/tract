@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::{fs, path};
 
 use model::{Model, Node, OutletId, RawModel};
-use ops;
 use tf::tfpb;
 use {TfdFrom, ToTfd, Result };
 
@@ -35,7 +34,7 @@ impl TfdFrom<tfpb::graph::GraphDef> for Model {
     let mut nodes = vec![];
     let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
     let mut model_inputs = vec!();
-    let op_builder = ops::OpBuilder::new();
+    let op_builder = ::tf::ops::OpBuilder::new();
     for pbnode in graph.get_node().iter() {
         let name = pbnode.get_name().to_string();
 

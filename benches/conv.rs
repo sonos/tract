@@ -6,8 +6,8 @@ extern crate tfdeploy;
 
 use criterion::Criterion;
 
-use tfdeploy::ops::nn::conv2d::*;
-use tfdeploy::ops::nn::local_patch::*;
+use tfdeploy::tf::ops::nn::conv2d::*;
+use tfdeploy::tf::ops::nn::local_patch::*;
 use tfdeploy::*;
 
 use tfdeploy::ops::Op;

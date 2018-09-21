@@ -1,26 +1,12 @@
 use ops::prelude::*;
 
-mod add_n;
+pub mod add_n;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("Abs", abs);
-    reg.insert("Add", add);
-    reg.insert("AddN", add_n::add_n);
-    reg.insert("BiasAdd", add);
-    reg.insert("Div", div);
-    reg.insert("FloorMod", rem);
-    reg.insert("Mul", mul);
-    reg.insert("Neg", neg);
-    reg.insert("Rsqrt", rsqrt);
-    reg.insert("Sub", sub);
-    reg.insert("Tanh", tanh);
-}
+element_map!(Abs, [f32, i32], |x| x.abs());
+element_map!(Rsqrt, [f32], |x| x.sqrt().recip());
+element_map!(Tanh, [f32], |x| x.tanh());
 
-element_map_signed!(Abs, abs, |x| x.abs());
-element_map_float!(Rsqrt, rsqrt, |x| x.sqrt().recip());
-element_map_float!(Tanh, tanh, |x| x.tanh());
-
-element_map!(Neg, neg, [i32, f32, TDim], |x| -x);
+element_map!(Neg, [i32, f32, TDim], |x| -x);
 
 element_bin!(Add, add, [i32, f32, TDim], |mut a, b| {
     a += &b;

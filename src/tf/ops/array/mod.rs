@@ -1,6 +1,7 @@
 use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
+use tf::ops::OpRegister;
 
 mod concatv2;
 mod fill;

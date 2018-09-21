@@ -1,4 +1,5 @@
 pub mod pb;
+pub mod pb_helpers;
 pub mod model;
 pub mod ops;
 pub mod tensor;

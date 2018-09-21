@@ -1,5 +1,4 @@
 //! TensorFlow Ops
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::mem;
@@ -17,7 +16,6 @@ use objekt;
 #[macro_use]
 mod macros;
 
-mod array;
 #[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;
@@ -28,7 +26,7 @@ pub mod source;
 pub mod unimpl;
 
 pub mod prelude {
-    pub use super::{Op, OpRegister};
+    pub use super::Op;
     pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
     pub use dim::TDim;
     pub use model::TVec;
@@ -309,32 +307,6 @@ pub trait InferenceOp {
 
 clone_trait_object!(Op);
 
-pub type OpRegister = HashMap<&'static str, fn(&::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
-
-pub struct OpBuilder(OpRegister);
-
-impl OpBuilder {
-    pub fn new() -> OpBuilder {
-        let mut reg = OpRegister::new();
-        array::register_all_ops(&mut reg);
-        konst::register_all_ops(&mut reg);
-        math::register_all_ops(&mut reg);
-        nn::register_all_ops(&mut reg);
-        reg.insert("Placeholder", source::Source::build);
-        OpBuilder(reg)
-    }
-
-    pub fn build(&self, pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        match self.0.get(pb.get_op()) {
-            Some(builder) => builder(pb),
-            None => Ok(Box::new(unimpl::UnimplementedOp(
-                pb.get_op().to_string(),
-                format!("{:?}", pb)
-            ))),
-        }
-    }
-}
-
 /// A streaming buffer for a Tensorflow operation.
 ///
 /// This is used during streaming evaluation of models. Each node is given
@@ -402,5 +374,33 @@ impl Index<usize> for QueuesBuffer {
 impl IndexMut<usize> for QueuesBuffer {
     fn index_mut(&mut self, index: usize) -> &mut VecDeque<Value> {
         &mut self.0[index]
+    }
+}
+
+pub fn arr4<A, V, U, T>(xs: &[V]) -> ::ndarray::Array4<A>
+where
+    V: ::ndarray::FixedInitializer<Elem = U> + Clone,
+    U: ::ndarray::FixedInitializer<Elem = T> + Clone,
+    T: ::ndarray::FixedInitializer<Elem = A> + Clone,
+    A: Clone,
+{
+    use ndarray::*;
+    let mut xs = xs.to_vec();
+    let dim = Ix4(xs.len(), V::len(), U::len(), T::len());
+    let ptr = xs.as_mut_ptr();
+    let len = xs.len();
+    let cap = xs.capacity();
+    let expand_len = len * V::len() * U::len() * T::len();
+    ::std::mem::forget(xs);
+    unsafe {
+        let v = if ::std::mem::size_of::<A>() == 0 {
+            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_len)
+        } else if V::len() == 0 || U::len() == 0 || T::len() == 0 {
+            Vec::new()
+        } else {
+            let expand_cap = cap * V::len() * U::len() * T::len();
+            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_cap)
+        };
+        ArrayBase::from_shape_vec_unchecked(dim, v)
     }
 }

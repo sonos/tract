@@ -1,36 +1,41 @@
-use std::marker::PhantomData;
-
 use analyser::rules::prelude::*;
 use ops::prelude::*;
 use tensor::Datum;
 use Result;
 
-#[derive(Debug, Clone, Default, new)]
-pub struct AddN<T: Datum> {
+#[derive(Debug, Clone, new)]
+pub struct AddN {
+    datum: DatumType,
     n: usize,
-    _phantom: PhantomData<T>,
 }
 
-pub fn add_n(pb: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-    let dtype = pb.get_attr_datum_type("T")?;
-    let n = pb.get_attr_int("N")?;
-    Ok(boxed_new!(AddN(dtype)(n)))
-}
-
-impl<T> Op for AddN<T>
-where
-    T: Datum,
-{
+impl AddN {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
-        if inputs.len() != self.n || self.n == 0 {
-            bail!("Expected {} inputs", self.n);
-        }
+    fn eval_t<T:Datum>(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
         let mut result = inputs.pop().unwrap().into_array::<T>()?; // checked, non empty
         for input in &inputs[0..] {
             result += &input.to_array_view()?;
         }
         Ok(tvec![result.into()])
+    }
+}
+
+impl Op for AddN {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+        if inputs.len() != self.n || self.n == 0 {
+            bail!("Expected {} inputs", self.n);
+        }
+        let dt = inputs[0].datum_type();
+        match dt {
+            DatumType::F32 => self.eval_t::<f32>(inputs),
+            DatumType::F64 => self.eval_t::<f64>(inputs),
+            DatumType::I8 => self.eval_t::<i8>(inputs),
+            DatumType::I32 => self.eval_t::<i32>(inputs),
+            DatumType::TDim => self.eval_t::<TDim>(inputs),
+            DatumType::U8 => self.eval_t::<u8>(inputs),
+            DatumType::String => bail!("AddN do not support Strings")
+        }
     }
 
     /// Returns a new streaming buffer for the operation.
@@ -62,7 +67,7 @@ where
     }
 }
 
-impl<T: Datum> InferenceRulesOp for AddN<T> {
+impl InferenceRulesOp for AddN {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
