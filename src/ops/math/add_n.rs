@@ -1,7 +1,7 @@
 use analyser::rules::prelude::*;
 use ops::prelude::*;
 use tensor::Datum;
-use Result;
+use TfdResult;
 
 #[derive(Debug, Clone, new)]
 pub struct AddN {
@@ -11,7 +11,7 @@ pub struct AddN {
 
 impl AddN {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T:Datum>(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval_t<T:Datum>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let mut result = inputs.pop().unwrap().into_array::<T>()?; // checked, non empty
         for input in &inputs[0..] {
             result += &input.to_array_view()?;
@@ -22,7 +22,7 @@ impl AddN {
 
 impl Op for AddN {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         if inputs.len() != self.n || self.n == 0 {
             bail!("Expected {} inputs", self.n);
         }
@@ -47,7 +47,7 @@ impl Op for AddN {
         &self,
         inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let buffer = buffer
             .downcast_mut::<QueuesBuffer>()
             .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;

@@ -9,6 +9,7 @@ mod stack;
 mod tree;
 
 use self::stack::Stack;
+use TfdResult;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -55,7 +56,7 @@ impl TDim {
         self.as_const().is_none()
     }
 
-    pub fn to_integer(&self) -> ::Result<isize> {
+    pub fn to_integer(&self) -> TfdResult<isize> {
         self.0.eval(&hashmap!())
     }
 

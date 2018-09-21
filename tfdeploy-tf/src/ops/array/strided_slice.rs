@@ -4,9 +4,9 @@ use tfdeploy::analyser::prelude::*;
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 use ndarray::prelude::*;
-use tfdeploy::Result;
+use tfdeploy::TfdResult;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
@@ -41,14 +41,14 @@ struct Dim {
 }
 
 impl Dim {
-    fn len(&self) -> Result<usize> {
+    fn len(&self) -> TfdResult<usize> {
         Ok(
             (((self.stride.abs() as i32 - 1) + (self.end - self.begin).to_integer()?.abs() as i32)
                 / self.stride.abs()) as usize,
         )
     }
 
-    fn soft_len(&self) -> Result<TDim> {
+    fn soft_len(&self) -> TfdResult<TDim> {
         if let Ok(len) = (self.end - self.begin).to_integer() {
             Ok((((self.stride.abs() as i32 - 1) + len.abs() as i32) / self.stride.abs()).to_dim())
         } else if self.stride == 1 {
@@ -150,7 +150,7 @@ impl BaseStridedSlice {
         begin: Value,
         end: Value,
         strides: Value,
-    ) -> Result<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
+    ) -> TfdResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
         let casted_begin = TDim::tensor_cast_to_array(&begin)?;
         let begin = casted_begin.view().into_dimensionality()?;
         let casted_end = TDim::tensor_cast_to_array(&end)?;
@@ -175,16 +175,16 @@ impl BaseStridedSlice {
         let mid_shape: Vec<usize> = bounds
             .iter()
             .map(|d| d.len())
-            .collect::<Result<Vec<usize>>>()?;
+            .collect::<TfdResult<Vec<usize>>>()?;
         let end_shape: Vec<usize> = bounds
             .iter()
             .filter(|d| !d.shrink)
             .map(|d| d.len())
-            .collect::<Result<Vec<usize>>>()?;
+            .collect::<TfdResult<Vec<usize>>>()?;
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Datum>(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval<T: Datum>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -208,7 +208,7 @@ impl BaseStridedSlice {
         &self,
         mut inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let (input, begin, end, strides) = args_4!(inputs);
 
         let begin = begin.into_const().ok_or("begin can not be streamed")?;
@@ -321,7 +321,7 @@ impl BaseStridedSlice {
         &self,
         mut inputs: TVec<TensorFact>,
         _outputs: TVec<TensorFact>,
-    ) -> Result<Option<Box<Op>>> {
+    ) -> TfdResult<Option<Box<Op>>> {
         let (input, begin, end, strides) = args_4!(inputs);
         if let (Some(shape), Some(begin), Some(end), Some(strides)) = (
             input.shape.concretize(),
@@ -366,7 +366,7 @@ pub struct StridedSlice<T: Datum> {
 
 impl<T: Datum> Op for StridedSlice<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         self.base.eval::<T>(inputs)
     }
 
@@ -374,7 +374,7 @@ impl<T: Datum> Op for StridedSlice<T> {
         &self,
         inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         self.base.step::<T>(inputs, buffer)
     }
 
@@ -382,7 +382,7 @@ impl<T: Datum> Op for StridedSlice<T> {
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
-    ) -> Result<Option<Box<Op>>> {
+    ) -> TfdResult<Option<Box<Op>>> {
         self.base.final_prep(inputs, outputs)
     }
 }
@@ -405,7 +405,7 @@ pub struct StridedSliceD {
 
 impl Op for StridedSliceD {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let dt = inputs[0].datum_type();
         match dt {
             DatumType::TDim => self.base.eval::<TDim>(inputs),
@@ -418,7 +418,7 @@ impl Op for StridedSliceD {
         &self,
         inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let dt = inputs[0]
             .as_stream()
             .and_then(|s| s.chunk.as_ref())
@@ -438,7 +438,7 @@ impl Op for StridedSliceD {
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
-    ) -> Result<Option<Box<Op>>> {
+    ) -> TfdResult<Option<Box<Op>>> {
         self.base.final_prep(inputs, outputs)
     }
 }
@@ -464,7 +464,7 @@ impl Op for SkipBeginStreamStridedSlice {
         &self,
         mut inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let Stream { offset, chunk, .. } = inputs
             .remove(0)
             .into_stream()
@@ -482,7 +482,7 @@ impl InferenceOp for SkipBeginStreamStridedSlice {
         &self,
         _inputs: TVec<TensorFact>,
         _outputs: TVec<TensorFact>,
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         panic!();
     }
 }

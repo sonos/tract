@@ -2,7 +2,7 @@ use tfdeploy::analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use tfdeploy::ops::prelude::*;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let n = pb.get_attr_int("N")?;
     let t = pb.get_attr_datum_type("T")?;
     let tidx = pb.get_attr_datum_type("Tidx")?;
@@ -18,12 +18,12 @@ pub struct ConcatV2<T: Datum> {
 
 impl<T: Datum> Op for ConcatV2<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let axis: i32 = inputs
             .pop()
             .and_then(|t| t.as_i32())
             .ok_or("Expected a i32 scalar")?;
-        let mats: Result<Vec<ArrayViewD<T>>> =
+        let mats: TfdResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
         Ok(tvec![result.into()])
@@ -39,7 +39,7 @@ impl<T: Datum> Op for ConcatV2<T> {
         &self,
         mut inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         // According to https://www.tensorflow.org/api_docs/python/tf/concat,
         // the number of dimensions of each input tensor must match, and all
         // dimensions except `axis` must be equal. In particular, this means
@@ -65,7 +65,7 @@ impl<T: Datum> Op for ConcatV2<T> {
             let chunk = inputs
                 .into_iter()
                 .map(|sv| sv.into_value().ok_or("Expected a value".into()))
-                .collect::<Result<TVec<Value>>>()?;
+                .collect::<TfdResult<TVec<Value>>>()?;
 
             Ok(Some(chunk))
         } else {

@@ -25,7 +25,7 @@ impl ProfileData {
         }
     }
 
-    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tfdeploy::Result<()> {
+    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tfdeploy::TfdResult<()> {
         *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
         Ok(())
     }

@@ -12,7 +12,7 @@ extern crate tfdeploy_tf;
 
 use std::{fs, io, path};
 
-use tfdeploy::errors::*;
+use tfdeploy::TfdResult;
 
 fn download() {
     use std::sync::{Once, ONCE_INIT};
@@ -21,7 +21,7 @@ fn download() {
     START.call_once(|| do_download().unwrap());
 }
 
-fn do_download() -> Result<()> {
+fn do_download() -> TfdResult<()> {
     let dir = inception_v3_2016_08_28();
     let dir_partial = dir.clone().with_extension("partial");
     if fs::metadata(&dir).is_ok() {

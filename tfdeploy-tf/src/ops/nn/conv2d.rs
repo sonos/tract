@@ -21,7 +21,7 @@ pub struct Buffer<T: Datum> {
 
 impl<T: Datum> OpBuffer for Buffer<T> {}
 
-pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let patch = LocalPatch::build(pb)?;
     Ok(boxed_new!(Conv2D(dtype)(patch)))
@@ -35,7 +35,7 @@ impl<T: Datum> Conv2D<T> {
         filter: ArrayViewD<T>,
         pad_rows: bool,
         pad_cols: bool,
-    ) -> Result<(Array4<T>)> {
+    ) -> TfdResult<(Array4<T>)> {
         let images = BatchImageWrapper(data.view());
 
         let filter_rows = filter.shape()[0];
@@ -79,7 +79,7 @@ impl<T: Datum> Conv2D<T> {
 
 impl<T: Datum> Op for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = m_data.into_array()?;
         let filter = m_filter.to_array_view()?;
@@ -105,7 +105,7 @@ impl<T: Datum> Op for Conv2D<T> {
         &self,
         mut inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         // We only support the VALID padding strategy for now, with the
         // streaming dimension being either the width or the height.
 

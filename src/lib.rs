@@ -44,7 +44,6 @@ extern crate derive_new;
 extern crate error_chain;
 #[cfg(feature = "image_ops")]
 extern crate image;
-extern crate insideout;
 extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]
@@ -53,7 +52,6 @@ extern crate log;
 #[macro_use]
 extern crate ndarray;
 extern crate num;
-extern crate protobuf;
 #[macro_use]
 extern crate maplit;
 #[macro_use]
@@ -101,15 +99,15 @@ fn setup_test_logger() {
 }
 
 pub trait TfdFrom<Tf>: Sized {
-    fn tfd_from(t:&Tf) -> ::Result<Self>;
+    fn tfd_from(t:&Tf) -> TfdResult<Self>;
 }
 
 pub trait ToTfd<Tfd>: Sized {
-    fn to_tfd(&self) -> ::Result<Tfd>;
+    fn to_tfd(&self) -> TfdResult<Tfd>;
 }
 
 impl<PB, Tfd: TfdFrom<PB>> ::ToTfd<Tfd> for PB {
-    fn to_tfd(&self) -> ::Result<Tfd> {
+    fn to_tfd(&self) -> TfdResult<Tfd> {
         Tfd::tfd_from(self)
     }
 }

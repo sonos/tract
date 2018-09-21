@@ -5,7 +5,7 @@ use ndarray::prelude::*;
 #[derive(Debug, Clone, new)]
 pub struct Reshape<T: Datum>(PhantomData<T>);
 
-pub fn reshape(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn reshape(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Reshape(dtype)()))
 }
@@ -34,7 +34,7 @@ impl<T: Datum> Reshape<T> {
 
 impl<T: Datum> Op for Reshape<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, dims) = args_2!(inputs);
 
         let input = input.into_array::<T>()?;

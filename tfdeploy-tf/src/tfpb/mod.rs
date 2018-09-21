@@ -33,7 +33,7 @@ use tfdeploy as tfd;
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
-use tfdeploy::{ Result, ToTfd };
+use tfdeploy::{ TfdResult, ToTfd };
 
 pub fn graph() -> graph::GraphDef {
     graph::GraphDef::new()
@@ -62,10 +62,10 @@ impl graph::GraphDef {
         self.mut_node().push(n);
         self
     }
-    pub fn save_to<P: AsRef<::std::path::Path>>(self, p: P) -> Result<()> {
+    pub fn save_to<P: AsRef<::std::path::Path>>(self, p: P) -> TfdResult<()> {
         use protobuf::Message;
         use std::io::Write;
-        ::std::fs::File::create(p)?.write(&*self.write_to_bytes()?)?;
+        ::std::fs::File::create(p)?.write(&*self.write_to_bytes().map_err(|e| format!("{:?}", e))?)?;
         Ok(())
     }
 }
@@ -90,21 +90,21 @@ impl NodeDef {
 }
 
 impl node_def::NodeDef {
-    pub fn get_attr_raw_str(&self, name: &str) -> Result<&[u8]> {
+    pub fn get_attr_raw_str(&self, name: &str) -> TfdResult<&[u8]> {
         Ok(self.get_attr_opt_raw_str(name)?
             .ok_or_else(|| format!("Node {} ({}) expected string attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_raw_str(&self, name: &str) -> Result<Option<&[u8]>> {
+    pub fn get_attr_opt_raw_str(&self, name: &str) -> TfdResult<Option<&[u8]>> {
         Ok(self.get_attr().get(name).map(|v| v.get_s()))
     }
 
-    pub fn get_attr_str(&self, name: &str) -> Result<String> {
+    pub fn get_attr_str(&self, name: &str) -> TfdResult<String> {
         Ok(self.get_attr_opt_str(name)?
             .ok_or_else(|| format!("Node {} ({}) expected UTF-8 string attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_str(&self, name: &str) -> Result<Option<String>> {
+    pub fn get_attr_opt_str(&self, name: &str) -> TfdResult<Option<String>> {
         if let Some(s) = self.get_attr_opt_raw_str(name)? {
             Ok(Some(String::from_utf8(s.to_vec())
                 .map_err(|_| format!("Node {} ({}) expected an UTF-8 string for attribute '{}'", self.get_name(), self.get_op(), name))?))
@@ -113,12 +113,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_datum_type(&self, name: &str) -> Result<tfd::DatumType> {
+    pub fn get_attr_datum_type(&self, name: &str) -> TfdResult<tfd::DatumType> {
         Ok(self.get_attr_opt_datum_type(name)?
             .ok_or_else(|| format!("Node {} ({}) expected datum_type attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_datum_type(&self, name: &str) -> Result<Option<tfd::DatumType>> {
+    pub fn get_attr_opt_datum_type(&self, name: &str) -> TfdResult<Option<tfd::DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
             Ok(Some(t.get_field_type().to_tfd()?))
         } else {
@@ -126,12 +126,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> Result<tfd::Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> TfdResult<tfd::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?
             .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> Result<Option<tfd::Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<tfd::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
             Ok(Some(t.to_tfd()?))
         } else {
@@ -139,11 +139,11 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_int<T: ::num::FromPrimitive>(&self, name: &str) -> Result<T> {
+    pub fn get_attr_int<T: ::num::FromPrimitive>(&self, name: &str) -> TfdResult<T> {
         Ok(self.get_attr_opt_int(name)?
             .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
-    pub fn get_attr_opt_int<T: ::num::FromPrimitive>(&self, name: &str) -> Result<Option<T>> {
+    pub fn get_attr_opt_int<T: ::num::FromPrimitive>(&self, name: &str) -> TfdResult<Option<T>> {
         if let Some(i) = self.get_attr().get(name) {
             Ok(Some(T::from_i64(i.get_i())
                 .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
@@ -152,16 +152,16 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> Result<Vec<T>> {
+    pub fn get_attr_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> TfdResult<Vec<T>> {
         Ok(self.get_attr_opt_list_int(name)?
             .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> Result<Option<Vec<T>>> {
+    pub fn get_attr_opt_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> TfdResult<Option<Vec<T>>> {
         if let Some(list) = self.get_attr().get(name) {
             Ok(Some(list.get_list().get_i().iter().map(|i| T::from_i64(*i)
                 .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name).into()))
-                .collect::<Result<Vec<T>>>()?))
+                .collect::<TfdResult<Vec<T>>>()?))
         } else {
             Ok(None)
         }

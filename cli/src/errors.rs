@@ -11,7 +11,7 @@ error_chain! {
     }
     links {
         Conform(conform::Error, conform::ErrorKind) #[cfg(feature="tensorflow")];
-        Tfdeploy(tfdeploy::Error, tfdeploy::ErrorKind);
+        Tfdeploy(tfdeploy::TfdError, tfdeploy::TfdErrorKind);
     }
 
     foreign_links {

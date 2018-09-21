@@ -8,7 +8,7 @@ pub struct Source {
 
 impl Op for Source {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         panic!("Source should not get evaluated")
     }
 }

@@ -1,8 +1,8 @@
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
-use tfdeploy::Result;
+use tfdeploy::TfdResult;
 
-pub fn pack(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn pack(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;
@@ -19,12 +19,12 @@ pub struct Pack {
 
 impl Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         use ndarray::Axis;
         let arrays = inputs
             .iter()
             .map(|m| Ok(m.cast_to_array::<T>()?))
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<TfdResult<Vec<_>>>()?;
         let views: Vec<_> = arrays
             .iter()
             .map(|v| v.view().insert_axis(Axis(self.axis)))
@@ -36,7 +36,7 @@ impl Pack {
 
 impl Op for Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let dt = DatumType::super_type_for(inputs.iter().map(|dt| dt.datum_type()))
             .ok_or("Could not find a supertype")?;
         match dt {

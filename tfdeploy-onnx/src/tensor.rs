@@ -2,7 +2,7 @@ use tfdeploy::*;
 use pb::*;
 
 impl TfdFrom<TensorProto_DataType> for DatumType {
-    fn tfd_from(t: &TensorProto_DataType) -> Result<DatumType> {
+    fn tfd_from(t: &TensorProto_DataType) -> TfdResult<DatumType> {
         use self::TensorProto_DataType::*;
         match t {
             &UINT8 => Ok(DatumType::U8),
@@ -16,7 +16,7 @@ impl TfdFrom<TensorProto_DataType> for DatumType {
     }
 
     /*
-    fn to_onnx(&self) -> Result<TensorProto_DataType> {
+    fn to_onnx(&self) -> TfdResult<TensorProto_DataType> {
         use self::TensorProto_DataType::*;
         match self {
             DatumType::U8 => Ok(UINT8),
@@ -32,7 +32,7 @@ impl TfdFrom<TensorProto_DataType> for DatumType {
 }
 
 impl TfdFrom<TypeProto_Tensor> for TensorFact {
-    fn tfd_from(t: &TypeProto_Tensor) -> Result<TensorFact> {
+    fn tfd_from(t: &TypeProto_Tensor) -> TfdResult<TensorFact> {
         let mut fact = TensorFact::default();
         if t.has_elem_type() {
             fact = fact.with_datum_type(t.get_elem_type().to_tfd()?);
@@ -51,7 +51,7 @@ impl TfdFrom<TypeProto_Tensor> for TensorFact {
 }
 
 impl TfdFrom<TensorProto> for Tensor {
-    fn tfd_from(t: &TensorProto) -> Result<Tensor> {
+    fn tfd_from(t: &TensorProto) -> TfdResult<Tensor> {
         let dt = t.get_data_type().to_tfd()?;
         let shape: Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
         if t.has_raw_data() {

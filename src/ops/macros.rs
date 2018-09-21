@@ -8,7 +8,7 @@ macro_rules! element_map {
             fn eval(
                 &self,
                 mut inputs: $crate::TVec<$crate::ops::Value>,
-            ) -> $crate::Result<$crate::TVec<$crate::ops::Value>> {
+            ) -> $crate::TfdResult<$crate::TVec<$crate::ops::Value>> {
                 use $crate::tensor::Datum;
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
@@ -25,7 +25,7 @@ macro_rules! element_map {
                 &self,
                 mut inputs: $crate::TVec<$crate::ops::StepValue>,
                 _buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> $crate::Result<Option<$crate::TVec<$crate::ops::Value>>> {
+            ) -> $crate::TfdResult<Option<$crate::TVec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
                 match a.into_value() {
                     None => Ok(None),
@@ -65,7 +65,7 @@ macro_rules! element_bin {
             fn eval_t<T: ::tensor::Datum>(
                 &self,
                 mut inputs: TVec<$crate::ops::Value>,
-            ) -> Result<TVec<$crate::ops::Value>> {
+            ) -> $crate::TfdResult<TVec<$crate::ops::Value>> {
                 let (a, b) = args_2!(inputs);
                 let a = a.cast_to_array::<T>()?.into_owned();
                 let b = b.cast_to_array::<T>()?;
@@ -79,7 +79,7 @@ macro_rules! element_bin {
             fn eval(
                 &self,
                 inputs: TVec<$crate::ops::Value>,
-            ) -> Result<TVec<$crate::ops::Value>> {
+            ) -> $crate::TfdResult<TVec<$crate::ops::Value>> {
                 use $crate::tensor::Datum;
                 if let Some(dt) = inputs[0].datum_type().common_super_type(inputs[1].datum_type()) {
                     $(if dt == $type::datum_type() {
@@ -102,7 +102,7 @@ macro_rules! element_bin {
                 &self,
                 inputs: TVec<$crate::ops::StepValue>,
                 buffer: &mut Box<$crate::ops::OpBuffer>,
-            ) -> Result<Option<TVec<$crate::ops::Value>>> {
+            ) -> $crate::TfdResult<Option<TVec<$crate::ops::Value>>> {
                 let buffer = buffer.downcast_mut::<$crate::ops::QueuesBuffer>()
                     .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
 

@@ -1,11 +1,11 @@
 use tfpb::tensor::TensorProto;
 use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use tfpb::types::DataType;
-use tfdeploy::{ DatumType, Result, TfdFrom, Tensor };
+use tfdeploy::{ DatumType, TfdResult, TfdFrom, Tensor };
 use ToTensorflow;
 
 impl TfdFrom<DataType> for DatumType {
-    fn tfd_from(t: &DataType) -> Result<DatumType> {
+    fn tfd_from(t: &DataType) -> TfdResult<DatumType> {
         match t {
             &DataType::DT_UINT8 => Ok(DatumType::U8),
             &DataType::DT_INT8 => Ok(DatumType::I8),
@@ -19,7 +19,7 @@ impl TfdFrom<DataType> for DatumType {
 }
 
 impl ToTensorflow<DataType> for DatumType {
-    fn to_tf(&self) -> Result<DataType> {
+    fn to_tf(&self) -> TfdResult<DataType> {
         match self {
             DatumType::U8 => Ok(DataType::DT_UINT8),
             DatumType::I8 => Ok(DataType::DT_INT8),
@@ -33,7 +33,7 @@ impl ToTensorflow<DataType> for DatumType {
 }
 
 impl TfdFrom<TensorProto> for Tensor {
-    fn tfd_from(t: &TensorProto) -> Result<Tensor> {
+    fn tfd_from(t: &TensorProto) -> TfdResult<Tensor> {
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
         let dims = shape
@@ -64,7 +64,7 @@ impl TfdFrom<TensorProto> for Tensor {
 }
 
 impl ToTensorflow<TensorProto> for Tensor {
-    fn to_tf(&self) -> Result<TensorProto> {
+    fn to_tf(&self) -> TfdResult<TensorProto> {
         let mut shape = TensorShapeProto::new();
         let dims = self
             .shape()

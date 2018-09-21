@@ -1,7 +1,7 @@
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
-pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let mut squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
     if let Some(ref mut squeeze_dims) = squeeze_dims {
         squeeze_dims.sort();
@@ -46,7 +46,7 @@ impl<T: Datum> Squeeze<T> {
 
 impl<T: Datum> Op for Squeeze<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         let data = input.into_array::<T>()?;
         let shape = self.squeeze_shape(data.shape(), None);
@@ -58,7 +58,7 @@ impl<T: Datum> Op for Squeeze<T> {
         &self,
         mut inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let input = args_1!(inputs);
         if let Some(Stream {
             info,

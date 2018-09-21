@@ -15,7 +15,7 @@ pub fn tensor_to_fact(tensor: Tensor) -> TensorFact {
 pub fn infer_forward_concrete(
     op: &Op,
     inputs: &Vec<&TensorFact>,
-) -> Result<Option<TVec<TensorFact>>> {
+) -> TfdResult<Option<TVec<TensorFact>>> {
     let input_values: TVec<_> = inputs
         .iter()
         .filter_map(|t| t.value.concretize())
@@ -34,7 +34,7 @@ pub fn infer_forward_concrete(
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.
-pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> Result<Option<ShapeFact>> {
+pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TfdResult<Option<ShapeFact>> {
     if shapes.iter().any(|s| s.open) {
         debug!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
         return Ok(None);
@@ -93,7 +93,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> Result<Option<ShapeFac
 }
 
 /// Infers basic facts in the case of unary or binary operators.
-pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<TVec<TensorFact>>> {
+pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> TfdResult<Option<TVec<TensorFact>>> {
     if let Some(output) = infer_forward_concrete(op, &inputs)? {
         return Ok(Some(output));
     }
@@ -120,7 +120,7 @@ pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> Result<Option<T
 /// Returns the most specific closed shape out of an iterator.
 pub fn most_specific_shape<'a, I: IntoIterator<Item = &'a ShapeFact>>(
     iter: I,
-) -> Result<Option<&'a ShapeFact>> {
+) -> TfdResult<Option<&'a ShapeFact>> {
     let mut prev_rank = None;
     let mut prev_concrete = None;
     let mut best = None;

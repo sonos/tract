@@ -307,7 +307,7 @@ impl InputParameters {
                 "S" => Ok(None),           // Streaming dimension.
                 _ => Ok(Some(s.parse()?)), // Regular dimension.
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<TfdResult<Vec<_>>>()?;
 
         if shape.iter().filter(|o| o.is_none()).count() > 1 {
             bail!("The <size> argument doesn't support more than one streaming dimension.");

@@ -8,27 +8,27 @@ use tfdeploy::*;
 use pb;
 
 /// Load a ONNX protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<Model> {
     for_reader(fs::File::open(p)?)
 }
 
 /// Load a ONNX model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
+pub fn for_reader<R: ::std::io::Read>(r: R) -> TfdResult<Model> {
     model_proto_for_reader(r)?.to_tfd()
 }
 
 /// Load a ONNX protobuf graph def from a path
-pub fn model_proto_for_path<P: AsRef<path::Path>>(p: P) -> Result<pb::ModelProto> {
+pub fn model_proto_for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<pb::ModelProto> {
     model_proto_for_reader(fs::File::open(p)?)
 }
 
 /// Load a ONNX protobuf graph def from a reader.
-pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> Result<pb::ModelProto> {
-    Ok(::protobuf::parse_from_reader(&mut r)?)
+pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<pb::ModelProto> {
+    Ok(::protobuf::parse_from_reader(&mut r).map_err(|e| format!("{:?}", e))?)
 }
 
 impl TfdFrom<pb::ModelProto> for Model {
-    fn tfd_from(proto: &pb::ModelProto) -> Result<Model> {
+    fn tfd_from(proto: &pb::ModelProto) -> TfdResult<Model> {
         let mut nodes = vec![];
         let mut model_inputs = vec![];
         let mut outlets_index: HashMap<String, OutletId> = HashMap::new();

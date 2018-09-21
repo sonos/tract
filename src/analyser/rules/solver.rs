@@ -6,7 +6,7 @@ use num::Zero;
 use analyser::prelude::*;
 use analyser::rules::prelude::*;
 use model::TVec;
-use Result;
+use TfdResult;
 
 /// A structure that holds the current sets of TensorFacts.
 ///
@@ -20,14 +20,14 @@ pub struct Context {
 
 impl Context {
     /// Returns the current value of the variable at the given path.
-    pub fn get<T: Output>(&self, path: &Path) -> Result<T> {
+    pub fn get<T: Output>(&self, path: &Path) -> TfdResult<T> {
         let value = get_path(self, &path[..])?;
 
         Ok(T::from_wrapped(value)?)
     }
 
     /// Tries to set the value of the variable at the given path.
-    pub fn set<T: Output>(&mut self, path: &Path, value: T) -> Result<()> {
+    pub fn set<T: Output>(&mut self, path: &Path, value: T) -> TfdResult<()> {
         set_path(self, &path[..], T::into_wrapped(value))?;
 
         Ok(())
@@ -41,7 +41,7 @@ pub trait Rule<'rules>: fmt::Debug {
     /// The method must return Ok(true) if the rule was applied successfully
     /// (meaning that the Context was mutated), or Ok(false) if the rule was
     /// not applied but didn't generate any errors.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)>;
+    fn apply(&self, context: &mut Context) -> TfdResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)>;
 
     /// Returns the paths that the rule depends on.
     fn get_paths(&self) -> Vec<&Path>;
@@ -68,7 +68,7 @@ impl<T: Output + Fact> EqualsRule<T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TfdResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         let mut value = None;
         for item in &self.items {
             let v = item.get(context)?;
@@ -119,7 +119,7 @@ where
     F: Fact + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output,
 {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TfdResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         Ok((self.0.set(context, F::zero())?, vec![]))
     }
 
@@ -167,7 +167,7 @@ impl<'rules, T: Output + Fact> WithRule<'rules, T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for WithRule<'rules, T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TfdResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         let value = self.item.get(context)?;
         trace!("    With rule: {:?} is {:?}", self.item, value);
         let mut solver = Solver::default();
@@ -216,7 +216,7 @@ impl<'rules, T: Output + Fact> GivenRule<'rules, T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for GivenRule<'rules, T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TfdResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         let value = self.item.get(context)?;
 
         if let Some(value) = value.concretize() {
@@ -279,12 +279,12 @@ impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for GivenAllRule<'rules, T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> Result<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TfdResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
         let values: Vec<T> = self
             .items
             .iter()
             .map(|it| it.get(context))
-            .collect::<Result<Vec<T>>>()?;
+            .collect::<TfdResult<Vec<T>>>()?;
         let concrete: Vec<_> = values.iter().filter_map(|it| it.concretize()).collect();
 
         if concrete.len() == self.items.len() {
@@ -333,7 +333,7 @@ impl<'rules> Solver<'rules> {
     pub fn infer(
         self,
         mut facts: (TVec<TensorFact>, TVec<TensorFact>),
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         for f in &mut facts.0 {
             f.reduce();
         }

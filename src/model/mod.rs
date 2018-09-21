@@ -6,7 +6,7 @@ use std::sync::Arc;
 mod order;
 pub use self::order::eval_order_for_nodes;
 
-use {ops, Result};
+use {ops, TfdResult};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -82,7 +82,7 @@ impl RawModel {
         }
     }
 
-    pub fn node_by_name(&self, name: &str) -> Result<&Node> {
+    pub fn node_by_name(&self, name: &str) -> TfdResult<&Node> {
         let id: &usize = self
             .nodes_by_name
             .get(name)
@@ -119,7 +119,7 @@ impl RawModel {
 pub struct Model(pub Arc<RawModel>);
 
 impl Model {
-    pub fn analyser(&self, output: &str) -> Result<::analyser::Analyser> {
+    pub fn analyser(&self, output: &str) -> TfdResult<::analyser::Analyser> {
         ::analyser::Analyser::new(&self, output)
     }
 }

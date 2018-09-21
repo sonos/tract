@@ -5,32 +5,32 @@ use std::{fs, path};
 
 use tfdeploy::model::{Model, Node, OutletId, RawModel};
 use tfpb::graph::GraphDef;
-use tfdeploy::{TfdFrom, ToTfd, Result };
+use tfdeploy::{TfdFrom, ToTfd, TfdResult };
 
 /// Load a Tensorflow protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<Model> {
     for_reader(fs::File::open(p)?)
 }
 
 /// Load a Tfdeploy model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> Result<Model> {
+pub fn for_reader<R: ::std::io::Read>(r: R) -> TfdResult<Model> {
     graphdef_for_reader(r)?.to_tfd()
 }
 
 /// Load a Tensorflow protobuf graph def from a reader.
-pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> Result<GraphDef> {
+pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<GraphDef> {
     Ok(::protobuf::parse_from_reader::<GraphDef>(
         &mut r,
-    )?)
+    ).map_err(|e| format!("{:?}", e))?)
 }
 
 /// Load a Tensorflow protobuf graph def from a path
-pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> Result<GraphDef> {
+pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<GraphDef> {
     graphdef_for_reader(fs::File::open(p)?)
 }
 
 impl TfdFrom<GraphDef> for Model {
-    fn tfd_from(graph: &GraphDef) -> Result<Model> {
+    fn tfd_from(graph: &GraphDef) -> TfdResult<Model> {
     let mut nodes = vec![];
     let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
     let mut model_inputs = vec!();
@@ -71,7 +71,7 @@ impl TfdFrom<GraphDef> for Model {
                 };
                 Ok(OutletId::new(input.0, input.1))
             })
-            .collect::<Result<Vec<_>>>()
+            .collect::<TfdResult<Vec<_>>>()
             .map_err(|e| format!("While building node {}, {}", name, e.description()))?;
         let node = Node {
             id: nodes.len(),

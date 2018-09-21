@@ -22,7 +22,7 @@ impl RawStreamingPlan {
         model: &Model,
         inputs: Vec<(&str, TensorFact)>,
         output: Option<&str>,
-    ) -> Result<RawStreamingPlan> {
+    ) -> TfdResult<RawStreamingPlan> {
         let output_node = match output {
             Some(name) => model.node_by_name(name)?,
             None => model.nodes().last().unwrap(),
@@ -95,7 +95,7 @@ impl RawStreamingPlan {
         *self.stream_infos.get(outlet.node)?.get(outlet.slot)?
     }
 
-    pub fn output_stream_info(&self) -> ::Result<StreamInfo> {
+    pub fn output_stream_info(&self) -> TfdResult<StreamInfo> {
         self.stream_info(&self.output)
             .ok_or_else(|| "Output is not a stream".into())
     }
@@ -124,13 +124,13 @@ impl StreamingPlan {
         model: &Model,
         inputs: Vec<(&str, TensorFact)>,
         output: Option<&str>,
-    ) -> Result<StreamingPlan> {
+    ) -> TfdResult<StreamingPlan> {
         Ok(StreamingPlan(Arc::new(RawStreamingPlan::new(
             model, inputs, output,
         )?)))
     }
 
-    pub fn state(&self) -> Result<StreamingModelState> {
+    pub fn state(&self) -> TfdResult<StreamingModelState> {
         let mut state = StreamingModelState {
             plan: self.clone(),
             inlets_offset: vec![],
@@ -173,7 +173,7 @@ impl StreamingModelState {
     /// The method will return a Vec<Vec<Tensor>>, which will contain
     /// a Vec<Tensor> for every chunk that was produced by the output
     /// during the evaluation step, with one Tensor per output port.
-    pub fn step(&mut self, input_id: usize, input_chunk: Tensor) -> Result<Vec<TVec<Tensor>>> {
+    pub fn step(&mut self, input_id: usize, input_chunk: Tensor) -> TfdResult<Vec<TVec<Tensor>>> {
         self.step_wrapping_ops(input_id, input_chunk, |node, inputs, buffers| {
             node.op.step(inputs, buffers)
         })
@@ -188,10 +188,10 @@ impl StreamingModelState {
         input_id: usize,
         input_chunk: Tensor,
         mut node_step: W,
-    ) -> Result<Vec<TVec<Tensor>>>
+    ) -> TfdResult<Vec<TVec<Tensor>>>
     where
         W: FnMut(&Node, TVec<StepValue>, &mut Box<ops::OpBuffer>)
-            -> Result<Option<TVec<ops::Value>>>,
+            -> TfdResult<Option<TVec<ops::Value>>>,
     {
         let (input_outlet, _input_stream_info) = self.plan.input_nodes[input_id];
         self.enqueue(input_chunk.into(), input_outlet);
@@ -279,7 +279,7 @@ impl StreamingModelState {
     }
 
     /// Resets the model state.
-    pub fn reset(&mut self) -> Result<()> {
+    pub fn reset(&mut self) -> TfdResult<()> {
         self.inlets_offset = self
             .model()
             .nodes()

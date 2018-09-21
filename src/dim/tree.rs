@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use std::fmt;
-// use std::collections::HashMap;
+use TfdResult;
 
 use super::stack::*;
 
@@ -39,7 +39,7 @@ impl fmt::Debug for ExpNode {
 }
 
 impl ExpNode {
-    pub fn from_ops(ops: &Stack) -> ::Result<ExpNode> {
+    pub fn from_ops(ops: &Stack) -> TfdResult<ExpNode> {
         use self::StackOp::*;
         if ops.overflow() {
             Err("Overflown")?;
@@ -99,7 +99,7 @@ impl ExpNode {
         Ok(stack.remove(0))
     }
 
-    pub fn to_ops(&self) -> ::Result<Stack> {
+    pub fn to_ops(&self) -> TfdResult<Stack> {
         match self {
             ExpNode::Val(i) => Ok(Stack::from(*i)),
             ExpNode::Sym(c) => Ok(Stack::sym(*c)),
@@ -149,32 +149,7 @@ impl ExpNode {
         }
     }
 
-    /*
-    pub fn eval(&self, syms: &HashMap<char, isize>) -> ::Result<isize> {
-        match self {
-            ExpNode::Val(i) => Ok(*i),
-            ExpNode::Sym(c) => Ok(*syms.get(c).ok_or("Unresolved symbol")?),
-            ExpNode::Abs(a) => Ok(a.eval(syms)?.abs()),
-            ExpNode::Signum(a) => Ok(a.eval(syms)?.signum()),
-            ExpNode::Add(vec) => {
-                let (first, rest) = vec.split_first().ok_or("Empty add node")?;
-                rest.iter()
-                    .try_fold(first.eval(syms)?, |acc, e| Ok(acc + e.eval(syms)?))
-            }
-            ExpNode::Mul(v, vec) => vec.iter()
-                .try_fold(*v, |acc, e| Ok(acc * e.eval(&syms)?)),
-            ExpNode::Div(a, b) => Ok(a.eval(syms)? / b.eval(syms)?),
-            ExpNode::Rem(a, b) => Ok(a.eval(syms)? % b.eval(syms)?),
-            ExpNode::DivCeil(a, b) => {
-                let a = a.eval(syms)?;
-                let b = b.eval(syms)?;
-                Ok(a/b + (a%b) as isize)
-            }
-        }
-    }
-    */
-
-    pub fn reduce(self) -> ::Result<ExpNode> {
+    pub fn reduce(self) -> TfdResult<ExpNode> {
         macro_rules! b( ($e:expr) => { Box::new($e) } );
         use self::ExpNode::*;
         let res = match self {
@@ -319,7 +294,7 @@ impl ExpNode {
                         let mut items = items
                             .into_iter()
                             .map(|f| Mul(value, vec![f]).reduce())
-                            .collect::<::Result<Vec<ExpNode>>>()?;
+                            .collect::<TfdResult<Vec<ExpNode>>>()?;
                         items.sort();
                         Add(items)
                     } else {

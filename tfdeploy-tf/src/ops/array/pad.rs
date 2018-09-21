@@ -4,14 +4,14 @@ use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
-use tfdeploy::Result;
+use tfdeploy::TfdResult;
 
 #[derive(Debug, Clone, Default, new)]
 pub struct Pad<T: Datum> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn pad(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }
@@ -21,7 +21,7 @@ impl<T: Datum> Pad<T> {
         input: &ArrayViewD<T>,
         paddings: ArrayView2<i32>,
         stream_dim: Option<usize>,
-    ) -> Result<ArrayD<T>> {
+    ) -> TfdResult<ArrayD<T>> {
         let shape: Vec<usize> = input
             .shape()
             .iter()
@@ -56,7 +56,7 @@ where
     T: Datum,
 {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
@@ -67,7 +67,7 @@ where
         &self,
         mut inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         if let (StepValue::Stream(stream), StepValue::Const(paddings)) = args_2!(inputs) {
             if let Some(chunk) = stream.chunk {
                 let chunk = chunk.to_array_view::<T>()?;

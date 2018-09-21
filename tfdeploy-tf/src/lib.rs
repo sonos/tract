@@ -54,6 +54,6 @@ pub use self::model::for_path;
 pub use self::model::for_reader;
 
 pub trait ToTensorflow<Tf>: Sized {
-    fn to_tf(&self) -> ::tfdeploy::Result<Tf>;
+    fn to_tf(&self) -> tfdeploy::TfdResult<Tf>;
 }
 

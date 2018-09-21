@@ -17,7 +17,7 @@ impl Const {
 
 impl Op for Const {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Ok(tvec![self.value.clone()])
     }
 

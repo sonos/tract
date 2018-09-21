@@ -1,5 +1,5 @@
 use super::prelude::*;
-use super::Result;
+use TfdResult;
 use model::OutletId;
 use std::collections::HashMap;
 use {Node, Tensor};
@@ -26,7 +26,7 @@ pub struct Component {
 /// - If an edge has a constant value according to the analyser, it is in G.
 /// - If all the outgoing edges of a node are in G, that node is also in G.
 /// - If an edge in G has no target, it is called an "output".
-pub fn connected_components(analyser: &Analyser) -> Result<Vec<Component>> {
+pub fn connected_components(analyser: &Analyser) -> TfdResult<Vec<Component>> {
     let is_edge_const: Vec<bool> = analyser
         .edges
         .iter()
@@ -150,7 +150,7 @@ fn build_const_node(id: usize, name: String, tensor: Tensor) -> Node {
 /// - Ideally, we would use a heuristic to find a middle ground between the
 ///   two strategies. This would allow the duplication of constants if the
 ///   size or performance gained from pruning compensates the size loss.
-pub fn propagate_constants(analyser: &mut Analyser) -> Result<()> {
+pub fn propagate_constants(analyser: &mut Analyser) -> TfdResult<()> {
     let components: Vec<Component> = connected_components(analyser)?;
     info!("Detected {:?} connected components.", components.len());
 

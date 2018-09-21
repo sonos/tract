@@ -2,11 +2,11 @@ use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 use ndarray::prelude::*;
 
-pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(SpaceToBatch(datum_type)()))
 }
-pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(BatchToSpace(datum_type)()))
 }
@@ -23,7 +23,7 @@ pub struct SpaceToBatch<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for SpaceToBatch<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
         let paddings = paddings.cast_to_array::<i32>()?;
@@ -84,7 +84,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
         &self,
         mut inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape
             .into_const()
@@ -208,7 +208,7 @@ pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         use ndarray::*;
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.as_i32s().ok_or("block shape expected as I32")?;
@@ -261,7 +261,7 @@ impl<T: Datum> Op for BatchToSpace<T> {
         &self,
         mut inputs: TVec<StepValue>,
         buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape
             .into_const()

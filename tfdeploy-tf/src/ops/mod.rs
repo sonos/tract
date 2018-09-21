@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use tfdeploy::ops::Op;
-use tfdeploy::Result;
+use tfdeploy::TfdResult;
 
 use tfpb::node_def::NodeDef;
 
@@ -12,7 +12,7 @@ pub mod array;
 pub mod math;
 pub mod nn;
 
-pub type OpRegister = HashMap<&'static str, fn(&NodeDef) -> Result<Box<Op>>>;
+pub type OpRegister = HashMap<&'static str, fn(&NodeDef) -> TfdResult<Box<Op>>>;
 
 pub struct OpBuilder(OpRegister);
 
@@ -27,7 +27,7 @@ impl OpBuilder {
         OpBuilder(reg)
     }
 
-    pub fn build(&self, pb: &NodeDef) -> Result<Box<Op>> {
+    pub fn build(&self, pb: &NodeDef) -> TfdResult<Box<Op>> {
         match self.0.get(pb.get_op()) {
             Some(builder) => builder(pb),
             None => Ok(Box::new(::tfdeploy::ops::unimpl::UnimplementedOp(
@@ -38,7 +38,7 @@ impl OpBuilder {
     }
 }
 
-pub fn konst(node: &NodeDef) -> Result<Box<Op>> {
+pub fn konst(node: &NodeDef) -> TfdResult<Box<Op>> {
     let dtype = node.get_attr_datum_type("dtype")?;
     let mat = node.get_attr_tensor("value")?;
 
@@ -53,7 +53,7 @@ pub fn konst(node: &NodeDef) -> Result<Box<Op>> {
     Ok(Box::new(::tfdeploy::ops::konst::Const::for_tensor(mat)))
 }
 
-pub fn placeholder(node: &NodeDef) -> Result<Box<Op>> {
+pub fn placeholder(node: &NodeDef) -> TfdResult<Box<Op>> {
     let dt = node.get_attr_datum_type("dtype")?;
     Ok(Box::new(::tfdeploy::ops::source::Source::new(
         ::tfdeploy::analyser::types::TensorFact::dt(dt.into()),

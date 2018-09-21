@@ -8,7 +8,7 @@ use num::Zero;
 use analyser::prelude::*;
 use analyser::rules::prelude::*;
 use dim::TDim;
-use {DatumType, Result, Tensor};
+use {DatumType, TfdResult, Tensor};
 
 /// A trait for values produced by expressions.
 pub trait Output: fmt::Debug + Clone + PartialEq {
@@ -22,7 +22,7 @@ pub trait Output: fmt::Debug + Clone + PartialEq {
 
     /// Retrieves the fact from the Wrapped type.
     /// Panics if wrapped doesn't have the right constructor.
-    fn from_wrapped(wrapped: Wrapped) -> Result<Self>;
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<Self>;
 }
 
 macro_rules! impl_output {
@@ -32,7 +32,7 @@ macro_rules! impl_output {
                 Wrapped::$constr(source)
             }
 
-            fn from_wrapped(wrapped: Wrapped) -> Result<$type> {
+            fn from_wrapped(wrapped: Wrapped) -> TfdResult<$type> {
                 if let Wrapped::$constr(v) = wrapped {
                     Ok(v)
                 } else {
@@ -55,7 +55,7 @@ impl Output for usize {
         IntFact::into_wrapped((source as isize).into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> Result<usize> {
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<usize> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
         IntFact::from_wrapped(wrapped)?
@@ -71,7 +71,7 @@ impl Output for isize {
         IntFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> Result<isize> {
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<isize> {
         let message = format!("Tried to convert {:?} to a isize.", wrapped);
 
         IntFact::from_wrapped(wrapped)?
@@ -86,7 +86,7 @@ impl Output for Tensor {
         ValueFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> Result<Tensor> {
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<Tensor> {
         let message = format!("Tried to convert {:?} to a tensor.", wrapped);
 
         ValueFact::from_wrapped(wrapped)?
@@ -101,7 +101,7 @@ impl Output for TDim {
         DimFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> Result<TDim> {
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<TDim> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
         DimFact::from_wrapped(wrapped)?
@@ -125,10 +125,10 @@ pub trait Expression: fmt::Debug {
     type Output: Output;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<Self::Output>;
+    fn get(&self, context: &Context) -> TfdResult<Self::Output>;
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: Self::Output) -> Result<()>;
+    fn set(&self, context: &mut Context, value: Self::Output) -> TfdResult<()>;
 
     /// Returns the paths that the expression depends on.
     fn get_paths(&self) -> Vec<&Path>;
@@ -141,12 +141,12 @@ impl<T: Output> Expression for ConstantExpression<T> {
     type Output = T;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, _: &Context) -> Result<T> {
+    fn get(&self, _: &Context) -> TfdResult<T> {
         Ok(self.0.clone())
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, _: &mut Context, value: T) -> Result<()> {
+    fn set(&self, _: &mut Context, value: T) -> TfdResult<()> {
         if self.0 == value {
             Ok(())
         } else {
@@ -181,12 +181,12 @@ impl<T: Output> Expression for VariableExpression<T> {
     type Output = T;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<T> {
+    fn get(&self, context: &Context) -> TfdResult<T> {
         context.get(&self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> Result<()> {
+    fn set(&self, context: &mut Context, value: T) -> TfdResult<()> {
         context.set(&self.0, value)
     }
 
@@ -216,13 +216,13 @@ where
     type Output = V;
 
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<V> {
+    fn get(&self, context: &Context) -> TfdResult<V> {
         let v: V = self.1.get(context)?;
         Ok(v * self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: V) -> Result<()> {
+    fn set(&self, context: &mut Context, value: V) -> TfdResult<()> {
         let k = &self.0;
         let m = value;
 

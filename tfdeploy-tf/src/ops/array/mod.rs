@@ -28,14 +28,14 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 pub struct ExpandDims;
 
 impl ExpandDims {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
         Ok(Box::new(ExpandDims))
     }
 }
 
 impl Op for ExpandDims {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (data, dims) = args_2!(inputs);
         let data = data
             .into_tensor()
@@ -58,7 +58,7 @@ impl Op for ExpandDims {
         &self,
         mut inputs: TVec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let (data, dims) = args_2!(inputs);
 
         let dims = if let StepValue::Const(dims) = dims {
@@ -116,14 +116,14 @@ impl InferenceRulesOp for ExpandDims {
 pub struct Identity;
 
 impl Identity {
-    pub fn build(_: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(_: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
         Ok(Box::new(Identity))
     }
 }
 
 impl Op for Identity {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Ok(inputs)
     }
 
@@ -132,7 +132,7 @@ impl Op for Identity {
         &self,
         mut inputs: TVec<StepValue>,
         _: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         let input = args_1!(inputs);
         match input.into_value() {
             None => Ok(None),
@@ -160,14 +160,14 @@ impl InferenceRulesOp for Identity {
 pub struct Shape;
 
 impl Shape {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
         Ok(Box::new(Shape))
     }
 }
 
 impl Op for Shape {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;
         let shape: Vec<i32> = data.shape().into_iter().map(|s| *s as i32).collect();
         Ok(tvec![Tensor::from(Array1::from_vec(shape)).into()])

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use analyser::prelude::*;
 use dim::TDim;
 use model::TVec;
-use {Result, Tensor};
+use {Tensor, TfdResult};
 
 use downcast_rs::Downcast;
 use objekt;
@@ -26,14 +26,14 @@ pub mod source;
 pub mod unimpl;
 
 pub mod prelude {
-    pub use super::{Op, InferenceOp};
+    pub use super::{InferenceOp, Op};
     pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
     pub use dim::TDim;
     pub use model::TVec;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{Datum, DatumType, Tensor};
-    pub use Result;
+    pub use TfdResult;
 }
 
 #[derive(Debug, Clone)]
@@ -92,13 +92,13 @@ impl Value {
         self.clone()
     }
 
-    pub fn into_array<'a, D: ::tensor::Datum>(self) -> ::Result<::ndarray::ArrayD<D>> {
+    pub fn into_array<'a, D: ::tensor::Datum>(self) -> TfdResult<::ndarray::ArrayD<D>> {
         self.into_tensor().into_array()
     }
 
     pub fn to_array_view<'a, D: ::tensor::Datum>(
         &'a self,
-    ) -> ::Result<::ndarray::ArrayViewD<'a, D>> {
+    ) -> TfdResult<::ndarray::ArrayViewD<'a, D>> {
         self.as_tensor().to_array_view()
     }
 }
@@ -211,7 +211,7 @@ impl StepValue {
 /// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         bail!("Unexpected call on op.eval(). {:?}", self)
     }
 
@@ -245,7 +245,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         &self,
         _inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         bail!("Streaming is not available for operator {:?}", self)
     }
 
@@ -260,7 +260,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let (infered_inputs, infered_outputs) = self.infer(inputs, outputs)?;
 
         if infered_inputs.iter().all(|i| i.value.is_concrete()) {
@@ -284,7 +284,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         &self,
         _inputs: TVec<TensorFact>,
         _outputs: TVec<TensorFact>,
-    ) -> Result<Option<Box<Op>>> {
+    ) -> TfdResult<Option<Box<Op>>> {
         Ok(None)
     }
 
@@ -302,7 +302,7 @@ pub trait InferenceOp {
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)>;
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)>;
 }
 
 clone_trait_object!(Op);
@@ -338,7 +338,7 @@ impl QueuesBuffer {
     }
 
     /// Appends a new Value to each queue in the buffer.
-    pub fn append(&mut self, views: TVec<StepValue>) -> Result<()> {
+    pub fn append(&mut self, views: TVec<StepValue>) -> TfdResult<()> {
         if views.len() > self.0.len() {
             bail!("There are more input Values than queues in the buffer.");
         }
