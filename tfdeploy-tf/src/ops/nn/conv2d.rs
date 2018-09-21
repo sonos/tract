@@ -2,15 +2,15 @@ use std::marker::PhantomData;
 
 use super::local_patch::*;
 use ndarray::prelude::*;
-use ndarray::{stack, Axis, Slice};
+use ndarray::{stack, Axis, Slice, LinalgScalar};
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
-pub struct Conv2D<T: Datum>(LocalPatch, PhantomData<T>);
+pub struct Conv2D<T: Datum + LinalgScalar>(LocalPatch, PhantomData<T>);
 
 #[derive(Debug, Clone)]
-pub struct Buffer<T: Datum> {
+pub struct Buffer<T: Datum + LinalgScalar> {
     // The number of future chunks to skip before storing them again.
     skip: usize,
 
@@ -19,7 +19,7 @@ pub struct Buffer<T: Datum> {
     prev: Option<Array4<T>>,
 }
 
-impl<T: Datum> OpBuffer for Buffer<T> {}
+impl<T: Datum + LinalgScalar> OpBuffer for Buffer<T> {}
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
@@ -27,7 +27,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
 
-impl<T: Datum> Conv2D<T> {
+impl<T: Datum + LinalgScalar> Conv2D<T> {
     /// Performs a 2D convolution on an input tensor and a filter.
     fn convolve(
         &self,
@@ -77,7 +77,7 @@ impl<T: Datum> Conv2D<T> {
     }
 }
 
-impl<T: Datum> Op for Conv2D<T> {
+impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
@@ -198,7 +198,7 @@ impl<T: Datum> Op for Conv2D<T> {
     }
 }
 
-impl<T: Datum> InferenceRulesOp for Conv2D<T> {
+impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

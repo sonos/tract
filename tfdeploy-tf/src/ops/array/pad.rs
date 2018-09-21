@@ -1,13 +1,14 @@
 use std::marker::PhantomData;
 
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
+use num::Zero;
 
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 use tfdeploy::TfdResult;
 
 #[derive(Debug, Clone, Default, new)]
-pub struct Pad<T: Datum> {
+pub struct Pad<T: Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
@@ -16,7 +17,7 @@ pub fn pad(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     Ok(boxed_new!(Pad(dtype)()))
 }
 
-impl<T: Datum> Pad<T> {
+impl<T: Datum + Zero> Pad<T> {
     fn compute(
         input: &ArrayViewD<T>,
         paddings: ArrayView2<i32>,
@@ -53,7 +54,7 @@ impl<T: Datum> Pad<T> {
 
 impl<T> Op for Pad<T>
 where
-    T: Datum,
+    T: Datum+Zero,
 {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
@@ -81,7 +82,7 @@ where
     }
 }
 
-impl<T: Datum> InferenceRulesOp for Pad<T> {
+impl<T: Datum+Zero> InferenceRulesOp for Pad<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
