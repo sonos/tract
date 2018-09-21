@@ -1,5 +1,8 @@
 macro_rules! element_map {
-    ($Name:ident, [$($type:tt),*], $expr:expr) => {
+    ($Name:ident, [$($type:ty),*], $expr:expr) => {
+        element_map!($Name, match $($type => $expr),*);
+    };
+    ($Name:ident, match $($type:ty => $expr:expr),*) => {
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name($crate::analyser::TypeFact);
 
@@ -12,7 +15,7 @@ macro_rules! element_map {
                 use $crate::tensor::Datum;
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
-                $(if dt == $type::datum_type() {
+                $(if dt == <$type>::datum_type() {
                     let mut a = a.into_array::<$type>()?;
                     a.mapv_inplace($expr);
                     return Ok(tvec![a.into()])
@@ -56,7 +59,10 @@ macro_rules! element_map {
 }
 
 macro_rules! element_bin {
-    ($Name:ident, [$($type:tt),*], $expr:expr) => {
+    ($Name:ident, [$($type:ty),*], $expr:expr) => {
+        element_bin!($Name, match $($type => $expr),*);
+    };
+    ($Name:ident, match $($type:ty => $expr:expr),*) => {
         #[derive(Debug, Clone, Default, new)]
         pub struct $Name($crate::analyser::TypeFact);
 
@@ -70,7 +76,7 @@ macro_rules! element_bin {
                 use $crate::tensor::Datum;
                 let (a, b) = args_2!(inputs);
                 if let Some(dt) = a.datum_type().common_super_type(b.datum_type()) {
-                    $(if dt == $type::datum_type() {
+                    $(if dt == <$type>::datum_type() {
                         let a = a.cast_to_array::<$type>()?.into_owned();
                         let b = b.cast_to_array::<$type>()?;
                         return Ok(tvec![$expr(a, b.view()).into()])

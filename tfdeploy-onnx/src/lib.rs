@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
@@ -8,6 +9,7 @@ extern crate log;
 extern crate ndarray;
 extern crate num;
 extern crate protobuf;
+#[allow(unused_imports)]
 #[macro_use]
 extern crate tfdeploy;
 
