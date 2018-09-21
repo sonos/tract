@@ -6,15 +6,6 @@ pub struct Source {
     fact: TensorFact,
 }
 
-impl Source {
-    pub fn build(node: &::tf::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        let dt = node.get_attr_datum_type("dtype")?;
-        Ok(Box::new(Source {
-            fact: TensorFact::dt(dt.into()),
-        }))
-    }
-}
-
 impl Op for Source {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {

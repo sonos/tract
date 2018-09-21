@@ -10,7 +10,7 @@ categories = [ "science" ]
 autobenches = false
 
 [workspace]
-members = [ "conform", "exs/inceptionv3", "cli" ]
+members = [ "conform", "exs/inceptionv3", "cli", "tfdeploy-tf" ]
 
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
@@ -50,6 +50,3 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 criterion = "0.2"
 simplelog = "0.5"
 
-[[bench]]
-name = "conv"
-harness = false

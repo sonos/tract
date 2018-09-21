@@ -163,6 +163,7 @@ macro_rules! args_1 {
     }};
 }
 
+#[macro_export]
 macro_rules! args_2 {
     ($inputs:expr) => {{
         if $inputs.len() != 2 {
@@ -174,6 +175,7 @@ macro_rules! args_2 {
 }
 
 #[allow(unused_macros)]
+#[macro_export]
 macro_rules! args_3 {
     ($inputs:expr) => {{
         if $inputs.len() != 3 {
@@ -188,6 +190,8 @@ macro_rules! args_3 {
     }};
 }
 
+#[allow(unused_macros)]
+#[macro_export]
 macro_rules! args_4 {
     ($inputs:expr) => {{
         if $inputs.len() != 4 {
@@ -203,6 +207,8 @@ macro_rules! args_4 {
     }};
 }
 
+#[allow(unused_macros)]
+#[macro_export]
 macro_rules! boxed_new {
     ($op:tt($dtype:expr)($($arg:expr),*)) => { {
         use $crate::DatumType;
@@ -217,6 +223,7 @@ macro_rules! boxed_new {
 
 /// Asserts that forward inference results work as expected.
 #[allow(unused_macros)]
+#[macro_export]
 macro_rules! assert_forward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(
@@ -229,6 +236,7 @@ macro_rules! assert_forward {
 
 /// Asserts that backward inference results work as expected.
 #[allow(unused_macros)]
+#[macro_export]
 macro_rules! assert_backward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(

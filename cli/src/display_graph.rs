@@ -5,7 +5,7 @@ use std::fs;
 use tfdeploy;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::model::OutletId;
-use tfdeploy::tf::tfpb::graph::GraphDef;
+use tfdeploy_tf::tfpb::graph::GraphDef;
 use tfdeploy::TfdFrom;
 use CliResult;
 use OutputParameters;

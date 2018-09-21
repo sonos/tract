@@ -4,13 +4,14 @@
 //!
 //! ## Example
 //!
-//! ```
+//! ```text
+//! FIXME
 //! # extern crate tfdeploy;
 //! # extern crate ndarray;
 //! # fn main() {
 //! use tfdeploy::*;
 //!
-//! // load a simple model that just add 3 to each input component
+//! // build a simple model that just add 3 to each input component
 //! let model = tfdeploy::tf::for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // "input" and "output" are tensorflow graph node names.
@@ -84,7 +85,6 @@ pub mod streaming;
 pub mod tensor;
 
 pub mod onnx;
-pub mod tf;
 
 pub use errors::*;
 

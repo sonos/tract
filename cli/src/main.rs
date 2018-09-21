@@ -19,6 +19,7 @@ extern crate terminal_size;
 extern crate textwrap;
 #[macro_use]
 extern crate tfdeploy;
+extern crate tfdeploy_tf;
 extern crate atty;
 extern crate libc;
 extern crate pbr;
@@ -39,7 +40,7 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::TensorFact;
-use tfdeploy::tf::tfpb;
+use tfdeploy_tf::tfpb;
 use tfdeploy::*;
 use tfdeploy::{DatumType, Tensor};
 use tfpb::graph::GraphDef;
@@ -218,8 +219,8 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<Parameters> {
         let name = matches.value_of("model").unwrap();
-        let graph = tfdeploy::tf::model::graphdef_for_path(&name)?;
-        let tfd_model = tfdeploy::tf::for_path(&name)?;
+        let graph = tfdeploy_tf::model::graphdef_for_path(&name)?;
+        let tfd_model = tfdeploy_tf::for_path(&name)?;
 
         #[cfg(feature = "tensorflow")]
         let tf_model = conform::tf::for_path(&name)?;

@@ -26,7 +26,7 @@ pub mod source;
 pub mod unimpl;
 
 pub mod prelude {
-    pub use super::Op;
+    pub use super::{Op, InferenceOp};
     pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
     pub use dim::TDim;
     pub use model::TVec;

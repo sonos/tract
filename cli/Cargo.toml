@@ -20,6 +20,7 @@ simplelog = "0.5"
 terminal_size = "0.1.7"
 textwrap = "0.10"
 tfdeploy = { path = "..", features=["serialize"] }
+tfdeploy-tf = { path = "../tfdeploy-tf" }
 pbr = "1.0"
 atty = "0.2"
 itertools = "0.7"

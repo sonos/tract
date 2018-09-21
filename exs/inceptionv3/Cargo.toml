@@ -10,6 +10,7 @@ ndarray = "*"
 mio_httpc = "*"
 tar = "*"
 tfdeploy = { path = "../.." }
+tfdeploy-tf = { path = "../../tfdeploy-tf" }
 conform = { path = "../../conform", optional=true }
 
 [dev-dependencies]

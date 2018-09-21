@@ -5,13 +5,14 @@ extern crate ndarray;
 extern crate proptest;
 extern crate tensorflow;
 extern crate tfdeploy;
+extern crate tfdeploy_tf;
 
 use conform::*;
 use ndarray::prelude::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tfdeploy::tf::tfpb;
-use tfdeploy::tf::tfpb::types::DataType::DT_INT32;
+use tfdeploy_tf::tfpb;
+use tfdeploy_tf::tfpb::types::DataType::DT_INT32;
 use tfdeploy::Tensor as TfdTensor;
 
 fn strat() -> BoxedStrategy<(usize, Vec<TfdTensor>)> {

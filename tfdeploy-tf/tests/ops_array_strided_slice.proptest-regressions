@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+xs 107361357 1164668208 2912097219 625237657 # shrinks to (ref i, ref b, ref e, ref s, ref masks) = (I32([0] shape=[1], strides=[1], layout=C | F (0x3)), I32([0] shape=[1], strides=[1], layout=C | F (0x3)), I32([0] shape=[1], strides=[1], layout=C | F (0x3)), I32([1] shape=[1], strides=[1], layout=C | F (0x3)), (0, 0, 0, 0, 0))
+xs 1302349240 1330784477 4100086807 922471477 # shrinks to (ref i, ref b, ref e, ref s, ref masks) = (I32([[[0, 1, 2]]] shape=[1, 1, 3], strides=[3, 3, 1], layout=C (0x1)), I32([-1, -1, -1] shape=[3], strides=[1], layout=C | F (0x3)), I32([0, 0, -2] shape=[3], strides=[1], layout=C | F (0x3)), I32([1, 1, -1] shape=[3], strides=[1], layout=C | F (0x3)), (0, 3, 0, 0, 1))

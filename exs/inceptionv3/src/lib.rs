@@ -8,6 +8,7 @@ extern crate tar;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate tfdeploy;
+extern crate tfdeploy_tf;
 
 use std::{fs, io, path};
 
@@ -96,7 +97,7 @@ mod tests {
     #[test]
     fn grace_hopper_is_a_military_uniform() {
         download();
-        let tfd = ::tfdeploy::tf::for_path(inception_v3_2016_08_28_frozen()).unwrap();
+        let tfd = ::tfdeploy_tf::for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan =
             ::tfdeploy::SimplePlan::new(&tfd, &["input"], &["InceptionV3/Predictions/Reshape_1"])
                 .unwrap();
