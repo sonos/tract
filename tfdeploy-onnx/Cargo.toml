@@ -11,3 +11,12 @@ ndarray = { version = "0.12" }
 num = "0.2"
 protobuf = "2.0"
 tfdeploy = { path=".." }
+
+[dev-dependencies]
+colored = "1.6"
+git2 = "0.7"
+tempdir = "0.3"
+
+[[test]]
+name = "onnx_backend_ref"
+harness = false

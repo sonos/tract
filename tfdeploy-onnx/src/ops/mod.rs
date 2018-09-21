@@ -1,6 +1,9 @@
 use tfdeploy::ops::prelude::*;
 use pb::NodeProto;
 
+mod math;
+mod nn;
+
 pub type OpRegister = HashMap<&'static str, fn(&NodeProto) -> TfdResult<Box<Op>>>;
 
 pub struct OpBuilder(OpRegister);
@@ -9,10 +12,10 @@ impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
         reg.insert("Const", konst);
-        /*
-        array::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
+        /*
+        array::register_all_ops(&mut reg);
         reg.insert("Placeholder", ::ops::source::Source::build);
         */
         OpBuilder(reg)

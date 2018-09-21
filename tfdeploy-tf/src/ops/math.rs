@@ -21,6 +21,6 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 pub fn add_n(pb: &NodeDef) -> TfdResult<Box<tfdops::Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_attr_int("N")?;
-    Ok(Box::new(tfdops::math::add_n::AddN::new(dtype, n)))
+    Ok(Box::new(tfdops::math::add_n::AddN::new(dtype.into(), Some(n))))
 }
 

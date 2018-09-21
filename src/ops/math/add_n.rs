@@ -3,10 +3,10 @@ use ops::prelude::*;
 use tensor::Datum;
 use TfdResult;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, Default)]
 pub struct AddN {
-    datum: DatumType,
-    n: usize,
+    datum: TypeFact,
+    n: Option<usize>,
 }
 
 impl AddN {
@@ -23,8 +23,13 @@ impl AddN {
 impl Op for AddN {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        if inputs.len() != self.n || self.n == 0 {
-            bail!("Expected {} inputs", self.n);
+        if let Some(n) = self.n {
+            if inputs.len() != n {
+                bail!("Expected {} inputs, got {}", n, inputs.len());
+            }
+        }
+        if inputs.len() == 0 {
+            bail!("Expected some inputs, got {}", inputs.len());
         }
         let dt = inputs[0].datum_type();
         match dt {
@@ -40,7 +45,7 @@ impl Op for AddN {
 
     /// Returns a new streaming buffer for the operation.
     fn new_buffer(&self) -> Box<OpBuffer> {
-        Box::new(QueuesBuffer::new(self.n))
+        Box::new(QueuesBuffer::new(self.n.expect("FIXME: revamp streaming state")))
     }
 
     fn step(
@@ -74,23 +79,28 @@ impl InferenceRulesOp for AddN {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) {
-        let n = self.n as isize;
+        if let Some(n) = self.n {
+            solver.equals(&inputs.len, n as isize);
+        }
         solver
-            .equals(&inputs.len, n)
             .equals(&outputs.len, 1)
             .equals(&inputs[0].datum_type, &outputs[0].datum_type)
-            .equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())
             .equals(&inputs[0].rank, &outputs[0].rank)
-            .equals_all((0..self.n).map(|i| inputs[i].rank.bex()).collect())
-            .given(&inputs[0].rank, move |solver, rank: isize| {
-                for dim in 0..(rank as usize) {
-                    solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
-                    solver.equals_all(
-                        (0..n as usize)
-                            .map(|i| inputs[i].shape[dim].bex())
-                            .collect(),
-                    );
-                }
+            .given(&inputs.len, move |solver, n| {
+                let n = n as usize;
+                solver
+                .equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())
+                .equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())
+                .given(&inputs[0].rank, move |solver, rank: isize| {
+                    for dim in 0..(rank as usize) {
+                        solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
+                        solver.equals_all(
+                            (0..n as usize)
+                                .map(|i| inputs[i].shape[dim].bex())
+                                .collect(),
+                        );
+                    }
+                });
             });
     }
 }

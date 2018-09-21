@@ -3,6 +3,17 @@ use ops::prelude::*;
 pub mod add_n;
 
 element_map!(Abs, [f32, i32], |x| x.abs());
+
+element_map!(Ceil, [f32, f64], |x| x.ceil());
+element_map!(Floor, [f32, f64], |x| x.floor());
+
+element_map!(Cos, [f32, f64], |x| x.cos());
+element_map!(Sin, [f32, f64], |x| x.sin());
+element_map!(Tan, [f32, f64], |x| x.tan());
+element_map!(Acos, [f32, f64], |x| x.acos());
+element_map!(Asin, [f32, f64], |x| x.asin());
+element_map!(Atan, [f32, f64], |x| x.atan());
+
 element_map!(Neg, [i32, f32, TDim], |x| -x);
 
 element_bin!(Add, [i32, f32, TDim], |mut a, b| { a += &b; a });

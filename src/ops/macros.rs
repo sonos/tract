@@ -1,7 +1,7 @@
 macro_rules! element_map {
     ($Name:ident, [$($type:tt),*], $expr:expr) => {
-        #[derive(Debug, Clone, new)]
-        pub struct $Name($crate::tensor::DatumType);
+        #[derive(Debug, Clone, new, Default)]
+        pub struct $Name($crate::analyser::TypeFact);
 
         impl ::ops::Op for $Name {
             /// Evaluates the operation given the input tensors.
@@ -57,8 +57,8 @@ macro_rules! element_map {
 
 macro_rules! element_bin {
     ($Name:ident, [$($type:tt),*], $expr:expr) => {
-        #[derive(Debug, Clone, new)]
-        pub struct $Name($crate::tensor::DatumType);
+        #[derive(Debug, Clone, Default, new)]
+        pub struct $Name($crate::analyser::TypeFact);
 
         impl $Name {
             /// Evaluates the operation given the input tensors.
