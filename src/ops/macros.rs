@@ -60,30 +60,21 @@ macro_rules! element_bin {
         #[derive(Debug, Clone, Default, new)]
         pub struct $Name($crate::analyser::TypeFact);
 
-        impl $Name {
-            /// Evaluates the operation given the input tensors.
-            fn eval_t<T: ::tensor::Datum>(
-                &self,
-                mut inputs: TVec<$crate::ops::Value>,
-            ) -> $crate::TfdResult<TVec<$crate::ops::Value>> {
-                let (a, b) = args_2!(inputs);
-                let a = a.cast_to_array::<T>()?.into_owned();
-                let b = b.cast_to_array::<T>()?;
-                Ok(tvec![$expr(a, b.view()).into()])
-            }
-        }
-
         impl Op for $Name {
 
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
-                inputs: TVec<$crate::ops::Value>,
+                mut inputs: TVec<$crate::ops::Value>,
             ) -> $crate::TfdResult<TVec<$crate::ops::Value>> {
                 use $crate::tensor::Datum;
-                if let Some(dt) = inputs[0].datum_type().common_super_type(inputs[1].datum_type()) {
+                let (a, b) = args_2!(inputs);
+                if let Some(dt) = a.datum_type().common_super_type(b.datum_type()) {
                     $(if dt == $type::datum_type() {
-                        return self.eval_t::<$type>(inputs);
+                        let a = a.cast_to_array::<$type>()?.into_owned();
+                        let b = b.cast_to_array::<$type>()?;
+                        return Ok(tvec![$expr(a, b.view()).into()])
+
                     })*
                     bail!("{} not covering {:?}", stringify!($Name), dt)
                 } else {

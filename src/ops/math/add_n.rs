@@ -11,7 +11,7 @@ pub struct AddN {
 
 impl AddN {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T:Datum>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval_t<T:Datum+::std::ops::AddAssign>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let mut result = inputs.pop().unwrap().into_array::<T>()?; // checked, non empty
         for input in &inputs[0..] {
             result += &input.to_array_view()?;
@@ -39,7 +39,7 @@ impl Op for AddN {
             DatumType::I32 => self.eval_t::<i32>(inputs),
             DatumType::TDim => self.eval_t::<TDim>(inputs),
             DatumType::U8 => self.eval_t::<u8>(inputs),
-            DatumType::String => bail!("AddN do not support Strings")
+            _ => bail!("AddN do not support {:?}", dt)
         }
     }
 

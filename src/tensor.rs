@@ -10,6 +10,7 @@ use serde::ser::{Serialize, Serializer};
 #[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DatumType {
+    Bool,
     U8,
     I8,
     I32,
@@ -22,6 +23,7 @@ pub enum DatumType {
 impl DatumType {
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
+            DatumType::Bool => &[DatumType::Bool],
             DatumType::U8 => &[DatumType::U8, DatumType::I32],
             DatumType::I8 => &[DatumType::I8, DatumType::I32],
             DatumType::I32 => &[DatumType::I32, DatumType::TDim],
@@ -90,14 +92,6 @@ pub trait Datum:
     + fmt::Debug
     + Default
     + 'static
-    + ::num::Zero
-    + ::num::One
-    + ::ndarray::LinalgScalar
-    + ::std::ops::AddAssign
-    + ::std::ops::MulAssign
-    + ::std::ops::DivAssign
-    + ::std::ops::SubAssign
-    + ::std::ops::RemAssign
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
@@ -110,6 +104,7 @@ pub trait Datum:
 
 #[derive(Clone, PartialEq)]
 pub enum Tensor {
+    Bool(ArrayD<bool>),
     F32(ArrayD<f32>),
     F64(ArrayD<f64>),
     I32(ArrayD<i32>),
@@ -132,6 +127,7 @@ impl Tensor {
 
     pub fn shape(&self) -> &[usize] {
         match self {
+            &Tensor::Bool(ref it) => it.shape(),
             &Tensor::F64(ref it) => it.shape(),
             &Tensor::F32(ref it) => it.shape(),
             &Tensor::I32(ref it) => it.shape(),
@@ -156,6 +152,7 @@ impl Tensor {
 
     pub fn datum_type(&self) -> DatumType {
         match self {
+            &Tensor::Bool(_) => DatumType::Bool,
             &Tensor::F64(_) => DatumType::F64,
             &Tensor::F32(_) => DatumType::F32,
             &Tensor::I32(_) => DatumType::I32,
@@ -168,6 +165,7 @@ impl Tensor {
 
     pub fn axis_chunks(&self, axis: usize, size: usize) -> TfdResult<Vec<Tensor>> {
         match self {
+            &Tensor::Bool(_) => self.axis_chunks_t::<bool>(axis, size),
             &Tensor::F64(_) => self.axis_chunks_t::<f64>(axis, size),
             &Tensor::F32(_) => self.axis_chunks_t::<f32>(axis, size),
             &Tensor::I8(_) => self.axis_chunks_t::<i8>(axis, size),
@@ -260,6 +258,7 @@ impl Tensor {
     fn to_f32(&self) -> Tensor {
         match self {
             &Tensor::I32(ref data) => Tensor::F32(data.map(|&a| a as f32)),
+            &Tensor::Bool(ref data) => Tensor::F32(data.map(|&a| a as u32 as f32)),
             &Tensor::F32(_) => self.clone(),
             _ => unimplemented!("missing type"),
         }
@@ -321,6 +320,7 @@ impl Serialize for Tensor {
 
         use Tensor::*;
         match self {
+            Bool(m) => serialize_inner!(bool, m),
             F32(m) => serialize_inner!(f32, m),
             F64(m) => serialize_inner!(f64, m),
             I32(m) => serialize_inner!(i32, m),
@@ -438,6 +438,7 @@ impl TryInto<i32> for TDim {
     }
 }
 
+tensor!(bool, Bool, as_bool, as_bools, take_bools, bools, []);
 tensor!(f64, F64, as_f64, as_f64s, take_f64s, f64s, []);
 tensor!(f32, F32, as_f32, as_f32s, take_f32s, f32s, []);
 tensor!(
