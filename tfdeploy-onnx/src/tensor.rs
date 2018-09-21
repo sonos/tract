@@ -5,6 +5,7 @@ impl TfdFrom<TensorProto_DataType> for DatumType {
     fn tfd_from(t: &TensorProto_DataType) -> TfdResult<DatumType> {
         use self::TensorProto_DataType::*;
         match t {
+            &BOOL => Ok(DatumType::Bool),
             &UINT8 => Ok(DatumType::U8),
             &INT8 => Ok(DatumType::I8),
             &INT32 => Ok(DatumType::I32),
@@ -58,12 +59,16 @@ impl TfdFrom<TensorProto> for Tensor {
             unsafe {
                 match dt {
                     DatumType::F32 => Tensor::from_raw::<f32>(&*shape, t.get_raw_data()),
-                    _ => unimplemented!("FIXME"),
+                    DatumType::Bool => {
+                        Ok(Tensor::from_raw::<u8>(&*shape, t.get_raw_data())?.into_array::<u8>()?.mapv(|x| x != 0).into())
+                    }
+                    _ => unimplemented!("FIXME, tensor loading"),
                 }
             }
         } else {
             match dt {
                 DatumType::F32 => Tensor::f32s(&*shape, t.get_float_data()),
+                DatumType::Bool => Ok(Tensor::i32s(&*shape, t.get_int32_data())?.into_array::<i32>()?.mapv(|x| x != 0).into()),
                 _ => unimplemented!("FIXME"),
             }
         }

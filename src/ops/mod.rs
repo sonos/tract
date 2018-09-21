@@ -19,6 +19,7 @@ mod macros;
 #[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;
+pub mod logic;
 pub mod math;
 pub mod nn;
 pub mod sink;

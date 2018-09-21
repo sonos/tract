@@ -1,6 +1,7 @@
 use tfdeploy::ops::prelude::*;
 use pb::NodeProto;
 
+mod logic;
 mod math;
 mod nn;
 
@@ -12,6 +13,7 @@ impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
         reg.insert("Const", konst);
+        logic::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
         /*
