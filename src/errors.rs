@@ -1,11 +1,13 @@
 //! error_chain generated types
 
 error_chain!{
+    types {
+        TfdError, TfdErrorKind, TfdResultExt, TfdResult;
+    }
     foreign_links {
         Image(::image::ImageError) #[cfg(features="image_ops")];
         Io(::std::io::Error);
         NdarrayShape(::ndarray::ShapeError);
-        Protobuf(::protobuf::ProtobufError);
         StrUtf8(::std::str::Utf8Error);
         NumParseInt(::std::num::ParseIntError);
     }

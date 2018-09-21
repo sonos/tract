@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+xs 148868935 2656186008 3130107924 971183391 # shrinks to (ref i, ref k, ref strides) = (F32([[[[0.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1)), F32([[[[0.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1)), (1, 1)), valid = false

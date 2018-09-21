@@ -1,4 +1,3 @@
-use bincode;
 #[cfg(feature = "tensorflow")]
 use conform;
 use ndarray;
@@ -12,13 +11,12 @@ error_chain! {
     }
     links {
         Conform(conform::Error, conform::ErrorKind) #[cfg(feature="tensorflow")];
-        Tfdeploy(tfdeploy::Error, tfdeploy::ErrorKind);
+        Tfdeploy(tfdeploy::TfdError, tfdeploy::TfdErrorKind);
     }
 
     foreign_links {
         Io(::std::io::Error);
         NumParseInt(::std::num::ParseIntError);
-        Bincode(bincode::Error);
         SerdeJson(serde_json::Error);
         NdarrayShape(ndarray::ShapeError);
     }

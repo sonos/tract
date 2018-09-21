@@ -1,45 +1,39 @@
 //! TensorFlow Ops
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::mem;
 use std::ops::{Index, IndexMut};
-#[cfg(feature = "serialize")]
-use std::result::Result as StdResult;
 use std::sync::Arc;
 
 use analyser::prelude::*;
 use dim::TDim;
 use model::TVec;
-use ops::nn::local_patch::{DataFormat, Padding};
-use {DatumType, Result, Tensor};
+use {Tensor, TfdResult};
 
 use downcast_rs::Downcast;
 use objekt;
-#[cfg(feature = "serialize")]
-use serde::ser::{Serialize, Serializer};
 
 #[macro_use]
 mod macros;
 
-mod array;
-mod cast;
 #[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;
-mod math;
+pub mod math;
 pub mod nn;
-mod unimpl;
+pub mod sink;
+pub mod source;
+pub mod unimpl;
 
 pub mod prelude {
-    pub use super::{Attr, Op, OpRegister};
+    pub use super::{InferenceOp, Op};
     pub use super::{OpBuffer, QueuesBuffer, StepValue, Stream, StreamInfo, Value};
     pub use dim::TDim;
     pub use model::TVec;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{Datum, DatumType, Tensor};
-    pub use Result;
+    pub use TfdResult;
 }
 
 #[derive(Debug, Clone)]
@@ -98,13 +92,13 @@ impl Value {
         self.clone()
     }
 
-    pub fn into_array<'a, D: ::tensor::Datum>(self) -> ::Result<::ndarray::ArrayD<D>> {
+    pub fn into_array<'a, D: ::tensor::Datum>(self) -> TfdResult<::ndarray::ArrayD<D>> {
         self.into_tensor().into_array()
     }
 
     pub fn to_array_view<'a, D: ::tensor::Datum>(
         &'a self,
-    ) -> ::Result<::ndarray::ArrayViewD<'a, D>> {
+    ) -> TfdResult<::ndarray::ArrayViewD<'a, D>> {
         self.as_tensor().to_array_view()
     }
 }
@@ -214,29 +208,10 @@ impl StepValue {
     }
 }
 
-// TODO(liautaud): Find a more generic way to do this.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
-#[derive(Debug, Clone)]
-pub enum Attr {
-    I64(i64),
-    Usize(usize),
-    DatumType(DatumType),
-    DataFormat(DataFormat),
-    Padding(Padding),
-    Tensor(Tensor),
-    UsizeVec(Vec<usize>),
-    IsizeVec(Vec<isize>),
-}
-
 /// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!()
-    }
-
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         bail!("Unexpected call on op.eval(). {:?}", self)
     }
 
@@ -270,7 +245,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         &self,
         _inputs: TVec<StepValue>,
         _buffer: &mut Box<OpBuffer>,
-    ) -> Result<Option<TVec<Value>>> {
+    ) -> TfdResult<Option<TVec<Value>>> {
         bail!("Streaming is not available for operator {:?}", self)
     }
 
@@ -285,7 +260,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let (infered_inputs, infered_outputs) = self.infer(inputs, outputs)?;
 
         if infered_inputs.iter().all(|i| i.value.is_concrete()) {
@@ -309,7 +284,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         &self,
         _inputs: TVec<TensorFact>,
         _outputs: TVec<TensorFact>,
-    ) -> Result<Option<Box<Op>>> {
+    ) -> TfdResult<Option<Box<Op>>> {
         Ok(None)
     }
 
@@ -327,46 +302,10 @@ pub trait InferenceOp {
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
-    ) -> Result<(TVec<TensorFact>, TVec<TensorFact>)>;
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)>;
 }
 
 clone_trait_object!(Op);
-
-#[cfg(feature = "serialize")]
-impl Serialize for Op {
-    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.get_attributes().serialize(serializer)
-    }
-}
-
-pub type OpRegister = HashMap<&'static str, fn(&::tfpb::node_def::NodeDef) -> Result<Box<Op>>>;
-
-pub struct OpBuilder(OpRegister);
-
-impl OpBuilder {
-    pub fn new() -> OpBuilder {
-        let mut reg = OpRegister::new();
-        array::register_all_ops(&mut reg);
-        cast::register_all_ops(&mut reg);
-        konst::register_all_ops(&mut reg);
-        math::register_all_ops(&mut reg);
-        nn::register_all_ops(&mut reg);
-        OpBuilder(reg)
-    }
-
-    pub fn build(&self, pb: &::tfpb::node_def::NodeDef) -> Result<Box<Op>> {
-        match self.0.get(pb.get_op()) {
-            Some(builder) => builder(pb),
-            None => Ok(Box::new(unimpl::UnimplementedOp(
-                pb.get_op().to_string(),
-                pb.to_owned(),
-            ))),
-        }
-    }
-}
 
 /// A streaming buffer for a Tensorflow operation.
 ///
@@ -399,7 +338,7 @@ impl QueuesBuffer {
     }
 
     /// Appends a new Value to each queue in the buffer.
-    pub fn append(&mut self, views: TVec<StepValue>) -> Result<()> {
+    pub fn append(&mut self, views: TVec<StepValue>) -> TfdResult<()> {
         if views.len() > self.0.len() {
             bail!("There are more input Values than queues in the buffer.");
         }
@@ -435,5 +374,33 @@ impl Index<usize> for QueuesBuffer {
 impl IndexMut<usize> for QueuesBuffer {
     fn index_mut(&mut self, index: usize) -> &mut VecDeque<Value> {
         &mut self.0[index]
+    }
+}
+
+pub fn arr4<A, V, U, T>(xs: &[V]) -> ::ndarray::Array4<A>
+where
+    V: ::ndarray::FixedInitializer<Elem = U> + Clone,
+    U: ::ndarray::FixedInitializer<Elem = T> + Clone,
+    T: ::ndarray::FixedInitializer<Elem = A> + Clone,
+    A: Clone,
+{
+    use ndarray::*;
+    let mut xs = xs.to_vec();
+    let dim = Ix4(xs.len(), V::len(), U::len(), T::len());
+    let ptr = xs.as_mut_ptr();
+    let len = xs.len();
+    let cap = xs.capacity();
+    let expand_len = len * V::len() * U::len() * T::len();
+    ::std::mem::forget(xs);
+    unsafe {
+        let v = if ::std::mem::size_of::<A>() == 0 {
+            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_len)
+        } else if V::len() == 0 || U::len() == 0 || T::len() == 0 {
+            Vec::new()
+        } else {
+            let expand_cap = cap * V::len() * U::len() * T::len();
+            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_cap)
+        };
+        ArrayBase::from_shape_vec_unchecked(dim, v)
     }
 }

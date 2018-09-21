@@ -14,7 +14,7 @@ pub mod types;
 pub mod prelude {
     pub use super::types::*;
     pub use super::Analyser;
-    use Result;
+    use TfdResult;
 }
 
 pub use self::prelude::*;
@@ -26,45 +26,7 @@ pub mod helpers;
 #[macro_use]
 pub mod rules;
 
-/// Tries to auto-detect the names of the input nodes.
-pub fn detect_inputs(model: &Model) -> Result<Vec<&Node>> {
-    let inputs: Vec<_> = model
-        .nodes()
-        .iter()
-        .filter(|n| n.op_name == "Placeholder")
-        .inspect(|n| info!("Autodetected input node: {} {:?}.", n.id, n.name))
-        .collect();
-
-    Ok(inputs)
-}
-
-/// Tries to auto-detect the name of the output node.
-pub fn detect_output(model: &Model) -> Result<Option<&Node>> {
-    // We search for the only node in the graph with no successor.
-    let mut succs: Vec<Vec<usize>> = vec![Vec::new(); model.nodes().len()];
-
-    for node in model.nodes() {
-        for &link in &node.inputs {
-            succs[link.node].push(node.id);
-        }
-    }
-
-    for (i, s) in succs.iter().enumerate() {
-        if s.len() == 0 {
-            info!(
-                "Autodetected output node: {} {:?}.",
-                i,
-                model.nodes()[i].name
-            );
-            return Ok(Some(&model.nodes[i]));
-        }
-    }
-
-    Ok(None)
-}
-
 /// An edge of the analysed graph, annotated by a fact.
-#[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
     pub id: usize,
@@ -97,7 +59,7 @@ impl Analyser {
     /// The output argument is used to infer an execution plan for the graph.
     /// Changing it won't alter the correctness of the analysis, but it might
     /// take much longer to complete.
-    pub fn new(model: &Model, output: &str) -> Result<Analyser> {
+    pub fn new(model: &Model, output: &str) -> TfdResult<Analyser> {
         let nodes: Vec<Node> = model.nodes().iter().cloned().collect();
         let mut edges = vec![];
         let mut prev_edges = vec![Vec::new(); model.nodes().len() + 1];
@@ -150,13 +112,13 @@ impl Analyser {
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn hint(&mut self, node: &str, fact: &TensorFact) -> Result<()> {
+    pub fn hint(&mut self, node: &str, fact: &TensorFact) -> TfdResult<()> {
         let id = self.model.node_by_name(node)?.id;
         self.hint_by_id(id, fact)
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn hint_by_id(&mut self, node: usize, fact: &TensorFact) -> Result<()> {
+    pub fn hint_by_id(&mut self, node: usize, fact: &TensorFact) -> TfdResult<()> {
         debug!(
             "Hint for node \"{}\": {:?}",
             self.model.nodes()[node].name,
@@ -174,23 +136,23 @@ impl Analyser {
     }
 
     /// Adds an user-provided tensor fact to the analyser.
-    pub fn with_hint(mut self, node: &str, fact: &TensorFact) -> Result<Analyser> {
+    pub fn with_hint(mut self, node: &str, fact: &TensorFact) -> TfdResult<Analyser> {
         let node = self.model.node_by_name(node)?.id;
         self.hint_by_id(node, fact)?;
         Ok(self)
     }
 
     /// Returns an analysable model.
-    pub fn to_model(&self) -> Result<Model> {
+    pub fn to_model(&self) -> TfdResult<Model> {
         self.to_model_with_finalize(false)
     }
 
     /// Returns a final model.
-    pub fn finalize_model(&self) -> Result<Model> {
+    pub fn finalize_model(&self) -> TfdResult<Model> {
         self.to_model_with_finalize(true)
     }
 
-    fn to_model_with_finalize(&self, prep: bool) -> Result<Model> {
+    fn to_model_with_finalize(&self, prep: bool) -> TfdResult<Model> {
         let mut nodes_by_name = HashMap::with_capacity(self.plan.len());
         let mut nodes_mapped = HashMap::with_capacity(self.plan.len());
         let mut nodes = Vec::with_capacity(self.plan.len());
@@ -218,39 +180,36 @@ impl Analyser {
             });
         }
 
-        Ok(Model(Arc::new(RawModel {
-            nodes,
-            nodes_by_name,
-        })))
+        Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
     }
 
     /// Returns a model from the analyser.
-    pub fn to_optimized_model(&mut self) -> Result<Model> {
+    pub fn to_optimized_model(&mut self) -> TfdResult<Model> {
         self.analyse()?;
         constants::propagate_constants(self)?;
         self.to_model()
     }
 
     /// Returns a final model from the analyser.
-    pub fn optimize_and_finalize_model(&mut self) -> Result<Model> {
+    pub fn optimize_and_finalize_model(&mut self) -> TfdResult<Model> {
         self.analyse()?;
         constants::propagate_constants(self)?;
         self.finalize_model()
     }
 
     /// Computes a new execution plan for the graph.
-    pub fn reset_plan(&mut self) -> Result<()> {
+    pub fn reset_plan(&mut self) -> TfdResult<()> {
         self.plan = eval_order_for_nodes(&self.nodes, &[self.output])?;
         Ok(())
     }
 
     /// Detaches the constant nodes and edges from the given graph.
-    pub fn propagate_constants(&mut self) -> Result<()> {
+    pub fn propagate_constants(&mut self) -> TfdResult<()> {
         constants::propagate_constants(self)
     }
 
     /// Runs the entire analysis at once.
-    pub fn analyse(&mut self) -> Result<()> {
+    pub fn analyse(&mut self) -> TfdResult<()> {
         let mut nodes_to_visit: BTreeSet<usize> = (0..self.nodes.len()).collect();
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
@@ -279,7 +238,7 @@ impl Analyser {
         }
     }
 
-    pub fn facts(&self, node: usize) -> Result<(TVec<TensorFact>, TVec<TensorFact>)> {
+    pub fn facts(&self, node: usize) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let node = &self.nodes[node];
 
         let inputs: TVec<_> = self.prev_edges[node.id]
@@ -307,7 +266,7 @@ impl Analyser {
 
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
-    fn step(&mut self, node: usize) -> Result<Vec<usize>> {
+    fn step(&mut self, node: usize) -> TfdResult<Vec<usize>> {
         let node = &self.nodes[node];
         debug!(
             "Starting step for {} {} ({})",

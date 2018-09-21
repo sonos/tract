@@ -1,8 +1,8 @@
 use bit_set;
 use model::Node;
-use Result;
+use TfdResult;
 
-pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> Result<Vec<usize>> {
+pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> TfdResult<Vec<usize>> {
     let mut order: Vec<usize> = Vec::new();
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut needed = bit_set::BitSet::with_capacity(nodes.len());

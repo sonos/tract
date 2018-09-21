@@ -10,7 +10,7 @@ categories = [ "science" ]
 autobenches = false
 
 [workspace]
-members = [ "conform", "exs/inceptionv3", "cli" ]
+members = [ "conform", "exs/inceptionv3", "cli", "tfdeploy-tf", "tfdeploy-onnx" ]
 
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }
@@ -31,7 +31,6 @@ ndarray = { version = "0.12" }
 num = "0.2"
 objekt = "0.1.1"
 openblas-src = { version = "0.6", optional = true, default-features=false, features = [ "static" ] }
-protobuf = "2.0"
 serde = { "version" = "1.0", optional = true }
 serde_derive = { "version" = "1.0", optional = true }
 smallvec = "0.6"
@@ -49,6 +48,3 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 criterion = "0.2"
 simplelog = "0.5"
 
-[[bench]]
-name = "conv"
-harness = false

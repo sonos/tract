@@ -2,6 +2,7 @@
 use dim::TDim;
 use ndarray::prelude::*;
 use std::fmt;
+use TfdResult;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
@@ -19,32 +20,6 @@ pub enum DatumType {
 }
 
 impl DatumType {
-    pub fn from_pb(t: &::tfpb::types::DataType) -> ::Result<DatumType> {
-        use tfpb::types::DataType as Tfpb;
-        match t {
-            &Tfpb::DT_UINT8 => Ok(DatumType::U8),
-            &Tfpb::DT_INT8 => Ok(DatumType::I8),
-            &Tfpb::DT_INT32 => Ok(DatumType::I32),
-            &Tfpb::DT_FLOAT => Ok(DatumType::F32),
-            &Tfpb::DT_DOUBLE => Ok(DatumType::F64),
-            &Tfpb::DT_STRING => Ok(DatumType::String),
-            _ => Err(format!("Unknown DatumType {:?}", t))?,
-        }
-    }
-
-    pub fn to_pb(&self) -> ::Result<::tfpb::types::DataType> {
-        use tfpb::types::DataType as Tfpb;
-        match self {
-            DatumType::U8 => Ok(Tfpb::DT_UINT8),
-            DatumType::I8 => Ok(Tfpb::DT_INT8),
-            DatumType::I32 => Ok(Tfpb::DT_INT32),
-            DatumType::F32 => Ok(Tfpb::DT_FLOAT),
-            DatumType::F64 => Ok(Tfpb::DT_DOUBLE),
-            DatumType::String => Ok(Tfpb::DT_STRING),
-            DatumType::TDim => bail!("Dimension is not translatable in protobuf"),
-        }
-    }
-
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
             DatumType::U8 => &[DatumType::U8, DatumType::I32],
@@ -127,9 +102,9 @@ pub trait Datum:
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
 
-    fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>>;
-    fn tensor_cast_to_array(m: &Tensor) -> ::Result<MaybeOwnedArray<Self>>;
-    fn tensor_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>>;
+    fn tensor_into_array(m: Tensor) -> TfdResult<ArrayD<Self>>;
+    fn tensor_cast_to_array(m: &Tensor) -> TfdResult<MaybeOwnedArray<Self>>;
+    fn tensor_to_view(m: &Tensor) -> TfdResult<ArrayViewD<Self>>;
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
 }
 
@@ -145,76 +120,14 @@ pub enum Tensor {
 }
 
 impl Tensor {
-    pub fn from_pb(t: &::tfpb::tensor::TensorProto) -> ::Result<Tensor> {
-        use tfpb::types::DataType::*;
-        let dtype = t.get_dtype();
-        let shape = t.get_tensor_shape();
-        let dims = shape
-            .get_dim()
-            .iter()
-            .map(|d| d.size as usize)
-            .collect::<Vec<_>>();
-        let rank = dims.len();
-        let content = t.get_tensor_content();
-        let mat: Tensor = if content.len() != 0 {
-            match dtype {
-                DT_FLOAT => Self::from_content::<f32, u8>(dims, content)?.into(),
-                DT_INT32 => Self::from_content::<i32, u8>(dims, content)?.into(),
-                _ => unimplemented!("missing type"),
-            }
-        } else {
-            match dtype {
-                DT_INT32 => Self::from_content::<i32, i32>(dims, t.get_int_val())?.into(),
-                DT_FLOAT => Self::from_content::<f32, f32>(dims, t.get_float_val())?.into(),
-                _ => unimplemented!("missing type"),
-            }
-        };
-        assert_eq!(rank, mat.shape().len());
-        Ok(mat)
-    }
-
-    pub fn from_content<T: Copy, V: Copy>(dims: Vec<usize>, content: &[V]) -> ::Result<ArrayD<T>> {
-        let value: &[T] = unsafe {
+    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TfdResult<Tensor> {
+        let value: Vec<T> = 
             ::std::slice::from_raw_parts(
                 content.as_ptr() as _,
-                content.len() * ::std::mem::size_of::<V>() / ::std::mem::size_of::<T>(),
+                content.len() / ::std::mem::size_of::<T>(),
             )
-        };
-        Ok(Array1::from_iter(value.iter().cloned())
-            .into_shape(dims)?
-            .into_dyn())
-    }
-
-    pub fn to_pb(&self) -> ::Result<::tfpb::tensor::TensorProto> {
-        let mut shape = ::tfpb::tensor_shape::TensorShapeProto::new();
-        let dims = self
-            .shape()
-            .iter()
-            .map(|d| {
-                let mut dim = ::tfpb::tensor_shape::TensorShapeProto_Dim::new();
-                dim.size = *d as _;
-                dim
-            })
-            .collect();
-        shape.set_dim(::protobuf::RepeatedField::from_vec(dims));
-        let mut tensor = ::tfpb::tensor::TensorProto::new();
-        tensor.set_tensor_shape(shape);
-        match self {
-            &Tensor::F32(ref it) => {
-                tensor.set_dtype(DatumType::F32.to_pb()?);
-                tensor.set_float_val(it.iter().cloned().collect());
-            }
-            &Tensor::F64(ref it) => {
-                tensor.set_dtype(DatumType::F64.to_pb()?);
-                tensor.set_double_val(it.iter().cloned().collect());
-            }
-            &Tensor::I32(ref it) => {
-                tensor.set_dtype(DatumType::I32.to_pb()?);
-                tensor.set_int_val(it.iter().cloned().collect());
-            }
-            _ => unimplemented!("missing type"),
-        }
-        Ok(tensor)
+        .to_vec();
+        Ok(ArrayD::from_shape_vec(shape, value)?.into())
     }
 
     pub fn shape(&self) -> &[usize] {
@@ -253,7 +166,7 @@ impl Tensor {
         }
     }
 
-    pub fn axis_chunks(&self, axis: usize, size: usize) -> ::Result<Vec<Tensor>> {
+    pub fn axis_chunks(&self, axis: usize, size: usize) -> TfdResult<Vec<Tensor>> {
         match self {
             &Tensor::F64(_) => self.axis_chunks_t::<f64>(axis, size),
             &Tensor::F32(_) => self.axis_chunks_t::<f32>(axis, size),
@@ -265,7 +178,7 @@ impl Tensor {
         }
     }
 
-    pub fn axis_chunks_t<T: Datum>(&self, axis: usize, size: usize) -> ::Result<Vec<Tensor>> {
+    pub fn axis_chunks_t<T: Datum>(&self, axis: usize, size: usize) -> TfdResult<Vec<Tensor>> {
         let array = T::tensor_to_view(self)?;
         Ok(array
             .axis_chunks_iter(Axis(axis), size)
@@ -273,7 +186,7 @@ impl Tensor {
             .collect())
     }
 
-    pub fn partial_dump(&self, _single_line: bool) -> ::Result<String> {
+    pub fn partial_dump(&self, _single_line: bool) -> TfdResult<String> {
         if self.shape().len() == 0 {
             Ok(match self {
                 &Tensor::I32(ref a) => format!(
@@ -369,15 +282,15 @@ impl Tensor {
                 .all(|(&a, &b)| (b - a).abs() <= margin)
     }
 
-    pub fn into_array<D: Datum>(self) -> ::Result<ArrayD<D>> {
+    pub fn into_array<D: Datum>(self) -> TfdResult<ArrayD<D>> {
         <D as Datum>::tensor_into_array(self)
     }
 
-    pub fn to_array_view<'a, D: Datum>(&'a self) -> ::Result<ArrayViewD<'a, D>> {
+    pub fn to_array_view<'a, D: Datum>(&'a self) -> TfdResult<ArrayViewD<'a, D>> {
         <D as Datum>::tensor_to_view(self)
     }
 
-    pub fn cast_to_array<D: Datum>(&self) -> ::Result<MaybeOwnedArray<D>> {
+    pub fn cast_to_array<D: Datum>(&self) -> TfdResult<MaybeOwnedArray<D>> {
         <D as Datum>::tensor_cast_to_array(self)
     }
 }
@@ -462,7 +375,7 @@ macro_rules! tensor {
                 }
             }
 
-            pub fn $make(shape: &[usize], values: &[$t]) -> ::Result<Tensor> {
+            pub fn $make(shape: &[usize], values: &[$t]) -> TfdResult<Tensor> {
                 Ok(Array::from_shape_vec(shape, values.to_vec())?.into())
             }
         }
@@ -476,12 +389,12 @@ macro_rules! tensor {
                 DatumType::$v
             }
 
-            fn tensor_into_array(m: Tensor) -> ::Result<ArrayD<Self>> {
+            fn tensor_into_array(m: Tensor) -> TfdResult<ArrayD<Self>> {
                 let _ = Self::tensor_to_view(&m)?;
                 Ok(m.$take().unwrap())
             }
 
-            fn tensor_to_view(m: &Tensor) -> ::Result<ArrayViewD<Self>> {
+            fn tensor_to_view(m: &Tensor) -> TfdResult<ArrayViewD<Self>> {
                 m.$as()
                     .map(|m| m.view())
                     .ok_or_else(|| format!("Type mismatch unwrapping to {}: {:?}", Self::name(), &m).into())
@@ -491,14 +404,14 @@ macro_rules! tensor {
                 Tensor::$v(m)
             }
 
-            fn tensor_cast_to_array(m: &Tensor) -> ::Result<MaybeOwnedArray<$t>> {
+            fn tensor_cast_to_array(m: &Tensor) -> TfdResult<MaybeOwnedArray<$t>> {
                 match m.datum_type() {
                     DatumType::$v => Ok(MaybeOwnedArray::View($t::tensor_to_view(m)?)),
                     $(DatumType::$cast => {
                         let src = m.$as_cast().ok_or("Wrong type")?;
                         let vec:Vec<$t> = src.iter()
                             .map(|x| TryInto::<$t>::try_into(*x))
-                            .collect::<::Result<Vec<_>>>()?;
+                            .collect::<TfdResult<Vec<_>>>()?;
                         let dst:ArrayD<$t> = ArrayD::from_shape_vec(src.shape(), vec)?;
                         Ok(MaybeOwnedArray::Owned(dst))
                     })*
@@ -510,17 +423,17 @@ macro_rules! tensor {
 }
 
 trait TryInto<D: Datum> {
-    fn try_into(self) -> ::Result<D>;
+    fn try_into(self) -> TfdResult<D>;
 }
 
 impl<A: Into<D>, D: Datum> TryInto<D> for A {
-    fn try_into(self) -> ::Result<D> {
+    fn try_into(self) -> TfdResult<D> {
         Ok(self.into())
     }
 }
 
 impl TryInto<i32> for TDim {
-    fn try_into(self) -> ::Result<i32> {
+    fn try_into(self) -> TfdResult<i32> {
         self.to_integer().map(|i| i as i32)
     }
 }

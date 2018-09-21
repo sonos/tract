@@ -5,5 +5,5 @@ It was cumbersome for all kind of reasons, specifically it was breaking docs.rs
 generation. So let's put the handful of generated files in git.
 
 ```
-cargo run && cp target/generated/*.rs ../src/tfpb
+cargo run && cp target/generated/*.rs ../src/tf/tfpb
 ```

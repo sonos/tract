@@ -1,4 +1,3 @@
-extern crate bincode;
 #[macro_use]
 extern crate clap;
 extern crate colored;
@@ -20,6 +19,7 @@ extern crate terminal_size;
 extern crate textwrap;
 #[macro_use]
 extern crate tfdeploy;
+extern crate tfdeploy_tf;
 extern crate atty;
 extern crate libc;
 extern crate pbr;
@@ -40,7 +40,7 @@ use insideout::InsideOut;
 use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::TensorFact;
-use tfdeploy::tfpb;
+use tfdeploy_tf::tfpb;
 use tfdeploy::*;
 use tfdeploy::{DatumType, Tensor};
 use tfpb::graph::GraphDef;
@@ -219,8 +219,8 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<Parameters> {
         let name = matches.value_of("model").unwrap();
-        let graph = tfdeploy::tf::graphdef_for_path(&name)?;
-        let tfd_model = tfdeploy::tf::for_path(&name)?;
+        let graph = tfdeploy_tf::model::graphdef_for_path(&name)?;
+        let tfd_model = tfdeploy_tf::for_path(&name)?;
 
         #[cfg(feature = "tensorflow")]
         let tf_model = conform::tf::for_path(&name)?;
@@ -233,7 +233,7 @@ impl Parameters {
             }
             inputs.map(|s| s.to_string()).collect()
         } else {
-            tfdeploy::analyser::detect_inputs(&tfd_model)?
+            tfd_model.guess_inputs()
                 .iter()
                 .map(|n| n.name.to_string())
                 .collect()
@@ -245,7 +245,7 @@ impl Parameters {
             }
             outputs.map(|s| s.to_string()).collect()
         } else {
-            tfdeploy::analyser::detect_output(&tfd_model)?
+            tfd_model.guess_outputs()
                 .iter()
                 .map(|n| n.name.to_string())
                 .collect()
@@ -307,7 +307,7 @@ impl InputParameters {
                 "S" => Ok(None),           // Streaming dimension.
                 _ => Ok(Some(s.parse()?)), // Regular dimension.
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<TfdResult<Vec<_>>>()?;
 
         if shape.iter().filter(|o| o.is_none()).count() > 1 {
             bail!("The <size> argument doesn't support more than one streaming dimension.");

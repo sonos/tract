@@ -20,8 +20,8 @@ pub fn handle(params: Parameters) -> CliResult<()> {
 
     info!(
         "Ending size of the graph: approx. {:?} bytes for {:?} nodes.",
-        format!("{:?}", optimized.nodes).into_bytes().len(),
-        optimized.nodes.len()
+        format!("{:?}", optimized.nodes()).into_bytes().len(),
+        optimized.nodes().len()
     );
 
     Ok(())

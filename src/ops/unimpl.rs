@@ -2,17 +2,12 @@ use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 #[derive(Debug, Clone)]
-pub struct UnimplementedOp(pub String, pub ::tfpb::node_def::NodeDef);
+pub struct UnimplementedOp(pub String, pub String);
 
 impl Op for UnimplementedOp {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> Result<TVec<Value>> {
-        Err(format!("unimplemented operation: {}", self.0))?
-    }
-
-    /// Returns the attributes of the operation and their values.
-    fn get_attributes(&self) -> HashMap<&'static str, Attr> {
-        hashmap!{} // FIXME
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        Err(format!("unimplemented operation: {} {:?}", self.0, self.1))?
     }
 }
 

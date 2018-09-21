@@ -12,3 +12,4 @@ protobuf = "2.0"
 simplelog = "0.5"
 tensorflow = "0"
 tfdeploy = { path = ".." }
+tfdeploy-tf = { path = "../tfdeploy-tf" }

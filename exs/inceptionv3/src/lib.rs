@@ -8,10 +8,11 @@ extern crate tar;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate tfdeploy;
+extern crate tfdeploy_tf;
 
 use std::{fs, io, path};
 
-use tfdeploy::errors::*;
+use tfdeploy::TfdResult;
 
 fn download() {
     use std::sync::{Once, ONCE_INIT};
@@ -20,7 +21,7 @@ fn download() {
     START.call_once(|| do_download().unwrap());
 }
 
-fn do_download() -> Result<()> {
+fn do_download() -> TfdResult<()> {
     let dir = inception_v3_2016_08_28();
     let dir_partial = dir.clone().with_extension("partial");
     if fs::metadata(&dir).is_ok() {
@@ -96,7 +97,7 @@ mod tests {
     #[test]
     fn grace_hopper_is_a_military_uniform() {
         download();
-        let tfd = ::tfdeploy::tf::for_path(inception_v3_2016_08_28_frozen()).unwrap();
+        let tfd = ::tfdeploy_tf::for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan =
             ::tfdeploy::SimplePlan::new(&tfd, &["input"], &["InceptionV3/Predictions/Reshape_1"])
                 .unwrap();

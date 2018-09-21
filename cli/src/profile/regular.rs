@@ -87,7 +87,7 @@ pub fn handle(
 
     // Then execute the plan while profiling each step.
     for &n in &plan.order {
-        let node = &model.nodes[n];
+        let node = &model.nodes()[n];
 
         if atty::is(atty::Stream::Stdout) {
             progress.inc();

@@ -5,13 +5,22 @@ use std::fs;
 use tfdeploy;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::model::OutletId;
-use tfdeploy::tfpb::graph::GraphDef;
+use tfdeploy_tf::tfpb::graph::GraphDef;
+use tfdeploy::TfdFrom;
 use CliResult;
 use OutputParameters;
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "OutletId")]
+struct OutletIdDef {
+    node: usize,
+    slot: usize,
+}
 
 #[derive(Debug, Serialize)]
 pub struct Edge {
     pub id: usize,
+    #[serde(with = "OutletIdDef")]
     pub src: OutletId,
     pub dst_node_id: usize,
     pub dst_node_input: usize,
@@ -201,7 +210,7 @@ impl DisplayGraph {
             if let Some(node_id) = index_to_graph_def.get(gnode.get_name()) {
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", tfdeploy::tensor::Tensor::from_pb(a.1.get_tensor())?)
+                        format!("{:?}", tfdeploy::tensor::Tensor::tfd_from(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };

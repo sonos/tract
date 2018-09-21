@@ -1,47 +1,29 @@
 use ops::prelude::*;
 
-mod add_n;
+pub mod add_n;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("Abs", abs);
-    reg.insert("Add", add);
-    reg.insert("AddN", add_n::add_n);
-    reg.insert("BiasAdd", add);
-    reg.insert("Div", div);
-    reg.insert("FloorMod", rem);
-    reg.insert("Mul", mul);
-    reg.insert("Neg", neg);
-    reg.insert("Rsqrt", rsqrt);
-    reg.insert("Sub", sub);
-    reg.insert("Tanh", tanh);
-}
+element_map!(Abs, [f32, i32], |x| x.abs());
 
-element_map_signed!(Abs, abs, |x| x.abs());
-element_map_float!(Rsqrt, rsqrt, |x| x.sqrt().recip());
-element_map_float!(Tanh, tanh, |x| x.tanh());
+element_map!(Ceil, [f32, f64], |x| x.ceil());
+element_map!(Floor, [f32, f64], |x| x.floor());
 
-element_map!(Neg, neg, [i32, f32, TDim], |x| -x);
+element_map!(Cos, [f32, f64], |x| x.cos());
+element_map!(Sin, [f32, f64], |x| x.sin());
+element_map!(Tan, [f32, f64], |x| x.tan());
+element_map!(Acos, [f32, f64], |x| x.acos());
+element_map!(Asin, [f32, f64], |x| x.asin());
+element_map!(Atan, [f32, f64], |x| x.atan());
 
-element_bin!(Add, add, [i32, f32, TDim], |mut a, b| {
-    a += &b;
-    a
-});
-element_bin!(Div, div, [i32, f32, TDim], |mut a, b| {
-    a /= &b;
-    a
-});
-element_bin!(Mul, mul, [i32, f32, TDim], |mut a, b| {
-    a *= &b;
-    a
-});
-element_bin!(Sub, sub, [i32, f32, TDim], |mut a, b| {
-    a -= &b;
-    a
-});
-element_bin!(Rem, rem, [i32, f32, TDim], |mut a, b| {
-    a %= &b;
-    a
-});
+element_map!(Neg, [i32, f32, TDim], |x| -x);
+
+element_bin!(Add, [i32, f32, TDim], |mut a, b| { a += &b; a });
+element_bin!(Sub, [i32, f32, TDim], |mut a, b| { a -= &b; a });
+element_bin!(Mul, [i32, f32, TDim], |mut a, b| { a *= &b; a });
+element_bin!(Div, [i32, f32, TDim], |mut a, b| { a /= &b; a });
+element_bin!(Rem, [i32, f32, TDim], |mut a, b| { a %= &b; a });
+
+element_map!(Rsqrt, [f32], |x| x.sqrt().recip());
+element_map!(Tanh, [f32], |x| x.tanh());
 
 #[cfg(test)]
 mod tests {

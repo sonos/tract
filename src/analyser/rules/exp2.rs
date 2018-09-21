@@ -1,6 +1,6 @@
 use std::fmt;
 use std::marker::PhantomData;
-use Result;
+use TfdResult;
 
 use analyser::prelude::*;
 use analyser::rules::prelude::*;
@@ -12,10 +12,10 @@ use tensor::{DatumType, Tensor};
 /// An expression that can be compared by the solver.
 pub trait TExp<T>: fmt::Debug {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<T>;
+    fn get(&self, context: &Context) -> TfdResult<T>;
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> Result<bool>;
+    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool>;
 
     /// Returns the paths that the expression depends on.
     fn get_paths(&self) -> Vec<&Path>;
@@ -24,12 +24,12 @@ pub trait TExp<T>: fmt::Debug {
 pub struct Exp<T>(Box<TExp<T>>);
 impl<T: Fact + Output + Clone + fmt::Debug> TExp<T> for Exp<T> {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<T> {
+    fn get(&self, context: &Context) -> TfdResult<T> {
         self.0.get(context)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> Result<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
         self.0.set(context, value)
     }
 
@@ -62,14 +62,14 @@ where
     T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<T> {
+    fn get(&self, context: &Context) -> TfdResult<T> {
         self.0
             .iter()
             .try_fold(T::zero(), |acc, it| Ok(acc + it.0.get(context)?))
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> Result<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
         let mut sum = T::zero();
         let mut misses = vec![];
 
@@ -125,12 +125,12 @@ where
     T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, _: &Context) -> Result<T> {
+    fn get(&self, _: &Context) -> TfdResult<T> {
         Ok(self.0.clone())
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, _: &mut Context, value: T) -> Result<bool> {
+    fn set(&self, _: &mut Context, value: T) -> TfdResult<bool> {
         if self.0 == value {
             Ok(false)
         } else {
@@ -171,12 +171,12 @@ where
     T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<T> {
+    fn get(&self, context: &Context) -> TfdResult<T> {
         context.get(&self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> Result<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
@@ -209,13 +209,13 @@ where
     T: Fact + Output + Zero + Mul<isize, Output = T> + Div<isize, Output = T> + Clone,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<T> {
+    fn get(&self, context: &Context) -> TfdResult<T> {
         let v: T = self.1.get(context)?;
         Ok(v * self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> Result<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
         let k = &self.0;
         let m = value;
 
@@ -262,7 +262,7 @@ pub struct IntoDimExp(Exp<IntFact>);
 
 impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> Result<DimFact> {
+    fn get(&self, context: &Context) -> TfdResult<DimFact> {
         use dim::ToDim;
         let v: IntFact = self.0.get(context)?;
         match v {
@@ -272,7 +272,7 @@ impl TExp<DimFact> for IntoDimExp {
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: DimFact) -> Result<bool> {
+    fn set(&self, context: &mut Context, value: DimFact) -> TfdResult<bool> {
         if let Some(concrete) = value.concretize() {
             if let Ok(int) = concrete.to_integer() {
                 return self.0.set(context, GenericFact::Only(int));

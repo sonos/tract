@@ -4,13 +4,14 @@
 //!
 //! ## Example
 //!
-//! ```
+//! ```text
+//! FIXME
 //! # extern crate tfdeploy;
 //! # extern crate ndarray;
 //! # fn main() {
 //! use tfdeploy::*;
 //!
-//! // load a simple model that just add 3 to each input component
+//! // build a simple model that just add 3 to each input component
 //! let model = tfdeploy::tf::for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // "input" and "output" are tensorflow graph node names.
@@ -51,7 +52,6 @@ extern crate log;
 #[macro_use]
 extern crate ndarray;
 extern crate num;
-extern crate protobuf;
 #[macro_use]
 extern crate maplit;
 #[macro_use]
@@ -76,11 +76,11 @@ pub mod analyser;
 pub mod dim;
 pub mod errors;
 pub mod model;
+#[macro_use]
 pub mod ops;
 pub mod plan;
 pub mod streaming;
 pub mod tensor;
-pub mod tfpb;
 
 pub use errors::*;
 
@@ -90,11 +90,24 @@ pub use model::{Model, Node, TVec};
 pub use plan::SimplePlan;
 pub use tensor::{DatumType, Tensor};
 
-pub use model::tf;
 
 #[cfg(test)]
 #[allow(dead_code)]
 fn setup_test_logger() {
     use simplelog::{Config, LevelFilter, TermLogger};
     TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+}
+
+pub trait TfdFrom<Tf>: Sized {
+    fn tfd_from(t:&Tf) -> TfdResult<Self>;
+}
+
+pub trait ToTfd<Tfd>: Sized {
+    fn to_tfd(&self) -> TfdResult<Tfd>;
+}
+
+impl<PB, Tfd: TfdFrom<PB>> ::ToTfd<Tfd> for PB {
+    fn to_tfd(&self) -> TfdResult<Tfd> {
+        Tfd::tfd_from(self)
+    }
 }

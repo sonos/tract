@@ -40,6 +40,7 @@ pub mod prelude {
     pub use analyser::prelude::*;
     pub use dim::{TDim, ToDim};
     pub use model::TVec;
+    pub use TfdResult;
 }
 
 use self::prelude::*;
@@ -59,7 +60,7 @@ impl<O: InferenceRulesOp> ::ops::InferenceOp for O {
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
-    ) -> ::Result<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let inputs_proxy = TensorsProxy::new(vec![0].into());
         let outputs_proxy = TensorsProxy::new(vec![1].into());
 

@@ -12,6 +12,7 @@ extern crate simplelog;
 extern crate tensorflow;
 #[macro_use]
 extern crate tfdeploy;
+extern crate tfdeploy_tf;
 
 error_chain! {
     foreign_links {
@@ -36,7 +37,7 @@ pub mod tf;
 pub use protobuf::Message;
 
 use tfdeploy::analyser::TensorFact;
-use tfdeploy::tfpb;
+use tfdeploy_tf::tfpb;
 use tfdeploy::TVec;
 use tfdeploy::Tensor as TfdTensor;
 use tfpb::tensor_shape::TensorShapeProto;
@@ -83,7 +84,7 @@ pub fn compare<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let model = tfdeploy::tf::for_reader(&*graph)?;
+    let model = tfdeploy_tf::for_reader(&*graph)?;
     let plan = tfdeploy::SimplePlan::new(
         &model,
         &inputs
@@ -123,7 +124,7 @@ pub fn infer<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let model = tfdeploy::tf::for_reader(&*graph)?;
+    let model = tfdeploy_tf::for_reader(&*graph)?;
     let plan = tfdeploy::SimplePlan::new(
         &model,
         &inputs
