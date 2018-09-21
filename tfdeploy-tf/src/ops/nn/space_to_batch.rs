@@ -1,3 +1,4 @@
+use num::Zero;
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 use ndarray::prelude::*;
@@ -19,9 +20,9 @@ struct SpaceToBatchBuffer<T: Datum> {
 impl<T: Datum> OpBuffer for SpaceToBatchBuffer<T> {}
 
 #[derive(Debug, Clone, new)]
-pub struct SpaceToBatch<T: Datum>(PhantomData<T>);
+pub struct SpaceToBatch<T: Datum + Zero>(PhantomData<T>);
 
-impl<T: Datum> Op for SpaceToBatch<T> {
+impl<T: Datum + Zero> Op for SpaceToBatch<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
@@ -142,7 +143,7 @@ impl<T: Datum> Op for SpaceToBatch<T> {
     }
 }
 
-impl<T: Datum> InferenceRulesOp for SpaceToBatch<T> {
+impl<T: Datum + Zero> InferenceRulesOp for SpaceToBatch<T> {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

@@ -7,6 +7,7 @@ use ToTensorflow;
 impl TfdFrom<DataType> for DatumType {
     fn tfd_from(t: &DataType) -> TfdResult<DatumType> {
         match t {
+            &DataType::DT_BOOL => Ok(DatumType::Bool),
             &DataType::DT_UINT8 => Ok(DatumType::U8),
             &DataType::DT_INT8 => Ok(DatumType::I8),
             &DataType::DT_INT32 => Ok(DatumType::I32),
@@ -21,6 +22,7 @@ impl TfdFrom<DataType> for DatumType {
 impl ToTensorflow<DataType> for DatumType {
     fn to_tf(&self) -> TfdResult<DataType> {
         match self {
+            DatumType::Bool => Ok(DataType::DT_BOOL),
             DatumType::U8 => Ok(DataType::DT_UINT8),
             DatumType::I8 => Ok(DataType::DT_INT8),
             DatumType::I32 => Ok(DataType::DT_INT32),

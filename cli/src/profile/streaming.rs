@@ -176,6 +176,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     }
 
     let chunks = match data {
+        Tensor::Bool(m) => split_inner!(Tensor::Bool, m),
         Tensor::F64(m) => split_inner!(Tensor::F64, m),
         Tensor::F32(m) => split_inner!(Tensor::F32, m),
         Tensor::I32(m) => split_inner!(Tensor::I32, m),
