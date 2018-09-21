@@ -1,5 +1,5 @@
-use onnx::pb::*;
-use *;
+use tfdeploy::*;
+use pb::*;
 
 impl TfdFrom<TensorProto_DataType> for DatumType {
     fn tfd_from(t: &TensorProto_DataType) -> Result<DatumType> {

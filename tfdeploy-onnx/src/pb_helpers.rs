@@ -1,7 +1,5 @@
-use super::pb::*;
-use insideout::InsideOut;
-use Result;
-use ToTfd;
+use pb::*;
+use tfdeploy::*;
 
 impl NodeProto {
     fn get_attr_opt(&self, name: &str) -> Result<Option<&AttributeProto>> {
@@ -29,13 +27,14 @@ impl NodeProto {
         Ok(Some(attr))
     }
 
-    fn get_attr_opt_tensor(&self, name: &str) -> Result<Option<::tensor::Tensor>> {
-        self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)?
-            .map(|attr| attr.get_t().to_tfd())
-            .inside_out()
+    fn get_attr_opt_tensor(&self, name: &str) -> Result<Option<Tensor>> {
+        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)? {
+            Some(attr) => Ok(Some(attr.get_t().to_tfd()?)),
+            None => Ok(None)
+        }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> ::Result<::tensor::Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> Result<Tensor> {
         Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected tensor attribute '{}'",

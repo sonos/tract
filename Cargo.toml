@@ -10,7 +10,7 @@ categories = [ "science" ]
 autobenches = false
 
 [workspace]
-members = [ "conform", "exs/inceptionv3", "cli", "tfdeploy-tf" ]
+members = [ "conform", "exs/inceptionv3", "cli", "tfdeploy-tf", "tfdeploy-onnx" ]
 
 [badges]
 travis-ci = { repository = "kali/tensorflow-deploy-rust" }

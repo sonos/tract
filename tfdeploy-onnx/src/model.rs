@@ -2,12 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::{fs, path};
 
-use model::{Model, Node, OutletId, RawModel};
-use Result;
+use tfdeploy::model::{Model, Node, OutletId, RawModel};
+use tfdeploy::*;
 
-use onnx::pb;
-use TfdFrom;
-use ToTfd;
+use pb;
 
 /// Load a ONNX protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Model> {
@@ -43,7 +41,7 @@ impl TfdFrom<pb::ModelProto> for Model {
             let source = Node {
                 id: nodes.len(),
                 name: input.get_name().to_owned(),
-                op: Box::new(::ops::source::Source::new(fact)),
+                op: Box::new(::tfdeploy::ops::source::Source::new(fact)),
                 op_name: "Source".to_string(),
                 inputs: vec![],
             };
@@ -93,7 +91,7 @@ impl TfdFrom<pb::ModelProto> for Model {
             let source = Node {
                 id: nodes.len(),
                 name: format!("Sink-{}", output.get_name()),
-                op: Box::new(::ops::sink::Sink::new(fact)),
+                op: Box::new(::tfdeploy::ops::sink::Sink::new(fact)),
                 op_name: "Sink".to_string(),
                 inputs: vec![outlet],
             };
@@ -106,10 +104,9 @@ impl TfdFrom<pb::ModelProto> for Model {
 
 #[cfg(test)]
 mod tests {
-    use onnx::pb::TensorProto;
     use std::{fs, path};
-    use ToTfd;
-    use {TVec, Tensor};
+    use super::*;
+    use pb::TensorProto;
 
     pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
         let mut vec = tvec!();
@@ -144,10 +141,10 @@ mod tests {
     #[ignore]
     fn onnx_abs() {
         let root = path::PathBuf::from("test_abs");
-        let model = ::onnx::for_path(root.join("model.onnx")).unwrap();
+        let model = for_path(root.join("model.onnx")).unwrap();
         let inputs: Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
         let outputs: Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
-        let plan = ::SimplePlan::new(&model, &*inputs, &*outputs).unwrap();
+        let plan = SimplePlan::new(&model, &*inputs, &*outputs).unwrap();
         for d in fs::read_dir(root).unwrap() {
             let d = d.unwrap();
             if d.metadata().unwrap().is_dir()

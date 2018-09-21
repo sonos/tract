@@ -84,8 +84,6 @@ pub mod plan;
 pub mod streaming;
 pub mod tensor;
 
-pub mod onnx;
-
 pub use errors::*;
 
 pub use analyser::TensorFact;

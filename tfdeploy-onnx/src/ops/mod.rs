@@ -1,5 +1,5 @@
-use ops::prelude::*;
-use onnx::pb::NodeProto;
+use tfdeploy::ops::prelude::*;
+use pb::NodeProto;
 
 pub type OpRegister = HashMap<&'static str, fn(&NodeProto) -> Result<Box<Op>>>;
 
@@ -21,7 +21,7 @@ impl OpBuilder {
     pub fn build(&self, pb: &NodeProto) -> Result<Box<Op>> {
         match self.0.get(pb.get_op_type()) {
             Some(builder) => builder(pb),
-            None => Ok(Box::new(::ops::unimpl::UnimplementedOp(
+            None => Ok(Box::new(::tfdeploy::ops::unimpl::UnimplementedOp(
                 pb.get_op_type().to_string(),
                 format!("{:?}", pb)
             ))),
@@ -31,5 +31,5 @@ impl OpBuilder {
 
 fn konst(node: &NodeProto) -> Result<Box<Op>> {
     let v = node.get_attr_tensor("value")?;
-    Ok(Box::new(::ops::konst::Const::for_tensor(v)))
+    Ok(Box::new(::tfdeploy::ops::konst::Const::for_tensor(v)))
 }
