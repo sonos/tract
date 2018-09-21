@@ -1,8 +1,6 @@
 use tfdeploy::ops as tfdops;
 
-use pb::NodeProto;
 use ops::OpRegister;
-use tfdeploy::TfdResult;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Add", |_| Ok(Box::new(tfdops::math::Add::default())));
@@ -22,6 +20,14 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Acos", |_| Ok(Box::new(tfdops::math::Acos::default())));
     reg.insert("Asin", |_| Ok(Box::new(tfdops::math::Asin::default())));
     reg.insert("Atan", |_| Ok(Box::new(tfdops::math::Atan::default())));
+
+    reg.insert("Exp", |_| Ok(Box::new(tfdops::math::Exp::default())));
+    reg.insert("Ln", |_| Ok(Box::new(tfdops::math::Ln::default())));
+    reg.insert("Sqrt", |_| Ok(Box::new(tfdops::math::Sqrt::default())));
+    reg.insert("Rsqrt", |_| Ok(Box::new(tfdops::math::Rsqrt::default())));
+    reg.insert("Recip", |_| Ok(Box::new(tfdops::math::Recip::default())));
+
+    reg.insert("Pow", |_| Ok(Box::new(tfdops::math::Pow::default())));
 
     reg.insert("Tanh", |_| Ok(Box::new(tfdops::math::Tanh::default())));
 }
