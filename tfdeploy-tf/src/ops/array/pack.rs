@@ -58,7 +58,7 @@ impl InferenceRulesOp for Pack {
         let n = self.n;
         let axis = self.axis;
         solver
-            .equals(&inputs.len, n as isize)
+            .equals(&inputs.len, n as i64)
             .equals(&outputs.len, 1)
             .equals(&outputs[0].rank, inputs[0].rank.bex() + 1)
             .equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())
@@ -70,12 +70,12 @@ impl InferenceRulesOp for Pack {
                     }
                 },
             )
-            .given(&inputs[0].rank, move |solver, r: isize| {
+            .given(&inputs[0].rank, move |solver, r| {
                 (0..r as usize).for_each(|d| {
                     solver.equals_all((0..n).map(|i| inputs[i].shape[d].bex()).collect());
                 })
             })
-            .given(&inputs[0].rank, move |solver, r: isize| {
+            .given(&inputs[0].rank, move |solver, r| {
                 (0..axis).for_each(|d| {
                     solver.equals(&outputs[0].shape[d], &inputs[0].shape[d]);
                 });

@@ -368,7 +368,7 @@ pub type DimFact = GenericFact<TDim>;
 /// Partial information about a value.
 pub type ValueFact = GenericFact<Tensor>;
 
-pub type IntFact = GenericFact<isize>;
+pub type IntFact = GenericFact<i64>;
 
 impl<T> Zero for GenericFact<T>
 where

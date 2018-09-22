@@ -39,11 +39,14 @@ pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
 
 enum TensorHolder {
     Bool(Tensor<bool>),
-    F64(Tensor<f64>),
     F32(Tensor<f32>),
-    I32(Tensor<i32>),
+    F64(Tensor<f64>),
     U8(Tensor<u8>),
+    U16(Tensor<u16>),
     I8(Tensor<i8>),
+    I16(Tensor<i16>),
+    I32(Tensor<i32>),
+    I64(Tensor<i64>),
     String(Tensor<i8>),
 }
 
@@ -60,11 +63,14 @@ impl From<TfdTensor> for TensorHolder {
     fn from(m: TfdTensor) -> TensorHolder {
         match m {
             TfdTensor::Bool(a) => TensorHolder::Bool(Self::to_tensor(a)),
-            TfdTensor::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
             TfdTensor::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
-            TfdTensor::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
-            TfdTensor::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
+            TfdTensor::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
             TfdTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
+            TfdTensor::I16(a) => TensorHolder::I16(Self::to_tensor(a)),
+            TfdTensor::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
+            TfdTensor::I64(a) => TensorHolder::I64(Self::to_tensor(a)),
+            TfdTensor::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
+            TfdTensor::U16(a) => TensorHolder::U16(Self::to_tensor(a)),
             TfdTensor::TDim(dims) => {
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
                     let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
@@ -100,11 +106,14 @@ impl Tensorflow {
             let op = self.graph.operation_by_name_required(t.0)?;
             match t.1 {
                 TensorHolder::Bool(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::U8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::U16(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::I8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I16(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I64(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::String(ref it) => step.add_feed(&op, 0, &it),
             }
         }
@@ -137,11 +146,14 @@ impl Tensorflow {
             let op = self.graph.operation_by_name_required(t.0)?;
             match t.1 {
                 TensorHolder::Bool(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::U8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::U16(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::I8(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I16(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::I64(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
+                TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::String(ref it) => step.add_feed(&op, 0, &it),
             }
         }

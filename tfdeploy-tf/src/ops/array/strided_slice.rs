@@ -310,7 +310,7 @@ impl BaseStridedSlice {
                                     current_out_dim += 1;
                                 }
                             }
-                            solver.equals(&outputs[0].rank, current_out_dim as isize);
+                            solver.equals(&outputs[0].rank, current_out_dim as i64);
                         });
                     });
                 });

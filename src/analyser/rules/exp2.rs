@@ -200,13 +200,13 @@ where
 }
 
 /// A scalar product between a constant and another expression.
-pub struct ScaledExp<T>(isize, Exp<T>)
+pub struct ScaledExp<T>(i64, Exp<T>)
 where
-    T: Fact + Output + Zero + Mul<isize, Output = T> + Div<isize, Output = T> + Clone;
+    T: Fact + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone;
 
 impl<T> TExp<T> for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<isize, Output = T> + Div<isize, Output = T> + Clone,
+    T: Fact + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TfdResult<T> {
@@ -250,7 +250,7 @@ where
 
 impl<T> fmt::Debug for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<isize, Output = T> + Div<isize, Output = T> + Clone,
+    T: Fact + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)
@@ -341,7 +341,7 @@ impl<'a> IntoExp<IntFact> for &'a ElementProxy {
     }
 }
 
-impl IntoExp<IntFact> for isize {
+impl IntoExp<IntFact> for i64 {
     fn bex(self) -> Exp<IntFact> {
         ConstantExp(self.into()).bex()
     }
@@ -361,7 +361,7 @@ impl<IE: IntoExp<IntFact>> Sub<IE> for Exp<IntFact> {
     }
 }
 
-impl Mul<Exp<IntFact>> for isize {
+impl Mul<Exp<IntFact>> for i64 {
     type Output = Exp<IntFact>;
     fn mul(self, other: Exp<IntFact>) -> Exp<IntFact> {
         ScaledExp(self, other).bex()
@@ -396,7 +396,7 @@ impl<IE: IntoExp<DimFact>> Sub<IE> for Exp<DimFact> {
     }
 }
 
-impl Mul<Exp<DimFact>> for isize {
+impl Mul<Exp<DimFact>> for i64 {
     type Output = Exp<DimFact>;
     fn mul(self, other: Exp<DimFact>) -> Exp<DimFact> {
         ScaledExp(self, other).bex()

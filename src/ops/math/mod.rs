@@ -18,19 +18,18 @@ element_map!(Acos, [f32, f64], |x| x.acos());
 element_map!(Asin, [f32, f64], |x| x.asin());
 element_map!(Atan, [f32, f64], |x| x.atan());
 
-element_map!(Neg, [i32, f32, TDim], |x| -x);
-
-element_bin!(Add, [i32, f32, TDim] { |a, b| a + b });
-element_bin!(Sub, [i32, f32, TDim] { |a, b| a - b });
-element_bin!(Mul, [i32, f32, TDim] { |a, b| a * b });
-element_bin!(Div, [i32, f32, TDim] { |a, b| a / b });
-element_bin!(Rem, [i32, f32, TDim] { |a, b| a % b });
+element_map!(Neg, [i8, i16, i32, i64, f32, f64, TDim], |x| -x);
+element_bin!(Add, [u8, u16, i8, i16, i32, i64, f32, f64, TDim] { |a, b| a + b });
+element_bin!(Sub, [u8, u16, i8, i16, i32, i64, f32, f64, TDim] { |a, b| a - b });
+element_bin!(Mul, [u8, u16, i8, i16, i32, i64, f32, f64, TDim] { |a, b| a * b });
+element_bin!(Div, [u8, u16, i8, i16, i32, i64, f32, f64, TDim] { |a, b| a / b });
+element_bin!(Rem, [u8, u16, i8, i16, i32, i64, f32, f64, TDim] { |a, b| a % b });
 element_bin!(Pow, match
      f32 => f32 { |a:f32, b| a.powf(b) },
      f64 => f64 { |a:f64, b| a.powf(b) }
 );
 
-element_map!(Tanh, [f32], |x| x.tanh());
+element_map!(Tanh, [f32, f64], |x| x.tanh());
 
 fn fcmp<F: ::num::Float>(a:&F,b:&F) -> ::std::cmp::Ordering {
     a.partial_cmp(b).unwrap()

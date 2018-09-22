@@ -101,7 +101,7 @@ impl<T: Datum+Zero> InferenceRulesOp for Pad<T> {
             .equals(&padding.rank, 2)
             .equals(&padding.shape[0], input.rank.bex().to_dim())
             .equals(&padding.shape[1], 2.to_dim())
-            .given(&input.rank, move |solver, rank: isize| {
+            .given(&input.rank, move |solver, rank| {
                 (0..rank as usize).for_each(|d| {
                     solver.equals(
                         &output.shape[d],

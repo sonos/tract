@@ -52,7 +52,7 @@ impl_output!(DimFact, Dim);
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {
     fn into_wrapped(source: usize) -> Wrapped {
-        IntFact::into_wrapped((source as isize).into())
+        IntFact::into_wrapped((source as i64).into())
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TfdResult<usize> {
@@ -65,14 +65,14 @@ impl Output for usize {
     }
 }
 
-// Converts back and forth between Wrapped and isize.
-impl Output for isize {
-    fn into_wrapped(source: isize) -> Wrapped {
+// Converts back and forth between Wrapped and i64.
+impl Output for i64 {
+    fn into_wrapped(source: i64) -> Wrapped {
         IntFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TfdResult<isize> {
-        let message = format!("Tried to convert {:?} to a isize.", wrapped);
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<i64> {
+        let message = format!("Tried to convert {:?} to a i64.", wrapped);
 
         IntFact::from_wrapped(wrapped)?
             .concretize()
@@ -203,14 +203,14 @@ impl<T: Output> fmt::Debug for VariableExpression<T> {
 }
 
 /// A scalar product between a constant and another expression.
-pub struct ProductExpression<E, V>(isize, E)
+pub struct ProductExpression<E, V>(i64, E)
 where
-    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
+    V: Zero + Mul<i64, Output = V> + Div<i64, Output = V> + Clone + Output,
     E: Expression<Output = V>;
 
 impl<E, V> Expression for ProductExpression<E, V>
 where
-    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
+    V: Zero + Mul<i64, Output = V> + Div<i64, Output = V> + Clone + Output,
     E: Expression<Output = V>,
 {
     type Output = V;
@@ -257,7 +257,7 @@ where
 
 impl<E, V> fmt::Debug for ProductExpression<E, V>
 where
-    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
+    V: Zero + Mul<i64, Output = V> + Div<i64, Output = V> + Clone + Output,
     E: Expression<Output = V>,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -277,23 +277,23 @@ pub trait IntoExpression<T> {
     fn into_expr(self) -> T;
 }
 
-/// Converts isize to ConstantExpression.
-impl IntoExpression<ConstantExpression<IntFact>> for isize {
+/// Converts i64 to ConstantExpression.
+impl IntoExpression<ConstantExpression<IntFact>> for i64 {
     fn into_expr(self) -> ConstantExpression<IntFact> {
         ConstantExpression(self.into())
     }
 }
 
 /*
-impl IntoExpression<ConstantExpression<DimFact>> for isize {
+impl IntoExpression<ConstantExpression<DimFact>> for i64 {
     fn into_expr(self) -> ConstantExpression<DimFact> {
         ConstantExpression(self.into())
     }
 }
 */
 
-/// Converts &isize to ConstantExpression.
-impl<'a> IntoExpression<ConstantExpression<IntFact>> for &'a isize {
+/// Converts &i64 to ConstantExpression.
+impl<'a> IntoExpression<ConstantExpression<IntFact>> for &'a i64 {
     fn into_expr(self) -> ConstantExpression<IntFact> {
         ConstantExpression((*self).into())
     }
@@ -340,10 +340,10 @@ where
     }
 }
 
-/// Converts (isize, IntoExpression<Output = IntFact>) to ProductExpression.
-impl<E, V, I> IntoExpression<ProductExpression<E, V>> for (isize, I)
+/// Converts (i64, IntoExpression<Output = IntFact>) to ProductExpression.
+impl<E, V, I> IntoExpression<ProductExpression<E, V>> for (i64, I)
 where
-    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
+    V: Zero + Mul<i64, Output = V> + Div<i64, Output = V> + Clone + Output,
     E: Expression<Output = V>,
     I: IntoExpression<E>,
 {
@@ -356,12 +356,12 @@ where
 /// Converts (i32, IntoExpression<Output = IntFact>) to ProductExpression.
 impl<E, V, I> IntoExpression<ProductExpression<E, V>> for (i32, I)
 where
-    V: Zero + Mul<isize, Output = V> + Div<isize, Output = V> + Clone + Output,
+    V: Zero + Mul<i64, Output = V> + Div<i64, Output = V> + Clone + Output,
     E: Expression<Output = V>,
     I: IntoExpression<E>,
 {
     fn into_expr(self) -> ProductExpression<E, V> {
         let (k, e) = self;
-        ProductExpression(k as isize, e.into_expr())
+        ProductExpression(k as i64, e.into_expr())
     }
 }

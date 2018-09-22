@@ -244,7 +244,7 @@ macro_rules! element_nary {
             ) {
                 use $crate::analyser::rules::prelude::*;
                 if let Some(n) = self.n {
-                    solver.equals(&inputs.len, n as isize);
+                    solver.equals(&inputs.len, n as i64);
                 }
                 solver
                     .equals(&outputs.len, 1)
@@ -255,7 +255,7 @@ macro_rules! element_nary {
                         solver
                         .equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())
                         .equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())
-                        .given(&inputs[0].rank, move |solver, rank: isize| {
+                        .given(&inputs[0].rank, move |solver, rank: i64| {
                             for dim in 0..(rank as usize) {
                                 solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
                                 solver.equals_all(
