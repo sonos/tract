@@ -22,25 +22,14 @@ element_map!(Atan, [f32, f64], |x| x.atan());
 
 element_map!(Neg, [i32, f32, TDim], |x| -x);
 
-element_bin!(Add, [i32, f32, TDim], |mut a, b| { a += &b; a });
-element_bin!(Sub, [i32, f32, TDim], |mut a, b| { a -= &b; a });
-element_bin!(Mul, [i32, f32, TDim], |mut a, b| { a *= &b; a });
-element_bin!(Div, [i32, f32, TDim], |mut a, b| { a /= &b; a });
-element_bin!(Rem, [i32, f32, TDim], |mut a, b| { a %= &b; a });
-
+element_bin!(Add, [i32, f32, TDim] { |a, b| a + b });
+element_bin!(Sub, [i32, f32, TDim] { |a, b| a - b });
+element_bin!(Mul, [i32, f32, TDim] { |a, b| a * b });
+element_bin!(Div, [i32, f32, TDim] { |a, b| a / b });
+element_bin!(Rem, [i32, f32, TDim] { |a, b| a % b });
 element_bin!(Pow, match
-    f32 => |mut a, b| {
-        ::ndarray::Zip::from(&mut a)
-            .and_broadcast(&b)
-            .apply(|a: &mut f32, b| *a = a.powf(*b));
-        a
-    },
-    f64 => |mut a, b| {
-        ::ndarray::Zip::from(&mut a)
-            .and_broadcast(&b)
-            .apply(|a: &mut f64, b| *a = a.powf(*b));
-        a
-    }
+     f32 => f32 { |a:f32, b| a.powf(b) },
+     f64 => f64 { |a:f64, b| a.powf(b) }
 );
 
 element_map!(Tanh, [f32], |x| x.tanh());

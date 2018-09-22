@@ -59,10 +59,13 @@ macro_rules! element_map {
 }
 
 macro_rules! element_bin {
-    ($Name:ident, [$($type:ty),*], $expr:expr) => {
-        element_bin!($Name, match $($type => $expr),*);
+    ($Name:ident, [$($type:ty),*] => $to:ty { $expr:expr }) => {
+        element_bin!($Name, match $($type => $to { $expr } ),*);
     };
-    ($Name:ident, match $($type:ty => $expr:expr),*) => {
+    ($Name:ident, [$($type:ty),*] { $expr:expr }) => {
+        element_bin!($Name, match $($type => $type { $expr } ),*);
+    };
+    ($Name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
         #[derive(Debug, Clone, Default, new)]
         pub struct $Name($crate::analyser::TypeFact);
 
@@ -79,7 +82,15 @@ macro_rules! element_bin {
                     $(if dt == <$type>::datum_type() {
                         let a = a.cast_to_array::<$type>()?.into_owned();
                         let b = b.cast_to_array::<$type>()?;
-                        return Ok(tvec![$expr(a, b.view()).into()])
+                        let shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.view().shape()])
+                            .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
+                                                   a.shape(), b.view().shape()))?;
+                        let mut c = $crate::ndarray::ArrayD::<$to>::default(shape);
+                        $crate::ndarray::Zip::from(&mut c)
+                            .and_broadcast(&a)
+                            .and_broadcast(&b.view())
+                            .apply(|c,&a:&$type,&b:&$type| *c = $expr(a,b));
+                        return Ok(tvec![c.into()])
 
                     })*
                     bail!("{} not covering {:?}", stringify!($Name), dt)

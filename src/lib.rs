@@ -73,6 +73,7 @@ pub mod macros;
 
 #[macro_use]
 pub mod analyser;
+mod broadcast;
 pub mod dim;
 pub mod errors;
 pub mod model;
