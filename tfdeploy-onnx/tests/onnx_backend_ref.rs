@@ -41,21 +41,21 @@ pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
     )
 }
 
-fn run_one(root: &path::Path) {
-    let model = for_path(root.join("model.onnx")).unwrap();
+fn run_one(root: &path::Path) -> TfdResult<()> {
+    let model = for_path(root.join("model.onnx"))?;
     let inputs: Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
     let outputs: Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
-    let plan = SimplePlan::new(&model, &*inputs, &*outputs).unwrap();
-    for d in fs::read_dir(root).unwrap() {
-        let d = d.unwrap();
-        if d.metadata().unwrap().is_dir()
+    let plan = SimplePlan::new(&model, &*inputs, &*outputs)?;
+    for d in fs::read_dir(root)? {
+        let d = d?;
+        if d.metadata()?.is_dir()
             && d.file_name()
                 .to_str()
                 .unwrap()
                 .starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
-            let computed = plan.run(inputs).unwrap().remove(0);
+            let computed = plan.run(inputs)?.remove(0);
             assert_eq!(computed.len(), expected.len());
             computed
                 .iter()
@@ -63,6 +63,7 @@ fn run_one(root: &path::Path) {
                 .for_each(|(a, b)| assert!(a.close_enough(b, true)));
         }
     }
+    Ok(())
 }
 
 fn main() {
@@ -80,9 +81,13 @@ fn main() {
     for test in tests {
         let path = node_tests.join(&test);
         match std::panic::catch_unwind(|| run_one(&path)) {
-            Ok(()) => println!("{} {}", test, "OK".green()),
+            Ok(Ok(())) => println!("{} {}", test, "OK".green()),
+            Ok(Err(e)) => {
+                println!("{} {} {}", test, "ERROR".yellow(), e);
+                errors += 1;
+            },
             Err(_) => {
-                println!("{} {}", test, "ERROR".bright_red());
+                println!("{} {}", test, "CRASH".bright_red());
                 errors += 1;
             }
         }
