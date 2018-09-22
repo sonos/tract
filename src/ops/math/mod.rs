@@ -1,7 +1,5 @@
 use ops::prelude::*;
 
-pub mod add_n;
-
 element_map!(Abs, [f32, i32], |x| x.abs());
 
 element_map!(Exp, [f32, f64], |x| x.exp());
@@ -33,6 +31,25 @@ element_bin!(Pow, match
 );
 
 element_map!(Tanh, [f32], |x| x.tanh());
+
+fn fcmp<F: ::num::Float>(a:&F,b:&F) -> ::std::cmp::Ordering {
+    a.partial_cmp(b).unwrap()
+}
+
+element_nary!(AddN, [f32, f64] { |v:&[_]| v.iter().sum() });
+element_nary!(MaxN, match
+  f32 => f32 { |v:&[f32]| v.iter().cloned().max_by(fcmp).unwrap() },
+  f64 => f64 { |v:&[f64]| v.iter().cloned().max_by(fcmp).unwrap() }
+);
+element_nary!(MinN, match
+  f32 => f32 { |v:&[f32]| v.iter().cloned().min_by(fcmp).unwrap() },
+  f64 => f64 { |v:&[f64]| v.iter().cloned().min_by(fcmp).unwrap() }
+);
+element_nary!(MeanN, match
+  f32 => f32 { |v:&[f32]| v.iter().cloned().sum::<f32>() / v.len() as f32 },
+  f64 => f64 { |v:&[f64]| v.iter().cloned().sum::<f64>() / v.len() as f64 }
+);
+
 
 #[cfg(test)]
 mod tests {

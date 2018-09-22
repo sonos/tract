@@ -78,26 +78,23 @@ macro_rules! element_bin {
             ) -> $crate::TfdResult<TVec<$crate::ops::Value>> {
                 use $crate::tensor::Datum;
                 let (a, b) = args_2!(inputs);
-                if let Some(dt) = a.datum_type().common_super_type(b.datum_type()) {
-                    $(if dt == <$type>::datum_type() {
-                        let a = a.cast_to_array::<$type>()?.into_owned();
-                        let b = b.cast_to_array::<$type>()?;
-                        let shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.view().shape()])
-                            .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
-                                                   a.shape(), b.view().shape()))?;
-                        let mut c = $crate::ndarray::ArrayD::<$to>::default(shape);
-                        $crate::ndarray::Zip::from(&mut c)
-                            .and_broadcast(&a)
-                            .and_broadcast(&b.view())
-                            .apply(|c,&a:&$type,&b:&$type| *c = $expr(a,b));
-                        return Ok(tvec![c.into()])
-
-                    })*
-                    bail!("{} not covering {:?}", stringify!($Name), dt)
-                } else {
-                    bail!("Could not find a supertype accomodating {:?} and {:?}",
-                          inputs[0].datum_type(), inputs[1].datum_type());
-                }
+                let shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+                    .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
+                                           a.shape(), b.shape()))?;
+                let dt = a.datum_type().common_super_type(b.datum_type())
+                    .ok_or_else(|| format!("Incompatible types {:?} and{:?}",
+                                           a.datum_type(), b.datum_type()))?;
+                $(if dt == <$type>::datum_type() {
+                    let a = a.cast_to_array::<$type>()?.into_owned();
+                    let b = b.cast_to_array::<$type>()?;
+                    let mut c = $crate::ndarray::ArrayD::<$to>::default(shape);
+                    $crate::ndarray::Zip::from(&mut c)
+                        .and_broadcast(&a)
+                        .and_broadcast(&b.view())
+                        .apply(|c,&a:&$type,&b:&$type| *c = $expr(a,b));
+                    return Ok(tvec![c.into()])
+                })*
+                bail!("{} not covering {:?}", stringify!($Name), dt)
             }
 
             /// Returns a new streaming buffer for the operation.
@@ -159,6 +156,119 @@ macro_rules! element_bin {
             }
         }
     };
+}
+
+macro_rules! element_nary {
+    ($Name:ident, [$($type:ty),*] => $to:ty { $expr:expr }) => {
+        element_nary!($Name, match $($type => $to { $expr } ),*);
+    };
+    ($Name:ident, [$($type:ty),*] { $expr:expr }) => {
+        element_nary!($Name, match $($type => $type { $expr } ),*);
+    };
+    ($Name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
+        #[derive(Debug, Clone, new, Default)]
+        pub struct $Name {
+            datum: $crate::analyser::types::TypeFact,
+            n: Option<usize>,
+        }
+
+        impl Op for $Name {
+            /// Evaluates the operation given the input tensors.
+            fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+                use $crate::tensor::Datum;
+                use $crate::ndarray::ArrayViewD;
+                if let Some(n) = self.n {
+                    if inputs.len() != n {
+                        bail!("Expected {} inputs, got {}", n, inputs.len());
+                    }
+                }
+                let dt = DatumType::super_type_for(inputs.iter().map(|i| i.datum_type()))
+                    .ok_or("Could not find a supertype")?;
+                let shapes:Vec<&[usize]> = inputs.iter().map(|i| i.shape()).collect();
+                let shape = $crate::broadcast::multi_broadcast(&shapes)
+                    .ok_or("Could not find a shape")?;
+                $(if dt == <$type>::datum_type() {
+                    let casts:Vec<_> = inputs.iter()
+                        .map(|a| a.as_tensor().cast_to_array::<$type>().unwrap())
+                        .collect();
+                    let views:Vec<ArrayViewD<$type>> = casts.iter()
+                        .map(|a| a.view())
+                        .collect();
+                    let broadcasted:Vec<_> = views.iter()
+                        .map(|a| a.broadcast(&*shape).unwrap())
+                        .collect();
+                    let c = $crate::ndarray::ArrayD::<$to>::from_shape_fn(shape, |dims| {
+                        let values:Vec<$type> = broadcasted.iter().map(|i| i[&dims]).collect();
+                        $expr(&values)
+                    });
+                    return Ok(tvec![c.into()])
+                })*
+                bail!("{} not covering {:?}", stringify!($Name), dt)
+            }
+
+            /// Returns a new streaming buffer for the operation.
+            fn new_buffer(&self) -> Box<OpBuffer> {
+                Box::new(QueuesBuffer::new(self.n.expect("FIXME: revamp streaming state")))
+            }
+
+            fn step(
+                &self,
+                inputs: TVec<StepValue>,
+                buffer: &mut Box<OpBuffer>,
+            ) -> TfdResult<Option<TVec<Value>>> {
+                let buffer = buffer
+                    .downcast_mut::<QueuesBuffer>()
+                    .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
+
+                buffer.append(inputs)?;
+
+                if buffer.iter().any(|q| q.is_empty()) {
+                    Ok(None)
+                } else {
+                    let chunks = buffer
+                        .iter_mut()
+                        .map(|b| b.pop_front().unwrap())
+                        .collect::<TVec<_>>();
+
+                    Ok(Some(self.eval(chunks)?))
+                }
+            }
+        }
+
+        impl $crate::analyser::rules::InferenceRulesOp for $Name {
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
+                solver: &mut $crate::analyser::rules::prelude::Solver<'r>,
+                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+            ) {
+                use $crate::analyser::rules::prelude::*;
+                if let Some(n) = self.n {
+                    solver.equals(&inputs.len, n as isize);
+                }
+                solver
+                    .equals(&outputs.len, 1)
+                    .equals(&inputs[0].datum_type, &outputs[0].datum_type)
+                    .equals(&inputs[0].rank, &outputs[0].rank)
+                    .given(&inputs.len, move |solver, n| {
+                        let n = n as usize;
+                        solver
+                        .equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())
+                        .equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())
+                        .given(&inputs[0].rank, move |solver, rank: isize| {
+                            for dim in 0..(rank as usize) {
+                                solver.equals(&inputs[0].shape[dim], &outputs[0].shape[dim]);
+                                solver.equals_all(
+                                    (0..n as usize)
+                                        .map(|i| inputs[i].shape[dim].bex())
+                                        .collect(),
+                                );
+                            }
+                        });
+                    });
+            }
+        }
+    }
 }
 
 #[macro_export]

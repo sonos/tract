@@ -8,7 +8,10 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Mul", |_| Ok(Box::new(tfdops::math::Mul::default())));
     reg.insert("Div", |_| Ok(Box::new(tfdops::math::Div::default())));
 
-    reg.insert("Sum", |_| Ok(Box::new(tfdops::math::add_n::AddN::default())));
+    reg.insert("Sum", |_| Ok(Box::new(tfdops::math::AddN::default())));
+    reg.insert("Max", |_| Ok(Box::new(tfdops::math::MaxN::default())));
+    reg.insert("Min", |_| Ok(Box::new(tfdops::math::MinN::default())));
+    reg.insert("Mean", |_| Ok(Box::new(tfdops::math::MeanN::default())));
 
     reg.insert("Abs", |_| Ok(Box::new(tfdops::math::Abs::default())));
     reg.insert("Ceil", |_| Ok(Box::new(tfdops::math::Ceil::default())));
