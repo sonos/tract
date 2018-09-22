@@ -46,7 +46,7 @@ impl<T: Datum> InferenceRulesOp for Fill<T> {
             .equals(&inputs[0].rank, 1)
             .equals(&inputs[1].rank, 0)
             .equals(outputs[0].rank.bex().to_dim(), &inputs[0].shape[0])
-            .given(&outputs[0].rank, move |solver, rank: isize| {
+            .given(&outputs[0].rank, move |solver, rank| {
                 for dim in 0..(rank as usize) {
                     solver.equals(&outputs[0].shape[dim], inputs[0].value[dim].bex().to_dim());
                 }

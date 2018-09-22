@@ -12,8 +12,11 @@ use serde::ser::{Serialize, Serializer};
 pub enum DatumType {
     Bool,
     U8,
+    U16,
     I8,
+    I16,
     I32,
+    I64,
     F32,
     F64,
     TDim,
@@ -24,9 +27,13 @@ impl DatumType {
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
             DatumType::Bool => &[DatumType::Bool],
-            DatumType::U8 => &[DatumType::U8, DatumType::I32],
-            DatumType::I8 => &[DatumType::I8, DatumType::I32],
-            DatumType::I32 => &[DatumType::I32, DatumType::TDim],
+            DatumType::U8 => &[DatumType::U8, DatumType::I16, DatumType::I32, DatumType::I64,
+DatumType::TDim],
+            DatumType::U16 => &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::I8 => &[DatumType::I8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::I16 => &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::I64 => &[DatumType::I64, DatumType::TDim],
             DatumType::F32 => &[DatumType::F32, DatumType::F64],
             DatumType::F64 => &[DatumType::F64],
             DatumType::String => &[DatumType::String],
@@ -107,9 +114,12 @@ pub enum Tensor {
     Bool(ArrayD<bool>),
     F32(ArrayD<f32>),
     F64(ArrayD<f64>),
-    I32(ArrayD<i32>),
     I8(ArrayD<i8>),
+    I16(ArrayD<i16>),
+    I32(ArrayD<i32>),
+    I64(ArrayD<i64>),
     U8(ArrayD<u8>),
+    U16(ArrayD<u16>),
     TDim(ArrayD<TDim>),
     String(ArrayD<i8>),
 }
@@ -128,13 +138,16 @@ impl Tensor {
     pub fn shape(&self) -> &[usize] {
         match self {
             &Tensor::Bool(ref it) => it.shape(),
-            &Tensor::F64(ref it) => it.shape(),
-            &Tensor::F32(ref it) => it.shape(),
-            &Tensor::I32(ref it) => it.shape(),
-            &Tensor::I8(ref it) => it.shape(),
             &Tensor::U8(ref it) => it.shape(),
+            &Tensor::U16(ref it) => it.shape(),
+            &Tensor::I8(ref it) => it.shape(),
+            &Tensor::I16(ref it) => it.shape(),
+            &Tensor::I32(ref it) => it.shape(),
+            &Tensor::I64(ref it) => it.shape(),
+            &Tensor::F32(ref it) => it.shape(),
+            &Tensor::F64(ref it) => it.shape(),
             &Tensor::TDim(ref it) => it.shape(),
-            _ => unimplemented!("missing type"),
+            &Tensor::String(ref it) => it.shape(),
         }
     }
 
@@ -153,26 +166,32 @@ impl Tensor {
     pub fn datum_type(&self) -> DatumType {
         match self {
             &Tensor::Bool(_) => DatumType::Bool,
-            &Tensor::F64(_) => DatumType::F64,
-            &Tensor::F32(_) => DatumType::F32,
-            &Tensor::I32(_) => DatumType::I32,
-            &Tensor::I8(_) => DatumType::I8,
             &Tensor::U8(_) => DatumType::U8,
+            &Tensor::U16(_) => DatumType::U16,
+            &Tensor::I8(_) => DatumType::I8,
+            &Tensor::I16(_) => DatumType::I16,
+            &Tensor::I32(_) => DatumType::I32,
+            &Tensor::I64(_) => DatumType::I64,
+            &Tensor::F32(_) => DatumType::F32,
+            &Tensor::F64(_) => DatumType::F64,
             &Tensor::TDim(_) => DatumType::TDim,
-            _ => unimplemented!("missing type"),
+            &Tensor::String(_) => DatumType::String,
         }
     }
 
     pub fn axis_chunks(&self, axis: usize, size: usize) -> TfdResult<Vec<Tensor>> {
         match self {
             &Tensor::Bool(_) => self.axis_chunks_t::<bool>(axis, size),
-            &Tensor::F64(_) => self.axis_chunks_t::<f64>(axis, size),
-            &Tensor::F32(_) => self.axis_chunks_t::<f32>(axis, size),
-            &Tensor::I8(_) => self.axis_chunks_t::<i8>(axis, size),
             &Tensor::U8(_) => self.axis_chunks_t::<u8>(axis, size),
+            &Tensor::U16(_) => self.axis_chunks_t::<u16>(axis, size),
+            &Tensor::I8(_) => self.axis_chunks_t::<i8>(axis, size),
+            &Tensor::I16(_) => self.axis_chunks_t::<i16>(axis, size),
             &Tensor::I32(_) => self.axis_chunks_t::<i32>(axis, size),
+            &Tensor::I64(_) => self.axis_chunks_t::<i64>(axis, size),
+            &Tensor::F32(_) => self.axis_chunks_t::<f32>(axis, size),
+            &Tensor::F64(_) => self.axis_chunks_t::<f64>(axis, size),
             &Tensor::TDim(_) => self.axis_chunks_t::<TDim>(axis, size),
-            _ => unimplemented!("missing type"),
+            &Tensor::String(_) => bail!("String is not a datum")
         }
     }
 
@@ -184,89 +203,93 @@ impl Tensor {
             .collect())
     }
 
+
     pub fn partial_dump(&self, _single_line: bool) -> TfdResult<String> {
+        macro_rules! fmt_scalar {
+            ($a:ident) => { format!(
+                    "Scalar {:?} {:?}",
+                    self.datum_type(),
+                    $a.as_slice().unwrap()[0]
+                )
+            }
+        }
+        macro_rules! fmt_trunc {
+            ($a:ident) => { format!(
+                    "shape:{:?} {:?} {}...",
+                    self.shape(),
+                    self.datum_type(),
+                    $a.iter().take(4).map(|v| format!("{:?}", v)).join(", ")
+                )
+            }
+        }
+        macro_rules! fmt_small {
+            ($a:ident) => { format!("{:?} {:?}", self.datum_type(), $a).replace("\n", " ") }
+        }
         if self.shape().len() == 0 {
             Ok(match self {
-                &Tensor::I32(ref a) => format!(
-                    "Scalar {:?} {:?}",
-                    self.datum_type(),
-                    a.as_slice().unwrap()[0]
-                ),
-                &Tensor::F32(ref a) => format!(
-                    "Scalar {:?} {:?}",
-                    self.datum_type(),
-                    a.as_slice().unwrap()[0]
-                ),
-                &Tensor::U8(ref a) => format!(
-                    "Scalar {:?} {:?}",
-                    self.datum_type(),
-                    a.as_slice().unwrap()[0]
-                ),
-                &Tensor::TDim(ref a) => format!(
-                    "Scalar {:?} {:?}",
-                    self.datum_type(),
-                    a.as_slice().unwrap()[0]
-                ),
-                _ => unimplemented!("missing type"),
+                &Tensor::Bool(ref a) => fmt_scalar!(a),
+                &Tensor::U8(ref a) => fmt_scalar!(a),
+                &Tensor::U16(ref a) => fmt_scalar!(a),
+                &Tensor::I8(ref a) => fmt_scalar!(a),
+                &Tensor::I16(ref a) => fmt_scalar!(a),
+                &Tensor::I32(ref a) => fmt_scalar!(a),
+                &Tensor::I64(ref a) => fmt_scalar!(a),
+                &Tensor::F32(ref a) => fmt_scalar!(a),
+                &Tensor::F64(ref a) => fmt_scalar!(a),
+                &Tensor::String(ref a) => fmt_scalar!(a),
+                &Tensor::TDim(ref a) => fmt_scalar!(a),
             })
         } else if self.shape().iter().product::<usize>() > 8 {
             use itertools::Itertools;
             Ok(match self {
-                &Tensor::I32(ref a) => format!(
-                    "shape:{:?} {:?} {}...",
-                    self.shape(),
-                    self.datum_type(),
-                    a.iter().take(4).join(", ")
-                ),
-                &Tensor::F32(ref a) => format!(
-                    "shape:{:?} {:?} {}...",
-                    self.shape(),
-                    self.datum_type(),
-                    a.iter().take(4).join(", ")
-                ),
-                &Tensor::U8(ref a) => format!(
-                    "shape:{:?} {:?} {}...",
-                    self.shape(),
-                    self.datum_type(),
-                    a.iter().take(4).join(", ")
-                ),
-                &Tensor::TDim(ref a) => format!(
-                    "shape:{:?} {:?} {}...",
-                    self.shape(),
-                    self.datum_type(),
-                    a.iter().take(4).map(|s| format!("{:?}", s)).join(", ")
-                ),
-                _ => unimplemented!("missing type"),
+                &Tensor::Bool(ref a) => fmt_trunc!(a),
+                &Tensor::U8(ref a) => fmt_trunc!(a),
+                &Tensor::U16(ref a) => fmt_trunc!(a),
+                &Tensor::I8(ref a) => fmt_trunc!(a),
+                &Tensor::I16(ref a) => fmt_trunc!(a),
+                &Tensor::I32(ref a) => fmt_trunc!(a),
+                &Tensor::I64(ref a) => fmt_trunc!(a),
+                &Tensor::F32(ref a) => fmt_trunc!(a),
+                &Tensor::F64(ref a) => fmt_trunc!(a),
+                &Tensor::String(ref a) => fmt_trunc!(a),
+                &Tensor::TDim(ref a) => fmt_trunc!(a),
             })
         } else {
             Ok(match self {
-                &Tensor::I32(ref a) => {
-                    format!("{:?} {:?}", self.datum_type(), a).replace("\n", " ")
-                }
-                &Tensor::F32(ref a) => {
-                    format!("{:?} {:?}", self.datum_type(), a).replace("\n", " ")
-                }
-                &Tensor::U8(ref a) => format!("{:?} {:?}", self.datum_type(), a).replace("\n", " "),
-                &Tensor::TDim(ref a) => {
-                    format!("{:?} {:?}", self.datum_type(), a).replace("\n", " ")
-                }
-                _ => unimplemented!("missing type"),
+                &Tensor::Bool(ref a) => fmt_small!(a),
+                &Tensor::U8(ref a) => fmt_small!(a),
+                &Tensor::U16(ref a) => fmt_small!(a),
+                &Tensor::I8(ref a) => fmt_small!(a),
+                &Tensor::I16(ref a) => fmt_small!(a),
+                &Tensor::I32(ref a) => fmt_small!(a),
+                &Tensor::I64(ref a) => fmt_small!(a),
+                &Tensor::F32(ref a) => fmt_small!(a),
+                &Tensor::F64(ref a) => fmt_small!(a),
+                &Tensor::String(ref a) => fmt_small!(a),
+                &Tensor::TDim(ref a) => fmt_small!(a),
             })
         }
     }
 
-    fn to_f32(&self) -> Tensor {
+    fn approx(&self) -> ArrayD<f32> {
         match self {
-            &Tensor::I32(ref data) => Tensor::F32(data.map(|&a| a as f32)),
-            &Tensor::Bool(ref data) => Tensor::F32(data.map(|&a| a as u32 as f32)),
-            &Tensor::F32(_) => self.clone(),
-            _ => unimplemented!("missing type"),
+            &Tensor::Bool(ref data) => data.map(|&a| a as u32 as f32),
+            &Tensor::U8(ref data) => data.map(|&a| a as f32),
+            &Tensor::U16(ref data) => data.map(|&a| a as f32),
+            &Tensor::I8(ref data) => data.map(|&a| a as f32),
+            &Tensor::I16(ref data) => data.map(|&a| a as f32),
+            &Tensor::I32(ref data) => data.map(|&a| a as f32),
+            &Tensor::I64(ref data) => data.map(|&a| a as f32),
+            &Tensor::F32(ref data) => data.to_owned(),
+            &Tensor::F64(ref data) => data.map(|&a| a as f32),
+            &Tensor::TDim(ref data) => data.map(|&a| a.to_integer().unwrap() as f32),
+            &Tensor::String(_) => unimplemented!("not supported for string"),
         }
     }
 
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
-        let ma = self.to_f32().take_f32s().unwrap();
-        let mb = other.to_f32().take_f32s().unwrap();
+        let ma = self.approx();
+        let mb = other.approx();
         let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
         let margin = if approx {
@@ -291,6 +314,10 @@ impl Tensor {
 
     pub fn cast_to_array<D: Datum>(&self) -> TfdResult<MaybeOwnedArray<D>> {
         <D as Datum>::tensor_cast_to_array(self)
+    }
+
+    pub fn cast_to<D: Datum>(&self) -> TfdResult<Tensor> {
+        Ok(<D as Datum>::tensor_cast_to_array(&self)?.into_owned().into())
     }
 }
 
@@ -321,11 +348,14 @@ impl Serialize for Tensor {
         use Tensor::*;
         match self {
             Bool(m) => serialize_inner!(bool, m),
+            U8(m) => serialize_inner!(u8, m),
+            U16(m) => serialize_inner!(u16, m),
+            I8(m) => serialize_inner!(i8, m),
+            I16(m) => serialize_inner!(i16, m),
+            I32(m) => serialize_inner!(i32, m),
+            I64(m) => serialize_inner!(i64, m),
             F32(m) => serialize_inner!(f32, m),
             F64(m) => serialize_inner!(f64, m),
-            I32(m) => serialize_inner!(i32, m),
-            I8(m) => serialize_inner!(i8, m),
-            U8(m) => serialize_inner!(u8, m),
             TDim(m) => serialize_inner!(TDim, m),
             String(m) => serialize_inner!(str, m),
         }
@@ -438,9 +468,17 @@ impl TryInto<i32> for TDim {
     }
 }
 
+impl TryInto<i64> for TDim {
+    fn try_into(self) -> TfdResult<i64> {
+        self.to_integer().map(|i| i as i64)
+    }
+}
+
 tensor!(bool, Bool, as_bool, as_bools, take_bools, bools, []);
 tensor!(f64, F64, as_f64, as_f64s, take_f64s, f64s, []);
 tensor!(f32, F32, as_f32, as_f32s, take_f32s, f32s, []);
+tensor!(i8, I8, as_i8, as_i8s, take_i8s, i8s, []);
+tensor!(i16, I16, as_i16, as_i16s, take_i16s, i16s, []);
 tensor!(
     i32,
     I32,
@@ -450,8 +488,17 @@ tensor!(
     i32s,
     [(TDim, as_dims)]
 );
+tensor!(
+    i64,
+    I64,
+    as_i64,
+    as_i64s,
+    take_i64s,
+    i64s,
+    [(TDim, as_dims)]
+);
 tensor!(u8, U8, as_u8, as_u8s, take_u8s, u8s, []);
-tensor!(i8, I8, as_i8, as_i8s, take_i8s, i8s, []);
+tensor!(u16, U16, as_u16, as_u16s, take_u16s, u16s, []);
 tensor!(
     TDim,
     TDim,
@@ -461,21 +508,6 @@ tensor!(
     dims,
     [(I32, as_i32s)]
 );
-
-#[macro_export]
-macro_rules! map_tensor {
-    ($tensor:expr, | $array:ident | $return:expr) => {{
-        use Tensor::*;
-        match $tensor {
-            F64($array) => F64($return),
-            F32($array) => F32($return),
-            I32($array) => I32($return),
-            I8($array) => I8($return),
-            U8($array) => U8($return),
-            String($array) => String($return),
-        }
-    }};
-}
 
 #[cfg(test)]
 mod tests {

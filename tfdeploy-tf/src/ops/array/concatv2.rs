@@ -101,7 +101,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
     ) {
         let n = self.n;
         solver
-            .equals(&inputs.len, n as isize + 1)
+            .equals(&inputs.len, n as i64 + 1)
             .equals(&outputs.len, 1)
             .equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())
             .equals(&outputs[0].datum_type, &inputs[0].datum_type)
@@ -118,7 +118,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
                 (0..axis).for_each(|d| {
                     solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]);
                 });
-                solver.given(&inputs[0].rank, move |solver, rank: isize| {
+                solver.given(&inputs[0].rank, move |solver, rank| {
                     trace!("Given rank {}", rank);
                     ((axis + 1)..(rank as usize)).for_each(|d| {
                         solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]);
@@ -128,7 +128,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
                     });
                 });
 
-                let mut concat_dim = -1isize * outputs[0].shape[axis].bex();
+                let mut concat_dim = -1 * outputs[0].shape[axis].bex();
                 for i in 0..n {
                     concat_dim = concat_dim + inputs[i].shape[axis].bex();
                 }

@@ -9,8 +9,11 @@ impl TfdFrom<DataType> for DatumType {
         match t {
             &DataType::DT_BOOL => Ok(DatumType::Bool),
             &DataType::DT_UINT8 => Ok(DatumType::U8),
+            &DataType::DT_UINT16 => Ok(DatumType::U16),
             &DataType::DT_INT8 => Ok(DatumType::I8),
+            &DataType::DT_INT16 => Ok(DatumType::I16),
             &DataType::DT_INT32 => Ok(DatumType::I32),
+            &DataType::DT_INT64 => Ok(DatumType::I64),
             &DataType::DT_FLOAT => Ok(DatumType::F32),
             &DataType::DT_DOUBLE => Ok(DatumType::F64),
             &DataType::DT_STRING => Ok(DatumType::String),
@@ -24,8 +27,11 @@ impl ToTensorflow<DataType> for DatumType {
         match self {
             DatumType::Bool => Ok(DataType::DT_BOOL),
             DatumType::U8 => Ok(DataType::DT_UINT8),
+            DatumType::U16 => Ok(DataType::DT_UINT16),
             DatumType::I8 => Ok(DataType::DT_INT8),
+            DatumType::I16 => Ok(DataType::DT_INT16),
             DatumType::I32 => Ok(DataType::DT_INT32),
+            DatumType::I64 => Ok(DataType::DT_INT64),
             DatumType::F32 => Ok(DataType::DT_FLOAT),
             DatumType::F64 => Ok(DataType::DT_DOUBLE),
             DatumType::String => Ok(DataType::DT_STRING),

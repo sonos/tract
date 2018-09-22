@@ -7,8 +7,11 @@ impl TfdFrom<TensorProto_DataType> for DatumType {
         match t {
             &BOOL => Ok(DatumType::Bool),
             &UINT8 => Ok(DatumType::U8),
+            &UINT16 => Ok(DatumType::U16),
             &INT8 => Ok(DatumType::I8),
+            &INT16 => Ok(DatumType::I16),
             &INT32 => Ok(DatumType::I32),
+            &INT64 => Ok(DatumType::I64),
             &FLOAT => Ok(DatumType::F32),
             &DOUBLE => Ok(DatumType::F64),
             &STRING => Ok(DatumType::String),
@@ -58,7 +61,14 @@ impl TfdFrom<TensorProto> for Tensor {
         if t.has_raw_data() {
             unsafe {
                 match dt {
+                    DatumType::U8 => Tensor::from_raw::<u8>(&*shape, t.get_raw_data()),
+                    DatumType::U16 => Tensor::from_raw::<u16>(&*shape, t.get_raw_data()),
+                    DatumType::I8 => Tensor::from_raw::<i8>(&*shape, t.get_raw_data()),
+                    DatumType::I16 => Tensor::from_raw::<i16>(&*shape, t.get_raw_data()),
+                    DatumType::I32 => Tensor::from_raw::<i32>(&*shape, t.get_raw_data()),
+                    DatumType::I64 => Tensor::from_raw::<i64>(&*shape, t.get_raw_data()),
                     DatumType::F32 => Tensor::from_raw::<f32>(&*shape, t.get_raw_data()),
+                    DatumType::F64 => Tensor::from_raw::<f64>(&*shape, t.get_raw_data()),
                     DatumType::Bool => {
                         Ok(Tensor::from_raw::<u8>(&*shape, t.get_raw_data())?.into_array::<u8>()?.mapv(|x| x != 0).into())
                     }
@@ -67,9 +77,16 @@ impl TfdFrom<TensorProto> for Tensor {
             }
         } else {
             match dt {
-                DatumType::F32 => Tensor::f32s(&*shape, t.get_float_data()),
                 DatumType::Bool => Ok(Tensor::i32s(&*shape, t.get_int32_data())?.into_array::<i32>()?.mapv(|x| x != 0).into()),
-                _ => unimplemented!("FIXME"),
+                DatumType::U8 => Tensor::i32s(&*shape, t.get_int32_data())?.cast_to::<u8>(),
+                DatumType::U16 => Tensor::i32s(&*shape, t.get_int32_data())?.cast_to::<u16>(),
+                DatumType::I8 => Tensor::i32s(&*shape, t.get_int32_data())?.cast_to::<i8>(),
+                DatumType::I16 => Tensor::i32s(&*shape, t.get_int32_data())?.cast_to::<i16>(),
+                DatumType::I32 => Tensor::i32s(&*shape, t.get_int32_data()),
+                DatumType::I64 => Tensor::i64s(&*shape, t.get_int64_data()),
+                DatumType::F32 => Tensor::f32s(&*shape, t.get_float_data()),
+                DatumType::F64 => Tensor::f64s(&*shape, t.get_double_data()),
+                _ => unimplemented!("FIXME, tensor loading"),
             }
         }
     }

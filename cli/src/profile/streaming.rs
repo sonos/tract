@@ -177,11 +177,14 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
 
     let chunks = match data {
         Tensor::Bool(m) => split_inner!(Tensor::Bool, m),
-        Tensor::F64(m) => split_inner!(Tensor::F64, m),
         Tensor::F32(m) => split_inner!(Tensor::F32, m),
-        Tensor::I32(m) => split_inner!(Tensor::I32, m),
+        Tensor::F64(m) => split_inner!(Tensor::F64, m),
         Tensor::I8(m) => split_inner!(Tensor::I8, m),
+        Tensor::I16(m) => split_inner!(Tensor::I16, m),
+        Tensor::I32(m) => split_inner!(Tensor::I32, m),
+        Tensor::I64(m) => split_inner!(Tensor::I64, m),
         Tensor::U8(m) => split_inner!(Tensor::U8, m),
+        Tensor::U16(m) => split_inner!(Tensor::U16, m),
         Tensor::TDim(m) => split_inner!(Tensor::TDim, m),
         Tensor::String(m) => split_inner!(Tensor::String, m),
     };

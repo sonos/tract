@@ -175,7 +175,7 @@ fn rules<'r, 'p: 'r>(
             let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
             solver.equals(
                 &batch.shape[0],
-                (block_shape_prod as isize) * space.shape[0].bex(),
+                (block_shape_prod as i64) * space.shape[0].bex(),
             );
             solver.given(&paddings.value, move |solver, paddings: Tensor| {
                 let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
@@ -183,14 +183,14 @@ fn rules<'r, 'p: 'r>(
                 for d in 0..block_shape.len() {
                     solver.equals(
                         space.shape[1 + d].bex() + paddings[(d, 0)] + paddings[(d, 1)],
-                        (block_shape[d] as isize) * batch.shape[1 + d].bex(),
+                        (block_shape[d] as i64) * batch.shape[1 + d].bex(),
                     );
                 }
             });
         })
         .given(&block_shape.value, move |solver, block_shape: Tensor| {
             let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
-            solver.given(&space.rank, move |solver, rank: isize| {
+            solver.given(&space.rank, move |solver, rank: i64| {
                 for d in block_shape.len() + 1..(rank as usize) {
                     solver.equals(&space.shape[d], &batch.shape[d]);
                 }

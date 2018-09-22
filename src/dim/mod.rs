@@ -40,7 +40,7 @@ impl TDim {
         Self::s()
     }
 
-    pub fn as_const(&self) -> Option<isize> {
+    pub fn as_const(&self) -> Option<i64> {
         self.to_integer().ok()
     }
 
@@ -48,7 +48,7 @@ impl TDim {
         self.0.reduce()
     }
 
-    pub fn eval(&self, s: isize) -> Option<isize> {
+    pub fn eval(&self, s: i64) -> Option<i64> {
         self.0.eval(&hashmap!('S' => s)).ok()
     }
 
@@ -56,7 +56,7 @@ impl TDim {
         self.as_const().is_none()
     }
 
-    pub fn to_integer(&self) -> TfdResult<isize> {
+    pub fn to_integer(&self) -> TfdResult<i64> {
         self.0.eval(&hashmap!())
     }
 
@@ -167,42 +167,42 @@ impl<I: Into<TDim>> ToDim for I {
     }
 }
 
-impl<I: AsPrimitive<isize>> ops::Add<I> for TDim {
+impl<I: AsPrimitive<i64>> ops::Add<I> for TDim {
     type Output = Self;
     fn add(self, rhs: I) -> Self {
         self + Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<isize>> ops::Sub<I> for TDim {
+impl<I: AsPrimitive<i64>> ops::Sub<I> for TDim {
     type Output = Self;
     fn sub(self, rhs: I) -> Self {
         self - Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<isize>> ops::Mul<I> for TDim {
+impl<I: AsPrimitive<i64>> ops::Mul<I> for TDim {
     type Output = Self;
     fn mul(self, rhs: I) -> Self {
         self * Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<isize>> ops::Div<I> for TDim {
+impl<I: AsPrimitive<i64>> ops::Div<I> for TDim {
     type Output = Self;
     fn div(self, rhs: I) -> Self {
         self / Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<isize>> ops::Rem<I> for TDim {
+impl<I: AsPrimitive<i64>> ops::Rem<I> for TDim {
     type Output = Self;
     fn rem(self, rhs: I) -> Self {
         self % Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<isize>> From<I> for TDim {
+impl<I: AsPrimitive<i64>> From<I> for TDim {
     fn from(it: I) -> TDim {
         TDim(it.as_().into())
     }

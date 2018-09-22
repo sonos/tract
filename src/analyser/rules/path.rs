@@ -316,7 +316,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TfdResult<Wrapped> {
     macro_rules! inner {
         ($array:expr) => {{
             match $array.get(path.as_slice()) {
-                Some(&v) => Ok((v as isize).wrap()),
+                Some(&v) => Ok((v as i64).wrap()),
                 None => bail!("There is no index {:?} in value {:?}.", path, $array),
             }
         }};
