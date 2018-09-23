@@ -139,6 +139,7 @@ impl DisplayGraph {
                     )
                 })
                 .collect(),
+                /*
             (0..output_ports.len())
                 .map(|ix| {
                     let edge = &output_ports[&ix];
@@ -148,6 +149,7 @@ impl DisplayGraph {
                     )
                 })
                 .collect(),
+            */
         ];
         if node.more_lines.len() > 0 {
             sections.push(
