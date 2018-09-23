@@ -6,10 +6,15 @@ use tfdeploy::*;
 use tfdeploy_onnx::pb::TensorProto;
 use tfdeploy_onnx::*;
 
+use rayon::prelude::*;
+
 pub const ONNX_DIR: &'static str = ".onnx";
 
 pub fn dir() -> path::PathBuf {
-    path::PathBuf::from(ONNX_DIR)
+    match ::std::env::var("TRAVIS_BUILD_DIR") {
+        Ok(t) => path::Path::new(&t).join("cached").join("onnx-checkout"),
+        _ => ".onnx".into(),
+    }
 }
 
 pub fn ensure_onnx_git_checkout() -> TfdResult<()> {
@@ -55,8 +60,14 @@ pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
     )
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct DataJson {
+    model_name: String,
+    url: String,
+}
+
 pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
-    fn it(root: &path::Path)  -> TfdResult<()> {
+    fn it(root: &path::Path) -> TfdResult<()> {
         let model = for_path(root.join("model.onnx"))?;
         let inputs: Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
         let outputs: Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
@@ -71,7 +82,7 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
             {
                 let (inputs, expected) = load_dataset(&d.path());
                 let computed = plan.run(inputs)?.remove(0);
-                for (a,b) in computed.iter().zip(expected.iter()) {
+                for (a, b) in computed.iter().zip(expected.iter()) {
                     if !a.close_enough(b, true) {
                         bail!("Different result")
                     }
@@ -80,19 +91,45 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
         }
         Ok(())
     }
+    let test_path = root.join(test);
+    let path = if test_path.join("data.json").exists() {
+        use fs2::FileExt;
+        let f = fs::File::open(test_path.join("data.json"))?;
+        let _lock = f.lock_exclusive();
+        let data: DataJson = ::serde_json::from_reader(f).map_err(|e| format!("{:?}", e))?;
+        if !test_path.join(&data.model_name).exists() {
+            let (_, body) = ::mio_httpc::CallBuilder::get()
+                .url(&data.url)
+                .unwrap()
+                .max_response(1_000_000_000)
+                .timeout_ms(600_000)
+                .exec()
+                .unwrap();
+            let gz = ::flate2::read::GzDecoder::new(&*body);
+            let mut tar = ::tar::Archive::new(gz);
+            let tmp = test_path.join("tmp");
+            let _ = fs::remove_dir_all(&tmp);
+            tar.unpack(&tmp).unwrap();
+            fs::rename(tmp.join(&data.model_name), test_path.join(&data.model_name)).unwrap();
+            let _ = fs::remove_dir_all(&tmp);
+        }
+        test_path.join(&data.model_name)
+    } else {
+        test_path
+    };
     use colored::Colorize;
-    match ::std::panic::catch_unwind(|| it(&root.join(test))) {
+    match ::std::panic::catch_unwind(|| it(&path)) {
         Ok(Ok(())) => println!("{} {}", test, "OK".green()),
         Ok(Err(e)) => {
             println!("{} {} {}", test, "ERROR".yellow(), e);
             Err(e)?
-        },
+        }
         Err(_) => {
             println!("{} {}", test, "PANIC".bright_red());
             Err("PANIC")?
         }
     }
-    return Ok(())
+    return Ok(());
 }
 
 pub fn run_all(tests: &str) {
@@ -104,12 +141,10 @@ pub fn run_all(tests: &str) {
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
         .collect();
     tests.sort();
-    let mut errors = 0;
-    for test in tests {
-        if run_one(&node_tests, &test).is_err() {
-            errors += 1
-        }
-    }
+    let errors:usize = tests
+        .par_iter()
+        .map(|test| run_one(&node_tests, &test).is_err() as usize)
+        .sum();
     if errors != 0 {
         panic!("{} errors", errors)
     }
