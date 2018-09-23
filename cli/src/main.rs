@@ -19,10 +19,11 @@ extern crate terminal_size;
 extern crate textwrap;
 #[macro_use]
 extern crate tfdeploy;
-extern crate tfdeploy_tf;
 extern crate atty;
 extern crate libc;
 extern crate pbr;
+extern crate tfdeploy_onnx;
+extern crate tfdeploy_tf;
 #[macro_use]
 extern crate rouille;
 extern crate open;
@@ -31,8 +32,6 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 
-use std::fs::File;
-use std::io::Read;
 use std::process;
 use std::str::FromStr;
 
@@ -41,8 +40,6 @@ use simplelog::Level::{Error, Trace};
 use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::TensorFact;
 use tfdeploy_tf::tfpb;
-use tfdeploy::*;
-use tfdeploy::{DatumType, Tensor};
 use tfpb::graph::GraphDef;
 
 use errors::*;
@@ -59,8 +56,10 @@ mod graphviz;
 mod optimize_check;
 mod profile;
 mod prune;
+mod run;
 mod rusage;
 mod stream_check;
+mod tensor;
 mod utils;
 mod web;
 
@@ -80,23 +79,22 @@ fn main() {
         (@setting SubcommandRequired)
         (@setting DeriveDisplayOrder)
 
-        (@arg model: +required +takes_value
-            "Sets the TensorFlow model to use (in Protobuf format).")
+        (@arg model: +required +takes_value "Sets the model to use")
 
-        (@arg inputs: -i --input ... [input]
-            "Sets the input nodes names (auto-detects otherwise).")
+        (@arg format: +takes_value
+            "Hint the model format ('onnx' or 'tf') instead of guess from extension.")
 
-        (@arg output: -o --output [output]
-            "Sets the output node name (auto-detects otherwise).")
+        (@arg input: -i --input +takes_value
+            "Set input value (@file or 3x4xi32)")
 
-        (@arg size: -s --size [size]
-            "Generates random input of a given size, e.g. 32x64xf32.")
+        (@arg input_node: --("input-node") +takes_value
+            "Override input nodes names (auto-detects otherwise).")
 
-        (@arg data: -f --data [data]
-            "Loads input data from a given file.")
+        (@arg output_node: --("output-node") +takes_value
+            "Override output nodes name (auto-detects otherwise).")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
-        );
+    );
 
     let compare = clap::SubCommand::with_name("compare")
         .help("Compares the output of tfdeploy and tensorflow on randomly generated input.");
@@ -132,6 +130,16 @@ fn main() {
                 .help("Run the stream network without inner instrumentations"),
         );
     app = app.subcommand(output_options(profile));
+
+    let run = clap::SubCommand::with_name("run")
+        .help("Run the graph")
+        .arg(
+            Arg::with_name("assert-output")
+                .takes_value(true)
+                .long("assert-output")
+                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+        );
+    app = app.subcommand(output_options(run));
 
     let analyse = clap::SubCommand::with_name("analyse")
         .help("Analyses the graph to infer properties about tensors (experimental).");
@@ -201,16 +209,26 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         )
 }
 
+pub enum SomeGraphDef {
+    Tf(GraphDef),
+    Onnx(tfdeploy_onnx::pb::ModelProto),
+}
+
 /// Structure holding the parsed parameters.
 pub struct Parameters {
     name: String,
-    graph: GraphDef,
+    graph: SomeGraphDef,
     tfd_model: tfdeploy::Model,
 
     #[cfg(feature = "tensorflow")]
     tf_model: conform::tf::Tensorflow,
 
-    input: Option<InputParameters>,
+    #[cfg(not(feature = "tensorflow"))]
+    #[allow(dead_code)]
+    tf_model: (),
+
+    inputs: Vec<TensorFact>,
+
     input_nodes: Vec<String>,
     output_node: String,
 }
@@ -219,201 +237,70 @@ impl Parameters {
     /// Parses the command-line arguments.
     pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<Parameters> {
         let name = matches.value_of("model").unwrap();
-        let graph = tfdeploy_tf::model::graphdef_for_path(&name)?;
-        let tfd_model = tfdeploy_tf::for_path(&name)?;
+        let format = matches
+            .value_of("format")
+            .unwrap_or(if name.ends_with(".onnx") {
+                "onnx"
+            } else {
+                "tf"
+            });
+        let (graph, tfd_model) = if format == "onnx" {
+            let graph = tfdeploy_onnx::model::model_proto_for_path(&name)?;
+            let tfd = tfdeploy_onnx::for_path(&name)?;
+            (SomeGraphDef::Onnx(graph), tfd)
+        } else {
+            let graph = tfdeploy_tf::model::graphdef_for_path(&name)?;
+            let tfd_model = tfdeploy_tf::for_path(&name)?;
+            (SomeGraphDef::Tf(graph), tfd_model)
+        };
 
         #[cfg(feature = "tensorflow")]
         let tf_model = conform::tf::for_path(&name)?;
 
-        let input = InputParameters::from_clap(matches)?;
+        #[cfg(not(feature = "tensorflow"))]
+        let tf_model = ();
 
-        let input_nodes = if let Some(inputs) = matches.values_of("inputs") {
+        let inputs: Vec<TensorFact> = matches
+            .values_of("input")
+            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect())
+            .unwrap_or(vec!());
+
+        let input_nodes = if let Some(inputs) = matches.values_of("input-node") {
             for input in inputs.clone() {
                 let _ = tfd_model.node_by_name(&input)?;
             }
             inputs.map(|s| s.to_string()).collect()
         } else {
-            tfd_model.guess_inputs()
+            tfd_model
+                .guess_inputs()
                 .iter()
                 .map(|n| n.name.to_string())
                 .collect()
         };
 
-        let mut output_nodes: Vec<String> = if let Some(outputs) = matches.values_of("outputs") {
+        let mut output_nodes: Vec<String> = if let Some(outputs) = matches.values_of("output-node")
+        {
             for output in outputs.clone() {
                 let _ = tfd_model.node_by_name(&output)?;
             }
             outputs.map(|s| s.to_string()).collect()
         } else {
-            tfd_model.guess_outputs()
+            tfd_model
+                .guess_outputs()
                 .iter()
                 .map(|n| n.name.to_string())
                 .collect()
         };
 
-        #[cfg(feature = "tensorflow")]
-        return Ok(Parameters {
+        Ok(Parameters {
             name: name.to_string(),
             graph,
             tfd_model,
             tf_model,
             input_nodes,
             output_node: output_nodes.remove(0),
-            input,
-        });
-
-        #[cfg(not(feature = "tensorflow"))]
-        return Ok(Parameters {
-            name: name.to_string(),
-            graph,
-            tfd_model,
-            input_nodes,
-            output_node: output_nodes.remove(0),
-            input,
-        });
-    }
-}
-
-/// Structure holding the input parameters (eventually containing data).
-#[derive(Debug, Clone, PartialEq)]
-pub struct InputParameters {
-    data: Option<Tensor>,
-    shape: Vec<Option<usize>>,
-    datum_type: DatumType,
-}
-
-impl InputParameters {
-    fn from_clap(matches: &clap::ArgMatches) -> CliResult<Option<InputParameters>> {
-        let input = match (matches.value_of("size"), matches.value_of("data")) {
-            (_, Some(filename)) => Some(Self::for_data(filename)?),
-            (Some(size), _) => Some(Self::for_size(size)?),
-            _ => None,
-        };
-        Ok(input)
-    }
-
-    fn for_size(size: &str) -> CliResult<InputParameters> {
-        let splits = size.split("x").collect::<Vec<_>>();
-
-        if splits.len() < 1 {
-            bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
-        }
-
-        let (datum_type, shape) = splits.split_last().unwrap();
-
-        let shape = shape
-            .iter()
-            .map(|s| match *s {
-                "S" => Ok(None),           // Streaming dimension.
-                _ => Ok(Some(s.parse()?)), // Regular dimension.
-            })
-            .collect::<TfdResult<Vec<_>>>()?;
-
-        if shape.iter().filter(|o| o.is_none()).count() > 1 {
-            bail!("The <size> argument doesn't support more than one streaming dimension.");
-        }
-
-        let datum_type = match datum_type.to_lowercase().as_str() {
-            "f64" => DatumType::F64,
-            "f32" => DatumType::F32,
-            "i32" => DatumType::I32,
-            "i8" => DatumType::I8,
-            "u8" => DatumType::U8,
-            _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
-        };
-
-        Ok(InputParameters {
-            data: None,
-            shape,
-            datum_type,
+            inputs,
         })
-    }
-
-    /// Parses the `data` command-line argument.
-    fn for_data(filename: &str) -> CliResult<InputParameters> {
-        let mut file = File::open(filename)?;
-        let mut data = String::new();
-        file.read_to_string(&mut data)?;
-
-        let mut lines = data.lines();
-        let InputParameters {
-            shape, datum_type, ..
-        } = InputParameters::for_size(lines.next().ok_or("Empty data file")?)?;
-
-        let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<_>>();
-
-        // We know there is at most one streaming dimension, so we can deduce the
-        // missing value with a simple division.
-        let product: usize = shape.iter().map(|o| o.unwrap_or(1)).product();
-        let missing = values.len() / product;
-        let data_shape = shape
-            .iter()
-            .map(|o| o.unwrap_or(missing))
-            .collect::<Vec<_>>();
-
-        macro_rules! for_type {
-            ($t:ty) => {{
-                let array = ndarray::Array::from_iter(values.iter().map(|v| v.parse::<$t>().unwrap()));
-
-                array.into_shape(data_shape)?
-            }};
-        }
-
-        let tensor = match datum_type {
-            DatumType::F64 => for_type!(f64).into(),
-            DatumType::F32 => for_type!(f32).into(),
-            DatumType::I32 => for_type!(i32).into(),
-            DatumType::I8 => for_type!(i8).into(),
-            DatumType::U8 => for_type!(u8).into(),
-            _ => unimplemented!(),
-        };
-
-        Ok(InputParameters {
-            data: Some(tensor),
-            shape,
-            datum_type,
-        })
-    }
-
-    fn streaming(&self) -> bool {
-        self.shape.iter().any(|dim| dim.is_none())
-    }
-
-    fn to_fact(&self) -> TensorFact {
-        if let Some(ref data) = self.data {
-            return data.clone().into();
-        }
-        let dims = self
-            .shape
-            .iter()
-            .map(|d| d.map(|i| i.into()).unwrap_or(TDim::stream()).into())
-            .collect::<Vec<_>>();
-        TensorFact {
-            datum_type: typefact!(self.datum_type),
-            shape: tfdeploy::analyser::ShapeFact::closed(dims.clone()),
-            value: valuefact!(_),
-        }
-    }
-
-    fn to_tensor(&self) -> CliResult<Tensor> {
-        self.to_tensor_with_stream_dim(None)
-    }
-
-    fn to_tensor_with_stream_dim(&self, streaming_dim: Option<usize>) -> CliResult<Tensor> {
-        if let Some(value) = self.data.as_ref() {
-            Ok(value.clone())
-        } else {
-            if self.streaming() && streaming_dim.is_none() {
-                Err("random tensor requires a streaming dim")?
-            }
-            Ok(utils::random_tensor(
-                self.shape
-                    .iter()
-                    .map(|d| d.or(streaming_dim).unwrap())
-                    .collect(),
-                self.datum_type,
-            ))
-        }
     }
 }
 
@@ -515,13 +402,19 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
     let params = Parameters::from_clap(&matches)?;
     let streaming = params
-        .input
-        .as_ref()
-        .map(|i| i.streaming())
-        .unwrap_or(false);
+        .inputs.get(0)
+        .and_then(|i| i.stream_info().unwrap())
+        .is_some();
 
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
+
+        ("run", Some(m)) => {
+            let assert_outputs: Option<Vec<TensorFact>> = m
+                .values_of("assert-output")
+                .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
+            run::handle(params, assert_outputs, OutputParameters::from_clap(m)?)
+        }
 
         ("optimize-check", Some(m)) => {
             optimize_check::handle(params, OutputParameters::from_clap(m)?)

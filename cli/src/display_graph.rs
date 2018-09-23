@@ -5,10 +5,12 @@ use std::fs;
 use tfdeploy;
 use tfdeploy::analyser::Analyser;
 use tfdeploy::model::OutletId;
-use tfdeploy_tf::tfpb::graph::GraphDef;
 use tfdeploy::TfdFrom;
+use tfdeploy_tf::tfpb::graph::GraphDef;
+use tfdeploy_onnx::pb::ModelProto;
 use CliResult;
 use OutputParameters;
+use SomeGraphDef;
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "OutletId")]
@@ -203,7 +205,14 @@ impl DisplayGraph {
         Ok(DisplayGraph { nodes, edges })
     }
 
-    pub fn with_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph> {
+    pub fn with_graph_def(mut self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph> {
+        match graph_def {
+            SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
+            SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
+        }
+    }
+
+    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph> {
         let index_to_graph_def: HashMap<String, usize> =
             self.nodes.iter().map(|n| (n.name.clone(), n.id)).collect();
         for gnode in graph_def.get_node().iter() {
@@ -219,6 +228,10 @@ impl DisplayGraph {
                 self.nodes[*node_id].attrs.sort();
             }
         }
+        Ok(self)
+    }
+
+    pub fn with_onnx_model(mut self, graph_def: &ModelProto) -> CliResult<DisplayGraph> {
         Ok(self)
     }
 

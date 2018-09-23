@@ -1,37 +1,25 @@
-use tfdeploy::{DatumType, Tensor};
-#[allow(unused_imports)]
 use CliResult;
+use tfdeploy::Tensor;
+use tfdeploy::analyser::TensorFact;
+use tfdeploy::analyser::Fact;
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
-#[cfg(feature = "tensorflow")]
-pub fn compare_outputs<Tensor1, Tensor2>(rtf: &[Tensor1], rtfd: &[Tensor2]) -> CliResult<()>
-where
-    Tensor1: ::std::borrow::Borrow<Tensor>,
-    Tensor2: ::std::borrow::Borrow<Tensor>,
+pub fn check_outputs(got: &[Tensor], expected: &[TensorFact]) -> CliResult<()>
 {
-    if rtf.len() != rtfd.len() {
+    if got.len() != expected.len() {
         bail!(
-            "Number of output differ: tf={}, tfd={}",
-            rtf.len(),
-            rtfd.len()
+            "Number of output differ: got:{}, expected:{}",
+            got.len(),
+            expected.len()
         )
     }
 
-    for (ix, (mtf, mtfd)) in rtf.iter().zip(rtfd.iter()).enumerate() {
-        if mtf.borrow().shape().len() != 0 && mtf.borrow().shape() != mtfd.borrow().shape() {
-            bail!(
-                "Shape mismatch for output {}: tf={:?}, tfd={:?}",
-                ix,
-                mtf.borrow().shape(),
-                mtfd.borrow().shape()
-            )
-        } else {
-            if !mtf.borrow().close_enough(mtfd.borrow(), true) {
-                bail!(
-                    "Data mismatch: tf={:?}, tfd={:?}",
-                    mtf.borrow(),
-                    mtfd.borrow()
-                )
+    for (got, exp) in got.iter().zip(expected.iter()) {
+        exp.datum_type.unify(&got.datum_type().into())?;
+        exp.shape.unify(&got.shape().into())?;
+        if let Some(t) = exp.value.concretize() {
+            if !t.close_enough(got, true) {
+                bail!("Values are not close enough")
             }
         }
     }
@@ -39,25 +27,3 @@ where
     Ok(())
 }
 
-/// Generates a random tensor of a given size and type.
-pub fn random_tensor(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
-    use rand;
-    use std::iter::repeat_with;
-    let len = sizes.iter().product();
-    macro_rules! r {
-        ($t:ty) => {
-            repeat_with(|| rand::random::<$t>())
-                .take(len)
-                .collect::<Vec<_>>()
-        };
-    }
-
-    match datum_type {
-        DatumType::F64 => Tensor::f64s(&*sizes, &*r!(f64)),
-        DatumType::F32 => Tensor::f32s(&*sizes, &*r!(f32)),
-        DatumType::I32 => Tensor::i32s(&*sizes, &*r!(i32)),
-        DatumType::I8 => Tensor::i8s(&*sizes, &*r!(i8)),
-        DatumType::U8 => Tensor::u8s(&*sizes, &*r!(u8)),
-        _ => unimplemented!("missing type"),
-    }.unwrap()
-}

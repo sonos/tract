@@ -59,6 +59,14 @@ impl SimplePlan {
         )?)))
     }
 
+    pub fn for_model(
+        model: &Model,
+    ) -> TfdResult<SimplePlan> {
+        let input:Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
+        let output:Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
+        Self::new(model, &input, &output)
+    }
+
     pub fn run(&self, inputs: TVec<Tensor>) -> TfdResult<Vec<TVec<Tensor>>> {
         let mut state = SimpleState::new(&self)?;
         state.set_inputs(inputs)?;

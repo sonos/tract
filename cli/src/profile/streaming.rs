@@ -7,28 +7,28 @@ use format::*;
 use ndarray::Axis;
 use profile::ProfileData;
 use rusage::{Duration, Instant};
+use tfdeploy::analyser::Fact;
 use tfdeploy::streaming::*;
 use tfdeploy::Tensor;
-use utils::random_tensor;
 use {OutputParameters, Parameters, ProfilingMode};
 
 fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan, Tensor)> {
     let start = Instant::now();
     info!("Building streaming plan.");
-    let input = params
-        .input
-        .as_ref()
-        .ok_or("Exactly one of <size> or <data> must be specified.")?;
+    if params.inputs.len() != 1 {
+        bail!("Exactly one input tensor must be specified")
+    }
+    let input = &params.inputs[0];
 
     let model = params
         .tfd_model
         .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], &input.to_fact())?
+        .with_hint(&params.input_nodes[0], &input)?
         .to_optimized_model()?;
 
     let plan = StreamingPlan::new(
         &model,
-        vec![(&params.input_nodes[0], input.to_fact())],
+        vec![(&params.input_nodes[0], input.clone())],
         Some(&params.output_node),
     )?;
 
@@ -38,16 +38,13 @@ fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan, Tensor
         dur_avg_oneline(measure)
     );
 
-    let input = params
-        .input
-        .as_ref()
-        .ok_or("Exactly one of <size> or <data> must be specified.")?;
     let chunk_shape = input
         .shape
+        .dims
         .iter()
-        .map(|d| d.unwrap_or(1))
+        .map(|d| d.concretize().and_then(|d| d.to_integer().ok()).unwrap_or(1) as usize)
         .collect::<Vec<_>>();
-    let chunk = random_tensor(chunk_shape, input.datum_type);
+    let chunk = ::tensor::random(chunk_shape, input.datum_type.concretize().unwrap());
 
     Ok((plan, chunk))
 }
@@ -143,10 +140,8 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
         dur_avg_oneline(measure)
     );
 
-    let mut input = params
-        .input
-        .ok_or("Exactly one of <size> or <data> must be specified.")?;
-    let axis = input.shape.iter().position(|&d| d == None).unwrap(); // checked above
+    let input = &params.inputs[0];
+    let info = input.stream_info()?.expect("No streaming dim");
 
     let mut states = (0..100).map(|_| plan.state().unwrap()).collect::<Vec<_>>();
 
@@ -157,20 +152,19 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
 
     let shape = input
         .shape
+        .dims
         .iter()
-        .map(|d| d.unwrap_or(20))
+        .map(|d| d.concretize().map(|d| d.to_integer().unwrap()).unwrap_or(20) as usize)
         .collect::<Vec<_>>();
-    let data = input
-        .data
-        .take()
-        .unwrap_or_else(|| random_tensor(shape, input.datum_type));
+    let data = input.concretize()
+        .unwrap_or_else(|| ::tensor::random(shape, input.datum_type.concretize().unwrap()));
 
     // Split the input data into chunks along the streaming axis.
     macro_rules! split_inner {
         ($constr:path, $array:expr) => {{
             $array
-                .axis_iter(Axis(axis))
-                .map(|v| $constr(v.insert_axis(Axis(axis)).to_owned()))
+                .axis_iter(Axis(info.axis))
+                .map(|v| $constr(v.insert_axis(Axis(info.axis)).to_owned()))
                 .collect::<Vec<_>>()
         }};
     }

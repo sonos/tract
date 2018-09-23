@@ -308,7 +308,8 @@ impl Fact for ShapeFact {
                     y
                 ),
             })
-            .collect::<TfdResult<_>>()?;
+            .collect::<TfdResult<_>>()
+                .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
 
         if x.open && y.open {
             Ok(ShapeFact::open(dimensions))
@@ -343,6 +344,13 @@ impl From<Vec<usize>> for ShapeFact {
     /// Converts an vector of usize into a closed shape.
     fn from(shape: Vec<usize>) -> ShapeFact {
         shape.into_iter().map(|i| TDim::from(i)).collect()
+    }
+}
+
+impl From<Vec<TDim>> for ShapeFact {
+    /// Converts an vector of usize into a closed shape.
+    fn from(shape: Vec<TDim>) -> ShapeFact {
+        shape.into_iter().collect()
     }
 }
 

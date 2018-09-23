@@ -91,3 +91,8 @@ impl TfdFrom<TensorProto> for Tensor {
         }
     }
 }
+
+pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<Tensor> {
+    let tensor: TensorProto = ::protobuf::parse_from_reader(&mut r).unwrap();
+    tensor.to_tfd()
+}

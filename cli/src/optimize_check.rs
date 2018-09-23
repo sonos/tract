@@ -6,17 +6,18 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult
     let model = params.tfd_model;
 
     // First generate random values for the inputs.
-    let fixed_input = tvec![params.input.as_ref().unwrap().to_tensor()?];
+    let fixed_inputs = ::tensor::make_inputs(&params.inputs)?;
 
     // Run unmodified graph
     let original_plan = SimplePlan::new(&model, &params.input_nodes, &[&params.output_node])?;
-    let original_output = original_plan.run(fixed_input.clone())?;
+    let original_output = original_plan.run(fixed_inputs.clone())?;
 
     info!("Setting up analyser.");
 
-    let mut analyser = model
-        .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], &params.input.unwrap().to_fact())?;
+    let mut analyser = model.analyser(&params.output_node)?;
+    for (ix,fact) in params.inputs.iter().enumerate() {
+        analyser = analyser.with_hint(&params.input_nodes[ix], fact)?;
+    }
 
     info!("Running analyse");
     let optimized_model = analyser.to_optimized_model()?;
@@ -28,7 +29,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult
     // Run optimized graph
     let optimized_plan =
         SimplePlan::new(&optimized_model, &params.input_nodes, &[params.output_node])?;
-    let optimized_output = optimized_plan.run(fixed_input.clone())?;
+    let optimized_output = optimized_plan.run(fixed_inputs.clone())?;
 
     if original_output.len() != optimized_output.len() {
         bail!(

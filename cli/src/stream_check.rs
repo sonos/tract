@@ -9,10 +9,10 @@ use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
     let model = params.tfd_model;
-    let input = params.input.as_ref().unwrap();
+    let input = &params.inputs[0];
 
     // First generate random values for the inputs.
-    let fixed_input = input.to_tensor_with_stream_dim(Some(500))?;
+    let fixed_input = ::tensor::make_inputs_stream(&params.inputs, 500)?.remove(0);
     let wanted_matches = 20;
 
     let regular_input_fact = TensorFact::default()
@@ -22,7 +22,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
     // streaming model
     let stream_model = model
         .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], &input.to_fact())?
+        .with_hint(&params.input_nodes[0], input)?
         .to_optimized_model()?;
 
     // batch model
@@ -33,7 +33,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
 
     let mut analyser = stream_model
         .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], &input.to_fact())?;
+        .with_hint(&params.input_nodes[0], input)?;
     analyser.analyse()?;
 
     let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&stream_model.nodes())?

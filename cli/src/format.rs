@@ -7,8 +7,6 @@ use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
 use tfdeploy::plan::SimpleState;
-use tfdeploy_tf::tfpb;
-use tfdeploy_tf::tfpb::graph::GraphDef;
 use tfdeploy::Node;
 
 use colored::Colorize;
@@ -16,6 +14,8 @@ use format;
 use rusage::Duration;
 
 use itertools::Itertools;
+
+use SomeGraphDef;
 
 /// A single row, which has either one or two columns.
 /// The two-column layout is usually used when displaying a header and some content.
@@ -166,31 +166,33 @@ pub fn print_box(
 /// Returns information about a node.
 fn node_info(
     node: &tfdeploy::Node,
-    graph: &tfpb::graph::GraphDef,
+    graph: &SomeGraphDef,
     state: Option<&SimpleState>,
 ) -> Vec<Vec<Row>> {
     // First section: node attributes.
     let mut attributes = Vec::new();
-    let proto_node = graph
-        .get_node()
-        .iter()
-        .find(|n| n.get_name() == node.name)
-        .unwrap();
+    if let SomeGraphDef::Tf(graph) = graph {
+        let proto_node = graph
+            .get_node()
+            .iter()
+            .find(|n| n.get_name() == node.name)
+            .unwrap();
 
-    for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
-        attributes.push(Row::Double(
-            format!("Attribute {}:", attr.0.bold()),
-            if attr.1.has_tensor() {
-                let tensor = attr.1.get_tensor();
-                format!(
-                    "Tensor: {:?} {:?}",
-                    tensor.get_dtype(),
-                    tensor.get_tensor_shape().get_dim()
-                )
-            } else {
-                format!("{:?}", attr.1)
-            },
-        ));
+        for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
+            attributes.push(Row::Double(
+                format!("Attribute {}:", attr.0.bold()),
+                if attr.1.has_tensor() {
+                    let tensor = attr.1.get_tensor();
+                    format!(
+                        "Tensor: {:?} {:?}",
+                        tensor.get_dtype(),
+                        tensor.get_tensor_shape().get_dim()
+                    )
+                } else {
+                    format!("{:?}", attr.1)
+                },
+            ));
+        }
     }
 
     let mut inputs = Vec::new();
@@ -216,7 +218,7 @@ fn node_info(
 /// Prints information about a node.
 pub fn print_node(
     node: &Node,
-    graph: &GraphDef,
+    graph: &SomeGraphDef,
     state: Option<&SimpleState>,
     status: &[impl AsRef<str>],
     sections: Vec<Vec<Row>>,

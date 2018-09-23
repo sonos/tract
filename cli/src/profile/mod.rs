@@ -1,14 +1,13 @@
 use colored::Colorize;
 use rusage::Duration;
 use std::collections::HashMap;
-use tfdeploy_tf::tfpb::graph::GraphDef;
 
 use errors::*;
 use format::*;
 use itertools::Itertools;
 use tfdeploy::{Model, Node};
 
-use {OutputParameters, Parameters, ProfilingMode};
+use {OutputParameters, Parameters, ProfilingMode, SomeGraphDef};
 
 mod regular;
 mod streaming;
@@ -33,7 +32,7 @@ impl ProfileData {
     pub fn print_most_consuming_nodes(
         &mut self,
         model: &Model,
-        graph: &GraphDef,
+        graph: &SomeGraphDef,
         output_params: &OutputParameters,
     ) -> CliResult<()> {
         let sum = self.summed();
