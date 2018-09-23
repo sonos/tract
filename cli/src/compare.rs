@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::plan::{SimplePlan, SimpleState};
-use tfdeploy::Tensor;
+use tfdeploy::{ Tensor, TensorFact };
 
 use errors::*;
 use format::*;
@@ -22,29 +22,27 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
     let tfd = params.tfd_model;
     let mut tf = params.tf_model;
 
-    let input = params
-        .input
-        .as_ref()
-        .ok_or("Exactly one of <size> or <data> must be specified.")?;
-
     // First generate random values for the inputs.
-    let generated = input.to_tensor()?;
+    let generated = ::tensor::make_inputs(&params.inputs)?;
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
-    let mut tf_outputs = tf.run_get_all(vec![(&params.input_nodes[0], generated.clone())])?;
+    let pairs = params.input_nodes.iter().map(|s| &**s).zip(generated.iter().cloned()).collect();
+    let mut tf_outputs = tf.unwrap().run_get_all(pairs)?;
 
     // Execute the model step-by-step on tfdeploy.
     let plan = SimplePlan::new(&tfd, &params.input_nodes, &[&params.output_node])?;
     let mut state = plan.state()?;
-    state.set_input(0, generated.clone())?;
+    for (ix, input) in generated.clone().into_iter().enumerate() {
+        state.set_input(ix, input)?;
+    }
     let plan = ::tfdeploy::model::eval_order_for_nodes(
-        &tfd.nodes,
+        &tfd.nodes(),
         &[tfd.node_by_name(&params.output_node)?.id],
     )?;
     debug!("Using execution plan: {:?}", plan);
 
-    let nodes: Vec<_> = tfd.nodes.iter().map(|a| &*a).collect();
+    let nodes: Vec<_> = tfd.nodes().iter().map(|a| &*a).collect();
     let mut display_graph =
         ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
 
@@ -53,7 +51,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
     let hidden = !log_enabled!(Info);
 
     for n in plan {
-        let node = &tfd.nodes[n];
+        let node = &tfd.nodes()[n];
         let dn = &mut display_graph.nodes[n];
 
         if node.op_name == "Placeholder" {
@@ -77,9 +75,9 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
             }
 
             _ => {
-                let tfd_output = state.values[n].as_ref().unwrap();
-                let views = tfd_output.iter().map(|m| &**m).collect::<Vec<&Tensor>>();
-                match compare_outputs(&tf_output, &views) {
+                let tfd_output:Vec<Tensor> = state.values[n].as_ref().unwrap().iter().map(|v| v.as_tensor().to_owned()).collect();
+                let expected:Vec<TensorFact> = tf_output.iter().map(|m| m.clone().into()).collect();
+                match check_outputs(&tfd_output, &expected) {
                     Err(_) => {
                         failures += 1;
                         let mismatches = tfd_output
@@ -125,7 +123,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
                 edge.label = Some(format!("{:?}", out));
             }
         }
-        state.set_values(node.id, tf_output)?;
+        state.set_values(node.id, tf_output.into())?;
     }
 
     if failures > 0 {

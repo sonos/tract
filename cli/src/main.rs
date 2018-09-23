@@ -221,7 +221,7 @@ pub struct Parameters {
     tfd_model: tfdeploy::Model,
 
     #[cfg(feature = "tensorflow")]
-    tf_model: conform::tf::Tensorflow,
+    tf_model: Option<conform::tf::Tensorflow>,
 
     #[cfg(not(feature = "tensorflow"))]
     #[allow(dead_code)]
@@ -255,7 +255,11 @@ impl Parameters {
         };
 
         #[cfg(feature = "tensorflow")]
-        let tf_model = conform::tf::for_path(&name)?;
+        let tf_model = if format == "tf" {
+            Some(conform::tf::for_path(&name)?)
+        } else {
+            None
+        };
 
         #[cfg(not(feature = "tensorflow"))]
         let tf_model = ();
