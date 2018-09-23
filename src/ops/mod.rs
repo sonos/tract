@@ -16,6 +16,7 @@ use objekt;
 #[macro_use]
 mod macros;
 
+pub mod array;
 #[cfg(features = "image_ops")]
 pub mod image;
 pub mod konst;

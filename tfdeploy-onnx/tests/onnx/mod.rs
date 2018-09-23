@@ -94,3 +94,23 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
     }
     return Ok(())
 }
+
+pub fn run_all(tests: &str) {
+    ensure_onnx_git_checkout().unwrap();
+    let dir = path::PathBuf::from(ONNX_DIR);
+    let node_tests = dir.join("onnx/backend/test/data").join(tests);
+    let mut tests: Vec<String> = fs::read_dir(&node_tests)
+        .unwrap()
+        .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
+        .collect();
+    tests.sort();
+    let mut errors = 0;
+    for test in tests {
+        if run_one(&node_tests, &test).is_err() {
+            errors += 1
+        }
+    }
+    if errors != 0 {
+        panic!("{} errors", errors)
+    }
+}

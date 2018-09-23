@@ -1,17 +1,21 @@
-pub fn multi_broadcast(shapes: &[impl AsRef<[usize]>]) -> Option<Vec<usize>> {
+use num::One;
+
+pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<Vec<T>> 
+where T:One + PartialEq + Copy
+{
     let len = shapes.iter().map(|shape| shape.as_ref().len()).max()?;
     let mut shape = Vec::with_capacity(len);
     for i in 0..len {
-        let mut wanted_size = 1;
+        let mut wanted_size = T::one();
         for shape in shapes {
             let len = shape.as_ref().len();
             let dim = if i < len {
                 shape.as_ref()[len - i - 1]
             } else {
-                1
+                T::one()
             };
-            if dim != 1 {
-                if wanted_size != 1 && dim != wanted_size {
+            if dim != T::one() {
+                if wanted_size != T::one() && dim != wanted_size {
                     return None;
                 }
                 wanted_size = dim;
