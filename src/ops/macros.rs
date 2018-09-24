@@ -7,6 +7,10 @@ macro_rules! element_map {
         pub struct $Name($crate::analyser::TypeFact);
 
         impl ::ops::Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
+
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -70,6 +74,9 @@ macro_rules! element_bin {
         pub struct $Name($crate::analyser::TypeFact);
 
         impl Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
 
             /// Evaluates the operation given the input tensors.
             fn eval(
@@ -173,6 +180,9 @@ macro_rules! element_nary {
         }
 
         impl Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
             /// Evaluates the operation given the input tensors.
             fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
                 use $crate::tensor::Datum;

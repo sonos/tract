@@ -34,7 +34,8 @@ pub struct Edge {
 pub struct Node {
     pub id: usize,
     pub name: String,
-    pub op: String,
+    pub op_name: String,
+    pub tfd_op: String,
     pub label: Option<String>,
     pub more_lines: Vec<String>,
     pub attrs: Vec<(String, String)>,
@@ -74,7 +75,7 @@ impl DisplayGraph {
             }
         }
         for node in &self.nodes {
-            if node.op == "Const" && !params.konst {
+            if node.op_name == "Const" && !params.konst {
                 continue;
             }
             if node.hidden {
@@ -83,7 +84,7 @@ impl DisplayGraph {
             if params
                 .op_name
                 .as_ref()
-                .map(|name| name != &*node.op)
+                .map(|name| name != &*node.op_name)
                 .unwrap_or(false)
             {
                 continue;
@@ -113,6 +114,12 @@ impl DisplayGraph {
             .collect();
         output_ports.sort();
         let mut sections = vec![
+            vec!(Row::Double("impl:".to_string(),
+                if node.tfd_op == "Unimplemented" {
+                    node.tfd_op.red().to_string()
+                } else {
+                    node.tfd_op.clone()
+                })),
             node.attrs
                 .iter()
                 .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))
@@ -160,7 +167,7 @@ impl DisplayGraph {
         }
         ::format::print_box(
             &node.id.to_string(),
-            &node.op,
+            &node.op_name,
             &node.name,
             &*node.label.as_ref().map(|a| vec![a]).unwrap_or(vec![]),
             sections,
@@ -174,7 +181,8 @@ impl DisplayGraph {
             .map(|n| Node {
                 id: n.borrow().id,
                 name: n.borrow().name.clone(),
-                op: n.borrow().op_name.clone(),
+                op_name: n.borrow().op_name.clone(),
+                tfd_op: n.borrow().op.name().to_string(),
                 label: None,
                 more_lines: vec![],
                 attrs: vec![],

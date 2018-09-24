@@ -18,6 +18,10 @@ impl<T> Op for Fill<T>
 where
     T: Datum,
 {
+    fn name(&self) -> &str {
+        "tf.Fill"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (shape, value) = args_2!(inputs);

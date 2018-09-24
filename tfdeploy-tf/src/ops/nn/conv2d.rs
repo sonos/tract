@@ -78,6 +78,9 @@ impl<T: Datum + LinalgScalar> Conv2D<T> {
 }
 
 impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
+    fn name(&self) -> &str {
+        "tf.Conv2D"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);

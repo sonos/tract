@@ -45,6 +45,9 @@ impl<T: Datum> Squeeze<T> {
 }
 
 impl<T: Datum> Op for Squeeze<T> {
+    fn name(&self) -> &str {
+        "tf.Squeeze"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);

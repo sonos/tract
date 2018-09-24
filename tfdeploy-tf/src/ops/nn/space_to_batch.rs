@@ -23,6 +23,9 @@ impl<T: Datum> OpBuffer for SpaceToBatchBuffer<T> {}
 pub struct SpaceToBatch<T: Datum + Zero>(PhantomData<T>);
 
 impl<T: Datum + Zero> Op for SpaceToBatch<T> {
+    fn name(&self) -> &str {
+        "SpaceToBatch"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
@@ -208,6 +211,9 @@ impl OpBuffer for BatchToSpaceBuffer {}
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {
+    fn name(&self) -> &str {
+        "BatchToSpace"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         use ndarray::*;

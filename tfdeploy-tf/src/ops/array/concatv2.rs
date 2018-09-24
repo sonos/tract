@@ -17,6 +17,10 @@ pub struct ConcatV2<T: Datum> {
 }
 
 impl<T: Datum> Op for ConcatV2<T> {
+    fn name(&self) -> &str {
+        "tf.ConvatV2"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let axis: i32 = inputs

@@ -212,6 +212,8 @@ impl StepValue {
 
 /// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
+    fn name(&self) -> &str;
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         bail!("Unexpected call on op.eval(). {:?}", self)

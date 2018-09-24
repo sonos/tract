@@ -56,6 +56,10 @@ impl<T> Op for Pad<T>
 where
     T: Datum+Zero,
 {
+    fn name(&self) -> &str {
+        "tf.Pad"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, paddings) = args_2!(inputs);

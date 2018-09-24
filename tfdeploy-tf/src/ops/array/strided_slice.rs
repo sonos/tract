@@ -365,6 +365,9 @@ pub struct StridedSlice<T: Datum> {
 }
 
 impl<T: Datum> Op for StridedSlice<T> {
+    fn name(&self) -> &str {
+        "tf.StridedSlice"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         self.base.eval::<T>(inputs)
@@ -404,6 +407,9 @@ pub struct StridedSliceD {
 }
 
 impl Op for StridedSliceD {
+    fn name(&self) -> &str {
+        "tf.StridedSliceD"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let dt = inputs[0].datum_type();
@@ -460,6 +466,9 @@ pub struct SkipBeginStreamStridedSlice {
 }
 
 impl Op for SkipBeginStreamStridedSlice {
+    fn name(&self) -> &str {
+        "tf.StridedSlice.SkipBegin"
+    }
     fn step(
         &self,
         mut inputs: TVec<StepValue>,

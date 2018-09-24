@@ -35,6 +35,10 @@ impl Pack {
 }
 
 impl Op for Pack {
+    fn name(&self) -> &str {
+        "tf.Pack"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let dt = DatumType::super_type_for(inputs.iter().map(|dt| dt.datum_type()))

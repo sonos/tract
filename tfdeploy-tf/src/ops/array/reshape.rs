@@ -33,6 +33,9 @@ impl<T: Datum> Reshape<T> {
 }
 
 impl<T: Datum> Op for Reshape<T> {
+    fn name(&self) -> &str {
+        "tf.Reshape"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, dims) = args_2!(inputs);

@@ -34,6 +34,9 @@ impl ExpandDims {
 }
 
 impl Op for ExpandDims {
+    fn name(&self) -> &str {
+        "tf.ExpandDims"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (data, dims) = args_2!(inputs);
@@ -122,6 +125,10 @@ impl Identity {
 }
 
 impl Op for Identity {
+    fn name(&self) -> &str {
+        "tf.Identity"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Ok(inputs)
@@ -166,6 +173,10 @@ impl Shape {
 }
 
 impl Op for Shape {
+    fn name(&self) -> &str {
+        "tf.Shape"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;

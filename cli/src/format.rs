@@ -228,7 +228,10 @@ pub fn print_node(
         &node.op_name,
         &node.name,
         &status,
-        [format::node_info(&node, &graph, state), sections].concat(),
+        [
+        format::node_info(&node, &graph, state),
+        sections]
+        .concat(),
     );
 }
 
