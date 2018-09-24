@@ -78,7 +78,7 @@ proptest! {
 
 proptest! {
     #[test]
-    fn conv_infer((ref i, ref k, ref strides) in img_and_ker(),
+    fn conv_infer_facts((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
 //        ::conform::setup_test_logger();
         if valid {

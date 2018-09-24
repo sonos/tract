@@ -275,7 +275,7 @@ impl Analyser {
 
         let (inputs, outputs) = self.facts(node.id)?;
 
-        let inferred = node.op.infer_and_propagate(inputs, outputs).map_err(|e| {
+        let inferred = node.op.infer(inputs, outputs).map_err(|e| {
             format!(
                 "While inferring forward for {} {}: {}",
                 node.id, node.name, e

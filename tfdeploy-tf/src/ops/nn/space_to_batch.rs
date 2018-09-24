@@ -422,7 +422,7 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
 
         let (_, outputs) =
-            op.infer(
+            op.infer_facts(
                 tvec!(data, block_shape, paddings),
                 tvec!(TensorFact::default()),
             ).unwrap();
@@ -441,7 +441,7 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
 
         let (_, mut outputs) =
-            op.infer(
+            op.infer_facts(
                 tvec!(data, block_shape, paddings),
                 tvec!(TensorFact::default()),
             ).unwrap();

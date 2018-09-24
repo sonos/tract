@@ -258,12 +258,12 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     ///
     /// Returns Err in case of an unrecoverable error during the inference,
     /// and the refined properties about the inputs and outputs otherwise.
-    fn infer_and_propagate(
+    fn infer(
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let (infered_inputs, infered_outputs) = self.infer(inputs, outputs)?;
+        let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
 
         if infered_inputs.iter().all(|i| i.value.is_concrete()) {
             let input_values = infered_inputs
@@ -300,7 +300,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
 }
 
 pub trait InferenceOp {
-    fn infer(
+    fn infer_facts(
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,

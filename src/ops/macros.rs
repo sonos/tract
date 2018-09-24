@@ -345,7 +345,7 @@ macro_rules! boxed_new {
 macro_rules! assert_forward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(
-            $op.infer(tvec![$input.clone()], tvec![TensorFact::new()])
+            $op.infer_facts(tvec![$input.clone()], tvec![TensorFact::new()])
                 .unwrap(),
             (tvec![$input.clone()], tvec![$output])
         )
@@ -358,7 +358,7 @@ macro_rules! assert_forward {
 macro_rules! assert_backward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(
-            $op.infer(tvec![TensorFact::new()], tvec![$output.clone()])
+            $op.infer_facts(tvec![TensorFact::new()], tvec![$output.clone()])
                 .unwrap(),
             (tvec![$input], tvec![$output.clone()])
         )

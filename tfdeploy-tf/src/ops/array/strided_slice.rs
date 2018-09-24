@@ -478,7 +478,7 @@ impl Op for SkipBeginStreamStridedSlice {
 }
 
 impl InferenceOp for SkipBeginStreamStridedSlice {
-    fn infer(
+    fn infer_facts(
         &self,
         _inputs: TVec<TensorFact>,
         _outputs: TVec<TensorFact>,
@@ -673,7 +673,7 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
         let (input_facts, output_facts) =
-            op.infer(
+            op.infer_facts(
                 tvec![input, begin.clone(), end.clone(), strides.clone()],
                 tvec![TensorFact::default()],
             ).unwrap();
@@ -707,7 +707,7 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1]));
 
         let (input_facts, output_facts) =
-            op.infer(
+            op.infer_facts(
                 tvec![input, begin.clone(), end.clone(), strides.clone()],
                 tvec![TensorFact::default()],
             ).unwrap();
@@ -741,7 +741,7 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
         let (_, output_facts) =
-            op.infer(
+            op.infer_facts(
                 tvec![input, begin, end, strides],
                 tvec![TensorFact::default()],
             ).unwrap();
@@ -764,7 +764,7 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
         let (_, output_facts) =
-            op.infer(
+            op.infer_facts(
                 tvec![input, begin, end, strides],
                 tvec![TensorFact::default()],
             ).unwrap();

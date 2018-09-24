@@ -160,7 +160,7 @@ pub fn infer<S: AsRef<str>>(
             .into(),
     ];
 
-    let e = output.op.infer(inputs_vectors, output_vectors);
+    let e = output.op.infer_facts(inputs_vectors, output_vectors);
     prop_assert!(e.is_ok(), "{:?}", e);
 
     Ok(())

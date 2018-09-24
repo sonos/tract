@@ -145,7 +145,7 @@ mod tests {
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
         let (_, output_facts) = pack
-            .infer(tvec![a, b], tvec![TensorFact::default()])
+            .infer_facts(tvec![a, b], tvec![TensorFact::default()])
             .unwrap();
         let exp: TVec<TensorFact> = tvec!(TensorFact::dt_shape(DatumType::TDim, vec![2usize]));
         assert_eq!(output_facts, exp)
@@ -157,7 +157,7 @@ mod tests {
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
         let (_, output_facts) = pack
-            .infer_and_propagate(tvec![a, b], tvec![TensorFact::default()])
+            .infer(tvec![a, b], tvec![TensorFact::default()])
             .unwrap();
         let exp: TVec<TensorFact> = tvec!(Tensor::from(arr1(&[TDim::zero(), TDim::zero()])).into());
         assert_eq!(output_facts, exp);

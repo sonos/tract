@@ -161,7 +161,7 @@ mod tests {
 
         let op = Squeeze::<TDim>::new(Some(vec![1]));
         let inferred = op
-            .infer(tvec!(input), tvec!(TensorFact::default()))
+            .infer_facts(tvec!(input), tvec!(TensorFact::default()))
             .unwrap();
 
         let expect: TVec<_> = tvec!(
