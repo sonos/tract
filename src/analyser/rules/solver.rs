@@ -357,7 +357,8 @@ impl<'rules> Solver<'rules> {
                 }
 
                 trace!("  Applying rule {:?}", rule);
-                let (step_used, mut step_added) = rule.apply(&mut context)?;
+                let (step_used, mut step_added) = rule.apply(&mut context)
+                    .map_err(|e| format!("Applying rule {:?}: {:}", rule, e))?;
                 *used |= step_used;
 
                 // There is a change if the rule was used, or if it added new rules.
@@ -367,7 +368,7 @@ impl<'rules> Solver<'rules> {
                 added_rules.append(&mut step_added);
             }
 
-            trace!("  Applyingall rules");
+            trace!("  Applying all rules");
 
             for rule in added_rules.drain(..) {
                 rules.push((false, rule));

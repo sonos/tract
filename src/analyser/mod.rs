@@ -246,7 +246,7 @@ impl Analyser {
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
                 trace!(
-                    " Input {} from {:?}: {:?}",
+                    "Input {} from {:?}: {:?}",
                     edge.to_input,
                     edge.from,
                     edge.fact
@@ -255,11 +255,18 @@ impl Analyser {
             .map(|edge| edge.fact.clone())
             .collect();
 
-        // FIXME(liautaud): We should handle multiple output ports in the future.
-        let mut outputs = tvec![TensorFact::new()];
-        for &i in &self.next_edges[node.id] {
-            outputs[0] = self.edges[i].fact.unify(&outputs[0])?;
-        }
+        let outputs: TVec<_> = self.next_edges[node.id]
+            .iter()
+            .map(|&i| &self.edges[i])
+            .inspect(|edge| {
+                trace!(
+                    "Output {} {:?}",
+                    edge.from.map(|o| o.slot).unwrap_or(0),
+                    edge.fact
+                );
+            })
+            .map(|edge| edge.fact.clone())
+            .collect();
 
         Ok((inputs, outputs))
     }
@@ -269,7 +276,7 @@ impl Analyser {
     fn step(&mut self, node: usize) -> TfdResult<Vec<usize>> {
         let node = &self.nodes[node];
         debug!(
-            "Starting step for {} {} ({})",
+            "Starting step for #{} {} ({})",
             node.id, node.name, node.op_name,
         );
 
@@ -288,7 +295,7 @@ impl Analyser {
             let fact = &inferred.0[i];
             let mut unified = fact.unify(&self.edges[j].fact).map_err(|e| {
                 format!(
-                    "While unifying inputs of node {} {}: {}",
+                    "While unifying inputs of node #{} {}: {}",
                     node.id, node.name, e
                 )
             })?;
@@ -302,15 +309,10 @@ impl Analyser {
         }
 
         for (i, &j) in self.next_edges[node.id].iter().enumerate() {
-            // FIXME(liautaud): We should handle multiple output ports in the future.
-            if inferred.1.len() != 1 {
-                panic!("Inference only supports nodes with a single output port.");
-            }
-
-            let fact = &inferred.1[0];
+            let fact = &inferred.1[i];
             let mut unified = fact.unify(&self.edges[j].fact).map_err(|e| {
                 format!(
-                    "While unifying outputs of node {} {} {}",
+                    "While unifying outputs of #{} {} {}",
                     node.id, node.name, e
                 )
             })?;
@@ -318,8 +320,8 @@ impl Analyser {
 
             if unified != self.edges[j].fact {
                 debug!(
-                    " Refined {} output {}/{} to {:?}",
-                    node.name, node.id, i, unified
+                    " Refined output {} for #{} {} to {:?}",
+                    i, node.id, node.name,unified
                 );
                 changed_edges.push(j);
                 self.edges[j].fact = unified;
