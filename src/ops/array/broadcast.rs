@@ -23,19 +23,7 @@ impl Op for MultiBroadcastTo {
             .collect();
         let dims = ::broadcast::multi_broadcast(&[&*dims, &*input.shape()])
             .ok_or("incompatible shapes")?;
-        match input.datum_type() {
-            DatumType::Bool => Self::eval_t::<bool>(input.as_tensor(), &*dims),
-            DatumType::U8 => Self::eval_t::<u8>(input.as_tensor(), &*dims),
-            DatumType::U16 => Self::eval_t::<u16>(input.as_tensor(), &*dims),
-            DatumType::I8 => Self::eval_t::<i8>(input.as_tensor(), &*dims),
-            DatumType::I16 => Self::eval_t::<i16>(input.as_tensor(), &*dims),
-            DatumType::I32 => Self::eval_t::<i32>(input.as_tensor(), &*dims),
-            DatumType::I64 => Self::eval_t::<i64>(input.as_tensor(), &*dims),
-            DatumType::F32 => Self::eval_t::<f32>(input.as_tensor(), &*dims),
-            DatumType::F64 => Self::eval_t::<f64>(input.as_tensor(), &*dims),
-            DatumType::TDim => Self::eval_t::<TDim>(input.as_tensor(), &*dims),
-            DatumType::String => bail!("String is not a Datum")
-        }
+        dispatch_datum!(Self::eval_t(input.datum_type())(input.as_tensor(), &*dims))
     }
 }
 

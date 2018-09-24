@@ -16,23 +16,21 @@
 #[macro_export]
 macro_rules! wrap {
     ($($x:expr),*) => ({
-        vec![$( $crate::analyser::rules::exp2::IntoExp::bex($x) ),*]
+        vec![$( $crate::analyser::rules::expr::IntoExp::bex($x) ),*]
     });
 
     ($($x:expr,)*) => (wrap![$($x),*]);
 }
 
 mod cache;
-pub mod exp2;
-mod expressions;
+pub mod expr;
 mod path;
 mod proxies;
 mod solver;
 
 pub mod prelude {
     pub use self::super::cache::*;
-    pub use self::super::exp2::*;
-    pub use self::super::expressions::*;
+    pub use self::super::expr::*;
     pub use self::super::path::*;
     pub use self::super::proxies::*;
     pub use self::super::solver::*;

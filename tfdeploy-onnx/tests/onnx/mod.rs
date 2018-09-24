@@ -136,9 +136,11 @@ pub fn run_all(tests: &str) {
     ensure_onnx_git_checkout().unwrap();
     let dir = path::PathBuf::from(ONNX_DIR);
     let node_tests = dir.join("onnx/backend/test/data").join(tests);
+    let filter = ::std::env::var("ONNX_TEST_FILTER").unwrap_or("".to_string());
     let mut tests: Vec<String> = fs::read_dir(&node_tests)
         .unwrap()
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
+        .filter(|n| n.contains(&filter))
         .collect();
     tests.sort();
     let errors:usize = tests

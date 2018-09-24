@@ -277,7 +277,7 @@ impl Analyser {
 
         let inferred = node.op.infer(inputs, outputs).map_err(|e| {
             format!(
-                "While inferring forward for {} {}: {}",
+                "While inferring forward for #{} {}: {}",
                 node.id, node.name, e
             )
         })?;
