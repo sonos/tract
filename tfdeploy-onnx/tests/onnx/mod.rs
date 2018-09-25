@@ -84,7 +84,7 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
                 let computed = plan.run(inputs)?.remove(0);
                 for (a, b) in computed.iter().zip(expected.iter()) {
                     if !a.close_enough(b, true) {
-                        bail!("Different result")
+                        bail!("Different result: {:?} {:?}", a, b)
                     }
                 }
             }

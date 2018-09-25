@@ -44,6 +44,7 @@ extern crate derive_new;
 extern crate error_chain;
 #[cfg(feature = "image_ops")]
 extern crate image;
+#[macro_use]
 extern crate itertools;
 #[allow(unused_imports)]
 #[macro_use]

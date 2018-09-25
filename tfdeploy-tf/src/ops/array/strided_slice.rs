@@ -466,6 +466,9 @@ pub struct SkipBeginStreamStridedSlice {
 }
 
 impl Op for SkipBeginStreamStridedSlice {
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        panic!("only streaming op impl");
+    }
     fn name(&self) -> &str {
         "tf.StridedSlice.SkipBegin"
     }

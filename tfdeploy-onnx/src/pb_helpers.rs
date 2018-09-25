@@ -27,7 +27,7 @@ impl NodeProto {
         Ok(Some(attr))
     }
 
-    fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<Tensor>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)? {
             Some(attr) => Ok(Some(attr.get_t().to_tfd()?)),
             None => Ok(None)
@@ -38,6 +38,24 @@ impl NodeProto {
         Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected tensor attribute '{}'",
+                self.get_name(),
+                self.get_op_type(),
+                name
+            )
+        })?)
+    }
+
+    pub fn get_attr_opt_ints(&self, name: &str) -> TfdResult<Option<&[i64]>> {
+        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)? {
+            Some(attr) => Ok(Some(attr.get_ints())),
+            None => Ok(None)
+        }
+    }
+
+    pub fn get_attr_ints(&self, name: &str) -> TfdResult<&[i64]> {
+        Ok(self.get_attr_opt_ints(name)?.ok_or_else(|| {
+            format!(
+                "Node {} ({}) expected list of ints attribute '{}'",
                 self.get_name(),
                 self.get_op_type(),
                 name

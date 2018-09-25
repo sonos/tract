@@ -357,7 +357,8 @@ impl<'rules> Solver<'rules> {
                 }
 
                 trace!("  Applying rule {:?}", rule);
-                let (step_used, mut step_added) = rule.apply(&mut context)
+                let (step_used, mut step_added) = rule
+                    .apply(&mut context)
                     .map_err(|e| format!("Applying rule {:?}: {:}", rule, e))?;
                 *used |= step_used;
 
@@ -457,6 +458,7 @@ impl<'rules> Solver<'rules> {
     /// solver.given(input.rank, |solver, ir|
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
+    /// ```
     pub fn with<T, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
     where
         T: Fact + Output + 'static,
@@ -475,6 +477,7 @@ impl<'rules> Solver<'rules> {
     /// solver.given(input.rank, |solver, ir|
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
+    /// ```
     pub fn given<T, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
     where
         T: Fact + Output + 'static,
@@ -493,6 +496,7 @@ impl<'rules> Solver<'rules> {
     /// solver.given(input.rank, |solver, ir|
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
+    /// ```
     pub fn given_all<T, I, A, F>(&mut self, items: I, closure: F) -> &mut Solver<'rules>
     where
         T: Fact + Output + 'static,
@@ -501,6 +505,106 @@ impl<'rules> Solver<'rules> {
         F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) + 'rules,
     {
         let rule = GivenAllRule::new(items.into_iter().map(|it| it.bex()).collect(), closure);
+        self.rules.push(Box::new(rule));
+        self
+    }
+}
+
+macro_rules! given_tuple {
+    ($Name:ident, $name:ident, $($id:ident),*) => {
+        #[allow(non_camel_case_types)]
+        pub struct $Name<'rules, $($id: Fact),*> {
+            $(pub $id: Exp<$id>,)*
+            pub closure: Box<Fn(&mut Solver<'rules>, $($id::Concrete,)*) + 'rules>,
+        }
+
+        #[allow(non_camel_case_types)]
+        impl<'rules, $($id: Fact + Output,)*> $Name<'rules, $($id,)*> {
+            pub fn new<F>($($id: Exp<$id>,)* closure: F) -> $Name<'rules, $($id,)*>
+            where
+                F: Fn(&mut Solver<'rules>, $($id::Concrete,)*) + 'rules,
+            {
+                $Name { $($id,)*
+                    closure: Box::new(closure),
+                }
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        impl<'rules, $($id: Fact + Output,)*> Rule<'rules> for $Name<'rules, $($id,)*> {
+            /// Tries to apply the rule to a given context.
+            fn apply(&self, context: &mut Context) -> TfdResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+                $(
+                let $id = if let Some(it) = self.$id.get(context)?.concretize() {
+                    it
+                } else {
+                    return Ok((false, vec![]));
+                };
+                )*;
+
+                let mut solver = Solver::default();
+                (self.closure)(&mut solver, $($id,)*);
+                Ok((true, solver.take_rules()))
+            }
+
+            /// Returns the paths that the rule depends on.
+            fn get_paths(&self) -> Vec<&Path> {
+                let mut v = vec!();
+                $(v.extend(self.$id.get_paths());)*;
+                v
+            }
+        }
+
+        #[allow(non_camel_case_types)]
+        impl<'s, $($id: Fact + Output,)*> fmt::Debug for $Name<'s, $($id,)*> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "Given2Rule {{ {:?} }}", ($(&self.$id),*))
+            }
+        }
+
+    }
+}
+
+given_tuple!(Given2Rule, given_2, a, b);
+impl<'rules> Solver<'rules> {
+    pub fn given_2<T1, T2, A1, A2, F>(&mut self, item_1: A1, item_2: A2, closure: F) -> &mut Solver<'rules>
+    where
+        A1: IntoExp<T1>, T1: Fact + Output + 'static,
+        A2: IntoExp<T2>, T2: Fact + Output + 'static,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete) + 'rules,
+    {
+        let rule = Given2Rule::new(item_1.bex(), item_2.bex(), closure);
+        self.rules.push(Box::new(rule));
+        self
+    }
+}
+
+given_tuple!(Given3Rule, given_3, a, b, c);
+impl<'rules> Solver<'rules> {
+    pub fn given_3<T1, T2, T3, A1, A2, A3, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, closure: F) -> &mut Solver<'rules>
+    where
+        A1: IntoExp<T1>, T1: Fact + Output + 'static,
+        A2: IntoExp<T2>, T2: Fact + Output + 'static,
+        A3: IntoExp<T3>, T3: Fact + Output + 'static,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete) + 'rules,
+    {
+        let rule = Given3Rule::new(item_1.bex(), item_2.bex(), item_3.bex(), closure);
+        self.rules.push(Box::new(rule));
+        self
+    }
+}
+
+given_tuple!(Given4Rule, given_4, a, b, c, d);
+impl<'rules> Solver<'rules> {
+    pub fn given_4<T1, T2, T3, T4, A1, A2, A3, A4, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, item_4: A4, closure: F) -> &mut Solver<'rules>
+    where
+        A1: IntoExp<T1>, T1: Fact + Output + 'static,
+        A2: IntoExp<T2>, T2: Fact + Output + 'static,
+        A3: IntoExp<T3>, T3: Fact + Output + 'static,
+        A4: IntoExp<T4>, T4: Fact + Output + 'static,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete, T4::Concrete) + 'rules,
+    {
+        let rule = Given4Rule::new(item_1.bex(), item_2.bex(), item_3.bex(), item_4.bex(), closure);
         self.rules.push(Box::new(rule));
         self
     }
@@ -524,7 +628,9 @@ mod tests {
     fn solver_wrong_size_1() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs.len, 2);
-        solver.infer_facts((tvec![].into(), tvec![].into())).unwrap();
+        solver
+            .infer_facts((tvec![].into(), tvec![].into()))
+            .unwrap();
     }
 
     #[test]
@@ -532,7 +638,9 @@ mod tests {
     fn solver_wrong_size_2() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 2);
-        solver.infer_facts((tvec![].into(), tvec![].into())).unwrap();
+        solver
+            .infer_facts((tvec![].into(), tvec![].into()))
+            .unwrap();
     }
 
     #[test]
@@ -573,7 +681,9 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 2);
 
-        let facts = solver.infer_facts((tvec![TensorFact::new()], tvec![])).unwrap();
+        let facts = solver
+            .infer_facts((tvec![TensorFact::new()], tvec![]))
+            .unwrap();
         let expected = (
             tvec![TensorFact {
                 shape: shapefact![_, _],
@@ -590,7 +700,9 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].shape[1], 0.to_dim());
 
-        let facts = solver.infer_facts((tvec![TensorFact::new()], tvec![])).unwrap();
+        let facts = solver
+            .infer_facts((tvec![TensorFact::new()], tvec![]))
+            .unwrap();
         let expected = (
             tvec![TensorFact {
                 shape: shapefact![_, 0; ..],
@@ -610,7 +722,9 @@ mod tests {
         solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]);
         solver.equals(&inputs[0].shape[1], 3.to_dim());
 
-        let facts = solver.infer_facts((tvec![TensorFact::new()], tvec![])).unwrap();
+        let facts = solver
+            .infer_facts((tvec![TensorFact::new()], tvec![]))
+            .unwrap();
         let expected = (
             tvec![TensorFact {
                 shape: shapefact![3, 3, 3],

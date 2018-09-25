@@ -242,15 +242,8 @@ where
 
     /// Tries to set the value of the expression in the given context.
     fn set(&self, _: &mut Context, value: T) -> TfdResult<bool> {
-        if self.0 == value {
-            Ok(false)
-        } else {
-            bail!(
-                "Cannot set the value of constant {:?} to {:?}.",
-                self.0,
-                value
-            );
-        }
+        self.0.unify(&value)?;
+        Ok(false)
     }
 
     /// Returns the paths that the expression depends on.
@@ -284,6 +277,7 @@ where
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TfdResult<T> {
         context.get(&self.0)
+            .map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -291,7 +285,8 @@ where
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
-        context.set(&self.0, new)?;
+        context.set(&self.0, new)
+            .map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
         Ok(diff)
     }
 

@@ -215,9 +215,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     fn name(&self) -> &str;
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        bail!("Unexpected call on op.eval(). {:?}", self)
-    }
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 
     /// Returns a new streaming buffer for the operation.
     fn new_buffer(&self) -> Box<OpBuffer> {
