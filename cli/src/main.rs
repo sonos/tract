@@ -179,6 +179,12 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .help("output to a json file"),
         )
         .arg(
+            Arg::with_name("quiet")
+                .short("q")
+                .long("quiet")
+                .help("don't dump"),
+        )
+        .arg(
             Arg::with_name("node_id")
                 .long("node-id")
                 .takes_value(true)
@@ -359,6 +365,7 @@ impl ProfilingMode {
 pub struct OutputParameters {
     web: bool,
     konst: bool,
+    quiet: bool,
     json: Option<String>,
     node_id: Option<usize>,
     op_name: Option<String>,
@@ -371,6 +378,7 @@ impl OutputParameters {
         Ok(OutputParameters {
             web: matches.is_present("web"),
             konst: matches.is_present("const"),
+            quiet: matches.is_present("quiet"),
             json: matches.value_of("json").map(String::from),
             node_id: matches.value_of("node_id").map(|id| id.parse().unwrap()),
             node_name: matches.value_of("node_name").map(String::from),

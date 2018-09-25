@@ -54,6 +54,8 @@ impl DisplayGraph {
     pub fn render(&self, params: &OutputParameters) -> CliResult<()> {
         if params.web {
             ::web::open_web(&self, params)
+        } else if params.quiet {
+            Ok(())
         } else if let Some(json) = params.json.as_ref() {
             ::serde_json::to_writer(fs::File::create(json)?, self)?;
             Ok(())

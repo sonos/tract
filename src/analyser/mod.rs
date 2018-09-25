@@ -1,6 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
+use itertools::Itertools;
+
 use errors::*;
 use model::eval_order_for_nodes;
 use model::{Model, OutletId, RawModel, TVec};
@@ -255,17 +257,28 @@ impl Analyser {
             .map(|edge| edge.fact.clone())
             .collect();
 
-        let outputs: TVec<_> = self.next_edges[node.id]
+        let outgoing = self.next_edges[node.id]
             .iter()
             .map(|&i| &self.edges[i])
-            .inspect(|edge| {
-                trace!(
-                    "Output {} {:?}",
-                    edge.from.map(|o| o.slot).unwrap_or(0),
-                    edge.fact
-                );
+            .map(|e| (e.from.as_ref().map(|o| o.slot).unwrap_or(0), e))
+            .into_group_map();
+        let mut outputs: HashMap<usize, TensorFact> = outgoing
+            .iter()
+            .map(|(&k, edges)| {
+                Ok((
+                    k,
+                    edges
+                        .iter()
+                        .try_fold(TensorFact::default(), |ac, n| ac.unify(&n.fact))?,
+                ))
             })
-            .map(|edge| edge.fact.clone())
+            .collect::<TfdResult<_>>()?;
+        let output_count = outputs.keys().max().map(|n| n + 1).unwrap_or(0);
+        let outputs = (0..output_count)
+            .map(|ix| outputs.remove(&ix).unwrap_or(TensorFact::default()))
+            .enumerate()
+            .inspect(|(ix, f)| trace!("Output {}: {:?}", ix, f))
+            .map(|(_ix, f)| f)
             .collect();
 
         Ok((inputs, outputs))
@@ -308,26 +321,26 @@ impl Analyser {
             }
         }
 
-        for (i, &j) in self.next_edges[node.id].iter().enumerate() {
-            let fact = &inferred.1[i];
-            let mut unified = fact.unify(&self.edges[j].fact).map_err(|e| {
-                format!(
-                    "While unifying outputs of #{} {} {}",
-                    node.id, node.name, e
-                )
-            })?;
+        for (ix, fact) in inferred.1.iter().enumerate() {
+            let mut unified = self.next_edges[node.id]
+                .iter()
+                .map(|&e| &self.edges[e])
+                .filter(|e| ix == e.from.as_ref().map(|o| o.slot).unwrap_or(0))
+                .try_fold(fact.clone(), |fact, edge| fact.unify(&edge.fact))
+                .map_err(|e| format!(" Refining output {}/{}: {:?}", node.id, ix, e))?;
             unified.reduce();
 
-            if unified != self.edges[j].fact {
-                debug!(
-                    " Refined output {} for #{} {} to {:?}",
-                    i, node.id, node.name,unified
-                );
-                changed_edges.push(j);
-                self.edges[j].fact = unified;
-            }
+            self.next_edges[node.id]
+                .iter()
+                .map(|&e| &self.edges[e])
+                .filter(|e| ix == e.from.as_ref().map(|o| o.slot).unwrap_or(0))
+                .filter(|e| e.fact != unified)
+                .for_each(|e| {
+                    e.fact == unified;
+                    debug!(" Refined {} output #{} to {:?}", node.name, ix, unified);
+                    changed_edges.push(e.id);
+                });
         }
-
         Ok(changed_edges)
     }
 }
