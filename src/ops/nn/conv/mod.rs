@@ -157,6 +157,7 @@ impl InferenceRulesOp for Conv {
         outputs: &'p TensorsProxy,
     ) {
         if let Some(kshape) = &self.kernel_shape {
+            solver.equals(&inputs[1].rank, kshape.len() as i64 + 2);
             for (ix, dim) in kshape.iter().enumerate() {
                 solver.equals(
                     &inputs[1].shape[ix + self.spatial_kernel_dim()],

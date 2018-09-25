@@ -330,16 +330,17 @@ impl Analyser {
                 .map_err(|e| format!(" Refining output {}/{}: {:?}", node.id, ix, e))?;
             unified.reduce();
 
-            self.next_edges[node.id]
-                .iter()
-                .map(|&e| &self.edges[e])
-                .filter(|e| ix == e.from.as_ref().map(|o| o.slot).unwrap_or(0))
-                .filter(|e| e.fact != unified)
-                .for_each(|e| {
-                    e.fact == unified;
+            for edge in &self.next_edges[node.id] {
+                let edge = &mut self.edges[*edge];
+                if edge.from.as_ref().map(|o| o.slot).unwrap_or(0) != ix {
+                    continue;
+                }
+                if edge.fact != unified {
+                    edge.fact = unified.clone();
                     debug!(" Refined {} output #{} to {:?}", node.name, ix, unified);
-                    changed_edges.push(e.id);
-                });
+                    changed_edges.push(edge.id);
+                }
+            }
         }
         Ok(changed_edges)
     }
