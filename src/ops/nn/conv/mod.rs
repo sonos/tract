@@ -2,6 +2,10 @@ use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 
+use dim::DimLike;
+
+use super::patches::Patch;
+
 use insideout::InsideOut;
 
 #[derive(Debug, Clone, new, Default)]
@@ -15,14 +19,6 @@ pub struct Conv {
 }
 
 impl Conv {
-    fn spatial_input_dim(&self) -> usize {
-        if self.data_is_nhwc {
-            1
-        } else {
-            2
-        }
-    }
-
     fn spatial_kernel_dim(&self) -> usize {
         if self.kernel_is_hwio {
             0
@@ -31,34 +27,25 @@ impl Conv {
         }
     }
 
-    fn output_shape(&self, ishape: &[TDim], kshape: &[TDim]) -> Vec<TDim> {
+    fn patch<D:DimLike>(&self, data_full_shape:&[D], kernel_full_shape: &[D]) -> Patch<D> {
+        let spatial_rank = data_full_shape.len() -2;
+        Patch::new(self.data_is_nhwc,
+                   self.dilations.clone().unwrap_or(vec!(1; spatial_rank)),
+                   kernel_full_shape.iter().skip(self.spatial_kernel_dim()).take(spatial_rank).cloned().collect(),
+                   self.pads.as_ref().map(|p| p[..spatial_rank].iter().map(|i| D::from(*i)).collect()).unwrap_or(vec!(D::from(0); spatial_rank)),
+                   self.pads.as_ref().map(|p| p[spatial_rank..].iter().map(|i| D::from(*i)).collect()).unwrap_or(vec!(D::from(0); spatial_rank)),
+                   self.strides.clone().unwrap_or(vec!(1; spatial_rank)),
+                   data_full_shape.to_vec())
+    }
+
+    fn output_shape<D:DimLike>(&self, ishape: &[D], kshape: &[D]) -> Vec<D> {
+        let patch = self.patch(ishape, kshape);
         let ko = if self.kernel_is_hwio {
-            kshape[3] // hwio
+            *kshape.last().unwrap() // hwio
         } else {
             kshape[0] // oihw
         };
-        let mut v = vec![ishape[0]]; // nchw
-        if !self.data_is_nhwc {
-            v.push(ko); // nchw
-        }
-        let spatial_rank = ishape.len() - 2;
-        v.extend((0..spatial_rank).map(move |ix| {
-            compute_output_spatial_dim(
-                ishape[ix + self.spatial_input_dim()],
-                self.dilations.as_ref().map(|ds| ds[ix]).unwrap_or(1),
-                kshape[ix + self.spatial_kernel_dim()].to_integer().unwrap() as usize,
-                self.pads.as_ref().map(|p| p[ix]).unwrap_or(0),
-                self.pads
-                    .as_ref()
-                    .map(|p| p[ix + kshape.len() - 2])
-                    .unwrap_or(0),
-                self.strides.as_ref().map(|s| s[ix]).unwrap_or(1),
-            )
-        }));
-        if self.data_is_nhwc {
-            v.push(ko); // nhwc
-        }
-        v
+        patch.output_full_shape(ko)
     }
 }
 
@@ -79,66 +66,37 @@ impl Op for Conv {
         let kernel = kernel.to_array_view::<f32>()?;
         let bias = bias.as_ref().map(|b| b.to_array_view::<f32>()).inside_out()?;
 
-        let spatial_rank = input.ndim() - 2;
-
-        let ax_img_c = if self.data_is_nhwc {
-            Axis(input.ndim() - 1)
-        } else {
-            Axis(1)
-        };
         let (ax_ker_in, ax_ker_out) = if self.kernel_is_hwio {
-            (Axis(kernel.ndim() - 2), Axis(kernel.ndim() - 1))
+            (kernel.ndim() - 2, kernel.ndim() - 1)
         } else {
-            (Axis(1), Axis(0)) // oihw
+            (1, 0) // oihw
         };
 
-        let ishape: Vec<_> = input.shape().iter().map(|&i| TDim::from(i)).collect();
-        let kshape: Vec<_> = kernel.shape().iter().map(|&i| TDim::from(i)).collect();
-        let shape: Vec<_> = self
-            .output_shape(&ishape, &kshape)
-            .into_iter()
-            .map(|d| d.to_integer().unwrap() as usize)
-            .collect();
-        let input_channels = input.shape()[ax_img_c.index()];
+        let patch = self.patch(input.shape(), kernel.shape());
 
-        let kernel_spatial_shape =
-            &kernel.shape()[self.spatial_kernel_dim()..self.spatial_kernel_dim() + spatial_rank];
+        let shape: Vec<usize> = patch.output_full_shape(kernel.shape()[ax_ker_out]);
+        let input_channels = input.shape()[patch.axis_data_channel()];
 
-        let ones = vec![1; spatial_rank];
-        let dilations = self.dilations.as_ref().unwrap_or(&ones);
-        let strides = self.strides.as_ref().unwrap_or(&ones);
-        let kernel_field = field(kernel_spatial_shape, &ones, None)?;
-        let image_field = field(
-            kernel_spatial_shape,
-            &dilations,
-            self.pads.as_ref().map(|p| p.as_slice()),
-        )?;
+        let data_field = patch.mk_data_field();
+        let kernel_field = patch.mk_kernel_field();
 
         let output = ArrayD::from_shape_fn(shape, |coords| -> f32 {
-            let (n, ker_out, space): (usize, usize, &[usize]) = if self.data_is_nhwc {
-                (
-                    coords[0],
-                    coords[spatial_rank + 1],
-                    &coords.slice()[1..spatial_rank + 1],
-                )
-            } else {
-                (coords[0], coords[1], &coords.slice()[2..spatial_rank + 2]) // nchw
-            };
-            let space: ArrayView1<usize> = ArrayView1::from(space);
-            let mut result = bias.as_ref().map(|b| b[ker_out]).unwrap_or(0.0);
-            for (kerf, imgf) in kernel_field.outer_iter().zip(image_field.outer_iter()) {
-                let i_coords: Vec<usize> = izip!(space.iter(), imgf.iter(), strides.iter())
+            let output = patch.split_data_coords(coords.slice());
+            let space: ArrayView1<usize> = ArrayView1::from(output.space);
+            let mut result = bias.as_ref().map(|b| b[output.chan]).unwrap_or(0.0);
+            for (kerf, imgf) in kernel_field.outer_iter().zip(data_field.outer_iter()) {
+                let i_coords: Vec<usize> = izip!(space.iter(), imgf.iter(), patch.strides.iter())
                     .map(|(x, i, s)| (x * s).wrapping_add(*i))
                     .collect();
                 for input_c in 0..input_channels {
                     let i_value: f32 = *input
-                        .subview(ax_img_c, input_c)
-                        .subview(Axis(0), n) // careful, need to start with higher ranking
+                        .subview(Axis(patch.axis_data_channel()), input_c)
+                        .subview(Axis(patch.axis_data_batch()), output.n) // careful, need to start with higher ranking
                         .get(&*i_coords)
                         .unwrap_or(&0.0);
                     let k_value = kernel
-                        .subview(ax_ker_out, ker_out)
-                        .subview(ax_ker_in, input_c) // higher ranking again
+                        .subview(Axis(ax_ker_out), output.chan)
+                        .subview(Axis(ax_ker_in), input_c) // higher ranking again
                         [kerf.as_slice().unwrap()];
                     result += i_value * k_value;
                 }
@@ -206,120 +164,15 @@ impl InferenceRulesOp for Conv {
             &inputs[0].shape,
             &inputs[1].shape,
             move |solver, ishape, kshape| {
-                solver.equals(&outputs[0].shape, self.output_shape(&ishape, &kshape));
+                solver.equals(&outputs[0].shape, self.output_shape(&*ishape, &*kshape));
             },
         );
     }
 }
 
-/*
-struct DeterminedConvN<T: Datum> {
-    dilations: Vec<usize>,
-    pads: Vec<usize>,
-    strides: Vec<usize>,
-    kernel: ArrayD<T>,
-    bias: Option<ArrayD<T>>,
-}
-
-impl<T: Datum> DeterminedConvN<T> {
-    fn eval(&self, input: &Tensor) -> TfdResult<Tensor> {
-        unimplemented!();
-    }
-}
-*/
-
-fn compute_output_spatial_dim(
-    input: TDim,
-    dilation: usize,
-    kernel: usize,
-    pad_before: usize,
-    pad_after: usize,
-    stride: usize,
-) -> TDim {
-    let field = (kernel - 1) * dilation + 1;
-    let out = (input + pad_before + pad_after - field) / stride + 1;
-    trace!(
-        "input:{:?} dilation:{} kernel:{} pads:{},{}, stride:{} -> field:{} out:{:?}",
-        input,
-        dilation,
-        kernel,
-        pad_before,
-        pad_after,
-        stride,
-        field,
-        out
-    );
-    out
-}
-
-fn field(shape: &[usize], dilations: &[usize], pads: Option<&[usize]>) -> TfdResult<Array2<usize>> {
-    let square = ArrayD::from_shape_fn(shape, |id| id.slice().to_vec());
-    let len = square.len();
-    let points: Array1<Vec<usize>> = square.into_shape((len,))?;
-    Ok(Array2::from_shape_fn(
-        (points.len(), shape.len()),
-        |(pt, axis)| {
-            (points[pt][axis] * dilations[axis]).wrapping_sub(pads.map(|p| p[axis]).unwrap_or(0))
-        },
-    ))
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn test_output_spatial_dim() {
-        // onnx test_basic_conv_without_padding
-        assert_eq!(
-            compute_output_spatial_dim(5.into(), 1, 3, 0, 0, 1),
-            3.into()
-        );
-
-        // onnx test_conv_with_strides_no_padding
-        assert_eq!(
-            compute_output_spatial_dim(7.into(), 1, 3, 0, 0, 2),
-            3.into()
-        );
-        assert_eq!(
-            compute_output_spatial_dim(5.into(), 1, 3, 0, 0, 2),
-            2.into()
-        );
-
-        // onnx test_conv_with_strides_padding
-        assert_eq!(
-            compute_output_spatial_dim(7.into(), 1, 3, 1, 1, 2),
-            4.into()
-        );
-        assert_eq!(
-            compute_output_spatial_dim(5.into(), 1, 3, 1, 1, 2),
-            3.into()
-        );
-
-        // onnx test_conv_with_strides_and_asymmetric_padding
-        assert_eq!(
-            compute_output_spatial_dim(7.into(), 1, 3, 1, 1, 2),
-            4.into()
-        );
-        assert_eq!(
-            compute_output_spatial_dim(5.into(), 1, 3, 0, 0, 2),
-            2.into()
-        );
-    }
-
-    #[test]
-    fn test_kernel_field() {
-        assert_eq!(field(&[3], &[1], None).unwrap(), arr2(&[[0], [1], [2]]));
-        assert_eq!(field(&[3], &[2], None).unwrap(), arr2(&[[0], [2], [4]]));
-        assert_eq!(
-            field(&[2, 2], &[1, 1], None).unwrap(),
-            arr2(&[[0, 0], [0, 1], [1, 0], [1, 1]])
-        );
-        assert_eq!(
-            field(&[2, 2], &[2, 1], None).unwrap(),
-            arr2(&[[0, 0], [0, 1], [2, 0], [2, 1]])
-        );
-    }
 
     #[test]
     fn test_infer_with_known_kshape() {

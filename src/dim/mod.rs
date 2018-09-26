@@ -11,6 +11,16 @@ mod tree;
 use self::stack::Stack;
 use TfdResult;
 
+pub trait DimLike:
+    Copy + Clone + From<usize> + ::num::One +
+    ops::Add<Self, Output = Self> + ops::Add<usize, Output = Self> + 
+    ops::Sub<Self, Output = Self> + ops::Sub<usize, Output=Self> +
+    ops::Mul<usize, Output = Self> + ops::Div<usize, Output=Self>
+{
+}
+impl DimLike for TDim {}
+impl DimLike for usize {}
+
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct TDim(Stack);
