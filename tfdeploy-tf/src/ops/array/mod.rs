@@ -14,7 +14,8 @@ mod strided_slice;
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", ExpandDims::build);
-    reg.insert("Identity", Identity::build);
+    reg.insert("Identity",
+               |_| Ok(Box::new(::tfdeploy::ops::identity::Identity::default())));
     reg.insert("Fill", fill::fill);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
