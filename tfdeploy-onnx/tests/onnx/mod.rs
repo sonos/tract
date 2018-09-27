@@ -22,6 +22,7 @@ pub fn ensure_onnx_git_checkout() -> TfdResult<()> {
     static START: Once = Once::new();
     START.call_once(|| {
         if !dir().exists() {
+            let _ = fs::create_dir_all(dir().parent().unwrap());
             let tmp = TempDir::new("onnx").unwrap();
             let url = "https://github.com/onnx/onnx";
             ::git2::Repository::clone(url, &tmp).unwrap();
