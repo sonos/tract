@@ -17,8 +17,8 @@ fn pad(node:&NodeProto) -> TfdResult<PaddingSpec> {
     if let Some(pads) = node.get_attr_opt_ints("pads")? {
         let len = pads.len();
         return Ok(PaddingSpec::Explicit(
-            pads.iter().take(len).map(|&i| i as usize).collect(),
-            pads.iter().skip(len).map(|&i| i as usize).collect()
+            pads.iter().take(len/2).map(|&i| i as usize).collect(),
+            pads.iter().skip(len/2).map(|&i| i as usize).collect()
         ));
     }
     match node.get_attr_opt_str("auto_pad")?.unwrap_or("NOTSET") {
@@ -62,12 +62,21 @@ pub fn average_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
         .iter()
         .map(|&i| i as usize)
         .collect();
+    let pad = pad(node)?;
+    let strides = strides(node)?;
+    if let Some(ref strides) = strides {
+        assert_eq!(kernel_shape.len(), strides.len());
+    }
+    if let PaddingSpec::Explicit(ref a, ref b) = pad {
+        assert_eq!(kernel_shape.len(), a.len());
+        assert_eq!(kernel_shape.len(), b.len());
+    };
     let count_include_pad = node.get_attr_opt_int("count_include_pad")?.unwrap_or(0) != 0;
     Ok(Box::new(tfdops::nn::AvgPool::new(
         false,
         kernel_shape,
-        pad(node)?,
-        strides(node)?,
+        pad,
+        strides,
         count_include_pad,
     )))
 }

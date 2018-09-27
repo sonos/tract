@@ -70,10 +70,16 @@ impl PaddingSpec {
         aft: &[usize],
     ) -> PaddedGeometry<D> {
         let spatial_rank = data_spatial_shape.len();
+        assert_eq!(spatial_rank, kernel_spatial_shape.len());
+        assert_eq!(spatial_rank, dilations.len());
+        assert_eq!(spatial_rank, strides.len());
+        assert_eq!(spatial_rank, aft.len());
+        assert_eq!(spatial_rank, bef.len());
         let output_spatial_shape = (0..spatial_rank)
             .map(|ax| {
                 let kernel_field = (kernel_spatial_shape[ax] - 1) * dilations[ax] + 1;
-                (data_spatial_shape[ax] + bef[ax] + aft[ax] - kernel_field + 1).div_ceil(strides[ax])
+                let dim = (data_spatial_shape[ax] + bef[ax] + aft[ax] - kernel_field + 1).div_ceil(strides[ax]);
+                dim
             }).collect();
         PaddedGeometry {
             output_spatial_shape,
@@ -125,7 +131,7 @@ pub struct DataCoords<'a> {
     pub space: &'a [usize],
 }
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone)]
 pub struct Patch<D: DimLike> {
     pub data_is_nhwc: bool, // default is nchw (onnx)
     pub dilations: Vec<usize>,
@@ -133,10 +139,32 @@ pub struct Patch<D: DimLike> {
     pub pad_before: Vec<D>,
     pub pad_after: Vec<D>,
     pub strides: Vec<usize>,
-    pub data_full_shape: Vec<D>,
+    pub input_full_shape: Vec<D>,
+    pub output_spatial_shape: Vec<D>,
 }
 
 impl<D: DimLike> Patch<D> {
+    pub fn new(
+        data_is_nhwc: bool,
+        dilations: Vec<usize>,
+        kernel_spatial_shape: Vec<D>,
+        pad_before: Vec<D>,
+        pad_after: Vec<D>,
+        strides: Vec<usize>,
+        input_full_shape: Vec<D>,
+        output_spatial_shape: Vec<D>) -> Patch<D> {
+        Patch {
+            data_is_nhwc,
+            dilations,
+            kernel_spatial_shape,
+            pad_before,
+            pad_after,
+            strides,
+            input_full_shape,
+            output_spatial_shape,
+        }
+    }
+
     pub fn spatial_rank(&self) -> usize {
         self.kernel_spatial_shape.len()
     }
@@ -175,6 +203,7 @@ impl<D: DimLike> Patch<D> {
 }
 
 impl<D: DimLike> Patch<D> {
+    /*
     pub fn out_spatial_dim(&self, spatial_axis: usize) -> D {
         let one = D::one();
         let field =
@@ -184,12 +213,13 @@ impl<D: DimLike> Patch<D> {
             self.data_full_shape[spatial_axis + self.axis_data_spatial()] + pad - field;
         input_spatial_dim.div_ceil(self.strides[spatial_axis]) + one
     }
+    */
 
     pub fn output_full_shape(&self, channels: D) -> Vec<D> {
-        let mut v = self.data_full_shape.clone();
+        let mut v = self.input_full_shape.clone();
         v[self.axis_data_channel()] = channels;
         for i in 0..self.spatial_rank() {
-            v[i + self.axis_data_spatial()] = self.out_spatial_dim(i);
+            v[i + self.axis_data_spatial()] = self.output_spatial_shape[i]
         }
         v
     }

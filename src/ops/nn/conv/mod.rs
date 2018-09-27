@@ -49,8 +49,8 @@ impl Conv {
             geo.pad_after.clone(),
             strides,
             input_full_shape.to_vec(),
+            geo.output_spatial_shape.clone(),
         );
-        println!("padding: {:?} geo: {:?} patch: {:?}", self.padding, geo, patch);
         patch
     }
 
