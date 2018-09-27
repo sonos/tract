@@ -31,28 +31,17 @@ impl Conv {
         let spatial_rank = input_full_shape.len() - 2;
         let dilations = self.dilations.clone().unwrap_or(vec![1; spatial_rank]);
         let strides = self.strides.clone().unwrap_or(vec![1; spatial_rank]);
-        let first_spatial_data_axis = 1 + (!self.data_is_nhwc as usize);
-        let input_spatial_shape = &input_full_shape[first_spatial_data_axis..][..spatial_rank];
         let kernel_spatial_shape = &kernel_full_shape[self.spatial_kernel_dim()..][..spatial_rank];
         assert_eq!(spatial_rank, kernel_spatial_shape.len());
-        assert_eq!(spatial_rank, input_spatial_shape.len());
         assert_eq!(spatial_rank, dilations.len());
         assert_eq!(spatial_rank, strides.len());
-        let geo = self.padding.compute(
-            input_spatial_shape,
-            kernel_spatial_shape,
-            &*dilations,
-            &*strides,
-        );
         let patch = Patch::new(
             self.data_is_nhwc,
             dilations,
             kernel_spatial_shape.to_vec(),
-            geo.pad_before.clone(),
-            geo.pad_after.clone(),
+            &self.padding,
             strides,
             input_full_shape.to_vec(),
-            geo.output_spatial_shape.clone(),
         );
         patch
     }

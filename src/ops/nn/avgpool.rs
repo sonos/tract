@@ -21,29 +21,16 @@ impl AvgPool {
         let strides:Vec<usize> = self.strides.clone().unwrap_or(vec![1; spatial_rank]);
         let dilations = vec![1; spatial_rank];
         let kernel_shape:Vec<D> = self.kernel_shape.iter().map(|i| D::from(*i)).collect();
-        let first_spatial_data_axis = 1 + (!self.data_is_nhwc as usize);
-        let input_spatial_shape = &input_full_shape[first_spatial_data_axis..][..spatial_rank];
         assert_eq!(spatial_rank, kernel_shape.len());
-        assert_eq!(spatial_rank, input_spatial_shape.len());
         assert_eq!(spatial_rank, strides.len());
-        let geo = self
-            .padding
-            .compute(input_spatial_shape, &kernel_shape, &*dilations, &*strides);
         Patch::new(
             self.data_is_nhwc,
             dilations,
             kernel_shape,
-            geo.pad_before.clone(),
-            geo.pad_after.clone(),
+            &self.padding,
             strides,
             input_full_shape.to_vec(),
-            geo.output_spatial_shape
         )
-    }
-
-    fn output_shape<D: DimLike>(&self, ishape: &[D]) -> Vec<D> {
-        let patch = self.patch(ishape);
-        patch.output_full_shape(ishape[patch.axis_data_channel()])
     }
 }
 
@@ -57,8 +44,8 @@ impl Op for AvgPool {
         let input = input.to_array_view()?;
 
         let patch = self.patch(input.shape());
-
-        let shape: Vec<usize> = self.output_shape(input.shape());
+        let channels = input.shape()[patch.axis_data_channel()];
+        let shape: Vec<usize> = patch.output_full_shape(channels);
 
         let data_field = patch.mk_data_field();
 
@@ -94,7 +81,10 @@ impl InferenceRulesOp for AvgPool {
             .equals(&outputs.len, 1)
             .equals(&outputs[0].datum_type, &inputs[0].datum_type)
             .given(&inputs[0].shape, move |solver, ishape| {
-                solver.equals(&outputs[0].shape, self.output_shape(&*ishape));
+                let patch = self.patch(&*ishape);
+                let channels = ishape[patch.axis_data_channel()];
+                let shape = patch.output_full_shape(channels);
+                solver.equals(&outputs[0].shape, shape.bex());
             });
     }
 }

@@ -23,7 +23,7 @@ impl PaddingSpec {
         kernel_spatial_shape: &[D],
         dilations: &[usize],
         strides: &[usize],
-    ) -> PaddedGeometry<D> {
+    ) -> (Vec<D>, Vec<D>, Vec<D>) {
         assert_eq!(dilations.len(), strides.len());
         assert_eq!(dilations.len(), input_spatial_shape.len());
         assert_eq!(dilations.len(), kernel_spatial_shape.len());
@@ -68,7 +68,7 @@ impl PaddingSpec {
         strides: &[usize],
         bef: &[usize],
         aft: &[usize],
-    ) -> PaddedGeometry<D> {
+    ) -> (Vec<D>, Vec<D>, Vec<D>) {
         let spatial_rank = data_spatial_shape.len();
         assert_eq!(spatial_rank, kernel_spatial_shape.len());
         assert_eq!(spatial_rank, dilations.len());
@@ -78,14 +78,15 @@ impl PaddingSpec {
         let output_spatial_shape = (0..spatial_rank)
             .map(|ax| {
                 let kernel_field = (kernel_spatial_shape[ax] - 1) * dilations[ax] + 1;
-                let dim = (data_spatial_shape[ax] + bef[ax] + aft[ax] - kernel_field + 1).div_ceil(strides[ax]);
+                let dim = (data_spatial_shape[ax] + bef[ax] + aft[ax] - kernel_field + 1)
+                    .div_ceil(strides[ax]);
                 dim
             }).collect();
-        PaddedGeometry {
+        (
             output_spatial_shape,
-            pad_before: bef.iter().map(|&x| D::from(x)).collect(),
-            pad_after: aft.iter().map(|&x| D::from(x)).collect(),
-        }
+            bef.iter().map(|&x| D::from(x)).collect(),
+            aft.iter().map(|&x| D::from(x)).collect(),
+        )
     }
 
     fn same<D: DimLike>(
@@ -95,33 +96,28 @@ impl PaddingSpec {
         dilations: &[usize],
         strides: &[usize],
         upper: bool,
-    ) -> PaddedGeometry<D> {
+    ) -> (Vec<D>, Vec<D>, Vec<D>) {
         let spatial_rank = data_spatial_shape.len();
-        let mut result = PaddedGeometry::default();
+        let mut dims = vec![];
+        let mut pad_before = vec![];
+        let mut pad_after = vec![];
         for ax in 0..spatial_rank {
             let dim = data_spatial_shape[ax].div_ceil(strides[ax]);
             let kernel_field = (kernel_spatial_shape[ax] - 1) * dilations[ax] + 1;
-            result.output_spatial_shape.push(dim);
+            dims.push(dim);
             let pad = (dim - 1) * strides[ax] + kernel_field - data_spatial_shape[ax];
             let lower_pad = pad / 2;
             let higher_pad = pad - pad / 2;
             if upper {
-                result.pad_before.push(lower_pad);
-                result.pad_after.push(higher_pad);
+                pad_before.push(lower_pad);
+                pad_after.push(higher_pad);
             } else {
-                result.pad_after.push(lower_pad);
-                result.pad_before.push(higher_pad);
+                pad_after.push(lower_pad);
+                pad_before.push(higher_pad);
             }
         }
-        result
+        (dims, pad_before, pad_after)
     }
-}
-
-#[derive(Debug, Clone, new, Default)]
-pub struct PaddedGeometry<D: DimLike> {
-    pub output_spatial_shape: Vec<D>,
-    pub pad_before: Vec<D>,
-    pub pad_after: Vec<D>,
 }
 
 #[derive(Debug, new)]
@@ -148,11 +144,19 @@ impl<D: DimLike> Patch<D> {
         data_is_nhwc: bool,
         dilations: Vec<usize>,
         kernel_spatial_shape: Vec<D>,
-        pad_before: Vec<D>,
-        pad_after: Vec<D>,
+        padding: &PaddingSpec,
         strides: Vec<usize>,
         input_full_shape: Vec<D>,
-        output_spatial_shape: Vec<D>) -> Patch<D> {
+    ) -> Patch<D> {
+        assert_eq!(input_full_shape.len(), dilations.len() + 2);
+        assert_eq!(kernel_spatial_shape.len(), dilations.len());
+        assert_eq!(strides.len(), dilations.len());
+        let (output_spatial_shape, pad_before, pad_after) = padding.compute(
+            &input_full_shape[(1 + (!data_is_nhwc as usize))..][..kernel_spatial_shape.len()],
+            &kernel_spatial_shape,
+            &*dilations,
+            &*strides,
+        );
         Patch {
             data_is_nhwc,
             dilations,
@@ -254,12 +258,11 @@ mod test {
             false,
             vec![dilation],
             vec![kdim],
-            vec![pad_before],
-            vec![bad_after],
+            &PaddingSpec::Explicit(vec![pad_before], vec![bad_after]),
             vec![stride],
             vec![1, 1, input],
         );
-        patch.out_spatial_dim(0)
+        patch.output_spatial_shape[0]
     }
 
     #[test]
@@ -287,10 +290,9 @@ mod test {
             false,
             dilations.to_vec(),
             kdim.to_vec(),
-            vec![0; kdim.len()],
-            vec![0; kdim.len()],
-            vec![0; kdim.len()],
-            vec![0; kdim.len()],
+            &PaddingSpec::Explicit(vec![0; kdim.len()], vec![0; kdim.len()]),
+            vec![1; kdim.len()],
+            vec![10; kdim.len() + 2],
         );
         patch.mk_data_field()
     }
