@@ -106,11 +106,11 @@ impl PaddingSpec {
             let lower_pad = pad / 2;
             let higher_pad = pad - pad / 2;
             if upper {
-                result.pad_after.push(lower_pad);
-                result.pad_before.push(higher_pad);
-            } else {
                 result.pad_before.push(lower_pad);
                 result.pad_after.push(higher_pad);
+            } else {
+                result.pad_after.push(lower_pad);
+                result.pad_before.push(higher_pad);
             }
         }
         result
@@ -203,18 +203,6 @@ impl<D: DimLike> Patch<D> {
 }
 
 impl<D: DimLike> Patch<D> {
-    /*
-    pub fn out_spatial_dim(&self, spatial_axis: usize) -> D {
-        let one = D::one();
-        let field =
-            (self.kernel_spatial_shape[spatial_axis] - one) * self.dilations[spatial_axis] + one;
-        let pad = self.pad_before[spatial_axis] + self.pad_after[spatial_axis];
-        let input_spatial_dim =
-            self.data_full_shape[spatial_axis + self.axis_data_spatial()] + pad - field;
-        input_spatial_dim.div_ceil(self.strides[spatial_axis]) + one
-    }
-    */
-
     pub fn output_full_shape(&self, channels: D) -> Vec<D> {
         let mut v = self.input_full_shape.clone();
         v[self.axis_data_channel()] = channels;
