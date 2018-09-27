@@ -4,7 +4,7 @@ use ops::prelude::*;
 
 use dim::DimLike;
 
-use super::patches::Patch;
+use super::patches::{PaddingSpec, Patch};
 
 use insideout::InsideOut;
 
@@ -14,7 +14,7 @@ pub struct Conv {
     kernel_is_hwio: bool, // default is oihw (onnx)
     dilations: Option<Vec<usize>>,
     kernel_shape: Option<Vec<usize>>,
-    pads: Option<Vec<usize>>,
+    padding: PaddingSpec,
     strides: Option<Vec<usize>>,
 }
 
@@ -27,18 +27,34 @@ impl Conv {
         }
     }
 
-    fn patch<D:DimLike>(&self, data_full_shape:&[D], kernel_full_shape: &[D]) -> Patch<D> {
-        let spatial_rank = data_full_shape.len() -2;
-        Patch::new(self.data_is_nhwc,
-                   self.dilations.clone().unwrap_or(vec!(1; spatial_rank)),
-                   kernel_full_shape.iter().skip(self.spatial_kernel_dim()).take(spatial_rank).cloned().collect(),
-                   self.pads.as_ref().map(|p| p[..spatial_rank].iter().map(|i| D::from(*i)).collect()).unwrap_or(vec!(D::from(0); spatial_rank)),
-                   self.pads.as_ref().map(|p| p[spatial_rank..].iter().map(|i| D::from(*i)).collect()).unwrap_or(vec!(D::from(0); spatial_rank)),
-                   self.strides.clone().unwrap_or(vec!(1; spatial_rank)),
-                   data_full_shape.to_vec())
+    fn patch<D: DimLike>(&self, input_full_shape: &[D], kernel_full_shape: &[D]) -> Patch<D> {
+        let spatial_rank = input_full_shape.len() - 2;
+        let dilations = self.dilations.clone().unwrap_or(vec![1; spatial_rank]);
+        let strides = self.strides.clone().unwrap_or(vec![1; spatial_rank]);
+        let first_spatial_data_axis = 1 + (!self.data_is_nhwc as usize);
+        let input_spatial_shape = &input_full_shape[first_spatial_data_axis..][..spatial_rank];
+        let kernel_spatial_shape = &kernel_full_shape[self.spatial_kernel_dim()..][..spatial_rank];
+        assert_eq!(spatial_rank, kernel_spatial_shape.len());
+        assert_eq!(spatial_rank, input_spatial_shape.len());
+        assert_eq!(spatial_rank, dilations.len());
+        assert_eq!(spatial_rank, strides.len());
+        let geo = self
+            .padding
+            .compute(input_spatial_shape, kernel_spatial_shape, &*dilations, &*strides);
+        let patch = Patch::new(
+            self.data_is_nhwc,
+            dilations,
+            kernel_spatial_shape.to_vec(),
+            geo.pad_before.clone(),
+            geo.pad_after.clone(),
+            strides,
+            input_full_shape.to_vec(),
+        );
+        println!("padding: {:?} geo: {:?} patch: {:?}", self.padding, geo, patch);
+        patch
     }
 
-    fn output_shape<D:DimLike>(&self, ishape: &[D], kshape: &[D]) -> Vec<D> {
+    fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[D]) -> Vec<D> {
         let patch = self.patch(ishape, kshape);
         let ko = if self.kernel_is_hwio {
             *kshape.last().unwrap() // hwio
@@ -64,7 +80,10 @@ impl Op for Conv {
         };
         let input = input.to_array_view()?;
         let kernel = kernel.to_array_view::<f32>()?;
-        let bias = bias.as_ref().map(|b| b.to_array_view::<f32>()).inside_out()?;
+        let bias = bias
+            .as_ref()
+            .map(|b| b.to_array_view::<f32>())
+            .inside_out()?;
 
         let (ax_ker_in, ax_ker_out) = if self.kernel_is_hwio {
             (kernel.ndim() - 2, kernel.ndim() - 1)
@@ -179,8 +198,8 @@ mod test {
         let mut op = Conv::default();
         op.strides = Some(vec![2, 2]);
         op.kernel_shape = Some(vec![3, 3]);
-        let facts =
-            op.infer_facts(
+        let facts = op
+            .infer_facts(
                 tvec!(
                     TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5)),
                     TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3)),
@@ -195,11 +214,11 @@ mod test {
 
     #[test]
     fn test_infer_channels() {
-        let mut op = Conv::default();
-        let facts =
-            op.infer_facts(
+        let op = Conv::default();
+        let facts = op
+            .infer_facts(
                 tvec!(
-                    TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1,1)),
+                    TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1, 1)),
                     TensorFact::dt_shape(DatumType::F32, shapefact!(3, 2, 1, 1)),
                 ),
                 tvec!(TensorFact::default()),
@@ -214,8 +233,8 @@ mod test {
     fn test_infer_onxx_strides_no_padding() {
         let mut op = Conv::default();
         op.strides = Some(vec![2, 2]);
-        let facts =
-            op.infer_facts(
+        let facts = op
+            .infer_facts(
                 tvec!(
                     TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5)),
                     TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3)),

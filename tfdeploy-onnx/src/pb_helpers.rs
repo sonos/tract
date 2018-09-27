@@ -45,6 +45,42 @@ impl NodeProto {
         })?)
     }
 
+    pub fn get_attr_opt_str(&self, name: &str) -> TfdResult<Option<&str>> {
+        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRING)? {
+            Some(attr) => Ok(Some(::std::str::from_utf8(attr.get_s())?)),
+            None => Ok(None)
+        }
+    }
+
+    pub fn get_attr_str(&self, name: &str) -> TfdResult<&str> {
+        Ok(self.get_attr_opt_str(name)?.ok_or_else(|| {
+            format!(
+                "Node {} ({}) expected string attribute '{}'",
+                self.get_name(),
+                self.get_op_type(),
+                name
+            )
+        })?)
+    }
+
+    pub fn get_attr_opt_int(&self, name: &str) -> TfdResult<Option<i64>> {
+        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INT)? {
+            Some(attr) => Ok(Some(attr.get_i())),
+            None => Ok(None)
+        }
+    }
+
+    pub fn get_attr_int(&self, name: &str) -> TfdResult<i64> {
+        Ok(self.get_attr_opt_int(name)?.ok_or_else(|| {
+            format!(
+                "Node {} ({}) expected int attribute '{}'",
+                self.get_name(),
+                self.get_op_type(),
+                name
+            )
+        })?)
+    }
+
     pub fn get_attr_opt_ints(&self, name: &str) -> TfdResult<Option<&[i64]>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)? {
             Some(attr) => Ok(Some(attr.get_ints())),

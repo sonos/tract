@@ -2,6 +2,122 @@ use ndarray::prelude::*;
 
 use dim::DimLike;
 
+#[derive(Debug, Clone)]
+pub enum PaddingSpec {
+    Explicit(Vec<usize>, Vec<usize>),
+    Valid,
+    SameUpper,
+    SameLower,
+}
+
+impl Default for PaddingSpec {
+    fn default() -> PaddingSpec {
+        PaddingSpec::Valid
+    }
+}
+
+impl PaddingSpec {
+    pub fn compute<D: DimLike>(
+        &self,
+        input_spatial_shape: &[D],
+        kernel_spatial_shape: &[D],
+        dilations: &[usize],
+        strides: &[usize],
+    ) -> PaddedGeometry<D> {
+        assert_eq!(dilations.len(), strides.len());
+        assert_eq!(dilations.len(), input_spatial_shape.len());
+        assert_eq!(dilations.len(), kernel_spatial_shape.len());
+        match self {
+            PaddingSpec::Valid => Self::explicit(
+                input_spatial_shape,
+                kernel_spatial_shape,
+                dilations,
+                strides,
+                &*vec![0; kernel_spatial_shape.len()],
+                &*vec![0; kernel_spatial_shape.len()],
+            ),
+            PaddingSpec::Explicit(ref bef, ref aft) => Self::explicit(
+                input_spatial_shape,
+                kernel_spatial_shape,
+                dilations,
+                strides,
+                bef,
+                aft,
+            ),
+            PaddingSpec::SameUpper => self.same(
+                input_spatial_shape,
+                kernel_spatial_shape,
+                dilations,
+                strides,
+                true,
+            ),
+            PaddingSpec::SameLower => self.same(
+                input_spatial_shape,
+                kernel_spatial_shape,
+                dilations,
+                strides,
+                false,
+            ),
+        }
+    }
+
+    fn explicit<D: DimLike>(
+        data_spatial_shape: &[D],
+        kernel_spatial_shape: &[D],
+        dilations: &[usize],
+        strides: &[usize],
+        bef: &[usize],
+        aft: &[usize],
+    ) -> PaddedGeometry<D> {
+        let spatial_rank = data_spatial_shape.len();
+        let output_spatial_shape = (0..spatial_rank)
+            .map(|ax| {
+                let kernel_field = (kernel_spatial_shape[ax] - 1) * dilations[ax] + 1;
+                (data_spatial_shape[ax] + bef[ax] + aft[ax] - kernel_field + 1).div_ceil(strides[ax])
+            }).collect();
+        PaddedGeometry {
+            output_spatial_shape,
+            pad_before: bef.iter().map(|&x| D::from(x)).collect(),
+            pad_after: aft.iter().map(|&x| D::from(x)).collect(),
+        }
+    }
+
+    fn same<D: DimLike>(
+        &self,
+        data_spatial_shape: &[D],
+        kernel_spatial_shape: &[D],
+        dilations: &[usize],
+        strides: &[usize],
+        upper: bool,
+    ) -> PaddedGeometry<D> {
+        let spatial_rank = data_spatial_shape.len();
+        let mut result = PaddedGeometry::default();
+        for ax in 0..spatial_rank {
+            let dim = data_spatial_shape[ax].div_ceil(strides[ax]);
+            let kernel_field = (kernel_spatial_shape[ax] - 1) * dilations[ax] + 1;
+            result.output_spatial_shape.push(dim);
+            let pad = (dim - 1) * strides[ax] + kernel_field - data_spatial_shape[ax];
+            let lower_pad = pad / 2;
+            let higher_pad = pad - pad / 2;
+            if upper {
+                result.pad_after.push(lower_pad);
+                result.pad_before.push(higher_pad);
+            } else {
+                result.pad_before.push(lower_pad);
+                result.pad_after.push(higher_pad);
+            }
+        }
+        result
+    }
+}
+
+#[derive(Debug, Clone, new, Default)]
+pub struct PaddedGeometry<D: DimLike> {
+    pub output_spatial_shape: Vec<D>,
+    pub pad_before: Vec<D>,
+    pub pad_after: Vec<D>,
+}
+
 #[derive(Debug, new)]
 pub struct DataCoords<'a> {
     pub n: usize,
@@ -66,7 +182,7 @@ impl<D: DimLike> Patch<D> {
         let pad = self.pad_before[spatial_axis] + self.pad_after[spatial_axis];
         let input_spatial_dim =
             self.data_full_shape[spatial_axis + self.axis_data_spatial()] + pad - field;
-        input_spatial_dim / self.strides[spatial_axis] + one
+        input_spatial_dim.div_ceil(self.strides[spatial_axis]) + one
     }
 
     pub fn output_full_shape(&self, channels: D) -> Vec<D> {
@@ -129,21 +245,23 @@ mod test {
     }
 
     #[test]
-    fn test_output_spatial_dim() {
-        // onnx test_basic_conv_without_padding
+    fn basic() {
         assert_eq!(compute_output_spatial_dim(5, 1, 3, 0, 0, 1), 3);
+    }
 
-        // onnx test_conv_with_strides_no_padding
+    #[test]
+    fn strides() {
         assert_eq!(compute_output_spatial_dim(7, 1, 3, 0, 0, 2), 3);
-        assert_eq!(compute_output_spatial_dim(5, 1, 3, 0, 0, 2), 2);
+    }
 
-        // onnx test_conv_with_strides_padding
-        assert_eq!(compute_output_spatial_dim(7, 1, 3, 1, 1, 2), 4);
-        assert_eq!(compute_output_spatial_dim(5, 1, 3, 1, 1, 2), 3);
+    #[test]
+    fn padding() {
+        assert_eq!(compute_output_spatial_dim(5, 1, 3, 1, 1, 1), 5);
+    }
 
-        // onnx test_conv_with_strides_and_asymmetric_padding
+    #[test]
+    fn strides_and_padding() {
         assert_eq!(compute_output_spatial_dim(7, 1, 3, 1, 1, 2), 4);
-        assert_eq!(compute_output_spatial_dim(5, 1, 3, 0, 0, 2), 2);
     }
 
     fn field(kdim: &[usize], dilations: &[usize]) -> Array2<usize> {

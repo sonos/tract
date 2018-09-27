@@ -12,14 +12,28 @@ use self::stack::Stack;
 use TfdResult;
 
 pub trait DimLike:
-    Copy + Clone + From<usize> + ::num::One +
-    ops::Add<Self, Output = Self> + ops::Add<usize, Output = Self> + 
-    ops::Sub<Self, Output = Self> + ops::Sub<usize, Output=Self> +
-    ops::Mul<usize, Output = Self> + ops::Div<usize, Output=Self>
+    Copy
+    + Clone
+    + Default
+    + From<usize>
+    + ::num::One
+    + ::num::Zero
+    + fmt::Debug
+    + ops::Add<Self, Output = Self>
+    + ops::Add<usize, Output = Self>
+    + ops::Sub<Self, Output = Self>
+    + ops::Sub<usize, Output = Self>
+    + ops::Mul<usize, Output = Self>
+    + ops::Div<usize, Output = Self>
 {
+    fn div_ceil(&self, other: usize) -> Self {
+        (*self + other - 1) / other
+    }
 }
-impl DimLike for TDim {}
-impl DimLike for usize {}
+impl DimLike for TDim {
+}
+impl DimLike for usize {
+}
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
