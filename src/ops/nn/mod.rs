@@ -1,9 +1,11 @@
 mod conv;
 mod avgpool;
+mod maxpool;
 mod patches;
 
 pub use self::conv::Conv;
 pub use self::avgpool::AvgPool;
+pub use self::maxpool::MaxPool;
 pub use self::patches::PaddingSpec;
 
 element_map!(Relu, [f32,i32], |x| if x < 0 as _ { 0 as _ } else { x });

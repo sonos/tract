@@ -1,24 +1,24 @@
 use tfdeploy::ops as tfdops;
-use tfdeploy::ops::prelude::*;
 use tfdeploy::ops::nn::PaddingSpec;
+use tfdeploy::ops::prelude::*;
 
 use ops::OpRegister;
 use pb::NodeProto;
 
-
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("Conv", conv);
+    reg.insert("MaxPool", max_pool);
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));
 }
 
-fn pad(node:&NodeProto) -> TfdResult<PaddingSpec> {
+fn pad(node: &NodeProto) -> TfdResult<PaddingSpec> {
     if let Some(pads) = node.get_attr_opt_ints("pads")? {
         let len = pads.len();
         return Ok(PaddingSpec::Explicit(
-            pads.iter().take(len/2).map(|&i| i as usize).collect(),
-            pads.iter().skip(len/2).map(|&i| i as usize).collect()
+            pads.iter().take(len / 2).map(|&i| i as usize).collect(),
+            pads.iter().skip(len / 2).map(|&i| i as usize).collect(),
         ));
     }
     match node.get_attr_opt_str("auto_pad")?.unwrap_or("NOTSET") {
@@ -26,7 +26,7 @@ fn pad(node:&NodeProto) -> TfdResult<PaddingSpec> {
         "VALID" => Ok(PaddingSpec::Valid),
         "SAME_UPPER" => Ok(PaddingSpec::SameUpper),
         "SAME_LOWER" => Ok(PaddingSpec::SameLower),
-        e => bail!("Unexpected auto_pad value {}", e)
+        e => bail!("Unexpected auto_pad value {}", e),
     }
 }
 
@@ -57,20 +57,13 @@ pub fn conv(node: &NodeProto) -> TfdResult<Box<Op>> {
 }
 
 pub fn average_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
-    let kernel_shape:Vec<usize> = node
+    let kernel_shape: Vec<usize> = node
         .get_attr_ints("kernel_shape")?
         .iter()
         .map(|&i| i as usize)
         .collect();
     let pad = pad(node)?;
     let strides = strides(node)?;
-    if let Some(ref strides) = strides {
-        assert_eq!(kernel_shape.len(), strides.len());
-    }
-    if let PaddingSpec::Explicit(ref a, ref b) = pad {
-        assert_eq!(kernel_shape.len(), a.len());
-        assert_eq!(kernel_shape.len(), b.len());
-    };
     let count_include_pad = node.get_attr_opt_int("count_include_pad")?.unwrap_or(0) != 0;
     Ok(Box::new(tfdops::nn::AvgPool::new(
         false,
@@ -81,3 +74,18 @@ pub fn average_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     )))
 }
 
+pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let kernel_shape: Vec<usize> = node
+        .get_attr_ints("kernel_shape")?
+        .iter()
+        .map(|&i| i as usize)
+        .collect();
+    let pad = pad(node)?;
+    let strides = strides(node)?;
+    Ok(Box::new(tfdops::nn::MaxPool::new(
+        false,
+        kernel_shape,
+        pad,
+        strides,
+    )))
+}
