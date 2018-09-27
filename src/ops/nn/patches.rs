@@ -1,6 +1,7 @@
 use ndarray::prelude::*;
 
 use dim::DimLike;
+use tensor::Datum;
 
 #[derive(Debug, Clone)]
 pub enum PaddingSpec {
@@ -137,6 +138,7 @@ pub struct Patch<D: DimLike> {
     pub strides: Vec<usize>,
     pub input_full_shape: Vec<D>,
     pub output_spatial_shape: Vec<D>,
+    pub data_field: Option<Array2<usize>>,
 }
 
 impl<D: DimLike> Patch<D> {
@@ -166,6 +168,7 @@ impl<D: DimLike> Patch<D> {
             strides,
             input_full_shape,
             output_spatial_shape,
+            data_field: None,
         }
     }
 
@@ -239,6 +242,54 @@ impl Patch<usize> {
             .and_broadcast(&arr1(&*self.pad_before))
             .apply(|offset, &dil, &pad| *offset = (*offset * dil).wrapping_sub(pad));
         field
+    }
+
+    pub fn patch_data_iter<'a, 'b, 'c, T: Datum>(
+        &'b mut self,
+        input: &'a ArrayViewD<'a, T>,
+        coords: &'c [usize],
+    ) -> PatchIterator<'a, 'b, 'c, T> {
+        if self.data_field.is_none() {
+            self.data_field = Some(self.mk_data_field());
+        }
+        PatchIterator {
+            patch: &*self,
+            item: 0,
+            input,
+            coords,
+        }
+    }
+}
+
+pub struct PatchIterator<'a, 'b, 'c, T: Datum> {
+    input: &'a ArrayViewD<'a, T>,
+    patch: &'b Patch<usize>,
+    item: usize,
+    coords: &'c [usize],
+}
+
+impl<'a, 'b, 'c, T: Datum> Iterator for PatchIterator<'a, 'b, 'c, T> {
+    type Item = Option<T>;
+    fn next(&mut self) -> Option<Option<T>> {
+        if self.item == self.patch.data_field.as_ref().unwrap().rows() {
+            return None;
+        }
+        let splitted = self.patch.split_data_coords(self.coords);
+        let img_offset = self.patch.data_field.as_ref().unwrap().row(self.item);
+        self.item += 1;
+        let i_coords: Vec<usize> = izip!(
+            splitted.space.iter(),
+            img_offset.iter(),
+            self.patch.strides.iter()
+        ).map(|(x, i, s)| (x * s).wrapping_add(*i))
+        .collect();
+        Some(
+            self.input
+            .subview(Axis(self.patch.axis_data_channel()), splitted.chan)
+            .subview(Axis(self.patch.axis_data_batch()), splitted.n) // careful, need to start with higher ranking
+            .get(&*i_coords)
+            .cloned(),
+        )
     }
 }
 
