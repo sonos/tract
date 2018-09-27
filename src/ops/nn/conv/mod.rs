@@ -38,9 +38,12 @@ impl Conv {
         assert_eq!(spatial_rank, input_spatial_shape.len());
         assert_eq!(spatial_rank, dilations.len());
         assert_eq!(spatial_rank, strides.len());
-        let geo = self
-            .padding
-            .compute(input_spatial_shape, kernel_spatial_shape, &*dilations, &*strides);
+        let geo = self.padding.compute(
+            input_spatial_shape,
+            kernel_spatial_shape,
+            &*dilations,
+            &*strides,
+        );
         let patch = Patch::new(
             self.data_is_nhwc,
             dilations,
@@ -113,10 +116,15 @@ impl Op for Conv {
                         .subview(Axis(patch.axis_data_batch()), output.n) // careful, need to start with higher ranking
                         .get(&*i_coords)
                         .unwrap_or(&0.0);
-                    let k_value = kernel
-                        .subview(Axis(ax_ker_out), output.chan)
-                        .subview(Axis(ax_ker_in), input_c) // higher ranking again
-                        [kerf.as_slice().unwrap()];
+                    let k_value = if ax_ker_in < ax_ker_out {
+                        kernel
+                            .subview(Axis(ax_ker_out), output.chan)
+                            .subview(Axis(ax_ker_in), input_c)[kerf.as_slice().unwrap()]
+                    } else {
+                        kernel
+                            .subview(Axis(ax_ker_in), input_c)
+                            .subview(Axis(ax_ker_out), output.chan)[kerf.as_slice().unwrap()]
+                    };
                     result += i_value * k_value;
                 }
             }

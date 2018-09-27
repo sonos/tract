@@ -159,12 +159,12 @@ pub fn run_all(tests: &str) {
         .par_iter()
         .map(|test| run_one(&node_tests, &test).is_ok())
         .collect();
-    let mut file = fs::File::create(working_list_file).unwrap();
     if filter.is_none() && tests
         .iter()
         .zip(results.iter())
         .any(|(t, &r)| r && !working_list.contains(&t))
     {
+        let mut file = fs::File::create(working_list_file).unwrap();
         for (test, &r) in tests.iter().zip(results.iter()) {
             if r {
                 write!(file, "{}\n", test).unwrap();
