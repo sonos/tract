@@ -42,8 +42,7 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
                 .to_str()
                 .unwrap()
                 .starts_with(prefix)
-        })
-        .count();
+        }).count();
     for i in 0..len {
         let filename = path.join(format!("{}_{}.pb", prefix, i));
         let mut file = fs::File::open(filename).unwrap();
@@ -74,11 +73,11 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
         let plan = SimplePlan::new(&model, &*inputs, &*outputs)?;
         for d in fs::read_dir(root)? {
             let d = d?;
-            if d.metadata()?.is_dir()
-                && d.file_name()
-                    .to_str()
-                    .unwrap()
-                    .starts_with("test_data_set_")
+            if d.metadata()?.is_dir() && d
+                .file_name()
+                .to_str()
+                .unwrap()
+                .starts_with("test_data_set_")
             {
                 let (inputs, expected) = load_dataset(&d.path());
                 let computed = plan.run(inputs)?.remove(0);
@@ -133,21 +132,52 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
 }
 
 pub fn run_all(tests: &str) {
+    use std::io::Write;
     ensure_onnx_git_checkout().unwrap();
     let dir = path::PathBuf::from(ONNX_DIR);
     let node_tests = dir.join("onnx/backend/test/data").join(tests);
-    let filter = ::std::env::var("ONNX_TEST_FILTER").unwrap_or("".to_string());
+    let filter = ::std::env::var("ONNX_TEST_FILTER").ok();
+    let working_list_file = path::PathBuf::from("tests")
+        .join(tests)
+        .with_extension("txt");
+    let working_list: Vec<String> = if let Ok(list) = fs::read_to_string(&working_list_file) {
+        list.split("\n").map(|s| s.to_string()).collect()
+    } else {
+        vec![]
+    };
     let mut tests: Vec<String> = fs::read_dir(&node_tests)
         .unwrap()
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
-        .filter(|n| n.contains(&filter))
-        .collect();
+        .filter(|n| {
+            filter
+                .as_ref()
+                .map(|filter| n.contains(filter))
+                .unwrap_or(true)
+        }).collect();
     tests.sort();
-    let errors:usize = tests
+    let results: Vec<bool> = tests
         .par_iter()
-        .map(|test| run_one(&node_tests, &test).is_err() as usize)
-        .sum();
-    if errors != 0 {
-        panic!("{} errors", errors)
+        .map(|test| run_one(&node_tests, &test).is_ok())
+        .collect();
+    let mut file = fs::File::create(working_list_file).unwrap();
+    if filter.is_none() && tests
+        .iter()
+        .zip(results.iter())
+        .any(|(t, &r)| r && !working_list.contains(&t))
+    {
+        for (test, &r) in tests.iter().zip(results.iter()) {
+            if r {
+                write!(file, "{}\n", test).unwrap();
+            }
+        }
+    }
+    let regressions = tests
+        .iter()
+        .zip(results.iter())
+        .filter(|(t, &r)| !r && working_list.contains(&t))
+        .inspect(|(t, _)| println!("regression: {}", t))
+        .count();
+    if regressions != 0 {
+        panic!("{} regressions", regressions)
     }
 }
