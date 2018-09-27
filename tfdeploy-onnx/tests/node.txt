@@ -47,6 +47,8 @@ test_floor
 test_floor_example
 test_greater
 test_greater_bcast
+test_less
+test_less_bcast
 test_max_example
 test_max_one_input
 test_max_two_inputs
