@@ -31,6 +31,12 @@ test_basic_conv_with_padding
 test_basic_conv_without_padding
 test_ceil
 test_ceil_example
+test_concat_1d_axis_0
+test_concat_2d_axis_0
+test_concat_2d_axis_1
+test_concat_3d_axis_0
+test_concat_3d_axis_1
+test_concat_3d_axis_2
 test_constant
 test_conv_with_strides_and_asymmetric_padding
 test_conv_with_strides_no_padding

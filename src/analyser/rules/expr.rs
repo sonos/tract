@@ -164,6 +164,7 @@ pub trait IntoExp<T> {
     fn bex(self) -> Exp<T>;
 }
 
+#[derive(new)]
 pub struct SumExp<T>(Vec<Exp<T>>)
 where
     T: Fact + Output + Clone + ::std::fmt::Debug;
