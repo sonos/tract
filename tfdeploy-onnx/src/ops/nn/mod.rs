@@ -8,6 +8,7 @@ use pb::NodeProto;
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("Conv", conv);
+    reg.insert("Dropout", |_| Ok(Box::new(tfdops::identity::Identity::default())));
     reg.insert("MaxPool", max_pool);
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));

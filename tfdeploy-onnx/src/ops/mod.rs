@@ -13,7 +13,8 @@ pub struct OpBuilder(OpRegister);
 impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
-        reg.insert("Const", konst);
+        reg.insert("Constant", konst);
+        reg.insert("Identity", |_| Ok(Box::new(::tfdeploy::ops::identity::Identity::default())));
         logic::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
