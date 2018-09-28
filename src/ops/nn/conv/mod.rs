@@ -70,7 +70,7 @@ impl Op for Conv {
             let (input, kernel, bias) = args_3!(inputs);
             (input, kernel, Some(bias))
         };
-        let input = input.to_array_view()?;
+        let input = input.to_array_view::<f32>()?;
         let kernel = kernel.to_array_view::<f32>()?;
         let bias = bias
             .as_ref()
@@ -83,42 +83,45 @@ impl Op for Conv {
             (1, 0) // oihw
         };
 
-        let patch = self.patch(input.shape(), kernel.shape());
+        let mut patch = self.patch(input.shape(), kernel.shape());
 
         let shape: Vec<usize> = patch.output_full_shape(kernel.shape()[ax_ker_out]);
         let input_channels = input.shape()[patch.axis_data_channel()];
+        let output_channels = shape[patch.axis_data_channel()];
 
-        let data_field = patch.mk_data_field();
-        let kernel_field = patch.mk_kernel_field();
-
-        let output = ArrayD::from_shape_fn(shape, |coords| -> f32 {
-            let output = patch.split_data_coords(coords.slice());
-            let space: ArrayView1<usize> = ArrayView1::from(output.space);
-            let mut result = bias.as_ref().map(|b| b[output.chan]).unwrap_or(0.0);
-            for (kerf, imgf) in kernel_field.outer_iter().zip(data_field.outer_iter()) {
-                let i_coords: Vec<usize> = izip!(space.iter(), imgf.iter(), patch.strides.iter())
-                    .map(|(x, i, s)| (x * s).wrapping_add(*i))
-                    .collect();
-                for input_c in 0..input_channels {
-                    let i_value: f32 = *input
-                        .subview(Axis(patch.axis_data_channel()), input_c)
-                        .subview(Axis(patch.axis_data_batch()), output.n) // careful, need to start with higher ranking
-                        .get(&*i_coords)
-                        .unwrap_or(&0.0);
-                    let k_value = if ax_ker_in < ax_ker_out {
-                        kernel
-                            .subview(Axis(ax_ker_out), output.chan)
-                            .subview(Axis(ax_ker_in), input_c)[kerf.as_slice().unwrap()]
-                    } else {
-                        kernel
-                            .subview(Axis(ax_ker_in), input_c)
-                            .subview(Axis(ax_ker_out), output.chan)[kerf.as_slice().unwrap()]
-                    };
-                    result += i_value * k_value;
+        let k = kernel.len() / output_channels;
+        let m = output_channels;
+        let n = shape.iter().skip(2).product();
+        let kernel = kernel.into_shape((m, k))?;
+        let mut output = unsafe { ArrayD::<f32>::uninitialized(&*shape) };
+        for i in 0..input.shape()[0] {
+            let mut mega_matrix = unsafe { Array2::<f32>::uninitialized((k, n)) };
+            for ((mut coords, _uninit), mut col) in output
+                .slice_axis(Axis(0), (i..(i + 1)).into())
+                .slice_axis(Axis(1), (0..1).into())
+                .indexed_iter()
+                .zip(mega_matrix.axis_iter_mut(Axis(1)))
+            {
+                let mut col = col.iter_mut();
+                for ci in 0..input_channels {
+                    coords[1] = ci;
+                    for v in patch.patch_data_iter(&input, &coords.slice()) {
+                        *col.next().unwrap() = v.unwrap_or(0.0);
+                    }
                 }
             }
-            result
-        });
+
+            let mut output_subview = output.slice_axis_mut(Axis(0), (i..(i + 1)).into());
+            let mut output_panel = output_subview.into_shape((m, n))?;
+            ::ndarray::linalg::general_mat_mul(1.0, &kernel, &mega_matrix, 0.0, &mut output_panel);
+        }
+
+        if let Some(bias) = bias {
+            let mut bias_shape:Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
+            bias_shape[patch.axis_data_channel()] = output_channels;
+            let bias:ArrayViewD<f32> = bias.view().into_shape(&*bias_shape)?;
+            output += &bias;
+        }
         Ok(tvec!(output.into()))
     }
 }
