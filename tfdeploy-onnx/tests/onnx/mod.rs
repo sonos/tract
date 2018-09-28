@@ -148,8 +148,7 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
 pub fn run_all(tests: &str) {
     use std::io::Write;
     ensure_onnx_git_checkout().unwrap();
-    let dir = path::PathBuf::from(ONNX_DIR);
-    let node_tests = dir.join("onnx/backend/test/data").join(tests);
+    let node_tests = dir().join("onnx/backend/test/data").join(tests);
     println!("node_test_dir: {:?}", node_tests);
     assert!(node_tests.exists());
     let filter = ::std::env::var("ONNX_TEST_FILTER").ok();
