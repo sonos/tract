@@ -8,8 +8,6 @@ use tfdeploy_onnx::*;
 
 use rayon::prelude::*;
 
-pub const ONNX_DIR: &'static str = ".onnx";
-
 pub fn dir() -> path::PathBuf {
     match ::std::env::var("TRAVIS_BUILD_DIR") {
         Ok(t) => path::Path::new(&t).join("cached").join("onnx-checkout"),

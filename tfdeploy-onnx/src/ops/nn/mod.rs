@@ -12,6 +12,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("GlobalAveragePool", |_| Ok(Box::new(tfdops::nn::GlobalAvgPool::default())));
     reg.insert("GlobalLpPool", global_lp_pool);
     reg.insert("GlobalMaxPool", |_| Ok(Box::new(tfdops::nn::GlobalMaxPool::default())));
+    reg.insert("Hardmax", layer_hard_max);
+    reg.insert("LogSoftmax", layer_log_soft_max);
+    reg.insert("Softmax", layer_soft_max);
     reg.insert("MaxPool", max_pool);
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));
@@ -78,6 +81,38 @@ pub fn average_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     )))
 }
 
+pub fn global_lp_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let p: usize = node
+        .get_attr_opt_int("p")?
+        .map(|i| i as usize)
+        .unwrap_or(2);
+    Ok(Box::new(tfdops::nn::GlobalLpPool::new(p)))
+}
+
+pub fn layer_hard_max(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let axis: usize = node
+        .get_attr_opt_int("axis")?
+        .map(|i| i as usize)
+        .unwrap_or(1);
+    Ok(Box::new(tfdops::nn::LayerHardmax::new(axis)))
+}
+
+pub fn layer_log_soft_max(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let axis: usize = node
+        .get_attr_opt_int("axis")?
+        .map(|i| i as usize)
+        .unwrap_or(1);
+    Ok(Box::new(tfdops::nn::LayerLogSoftmax::new(axis)))
+}
+
+pub fn layer_soft_max(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let axis: usize = node
+        .get_attr_opt_int("axis")?
+        .map(|i| i as usize)
+        .unwrap_or(1);
+    Ok(Box::new(tfdops::nn::LayerSoftmax::new(axis)))
+}
+
 pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     let kernel_shape: Vec<usize> = node
         .get_attr_ints("kernel_shape")?
@@ -94,10 +129,3 @@ pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     )))
 }
 
-pub fn global_lp_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
-    let p: usize = node
-        .get_attr_opt_int("p")?
-        .map(|i| i as usize)
-        .unwrap_or(2);
-    Ok(Box::new(tfdops::nn::GlobalLpPool::new(p)))
-}

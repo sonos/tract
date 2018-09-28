@@ -1,12 +1,14 @@
 mod avgpool;
 mod conv;
 mod global_pools;
+mod layer_max;
 mod maxpool;
 mod patches;
 
 pub use self::avgpool::AvgPool;
 pub use self::conv::Conv;
 pub use self::global_pools::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
+pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::maxpool::MaxPool;
 pub use self::patches::PaddingSpec;
 
