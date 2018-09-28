@@ -30,6 +30,9 @@ pub fn ensure_onnx_git_checkout() -> TfdResult<()> {
         }
     });
     println!("Checkout onnx ok");
+    for d in fs::read_dir(dir())? {
+        println!("XXXX : {:?}",d );
+    }
     Ok(())
 }
 

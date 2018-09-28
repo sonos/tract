@@ -9,6 +9,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("Conv", conv);
     reg.insert("Dropout", |_| Ok(Box::new(tfdops::identity::Identity::default())));
+    reg.insert("GlobalAveragePool", |_| Ok(Box::new(tfdops::nn::GlobalAvgPool::default())));
+    reg.insert("GlobalLpPool", global_lp_pool);
+    reg.insert("GlobalMaxPool", |_| Ok(Box::new(tfdops::nn::GlobalMaxPool::default())));
     reg.insert("MaxPool", max_pool);
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));
@@ -89,4 +92,12 @@ pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
         pad,
         strides,
     )))
+}
+
+pub fn global_lp_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let p: usize = node
+        .get_attr_opt_int("p")?
+        .map(|i| i as usize)
+        .unwrap_or(2);
+    Ok(Box::new(tfdops::nn::GlobalLpPool::new(p)))
 }

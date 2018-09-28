@@ -56,6 +56,10 @@ test_expand_dim_changed
 test_expand_dim_unchanged
 test_floor
 test_floor_example
+test_globalaveragepool
+test_globalaveragepool_precomputed
+test_globalmaxpool
+test_globalmaxpool_precomputed
 test_greater
 test_greater_bcast
 test_identity
