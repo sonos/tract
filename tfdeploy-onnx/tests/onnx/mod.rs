@@ -29,6 +29,7 @@ pub fn ensure_onnx_git_checkout() -> TfdResult<()> {
             fs::rename(tmp.into_path(), dir()).unwrap();
         }
     });
+    println!("Checkout onnx ok");
     Ok(())
 }
 
@@ -72,11 +73,13 @@ struct DataJson {
 pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
     fn it(root: &path::Path) -> TfdResult<()> {
         let path = root.join("model.onnx");
+        println!("loading model {:?}", path);
         let model = for_path(&path)
                 .map_err(|e| format!("accessing {:?}, {:?}", path, e))?;
         let inputs: Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
         let outputs: Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
         let plan = SimplePlan::new(&model, &*inputs, &*outputs)?;
+        println!("model {:?} loaded", path);
         for d in fs::read_dir(root)
                 .map_err(|e| format!("accessing {:?}, {:?}", root, e))? {
             let d = d?;
@@ -87,6 +90,7 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
                 .starts_with("test_data_set_")
             {
                 let (inputs, expected) = load_dataset(&d.path());
+                println!("dataset {:?} loaded", d.path());
                 let computed = plan.run(inputs)?.remove(0);
                 for (a, b) in computed.iter().zip(expected.iter()) {
                     if !a.close_enough(b, true) {

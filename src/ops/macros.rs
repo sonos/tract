@@ -393,6 +393,7 @@ macro_rules! dispatch_datum {
     }
 }
 
+#[warn(unused_macros)]
 macro_rules! dispatch_floatlike {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
