@@ -257,6 +257,7 @@ impl Patch<usize> {
             item: 0,
             input,
             coords,
+            full_coords: vec![0; coords.len()],
         }
     }
 }
@@ -266,6 +267,7 @@ pub struct PatchIterator<'a, 'b, 'c, T: Datum> {
     patch: &'b Patch<usize>,
     item: usize,
     coords: &'c [usize],
+    full_coords: Vec<usize>,
 }
 
 impl<'a, 'b, 'c, T: Datum> Iterator for PatchIterator<'a, 'b, 'c, T> {
@@ -274,22 +276,16 @@ impl<'a, 'b, 'c, T: Datum> Iterator for PatchIterator<'a, 'b, 'c, T> {
         if self.item == self.patch.data_field.as_ref().unwrap().rows() {
             return None;
         }
-        let splitted = self.patch.split_data_coords(self.coords);
         let img_offset = self.patch.data_field.as_ref().unwrap().row(self.item);
         self.item += 1;
-        let i_coords: Vec<usize> = izip!(
-            splitted.space.iter(),
-            img_offset.iter(),
-            self.patch.strides.iter()
-        ).map(|(x, i, s)| (x * s).wrapping_add(*i))
-        .collect();
-        Some(
-            self.input
-            .subview(Axis(self.patch.axis_data_channel()), splitted.chan)
-            .subview(Axis(self.patch.axis_data_batch()), splitted.n) // careful, need to start with higher ranking
-            .get(&*i_coords)
-            .cloned(),
-        )
+
+        (&mut *self.full_coords).copy_from_slice(self.coords);
+        self.full_coords
+            .iter_mut()
+            .skip(self.patch.axis_data_spatial())
+            .zip(img_offset.iter().zip(self.patch.strides.iter()))
+            .for_each(|(x, (&i, &s))| *x = (*x * s).wrapping_add(i));
+        Some(self.input.get(&*self.full_coords).cloned())
     }
 }
 
