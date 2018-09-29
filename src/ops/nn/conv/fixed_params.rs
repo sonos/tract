@@ -1,0 +1,152 @@
+use analyser::rules::prelude::*;
+use ndarray::prelude::*;
+use ops::prelude::*;
+
+use super::Conv;
+use ops::nn::patches::Patch;
+
+use insideout::InsideOut;
+
+#[derive(Debug, Clone)]
+pub struct FixedParamsConv<D: Datum> {
+    kernel_is_hwio: bool,
+    patch: Patch<usize>,
+    kernel: Array2<D>,
+    full_output_shape: Vec<usize>,
+    k: usize,
+    m: usize,
+    n: usize,
+    bias: Option<ArrayD<D>>,
+}
+
+impl<D: Datum> FixedParamsConv<D> {
+    pub fn new(
+        conv: &Conv,
+        input_full_shape: &[usize],
+        kernel: ArrayViewD<D>,
+        bias: Option<ArrayViewD<D>>,
+    ) -> TfdResult<FixedParamsConv<D>> {
+        let output_channels = if conv.kernel_is_hwio {
+            *kernel.shape().last().unwrap()
+        } else {
+            kernel.shape()[0]
+        };
+        let mut patch = conv.patch(input_full_shape, &kernel.shape());
+        patch.cache_data_field();
+
+        let shape: Vec<usize> = patch.output_full_shape(output_channels);
+
+        let k = kernel.len() / output_channels;
+        let m = output_channels;
+        let n = patch.output_spatial_shape.iter().product();
+        let kernel = kernel.to_shared();
+
+        let kernel: Array2<D> = if conv.kernel_is_hwio {
+            let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
+            permutation.extend(0..(kernel.ndim() - 2));
+            let permuted = kernel.permuted_axes(permutation);
+            Array2::<D>::from_shape_vec((m, k), permuted.iter().cloned().collect::<Vec<_>>())?
+        } else {
+            kernel.into_shape((m, k))?.to_owned()
+        };
+
+        let bias = bias
+            .map(|bias| -> TfdResult<_> {
+                let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
+                bias_shape[1] = output_channels;
+                Ok(bias.view().into_shape(&*bias_shape)?.to_owned())
+            }).inside_out()?;
+
+        Ok(FixedParamsConv {
+            kernel_is_hwio: conv.kernel_is_hwio,
+            patch,
+            kernel,
+            full_output_shape: shape,
+            k,
+            m,
+            n,
+            bias,
+        })
+    }
+}
+
+impl<D> FixedParamsConv<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
+{
+    pub(super) fn convolve(&self, input: &ArrayViewD<D>) -> TfdResult<ArrayD<D>> {
+        let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
+        let mut mega_matrix = unsafe { Array2::<D>::uninitialized((self.k, self.n)) };
+        for i in 0..self.patch.input_batch_size() {
+            for ((mut coords, _uninit), mut col) in output
+                .slice_axis(Axis(self.patch.axis_data_batch()), (i..(i + 1)).into())
+                .slice_axis(Axis(self.patch.axis_data_channel()), (0..1).into())
+                .indexed_iter()
+                .zip(mega_matrix.axis_iter_mut(Axis(1)))
+            {
+                let mut col = col.iter_mut();
+                for ci in 0..self.patch.input_channels() {
+                    coords[self.patch.axis_data_batch()] = i;
+                    coords[self.patch.axis_data_channel()] = ci;
+                    for v in self.patch.patch_data_iter(&input, &coords.slice()) {
+                        *col.next().unwrap() = v.unwrap_or(D::zero());
+                    }
+                }
+            }
+
+            let mut output_subview = output.slice_axis_mut(Axis(0), (i..(i + 1)).into());
+            if self.patch.data_is_nhwc {
+                let mut output_panel = output_subview.into_shape((self.n, self.m))?;
+                ::ndarray::linalg::general_mat_mul(
+                    D::one(),
+                    &self.kernel,
+                    &mega_matrix,
+                    D::zero(),
+                    &mut output_panel.reversed_axes(),
+                );
+            } else {
+                let mut output_panel = output_subview.into_shape((self.m, self.n))?;
+                ::ndarray::linalg::general_mat_mul(
+                    D::one(),
+                    &self.kernel,
+                    &mega_matrix,
+                    D::zero(),
+                    &mut output_panel,
+                );
+            }
+        }
+
+        if let Some(ref bias) = self.bias {
+            output += &bias;
+        }
+
+        Ok(output)
+    }
+}
+
+impl<D> Op for FixedParamsConv<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
+{
+    fn name(&self) -> &str {
+        "FixedParamsConv"
+    }
+
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let output = self.convolve(&inputs[0].to_array_view::<D>()?)?;
+        Ok(tvec!(output.into()))
+    }
+}
+
+impl<D> InferenceRulesOp for FixedParamsConv<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
+{
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        solver: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) {
+    }
+}

@@ -4,7 +4,7 @@ use ops::prelude::*;
 
 use dim::DimLike;
 
-use super::patches::{PaddingSpec, Patch};
+use super::{PaddingSpec, Patch};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct MaxPool {
@@ -43,6 +43,7 @@ impl Op for MaxPool {
         let input:ArrayViewD<f32> = input.to_array_view()?;
 
         let mut patch = self.patch(input.shape());
+        patch.cache_data_field();
         let channels = input.shape()[patch.axis_data_channel()];
         let shape: Vec<usize> = patch.output_full_shape(channels);
 
