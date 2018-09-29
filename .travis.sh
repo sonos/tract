@@ -6,7 +6,7 @@ export CI=true
 
 cargo build --release
 cargo test --release
-cargo check --benches # running benches on travis is useless
+cargo check --benches -all # running benches on travis is useless
 cargo doc
 (cd tfdeploy-tf ; cargo test --release)
 (cd tfdeploy-onnx ; env -u RUST_BACKTRACE cargo test --release)

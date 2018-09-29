@@ -36,6 +36,7 @@ pub mod prelude {
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{Datum, DatumType, Tensor};
+    pub use super::arr4;
     pub use TfdResult;
 }
 

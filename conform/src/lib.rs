@@ -169,5 +169,5 @@ pub fn infer<S: AsRef<str>>(
 #[allow(dead_code)]
 pub fn setup_test_logger() {
     use simplelog::{Config, LevelFilter, TermLogger};
-    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+    let _ = TermLogger::init(LevelFilter::Trace, Config::default());
 }

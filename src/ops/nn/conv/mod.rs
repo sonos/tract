@@ -71,58 +71,120 @@ impl Op for Conv {
             (input, kernel, Some(bias))
         };
         let input = input.to_array_view::<f32>()?;
+        let input_batch = input.shape()[0];
         let kernel = kernel.to_array_view::<f32>()?;
+
+        let output_channels = if self.kernel_is_hwio {
+            *kernel.shape().last().unwrap()
+        /*
+            let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
+            permutation.extend(0..(kernel.ndim() - 2));
+            kernel.permuted_axes(permutation)
+            */
+        } else {
+            kernel.shape()[0]
+        };
+        let mut patch = self.patch(input.shape(), &kernel.shape());
         let bias = bias
             .as_ref()
             .map(|b| b.to_array_view::<f32>())
             .inside_out()?;
 
-        let (ax_ker_in, ax_ker_out) = if self.kernel_is_hwio {
-            (kernel.ndim() - 2, kernel.ndim() - 1)
-        } else {
-            (1, 0) // oihw
-        };
+        //println!("input\n{:?}", input);
+        //println!("batch\n{:?}", input_batch);
+        //println!("kernel\n{:?}", kernel);
+        //println!("patch\n{:?}", patch);
 
-        let mut patch = self.patch(input.shape(), kernel.shape());
-
-        let shape: Vec<usize> = patch.output_full_shape(kernel.shape()[ax_ker_out]);
+        let shape: Vec<usize> = patch.output_full_shape(output_channels);
+        //println!("output shape\n{:?}", shape);
         let input_channels = input.shape()[patch.axis_data_channel()];
         let output_channels = shape[patch.axis_data_channel()];
+        //println!("output channels\n{:?}", output_channels);
 
         let k = kernel.len() / output_channels;
         let m = output_channels;
-        let n = shape.iter().skip(2).product();
-        let kernel = kernel.into_shape((m, k))?;
+        let n = patch.output_spatial_shape.iter().product();
+        let kernel = kernel.to_shared();
+
+        let ready_kernel = if self.kernel_is_hwio {
+            let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
+            permutation.extend(0..(kernel.ndim() - 2));
+            //println!("permuetation: {:?}", permutation);
+            let permuted = kernel.permuted_axes(permutation);
+            //println!("permuetation:\n{:?}", permuted);
+            //println!("iter:\n{:?}", permuted.iter().collect::<Vec<_>>());
+            Array2::<f32>::from_shape_vec((m, k), permuted.iter().cloned().collect::<Vec<_>>())?
+                .into_shared()
+        } else {
+            kernel.into_shape((m, k))?.to_shared()
+        };
+
+        //println!("kernel reinterpreted\n{:?}", ready_kernel);
         let mut output = unsafe { ArrayD::<f32>::uninitialized(&*shape) };
-        for i in 0..input.shape()[0] {
+        for i in 0..input_batch {
             let mut mega_matrix = unsafe { Array2::<f32>::uninitialized((k, n)) };
             for ((mut coords, _uninit), mut col) in output
-                .slice_axis(Axis(0), (i..(i + 1)).into())
-                .slice_axis(Axis(1), (0..1).into())
+                .slice_axis(Axis(patch.axis_data_batch()), (i..(i + 1)).into())
+                .slice_axis(Axis(patch.axis_data_channel()), (0..1).into())
                 .indexed_iter()
                 .zip(mega_matrix.axis_iter_mut(Axis(1)))
             {
+                //println!("col: {:?}", col);
                 let mut col = col.iter_mut();
                 for ci in 0..input_channels {
-                    coords[1] = ci;
+                    coords[patch.axis_data_batch()] = i;
+                    coords[patch.axis_data_channel()] = ci;
+                    //println!("  coords: {:?}, input_channel:{}", coords, ci);
                     for v in patch.patch_data_iter(&input, &coords.slice()) {
                         *col.next().unwrap() = v.unwrap_or(0.0);
                     }
                 }
             }
 
+            //println!("mega\n{:?}", mega_matrix);
             let mut output_subview = output.slice_axis_mut(Axis(0), (i..(i + 1)).into());
-            let mut output_panel = output_subview.into_shape((m, n))?;
-            ::ndarray::linalg::general_mat_mul(1.0, &kernel, &mega_matrix, 0.0, &mut output_panel);
+            if self.data_is_nhwc {
+                let mut output_panel = output_subview.into_shape((n, m))?;
+                ::ndarray::linalg::general_mat_mul(
+                    1.0,
+                    &ready_kernel,
+                    &mega_matrix,
+                    0.0,
+                    &mut output_panel.reversed_axes(),
+                );
+            } else {
+                let mut output_panel = output_subview.into_shape((m, n))?;
+                ::ndarray::linalg::general_mat_mul(
+                    1.0,
+                    &ready_kernel,
+                    &mega_matrix,
+                    0.0,
+                    &mut output_panel,
+                );
+            }
         }
 
+        //println!("output\n{:?}", output);
+
         if let Some(bias) = bias {
-            let mut bias_shape:Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
-            bias_shape[patch.axis_data_channel()] = output_channels;
-            let bias:ArrayViewD<f32> = bias.view().into_shape(&*bias_shape)?;
+            let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
+            bias_shape[1] = output_channels;
+            let bias: ArrayViewD<f32> = bias.view().into_shape(&*bias_shape)?;
             output += &bias;
         }
+
+        /*
+        if self.data_is_nhwc {
+            //println!("raw output\n{:?}", output);
+            let mut permutation:Vec<usize> = vec!(0);
+            permutation.extend(2..(kernel.ndim()+2));
+            permutation.push(1);
+            //println!("permutation: {:?}", permutation);
+            Ok(tvec!(output.permuted_axes(permutation).into()))
+        } else {a
+        */
         Ok(tvec!(output.into()))
+        //}
     }
 }
 
@@ -245,5 +307,57 @@ mod test {
             facts.1,
             tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2)))
         );
+    }
+
+    #[test]
+    fn test_infer_nhwc() {
+        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let facts = op
+            .infer_facts(
+                tvec!(
+                    ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into(),
+                    ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into()
+                ),
+                tvec!(TensorFact::default()),
+            ).unwrap();
+        assert_eq!(
+            facts.1,
+            tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 1)))
+        );
+    }
+
+    #[test]
+    fn test_eval_nhwc_1() {
+        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let res = op
+            .eval(tvec!(
+                ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into(),
+                ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into()
+            )).unwrap();
+        assert_eq!(
+            res,
+            tvec!(Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
+        );
+    }
+
+    #[test]
+    fn test_eval_nhwc_2() {
+        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+        let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
+        let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
+        let res = op.eval(tvec!(i.into(), k.into())).unwrap();
+        assert_eq!(res, tvec!(e.into()));
+    }
+
+    #[test]
+    fn test_eval_nhwc() {
+        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let result = op
+            .eval(tvec!(
+                arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),
+                arr4(&[[[[1.0f32]]]]).into()
+            )).unwrap();
+        assert_eq!(result, tvec!(arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into()));
     }
 }

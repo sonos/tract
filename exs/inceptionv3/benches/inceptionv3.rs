@@ -4,7 +4,9 @@ extern crate criterion;
 extern crate conform;
 extern crate dinghy_test;
 extern crate inceptionv3;
+#[macro_use]
 extern crate tfdeploy;
+extern crate tfdeploy_tf;
 
 use self::dinghy_test::test_project_path;
 use criterion::Criterion;
@@ -36,14 +38,11 @@ fn tf(bencher: &mut Criterion) {
 }
 
 fn tfd(bencher: &mut Criterion) {
-    let tfd = ::tfdeploy::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
+    let tfd = ::tfdeploy_tf::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(hopper());
-    let input_id = tfd.node_id_by_name("input").unwrap();
-    let output_id = tfd
-        .node_id_by_name("InceptionV3/Predictions/Reshape_1")
-        .unwrap();
+    let plan = ::tfdeploy::SimplePlan::new(&tfd, &vec!("input"), &vec!("InceptionV3/Predictions/Reshape_1")).unwrap();
     bencher.bench_function("TFD", move |b| {
-        b.iter(|| tfd.run(vec![(input_id, input.clone())], output_id).unwrap())
+        b.iter(|| plan.run(tvec![input.clone()]).unwrap())
     });
 }
 

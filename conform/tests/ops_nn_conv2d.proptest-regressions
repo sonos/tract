@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+xs 3778734306 2015939070 3673647273 3382466433 # shrinks to (ref i, ref k, ref strides) = (Tensor F32 [[[[0.0, 0.0],    [0.0, 0.0]],   [[0.0, 0.0],    [0.0, 0.0]]]] shape=[1, 2, 2, 2], strides=[8, 4, 2, 1], layout=C (0x1), Tensor F32 [[[[0.0],    [0.0]],   [[0.0],    [0.0]]],  [[[0.0],    [0.0]],   [[0.0],    [0.0]]]] shape=[2, 2, 2, 1], strides=[4, 2, 1, 1], layout=C (0x1), (1, 1)), valid = false
+xs 1941848648 715499144 867116659 670056782 # shrinks to (ref i, ref k, ref strides) = (Tensor F32 [[[[0.0]]],  [[[1.0]]]] shape=[2, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1), Tensor F32 [[[[-1.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1), (1, 1)), valid = false

@@ -121,13 +121,6 @@ impl PaddingSpec {
     }
 }
 
-#[derive(Debug, new)]
-pub struct DataCoords<'a> {
-    pub n: usize,
-    pub chan: usize,
-    pub space: &'a [usize],
-}
-
 #[derive(Debug, Clone)]
 pub struct Patch<D: DimLike> {
     pub data_is_nhwc: bool, // default is nchw (onnx)
@@ -195,18 +188,6 @@ impl<D: DimLike> Patch<D> {
             1
         }
     }
-
-    pub fn split_data_coords<'a>(&self, coords: &'a [usize]) -> DataCoords<'a> {
-        if self.data_is_nhwc {
-            DataCoords::new(
-                coords[0],
-                coords[self.spatial_rank() + 1],
-                &coords[1..self.spatial_rank() + 1],
-            )
-        } else {
-            DataCoords::new(coords[0], coords[1], &coords[2..self.spatial_rank() + 2]) // nchw
-        }
-    }
 }
 
 impl<D: DimLike> Patch<D> {
@@ -250,7 +231,10 @@ impl Patch<usize> {
         coords: &'c [usize],
     ) -> PatchIterator<'a, 'b, 'c, T> {
         if self.data_field.is_none() {
+            //println!("kernel field\n{:?}", self.mk_kernel_field());
             self.data_field = Some(self.mk_data_field());
+            //println!("{:?}", self);
+            //println!("datafield\n{:?}", self.data_field);
         }
         PatchIterator {
             patch: &*self,
