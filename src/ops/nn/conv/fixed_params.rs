@@ -3,14 +3,14 @@ use ndarray::prelude::*;
 use ops::prelude::*;
 
 use super::Conv;
-use ops::nn::patches::Patch;
+use ops::nn::{ Patch, DataFormat };
 
 use insideout::InsideOut;
 
 #[derive(Debug, Clone)]
 pub struct FixedParamsConv<D: Datum> {
     kernel_is_hwio: bool,
-    patch: Patch<usize>,
+    patch: Patch,
     kernel: Array2<D>,
     full_output_shape: Vec<usize>,
     k: usize,
@@ -31,8 +31,20 @@ impl<D: Datum> FixedParamsConv<D> {
         } else {
             kernel.shape()[0]
         };
-        let mut patch = conv.patch(input_full_shape, &kernel.shape());
-        patch.cache_data_field();
+
+        let spatial_rank = input_full_shape.len() - 2;
+        let dilations = conv.dilations.clone().unwrap_or(vec![1; spatial_rank]);
+        let strides = conv.strides.clone().unwrap_or(vec![1; spatial_rank]);
+        let kernel_spatial_shape = &kernel.shape()[conv.axis_kernel_spatial()..][..spatial_rank];
+
+        let patch = Patch::new(
+            conv.data_fmt,
+            dilations,
+            kernel_spatial_shape.to_vec(),
+            &conv.padding,
+            strides,
+            input_full_shape.to_vec(),
+        );
 
         let shape: Vec<usize> = patch.output_full_shape(output_channels);
 
@@ -77,17 +89,18 @@ where
     pub(super) fn convolve(&self, input: &ArrayViewD<D>) -> TfdResult<ArrayD<D>> {
         let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
         let mut mega_matrix = unsafe { Array2::<D>::uninitialized((self.k, self.n)) };
-        for i in 0..self.patch.input_batch_size() {
+        let input_shape = &self.patch.input_shape;
+        for i in 0..input_shape.n_dim() {
             for ((mut coords, _uninit), mut col) in output
-                .slice_axis(Axis(self.patch.axis_data_batch()), (i..(i + 1)).into())
-                .slice_axis(Axis(self.patch.axis_data_channel()), (0..1).into())
+                .slice_axis(Axis(input_shape.n_axis()), (i..(i + 1)).into())
+                .slice_axis(Axis(input_shape.c_axis()), (0..1).into())
                 .indexed_iter()
                 .zip(mega_matrix.axis_iter_mut(Axis(1)))
             {
                 let mut col = col.iter_mut();
-                for ci in 0..self.patch.input_channels() {
-                    coords[self.patch.axis_data_batch()] = i;
-                    coords[self.patch.axis_data_channel()] = ci;
+                for ci in 0..input_shape.c_dim() {
+                    coords[input_shape.n_axis()] = i;
+                    coords[input_shape.c_axis()] = ci;
                     for v in self.patch.patch_data_iter(&input, &coords.slice()) {
                         *col.next().unwrap() = v.unwrap_or(D::zero());
                     }
@@ -95,24 +108,27 @@ where
             }
 
             let mut output_subview = output.slice_axis_mut(Axis(0), (i..(i + 1)).into());
-            if self.patch.data_is_nhwc {
-                let mut output_panel = output_subview.into_shape((self.n, self.m))?;
-                ::ndarray::linalg::general_mat_mul(
-                    D::one(),
-                    &self.kernel,
-                    &mega_matrix,
-                    D::zero(),
-                    &mut output_panel.reversed_axes(),
-                );
-            } else {
-                let mut output_panel = output_subview.into_shape((self.m, self.n))?;
-                ::ndarray::linalg::general_mat_mul(
-                    D::one(),
-                    &self.kernel,
-                    &mega_matrix,
-                    D::zero(),
-                    &mut output_panel,
-                );
+            match self.patch.input_shape.fmt {
+                DataFormat::NHWC => {
+                    let mut output_panel = output_subview.into_shape((self.n, self.m))?;
+                    ::ndarray::linalg::general_mat_mul(
+                        D::one(),
+                        &self.kernel,
+                        &mega_matrix,
+                        D::zero(),
+                        &mut output_panel.reversed_axes(),
+                    );
+                }
+                DataFormat::NCHW => {
+                    let mut output_panel = output_subview.into_shape((self.m, self.n))?;
+                    ::ndarray::linalg::general_mat_mul(
+                        D::one(),
+                        &self.kernel,
+                        &mega_matrix,
+                        D::zero(),
+                        &mut output_panel,
+                    );
+                }
             }
         }
 

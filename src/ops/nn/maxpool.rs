@@ -2,32 +2,25 @@ use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-use dim::DimLike;
-
-use super::{PaddingSpec, Patch};
+use super::{DataFormat, PaddingSpec, Patch};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct MaxPool {
-    data_is_nhwc: bool, // default is nchw (onnx)
+    data_fmt: DataFormat,
     kernel_shape: Vec<usize>,
     padding: PaddingSpec,
     strides: Option<Vec<usize>>,
 }
 
 impl MaxPool {
-    fn patch<D: DimLike>(&self, input_full_shape: &[D]) -> Patch<D> {
-        let spatial_rank = input_full_shape.len() - 2;
-        let strides:Vec<usize> = self.strides.clone().unwrap_or(vec![1; spatial_rank]);
-        let dilations = vec![1; spatial_rank];
-        let kernel_shape:Vec<D> = self.kernel_shape.iter().map(|i| D::from(*i)).collect();
-        assert_eq!(spatial_rank, kernel_shape.len());
-        assert_eq!(spatial_rank, strides.len());
+    fn patch(&self, input_full_shape: &[usize]) -> Patch {
+        let hw_rank = self.data_fmt.shape(input_full_shape).hw_rank();
         Patch::new(
-            self.data_is_nhwc,
-            dilations,
-            kernel_shape,
+            self.data_fmt,
+            vec![1; hw_rank],
+            self.kernel_shape.clone(),
             &self.padding,
-            strides,
+            self.strides.clone().unwrap_or_else(|| vec![1; hw_rank]),
             input_full_shape.to_vec(),
         )
     }
@@ -42,10 +35,8 @@ impl Op for MaxPool {
         let input = args_1!(inputs);
         let input:ArrayViewD<f32> = input.to_array_view()?;
 
-        let mut patch = self.patch(input.shape());
-        patch.cache_data_field();
-        let channels = input.shape()[patch.axis_data_channel()];
-        let shape: Vec<usize> = patch.output_full_shape(channels);
+        let patch = self.patch(input.shape());
+        let shape: Vec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
 
         let output = ArrayD::from_shape_fn(shape, |coords| -> f32 {
             patch.patch_data_iter(&input, coords.slice())
@@ -67,10 +58,14 @@ impl InferenceRulesOp for MaxPool {
             .equals(&outputs.len, 1)
             .equals(&outputs[0].datum_type, &inputs[0].datum_type)
             .given(&inputs[0].shape, move |solver, ishape| {
-                let patch = self.patch(&*ishape);
-                let channels = ishape[patch.axis_data_channel()];
-                let shape = patch.output_full_shape(channels);
-                solver.equals(&outputs[0].shape, shape.bex());
+                let ishape = self.data_fmt.shape(ishape);
+                let ones = vec!(1; ishape.hw_rank());
+                let (_, _, out_geo_shape) = self.padding.compute(ishape.hw_dims(), &*self.kernel_shape, &ones, self.strides.as_ref().unwrap_or(&ones));
+                for (ix, &s) in out_geo_shape.iter().enumerate() {
+                    solver.equals(&outputs[0].shape[ix+ishape.h_axis()], s);
+                }
+                solver.equals(&outputs[0].shape[ishape.n_axis()], ishape.n_dim());
+                solver.equals(&outputs[0].shape[ishape.c_axis()], ishape.c_dim());
             });
     }
 }

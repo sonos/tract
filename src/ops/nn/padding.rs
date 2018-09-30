@@ -15,10 +15,10 @@ impl Default for PaddingSpec {
 }
 
 impl PaddingSpec {
-    pub fn compute<D: DimLike>(
+    pub fn compute<D: DimLike, KD: Into<D> + Copy>(
         &self,
         input_spatial_shape: &[D],
-        kernel_spatial_shape: &[D],
+        kernel_spatial_shape: &[KD],
         dilations: &[usize],
         strides: &[usize],
     ) -> (Vec<D>, Vec<D>, Vec<D>) {
@@ -59,9 +59,9 @@ impl PaddingSpec {
         }
     }
 
-    fn explicit<D: DimLike>(
+    fn explicit<D: DimLike, KD: Into<D> + Copy>(
         data_spatial_shape: &[D],
-        kernel_spatial_shape: &[D],
+        kernel_spatial_shape: &[KD],
         dilations: &[usize],
         strides: &[usize],
         bef: &[usize],
@@ -75,7 +75,7 @@ impl PaddingSpec {
         assert_eq!(spatial_rank, bef.len());
         let output_spatial_shape = (0..spatial_rank)
             .map(|ax| {
-                let kernel_field = (kernel_spatial_shape[ax] - 1) * dilations[ax] + 1;
+                let kernel_field = (kernel_spatial_shape[ax].into() - 1) * dilations[ax] + 1;
                 let dim = (data_spatial_shape[ax] + bef[ax] + aft[ax] - kernel_field + 1)
                     .div_ceil(strides[ax]);
                 dim
@@ -87,10 +87,10 @@ impl PaddingSpec {
         )
     }
 
-    fn same<D: DimLike>(
+    fn same<D: DimLike, KD: Into<D> + Copy>(
         &self,
         data_spatial_shape: &[D],
-        kernel_spatial_shape: &[D],
+        kernel_spatial_shape: &[KD],
         dilations: &[usize],
         strides: &[usize],
         upper: bool,
@@ -101,7 +101,7 @@ impl PaddingSpec {
         let mut pad_after = vec![];
         for ax in 0..spatial_rank {
             let dim = data_spatial_shape[ax].div_ceil(strides[ax]);
-            let kernel_field = (kernel_spatial_shape[ax] - 1) * dilations[ax] + 1;
+            let kernel_field = (kernel_spatial_shape[ax].into() - 1) * dilations[ax] + 1;
             dims.push(dim);
             let pad = (dim - 1) * strides[ax] + kernel_field - data_spatial_shape[ax];
             let lower_pad = pad / 2;

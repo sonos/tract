@@ -1,25 +1,25 @@
 use analyser::rules::prelude::*;
-use ndarray::prelude::*;
 use ops::prelude::*;
 
-use dim::DimLike;
 use super::FixedParamsConv;
-use ops::nn::{ PaddingSpec, Patch};
+use dim::DimLike;
+use ops::nn::DataFormat;
+use ops::nn::PaddingSpec;
 
 use insideout::InsideOut;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Conv {
-    pub(super) data_is_nhwc: bool,   // default is nchw (onnx)
+    pub(super) data_fmt: DataFormat,
     pub(super) kernel_is_hwio: bool, // default is oihw (onnx)
-    dilations: Option<Vec<usize>>,
+    pub(super) dilations: Option<Vec<usize>>,
     kernel_shape: Option<Vec<usize>>,
-    padding: PaddingSpec,
-    strides: Option<Vec<usize>>,
+    pub(super) padding: PaddingSpec,
+    pub(super) strides: Option<Vec<usize>>,
 }
 
 impl Conv {
-    fn spatial_kernel_dim(&self) -> usize {
+    pub(super) fn axis_kernel_spatial(&self) -> usize {
         if self.kernel_is_hwio {
             0
         } else {
@@ -27,37 +27,22 @@ impl Conv {
         }
     }
 
-    pub(super) fn patch<D: DimLike>(
-        &self,
-        input_full_shape: &[D],
-        kernel_full_shape: &[D],
-    ) -> Patch<D> {
-        let spatial_rank = input_full_shape.len() - 2;
-        let dilations = self.dilations.clone().unwrap_or(vec![1; spatial_rank]);
-        let strides = self.strides.clone().unwrap_or(vec![1; spatial_rank]);
-        let kernel_spatial_shape = &kernel_full_shape[self.spatial_kernel_dim()..][..spatial_rank];
-        assert_eq!(spatial_rank, kernel_spatial_shape.len());
-        assert_eq!(spatial_rank, dilations.len());
-        assert_eq!(spatial_rank, strides.len());
-        let patch = Patch::new(
-            self.data_is_nhwc,
-            dilations,
-            kernel_spatial_shape.to_vec(),
-            &self.padding,
-            strides,
-            input_full_shape.to_vec(),
-        );
-        patch
-    }
-
     fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[D]) -> Vec<D> {
-        let patch = self.patch(ishape, kshape);
-        let ko = if self.kernel_is_hwio {
-            *kshape.last().unwrap() // hwio
-        } else {
-            kshape[0] // oihw
-        };
-        patch.output_full_shape(ko)
+        let mut result = ishape.to_vec();
+        let ishape = self.data_fmt.shape(ishape);
+        let spatial_rank = ishape.hw_rank();
+        let ones = vec![1; spatial_rank];
+        let kernel_spatial_shape = &kshape[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
+        let (output_shape, _pad_before, _pas_after) = self.padding.compute(
+            ishape.hw_dims(),
+            kernel_spatial_shape,
+            self.dilations.as_ref().unwrap_or(&ones),
+            self.strides.as_ref().unwrap_or(&ones),
+        );
+        let channels_out = kshape[(self.kernel_is_hwio as usize)*(kshape.len() - 1)];
+        result[ishape.c_axis()] = channels_out;
+        result[ishape.hw_axes()].copy_from_slice(&output_shape);
+        result
     }
 }
 
@@ -98,7 +83,7 @@ impl InferenceRulesOp for Conv {
             solver.equals(&inputs[1].rank, kshape.len() as i64 + 2);
             for (ix, dim) in kshape.iter().enumerate() {
                 solver.equals(
-                    &inputs[1].shape[ix + self.spatial_kernel_dim()],
+                    &inputs[1].shape[ix + self.axis_kernel_spatial()],
                     TDim::from(*dim as i64),
                 );
             }
@@ -127,7 +112,7 @@ impl InferenceRulesOp for Conv {
             &inputs[0].rank,
             &inputs[1].rank,
             move |solver, irank, krank| {
-                let input_c = if self.data_is_nhwc {
+                let input_c = if self.data_fmt == DataFormat::NHWC {
                     &inputs[0].shape[irank as usize - 1]
                 } else {
                     &inputs[0].shape[1]
@@ -144,7 +129,8 @@ impl InferenceRulesOp for Conv {
             &inputs[0].shape,
             &inputs[1].shape,
             move |solver, ishape, kshape| {
-                solver.equals(&outputs[0].shape, self.output_shape(&*ishape, &*kshape));
+                let oshape = self.output_shape(&*ishape, &*kshape);
+                solver.equals(&outputs[0].shape, oshape);
             },
         );
     }
@@ -153,6 +139,8 @@ impl InferenceRulesOp for Conv {
 #[cfg(test)]
 mod test {
     use super::*;
+    use ndarray::prelude::*;
+    use ops::nn::DataFormat::NHWC;
 
     #[test]
     fn test_infer_with_known_kshape() {
@@ -210,7 +198,7 @@ mod test {
 
     #[test]
     fn test_infer_nhwc() {
-        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
         let facts = op
             .infer_facts(
                 tvec!(
@@ -227,7 +215,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_1() {
-        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
         let res = op
             .eval(tvec!(
                 ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into(),
@@ -241,7 +229,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_2() {
-        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
         let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
         let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
         let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
@@ -251,7 +239,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc() {
-        let op = Conv::new(true, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
         let result = op
             .eval(tvec!(
                 arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),

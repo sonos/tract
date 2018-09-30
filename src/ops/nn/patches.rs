@@ -1,123 +1,66 @@
 use ndarray::prelude::*;
 
-use super::PaddingSpec;
-use dim::DimLike;
+use super::{ DataFormat, DataShape, PaddingSpec};
 use tensor::Datum;
 
 #[derive(Debug, Clone)]
-pub struct Patch<D: DimLike> {
-    pub data_is_nhwc: bool, // default is nchw (onnx)
+pub struct Patch {
     pub dilations: Vec<usize>,
-    pub kernel_spatial_shape: Vec<D>,
-    pub pad_before: Vec<D>,
-    pub pad_after: Vec<D>,
+    pub kernel_spatial_shape: Vec<usize>,
+    pub pad_before: Vec<usize>,
+    pub pad_after: Vec<usize>,
     pub strides: Vec<usize>,
-    pub input_full_shape: Vec<D>,
-    pub output_spatial_shape: Vec<D>,
-    pub data_field: Option<Array2<usize>>,
+    pub input_shape: DataShape<usize, Vec<usize>>,
+    pub output_spatial_shape: Vec<usize>,
+    pub data_field: Array2<usize>,
 }
 
-impl<D: DimLike> Patch<D> {
+impl Patch {
     pub fn new(
-        data_is_nhwc: bool,
+        data_fmt: DataFormat,
         dilations: Vec<usize>,
-        kernel_spatial_shape: Vec<D>,
+        kernel_spatial_shape: Vec<usize>,
         padding: &PaddingSpec,
         strides: Vec<usize>,
-        input_full_shape: Vec<D>,
-    ) -> Patch<D> {
-        assert_eq!(input_full_shape.len(), dilations.len() + 2);
-        assert_eq!(kernel_spatial_shape.len(), dilations.len());
-        assert_eq!(strides.len(), dilations.len());
+        input_full_shape: Vec<usize>,
+    ) -> Patch {
+        let input_shape = data_fmt.shape(input_full_shape);
         let (output_spatial_shape, pad_before, pad_after) = padding.compute(
-            &input_full_shape[(1 + (!data_is_nhwc as usize))..][..kernel_spatial_shape.len()],
+            input_shape.hw_dims(),
             &kernel_spatial_shape,
             &*dilations,
             &*strides,
         );
+
+        let data_field: Vec<usize> = ::ndarray::indices(&*kernel_spatial_shape).into_iter()
+            .flat_map(|coords| {
+                coords.slice().to_vec().into_iter().enumerate().map(|(ix,c)| (c * dilations[ix]).wrapping_sub(pad_before[ix]))
+            }).collect();
+        let data_field = Array2::from_shape_vec(
+            (
+                kernel_spatial_shape.iter().cloned().product(),
+                kernel_spatial_shape.len(),
+            ),
+            data_field,
+        ).unwrap();
+
         Patch {
-            data_is_nhwc,
             dilations,
             kernel_spatial_shape,
             pad_before,
             pad_after,
             strides,
-            input_full_shape,
+            input_shape,
             output_spatial_shape,
-            data_field: None,
+            data_field,
         }
     }
 
-    pub fn spatial_rank(&self) -> usize {
-        self.kernel_spatial_shape.len()
-    }
-
-    pub fn axis_data_batch(&self) -> usize {
-        0
-    }
-
-    pub fn axis_data_spatial(&self) -> usize {
-        if self.data_is_nhwc {
-            1
-        } else {
-            2
-        }
-    }
-
-    pub fn axis_data_channel(&self) -> usize {
-        if self.data_is_nhwc {
-            1 + self.spatial_rank()
-        } else {
-            1
-        }
-    }
-
-    pub fn input_batch_size(&self) -> D {
-        self.input_full_shape[0]
-    }
-
-    pub fn input_channels(&self) -> D {
-        self.input_full_shape[self.axis_data_channel()]
-    }
-}
-
-impl<D: DimLike> Patch<D> {
-    pub fn output_full_shape(&self, channels: D) -> Vec<D> {
-        let mut v = self.input_full_shape.clone();
-        v[self.axis_data_channel()] = channels;
-        for i in 0..self.spatial_rank() {
-            v[i + self.axis_data_spatial()] = self.output_spatial_shape[i]
-        }
+    pub fn output_full_shape(&self, channels: usize) -> Vec<usize> {
+        let mut v = self.input_shape.shape.clone();
+        v[self.input_shape.c_axis()] = channels;
+        v[self.input_shape.hw_axes()].copy_from_slice(&self.output_spatial_shape);
         v
-    }
-}
-
-impl Patch<usize> {
-    pub fn mk_kernel_field(&self) -> Array2<usize> {
-        let shape: Vec<usize> = self
-            .kernel_spatial_shape
-            .iter()
-            .map(|&a| a as usize)
-            .collect();
-        let square = ArrayD::from_shape_fn(&*shape, |id| id.slice().to_vec());
-        let len = square.len();
-        let points: Array1<Vec<usize>> = square.into_shape((len,)).unwrap();
-        Array2::from_shape_fn((points.len(), self.spatial_rank()), |(pt, axis)| {
-            points[pt][axis]
-        })
-    }
-
-    pub fn mk_data_field(&self) -> Array2<usize> {
-        let mut field = self.mk_kernel_field();
-        ::ndarray::Zip::from(&mut field)
-            .and_broadcast(&arr1(&*self.dilations))
-            .and_broadcast(&arr1(&*self.pad_before))
-            .apply(|offset, &dil, &pad| *offset = (*offset * dil).wrapping_sub(pad));
-        field
-    }
-
-    pub fn cache_data_field(&mut self) {
-        self.data_field = Some(self.mk_data_field())
     }
 
     pub fn patch_data_iter<'a, 'b, 'c, 'd: 'a, T: Datum>(
@@ -137,7 +80,7 @@ impl Patch<usize> {
 
 pub struct PatchIterator<'a, 'b, 'c, 'd: 'a, T: Datum> {
     input: &'a ArrayViewD<'d, T>,
-    patch: &'b Patch<usize>,
+    patch: &'b Patch,
     item: usize,
     coords: &'c [usize],
     full_coords: Vec<usize>,
@@ -146,16 +89,15 @@ pub struct PatchIterator<'a, 'b, 'c, 'd: 'a, T: Datum> {
 impl<'a, 'b, 'c, 'd, T: Datum> Iterator for PatchIterator<'a, 'b, 'c, 'd, T> {
     type Item = Option<T>;
     fn next(&mut self) -> Option<Option<T>> {
-        if self.item == self.patch.data_field.as_ref().unwrap().rows() {
+        if self.item == self.patch.data_field.rows() {
             return None;
         }
-        let img_offset = self.patch.data_field.as_ref().unwrap().row(self.item);
+        let img_offset = self.patch.data_field.row(self.item);
         self.item += 1;
 
         (&mut *self.full_coords).copy_from_slice(self.coords);
-        self.full_coords
+        self.full_coords[self.patch.input_shape.hw_axes()]
             .iter_mut()
-            .skip(self.patch.axis_data_spatial())
             .zip(img_offset.iter().zip(self.patch.strides.iter()))
             .for_each(|(x, (&i, &s))| *x = (*x * s).wrapping_add(i));
         Some(self.input.get(&*self.full_coords).cloned())
@@ -165,6 +107,7 @@ impl<'a, 'b, 'c, 'd, T: Datum> Iterator for PatchIterator<'a, 'b, 'c, 'd, T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use ops::nn::DataFormat::NCHW;
 
     fn compute_output_spatial_dim(
         input: usize,
@@ -175,7 +118,7 @@ mod test {
         stride: usize,
     ) -> usize {
         let patch = Patch::new(
-            false,
+            DataFormat::NCHW,
             vec![dilation],
             vec![kdim],
             &PaddingSpec::Explicit(vec![pad_before], vec![bad_after]),
@@ -207,14 +150,14 @@ mod test {
 
     fn field(kdim: &[usize], dilations: &[usize]) -> Array2<usize> {
         let patch = Patch::new(
-            false,
+            NCHW,
             dilations.to_vec(),
             kdim.to_vec(),
             &PaddingSpec::Explicit(vec![0; kdim.len()], vec![0; kdim.len()]),
             vec![1; kdim.len()],
             vec![10; kdim.len() + 2],
         );
-        patch.mk_data_field()
+        patch.data_field
     }
 
     #[test]

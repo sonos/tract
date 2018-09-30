@@ -1,5 +1,5 @@
 use tfdeploy::ops as tfdops;
-use tfdeploy::ops::nn::PaddingSpec;
+use tfdeploy::ops::nn::{ DataFormat, PaddingSpec};
 use tfdeploy::ops::prelude::*;
 
 use ops::OpRegister;
@@ -54,7 +54,7 @@ pub fn conv(node: &NodeProto) -> TfdResult<Box<Op>> {
         .get_attr_opt_ints("kernel_shape")?
         .map(|i| i.iter().map(|&i| i as usize).collect());
     Ok(Box::new(tfdops::nn::Conv::new(
-        false,
+        DataFormat::NCHW,
         false,
         dilations(node)?,
         kernel_shape,
@@ -73,7 +73,7 @@ pub fn average_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     let strides = strides(node)?;
     let count_include_pad = node.get_attr_opt_int("count_include_pad")?.unwrap_or(0) != 0;
     Ok(Box::new(tfdops::nn::AvgPool::new(
-        false,
+        DataFormat::NCHW,
         kernel_shape,
         pad,
         strides,
@@ -122,7 +122,7 @@ pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     let pad = pad(node)?;
     let strides = strides(node)?;
     Ok(Box::new(tfdops::nn::MaxPool::new(
-        false,
+        DataFormat::NCHW,
         kernel_shape,
         pad,
         strides,

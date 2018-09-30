@@ -269,9 +269,7 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tfdeploy::ops::nn::Conv;
-    use tfdeploy::ops::nn::PaddingSpec;
-    use tfdeploy::ops::InferenceOp;
+    use tfdeploy::ops::nn::{ Conv, DataFormat, PaddingSpec };
     use tfdeploy::Tensor;
 
     fn mk(sizes: &[usize]) -> Tensor {
@@ -304,7 +302,7 @@ mod tests {
 
     fn make_conv(h_stride: usize, v_stride: usize, padding: Padding) -> Box<Op> {
         Box::new(Conv::new(
-            true,
+            DataFormat::NHWC,
             true,
             None,
             None,
