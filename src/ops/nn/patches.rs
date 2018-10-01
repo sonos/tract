@@ -81,10 +81,11 @@ impl Patch {
         &'b self,
         input: &'a ArrayViewD<'d, T>,
         coords: &'c [usize],
-    ) -> FastIterator<'a, 'b, 'd, T> {
+    ) -> SafeIterator<'a, 'b, 'd, T> {
         let mut center_coords = coords.to_vec();
         izip!(center_coords[self.input_shape.hw_axes()].iter_mut(), self.strides.iter()).for_each(|(a,&b)| *a*=b);
 
+        /*
         FastIterator {
             input:input.as_slice().unwrap(),
             field: &*self.standard_layout_data_field,
@@ -92,14 +93,14 @@ impl Patch {
             item:0,
             phantom: ::std::marker::PhantomData
         }
+        */
 
-        /*
         let offset = if input.is_standard_layout() && !self.padded {
             Some(input.strides().iter().zip(center_coords.iter()).map(|(&a, &b)| a*b as isize).sum())
         } else {
             None
         };
-        PatchIterator {
+        SafeIterator {
             patch: &*self,
             item: 0,
             input,
@@ -107,15 +108,7 @@ impl Patch {
             full_coords: vec![0; coords.len()],
             valid_center_offset: offset
         }
-        */
     }
-}
-
-pub struct PatchVisitor<'a, 'b, 'd: 'a, T: Datum> {
-    input: &'a ArrayViewD<'d, T>,
-    patch: Patch,
-    center_coords: Vec<usize>,
-    full_coords: Vec<usize>,
 }
 
 pub struct FastIterator<'a, 'b, 'd: 'a, T: Datum> {
