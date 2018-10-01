@@ -10,11 +10,9 @@ pub fn handle(
     output_params: OutputParameters,
 ) -> CliResult<()> {
     let mut model = params.tfd_model;
+    info!("Building analyser");
 
-    let mut analyser = model.analyser(&params.output_node)?;
-    for (ix,fact) in params.inputs.iter().enumerate() {
-        analyser = analyser.with_hint(&params.input_nodes[ix], fact)?;
-    }
+    let mut analyser = model.analyser()?.with_input_hints(params.inputs.clone())?;
 
     info!("Running analyse");
     let start = time::Instant::now();
@@ -31,10 +29,8 @@ pub fn handle(
         );
 
         model = analyser.to_optimized_model()?;
-        analyser = model.analyser(&params.output_node)?;
-        for (ix,fact) in params.inputs.iter().enumerate() {
-            analyser = analyser.with_hint(&params.input_nodes[ix], fact)?;
-        }
+        analyser = model.analyser()?.with_input_hints(params.inputs)?;
+
         info!("Running analyse on optimized graph");
         let start = time::Instant::now();
         analyser.analyse()?;

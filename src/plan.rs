@@ -62,8 +62,8 @@ impl SimplePlan {
     pub fn for_model(
         model: &Model,
     ) -> TfdResult<SimplePlan> {
-        let input:Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
-        let output:Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
+        let input:Vec<&str> = model.inputs()?.iter().map(|n| &*n.name).collect();
+        let output:Vec<&str> = model.outputs()?.iter().map(|n| &*n.name).collect();
         Self::new(model, &input, &output)
     }
 

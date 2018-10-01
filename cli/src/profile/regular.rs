@@ -28,7 +28,7 @@ pub fn handle_benching(
     };
 
     let ref model = params.tfd_model;
-    let plan = SimplePlan::new(model, &params.input_nodes, &[params.output_node])?;
+    let plan = SimplePlan::for_model(model)?;
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
@@ -63,7 +63,7 @@ pub fn handle(
     let ref model = params.tfd_model;
 
     info!("Running entire network");
-    let plan = SimplePlan::new(model, &params.input_nodes, &[params.output_node])?;
+    let plan = SimplePlan::for_model(model)?;
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {

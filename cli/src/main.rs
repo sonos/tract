@@ -234,9 +234,6 @@ pub struct Parameters {
     tf_model: (),
 
     inputs: Vec<TensorFact>,
-
-    input_nodes: Vec<String>,
-    output_node: String,
 }
 
 impl Parameters {
@@ -250,7 +247,7 @@ impl Parameters {
             } else {
                 "tf"
             });
-        let (graph, tfd_model) = if format == "onnx" {
+        let (graph, mut tfd_model) = if format == "onnx" {
             let graph = tfdeploy_onnx::model::model_proto_for_path(&name)?;
             let tfd = tfdeploy_onnx::for_path(&name)?;
             (SomeGraphDef::Onnx(graph), tfd)
@@ -259,6 +256,8 @@ impl Parameters {
             let tfd_model = tfdeploy_tf::for_path(&name)?;
             (SomeGraphDef::Tf(graph), tfd_model)
         };
+
+        info!("Model {:?} loaded", name);
 
         #[cfg(feature = "tensorflow")]
         let tf_model = if format == "tf" {
@@ -275,31 +274,12 @@ impl Parameters {
             .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect())
             .unwrap_or(vec!());
 
-        let input_nodes = if let Some(inputs) = matches.values_of("input-node") {
-            for input in inputs.clone() {
-                let _ = tfd_model.node_by_name(&input)?;
-            }
-            inputs.map(|s| s.to_string()).collect()
-        } else {
-            tfd_model
-                .guess_inputs()
-                .iter()
-                .map(|n| n.name.to_string())
-                .collect()
+        if let Some(inputs) = matches.values_of("input_node") {
+            std::sync::Arc::get_mut(&mut tfd_model.0).unwrap().set_inputs(inputs)?;
         };
 
-        let mut output_nodes: Vec<String> = if let Some(outputs) = matches.values_of("output-node")
-        {
-            for output in outputs.clone() {
-                let _ = tfd_model.node_by_name(&output)?;
-            }
-            outputs.map(|s| s.to_string()).collect()
-        } else {
-            tfd_model
-                .guess_outputs()
-                .iter()
-                .map(|n| n.name.to_string())
-                .collect()
+        if let Some(outputs) = matches.values_of("output_node") {
+            std::sync::Arc::get_mut(&mut tfd_model.0).unwrap().set_outputs(outputs)?;
         };
 
         Ok(Parameters {
@@ -307,8 +287,6 @@ impl Parameters {
             graph,
             tfd_model,
             tf_model,
-            input_nodes,
-            output_node: output_nodes.remove(0),
             inputs,
         })
     }

@@ -9,15 +9,12 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult
     let fixed_inputs = ::tensor::make_inputs(&params.inputs)?;
 
     // Run unmodified graph
-    let original_plan = SimplePlan::new(&model, &params.input_nodes, &[&params.output_node])?;
+    let original_plan = SimplePlan::for_model(&model)?;
     let original_output = original_plan.run(fixed_inputs.clone())?;
 
     info!("Setting up analyser.");
 
-    let mut analyser = model.analyser(&params.output_node)?;
-    for (ix,fact) in params.inputs.iter().enumerate() {
-        analyser = analyser.with_hint(&params.input_nodes[ix], fact)?;
-    }
+    let mut analyser = model.analyser()?.with_input_hints(params.inputs)?;
 
     info!("Running analyse");
     let optimized_model = analyser.to_optimized_model()?;
@@ -27,8 +24,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult
     );
 
     // Run optimized graph
-    let optimized_plan =
-        SimplePlan::new(&optimized_model, &params.input_nodes, &[params.output_node])?;
+    let optimized_plan = SimplePlan::for_model(&optimized_model)?;
     let optimized_output = optimized_plan.run(fixed_inputs.clone())?;
 
     if original_output.len() != optimized_output.len() {

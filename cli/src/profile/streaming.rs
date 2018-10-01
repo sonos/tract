@@ -22,14 +22,14 @@ fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan, Tensor
 
     let model = params
         .tfd_model
-        .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], &input)?
+        .analyser()?
+        .with_input_hint(input)?
         .to_optimized_model()?;
 
     let plan = StreamingPlan::new(
         &model,
-        vec![(&params.input_nodes[0], input.clone())],
-        Some(&params.output_node),
+        vec![(&model.inputs()?[0].name, input.clone())],
+        Some(&model.outputs()?[0].name)
     )?;
 
     let measure = Duration::since(&start, 1);

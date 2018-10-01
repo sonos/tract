@@ -56,6 +56,10 @@ pub struct Analyser {
 }
 
 impl Analyser {
+    pub fn for_model(model: &Model) -> TfdResult<Analyser> {
+        let default_output = &model.outputs()?[0].name;
+        Analyser::new(model, default_output)
+    }
     /// Constructs an analyser for the given graph.
     ///
     /// The output argument is used to infer an execution plan for the graph.
@@ -141,6 +145,22 @@ impl Analyser {
     pub fn with_hint(mut self, node: &str, fact: &TensorFact) -> TfdResult<Analyser> {
         let node = self.model.node_by_name(node)?.id;
         self.hint_by_id(node, fact)?;
+        Ok(self)
+    }
+
+    /// Adds an user-provided tensor fact to the analyser on the model lone input.
+    pub fn with_input_hint(mut self, fact: &TensorFact) -> TfdResult<Analyser> {
+        let id = self.model.inputs()?.get(0).ok_or("No input in model")?.id;
+        self.hint_by_id(id, fact)?;
+        Ok(self)
+    }
+
+    /// Adds an user-provided tensor fact to the analyser on the model inputs.
+    pub fn with_input_hints(mut self, facts: impl IntoIterator<Item=TensorFact>) -> TfdResult<Analyser> {
+        let input_ids:Vec<usize> = self.model.inputs()?.iter().map(|n| n.id).collect();
+        for (&node, fact) in input_ids.iter().zip(facts.into_iter()) {
+            self.hint_by_id(node, &fact)?;
+        }
         Ok(self)
     }
 
