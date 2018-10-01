@@ -146,7 +146,10 @@ impl RawModel {
         if let Some(i) = self.output_nodes.as_ref() {
             Ok(i.iter().map(|n| &self.nodes[*n]).collect())
         } else {
-            Ok(self.nodes.iter().filter(|n| n.op_name == "Sink").collect())
+            Ok(self.nodes.iter().filter(|n| n.op_name == "Sink")
+               .flat_map(|n|
+                      n.inputs.iter().map(|i| &self.nodes[i.node]))
+               .collect())
         }
     }
 }
