@@ -84,7 +84,7 @@ impl<D: Datum> FixedParamsConv<D> {
 
 impl<D> FixedParamsConv<D>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
     pub(super) fn convolve(&self, input: &ArrayViewD<D>) -> TfdResult<ArrayD<D>> {
         let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
@@ -142,7 +142,7 @@ where
 
 impl<D> Op for FixedParamsConv<D>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
     fn name(&self) -> &str {
         "FixedParamsConv"

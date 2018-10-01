@@ -7,49 +7,91 @@ extern crate tfdeploy_tf;
 
 use criterion::Criterion;
 
-use tfdeploy::ops::Value;
 use tfdeploy::ops::nn::{Conv, DataFormat, FixedParamsConv, PaddingSpec};
+use tfdeploy::ops::Value;
+use tfdeploy::*;
 use tfdeploy_tf::ops::nn::conv2d::*;
 use tfdeploy_tf::ops::nn::local_patch::*;
-use tfdeploy::*;
 
 use tfdeploy::ops::Op;
 
-fn mk(sizes: &[usize]) -> Tensor {
+fn mk(sizes: &[usize]) -> Value {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
         .into_shape(sizes)
         .unwrap();
-    Tensor::F32(data)
+    Value::from(Tensor::F32(data)).into_shared()
 }
 
-fn tfd_tf_conv2d(bencher: &mut Criterion) {
-    let conv = Conv2D::<f32>::new(LocalPatch::valid(1, 1));
+#[derive(Debug)]
+enum Algo {
+    Conv2d,
+    Gen,
+    Fixed,
+}
+
+impl Algo {
+    fn build(&self, valid: bool) -> Box<Op> {
+        match self {
+            &Algo::Conv2d => Box::new(Conv2D::<f32>::new(if valid {
+                LocalPatch::valid(1, 1)
+            } else {
+                LocalPatch::same(1, 1)
+            })),
+            &Algo::Gen => Box::new(Conv::new(
+                DataFormat::NHWC,
+                true,
+                None,
+                None,
+                if valid {
+                    PaddingSpec::Valid
+                } else {
+                    PaddingSpec::SameUpper
+                },
+                None,
+            )),
+            &Algo::Fixed => {
+                let conv = Conv::new(
+                    DataFormat::NHWC,
+                    true,
+                    None,
+                    None,
+                    if valid {
+                        PaddingSpec::Valid
+                    } else {
+                        PaddingSpec::SameUpper
+                    },
+                    None,
+                );
+                let input: TVec<Value> = tvec![mk(&[1, 82, 1, 40]).into()];
+                let kernel = mk(&[41, 1, 40, 128]);
+                Box::new(
+                    FixedParamsConv::new(
+                        &conv,
+                        input[0].shape(),
+                        kernel.to_array_view::<f32>().unwrap(),
+                        None,
+                    ).unwrap(),
+                )
+            }
+        }
+    }
+}
+
+fn bench_conv(bencher: &mut Criterion) {
     let inputs = tvec![mk(&[1, 82, 1, 40]).into(), mk(&[41, 1, 40, 128]).into()];
-    conv.eval(inputs.clone()).unwrap();
-    bencher.bench_function("tfd_td::Conv2D<f32>(1x82x1x40 41x1x40x128)", move |b| {
-        b.iter(|| conv.eval(inputs.clone()).unwrap())
-    });
+    bencher.bench_function_over_inputs(
+        "conv",
+        move |b, &(algo, valid)| {
+            let op = algo.build(*valid);
+            b.iter(|| op.eval(inputs.clone()).unwrap())
+        },
+        &[
+        (Algo::Conv2d, false), (Algo::Conv2d, true),
+        (Algo::Gen, false), (Algo::Gen, true),
+        (Algo::Fixed, false), (Algo::Fixed, true),
+        ],
+    );
 }
 
-fn tfd_conv_gen(bencher: &mut Criterion) {
-    let conv = Conv::new(DataFormat::NHWC, true, None, None, PaddingSpec::Valid, None);
-    let inputs = tvec![mk(&[1, 82, 1, 40]).into(), mk(&[41, 1, 40, 128]).into()];
-    conv.eval(inputs.clone()).unwrap();
-    bencher.bench_function("tfd::Conv<f32>(1x82x1x40 41x1x40x128)", move |b| {
-        b.iter(|| conv.eval(inputs.clone()).unwrap())
-    });
-}
-
-fn tfd_conv_fixed(bencher: &mut Criterion) {
-    let conv = Conv::new(DataFormat::NHWC, true, None, None, PaddingSpec::Valid, None);
-    let input:TVec<Value> = tvec![mk(&[1, 82, 1, 40]).into()];
-    let kernel = mk(&[41, 1, 40, 128]);
-    let optim = FixedParamsConv::new(&conv, input[0].shape(), kernel.to_array_view::<f32>().unwrap(), None).unwrap();
-    optim.eval(input.clone()).unwrap();
-    bencher.bench_function("tfd::Convoler<f32>(1x82x1x40 41x1x40x128)", move |b| {
-        b.iter(|| optim.eval(input.clone()).unwrap())
-    });
-}
-
-criterion_group!(benches, tfd_tf_conv2d, tfd_conv_gen, tfd_conv_fixed);
+criterion_group!(benches, bench_conv);
 criterion_main!(benches);
