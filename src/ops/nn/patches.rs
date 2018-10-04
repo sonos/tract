@@ -1,6 +1,6 @@
 use ndarray::prelude::*;
 
-use super::{ DataFormat, DataShape, PaddingSpec};
+use super::{DataFormat, DataShape, PaddingSpec};
 use tensor::Datum;
 
 #[derive(Debug, Clone)]
@@ -10,7 +10,7 @@ pub struct Patch {
     pub pad_before: Vec<usize>,
     pub pad_after: Vec<usize>,
     pub padded: bool,
-    pub strides: Vec<usize>,
+    pub kernel_strides: Vec<usize>,
     pub input_shape: DataShape<usize, Vec<usize>>,
     pub output_spatial_shape: Vec<usize>,
     pub data_field: Array2<usize>,
@@ -23,7 +23,7 @@ impl Patch {
         dilations: Vec<usize>,
         kernel_spatial_shape: Vec<usize>,
         padding: &PaddingSpec,
-        strides: Vec<usize>,
+        kernel_strides: Vec<usize>,
         input_full_shape: Vec<usize>,
     ) -> Patch {
         let input_shape = data_fmt.shape(input_full_shape);
@@ -31,12 +31,18 @@ impl Patch {
             input_shape.hw_dims(),
             &kernel_spatial_shape,
             &*dilations,
-            &*strides,
+            &*kernel_strides,
         );
 
-        let data_field: Vec<usize> = ::ndarray::indices(&*kernel_spatial_shape).into_iter()
+        let data_field: Vec<usize> = ::ndarray::indices(&*kernel_spatial_shape)
+            .into_iter()
             .flat_map(|coords| {
-                coords.slice().to_vec().into_iter().enumerate().map(|(ix,c)| (c * dilations[ix]).wrapping_sub(pad_before[ix]))
+                coords
+                    .slice()
+                    .to_vec()
+                    .into_iter()
+                    .enumerate()
+                    .map(|(ix, c)| (c * dilations[ix]).wrapping_sub(pad_before[ix]))
             }).collect();
         let data_field = Array2::from_shape_vec(
             (
@@ -46,15 +52,21 @@ impl Patch {
             data_field,
         ).unwrap();
 
-        let mut input_layout_strides:Vec<usize> = vec!(1);
+        let mut input_layout_strides: Vec<usize> = vec![1];
         for dim in input_shape.shape.iter().skip(1).rev() {
             let previous = input_layout_strides.last().cloned().unwrap_or(1);
-            input_layout_strides.push(dim*previous);
+            input_layout_strides.push(dim * previous);
         }
         input_layout_strides.reverse();
-        let standard_layout_data_field:Vec<isize> = data_field.outer_iter().map(|coords| {
-            coords.iter().zip(input_layout_strides.iter().skip(input_shape.h_axis())).map(|(&a,&b)| (a as isize*b as isize)).sum()
-        }).collect();
+        let standard_layout_data_field: Vec<isize> = data_field
+            .outer_iter()
+            .map(|coords| {
+                coords
+                    .iter()
+                    .zip(input_layout_strides.iter().skip(input_shape.h_axis()))
+                    .map(|(&a, &b)| (a as isize * b as isize))
+                    .sum()
+            }).collect();
 
         Patch {
             dilations,
@@ -62,7 +74,7 @@ impl Patch {
             padded: pad_before.iter().any(|&p| p != 0) || pad_after.iter().any(|&p| p != 0),
             pad_before,
             pad_after,
-            strides,
+            kernel_strides,
             input_shape,
             output_spatial_shape,
             data_field,
@@ -77,92 +89,138 @@ impl Patch {
         v
     }
 
-    pub fn patch_data_iter<'a, 'b, 'c, 'd: 'a, T: Datum>(
-        &'b self,
-        input: &'a ArrayViewD<'d, T>,
-        coords: &'c [usize],
-    ) -> SafeIterator<'a, 'b, 'd, T> {
-        let mut center_coords = coords.to_vec();
-        izip!(center_coords[self.input_shape.hw_axes()].iter_mut(), self.strides.iter()).for_each(|(a,&b)| *a*=b);
-
-        /*
-        FastIterator {
-            input:input.as_slice().unwrap(),
-            field: &*self.standard_layout_data_field,
-            center: input.strides().iter().zip(center_coords.iter()).map(|(&a, &b)| a*b as isize).sum(),
-            item:0,
-            phantom: ::std::marker::PhantomData
+    pub fn wrap<'i, 'p, T: Datum>(
+        &'p self,
+        input: &'i ArrayViewD<'i, T>,
+    ) -> PatchVisitor<'i, 'p, T> {
+        let valid = input.is_standard_layout() && !self.padded;
+        if !valid {
+            warn!("Using checked local packing.");
         }
-        */
-
-        let offset = if input.is_standard_layout() && !self.padded {
-            Some(input.strides().iter().zip(center_coords.iter()).map(|(&a, &b)| a*b as isize).sum())
-        } else {
-            None
-        };
-        SafeIterator {
-            patch: &*self,
-            item: 0,
+        let mut fast_strides = input.strides().to_vec();
+        fast_strides[self.input_shape.hw_axes()]
+            .iter_mut()
+            .zip(self.kernel_strides.iter())
+            .for_each(|(a, &b)| *a *= b as isize);
+        PatchVisitor {
+            patch: &self,
             input,
-            center_coords,
-            full_coords: vec![0; coords.len()],
-            valid_center_offset: offset
+            valid,
+            fast_strides,
         }
     }
 }
 
-pub struct FastIterator<'a, 'b, 'd: 'a, T: Datum> {
-    input: &'a[T],
-    field: &'b[isize],
-    center: isize,
-    item: usize,
-    phantom: ::std::marker::PhantomData<&'d ()>,
+#[derive(Debug)]
+pub struct PatchVisitor<'i, 'p, T: Datum> {
+    patch: &'p Patch,
+    input: &'i ArrayViewD<'i, T>,
+    valid: bool,
+    fast_strides: Vec<isize>, // kernel strides * storage strides
 }
 
-impl<'a, 'b, 'd, T: Datum+PartialEq> Iterator for FastIterator<'a, 'b, 'd, T> {
+impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
+    pub fn at<'v>(&'p self, coords: &[usize]) -> PatchIterator<'i, 'p, 'v, T>
+    where
+        'i: 'v,
+        'p: 'v,
+    {
+        if self.valid {
+            let center = coords
+                .iter()
+                .zip(self.fast_strides.iter())
+                .map(|(&a, &b)| b * a as isize)
+                .sum();
+            PatchIterator::Fast(FastPatchIterator {
+                visitor: &self,
+                center,
+                item: 0,
+            })
+        } else {
+            let mut input_patch_center = coords.to_vec();
+            input_patch_center[self.patch.input_shape.hw_axes()]
+                .iter_mut()
+                .zip(self.patch.kernel_strides.iter())
+                .for_each(|(a, &b)| *a *= b as usize);
+            let input_patch_current = vec![0; coords.len()];
+            PatchIterator::Safe(SafePatchIterator {
+                visitor: self,
+                item: 0,
+                input_patch_center,
+                input_patch_current,
+            })
+        }
+    }
+}
+
+pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
+    Fast(FastPatchIterator<'i, 'p, 'v, T>),
+    Safe(SafePatchIterator<'i, 'p, 'v, T>),
+}
+
+impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for PatchIterator<'p, 'i, 'v, T> {
     type Item = Option<T>;
     fn next(&mut self) -> Option<Option<T>> {
-        if self.item == self.field.len() {
+        match self {
+            &mut PatchIterator::Fast(ref mut it) => it.next(),
+            &mut PatchIterator::Safe(ref mut it) => it.next(),
+        }
+    }
+}
+
+pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
+    visitor: &'v PatchVisitor<'i, 'p, T>,
+    center: isize,
+    item: usize,
+}
+
+impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for FastPatchIterator<'i, 'p, 'v, T> {
+    type Item = Option<T>;
+    fn next(&mut self) -> Option<Option<T>> {
+        if self.item == self.visitor.patch.standard_layout_data_field.len() {
             return None;
         }
         unsafe {
-            let position = self.center + self.field.get_unchecked(self.item);
+            let position = self.center + self
+                .visitor
+                .patch
+                .standard_layout_data_field
+                .get_unchecked(self.item);
             self.item += 1;
-            return Some(Some(*self.input.get_unchecked(position as usize)))
+            Some(Some(
+                *self
+                    .visitor
+                    .input
+                    .as_slice()
+                    .unwrap()
+                    .get_unchecked(position as usize),
+            ))
         }
     }
 }
 
-pub struct SafeIterator<'a, 'b, 'd: 'a, T: Datum> {
-    input: &'a ArrayViewD<'d, T>,
-    patch: &'b Patch,
+pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
+    visitor: &'v PatchVisitor<'i, 'p, T>,
     item: usize,
-    center_coords: Vec<usize>,
-    full_coords: Vec<usize>,
-    valid_center_offset: Option<isize>,
+    input_patch_center: Vec<usize>,
+    input_patch_current: Vec<usize>,
 }
 
-impl<'a, 'b, 'd, T: Datum+PartialEq> Iterator for SafeIterator<'a, 'b, 'd, T> {
+impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for SafePatchIterator<'i, 'p, 'v, T> {
     type Item = Option<T>;
     fn next(&mut self) -> Option<Option<T>> {
-        if self.item == self.patch.data_field.rows() {
+        if self.item == self.visitor.patch.data_field.rows() {
             return None;
         }
+        let img_offset = self.visitor.patch.data_field.row(self.item);
         self.item += 1;
-        if let Some(center_offset) = self.valid_center_offset {
-            unsafe {
-                let position = center_offset + self.patch.standard_layout_data_field.get_unchecked(self.item-1);
-                return Some(Some(*self.input.as_slice().unwrap().get_unchecked(position as usize)))
-            }
-        };
-        let img_offset = self.patch.data_field.row(self.item-1);
 
-        (&mut *self.full_coords).copy_from_slice(&self.center_coords);
-        self.full_coords[self.patch.input_shape.hw_axes()]
+        (&mut *self.input_patch_current).copy_from_slice(&self.input_patch_center);
+        self.input_patch_current[self.visitor.patch.input_shape.hw_axes()]
             .iter_mut()
             .zip(img_offset.iter())
             .for_each(|(x, &i)| *x = x.wrapping_add(i));
-        Some(self.input.get(&*self.full_coords).cloned())
+        Some(self.visitor.input.get(&*self.input_patch_current).cloned())
     }
 }
 

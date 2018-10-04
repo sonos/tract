@@ -86,10 +86,11 @@ impl<D> FixedParamsConv<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    pub(super) fn convolve(&self, input: &ArrayViewD<D>) -> TfdResult<ArrayD<D>> {
+    pub(super) fn convolve<'i>(&'i self, input: &'i ArrayViewD<'i,D>) -> TfdResult<ArrayD<D>> {
         let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
         let mut mega_matrix = unsafe { Array2::<D>::uninitialized((self.k, self.n)) };
         let input_shape = &self.patch.input_shape;
+        let visitor = self.patch.wrap(input);
         for i in 0..input_shape.n_dim() {
             for ((mut coords, _uninit), mut col) in output
                 .slice_axis(Axis(input_shape.n_axis()), (i..(i + 1)).into())
@@ -101,7 +102,7 @@ where
                 for ci in 0..input_shape.c_dim() {
                     coords[input_shape.n_axis()] = i;
                     coords[input_shape.c_axis()] = ci;
-                    for v in self.patch.patch_data_iter(&input, &coords.slice()) {
+                    for v in visitor.at(&coords.slice()) {
                         *col.next().unwrap() = v.unwrap_or(D::zero());
                     }
                 }

@@ -36,17 +36,19 @@ impl Op for AvgPool {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
 
+
         let patch = self.patch(input.shape());
         let shape: Vec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
+        let visitor = patch.wrap(&input);
 
         let output = ArrayD::from_shape_fn(shape, |coords| -> f32 {
-            let pair = patch
-                .patch_data_iter(&input, coords.slice())
+            let pair = visitor.at(&coords.slice())
                 .map(|ov| ov.map(|v| (v, true)).unwrap_or((0.0, false)))
                 .filter(|pair| pair.1 || self.count_include_pad)
                 .fold((0.0, 0), |acc, pair| (acc.0 + pair.0, acc.1 + 1));
             pair.0 / pair.1 as f32
         });
+
         Ok(tvec!(output.into()))
     }
 }

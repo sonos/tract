@@ -215,12 +215,14 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
         )
 }
 
+#[derive(Debug)]
 pub enum SomeGraphDef {
     Tf(GraphDef),
     Onnx(tfdeploy_onnx::pb::ModelProto),
 }
 
 /// Structure holding the parsed parameters.
+#[derive(Debug)]
 pub struct Parameters {
     name: String,
     graph: SomeGraphDef,

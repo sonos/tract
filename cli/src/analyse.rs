@@ -9,7 +9,7 @@ pub fn handle(
     optimize: bool,
     output_params: OutputParameters,
 ) -> CliResult<()> {
-    let mut model = params.tfd_model;
+    let model = &params.tfd_model;
     info!("Building analyser");
 
     let mut analyser = model.analyser()?.with_input_hints(params.inputs.clone())?;
@@ -28,7 +28,7 @@ pub fn handle(
             analyser.nodes.len()
         );
 
-        model = analyser.to_optimized_model()?;
+        let model = analyser.to_optimized_model()?;
         analyser = model.analyser()?.with_input_hints(params.inputs)?;
 
         info!("Running analyse on optimized graph");

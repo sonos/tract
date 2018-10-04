@@ -106,7 +106,7 @@ impl DisplayGraph {
     pub fn render_node(&self, node: &Node, _params: &OutputParameters) -> CliResult<()> {
         use colored::Colorize;
         // node output are not ordered by slot number
-        let mut output_ports: Vec<(usize, String)> = node
+        let output_ports: HashMap<usize, String> = node
             .outputs
             .iter()
             .map(|edge| {
@@ -114,6 +114,7 @@ impl DisplayGraph {
                 (edge.src.slot, edge.label.clone().unwrap_or_else(|| "".to_string()))
             })
             .collect();
+        let mut output_ports:Vec<(usize, String)> = output_ports.into_iter().collect();
         output_ports.sort();
         let mut sections = vec![
             vec!(Row::Double("impl:".to_string(),

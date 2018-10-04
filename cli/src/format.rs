@@ -115,9 +115,13 @@ pub fn print_box(
     sections: Vec<Vec<Row>>,
 ) {
     // Terminal size
-    let cols = match terminal_size() {
-        Some((Width(w), _)) => min(w as usize, 120),
-        None => 80,
+    let cols = if let Ok(cols) = ::std::env::var("COLUMNS") {
+        cols.parse().expect("Can not parse COLUMNS as an integer")
+    } else {
+        match terminal_size() {
+            Some((Width(w), _)) => min(w as usize, 120),
+            None => 80,
+        }
     };
 
     // Node identifier

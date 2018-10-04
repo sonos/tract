@@ -72,9 +72,7 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
         let path = root.join("model.onnx");
         let model = for_path(&path)
                 .map_err(|e| format!("accessing {:?}, {:?}", path, e))?;
-        let inputs: Vec<&str> = model.guess_inputs().iter().map(|n| &*n.name).collect();
-        let outputs: Vec<&str> = model.guess_outputs().iter().map(|n| &*n.name).collect();
-        let plan = SimplePlan::new(&model, &*inputs, &*outputs)?;
+        let plan = SimplePlan::for_model(&model)?;
         for d in fs::read_dir(root)
                 .map_err(|e| format!("accessing {:?}, {:?}", root, e))? {
             let d = d?;
