@@ -3,7 +3,7 @@ use errors::*;
 use ndarray::Axis;
 use simplelog::Level::Info;
 use tfdeploy::analyser::TensorFact;
-use tfdeploy::ops::{StepValue, Stream};
+use tfdeploy::streaming::prelude::*;
 use tfdeploy::{SimplePlan, Tensor};
 use {OutputParameters, Parameters};
 

@@ -103,7 +103,7 @@ fn conv_infer_facts_1() {
 
 #[test]
 fn conv_eval_1() {
-    use tfdeploy::ops::arr4;
+    use tfdeploy::tensor::arr4;
     //   ::conform::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));

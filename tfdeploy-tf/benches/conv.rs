@@ -8,8 +8,7 @@ extern crate tfdeploy_tf;
 use criterion::Criterion;
 
 use tfdeploy::ops::nn::{Conv, DataFormat, FixedParamsConv, PaddingSpec};
-use tfdeploy::ops::Value;
-use tfdeploy::*;
+use tfdeploy::ops::prelude::*;
 use tfdeploy_tf::ops::nn::conv2d::*;
 use tfdeploy_tf::ops::nn::local_patch::*;
 

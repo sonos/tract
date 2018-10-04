@@ -327,7 +327,7 @@ impl<T: Datum> InferenceRulesOp for BatchToSpace<T> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tfdeploy::ops::arr4;
+    use tfdeploy::tensor::arr4;
     use tfdeploy::ops::InferenceOp;
 
     // https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd

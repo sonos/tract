@@ -25,8 +25,9 @@ mod types;
 
 pub mod prelude {
     pub use super::{InferenceOp, Op};
-    pub use super::types::{StepValue, Stream, StreamInfo, Value};
+    pub use ops::types::Value;
     pub use streaming::types::{OpBuffer, QueuesBuffer};
+    pub use streaming::values::{StepValue, Stream, StreamInfo};
     pub use dim::TDim;
     pub use model::TVec;
     pub use std::collections::HashMap;
@@ -37,8 +38,9 @@ pub mod prelude {
 }
 
 use TfdResult;
-use self::types::{StepValue, Value};
+use self::types::{ Value};
 pub use streaming::types::{OpBuffer, QueuesBuffer, EmptyBuffer};
+pub use streaming::values::StepValue;
 
 /// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {

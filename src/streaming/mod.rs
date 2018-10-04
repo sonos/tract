@@ -7,10 +7,14 @@ use analyser::prelude::*;
 use model::*;
 
 pub mod types;
+pub mod values;
 
 pub mod prelude {
-   pub use streaming::types::OpBuffer;
+    pub use streaming::types::OpBuffer;
+    pub use streaming::values::{ Stream, StepValue };
 }
+
+use streaming::values::StepValue;
 
 #[derive(Clone, Debug)]
 pub struct RawStreamingPlan {

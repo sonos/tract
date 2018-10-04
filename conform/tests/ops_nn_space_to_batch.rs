@@ -11,7 +11,7 @@ extern crate tfdeploy_tf;
 use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
-use tfdeploy::ops::arr4;
+use tfdeploy::tensor::arr4;
 use tfdeploy_tf::tfpb;
 use tfdeploy_tf::tfpb::types::DataType::DT_INT32;
 use tfdeploy_tf::tfpb::types::DataType::DT_FLOAT;
