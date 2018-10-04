@@ -151,14 +151,14 @@ where
 /// ```
 pub struct WithRule<'rules, T: Fact> {
     pub item: Exp<T>,
-    pub closure: Box<Fn(&mut Solver<'rules>, T) + 'rules>,
+    pub closure: Box<Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules>,
 }
 
 impl<'rules, T: Output + Fact> WithRule<'rules, T> {
     /// Creates a new GivenRule instance.
     pub fn new<F>(item: Exp<T>, closure: F) -> WithRule<'rules, T>
     where
-        F: Fn(&mut Solver<'rules>, T) + 'rules,
+        F: Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules,
     {
         let closure = Box::new(closure);
         WithRule { item, closure }
@@ -171,7 +171,7 @@ impl<'rules, T: Output + Fact> Rule<'rules> for WithRule<'rules, T> {
         let value = self.item.get(context)?;
         trace!("    With rule: {:?} is {:?}", self.item, value);
         let mut solver = Solver::default();
-        (self.closure)(&mut solver, value);
+        (self.closure)(&mut solver, value)?;
         Ok((true, solver.take_rules()))
     }
 
@@ -199,14 +199,14 @@ impl<'s, T: Output + Fact> fmt::Debug for WithRule<'s, T> {
 /// ```
 pub struct GivenRule<'rules, T: Fact> {
     pub item: Exp<T>,
-    pub closure: Box<Fn(&mut Solver<'rules>, T::Concrete) + 'rules>,
+    pub closure: Box<Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules>,
 }
 
 impl<'rules, T: Output + Fact> GivenRule<'rules, T> {
     /// Creates a new GivenRule instance.
     pub fn new<F>(item: Exp<T>, closure: F) -> GivenRule<'rules, T>
     where
-        F: Fn(&mut Solver<'rules>, T::Concrete) + 'rules,
+        F: Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules,
     {
         let closure = Box::new(closure);
 
@@ -225,7 +225,7 @@ impl<'rules, T: Output + Fact> Rule<'rules> for GivenRule<'rules, T> {
             // new rules by the code inside the closure.
             let mut solver = Solver::default();
 
-            (self.closure)(&mut solver, value);
+            (self.closure)(&mut solver, value)?;
 
             Ok((true, solver.take_rules()))
         } else {
@@ -262,14 +262,14 @@ impl<'s, T: Output + Fact> fmt::Debug for GivenRule<'s, T> {
 /// ```
 pub struct GivenAllRule<'rules, T: Fact> {
     pub items: Vec<Exp<T>>,
-    pub closure: Box<Fn(&mut Solver<'rules>, Vec<T::Concrete>) + 'rules>,
+    pub closure: Box<Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules>,
 }
 
 impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
     /// Creates a new GivenRule instance.
     pub fn new<F>(items: Vec<Exp<T>>, closure: F) -> GivenAllRule<'rules, T>
     where
-        F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) + 'rules,
+        F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules,
     {
         let closure = Box::new(closure);
 
@@ -292,7 +292,7 @@ impl<'rules, T: Output + Fact> Rule<'rules> for GivenAllRule<'rules, T> {
             // We create a new solver instance, which will be populated with
             // new rules by the code inside the closure.
             let mut solver = Solver::default();
-            (self.closure)(&mut solver, concrete);
+            (self.closure)(&mut solver, concrete)?;
             Ok((true, solver.take_rules()))
         } else {
             Ok((false, vec![]))
@@ -393,7 +393,7 @@ impl<'rules> Solver<'rules> {
     /// solver.equals(outputs[0].rank, inputs[1].shape[0]);
     /// solver.equals(outputs[1].rank, 3);
     /// ```
-    pub fn equals<T, A, B>(&mut self, left: A, right: B) -> &mut Solver<'rules>
+    pub fn equals<T, A, B>(&mut self, left: A, right: B) -> InferenceResult 
     where
         T: Output + Fact + 'static,
         A: IntoExp<T>,
@@ -403,7 +403,7 @@ impl<'rules> Solver<'rules> {
 
         let rule = EqualsRule::new(items);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 
     /// Ensures that several expressions are equal.
@@ -416,13 +416,13 @@ impl<'rules> Solver<'rules> {
     ///     3.into(),
     /// ]);
     /// ```
-    pub fn equals_all<T>(&mut self, items: Vec<Exp<T>>) -> &mut Solver<'rules>
+    pub fn equals_all<T>(&mut self, items: Vec<Exp<T>>) -> InferenceResult
     where
         T: Output + Fact + 'static,
     {
         let rule = EqualsRule::new(items);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 
     /// Ensures that the sum of several expressions equals zero.
@@ -435,7 +435,7 @@ impl<'rules> Solver<'rules> {
     ///     (-1, inputs[1].shape[0]).into(),
     /// ]);
     /// ```
-    pub fn equals_zero<F>(&mut self, items: Exp<F>) -> &mut Solver<'rules>
+    pub fn equals_zero<F>(&mut self, items: Exp<F>) -> InferenceResult
     where
         F: Fact
             + Zero
@@ -448,7 +448,7 @@ impl<'rules> Solver<'rules> {
     {
         let rule = EqualsZeroRule(items);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 
     /// Adds rules to the solver with a partial value.
@@ -459,15 +459,15 @@ impl<'rules> Solver<'rules> {
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
     /// ```
-    pub fn with<T, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
+    pub fn with<T, A, F>(&mut self, item: A, closure: F) -> InferenceResult
     where
         T: Fact + Output + 'static,
         A: IntoExp<T>,
-        F: Fn(&mut Solver<'rules>, T) + 'rules,
+        F: Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules,
     {
         let rule = WithRule::new(item.bex(), closure);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 
     /// Adds rules to the solver once the value of an expression is known.
@@ -478,15 +478,15 @@ impl<'rules> Solver<'rules> {
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
     /// ```
-    pub fn given<T, A, F>(&mut self, item: A, closure: F) -> &mut Solver<'rules>
+    pub fn given<T, A, F>(&mut self, item: A, closure: F) -> InferenceResult
     where
         T: Fact + Output + 'static,
         A: IntoExp<T>,
-        F: Fn(&mut Solver<'rules>, T::Concrete) + 'rules,
+        F: Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules,
     {
         let rule = GivenRule::new(item.bex(), closure);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 
     /// Adds rules to the solver once the value of all expressions are known.
@@ -497,16 +497,16 @@ impl<'rules> Solver<'rules> {
     ///     (0..ir).map(|i| solver.equals(input.shape[ir], 0))
     /// );
     /// ```
-    pub fn given_all<T, I, A, F>(&mut self, items: I, closure: F) -> &mut Solver<'rules>
+    pub fn given_all<T, I, A, F>(&mut self, items: I, closure: F) -> InferenceResult
     where
         T: Fact + Output + 'static,
         A: IntoExp<T>,
         I: IntoIterator<Item = A>,
-        F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) + 'rules,
+        F: Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules,
     {
         let rule = GivenAllRule::new(items.into_iter().map(|it| it.bex()).collect(), closure);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 }
 
@@ -515,14 +515,14 @@ macro_rules! given_tuple {
         #[allow(non_camel_case_types)]
         pub struct $Name<'rules, $($id: Fact),*> {
             $(pub $id: Exp<$id>,)*
-            pub closure: Box<Fn(&mut Solver<'rules>, $($id::Concrete,)*) + 'rules>,
+            pub closure: Box<Fn(&mut Solver<'rules>, $($id::Concrete,)*) -> InferenceResult + 'rules>,
         }
 
         #[allow(non_camel_case_types)]
         impl<'rules, $($id: Fact + Output,)*> $Name<'rules, $($id,)*> {
             pub fn new<F>($($id: Exp<$id>,)* closure: F) -> $Name<'rules, $($id,)*>
             where
-                F: Fn(&mut Solver<'rules>, $($id::Concrete,)*) + 'rules,
+                F: Fn(&mut Solver<'rules>, $($id::Concrete,)*) -> InferenceResult + 'rules,
             {
                 $Name { $($id,)*
                     closure: Box::new(closure),
@@ -543,7 +543,7 @@ macro_rules! given_tuple {
                 )*;
 
                 let mut solver = Solver::default();
-                (self.closure)(&mut solver, $($id,)*);
+                (self.closure)(&mut solver, $($id,)*)?;
                 Ok((true, solver.take_rules()))
             }
 
@@ -567,46 +567,46 @@ macro_rules! given_tuple {
 
 given_tuple!(Given2Rule, given_2, a, b);
 impl<'rules> Solver<'rules> {
-    pub fn given_2<T1, T2, A1, A2, F>(&mut self, item_1: A1, item_2: A2, closure: F) -> &mut Solver<'rules>
+    pub fn given_2<T1, T2, A1, A2, F>(&mut self, item_1: A1, item_2: A2, closure: F) -> InferenceResult
     where
         A1: IntoExp<T1>, T1: Fact + Output + 'static,
         A2: IntoExp<T2>, T2: Fact + Output + 'static,
-        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete) + 'rules,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete) -> InferenceResult + 'rules,
     {
         let rule = Given2Rule::new(item_1.bex(), item_2.bex(), closure);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 }
 
 given_tuple!(Given3Rule, given_3, a, b, c);
 impl<'rules> Solver<'rules> {
-    pub fn given_3<T1, T2, T3, A1, A2, A3, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, closure: F) -> &mut Solver<'rules>
+    pub fn given_3<T1, T2, T3, A1, A2, A3, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, closure: F) -> InferenceResult
     where
         A1: IntoExp<T1>, T1: Fact + Output + 'static,
         A2: IntoExp<T2>, T2: Fact + Output + 'static,
         A3: IntoExp<T3>, T3: Fact + Output + 'static,
-        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete) + 'rules,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete) -> InferenceResult + 'rules,
     {
         let rule = Given3Rule::new(item_1.bex(), item_2.bex(), item_3.bex(), closure);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 }
 
 given_tuple!(Given4Rule, given_4, a, b, c, d);
 impl<'rules> Solver<'rules> {
-    pub fn given_4<T1, T2, T3, T4, A1, A2, A3, A4, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, item_4: A4, closure: F) -> &mut Solver<'rules>
+    pub fn given_4<T1, T2, T3, T4, A1, A2, A3, A4, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, item_4: A4, closure: F) -> InferenceResult
     where
         A1: IntoExp<T1>, T1: Fact + Output + 'static,
         A2: IntoExp<T2>, T2: Fact + Output + 'static,
         A3: IntoExp<T3>, T3: Fact + Output + 'static,
         A4: IntoExp<T4>, T4: Fact + Output + 'static,
-        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete, T4::Concrete) + 'rules,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete, T4::Concrete) -> InferenceResult + 'rules,
     {
         let rule = Given4Rule::new(item_1.bex(), item_2.bex(), item_3.bex(), item_4.bex(), closure);
         self.rules.push(Box::new(rule));
-        self
+        Ok(())
     }
 }
 
@@ -627,7 +627,7 @@ mod tests {
     #[should_panic]
     fn solver_wrong_size_1() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs.len, 2);
+        solver.equals(&inputs.len, 2).unwrap();
         solver
             .infer_facts((tvec![].into(), tvec![].into()))
             .unwrap();
@@ -637,7 +637,7 @@ mod tests {
     #[should_panic]
     fn solver_wrong_size_2() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[0].rank, 2);
+        solver.equals(&inputs[0].rank, 2).unwrap();
         solver
             .infer_facts((tvec![].into(), tvec![].into()))
             .unwrap();
@@ -646,7 +646,7 @@ mod tests {
     #[test]
     fn solver_exact_size() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs.len, 1);
+        solver.equals(&inputs.len, 1).unwrap();
 
         let facts = solver
             .infer_facts((tvec![TensorFact::new()].into(), tvec![].into()))
@@ -657,7 +657,7 @@ mod tests {
     #[test]
     fn solver_dynamic_size() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[1].datum_type, DatumType::I32);
+        solver.equals(&inputs[1].datum_type, DatumType::I32).unwrap();
 
         let facts = solver
             .infer_facts((tvec![TensorFact::new(), TensorFact::new()], tvec![]))
@@ -679,7 +679,7 @@ mod tests {
     #[test]
     fn solver_exact_rank() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[0].rank, 2);
+        solver.equals(&inputs[0].rank, 2).unwrap();
 
         let facts = solver
             .infer_facts((tvec![TensorFact::new()], tvec![]))
@@ -698,7 +698,7 @@ mod tests {
     #[test]
     fn solver_dynamic_rank() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[0].shape[1], 0.to_dim());
+        solver.equals(&inputs[0].shape[1], 0.to_dim()).unwrap();
 
         let facts = solver
             .infer_facts((tvec![TensorFact::new()], tvec![]))
@@ -717,10 +717,10 @@ mod tests {
     #[test]
     fn solver_ranks() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[0].rank, 3);
-        solver.equals(&inputs[0].shape[0], &inputs[0].shape[1]);
-        solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]);
-        solver.equals(&inputs[0].shape[1], 3.to_dim());
+        solver.equals(&inputs[0].rank, 3).unwrap();
+        solver.equals(&inputs[0].shape[0], &inputs[0].shape[1]).unwrap();
+        solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]).unwrap();
+        solver.equals(&inputs[0].shape[1], 3.to_dim()).unwrap();
 
         let facts = solver
             .infer_facts((tvec![TensorFact::new()], tvec![]))
@@ -740,21 +740,21 @@ mod tests {
     #[should_panic]
     fn solver_wrong_constant() {
         let (mut solver, _, _) = bootstrap();
-        solver.equals(1, 2);
+        solver.equals(1, 2).unwrap();
         solver.infer_facts((tvec![], tvec![])).unwrap();
     }
 
     #[test]
     fn solver_right_constant() {
         let (mut solver, _, _) = bootstrap();
-        solver.equals(2, 2);
+        solver.equals(2, 2).unwrap();
         solver.infer_facts((tvec![], tvec![])).unwrap();
     }
 
     #[test]
     fn solver_backward_1() {
         let (mut solver, inputs, outputs) = bootstrap();
-        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]);
+        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]).unwrap();
 
         let facts = solver
             .infer_facts((tvec![TensorFact::new()], tvec![TensorFact::new()]))
@@ -767,7 +767,7 @@ mod tests {
     #[test]
     fn solver_backward_2() {
         let (mut solver, inputs, outputs) = bootstrap();
-        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]);
+        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]).unwrap();
 
         let output = TensorFact {
             shape: shapefact![_, 2, _],

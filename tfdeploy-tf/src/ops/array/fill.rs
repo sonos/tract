@@ -39,21 +39,21 @@ where
 impl<T: Datum> InferenceRulesOp for Fill<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 2)
-            .equals(&outputs.len, 1)
-            .equals(&outputs[0].datum_type, T::datum_type())
-            .equals(&inputs[0].rank, 1)
-            .equals(&inputs[1].rank, 0)
-            .equals(outputs[0].rank.bex().to_dim(), &inputs[0].shape[0])
-            .given(&outputs[0].rank, move |solver, rank| {
-                for dim in 0..(rank as usize) {
-                    solver.equals(&outputs[0].shape[dim], inputs[0].value[dim].bex().to_dim());
-                }
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 2)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&outputs[0].datum_type, T::datum_type())?;
+        s.equals(&inputs[0].rank, 1)?;
+        s.equals(&inputs[1].rank, 0)?;
+        s.equals(outputs[0].rank.bex().to_dim(), &inputs[0].shape[0])?;
+        s.given(&outputs[0].rank, move |s, rank| {
+            for dim in 0..(rank as usize) {
+                s.equals(&outputs[0].shape[dim], inputs[0].value[dim].bex().to_dim())?;
+            }
+            Ok(())
+        })
     }
 }

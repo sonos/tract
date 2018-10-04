@@ -55,42 +55,43 @@ impl Op for Pack {
 impl InferenceRulesOp for Pack {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         let n = self.n;
         let axis = self.axis;
-        solver
-            .equals(&inputs.len, n as i64)
-            .equals(&outputs.len, 1)
-            .equals(&outputs[0].rank, inputs[0].rank.bex() + 1)
-            .equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())
-            .given_all(
-                (0..n).map(move |i| &inputs[i].datum_type),
-                move |solver, dts| {
-                    if let Some(dt) = DatumType::super_type_for(dts) {
-                        solver.equals(&outputs[0].datum_type, dt);
-                    }
-                },
-            )
-            .given(&inputs[0].rank, move |solver, r| {
-                (0..r as usize).for_each(|d| {
-                    solver.equals_all((0..n).map(|i| inputs[i].shape[d].bex()).collect());
-                })
-            })
-            .given(&inputs[0].rank, move |solver, r| {
-                (0..axis).for_each(|d| {
-                    solver.equals(&outputs[0].shape[d], &inputs[0].shape[d]);
-                });
-                if r > 0 {
-                    (axis..(r as usize - 1)).for_each(|d| {
-                        solver.equals(&outputs[0].shape[d + 1], &inputs[0].shape[d]);
-                    });
+        s.equals(&inputs.len, n as i64)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&outputs[0].rank, inputs[0].rank.bex() + 1)?;
+        s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
+        s.given_all(
+            (0..n).map(move |i| &inputs[i].datum_type),
+            move |s, dts| {
+                if let Some(dt) = DatumType::super_type_for(dts) {
+                    s.equals(&outputs[0].datum_type, dt)?;
                 }
-            })
-            .equals(&outputs[0].shape[axis], n.to_dim());
-            ;
+                Ok(())
+            },
+        )?;
+        s.given(&inputs[0].rank, move |s, r| {
+            for d in 0..r as usize {
+                s.equals_all((0..n).map(|i| inputs[i].shape[d].bex()).collect())?;
+            }
+            Ok(())
+        })?;
+        s.given(&inputs[0].rank, move |s, r| {
+            for d in 0..axis {
+                s.equals(&outputs[0].shape[d], &inputs[0].shape[d])?;
+            };
+            if r > 0 {
+                for d in axis..(r as usize - 1) {
+                    s.equals(&outputs[0].shape[d + 1], &inputs[0].shape[d])?
+                }
+            }
+            Ok(())
+        })?;
+        s.equals(&outputs[0].shape[axis], n.to_dim())
     }
 }
 

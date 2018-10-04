@@ -21,19 +21,19 @@ impl InferenceRulesOp for Sink {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 1)
-            .equals(&outputs.len, 0);
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 0)?;
         if let GenericFact::Only(dt) = self.fact.datum_type {
-            solver.equals(&inputs[0].datum_type, dt);
+            s.equals(&inputs[0].datum_type, dt)?;
         }
         if let Some(shape) = self.fact.shape.concretize() {
-            solver.equals(&inputs[0].shape, shape);
+            s.equals(&inputs[0].shape, shape)?;
         }
+        Ok(())
     }
 }
 

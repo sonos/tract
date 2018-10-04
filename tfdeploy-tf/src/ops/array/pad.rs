@@ -89,32 +89,32 @@ where
 impl<T: Datum+Zero> InferenceRulesOp for Pad<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         let input = &inputs[0];
         let padding = &inputs[1];
         let output = &outputs[0];
-        solver
-            .equals(&inputs.len, 2)
-            .equals(&outputs.len, 1)
-            .equals(&output.datum_type, &input.datum_type)
-            .equals(&padding.datum_type, DatumType::TDim)
-            .equals(&input.rank, &output.rank)
-            .equals(&padding.rank, 2)
-            .equals(&padding.shape[0], input.rank.bex().to_dim())
-            .equals(&padding.shape[1], 2.to_dim())
-            .given(&input.rank, move |solver, rank| {
-                (0..rank as usize).for_each(|d| {
-                    solver.equals(
-                        &output.shape[d],
-                        input.shape[d].bex()
-                            + padding.value[d][0].bex().to_dim()
-                            + padding.value[d][1].bex().to_dim(),
-                    ); // FIXME
-                });
-            });
+        s.equals(&inputs.len, 2)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&output.datum_type, &input.datum_type)?;
+        s.equals(&padding.datum_type, DatumType::TDim)?;
+        s.equals(&input.rank, &output.rank)?;
+        s.equals(&padding.rank, 2)?;
+        s.equals(&padding.shape[0], input.rank.bex().to_dim())?;
+        s.equals(&padding.shape[1], 2.to_dim())?;
+        s.given(&input.rank, move |s, rank| {
+            for d in 0..rank as usize {
+                s.equals(
+                    &output.shape[d],
+                    input.shape[d].bex()
+                        + padding.value[d][0].bex().to_dim()
+                        + padding.value[d][1].bex().to_dim(),
+                )?
+            }
+            Ok(())
+        })
     }
 }
 

@@ -33,10 +33,11 @@ impl Op for Const {
 impl InferenceRulesOp for Const {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver.equals(&inputs.len, 0).equals(&outputs.len, 1);
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 0)?;
+        s.equals(&outputs.len, 1)
     }
 }

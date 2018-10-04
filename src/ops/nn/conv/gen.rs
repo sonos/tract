@@ -75,43 +75,44 @@ impl Op for Conv {
 impl InferenceRulesOp for Conv {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         if let Some(kshape) = &self.kernel_shape {
-            solver.equals(&inputs[1].rank, kshape.len() as i64 + 2);
+            s.equals(&inputs[1].rank, kshape.len() as i64 + 2)?;
             for (ix, dim) in kshape.iter().enumerate() {
-                solver.equals(
+                s.equals(
                     &inputs[1].shape[ix + self.axis_kernel_spatial()],
                     TDim::from(*dim as i64),
-                );
+                )?;
             }
         }
-        solver.equals(&outputs.len, 1).equals_all(wrap![
+        s.equals(&outputs.len, 1)?;
+        s.equals_all(wrap![
             &outputs[0].datum_type,
             &inputs[0].datum_type,
             &inputs[1].datum_type
-        ]);
-        solver.given(&inputs.len, move |solver, len| {
+        ])?;
+        s.given(&inputs.len, move |s, len| {
             if len == 3 {
-                solver
-                    .equals(&inputs[2].rank, 1)
-                    .equals(&outputs[0].datum_type, &inputs[2].datum_type);
-                solver.given(&inputs[1].rank, move |solver, krank| {
+                s.equals(&inputs[2].rank, 1)?;
+                s.equals(&outputs[0].datum_type, &inputs[2].datum_type)?;
+                s.given(&inputs[1].rank, move |s, krank| {
                     let filter_o = if self.kernel_is_hwio {
                         &inputs[1].shape[krank as usize - 1]
                     } else {
                         &inputs[1].shape[0] // oihw
                     };
-                    solver.equals(&inputs[2].shape[0], filter_o);
-                });
+                    s.equals(&inputs[2].shape[0], filter_o)
+                })?
             }
-        });
-        solver.given_2(
+            Ok(())
+        })?;
+        s.given_2(
             &inputs[0].rank,
             &inputs[1].rank,
-            move |solver, irank, krank| {
+            move |s, irank, krank| {
                 let input_c = if self.data_fmt == DataFormat::NHWC {
                     &inputs[0].shape[irank as usize - 1]
                 } else {
@@ -122,17 +123,17 @@ impl InferenceRulesOp for Conv {
                 } else {
                     &inputs[1].shape[1]
                 };
-                solver.equals(input_c, filter_i);
-            },
-        );
-        solver.given_2(
+                s.equals(input_c, filter_i)
+            }
+        )?;
+        s.given_2(
             &inputs[0].shape,
             &inputs[1].shape,
-            move |solver, ishape, kshape| {
+            move |s, ishape, kshape| {
                 let oshape = self.output_shape(&*ishape, &*kshape);
-                solver.equals(&outputs[0].shape, oshape);
-            },
-        );
+                s.equals(&outputs[0].shape, oshape)
+            }
+        )
     }
 }
 

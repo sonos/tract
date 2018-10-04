@@ -51,29 +51,27 @@ impl<T: Datum> Op for Reshape<T> {
 impl<T: Datum> InferenceRulesOp for Reshape<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 2)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[0].datum_type, T::datum_type())
-            .equals(&inputs[1].datum_type, DatumType::I32)
-            .equals(&outputs[0].datum_type, T::datum_type())
-            .equals(&inputs[1].rank, 1)
-            .given(&inputs[0].shape, move |solver, shape| {
-                solver.given(&inputs[1].value, move |solver, dims: Tensor| {
-                    let dims = dims.to_array_view::<i32>().unwrap(); // checked
-                    if shape.iter().all(|d| !d.is_stream()) {
-                        let len = shape
-                            .iter()
-                            .map(|d| d.as_const().unwrap() as usize)
-                            .product();
-                        let shape = Self::true_dims(dims, len);
-                        solver.equals(&outputs[0].shape, ShapeFact::from(shape));
-                    }
-                });
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 2)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, T::datum_type())?;
+        s.equals(&inputs[1].datum_type, DatumType::I32)?;
+        s.equals(&outputs[0].datum_type, T::datum_type())?;
+        s.equals(&inputs[1].rank, 1)?;
+        s.given_2(&inputs[0].shape, &inputs[1].value, move |solver, shape, dims: Tensor| {
+            let dims = dims.to_array_view::<i32>().unwrap(); // checked
+            if shape.iter().all(|d| !d.is_stream()) {
+                let len = shape
+                    .iter()
+                    .map(|d| d.as_const().unwrap() as usize)
+                    .product();
+                let shape = Self::true_dims(dims, len);
+                solver.equals(&outputs[0].shape, ShapeFact::from(shape))?;
+            }
+            Ok(())
+        })
     }
 }

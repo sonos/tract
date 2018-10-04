@@ -231,37 +231,35 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 2)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[0].datum_type, T::datum_type())
-            .equals(&inputs[1].datum_type, T::datum_type())
-            .equals(&outputs[0].datum_type, T::datum_type())
-            .equals(&inputs[0].rank, 4)
-            .equals(&inputs[1].rank, 4)
-            .equals(&outputs[0].rank, 4)
-            .equals(&inputs[0].shape[0], &outputs[0].shape[0])
-            .equals(&inputs[0].shape[3], &inputs[1].shape[2])
-            .equals(&outputs[0].shape[3], &inputs[1].shape[3])
-            .given(&inputs[0].shape[1], move |solver, h| {
-                solver.given(&inputs[1].shape[0], move |solver, kh| {
-                    if let Ok(kh) = kh.to_integer() {
-                        let oh = self.0.adjusted_rows(h, kh as usize);
-                        solver.equals(&outputs[0].shape[1], oh);
-                    }
-                });
-            }).given(&inputs[0].shape[2], move |solver, w| {
-                solver.given(&inputs[1].shape[1], move |solver, kw| {
-                    if let Ok(kw) = kw.to_integer() {
-                        let ow = self.0.adjusted_cols(w, kw as usize);
-                        solver.equals(&outputs[0].shape[2], ow);
-                    }
-                });
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 2)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, T::datum_type())?;
+        s.equals(&inputs[1].datum_type, T::datum_type())?;
+        s.equals(&outputs[0].datum_type, T::datum_type())?;
+        s.equals(&inputs[0].rank, 4)?;
+        s.equals(&inputs[1].rank, 4)?;
+        s.equals(&outputs[0].rank, 4)?;
+        s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
+        s.equals(&inputs[0].shape[3], &inputs[1].shape[2])?;
+        s.equals(&outputs[0].shape[3], &inputs[1].shape[3])?;
+        s.given_2(&inputs[0].shape[1], &inputs[1].shape[0], move |s, h, kh| {
+            if let Ok(kh) = kh.to_integer() {
+                let oh = self.0.adjusted_rows(h, kh as usize);
+                s.equals(&outputs[0].shape[1], oh)?;
+            }
+            Ok(())
+        })?;
+        s.given_2(&inputs[0].shape[2], &inputs[1].shape[1], move |s, w, kw| {
+            if let Ok(kw) = kw.to_integer() {
+                let ow = self.0.adjusted_cols(w, kw as usize);
+                s.equals(&outputs[0].shape[2], ow)?;
+            }
+            Ok(())
+        })
     }
 }
 

@@ -99,44 +99,44 @@ impl<T: Datum> Op for ConcatV2<T> {
 impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         let n = self.n;
-        solver
-            .equals(&inputs.len, n as i64 + 1)
-            .equals(&outputs.len, 1)
-            .equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())
-            .equals(&outputs[0].datum_type, &inputs[0].datum_type)
-            .equals(&inputs[n].datum_type, DatumType::I32)
-            .equals_all((0..self.n).map(|i| (&inputs[i].rank).bex()).collect())
-            .equals(&inputs[n].rank, 0)
-            .equals(&outputs[0].rank, &inputs[0].rank)
-            .given(&inputs[n].value, move |solver, axis: Tensor| {
-                let axis = axis.as_i32().unwrap() as usize; // checked
-                trace!("axis for Concatv2: {}", axis);
-                (0..axis).for_each(|d| {
-                    solver.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect());
-                });
-                (0..axis).for_each(|d| {
-                    solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]);
-                });
-                solver.given(&inputs[0].rank, move |solver, rank| {
-                    trace!("Given rank {}", rank);
-                    ((axis + 1)..(rank as usize)).for_each(|d| {
-                        solver.equals(&inputs[0].shape[d], &outputs[0].shape[d]);
-                    });
-                    ((axis + 1)..(rank as usize)).for_each(|d| {
-                        solver.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect());
-                    });
-                });
-
-                let mut concat_dim = -1 * outputs[0].shape[axis].bex();
-                for i in 0..n {
-                    concat_dim = concat_dim + inputs[i].shape[axis].bex();
+        s.equals(&inputs.len, n as i64 + 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
+        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        s.equals(&inputs[n].datum_type, DatumType::I32)?;
+        s.equals_all((0..self.n).map(|i| (&inputs[i].rank).bex()).collect())?;
+        s.equals(&inputs[n].rank, 0)?;
+        s.equals(&outputs[0].rank, &inputs[0].rank)?;
+        s.given(&inputs[n].value, move |s, axis: Tensor| {
+            let axis = axis.as_i32().unwrap() as usize; // checked
+            trace!("axis for Concatv2: {}", axis);
+            for d in 0..axis {
+                s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
+            };
+            for d in 0..axis {
+                s.equals(&inputs[0].shape[d], &outputs[0].shape[d])?;
+            };
+            s.given(&inputs[0].rank, move |s, rank| {
+                trace!("Given rank {}", rank);
+                for d in (axis + 1)..(rank as usize) {
+                    s.equals(&inputs[0].shape[d], &outputs[0].shape[d])?;
                 }
-                solver.equals_zero(concat_dim);
-            });
+                for d in (axis + 1)..(rank as usize) {
+                    s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
+                }
+                Ok(())
+            })?;
+
+            let mut concat_dim = -1 * outputs[0].shape[axis].bex();
+            for i in 0..n {
+                concat_dim = concat_dim + inputs[i].shape[axis].bex();
+            }
+            s.equals_zero(concat_dim)
+        })
     }
 }

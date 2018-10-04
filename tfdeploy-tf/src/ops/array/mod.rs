@@ -83,36 +83,36 @@ impl Op for ExpandDims {
 impl InferenceRulesOp for ExpandDims {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         let data = &inputs[0];
         let dims = &inputs[1];
         let output = &outputs[0];
 
-        solver
-            .equals(&inputs.len, 2)
-            .equals(&outputs.len, 1)
-            .equals(&dims.datum_type, DatumType::I32)
-            .equals(&dims.rank, 0)
-            .equals(&data.datum_type, &output.datum_type)
-            .equals_zero(data.rank.bex() + 1 - &output.rank)
-            .given(&dims.value, move |solver, index: Tensor| {
-                let index = index.as_i32().unwrap() as usize; // enforced
+        s.equals(&inputs.len, 2)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&dims.datum_type, DatumType::I32)?;
+        s.equals(&dims.rank, 0)?;
+        s.equals(&data.datum_type, &output.datum_type)?;
+        s.equals_zero(data.rank.bex() + 1 - &output.rank)?;
+        s.given(&dims.value, move |s, index: Tensor| {
+            let index = index.as_i32().unwrap() as usize; // enforced
 
-                for i in 0..index {
-                    solver.equals(&output.shape[i], &data.shape[i]);
+            for i in 0..index {
+                s.equals(&output.shape[i], &data.shape[i])?;
+            }
+
+            s.equals(output.shape[index].bex(), 1i32.to_dim().bex())?;
+
+            s.given(&data.rank, move |s, rank| {
+                for i in index..(rank as usize) {
+                    s.equals(&output.shape[i + 1], &data.shape[i])?;
                 }
-
-                solver.equals(output.shape[index].bex(), 1i32.to_dim().bex());
-
-                solver.given(&data.rank, move |solver, rank| {
-                    for i in index..(rank as usize) {
-                        solver.equals(&output.shape[i + 1], &data.shape[i]);
-                    }
-                });
-            });
+                Ok(())
+            })
+        })
     }
 }
 
@@ -142,35 +142,35 @@ impl Op for Shape {
 impl InferenceRulesOp for Shape {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 1)
-            .equals(&outputs.len, 1)
-            .equals(&outputs[0].datum_type, DatumType::TDim)
-            .equals(&outputs[0].rank, 1)
-            .given(&inputs[0].rank, move |solver, r| {
-                solver.equals(&outputs[0].shape[0], r.to_dim());
-            })
-            .given(&outputs[0].shape[0], move |solver, r| {
-                if let Ok(d) = r.to_integer() {
-                    solver.equals(&inputs[0].rank, d);
-                }
-            })
-            .given(&inputs[0].shape, move |solver, shape: Vec<TDim>| {
-                let array1: Array1<TDim> = Array1::from_vec(shape);
-                let tensor: Tensor = Tensor::from(array1);
-                solver.equals(&outputs[0].value, tensor);
-            })
-            .given(&outputs[0].value, move |solver, shape: Tensor| {
-                let shape = shape.take_dims().unwrap(); // checked
-                solver.equals(
-                    &inputs[0].shape,
-                    shape.into_iter().cloned().collect::<Vec<TDim>>(),
-                );
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&outputs[0].datum_type, DatumType::TDim)?;
+        s.equals(&outputs[0].rank, 1)?;
+        s.given(&inputs[0].rank, move |s, r| {
+            s.equals(&outputs[0].shape[0], r.to_dim())
+        })?;
+        s.given(&outputs[0].shape[0], move |s, r| {
+            if let Ok(d) = r.to_integer() {
+                s.equals(&inputs[0].rank, d)?;
+            }
+            Ok(())
+        })?;
+        s.given(&inputs[0].shape, move |s, shape: Vec<TDim>| {
+            let array1: Array1<TDim> = Array1::from_vec(shape);
+            let tensor: Tensor = Tensor::from(array1);
+            s.equals(&outputs[0].value, tensor)
+        })?;
+        s.given(&outputs[0].value, move |s, shape: Tensor| {
+            let shape = shape.take_dims().unwrap(); // checked
+            s.equals(
+                &inputs[0].shape,
+                shape.into_iter().cloned().collect::<Vec<TDim>>(),
+            )
+        })
     }
 }
 

@@ -47,7 +47,7 @@ impl InferenceRulesOp for GlobalAvgPool {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
 }
@@ -101,7 +101,7 @@ impl InferenceRulesOp for GlobalLpPool {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
 }
@@ -150,25 +150,25 @@ impl InferenceRulesOp for GlobalMaxPool {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(
-    solver: &mut Solver<'r>,
+    s: &mut Solver<'r>,
     inputs: &'p TensorsProxy,
     outputs: &'p TensorsProxy,
-) {
-    solver
-        .equals(&outputs.len, 1)
-        .equals(&outputs[0].datum_type, &inputs[0].datum_type)
-        .equals(&outputs[0].rank, &inputs[0].rank)
-        .equals(&outputs[0].shape[0], &inputs[0].shape[0])
-        .equals(&outputs[0].shape[1], &inputs[0].shape[1])
-        .given(&inputs[0].rank, move |solver, rank| {
-            for i in 2..rank {
-                solver.equals(&outputs[0].shape[i as usize], TDim::from(1));
-            }
-        });
+) -> InferenceResult {
+    s.equals(&outputs.len, 1)?;
+    s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+    s.equals(&outputs[0].rank, &inputs[0].rank)?;
+    s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?;
+    s.equals(&outputs[0].shape[1], &inputs[0].shape[1])?;
+    s.given(&inputs[0].rank, move |s, rank| {
+        for i in 2..rank {
+            s.equals(&outputs[0].shape[i as usize], TDim::from(1))?;
+        }
+        Ok(())
+    })
 }

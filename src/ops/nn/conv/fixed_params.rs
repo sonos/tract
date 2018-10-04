@@ -161,9 +161,10 @@ where
 {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
-    ) {
+        _solver: &mut Solver<'r>,
+        _inputs: &'p TensorsProxy,
+        _outputs: &'p TensorsProxy,
+    ) -> InferenceResult {
+        Ok(())
     }
 }

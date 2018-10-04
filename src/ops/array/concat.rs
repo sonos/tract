@@ -31,35 +31,32 @@ impl Op for Concat {
 impl InferenceRulesOp for Concat {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&outputs.len, 1)
-            .equals(&outputs[0].datum_type, &inputs[0].datum_type)
-            .equals(&outputs[0].rank, &inputs[0].rank)
-            .given(&inputs.len, move |solver, n| {
-                let n = n as usize;
-                solver
-                    .equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())
-                    .equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())
-                    .equals(
-                        SumExp::new((0..n).map(|i| (&inputs[i].shape[self.axis]).bex()).collect()),
-                        &outputs[0].shape[self.axis]);
-                for axis in 0..self.axis {
-                    solver
-                        .equals(&outputs[0].shape[axis], &inputs[0].shape[axis])
-                        .equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect());
+    ) -> InferenceResult {
+        s.equals(&outputs.len, 1)?;
+        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        s.equals(&outputs[0].rank, &inputs[0].rank)?;
+        s.given(&inputs.len, move |s, n| {
+            let n = n as usize;
+            s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
+            s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
+            s.equals(
+                SumExp::new((0..n).map(|i| (&inputs[i].shape[self.axis]).bex()).collect()),
+                &outputs[0].shape[self.axis])?;
+            for axis in 0..self.axis {
+                s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])?;
+                s.equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect())?;
+            }
+            s.given(&inputs[0].rank, move |s, axes| {
+                let axes = axes as usize;
+                for axis in n..axes {
+                    s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])?;
+                    s.equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect())?;
                 }
-                solver.given(&inputs[0].rank, move |solver, axes| {
-                    let axes = axes as usize;
-                    for axis in n..axes {
-                        solver
-                            .equals(&outputs[0].shape[axis], &inputs[0].shape[axis])
-                            .equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect());
-                    }
-                });
-            });
+                Ok(())
+            })
+        })
     }
 }

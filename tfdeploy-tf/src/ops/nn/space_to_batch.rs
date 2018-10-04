@@ -150,55 +150,57 @@ impl<T: Datum + Zero> InferenceRulesOp for SpaceToBatch<T> {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver.equals(&inputs.len, 3).equals(&outputs.len, 1);
-        rules(solver, &outputs[0], &inputs[0], &inputs[1], &inputs[2]);
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 3)?;
+        s.equals(&outputs.len, 1)?;
+        rules(s, &outputs[0], &inputs[0], &inputs[1], &inputs[2])
     }
 }
 
 fn rules<'r, 'p: 'r>(
-    solver: &mut Solver<'r>,
+    s: &mut Solver<'r>,
     batch: &'p TensorProxy,
     space: &'p TensorProxy,
     block_shape: &'p TensorProxy,
     paddings: &'p TensorProxy,
-) {
-    solver
-        .equals(&batch.datum_type, &space.datum_type)
-        .equals(&block_shape.datum_type, DatumType::I32)
-        .equals(&batch.rank, &space.rank)
-        .equals(&block_shape.rank, 1)
-        .equals(&paddings.rank, 2)
-        .equals(&block_shape.shape[0], &paddings.shape[0])
-        .given(&block_shape.value, move |solver, block_shape: Tensor| {
-            let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
-            let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
-            solver.equals(
-                &batch.shape[0],
-                (block_shape_prod as i64) * space.shape[0].bex(),
-            );
-            solver.given(&paddings.value, move |solver, paddings: Tensor| {
-                let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
-                let paddings = paddings.view().into_dimensionality().unwrap();
-                for d in 0..block_shape.len() {
-                    solver.equals(
-                        space.shape[1 + d].bex() + paddings[(d, 0)] + paddings[(d, 1)],
-                        (block_shape[d] as i64) * batch.shape[1 + d].bex(),
-                    );
-                }
-            });
+) -> InferenceResult {
+    s.equals(&batch.datum_type, &space.datum_type)?;
+    s.equals(&block_shape.datum_type, DatumType::I32)?;
+    s.equals(&batch.rank, &space.rank)?;
+    s.equals(&block_shape.rank, 1)?;
+    s.equals(&paddings.rank, 2)?;
+    s.equals(&block_shape.shape[0], &paddings.shape[0])?;
+    s.given(&block_shape.value, move |s, block_shape: Tensor| {
+        let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
+        let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
+        s.equals(
+            &batch.shape[0],
+            (block_shape_prod as i64) * space.shape[0].bex(),
+        )?;
+        s.given(&paddings.value, move |s, paddings: Tensor| {
+            let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
+            let paddings = paddings.view().into_dimensionality().unwrap();
+            for d in 0..block_shape.len() {
+                s.equals(
+                    space.shape[1 + d].bex() + paddings[(d, 0)] + paddings[(d, 1)],
+                    (block_shape[d] as i64) * batch.shape[1 + d].bex(),
+                )?;
+            }
+            Ok(())
         })
-        .given(&block_shape.value, move |solver, block_shape: Tensor| {
-            let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
-            solver.given(&space.rank, move |solver, rank: i64| {
-                for d in block_shape.len() + 1..(rank as usize) {
-                    solver.equals(&space.shape[d], &batch.shape[d]);
-                }
-            });
-        });
+    })?;
+    s.given(&block_shape.value, move |s, block_shape: Tensor| {
+        let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
+        s.given(&space.rank, move |s, rank: i64| {
+            for d in block_shape.len() + 1..(rank as usize) {
+                s.equals(&space.shape[d], &batch.shape[d])?
+            }
+            Ok(())
+        })
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -314,12 +316,13 @@ impl<T: Datum> InferenceRulesOp for BatchToSpace<T> {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver.equals(&inputs.len, 3).equals(&outputs.len, 1);
-        rules(solver, &inputs[0], &outputs[0], &inputs[1], &inputs[2]);
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 3)?;
+        s.equals(&outputs.len, 1)?;
+        rules(s, &inputs[0], &outputs[0], &inputs[1], &inputs[2])
     }
 }
 

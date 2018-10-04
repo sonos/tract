@@ -6,7 +6,7 @@ pub struct Identity;
 
 impl Op for Identity {
     fn name(&self) -> &str {
-        "tf.Identity"
+        "Identity"
     }
 
     /// Evaluates the operation given the input tensors.
@@ -31,14 +31,14 @@ impl Op for Identity {
 impl InferenceRulesOp for Identity {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 1)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
-            .equals(&inputs[0].shape, &outputs[0].shape);
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].shape, &outputs[0].shape)?;
+        Ok(())
     }
 }

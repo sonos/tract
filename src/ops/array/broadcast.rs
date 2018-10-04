@@ -33,28 +33,27 @@ impl Op for MultiBroadcastTo {
 impl InferenceRulesOp for MultiBroadcastTo {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 2)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[1].datum_type, DatumType::I64)
-            .equals(&outputs[0].datum_type, &inputs[0].datum_type)
-            .equals(&inputs[1].rank, 1)
-            .given(&inputs[0].shape, move |solver, shape| {
-                solver.given(&inputs[1].value, move |solver, dims| {
-                    let dims: Vec<TDim> = dims
-                        .to_array_view::<i64>()
-                        .unwrap()
-                        .iter()
-                        .map(|i| TDim::from(*i))
-                        .collect();
-                    let dims = ::broadcast::multi_broadcast(&[&*dims, &*shape])
-                        .ok_or("incompatible shapes").unwrap();
-                    solver.equals(&outputs[0].shape, ShapeFact::from(dims));
-                });
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 2)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[1].datum_type, DatumType::I64)?;
+        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        s.equals(&inputs[1].rank, 1)?;
+        s.given(&inputs[0].shape, move |s, shape| {
+            s.given(&inputs[1].value, move |s, dims| {
+                let dims: Vec<TDim> = dims
+                    .to_array_view::<i64>()
+                    .unwrap()
+                    .iter()
+                    .map(|i| TDim::from(*i))
+                    .collect();
+                let dims = ::broadcast::multi_broadcast(&[&*dims, &*shape])
+                    .ok_or("incompatible shapes").unwrap();
+                s.equals(&outputs[0].shape, ShapeFact::from(dims))
+            })
+        })
     }
 }

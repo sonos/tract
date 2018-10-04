@@ -72,27 +72,23 @@ impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 1)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[0].datum_type, DatumType::F32)
-            .equals(&outputs[0].datum_type, DatumType::F32)
-            .equals(&inputs[0].rank, 4)
-            .equals(&outputs[0].rank, 4)
-            .equals(&inputs[0].shape[0], &outputs[0].shape[0])
-            .given(&inputs[0].shape[1], move |solver, h| {
-                solver.given(&inputs[0].shape[2], move |solver, w| {
-                    let oh = self.0.adjusted_rows(h, (self.1).0);
-                    let ow = self.0.adjusted_cols(w, (self.1).1);
-                    solver
-                        .equals(&outputs[0].shape[1], oh)
-                        .equals(&outputs[0].shape[2], ow);
-                });
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, DatumType::F32)?;
+        s.equals(&outputs[0].datum_type, DatumType::F32)?;
+        s.equals(&inputs[0].rank, 4)?;
+        s.equals(&outputs[0].rank, 4)?;
+        s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
+        s.given_2(&inputs[0].shape[1], &inputs[0].shape[2], move |s, h, w| {
+            let oh = self.0.adjusted_rows(h, (self.1).0);
+            let ow = self.0.adjusted_cols(w, (self.1).1);
+            s.equals(&outputs[0].shape[1], oh)?;
+            s.equals(&outputs[0].shape[2], ow)
+        })
     }
 }
 

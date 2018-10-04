@@ -35,6 +35,7 @@ pub mod prelude {
     pub use self::super::proxies::*;
     pub use self::super::solver::*;
     pub use self::super::InferenceRulesOp;
+    pub use self::super::InferenceResult;
     pub use analyser::prelude::*;
     pub use dim::{TDim, ToDim};
     pub use model::TVec;
@@ -43,6 +44,8 @@ pub mod prelude {
 
 use self::prelude::*;
 
+pub type InferenceResult = TfdResult<()>;
+
 pub trait InferenceRulesOp {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -50,7 +53,7 @@ pub trait InferenceRulesOp {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    );
+    ) -> InferenceResult;
 }
 
 impl<O: InferenceRulesOp> ::ops::InferenceOp for O {
@@ -63,7 +66,7 @@ impl<O: InferenceRulesOp> ::ops::InferenceOp for O {
         let outputs_proxy = TensorsProxy::new(vec![1].into());
 
         let mut solver = Solver::default();
-        self.rules(&mut solver, &inputs_proxy, &outputs_proxy);
+        self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;
         solver.infer_facts((inputs, outputs))
     }
 }

@@ -81,27 +81,26 @@ impl<T: Datum> Op for Squeeze<T> {
 impl<T: Datum> InferenceRulesOp for Squeeze<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 1)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
-            .equals(&inputs[0].datum_type, T::datum_type())
-            .given(&inputs[0].shape, move |solver, shape: Vec<TDim>| {
-                let stream_dim = shape.iter().position(|d| d.is_stream());
-                let shape: Vec<TDim> = shape
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(ix, d)| {
-                        !self.squeezable(*ix, d.to_integer().unwrap_or(1) as usize, stream_dim)
-                    })
-                    .map(|(_, d)| d)
-                    .collect();
-                solver.equals(&outputs[0].shape, shape);
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].datum_type, T::datum_type())?;
+        s.given(&inputs[0].shape, move |s, shape: Vec<TDim>| {
+            let stream_dim = shape.iter().position(|d| d.is_stream());
+            let shape: Vec<TDim> = shape
+                .into_iter()
+                .enumerate()
+                .filter(|(ix, d)| {
+                    !self.squeezable(*ix, d.to_integer().unwrap_or(1) as usize, stream_dim)
+                })
+                .map(|(_, d)| d)
+                .collect();
+            s.equals(&outputs[0].shape, shape)
+        })
     }
 }
 

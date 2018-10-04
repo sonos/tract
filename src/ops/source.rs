@@ -30,19 +30,19 @@ impl InferenceRulesOp for Source {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 0)
-            .equals(&outputs.len, 1);
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 0)?;
+        s.equals(&outputs.len, 1)?;
         if let GenericFact::Only(dt) = self.fact.datum_type {
-            solver.equals(&outputs[0].datum_type, dt);
+            s.equals(&outputs[0].datum_type, dt)?;
         }
         if let Some(shape) = self.fact.shape.concretize() {
-            solver.equals(&outputs[0].shape, shape);
+            s.equals(&outputs[0].shape, shape)?;
         }
+        Ok(())
     }
 }
 

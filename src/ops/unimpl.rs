@@ -20,6 +20,7 @@ impl InferenceRulesOp for UnimplementedOp {
         _: &mut Solver<'r>,
         _: &'p TensorsProxy,
         _: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
+        Ok(())
     }
 }

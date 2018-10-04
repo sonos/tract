@@ -263,58 +263,43 @@ impl BaseStridedSlice {
 
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 4)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
-            .equals(&inputs[1].rank, 1)
-            .equals(&inputs[2].rank, 1)
-            .equals(&inputs[3].rank, 1)
-            .equals_all(wrap!(
-                &inputs[1].shape[0],
-                &inputs[2].shape[0],
-                &inputs[3].shape[0]
-            ))
-            .given(&inputs[0].shape, move |solver, input_shape: Vec<TDim>| {
-                solver.given(&inputs[1].value, move |solver, begin: Tensor| {
-                    let input_shape = input_shape.clone();
-                    solver.given(&inputs[2].value, move |solver, end: Tensor| {
-                        let input_shape = input_shape.clone();
-                        let begin = begin.clone();
-                        solver.given(&inputs[3].value, move |solver, stride: Tensor| {
-                            let casted_begin =TDim::tensor_cast_to_array(&begin).unwrap();
-                            let begin = casted_begin.view().into_dimensionality().unwrap();
-                            let casted_end =TDim::tensor_cast_to_array(&end).unwrap();
-                            let end = casted_end.view().into_dimensionality().unwrap();
-                            let stride = stride
-                                .as_i32s()
-                                .unwrap()
-                                .view()
-                                .into_dimensionality()
-                                .unwrap();
-                            let mut current_out_dim = 0;
-                            for (ix, d) in input_shape.iter().enumerate() {
-                                if !self.must_shrink(ix) {
-                                    let preped =
-                                        self.prepare_one_dim(ix, *d, &begin, &end, &stride);
-                                    match preped.soft_len() {
-                                        Ok(l) => {
-                                            solver.equals(&outputs[0].shape[current_out_dim], l);
-                                        }
-                                        Err(e) => warn!("Strided slice inference failure: {:?}", e),
-                                    }
-                                    current_out_dim += 1;
-                                }
-                            }
-                            solver.equals(&outputs[0].rank, current_out_dim as i64);
-                        });
-                    });
-                });
-            });
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 4)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[1].rank, 1)?;
+        s.equals(&inputs[2].rank, 1)?;
+        s.equals(&inputs[3].rank, 1)?;
+        s.equals_all(wrap!(
+            &inputs[1].shape[0],
+            &inputs[2].shape[0],
+            &inputs[3].shape[0]
+        ))?;
+        s.given_4(&inputs[0].shape, &inputs[1].value, &inputs[2].value, &inputs[3].value,
+                  move |s, input_shape, begin, end, stride| {
+            let casted_begin = TDim::tensor_cast_to_array(&begin).unwrap();
+            let begin = casted_begin.view().into_dimensionality().unwrap();
+            let casted_end =TDim::tensor_cast_to_array(&end).unwrap();
+            let end = casted_end.view().into_dimensionality().unwrap();
+            let stride = stride
+                .as_i32s()
+                .unwrap()
+                .view()
+                .into_dimensionality()
+                .unwrap();
+            let mut current_out_dim = 0;
+            for (ix, d) in input_shape.iter().enumerate() {
+                if !self.must_shrink(ix) {
+                    let preped = self.prepare_one_dim(ix, *d, &begin, &end, &stride);
+                    s.equals(&outputs[0].shape[current_out_dim], preped.soft_len()?)?;
+                    current_out_dim += 1;
+                }
+            }
+            s.equals(&outputs[0].rank, current_out_dim as i64)
+        })
     }
 
     fn final_prep(
@@ -396,7 +381,7 @@ impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
 }
@@ -455,7 +440,7 @@ impl InferenceRulesOp for StridedSliceD {
         solver: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
+    ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
 }

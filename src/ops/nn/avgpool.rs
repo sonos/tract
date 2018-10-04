@@ -56,22 +56,22 @@ impl Op for AvgPool {
 impl InferenceRulesOp for AvgPool {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        solver: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&outputs.len, 1)
-            .equals(&outputs[0].datum_type, &inputs[0].datum_type)
-            .given(&inputs[0].shape, move |solver, ishape| {
-                let ishape = self.data_fmt.shape(ishape);
-                let ones = vec!(1; ishape.hw_rank());
-                let (_, _, out_geo_shape) = self.padding.compute(ishape.hw_dims(), &*self.kernel_shape, &ones, self.strides.as_ref().unwrap_or(&ones));
-                for (ix, &s) in out_geo_shape.iter().enumerate() {
-                    solver.equals(&outputs[0].shape[ix+ishape.h_axis()], s);
-                }
-                solver.equals(&outputs[0].shape[ishape.n_axis()], ishape.n_dim());
-                solver.equals(&outputs[0].shape[ishape.c_axis()], ishape.c_dim());
-            });
+    ) -> InferenceResult {
+        s.equals(&outputs.len, 1)?;
+        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        s.given(&inputs[0].shape, move |s, ishape| {
+            let ishape = self.data_fmt.shape(ishape);
+            let ones = vec!(1; ishape.hw_rank());
+            let (_, _, out_geo_shape) = self.padding.compute(ishape.hw_dims(), &*self.kernel_shape, &ones, self.strides.as_ref().unwrap_or(&ones));
+            for (ix, &d) in out_geo_shape.iter().enumerate() {
+                s.equals(&outputs[0].shape[ix+ishape.h_axis()], d)?;
+            }
+            s.equals(&outputs[0].shape[ishape.n_axis()], ishape.n_dim())?;
+            s.equals(&outputs[0].shape[ishape.c_axis()], ishape.c_dim())?;
+            Ok(())
+        })
     }
 }
