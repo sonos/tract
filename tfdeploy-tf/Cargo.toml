@@ -12,6 +12,9 @@ num = "0.2"
 protobuf = "2.0"
 tfdeploy = { path=".." }
 
+[dev-dependencies]
+criterion = "0.2"
+
 [[bench]]
 name = "conv"
 harness = false

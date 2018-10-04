@@ -14,7 +14,8 @@ mod strided_slice;
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", ExpandDims::build);
-    reg.insert("Identity", Identity::build);
+    reg.insert("Identity",
+               |_| Ok(Box::new(::tfdeploy::ops::identity::Identity::default())));
     reg.insert("Fill", fill::fill);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
@@ -34,6 +35,9 @@ impl ExpandDims {
 }
 
 impl Op for ExpandDims {
+    fn name(&self) -> &str {
+        "tf.ExpandDims"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (data, dims) = args_2!(inputs);
@@ -112,49 +116,6 @@ impl InferenceRulesOp for ExpandDims {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Identity;
-
-impl Identity {
-    pub fn build(_: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
-        Ok(Box::new(Identity))
-    }
-}
-
-impl Op for Identity {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        Ok(inputs)
-    }
-
-    /// Evaluates one step of the operation on the given input tensors.
-    fn step(
-        &self,
-        mut inputs: TVec<StepValue>,
-        _: &mut Box<OpBuffer>,
-    ) -> TfdResult<Option<TVec<Value>>> {
-        let input = args_1!(inputs);
-        match input.into_value() {
-            None => Ok(None),
-            Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
-        }
-    }
-}
-
-impl InferenceRulesOp for Identity {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
-    ) {
-        solver
-            .equals(&inputs.len, 1)
-            .equals(&outputs.len, 1)
-            .equals(&inputs[0].datum_type, &outputs[0].datum_type)
-            .equals(&inputs[0].shape, &outputs[0].shape);
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Shape;
@@ -166,6 +127,10 @@ impl Shape {
 }
 
 impl Op for Shape {
+    fn name(&self) -> &str {
+        "tf.Shape"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;

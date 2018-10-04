@@ -7,9 +7,22 @@ pub struct Source {
 }
 
 impl Op for Source {
+    fn name(&self) -> &str {
+        "Source"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         panic!("Source should not get evaluated")
+    }
+
+    /// overriden to not run eval
+    fn infer(
+        &self,
+        inputs: TVec<TensorFact>,
+        outputs: TVec<TensorFact>,
+    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+        self.infer_facts(inputs, outputs)
     }
 }
 

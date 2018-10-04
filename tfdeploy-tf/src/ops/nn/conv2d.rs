@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use super::local_patch::*;
 use ndarray::prelude::*;
-use ndarray::{stack, Axis, Slice, LinalgScalar};
+use ndarray::{stack, Axis, LinalgScalar, Slice};
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
@@ -26,6 +26,32 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let patch = LocalPatch::build(pb)?;
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
+
+/*
+pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+    let data_format = pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC");
+    if data_format == b"NCHW" {
+        Err("NCHW data_format not implemented")?
+    }
+    let strides: Vec<usize> = pb.get_attr_list_int("strides")?;
+    if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
+        Err(format!(
+            "strides must be of the form [1, h, v, 1], found {:?}",
+            strides
+        ))?
+    };
+    let padding = pb.get_attr_raw_str("padding")?;
+    let padding = match padding {
+        b"VALID" => ::tfdeploy::ops::nn::PaddingSpec::Valid,
+        b"SAME" => ::tfdeploy::ops::nn::PaddingSpec::SameUpper,
+        s => Err(format!(
+            "unsupported Padding {}",
+            String::from_utf8_lossy(s)
+        ))?,
+    };
+    Ok(Box::new(::tfdeploy::ops::nn::Conv::new(true, true, None, None, padding, Some(strides[1..3].to_vec()))))
+}
+*/
 
 impl<T: Datum + LinalgScalar> Conv2D<T> {
     /// Performs a 2D convolution on an input tensor and a filter.
@@ -60,9 +86,9 @@ impl<T: Datum + LinalgScalar> Conv2D<T> {
 
         // Loop over each batch.
         for image in data.outer_iter() {
-            let patches = self
-                .0
-                .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
+            let patches =
+                self.0
+                    .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
             transformed.extend(patches.dot(&filter).into_iter());
         }
 
@@ -78,6 +104,9 @@ impl<T: Datum + LinalgScalar> Conv2D<T> {
 }
 
 impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
+    fn name(&self) -> &str {
+        "tf.Conv2D"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
@@ -225,8 +254,7 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
                         solver.equals(&outputs[0].shape[1], oh);
                     }
                 });
-            })
-            .given(&inputs[0].shape[2], move |solver, w| {
+            }).given(&inputs[0].shape[2], move |solver, w| {
                 solver.given(&inputs[1].shape[1], move |solver, kw| {
                     if let Ok(kw) = kw.to_integer() {
                         let ow = self.0.adjusted_cols(w, kw as usize);
@@ -241,8 +269,8 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
+    use tfdeploy::ops::nn::{ Conv, DataFormat, PaddingSpec };
     use tfdeploy::Tensor;
-    use tfdeploy::ops::InferenceOp;
 
     fn mk(sizes: &[usize]) -> Tensor {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
@@ -251,6 +279,7 @@ mod tests {
             .into()
     }
 
+    /*
     fn verify(input: &[usize], filter: &[usize], stride: usize, padding: Padding, expect: &[f32]) {
         let result = Conv2D::<f32>::new(LocalPatch {
             padding: padding,
@@ -269,59 +298,126 @@ mod tests {
             .unwrap();
         assert_eq!(expect, found.as_slice().unwrap());
     }
+    */
+
+    fn make_conv(h_stride: usize, v_stride: usize, padding: Padding) -> Box<Op> {
+        Box::new(Conv::new(
+            DataFormat::NHWC,
+            true,
+            None,
+            None,
+            match padding {
+                Padding::Valid => PaddingSpec::Valid,
+                Padding::Same => PaddingSpec::SameUpper,
+            },
+            Some(vec![v_stride, h_stride]),
+        ))
+    }
+
+    fn verify(input: Tensor, filter: Tensor, stride: usize, padding: Padding, expect: &[f32]) {
+        let result = make_conv(stride, stride, padding)
+            .eval(tvec![input.into(), filter.into()])
+            .unwrap()
+            .remove(0);
+        assert_eq!(expect.len(), result.shape().iter().product::<usize>());
+        let found = result.into_tensor().take_f32s().unwrap();
+        let expect = ArrayD::from_shape_vec(found.shape(), expect.to_vec()).unwrap();
+        assert_eq!(expect, found);
+    }
 
     #[test]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
+    fn testConv2D3CNoopFilter() {
+        verify(
+            mk(&[1, 2, 3, 3]),
+            arr4(&[[[
+                 [1.0f32, 0.0, 0.0],
+                 [0.0, 1.0, 0.0],
+                 [0.0, 0.0, 1.0]
+            ]]]).into(),
+            1,
+            Padding::Valid,
+            &[ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
+            10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0 ]
+        )
+    }
+
+    #[test]
     fn testConv2D1x1Filter() {
-        verify(&[1,2,3,3], &[1, 1, 3, 3], 1, Padding::Valid, &[
-        30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
-        204.0, 174.0, 216.0, 258.0, 210.0, 261.0, 312.0 ]);
+        verify(
+            mk(&[1, 2, 3, 3]),
+            mk(&[1, 1, 3, 3]),
+            1,
+            Padding::Valid,
+            &[
+                30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0, 204.0,
+                174.0, 216.0, 258.0, 210.0, 261.0, 312.0,
+            ],
+        );
     }
 
     #[test]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn testConv2D1x2Filter() {
-        verify(&[1, 2, 3, 3], &[1, 2, 3, 3] , 1, Padding::Valid, &[
-        231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0,
-        936.0, 1029.0
-    ])}
+        verify(
+            mk(&[1, 2, 3, 3]),
+            mk(&[1, 2, 3, 3]),
+            1,
+            Padding::Valid,
+            &[
+                231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0, 936.0,
+                1029.0,
+            ],
+        )
+    }
 
     #[test]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn testConv2D2x1Filter() {
-        verify(&[1, 2, 3, 3], &[2, 1, 3, 3] , 1, Padding::Valid,
-          &[465.0, 504.0, 543.0, 618.0, 675.0, 732.0, 771.0, 846.0, 921.0]);
+        verify(
+            mk(&[1, 2, 3, 3]),
+            mk(&[2, 1, 3, 3]),
+            1,
+            Padding::Valid,
+            &[
+                465.0, 504.0, 543.0, 618.0, 675.0, 732.0, 771.0, 846.0, 921.0,
+            ],
+        );
     }
 
     #[test]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn testConv2D2x2Filter() {
-        verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 1, Padding::Valid,
-               &[ 2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0 ])
+        verify(
+            mk(&[1, 2, 3, 3]),
+            mk(&[2, 2, 3, 3]),
+            1,
+            Padding::Valid,
+            &[2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0],
+        )
     }
 
     #[test]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn testConv2D2x2FilterStride2() {
-        verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 2, Padding::Valid,
-               &[2271.0, 2367.0, 2463.0])
+        verify(
+            mk(&[1, 2, 3, 3]),
+            mk(&[2, 2, 3, 3]),
+            2,
+            Padding::Valid,
+            &[2271.0, 2367.0, 2463.0],
+        )
     }
 
     #[test]
-    #[cfg_attr(rustfmt, rustfmt_skip)]
     fn testConv2D2x2FilterStride2Same() {
-        verify(&[1, 2, 3, 3], &[2, 2, 3, 3] , 2, Padding::Same,
-               &[2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]);
+        verify(
+            mk(&[1, 2, 3, 3]),
+            mk(&[2, 2, 3, 3]),
+            2,
+            Padding::Same,
+            &[2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0],
+        );
     }
 
     #[test]
     fn test_conv_1() {
-        let conv = Conv2D::<f32>::new(LocalPatch {
-            padding: Padding::Same,
-            h_stride: 1,
-            v_stride: 1,
-            _data_format: DataFormat::NHWC,
-        });
+        let conv = make_conv(1, 1, Padding::Same);
         // NHWC
         let data: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1f32]).unwrap();
         // HWIO
@@ -337,12 +433,7 @@ mod tests {
 
     #[test]
     fn test_conv_2() {
-        let conv = Conv2D::<f32>::new(LocalPatch {
-            padding: Padding::Same,
-            h_stride: 1,
-            v_stride: 1,
-            _data_format: DataFormat::NHWC,
-        });
+        let conv = make_conv(1, 1, Padding::Same);
         let data =
             Tensor::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994]).unwrap();
         let filter: Tensor = Tensor::f32s(
@@ -360,17 +451,12 @@ mod tests {
 
     #[test]
     fn inference_1() {
-        let op = Conv2D::<f32>::new(LocalPatch {
-            padding: Padding::Valid,
-            h_stride: 1,
-            v_stride: 3,
-            _data_format: DataFormat::NHWC,
-        });
+        let op = make_conv(1, 3, Padding::Valid);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
 
         let (_, mut output_facts) = op
-            .infer(tvec![img, ker], tvec![TensorFact::default()])
+            .infer_facts(tvec![img, ker], tvec![TensorFact::default()])
             .unwrap();
 
         output_facts[0].reduce();
@@ -385,17 +471,12 @@ mod tests {
 
     #[test]
     fn inference_2() {
-        let op = Conv2D::<f32>::new(LocalPatch {
-            padding: Padding::Same,
-            h_stride: 1,
-            v_stride: 1,
-            _data_format: DataFormat::NHWC,
-        });
+        let op = make_conv(1, 1, Padding::Same);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
 
         let (_, output_facts) = op
-            .infer(tvec![img, ker], tvec![TensorFact::default()])
+            .infer_facts(tvec![img, ker], tvec![TensorFact::default()])
             .unwrap();
 
         assert_eq!(

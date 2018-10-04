@@ -24,6 +24,7 @@ derive-new = "0.5"
 downcast-rs = "1.0"
 error-chain =  { version = "0.12", default-features=false }
 image = { version = "0.19", optional=true }
+insideout = "0.1"
 itertools = "0.7"
 log = "0.4"
 maplit = "1.0"

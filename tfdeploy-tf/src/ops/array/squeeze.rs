@@ -45,6 +45,9 @@ impl<T: Datum> Squeeze<T> {
 }
 
 impl<T: Datum> Op for Squeeze<T> {
+    fn name(&self) -> &str {
+        "tf.Squeeze"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
@@ -161,7 +164,7 @@ mod tests {
 
         let op = Squeeze::<TDim>::new(Some(vec![1]));
         let inferred = op
-            .infer(tvec!(input), tvec!(TensorFact::default()))
+            .infer_facts(tvec!(input), tvec!(TensorFact::default()))
             .unwrap();
 
         let expect: TVec<_> = tvec!(

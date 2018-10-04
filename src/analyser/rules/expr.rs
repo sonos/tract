@@ -1,13 +1,124 @@
 use std::fmt;
 use std::marker::PhantomData;
-use TfdResult;
+use std::ops::{Add, Neg, Sub, Div, Mul};
+
+use num::cast::ToPrimitive;
+use num::Zero;
 
 use analyser::prelude::*;
 use analyser::rules::prelude::*;
 use dim::TDim;
-use num::Zero;
-use std::ops::{Add, Div, Mul, Neg, Sub};
-use tensor::{DatumType, Tensor};
+use {DatumType, TfdResult, Tensor};
+
+/// A trait for values produced by expressions.
+pub trait Output: fmt::Debug + Clone + PartialEq {
+    /// Wraps self in the Wrapped type.
+    fn wrap(self) -> Wrapped {
+        Self::into_wrapped(self)
+    }
+
+    /// Wraps the fact in the Wrapped type.
+    fn into_wrapped(source: Self) -> Wrapped;
+
+    /// Retrieves the fact from the Wrapped type.
+    /// Panics if wrapped doesn't have the right constructor.
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<Self>;
+}
+
+macro_rules! impl_output {
+    ($type:ty, $constr:ident) => {
+        impl Output for $type {
+            fn into_wrapped(source: Self) -> Wrapped {
+                Wrapped::$constr(source)
+            }
+
+            fn from_wrapped(wrapped: Wrapped) -> TfdResult<$type> {
+                if let Wrapped::$constr(v) = wrapped {
+                    Ok(v)
+                } else {
+                    bail!("Tried to get a {} from {:?}.", stringify!($ty), wrapped);
+                }
+            }
+        }
+    };
+}
+
+impl_output!(IntFact, Int);
+impl_output!(TypeFact, Type);
+impl_output!(ShapeFact, Shape);
+impl_output!(ValueFact, Value);
+impl_output!(DimFact, Dim);
+
+// Converts back and forth between Wrapped and usize.
+impl Output for usize {
+    fn into_wrapped(source: usize) -> Wrapped {
+        IntFact::into_wrapped((source as i64).into())
+    }
+
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<usize> {
+        let message = format!("Tried to convert {:?} to a usize.", wrapped);
+
+        IntFact::from_wrapped(wrapped)?
+            .concretize()
+            .and_then(|u| u.to_usize())
+            .ok_or(message.into())
+    }
+}
+
+// Converts back and forth between Wrapped and i64.
+impl Output for i64 {
+    fn into_wrapped(source: i64) -> Wrapped {
+        IntFact::into_wrapped(source.into())
+    }
+
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<i64> {
+        let message = format!("Tried to convert {:?} to a i64.", wrapped);
+
+        IntFact::from_wrapped(wrapped)?
+            .concretize()
+            .ok_or(message.into())
+    }
+}
+
+// Converts back and forth between Wrapped and Tensor.
+impl Output for Tensor {
+    fn into_wrapped(source: Tensor) -> Wrapped {
+        ValueFact::into_wrapped(source.into())
+    }
+
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<Tensor> {
+        let message = format!("Tried to convert {:?} to a tensor.", wrapped);
+
+        ValueFact::from_wrapped(wrapped)?
+            .concretize()
+            .ok_or(message.into())
+    }
+}
+
+// Converts back and forth between Wrapped and usize.
+impl Output for TDim {
+    fn into_wrapped(source: TDim) -> Wrapped {
+        DimFact::into_wrapped(source.into())
+    }
+
+    fn from_wrapped(wrapped: Wrapped) -> TfdResult<TDim> {
+        let message = format!("Tried to convert {:?} to a usize.", wrapped);
+
+        DimFact::from_wrapped(wrapped)?
+            .concretize()
+            .ok_or(message.into())
+    }
+}
+
+/// A wrapper for all the types of values that expressions can produce.
+#[derive(Debug, Clone)]
+pub enum Wrapped {
+    Int(IntFact),
+    Type(TypeFact),
+    Shape(ShapeFact),
+    Value(ValueFact),
+    Dim(DimFact),
+}
 
 /// An expression that can be compared by the solver.
 pub trait TExp<T>: fmt::Debug {
@@ -53,6 +164,7 @@ pub trait IntoExp<T> {
     fn bex(self) -> Exp<T>;
 }
 
+#[derive(new)]
 pub struct SumExp<T>(Vec<Exp<T>>)
 where
     T: Fact + Output + Clone + ::std::fmt::Debug;
@@ -131,15 +243,8 @@ where
 
     /// Tries to set the value of the expression in the given context.
     fn set(&self, _: &mut Context, value: T) -> TfdResult<bool> {
-        if self.0 == value {
-            Ok(false)
-        } else {
-            bail!(
-                "Cannot set the value of constant {:?} to {:?}.",
-                self.0,
-                value
-            );
-        }
+        self.0.unify(&value)?;
+        Ok(false)
     }
 
     /// Returns the paths that the expression depends on.
@@ -173,6 +278,7 @@ where
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TfdResult<T> {
         context.get(&self.0)
+            .map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -180,7 +286,8 @@ where
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
-        context.set(&self.0, new)?;
+        context.set(&self.0, new)
+            .map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
         Ok(diff)
     }
 

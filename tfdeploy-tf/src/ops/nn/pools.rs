@@ -23,6 +23,9 @@ pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
 }
 
 impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
+    fn name(&self) -> &str {
+        "Pool"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let m_input = args_1!(inputs);

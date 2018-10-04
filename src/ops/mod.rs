@@ -16,8 +16,10 @@ use objekt;
 #[macro_use]
 mod macros;
 
+pub mod array;
 #[cfg(features = "image_ops")]
 pub mod image;
+pub mod identity;
 pub mod konst;
 pub mod logic;
 pub mod math;
@@ -34,6 +36,7 @@ pub mod prelude {
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::{Datum, DatumType, Tensor};
+    pub use super::arr4;
     pub use TfdResult;
 }
 
@@ -211,10 +214,10 @@ impl StepValue {
 
 /// A Tensorflow operation.
 pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
+    fn name(&self) -> &str;
+
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        bail!("Unexpected call on op.eval(). {:?}", self)
-    }
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 
     /// Returns a new streaming buffer for the operation.
     fn new_buffer(&self) -> Box<OpBuffer> {
@@ -257,12 +260,12 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     ///
     /// Returns Err in case of an unrecoverable error during the inference,
     /// and the refined properties about the inputs and outputs otherwise.
-    fn infer_and_propagate(
+    fn infer(
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let (infered_inputs, infered_outputs) = self.infer(inputs, outputs)?;
+        let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
 
         if infered_inputs.iter().all(|i| i.value.is_concrete()) {
             let input_values = infered_inputs
@@ -299,7 +302,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
 }
 
 pub trait InferenceOp {
-    fn infer(
+    fn infer_facts(
         &self,
         inputs: TVec<TensorFact>,
         outputs: TVec<TensorFact>,

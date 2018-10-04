@@ -10,9 +10,9 @@ extern crate tfdeploy_tf;
 use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
+use tfdeploy::Tensor;
 use tfdeploy_tf::tfpb;
 use tfdeploy_tf::tfpb::types::DataType::DT_FLOAT;
-use tfdeploy::Tensor as TfdTensor;
 
 fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
     let conv = tfpb::node()
@@ -32,7 +32,7 @@ fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec
     Ok(graph.write_to_bytes()?)
 }
 
-fn img_and_ker() -> BoxedStrategy<(TfdTensor, TfdTensor, (usize, usize))> {
+fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
     (1usize..8, 1usize..8, 1usize..8, 1usize..8)
         .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic, kh, kw, kc))))
         .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, kc))| {
@@ -45,8 +45,7 @@ fn img_and_ker() -> BoxedStrategy<(TfdTensor, TfdTensor, (usize, usize))> {
                 ::proptest::collection::vec(-9i32..9, k_size..k_size + 1),
                 (1..(kh + 1), 1..(kw + 1)),
             )
-        })
-        .prop_map(|(img_shape, ker_shape, img, ker, strides)| {
+        }).prop_map(|(img_shape, ker_shape, img, ker, strides)| {
             (
                 Array::from_vec(img.into_iter().map(|i| i as f32).collect())
                     .into_shape(img_shape)
@@ -58,8 +57,7 @@ fn img_and_ker() -> BoxedStrategy<(TfdTensor, TfdTensor, (usize, usize))> {
                     .into(),
                 strides,
             )
-        })
-        .boxed()
+        }).boxed()
 }
 
 proptest! {
@@ -78,7 +76,7 @@ proptest! {
 
 proptest! {
     #[test]
-    fn conv_infer((ref i, ref k, ref strides) in img_and_ker(),
+    fn conv_infer_facts((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
 //        ::conform::setup_test_logger();
         if valid {
@@ -88,4 +86,31 @@ proptest! {
         let model = convolution_pb(strides.0, strides.1, valid).unwrap();
         infer(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
     }
+}
+
+#[test]
+fn conv_infer_facts_1() {
+    //   ::conform::setup_test_logger();
+    let i: Tensor = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
+    let k: Tensor = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
+    let model = convolution_pb(1, 1, false).unwrap();
+    infer(
+        &model,
+        vec![("data", i.into()), ("kernel", k.into())],
+        "conv",
+    ).unwrap();
+}
+
+#[test]
+fn conv_eval_1() {
+    use tfdeploy::ops::arr4;
+    //   ::conform::setup_test_logger();
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
+    let model = convolution_pb(1, 1, false).unwrap();
+    compare(
+        &model,
+        vec![("data", i.into()), ("kernel", k.into())],
+        "conv",
+    ).unwrap();
 }

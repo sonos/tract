@@ -7,6 +7,10 @@ pub struct Sink {
 }
 
 impl Op for Sink {
+    fn name(&self) -> &str {
+        "Sink"
+    }
+
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Ok(tvec!())

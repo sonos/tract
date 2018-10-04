@@ -160,7 +160,7 @@ pub fn infer<S: AsRef<str>>(
             .into(),
     ];
 
-    let e = output.op.infer(inputs_vectors, output_vectors);
+    let e = output.op.infer_facts(inputs_vectors, output_vectors);
     prop_assert!(e.is_ok(), "{:?}", e);
 
     Ok(())
@@ -169,5 +169,5 @@ pub fn infer<S: AsRef<str>>(
 #[allow(dead_code)]
 pub fn setup_test_logger() {
     use simplelog::{Config, LevelFilter, TermLogger};
-    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+    let _ = TermLogger::init(LevelFilter::Trace, Config::default());
 }

@@ -7,6 +7,10 @@ macro_rules! element_map {
         pub struct $Name($crate::analyser::TypeFact);
 
         impl ::ops::Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
+
             /// Evaluates the operation given the input tensors.
             fn eval(
                 &self,
@@ -70,6 +74,9 @@ macro_rules! element_bin {
         pub struct $Name($crate::analyser::TypeFact);
 
         impl Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
 
             /// Evaluates the operation given the input tensors.
             fn eval(
@@ -173,6 +180,9 @@ macro_rules! element_nary {
         }
 
         impl Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
             /// Evaluates the operation given the input tensors.
             fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
                 use $crate::tensor::Datum;
@@ -345,7 +355,7 @@ macro_rules! boxed_new {
 macro_rules! assert_forward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(
-            $op.infer(tvec![$input.clone()], tvec![TensorFact::new()])
+            $op.infer_facts(tvec![$input.clone()], tvec![TensorFact::new()])
                 .unwrap(),
             (tvec![$input.clone()], tvec![$output])
         )
@@ -358,9 +368,38 @@ macro_rules! assert_forward {
 macro_rules! assert_backward {
     ($op:expr, $input:ident, $output:ident) => {
         assert_eq!(
-            $op.infer(tvec![TensorFact::new()], tvec![$output.clone()])
+            $op.infer_facts(tvec![TensorFact::new()], tvec![$output.clone()])
                 .unwrap(),
             (tvec![$input], tvec![$output.clone()])
         )
     };
+}
+
+macro_rules! dispatch_datum {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
+        match $dt {
+            DatumType::Bool => $($path)::*::<bool>($($args),*),
+            DatumType::U8   => $($path)::*::<u8>($($args),*),
+            DatumType::U16  => $($path)::*::<u16>($($args),*),
+            DatumType::I8   => $($path)::*::<i8>($($args),*),
+            DatumType::I16  => $($path)::*::<i16>($($args),*),
+            DatumType::I32  => $($path)::*::<i32>($($args),*),
+            DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::F32  => $($path)::*::<f32>($($args),*),
+            DatumType::F64  => $($path)::*::<f64>($($args),*),
+            DatumType::TDim => $($path)::*::<TDim>($($args),*),
+            DatumType::String => bail!("String is not a Datum")
+        }
+    }
+}
+
+#[warn(unused_macros)]
+macro_rules! dispatch_floatlike {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
+        match $dt {
+            DatumType::F32  => $($path)::*::<f32>($($args),*),
+            DatumType::F64  => $($path)::*::<f64>($($args),*),
+            _ => bail!("{:?} is not float-like", $dt)
+        }
+    }
 }

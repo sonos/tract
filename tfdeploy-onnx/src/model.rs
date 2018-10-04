@@ -49,6 +49,15 @@ impl TfdFrom<pb::ModelProto> for Model {
             model_inputs.push(nodes.len());
             nodes.push(source);
         }
+        for input in graph.get_initializer() {
+            let node = nodes_by_name[input.get_name()];
+            let node = &mut nodes[node];
+            let tensor:Tensor = input.to_tfd()?;
+            if node.op_name == "Source" {
+                node.op_name = "Const".to_string();
+                node.op = Box::new(::tfdeploy::ops::konst::Const::new(tensor.into()));
+            }
+        }
         for pbnode in graph.get_node().iter() {
             let name = if pbnode.get_name() != "" {
                 pbnode.get_name().to_string()

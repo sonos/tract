@@ -340,6 +340,13 @@ impl<'a> From<&'a [usize]> for ShapeFact {
     }
 }
 
+impl From<Option<Vec<usize>>> for ShapeFact {
+    /// Converts an vector of usize into a closed shape.
+    fn from(shape: Option<Vec<usize>>) -> ShapeFact {
+        shape.map(|s| ShapeFact::from(s)).unwrap_or(ShapeFact::default())
+    }
+}
+
 impl From<Vec<usize>> for ShapeFact {
     /// Converts an vector of usize into a closed shape.
     fn from(shape: Vec<usize>) -> ShapeFact {

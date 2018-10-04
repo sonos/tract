@@ -23,6 +23,9 @@ impl<T: Datum> OpBuffer for SpaceToBatchBuffer<T> {}
 pub struct SpaceToBatch<T: Datum + Zero>(PhantomData<T>);
 
 impl<T: Datum + Zero> Op for SpaceToBatch<T> {
+    fn name(&self) -> &str {
+        "SpaceToBatch"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
@@ -208,6 +211,9 @@ impl OpBuffer for BatchToSpaceBuffer {}
 pub struct BatchToSpace<T: Datum>(PhantomData<T>);
 
 impl<T: Datum> Op for BatchToSpace<T> {
+    fn name(&self) -> &str {
+        "BatchToSpace"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         use ndarray::*;
@@ -422,7 +428,7 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
 
         let (_, outputs) =
-            op.infer(
+            op.infer_facts(
                 tvec!(data, block_shape, paddings),
                 tvec!(TensorFact::default()),
             ).unwrap();
@@ -441,7 +447,7 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
 
         let (_, mut outputs) =
-            op.infer(
+            op.infer_facts(
                 tvec!(data, block_shape, paddings),
                 tvec!(TensorFact::default()),
             ).unwrap();

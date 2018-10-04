@@ -33,7 +33,6 @@ impl TfdFrom<GraphDef> for Model {
     fn tfd_from(graph: &GraphDef) -> TfdResult<Model> {
     let mut nodes = vec![];
     let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
-    let mut model_inputs = vec!();
     let op_builder = ::ops::OpBuilder::new();
     for pbnode in graph.get_node().iter() {
         let name = pbnode.get_name().to_string();
@@ -82,9 +81,6 @@ impl TfdFrom<GraphDef> for Model {
                 .build(&pbnode)
                 .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
         };
-        if node.op_name == "Placeholder" {
-            model_inputs.push(nodes.len());
-        }
         nodes_by_name.insert(name, nodes.len());
         nodes.push(node)
     }

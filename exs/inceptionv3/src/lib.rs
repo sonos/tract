@@ -34,10 +34,13 @@ fn do_download() -> TfdResult<()> {
     }
     fs::create_dir_all(&dir_partial)?;
     let resp = mio_httpc::CallBuilder::get()
-        .max_response(200_000_000)
         .url("http://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz")
-        .and_then(|r| r.exec())
+        .unwrap()
+        .max_response(200_000_000)
+        .timeout_ms(600_000)
+        .exec()
         .map_err(|e| format!("http error {:?}", e))?;
+    println!("Downloaded inception_v3 model, de-archiving to: {:?}", dir);
     let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(&*resp.1));
     archive.unpack(&dir_partial)?;
     fs::rename(dir_partial, dir)?;
@@ -57,7 +60,7 @@ fn inception_v3_2016_08_28() -> path::PathBuf {
         Ok(t) => path::Path::new(&t)
             .join("cached")
             .join("inception-v3-2016_08_28"),
-        _ => ::std::env::temp_dir().join("inception-v3-2016_08_28"),
+        _ => path::PathBuf::from(".inception-v3-2016_08_28"),
     }
 }
 

@@ -34,7 +34,8 @@ pub struct Edge {
 pub struct Node {
     pub id: usize,
     pub name: String,
-    pub op: String,
+    pub op_name: String,
+    pub tfd_op: String,
     pub label: Option<String>,
     pub more_lines: Vec<String>,
     pub attrs: Vec<(String, String)>,
@@ -53,6 +54,8 @@ impl DisplayGraph {
     pub fn render(&self, params: &OutputParameters) -> CliResult<()> {
         if params.web {
             ::web::open_web(&self, params)
+        } else if params.quiet {
+            Ok(())
         } else if let Some(json) = params.json.as_ref() {
             ::serde_json::to_writer(fs::File::create(json)?, self)?;
             Ok(())
@@ -74,7 +77,7 @@ impl DisplayGraph {
             }
         }
         for node in &self.nodes {
-            if node.op == "Const" && !params.konst {
+            if node.op_name == "Const" && !params.konst {
                 continue;
             }
             if node.hidden {
@@ -83,7 +86,7 @@ impl DisplayGraph {
             if params
                 .op_name
                 .as_ref()
-                .map(|name| name != &*node.op)
+                .map(|name| name != &*node.op_name)
                 .unwrap_or(false)
             {
                 continue;
@@ -102,15 +105,24 @@ impl DisplayGraph {
     }
     pub fn render_node(&self, node: &Node, _params: &OutputParameters) -> CliResult<()> {
         use colored::Colorize;
-        let output_ports: HashMap<usize, Option<String>> = node
+        // node output are not ordered by slot number
+        let output_ports: HashMap<usize, String> = node
             .outputs
             .iter()
             .map(|edge| {
                 let edge = &self.edges[*edge];
-                (edge.src.node, edge.label.clone())
+                (edge.src.slot, edge.label.clone().unwrap_or_else(|| "".to_string()))
             })
             .collect();
+        let mut output_ports:Vec<(usize, String)> = output_ports.into_iter().collect();
+        output_ports.sort();
         let mut sections = vec![
+            vec!(Row::Double("impl:".to_string(),
+                if node.tfd_op == "Unimplemented" {
+                    node.tfd_op.red().to_string()
+                } else {
+                    node.tfd_op.clone()
+                })),
             node.attrs
                 .iter()
                 .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))
@@ -139,12 +151,11 @@ impl DisplayGraph {
                     )
                 })
                 .collect(),
-            (0..output_ports.len())
-                .map(|ix| {
-                    let edge = &output_ports[&ix];
+            output_ports.into_iter()
+                .map(|(ix,edge_label)| {
                     Row::Double(
                         format!("Output {}:", ix.to_string().bold()),
-                        edge.clone().unwrap_or_else(|| "".to_string()),
+                        edge_label
                     )
                 })
                 .collect(),
@@ -159,7 +170,7 @@ impl DisplayGraph {
         }
         ::format::print_box(
             &node.id.to_string(),
-            &node.op,
+            &node.op_name,
             &node.name,
             &*node.label.as_ref().map(|a| vec![a]).unwrap_or(vec![]),
             sections,
@@ -173,7 +184,8 @@ impl DisplayGraph {
             .map(|n| Node {
                 id: n.borrow().id,
                 name: n.borrow().name.clone(),
-                op: n.borrow().op_name.clone(),
+                op_name: n.borrow().op_name.clone(),
+                tfd_op: n.borrow().op.name().to_string(),
                 label: None,
                 more_lines: vec![],
                 attrs: vec![],
@@ -205,7 +217,7 @@ impl DisplayGraph {
         Ok(DisplayGraph { nodes, edges })
     }
 
-    pub fn with_graph_def(mut self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph> {
+    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph> {
         match graph_def {
             SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
             SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
@@ -231,7 +243,26 @@ impl DisplayGraph {
         Ok(self)
     }
 
-    pub fn with_onnx_model(mut self, graph_def: &ModelProto) -> CliResult<DisplayGraph> {
+    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph> {
+        let index_to_graph_def: HashMap<String, usize> =
+            self.nodes.iter().map(|n| (n.name.clone(), n.id)).collect();
+        for gnode in model_proto.get_graph().get_node().iter() {
+            let mut node_name = gnode.get_name();
+            if node_name == "" && gnode.get_output().len() > 0 {
+                node_name = &gnode.get_output()[0];
+            }
+            if let Some(node_id) = index_to_graph_def.get(node_name) {
+                for a in gnode.get_attribute().iter() {
+                    let value = if a.has_t() {
+                        format!("{:?}", tfdeploy::tensor::Tensor::tfd_from(a.get_t())?)
+                    } else {
+                        format!("{:?}", a)
+                    };
+                    self.nodes[*node_id].attrs.push((a.get_name().to_owned(), value));
+                }
+                self.nodes[*node_id].attrs.sort();
+            }
+        }
         Ok(self)
     }
 

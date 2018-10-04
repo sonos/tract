@@ -1,6 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
+use itertools::Itertools;
+
 use errors::*;
 use model::eval_order_for_nodes;
 use model::{Model, OutletId, RawModel, TVec};
@@ -54,6 +56,10 @@ pub struct Analyser {
 }
 
 impl Analyser {
+    pub fn for_model(model: &Model) -> TfdResult<Analyser> {
+        let default_output = &model.outputs()?[0].name;
+        Analyser::new(model, default_output)
+    }
     /// Constructs an analyser for the given graph.
     ///
     /// The output argument is used to infer an execution plan for the graph.
@@ -139,6 +145,22 @@ impl Analyser {
     pub fn with_hint(mut self, node: &str, fact: &TensorFact) -> TfdResult<Analyser> {
         let node = self.model.node_by_name(node)?.id;
         self.hint_by_id(node, fact)?;
+        Ok(self)
+    }
+
+    /// Adds an user-provided tensor fact to the analyser on the model lone input.
+    pub fn with_input_hint(mut self, fact: &TensorFact) -> TfdResult<Analyser> {
+        let id = self.model.inputs()?.get(0).ok_or("No input in model")?.id;
+        self.hint_by_id(id, fact)?;
+        Ok(self)
+    }
+
+    /// Adds an user-provided tensor fact to the analyser on the model inputs.
+    pub fn with_input_hints(mut self, facts: impl IntoIterator<Item=TensorFact>) -> TfdResult<Analyser> {
+        let input_ids:Vec<usize> = self.model.inputs()?.iter().map(|n| n.id).collect();
+        for (&node, fact) in input_ids.iter().zip(facts.into_iter()) {
+            self.hint_by_id(node, &fact)?;
+        }
         Ok(self)
     }
 
@@ -246,7 +268,7 @@ impl Analyser {
             .map(|&i| &self.edges[i])
             .inspect(|edge| {
                 trace!(
-                    " Input {} from {:?}: {:?}",
+                    "Input {} from {:?}: {:?}",
                     edge.to_input,
                     edge.from,
                     edge.fact
@@ -255,11 +277,29 @@ impl Analyser {
             .map(|edge| edge.fact.clone())
             .collect();
 
-        // FIXME(liautaud): We should handle multiple output ports in the future.
-        let mut outputs = tvec![TensorFact::new()];
-        for &i in &self.next_edges[node.id] {
-            outputs[0] = self.edges[i].fact.unify(&outputs[0])?;
-        }
+        let outgoing = self.next_edges[node.id]
+            .iter()
+            .map(|&i| &self.edges[i])
+            .map(|e| (e.from.as_ref().map(|o| o.slot).unwrap_or(0), e))
+            .into_group_map();
+        let mut outputs: HashMap<usize, TensorFact> = outgoing
+            .iter()
+            .map(|(&k, edges)| {
+                Ok((
+                    k,
+                    edges
+                        .iter()
+                        .try_fold(TensorFact::default(), |ac, n| ac.unify(&n.fact))?,
+                ))
+            })
+            .collect::<TfdResult<_>>()?;
+        let output_count = outputs.keys().max().map(|n| n + 1).unwrap_or(0);
+        let outputs = (0..output_count)
+            .map(|ix| outputs.remove(&ix).unwrap_or(TensorFact::default()))
+            .enumerate()
+            .inspect(|(ix, f)| trace!("Output {}: {:?}", ix, f))
+            .map(|(_ix, f)| f)
+            .collect();
 
         Ok((inputs, outputs))
     }
@@ -269,15 +309,15 @@ impl Analyser {
     fn step(&mut self, node: usize) -> TfdResult<Vec<usize>> {
         let node = &self.nodes[node];
         debug!(
-            "Starting step for {} {} ({})",
+            "Starting step for #{} {} ({})",
             node.id, node.name, node.op_name,
         );
 
         let (inputs, outputs) = self.facts(node.id)?;
 
-        let inferred = node.op.infer_and_propagate(inputs, outputs).map_err(|e| {
+        let inferred = node.op.infer(inputs, outputs).map_err(|e| {
             format!(
-                "While inferring forward for {} {}: {}",
+                "While inferring forward for #{} {}: {}",
                 node.id, node.name, e
             )
         })?;
@@ -288,7 +328,7 @@ impl Analyser {
             let fact = &inferred.0[i];
             let mut unified = fact.unify(&self.edges[j].fact).map_err(|e| {
                 format!(
-                    "While unifying inputs of node {} {}: {}",
+                    "While unifying inputs of node #{} {}: {}",
                     node.id, node.name, e
                 )
             })?;
@@ -301,31 +341,27 @@ impl Analyser {
             }
         }
 
-        for (i, &j) in self.next_edges[node.id].iter().enumerate() {
-            // FIXME(liautaud): We should handle multiple output ports in the future.
-            if inferred.1.len() != 1 {
-                panic!("Inference only supports nodes with a single output port.");
-            }
-
-            let fact = &inferred.1[0];
-            let mut unified = fact.unify(&self.edges[j].fact).map_err(|e| {
-                format!(
-                    "While unifying outputs of node {} {} {}",
-                    node.id, node.name, e
-                )
-            })?;
+        for (ix, fact) in inferred.1.iter().enumerate() {
+            let mut unified = self.next_edges[node.id]
+                .iter()
+                .map(|&e| &self.edges[e])
+                .filter(|e| ix == e.from.as_ref().map(|o| o.slot).unwrap_or(0))
+                .try_fold(fact.clone(), |fact, edge| fact.unify(&edge.fact))
+                .map_err(|e| format!(" Refining output {}/{}: {:?}", node.id, ix, e))?;
             unified.reduce();
 
-            if unified != self.edges[j].fact {
-                debug!(
-                    " Refined {} output {}/{} to {:?}",
-                    node.name, node.id, i, unified
-                );
-                changed_edges.push(j);
-                self.edges[j].fact = unified;
+            for edge in &self.next_edges[node.id] {
+                let edge = &mut self.edges[*edge];
+                if edge.from.as_ref().map(|o| o.slot).unwrap_or(0) != ix {
+                    continue;
+                }
+                if edge.fact != unified {
+                    edge.fact = unified.clone();
+                    debug!(" Refined {} output #{} to {:?}", node.name, ix, unified);
+                    changed_edges.push(edge.id);
+                }
             }
         }
-
         Ok(changed_edges)
     }
 }

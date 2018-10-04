@@ -57,11 +57,17 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 pub struct RawModel {
     nodes: Vec<Node>,
     nodes_by_name: HashMap<String, usize>,
+    input_nodes: Option<Vec<usize>>,
+    output_nodes: Option<Vec<usize>>,
 }
 
 impl RawModel {
     pub fn new(mut nodes: Vec<Node>, nodes_by_name: HashMap<String, usize>) -> RawModel {
-        let outlets: HashSet<OutletId> = nodes.iter().filter(|n| n.op_name != "Sink").map(|n| OutletId::new(n.id, 0)).collect();
+        let outlets: HashSet<OutletId> = nodes
+            .iter()
+            .filter(|n| n.op_name != "Sink")
+            .map(|n| OutletId::new(n.id, 0))
+            .collect();
         let used: HashSet<OutletId> = nodes
             .iter()
             .flat_map(|n| n.inputs.iter().cloned())
@@ -79,6 +85,8 @@ impl RawModel {
         RawModel {
             nodes,
             nodes_by_name,
+            input_nodes: None,
+            output_nodes: None,
         }
     }
 
@@ -98,20 +106,51 @@ impl RawModel {
         &*self.nodes
     }
 
-    pub fn guess_inputs(&self) -> Vec<&Node> {
-        self.nodes
-            .iter()
-            .filter(|n| n.op_name == "Source")
-            .collect()
+    pub fn set_inputs(
+        &mut self,
+        inputs: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TfdResult<()> {
+        let ids: Vec<usize> = inputs
+            .into_iter()
+            .map(|s| self.node_by_name(s.as_ref()).map(|n| n.id))
+            .collect::<TfdResult<_>>()?;
+        self.input_nodes = Some(ids);
+        Ok(())
     }
 
-    pub fn guess_outputs(&self) -> Vec<&Node> {
-        self.nodes
-            .iter()
-            .filter(|n| n.op_name == "Sink")
-            .flat_map(|n|
+    pub fn set_outputs(
+        &mut self,
+        outputs: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TfdResult<()> {
+        let ids: Vec<usize> = outputs
+            .into_iter()
+            .map(|s| self.node_by_name(s.as_ref()).map(|n| n.id))
+            .collect::<TfdResult<_>>()?;
+        self.output_nodes = Some(ids);
+        Ok(())
+    }
+
+    pub fn inputs(&self) -> TfdResult<Vec<&Node>> {
+        if let Some(i) = self.input_nodes.as_ref() {
+            Ok(i.iter().map(|n| &self.nodes[*n]).collect())
+        } else {
+            Ok(self
+                .nodes
+                .iter()
+                .filter(|n| n.op.name() == "Source")
+                .collect())
+        }
+    }
+
+    pub fn outputs(&self) -> TfdResult<Vec<&Node>> {
+        if let Some(i) = self.output_nodes.as_ref() {
+            Ok(i.iter().map(|n| &self.nodes[*n]).collect())
+        } else {
+            Ok(self.nodes.iter().filter(|n| n.op.name() == "Sink")
+               .flat_map(|n|
                       n.inputs.iter().map(|i| &self.nodes[i.node]))
-            .collect()
+               .collect())
+        }
     }
 }
 
@@ -119,8 +158,13 @@ impl RawModel {
 pub struct Model(pub Arc<RawModel>);
 
 impl Model {
-    pub fn analyser(&self, output: &str) -> TfdResult<::analyser::Analyser> {
-        ::analyser::Analyser::new(&self, output)
+    pub fn analyser(&self) -> TfdResult<::analyser::Analyser> {
+        let output = self
+            .outputs()?
+            .get(0)
+            .map(|n| &n.name)
+            .ok_or("Model without output")?;
+        ::analyser::Analyser::new(&self, &*output)
     }
 }
 

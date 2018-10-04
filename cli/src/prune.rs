@@ -8,7 +8,7 @@ pub fn handle(params: Parameters) -> CliResult<()> {
 
     info!("Starting the analysis.");
 
-    let mut analyser = model.analyser(&params.output_node)?;
+    let mut analyser = model.analyser()?;
 
     info!(
         "Starting size of the graph: approx. {:?} bytes for {:?} nodes.",

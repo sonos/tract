@@ -25,12 +25,12 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Atan", |_| Ok(Box::new(tfdops::math::Atan::default())));
 
     reg.insert("Exp", |_| Ok(Box::new(tfdops::math::Exp::default())));
-    reg.insert("Ln", |_| Ok(Box::new(tfdops::math::Ln::default())));
+    reg.insert("Log", |_| Ok(Box::new(tfdops::math::Ln::default())));
     reg.insert("Sqrt", |_| Ok(Box::new(tfdops::math::Sqrt::default())));
     reg.insert("Rsqrt", |_| Ok(Box::new(tfdops::math::Rsqrt::default())));
 
     reg.insert("Neg", |_| Ok(Box::new(tfdops::math::Neg::default())));
-    reg.insert("Recip", |_| Ok(Box::new(tfdops::math::Recip::default())));
+    reg.insert("Reciprocal", |_| Ok(Box::new(tfdops::math::Recip::default())));
 
     reg.insert("Pow", |_| Ok(Box::new(tfdops::math::Pow::default())));
 

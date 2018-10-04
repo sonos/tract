@@ -8,7 +8,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Or", |_| Ok(Box::new(tfdops::logic::Or::default())));
     reg.insert("Xor", |_| Ok(Box::new(tfdops::logic::Xor::default())));
 
-    reg.insert("Equals", |_| Ok(Box::new(tfdops::logic::Equals::default())));
+    reg.insert("Equal", |_| Ok(Box::new(tfdops::logic::Equals::default())));
     reg.insert("Greater", |_| Ok(Box::new(tfdops::logic::Greater::default())));
-    reg.insert("Lesser", |_| Ok(Box::new(tfdops::logic::Lesser::default())));
+    reg.insert("Less", |_| Ok(Box::new(tfdops::logic::Lesser::default())));
 }

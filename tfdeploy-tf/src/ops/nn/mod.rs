@@ -30,6 +30,9 @@ impl Softmax {
 }
 
 impl Op for Softmax {
+    fn name(&self) -> &str {
+        "Softmax"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let m_input = args_1!(inputs);

@@ -20,20 +20,17 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
         .with_datum_type(fixed_input.datum_type());
 
     // streaming model
-    let stream_model = model
-        .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], input)?
+    let stream_model = model.analyser()?
+        .with_input_hint(input)?
         .to_optimized_model()?;
 
     // batch model
-    let batch_model = model
-        .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], &regular_input_fact)?
+    let batch_model = model.analyser()?
+        .with_input_hint(&regular_input_fact)?
         .to_optimized_model()?;
 
-    let mut analyser = stream_model
-        .analyser(&params.output_node)?
-        .with_hint(&params.input_nodes[0], input)?;
+    let mut analyser = stream_model.analyser()?
+        .with_input_hint(input)?;
     analyser.analyse()?;
 
     let mut display_graph = ::display_graph::DisplayGraph::from_nodes(&stream_model.nodes())?
@@ -42,7 +39,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
 
     let eval_order = ::tfdeploy::model::eval_order_for_nodes(
         &stream_model.nodes(),
-        &[stream_model.node_by_name(&params.output_node)?.id],
+        &stream_model.outputs()?.iter().map(|n| n.id).collect::<Vec<_>>()
     )?;
 
     for mut dn in &mut display_graph.nodes {
@@ -50,7 +47,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
     }
 
     // plan and state for reference batch mode
-    let batch_plan = SimplePlan::new(&batch_model, &params.input_nodes, &[&params.output_node])?;
+    let batch_plan = SimplePlan::for_model(&batch_model)?;
     let mut batch_state = batch_plan.state()?;
     batch_state.set_input(0, fixed_input.clone())?;
 

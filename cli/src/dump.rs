@@ -4,7 +4,7 @@ use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
     let tfd = params.tfd_model;
-    let output_id = tfd.node_by_name(&params.output_node)?.id;
+    let output_id = tfd.outputs()?[0].id;
     let plan = ::tfdeploy::model::eval_order_for_nodes(&tfd.nodes(), &[output_id])?;
 
     let nodes: Vec<_> = plan.iter().map(|i| &tfd.nodes()[*i]).collect();

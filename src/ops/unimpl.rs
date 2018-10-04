@@ -5,6 +5,9 @@ use ops::prelude::*;
 pub struct UnimplementedOp(pub String, pub String);
 
 impl Op for UnimplementedOp {
+    fn name(&self) -> &str {
+        "Unimplemented"
+    }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Err(format!("unimplemented operation: {} {:?}", self.0, self.1))?
