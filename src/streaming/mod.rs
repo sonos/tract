@@ -2,10 +2,15 @@ use std::collections::VecDeque;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use super::*;
+use ops::prelude::*;
 use analyser::prelude::*;
 use model::*;
-use ops::{StepValue, Stream, StreamInfo, Value};
+
+pub mod types;
+
+pub mod prelude {
+   pub use streaming::types::OpBuffer;
+}
 
 #[derive(Clone, Debug)]
 pub struct RawStreamingPlan {
@@ -158,8 +163,8 @@ impl Deref for StreamingPlan {
 pub struct StreamingModelState {
     plan: StreamingPlan,
     inlets_offset: Vec<TVec<u64>>,
-    buffers: Vec<Box<ops::OpBuffer>>,
-    queue: VecDeque<(InletId, ops::Value)>,
+    buffers: Vec<Box<OpBuffer>>,
+    queue: VecDeque<(InletId, Value)>,
     outputs: Vec<TVec<Tensor>>,
 }
 
@@ -190,8 +195,8 @@ impl StreamingModelState {
         mut node_step: W,
     ) -> TfdResult<Vec<TVec<Tensor>>>
     where
-        W: FnMut(&Node, TVec<StepValue>, &mut Box<ops::OpBuffer>)
-            -> TfdResult<Option<TVec<ops::Value>>>,
+        W: FnMut(&Node, TVec<StepValue>, &mut Box<OpBuffer>)
+            -> TfdResult<Option<TVec<Value>>>,
     {
         let (input_outlet, _input_stream_info) = self.plan.input_nodes[input_id];
         self.enqueue(input_chunk.into(), input_outlet);
@@ -258,7 +263,7 @@ impl StreamingModelState {
         }
 
         let mut outputs = vec![];
-        std::mem::swap(&mut outputs, &mut self.outputs);
+        ::std::mem::swap(&mut outputs, &mut self.outputs);
         Ok(outputs)
     }
 

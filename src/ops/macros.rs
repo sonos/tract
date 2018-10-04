@@ -31,7 +31,7 @@ macro_rules! element_map {
             fn step(
                 &self,
                 mut inputs: $crate::TVec<$crate::ops::StepValue>,
-                _buffer: &mut Box<$crate::ops::OpBuffer>,
+                _buffer: &mut Box<$crate::streaming::types::OpBuffer>,
             ) -> $crate::TfdResult<Option<$crate::TVec<$crate::ops::Value>>> {
                 let a = args_1!(inputs);
                 match a.into_value() {
@@ -105,7 +105,7 @@ macro_rules! element_bin {
             }
 
             /// Returns a new streaming buffer for the operation.
-            fn new_buffer(&self) -> Box<$crate::ops::OpBuffer> {
+            fn new_buffer(&self) -> Box<$crate::streaming::types::OpBuffer> {
                 Box::new($crate::ops::QueuesBuffer::new(2))
             }
 
@@ -113,7 +113,7 @@ macro_rules! element_bin {
             fn step(
                 &self,
                 inputs: TVec<$crate::ops::StepValue>,
-                buffer: &mut Box<$crate::ops::OpBuffer>,
+                buffer: &mut Box<$crate::streaming::types::OpBuffer>,
             ) -> $crate::TfdResult<Option<TVec<$crate::ops::Value>>> {
                 let buffer = buffer.downcast_mut::<$crate::ops::QueuesBuffer>()
                     .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;

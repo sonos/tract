@@ -526,3 +526,31 @@ mod tests {
         let _dims: MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_i32).unwrap();
     }
 }
+
+pub fn arr4<A, V, U, T>(xs: &[V]) -> ::ndarray::Array4<A>
+where
+    V: ::ndarray::FixedInitializer<Elem = U> + Clone,
+    U: ::ndarray::FixedInitializer<Elem = T> + Clone,
+    T: ::ndarray::FixedInitializer<Elem = A> + Clone,
+    A: Clone,
+{
+    use ndarray::*;
+    let mut xs = xs.to_vec();
+    let dim = Ix4(xs.len(), V::len(), U::len(), T::len());
+    let ptr = xs.as_mut_ptr();
+    let len = xs.len();
+    let cap = xs.capacity();
+    let expand_len = len * V::len() * U::len() * T::len();
+    ::std::mem::forget(xs);
+    unsafe {
+        let v = if ::std::mem::size_of::<A>() == 0 {
+            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_len)
+        } else if V::len() == 0 || U::len() == 0 || T::len() == 0 {
+            Vec::new()
+        } else {
+            let expand_cap = cap * V::len() * U::len() * T::len();
+            Vec::from_raw_parts(ptr as *mut A, expand_len, expand_cap)
+        };
+        ArrayBase::from_shape_vec_unchecked(dim, v)
+    }
+}

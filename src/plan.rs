@@ -1,10 +1,8 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use model::{eval_order_for_nodes, Model, Node, TVec};
-use ops::Value;
-use tensor::Tensor;
-use TfdResult;
+use model::{eval_order_for_nodes, Model, Node};
+use ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct RawSimplePlan {

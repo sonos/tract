@@ -5,10 +5,7 @@ use TfdResult;
 
 use num::Zero;
 
-use dim::TDim;
-use ops::StreamInfo;
-use DatumType;
-use Tensor;
+use ops::prelude::*;
 
 /// Partial information about any value.
 pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
