@@ -93,10 +93,7 @@ impl Patch {
         &'p self,
         input: &'i ArrayViewD<'i, T>,
     ) -> PatchVisitor<'i, 'p, T> {
-        let valid = input.is_standard_layout() && !self.padded;
-        if !valid {
-            warn!("Using checked local packing.");
-        }
+        let valid = !self.padded; //input.is_standard_layout() && !self.padded;
         let mut fast_strides = input.strides().to_vec();
         fast_strides[self.input_shape.hw_axes()]
             .iter_mut()
@@ -133,6 +130,7 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
                 .sum();
             PatchIterator::Fast(FastPatchIterator {
                 visitor: &self,
+                ptr: self.input.as_ptr(),
                 center,
                 item: 0,
             })
@@ -170,6 +168,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for PatchIterator<'p, 'i
 
 pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
     visitor: &'v PatchVisitor<'i, 'p, T>,
+    ptr: *const T,
     center: isize,
     item: usize,
 }
@@ -187,14 +186,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for FastPatchIterator<'i
                 .standard_layout_data_field
                 .get_unchecked(self.item);
             self.item += 1;
-            Some(Some(
-                *self
-                    .visitor
-                    .input
-                    .as_slice()
-                    .unwrap()
-                    .get_unchecked(position as usize),
-            ))
+            Some(Some(*(self.ptr.offset(position))))
         }
     }
 }

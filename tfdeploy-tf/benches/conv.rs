@@ -22,17 +22,23 @@ fn mk(sizes: &[usize]) -> Value {
     Value::from(Tensor::F32(data)).into_shared()
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 enum Algo {
     Conv2d,
     Gen,
     Fixed,
 }
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum Padding {
+    Same,
+    Valid,
+}
+
 impl Algo {
-    fn build(&self, valid: bool) -> Box<Op> {
+    fn build(&self, padding:Padding) -> Box<Op> {
         match self {
-            &Algo::Conv2d => Box::new(Conv2D::<f32>::new(if valid {
+            &Algo::Conv2d => Box::new(Conv2D::<f32>::new(if padding == Padding::Valid {
                 LocalPatch::valid(1, 1)
             } else {
                 LocalPatch::same(1, 1)
@@ -42,7 +48,7 @@ impl Algo {
                 true,
                 None,
                 None,
-                if valid {
+                if padding == Padding::Valid {
                     PaddingSpec::Valid
                 } else {
                     PaddingSpec::SameUpper
@@ -55,7 +61,7 @@ impl Algo {
                     true,
                     None,
                     None,
-                    if valid {
+                    if padding == Padding::Valid {
                         PaddingSpec::Valid
                     } else {
                         PaddingSpec::SameUpper
@@ -81,14 +87,14 @@ fn bench_conv(bencher: &mut Criterion) {
     let inputs = tvec![mk(&[1, 82, 1, 40]).into(), mk(&[41, 1, 40, 128]).into()];
     bencher.bench_function_over_inputs(
         "conv",
-        move |b, &(algo, valid)| {
-            let op = algo.build(*valid);
+        move |b, &(algo, pad)| {
+            let op = algo.build(*pad);
             b.iter(|| op.eval(inputs.clone()).unwrap())
         },
         &[
-        (Algo::Conv2d, false), (Algo::Conv2d, true),
-        (Algo::Gen, false), (Algo::Gen, true),
-        (Algo::Fixed, false), (Algo::Fixed, true),
+        (Algo::Conv2d, Padding::Same), (Algo::Conv2d, Padding::Valid),
+        (Algo::Gen, Padding::Same), (Algo::Gen, Padding::Valid),
+        (Algo::Fixed, Padding::Same), (Algo::Fixed, Padding::Valid),
         ],
     );
 }
