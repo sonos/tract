@@ -15,6 +15,7 @@ pub trait DimLike:
     Copy
     + Clone
     + Default
+    + PartialEq
     + From<usize>
     + ::num::One
     + ::num::Zero
