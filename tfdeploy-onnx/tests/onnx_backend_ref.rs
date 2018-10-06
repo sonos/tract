@@ -1,34 +1,21 @@
-extern crate colored;
-#[macro_use]
-extern crate error_chain;
+#![allow(non_snake_case)]
 extern crate flate2;
 extern crate fs2;
-extern crate git2;
 extern crate mio_httpc;
 extern crate protobuf;
-extern crate rayon;
 extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 extern crate tar;
-extern crate tempdir;
 extern crate tfdeploy;
 extern crate tfdeploy_onnx;
 
 mod onnx;
 
-#[test]
-fn node() {
-    onnx::run_all("node")
-}
+include!(concat!(env!("OUT_DIR"), "/tests/node.rs"));
+include!(concat!(env!("OUT_DIR"), "/tests/real.rs"));
+include!(concat!(env!("OUT_DIR"), "/tests/simple.rs"));
+include!(concat!(env!("OUT_DIR"), "/tests/pytorch-operator.rs"));
+include!(concat!(env!("OUT_DIR"), "/tests/pytorch-converted.rs"));
 
-#[test]
-fn real() {
-    onnx::run_all("real")
-}
-
-#[test]
-fn simple() {
-    onnx::run_all("simple")
-}
