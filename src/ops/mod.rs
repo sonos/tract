@@ -28,7 +28,7 @@ pub mod prelude {
     pub use ops::types::Value;
     pub use streaming::types::{OpBuffer, QueuesBuffer};
     pub use streaming::values::{StepValue, Stream, StreamInfo};
-    pub use dim::TDim;
+    pub use dim::{TDim, DimLike};
     pub use model::TVec;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
