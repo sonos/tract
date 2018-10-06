@@ -68,10 +68,9 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
     } else {
         test_path
     };
-    let path = path.join("model.onnx");
-    let model = for_path(&path).unwrap();
+    let model = for_path(&path.join("model.onnx")).unwrap();
     let plan = SimplePlan::for_model(&model).unwrap();
-    for d in fs::read_dir(root).unwrap() {
+    for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
         if d.metadata().unwrap().is_dir() && d
             .file_name()

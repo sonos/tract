@@ -290,8 +290,8 @@ impl Tensor {
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
         let ma = self.approx();
         let mb = other.approx();
-        let avg = ma.iter().map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
-        let dev = (ma.iter().map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
+        let avg = ma.iter().filter(|a| a.is_finite()).map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
+        let dev = (ma.iter().filter(|a| a.is_finite()).map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
         let margin = if approx {
             (dev / 10.0).max(avg.abs() / 10_000.0)
         } else {
@@ -301,7 +301,7 @@ impl Tensor {
             && mb
                 .iter()
                 .zip(ma.iter())
-                .all(|(&a, &b)| (b - a).abs() <= margin)
+                .all(|(&a, &b)| (a.is_nan() && b.is_nan()) || (b - a).abs() <= margin)
     }
 
     pub fn into_array<D: Datum>(self) -> TfdResult<ArrayD<D>> {
