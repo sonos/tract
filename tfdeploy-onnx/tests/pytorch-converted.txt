@@ -1,3 +1,5 @@
+test_AvgPool1d
+test_AvgPool1d_stride
 test_AvgPool2d
 test_AvgPool2d_stride
 test_AvgPool3d
@@ -21,6 +23,7 @@ test_Conv3d_dilated_strided
 test_Conv3d_no_bias
 test_Conv3d_stride
 test_Conv3d_stride_padding
+test_Linear
 test_LogSoftmax
 test_MaxPool1d
 test_MaxPool1d_stride

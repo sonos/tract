@@ -23,14 +23,21 @@ impl Gemm {
         let at = if self.trans_a { a.t() } else { a };
         let b = b.to_array_view::<T>()?.into_dimensionality()?;
         let bt = if self.trans_b { b.t() } else { b };
-        let mut c = if c.shape() == &[a.rows(), b.cols()] {
+        let c_shape = (at.rows(), bt.cols());
+        let mut c = if c.shape() == &[c_shape.0, c_shape.1] {
             c.into_array::<T>()?
-            .into_dimensionality::<Ix2>()?
-            .to_owned()
+                .into_dimensionality::<Ix2>()?
+                .to_owned()
         } else {
-            c.to_array_view::<T>()?.broadcast((a.cols(), b.rows()))
-            .ok_or("Incompatible shape")?
-            .to_owned()
+            c.to_array_view::<T>()?
+                .broadcast(c_shape)
+                .ok_or_else(|| {
+                    format!(
+                        "Incompatible broadcast: {:?} to {:?}",
+                        c.shape(),
+                        c_shape
+                    )
+                })?.to_owned()
         };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
         Ok(tvec!(c.into()))
@@ -54,12 +61,17 @@ impl InferenceRulesOp for Gemm {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
+        s.equals(&inputs[0].rank, 2)?;
+        s.equals(&inputs[1].rank, 2)?;
+        s.equals(&outputs[0].rank, 2)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
-        s.equals(&inputs[0].shape[1], &inputs[1].shape[0])?;
-        s.equals(&inputs[1].shape[1], &outputs[0].shape[1])?;
+        let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
+        let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
+        s.equals(&inputs[0].shape[ra], &outputs[0].shape[0])?;
+        s.equals(&inputs[0].shape[ca], &inputs[1].shape[rb])?;
+        s.equals(&inputs[1].shape[cb], &outputs[0].shape[1])?;
         Ok(())
     }
 }

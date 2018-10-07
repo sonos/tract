@@ -30,10 +30,18 @@ pub trait DimLike:
     fn div_ceil(&self, other: usize) -> Self {
         (*self + other - 1) / other
     }
+
+    fn to_integer(&self) -> TfdResult<i64>;
 }
 impl DimLike for TDim {
+    fn to_integer(&self) -> TfdResult<i64> {
+        TDim::to_integer(self)
+    }
 }
 impl DimLike for usize {
+    fn to_integer(&self) -> TfdResult<i64> {
+        Ok(*self as i64)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]

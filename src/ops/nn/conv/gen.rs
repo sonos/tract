@@ -33,7 +33,7 @@ impl Conv {
         let spatial_rank = ishape.hw_rank();
         let ones = vec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
-        let (output_shape, _pad_before, _pas_after) = self.padding.compute(
+        let computed = self.padding.compute(
             ishape.hw_dims(),
             kernel_spatial_shape,
             self.dilations.as_ref().unwrap_or(&ones),
@@ -41,7 +41,7 @@ impl Conv {
         );
         let channels_out = kshape[(self.kernel_is_hwio as usize)*(kshape.len() - 1)];
         result[ishape.c_axis()] = channels_out;
-        result[ishape.hw_axes()].copy_from_slice(&output_shape);
+        result[ishape.hw_axes()].copy_from_slice(&computed.output);
         result
     }
 }

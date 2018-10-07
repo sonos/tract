@@ -26,8 +26,9 @@ impl Patch {
         kernel_strides: Vec<usize>,
         input_full_shape: Vec<usize>,
     ) -> Patch {
+        use ops::nn::padding::ComputedPaddedDim;
         let input_shape = data_fmt.shape(input_full_shape);
-        let (output_spatial_shape, pad_before, pad_after) = padding.compute(
+        let ComputedPaddedDim {pad_after, pad_before, output} = padding.compute(
             input_shape.hw_dims(),
             &kernel_spatial_shape,
             &*dilations,
@@ -76,7 +77,7 @@ impl Patch {
             pad_after,
             kernel_strides,
             input_shape,
-            output_spatial_shape,
+            output_spatial_shape: output,
             data_field,
             standard_layout_data_field,
         }

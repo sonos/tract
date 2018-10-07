@@ -65,8 +65,8 @@ impl InferenceRulesOp for AvgPool {
         s.given(&inputs[0].shape, move |s, ishape| {
             let ishape = self.data_fmt.shape(ishape);
             let ones = vec!(1; ishape.hw_rank());
-            let (_, _, out_geo_shape) = self.padding.compute(ishape.hw_dims(), &*self.kernel_shape, &ones, self.strides.as_ref().unwrap_or(&ones));
-            for (ix, &d) in out_geo_shape.iter().enumerate() {
+            let computed = self.padding.compute(ishape.hw_dims(), &*self.kernel_shape, &ones, self.strides.as_ref().unwrap_or(&ones));
+            for (ix, &d) in computed.output.iter().enumerate() {
                 s.equals(&outputs[0].shape[ix+ishape.h_axis()], d)?;
             }
             s.equals(&outputs[0].shape[ishape.n_axis()], ishape.n_dim())?;

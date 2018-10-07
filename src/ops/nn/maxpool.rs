@@ -57,16 +57,17 @@ impl InferenceRulesOp for MaxPool {
     ) -> InferenceResult {
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[0].shape, move |s, ishape| {
             let ishape = self.data_fmt.shape(ishape);
             let ones = vec![1; ishape.hw_rank()];
-            let (_, _, out_geo_shape) = self.padding.compute(
+            let computed = self.padding.compute(
                 ishape.hw_dims(),
                 &*self.kernel_shape,
                 &ones,
                 self.strides.as_ref().unwrap_or(&ones),
             );
-            for (ix, &d) in out_geo_shape.iter().enumerate() {
+            for (ix, &d) in computed.output.iter().enumerate() {
                 s.equals(&outputs[0].shape[ix + ishape.h_axis()], d)?;
             }
             s.equals(&outputs[0].shape[ishape.n_axis()], ishape.n_dim())?;

@@ -9,6 +9,8 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Expand", |_| {
         Ok(Box::new(tfdops::array::MultiBroadcastTo::default()))
     });
+    reg.insert("Reshape", |_|
+        Ok(Box::new(tfdops::array::Reshape::default())));
     reg.insert("Squeeze", squeeze);
     reg.insert("Unsqueeze", unsqueeze);
 }

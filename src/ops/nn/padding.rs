@@ -14,6 +14,13 @@ impl Default for PaddingSpec {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ComputedPaddedDim<D:DimLike> {
+    pub pad_before: Vec<D>,
+    pub pad_after: Vec<D>,
+    pub output: Vec<D>,
+}
+
 impl PaddingSpec {
     pub fn compute<D: DimLike, KD: Into<D> + Copy>(
         &self,
@@ -21,7 +28,7 @@ impl PaddingSpec {
         kernel_spatial_shape: &[KD],
         dilations: &[usize],
         strides: &[usize],
-    ) -> (Vec<D>, Vec<D>, Vec<D>) {
+    ) -> ComputedPaddedDim<D> {
         assert_eq!(dilations.len(), strides.len());
         assert_eq!(dilations.len(), input_spatial_shape.len());
         assert_eq!(dilations.len(), kernel_spatial_shape.len());
@@ -66,7 +73,7 @@ impl PaddingSpec {
         strides: &[usize],
         bef: &[usize],
         aft: &[usize],
-    ) -> (Vec<D>, Vec<D>, Vec<D>) {
+    ) -> ComputedPaddedDim<D> {
         let spatial_rank = data_spatial_shape.len();
         assert_eq!(spatial_rank, kernel_spatial_shape.len());
         assert_eq!(spatial_rank, dilations.len());
@@ -80,11 +87,11 @@ impl PaddingSpec {
                     .div_ceil(strides[ax]);
                 dim
             }).collect();
-        (
-            output_spatial_shape,
-            bef.iter().map(|&x| D::from(x)).collect(),
-            aft.iter().map(|&x| D::from(x)).collect(),
-        )
+        ComputedPaddedDim {
+            output: output_spatial_shape,
+            pad_before: bef.iter().map(|&x| D::from(x)).collect(),
+            pad_after: aft.iter().map(|&x| D::from(x)).collect(),
+        }
     }
 
     fn same<D: DimLike, KD: Into<D> + Copy>(
@@ -94,7 +101,7 @@ impl PaddingSpec {
         dilations: &[usize],
         strides: &[usize],
         upper: bool,
-    ) -> (Vec<D>, Vec<D>, Vec<D>) {
+    ) -> ComputedPaddedDim<D> {
         let spatial_rank = data_spatial_shape.len();
         let mut dims = vec![];
         let mut pad_before = vec![];
@@ -114,6 +121,8 @@ impl PaddingSpec {
                 pad_before.push(higher_pad);
             }
         }
-        (dims, pad_before, pad_after)
+        ComputedPaddedDim {
+        pad_before, pad_after, output: dims
+        }
     }
 }
