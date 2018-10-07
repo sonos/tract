@@ -79,6 +79,8 @@ test_logsoftmax_axis_1
 test_logsoftmax_axis_2
 test_logsoftmax_default_axis
 test_logsoftmax_example_1
+test_lrn
+test_lrn_default
 test_max_example
 test_max_one_input
 test_max_two_inputs

@@ -14,6 +14,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("GlobalMaxPool", |_| Ok(Box::new(tfdops::nn::GlobalMaxPool::default())));
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("LogSoftmax", layer_log_soft_max);
+    reg.insert("LRN", lrn);
     reg.insert("Softmax", layer_soft_max);
     reg.insert("MaxPool", max_pool);
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
@@ -111,6 +112,14 @@ pub fn layer_soft_max(node: &NodeProto) -> TfdResult<Box<Op>> {
         .map(|i| i as usize)
         .unwrap_or(1);
     Ok(Box::new(tfdops::nn::LayerSoftmax::new(axis)))
+}
+
+pub fn lrn(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(0.0001);
+    let beta = node.get_attr_opt_float("beta")?.unwrap_or(0.75);
+    let bias = node.get_attr_opt_float("bias")?.unwrap_or(1.0);
+    let size: usize = node.get_attr_int("size")? as usize;
+    Ok(Box::new(tfdops::nn::Lrn::new(alpha, beta, bias, size)))
 }
 
 pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
