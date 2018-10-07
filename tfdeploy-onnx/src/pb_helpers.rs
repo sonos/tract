@@ -18,10 +18,11 @@ impl NodeProto {
         };
         if attr.get_field_type() != ty {
             bail!(
-                "Node {} ({}) expected attribute to be {}",
+                "Node {} ({}) expected attribute {} to be {:?}",
                 self.get_name(),
                 self.get_op_type(),
-                name
+                name,
+                ty
             )
         }
         Ok(Some(attr))
@@ -74,6 +75,24 @@ impl NodeProto {
         Ok(self.get_attr_opt_int(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected int attribute '{}'",
+                self.get_name(),
+                self.get_op_type(),
+                name
+            )
+        })?)
+    }
+
+    pub fn get_attr_opt_float(&self, name: &str) -> TfdResult<Option<f32>> {
+        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOAT)? {
+            Some(attr) => Ok(Some(attr.get_f())),
+            None => Ok(None)
+        }
+    }
+
+    pub fn get_attr_float(&self, name: &str) -> TfdResult<f32> {
+        Ok(self.get_attr_opt_float(name)?.ok_or_else(|| {
+            format!(
+                "Node {} ({}) expected float attribute '{}'",
                 self.get_name(),
                 self.get_op_type(),
                 name

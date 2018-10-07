@@ -1,4 +1,7 @@
+mod gemm;
+
 use ops::prelude::*;
+pub use self::gemm::Gemm;
 
 element_map!(Abs, [f32, i32], |x| x.abs());
 

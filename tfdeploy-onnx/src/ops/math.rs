@@ -1,5 +1,7 @@
 use tfdeploy::ops as tfdops;
 
+use tfdeploy::ops::prelude::*;
+use pb::NodeProto;
 use ops::OpRegister;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -35,5 +37,14 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Pow", |_| Ok(Box::new(tfdops::math::Pow::default())));
 
     reg.insert("Tanh", |_| Ok(Box::new(tfdops::math::Tanh::default())));
+
+    reg.insert("Gemm", gemm);
 }
 
+pub fn gemm(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
+    let beta = node.get_attr_opt_float("beta")?.unwrap_or(1.0);
+    let trans_a = node.get_attr_opt_int("transA")?.map(|a| a != 0).unwrap_or(false);
+    let trans_b = node.get_attr_opt_int("transB")?.map(|a| a != 0).unwrap_or(false);
+    Ok(Box::new(tfdops::math::Gemm::new(alpha, beta, trans_a, trans_b)))
+}
