@@ -181,6 +181,15 @@ impl Model {
         Ok(&self.inputs)
     }
 
+    pub fn outputs_fact(&self, ix:usize) -> TfdResult<&TensorFact> {
+        let output = self.outputs()?[ix];
+        self.fact(output)
+    }
+
+    pub fn output_fact(&self) -> TfdResult<&TensorFact> {
+        self.outputs_fact(0)
+    }
+
     pub fn outputs(&self) -> TfdResult<&[OutletId]> {
         Ok(&self.outputs)
     }

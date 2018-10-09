@@ -93,7 +93,7 @@ fn main() {
         (@arg output_node: --("output-node") +takes_value
             "Override output nodes name (auto-detects otherwise).")
 
-        (@arg skip_analyse: --("skip-analyse") ... "Skip analyse after model build")
+        (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
     );
@@ -103,7 +103,13 @@ fn main() {
     app = app.subcommand(output_options(compare));
 
     let dump = clap::SubCommand::with_name("dump")
-        .help("Dumps the Tensorflow graph in human readable form.");
+        .help("Dumps the Tensorflow graph in human readable form.")
+        .arg(
+            Arg::with_name("assert-output")
+                .takes_value(true)
+                .long("assert-output")
+                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+        );
     app = app.subcommand(output_options(dump));
 
     let profile = clap::SubCommand::with_name("profile")
@@ -301,8 +307,10 @@ impl Parameters {
         };
 
         if !matches.is_present("skip_analyse") {
-            info!("Skipping analyse");
+            info!("Running analyse");
             tfd_model.analyse()?;
+        } else {
+            info!("Skipping analyse");
         }
 
         Ok(Parameters {
@@ -432,7 +440,12 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, OutputParameters::from_clap(m)?),
 
-        ("dump", Some(m)) => dump::handle(params, OutputParameters::from_clap(m)?),
+        ("dump", Some(m)) => {
+            let assert_outputs: Option<Vec<TensorFact>> = m
+                .values_of("assert-output")
+                .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
+            dump::handle(params, assert_outputs, OutputParameters::from_clap(m)?)
+        }
 
         ("profile", Some(m)) => profile::handle(
             params,
