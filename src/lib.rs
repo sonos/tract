@@ -4,32 +4,46 @@
 //!
 //! ## Example
 //!
-//! ```text
-//! FIXME
+//! ```
 //! # extern crate tfdeploy;
 //! # extern crate ndarray;
 //! # fn main() {
 //! use tfdeploy::*;
+//! use tfdeploy::model::*;
 //!
 //! // build a simple model that just add 3 to each input component
-//! let model = tfdeploy::tf::for_path("tests/models/plus3.pb").unwrap();
+//! let mut model = Model::default();
 //!
-//! // "input" and "output" are tensorflow graph node names.
-//! // we build an execution plan for computing output from input
-//! let plan = SimplePlan::new(&model, &["input"], &["output"]).unwrap();
+//! let input = model.add_node("input".to_string(),
+//!     Box::new(tfdeploy::ops::source::Source::default())).unwrap();
+//! let three = model.add_node("three".to_string(),
+//!     Box::new(tfdeploy::ops::konst::Const::new(3f32.into()))).unwrap();
+//! let add = model.add_node("add".to_string(),
+//!     Box::new(tfdeploy::ops::math::Add::default())).unwrap();
+//!
+//! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
+//! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();
+//!
+//! // we build an execution plan. default input and output are inferred from 
+//! // the model graph
+//! let plan = SimplePlan::new(&model).unwrap();
 //!
 //! // run the computation.
 //! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
 //! let mut outputs = plan.run(tvec![input.into()]).unwrap();
 //!
-//! // take the tensors coming out of the only output node
-//! let mut tensors = outputs.pop().unwrap();
+//! // take the first and only output tensor
+//! let mut tensor = outputs.pop().unwrap();
 //!
-//! // grab the first (and only) tensor of this output, and unwrap it as array of f32
-//! let tensor = tensors.pop().unwrap().take_f32s().unwrap();
+//! // unwrap it as array of f32
+//! let tensor = tensor.take_f32s().unwrap();
 //! assert_eq!(tensor, ndarray::arr1(&[4.0, 5.5, 8.0]).into_dyn());
 //! # }
 //! ```
+//!
+//! While creating a model from Rust code is usefull for testing the library,
+//! real-life use-cases will usually load a Tensorflow or ONNX model using
+//! tfdeploy-tf or tfdeploy-onnx crates.
 //!
 //! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 
@@ -94,7 +108,6 @@ pub use model::{Model, Node, TVec};
 pub use plan::SimplePlan;
 pub use tensor::{DatumType, Tensor};
 
-
 #[cfg(test)]
 #[allow(dead_code)]
 fn setup_test_logger() {
@@ -103,7 +116,7 @@ fn setup_test_logger() {
 }
 
 pub trait TfdFrom<Tf>: Sized {
-    fn tfd_from(t:&Tf) -> TfdResult<Self>;
+    fn tfd_from(t: &Tf) -> TfdResult<Self>;
 }
 
 pub trait ToTfd<Tfd>: Sized {

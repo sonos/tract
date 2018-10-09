@@ -84,15 +84,13 @@ pub fn compare<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let model = tfdeploy_tf::for_reader(&*graph)?;
-    let plan = tfdeploy::SimplePlan::new(
-        &model,
-        &inputs
+    let mut model = tfdeploy_tf::for_reader(&*graph)?;
+    model.set_inputs(&inputs
             .iter()
             .map(|pair| pair.0.as_ref())
-            .collect::<Vec<&str>>(),
-        &vec![output],
-    )?;
+            .collect::<Vec<&str>>())?;
+    model.set_outputs(&[output])?;
+    let plan = tfdeploy::SimplePlan::new(&model)?;
     let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
@@ -124,15 +122,13 @@ pub fn infer<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let model = tfdeploy_tf::for_reader(&*graph)?;
-    let plan = tfdeploy::SimplePlan::new(
-        &model,
-        &inputs
+    let mut model = tfdeploy_tf::for_reader(&*graph)?;
+    model.set_inputs(&inputs
             .iter()
             .map(|pair| pair.0.as_ref())
-            .collect::<Vec<&str>>(),
-        &vec![output],
-    )?;
+            .collect::<Vec<&str>>())?;
+    model.set_outputs(&[output])?;
+    let plan = tfdeploy::SimplePlan::new(&model)?;
     let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();

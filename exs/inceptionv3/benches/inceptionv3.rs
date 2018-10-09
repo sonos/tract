@@ -40,7 +40,7 @@ fn tf(bencher: &mut Criterion) {
 fn tfd(bencher: &mut Criterion) {
     let tfd = ::tfdeploy_tf::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(hopper());
-    let plan = ::tfdeploy::SimplePlan::new(&tfd, &vec!("input"), &vec!("InceptionV3/Predictions/Reshape_1")).unwrap();
+    let plan = ::tfdeploy::SimplePlan::new(tfd).unwrap();
     bencher.bench_function("TFD", move |b| {
         b.iter(|| plan.run(tvec![input.clone()]).unwrap())
     });

@@ -38,7 +38,7 @@ impl ProfileData {
         let sum = self.summed();
         let nodes: Vec<&Node> = model.nodes().iter().map(|a| &*a).collect();
         let mut display_graph =
-            ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&graph)?;
+            ::display_graph::DisplayGraph::from_model(model)?.with_graph_def(&graph)?;
         for (ix, measure) in self.nodes.iter() {
             display_graph.nodes[*ix].label = Some(dur_avg_oneline_ratio(*measure, sum));
         }
@@ -71,7 +71,7 @@ impl ProfileData {
         for (node, dur) in &self.nodes {
             let node = &model.nodes()[*node];
             let mut cell = operations
-                .entry(node.op_name.to_string())
+                .entry(node.op.name().to_string())
                 .or_insert(Duration::default());
             // do not use duration addition here, as we are summing for real
             // instead of averaging
@@ -79,7 +79,7 @@ impl ProfileData {
             cell.total_sys += dur.avg_sys();
             cell.total_user += dur.avg_user();
             cell.counter = 1;
-            *counters.entry(node.op_name.to_string()).or_insert(0) += 1;
+            *counters.entry(node.op.name().to_string()).or_insert(0) += 1;
         }
         let mut operations: Vec<(&str, Duration)> =
             operations.iter().map(|(s, d)| (&**s, *d)).collect();

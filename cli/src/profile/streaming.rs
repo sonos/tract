@@ -1,5 +1,7 @@
 use simplelog::Level::Info;
 
+use std::borrow::Borrow;
+use std::sync::Arc;
 use std::thread;
 
 use errors::*;
@@ -9,28 +11,16 @@ use profile::ProfileData;
 use rusage::{Duration, Instant};
 use tfdeploy::analyser::Fact;
 use tfdeploy::streaming::*;
-use tfdeploy::Tensor;
+use tfdeploy::{Tensor, Model};
 use {OutputParameters, Parameters, ProfilingMode};
 
-fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan, Tensor)> {
+fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>, Tensor)> {
     let start = Instant::now();
-    info!("Building streaming plan.");
-    if params.inputs.len() != 1 {
-        bail!("Exactly one input tensor must be specified")
-    }
-    let input = &params.inputs[0];
+    let model = &params.tfd_model;
+    let input = model.inputs()?[0];
+    let input = model.fact(input)?;
 
-    let model = params
-        .tfd_model
-        .analyser()?
-        .with_input_hint(input)?
-        .to_optimized_model()?;
-
-    let plan = StreamingPlan::new(
-        &model,
-        vec![(&model.inputs()?[0].name, input.clone())],
-        Some(&model.outputs()?[0].name)
-    )?;
+    let plan = StreamingPlan::new(&params.tfd_model)?;
 
     let measure = Duration::since(&start, 1);
     info!(
@@ -50,12 +40,12 @@ fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan, Tensor
 }
 
 // feed the network until it outputs something
-fn bufferize(state: &mut StreamingModelState, chunk: &Tensor) -> CliResult<()> {
+fn bufferize<P:Borrow<StreamingPlan<M>>, M:Borrow<Model>>(state: &mut StreamingModelState<M, P>, chunk: &Tensor) -> CliResult<()> {
     let buffering = Instant::now();
     info!("Buffering...");
     let mut buffered = 0;
     loop {
-        let result = state.step(0, chunk.clone())?;
+        let result = state.step(chunk.clone())?;
         if result.len() != 0 {
             break;
         }
@@ -84,7 +74,7 @@ pub fn handle_bench(
         bail!("Expecting bench profile mode")
     };
     let (plan, chunk) = build_streaming_plan(&params)?;
-    let mut state = plan.state()?;
+    let mut state = StreamingModelState::new(plan)?;
     bufferize(&mut state, &chunk)?;
 
     info!("Starting bench itself {} {}", max_time, max_iters);
@@ -92,7 +82,7 @@ pub fn handle_bench(
     let mut fed = 0;
     let mut read = 0;
     while fed < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let result = state.step(0, chunk.clone())?;
+        let result = state.step(chunk.clone())?;
         read += result.len();
         fed += 1;
     }
@@ -108,12 +98,13 @@ pub fn handle_bench(
 
 pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
     let (plan, chunk) = build_streaming_plan(&params)?;
-    let mut state = plan.state()?;
+    let plan = Arc::new(plan);
+    let mut state = StreamingModelState::new(Arc::clone(&plan))?;
     bufferize(&mut state, &chunk)?;
 
     let mut profile = ProfileData::new(state.model());
     for _ in 0..100 {
-        let _result = state.step_wrapping_ops(0, chunk.clone(), |node, input, buffer| {
+        let _result = state.step_wrapping_ops(chunk.clone(), |node, input, buffer| {
             let start = Instant::now();
             let r = node.op.step(input, buffer)?;
             profile.add(node, Duration::since(&start, 1))?;
@@ -140,10 +131,15 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
         dur_avg_oneline(measure)
     );
 
-    let input = &params.inputs[0];
+    let input = params.tfd_model.input_fact()?;
+
     let info = input.stream_info()?.expect("No streaming dim");
 
-    let mut states = (0..100).map(|_| plan.state().unwrap()).collect::<Vec<_>>();
+    let plan = Arc::new(plan);
+
+    let mut states = (0..100).map(|_| 
+        StreamingModelState::new(Arc::clone(&plan)).unwrap()
+    ).collect::<Vec<_>>();
 
     if log_enabled!(Info) {
         println!();
@@ -194,7 +190,6 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
 
         for i in 0..100 {
             outputs.push(states[i].step_wrapping_ops(
-                0,
                 input_chunks[i].take().unwrap(),
                 |node, input, buffer| {
                     let start = Instant::now();

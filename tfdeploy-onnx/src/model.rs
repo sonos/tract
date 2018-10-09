@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::{fs, path};
 
-use tfdeploy::model::{Model, Node, OutletId, RawModel};
+use tfdeploy::model::{InletId, Model, OutletId};
 use tfdeploy::*;
 
 use pb;
@@ -29,33 +28,29 @@ pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<pb::Mod
 
 impl TfdFrom<pb::ModelProto> for Model {
     fn tfd_from(proto: &pb::ModelProto) -> TfdResult<Model> {
-        let mut nodes = vec![];
-        let mut model_inputs = vec![];
-        let mut outlets_index: HashMap<String, OutletId> = HashMap::new();
-        let mut nodes_by_name: HashMap<String, usize> = HashMap::new();
+        let mut model = Model::default();
         let op_builder = super::ops::OpBuilder::new();
         let graph = proto.get_graph();
+        let mut initializers: HashMap<&str, Tensor> = graph
+            .get_initializer()
+            .iter()
+            .map(|init| Ok((init.get_name(), init.to_tfd()?)))
+            .collect::<TfdResult<_>>()?;
+        let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.get_input().iter() {
-            outlets_index.insert(input.get_name().to_owned(), OutletId::new(nodes.len(), 0));
-            let fact = input.get_field_type().get_tensor_type().to_tfd()?;
-            let source = Node {
-                id: nodes.len(),
-                name: input.get_name().to_owned(),
-                op: Box::new(::tfdeploy::ops::source::Source::new(fact)),
-                op_name: "Source".to_string(),
-                inputs: vec![],
-            };
-            nodes_by_name.insert(input.get_name().to_owned(), nodes.len());
-            model_inputs.push(nodes.len());
-            nodes.push(source);
-        }
-        for input in graph.get_initializer() {
-            let node = nodes_by_name[input.get_name()];
-            let node = &mut nodes[node];
-            let tensor:Tensor = input.to_tfd()?;
-            if node.op_name == "Source" {
-                node.op_name = "Const".to_string();
-                node.op = Box::new(::tfdeploy::ops::konst::Const::new(tensor.into()));
+            if let Some(init) = initializers.remove(input.get_name()) {
+                let id = model.add_node(
+                    input.get_name().to_owned(),
+                    Box::new(::tfdeploy::ops::konst::Const::new(init.into())),
+                )?;
+                outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
+            } else {
+                let fact = input.get_field_type().get_tensor_type().to_tfd()?;
+                let id = model.add_node(
+                    input.get_name().to_owned(),
+                    Box::new(::tfdeploy::ops::source::Source::new(fact)),
+                )?;
+                outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             }
         }
         for pbnode in graph.get_node().iter() {
@@ -64,49 +59,20 @@ impl TfdFrom<pb::ModelProto> for Model {
             } else if pbnode.get_output().len() > 0 && pbnode.get_output()[0] != "" {
                 pbnode.get_output()[0].to_owned()
             } else {
-                format!("{}-{}", nodes.len(), pbnode.get_op_type())
+                format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
             };
+            let id = model.add_node(name, op_builder.build(pbnode)?)?;
             for (ix, output) in pbnode.get_output().iter().enumerate() {
-                outlets_index.insert(output.to_string(), OutletId::new(nodes.len(), ix));
+                outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
             }
-            let op_name = pbnode.get_op_type().to_owned();
-            let node = Node {
-                id: nodes.len(),
-                name: name.clone(),
-                op: op_builder.build(pbnode)?,
-                op_name,
-                inputs: vec![],
-            };
-            nodes_by_name.insert(name, nodes.len());
-            nodes.push(node)
-        }
-        for (pbnode, mut node) in graph
-            .get_node()
-            .iter()
-            .zip(&mut nodes.iter_mut().skip(graph.get_input().len()))
-        {
-            for pbinput in pbnode.get_input() {
-                node.inputs.push(
-                    outlets_index
-                        .get(pbinput)
-                        .ok_or_else(|| format!("Can not find matching outlet for {}", pbinput))?
-                        .clone(),
-                )
+            for (ix, input) in pbnode.get_input().iter().enumerate() {
+                model.add_edge(outlets_by_name[&*input], InletId::new(id, ix))?;
             }
         }
         for output in graph.get_output().iter() {
             let fact = output.get_field_type().get_tensor_type().to_tfd()?;
-            let outlet = outlets_index[output.get_name()];
-            let source = Node {
-                id: nodes.len(),
-                name: format!("Sink-{}", output.get_name()),
-                op: Box::new(::tfdeploy::ops::sink::Sink::new(fact)),
-                op_name: "Sink".to_string(),
-                inputs: vec![outlet],
-            };
-            nodes_by_name.insert(format!("Output-{}", output.get_name()), nodes.len());
-            nodes.push(source);
+            model.set_fact(outlets_by_name[output.get_name()], fact)?;
         }
-        Ok(Model(Arc::new(RawModel::new(nodes, nodes_by_name))))
+        Ok(model)
     }
 }

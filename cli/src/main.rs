@@ -52,7 +52,7 @@ mod display_graph;
 mod dump;
 mod errors;
 mod format;
-mod graphviz;
+// mod graphviz;
 mod optimize_check;
 mod profile;
 mod prune;
@@ -92,6 +92,8 @@ fn main() {
 
         (@arg output_node: --("output-node") +takes_value
             "Override output nodes name (auto-detects otherwise).")
+
+        (@arg skip_analyse: --("skip-analyse") ... "Skip analyse after model build")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
     );
@@ -235,7 +237,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     tf_model: (),
 
-    inputs: Vec<TensorFact>,
+    inputs: Option<Vec<Option<tfdeploy::Tensor>>>,
 }
 
 impl Parameters {
@@ -271,25 +273,44 @@ impl Parameters {
         #[cfg(not(feature = "tensorflow"))]
         let tf_model = ();
 
-        let inputs: Vec<TensorFact> = matches
-            .values_of("input")
-            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect())
-            .unwrap_or(vec!());
-
         if let Some(inputs) = matches.values_of("input_node") {
-            std::sync::Arc::get_mut(&mut tfd_model.0).unwrap().set_inputs(inputs)?;
+            tfd_model.set_inputs(inputs)?;
         };
 
         if let Some(outputs) = matches.values_of("output_node") {
-            std::sync::Arc::get_mut(&mut tfd_model.0).unwrap().set_outputs(outputs)?;
+            tfd_model.set_outputs(outputs)?;
         };
+
+        let inputs = if let Some(inputs) = matches.values_of("input") {
+            use tfdeploy::analyser::Fact;
+            let mut vs = vec!();
+            for (ix, v) in inputs.enumerate() {
+                let t = tensor::for_string(v)?;
+                // obliterate value in input (the analyser/optimizer would fold
+                // the graph)
+                let fact = TensorFact {
+                    value: tfdeploy::analyser::GenericFact::Any, ..t
+                };
+                vs.push(t.value.concretize());
+                let outlet = tfd_model.inputs()?[ix];
+                tfd_model.set_fact(outlet, fact)?;
+            }
+            Some(vs)
+        } else {
+            None
+        };
+
+        if !matches.is_present("skip_analyse") {
+            info!("Skipping analyse");
+            tfd_model.analyse()?;
+        }
 
         Ok(Parameters {
             name: name.to_string(),
             graph,
             tfd_model,
             tf_model,
-            inputs,
+            inputs
         })
     }
 }
@@ -393,10 +414,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     };
 
     let params = Parameters::from_clap(&matches)?;
-    let streaming = params
-        .inputs.get(0)
-        .and_then(|i| i.stream_info().unwrap())
-        .is_some();
+    let streaming = params.tfd_model.input_fact()?.stream_info()?.is_some();
 
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),

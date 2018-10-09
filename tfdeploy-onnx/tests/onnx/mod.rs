@@ -72,7 +72,7 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
         let path = root.join("model.onnx");
         let model = for_path(&path)
                 .map_err(|e| format!("accessing {:?}, {:?}", path, e))?;
-        let plan = SimplePlan::for_model(&model)?;
+        let plan = SimplePlan::new(&model)?;
         for d in fs::read_dir(root)
                 .map_err(|e| format!("accessing {:?}, {:?}", root, e))? {
             let d = d?;
@@ -83,7 +83,7 @@ pub fn run_one(root: &path::Path, test: &str) -> TfdResult<()> {
                 .starts_with("test_data_set_")
             {
                 let (inputs, expected) = load_dataset(&d.path());
-                let computed = plan.run(inputs)?.remove(0);
+                let computed = plan.run(inputs)?;
                 for (a, b) in computed.iter().zip(expected.iter()) {
                     if !a.close_enough(b, true) {
                         bail!("Different result: got:{:?} expected:{:?}", a, b)

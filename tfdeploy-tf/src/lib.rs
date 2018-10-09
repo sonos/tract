@@ -14,19 +14,19 @@
 //! // build a simple model that just add 3 to each input component
 //! let model = tfdeploy_tf::for_path("tests/models/plus3.pb").unwrap();
 //!
-//! // "input" and "output" are tensorflow graph node names.
-//! // we build an execution plan for computing output from input
-//! let plan = SimplePlan::new(&model, &["input"], &["output"]).unwrap();
+//! // we build an execution plan. default input and output are inferred from 
+//! // the model graph
+//! let plan = SimplePlan::new(&model).unwrap();
 //!
 //! // run the computation.
 //! let input = ndarray::arr1(&[1.0f32, 2.5, 5.0]);
 //! let mut outputs = plan.run(tvec![input.into()]).unwrap();
 //!
-//! // take the tensors coming out of the only output node
-//! let mut tensors = outputs.pop().unwrap();
+//! // take the first and only output tensor
+//! let mut tensor = outputs.pop().unwrap();
 //!
-//! // grab the first (and only) tensor of this output, and unwrap it as array of f32
-//! let tensor = tensors.pop().unwrap().take_f32s().unwrap();
+//! // unwrap it as array of f32
+//! let tensor = tensor.take_f32s().unwrap();
 //! assert_eq!(tensor, ndarray::arr1(&[4.0, 5.5, 8.0]).into_dyn());
 //! # }
 //! ```

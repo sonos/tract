@@ -3,20 +3,19 @@ use tfdeploy::plan::SimplePlan;
 use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult<()> {
-    let model = params.tfd_model;
+    let model = &params.tfd_model;
 
     // First generate random values for the inputs.
-    let fixed_inputs = ::tensor::make_inputs(&params.inputs)?;
+    let fixed_inputs = ::tensor::make_inputs(&[params.tfd_model.input_fact()?.clone()])?;
 
     // Run unmodified graph
-    let original_plan = SimplePlan::for_model(&model)?;
+    let original_plan = SimplePlan::new(model)?;
     let original_output = original_plan.run(fixed_inputs.clone())?;
 
-    info!("Setting up analyser.");
-
-    let mut analyser = model.analyser()?.with_input_hints(params.inputs)?;
-
     info!("Running analyse");
+    unimplemented!();
+    /*
+    model.analyse();
     let optimized_model = analyser.to_optimized_model()?;
     info!(
         "Size of the graph after pruning: {:?} nodes.",
@@ -48,6 +47,7 @@ pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult
             }
         }
     }
+    */
     info!("Looks good!");
     Ok(())
 }

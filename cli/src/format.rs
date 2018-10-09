@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cmp::min;
 
 use prettytable as pt;
@@ -6,8 +7,8 @@ use prettytable::Table;
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
-use tfdeploy::plan::SimpleState;
-use tfdeploy::Node;
+use tfdeploy::plan::{ SimplePlan, SimpleState};
+use tfdeploy::{ Model, Node };
 
 use colored::Colorize;
 use format;
@@ -168,11 +169,12 @@ pub fn print_box(
 }
 
 /// Returns information about a node.
-fn node_info(
+fn node_info<M,P>(
     node: &tfdeploy::Node,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState>,
-) -> Vec<Vec<Row>> {
+    state: Option<&SimpleState<M,P>>,
+) -> Vec<Vec<Row>>
+where M: Borrow<Model>, P: Borrow<SimplePlan<M>> {
     // First section: node attributes.
     let mut attributes = Vec::new();
     if let SomeGraphDef::Tf(graph) = graph {
@@ -220,16 +222,17 @@ fn node_info(
 }
 
 /// Prints information about a node.
-pub fn print_node(
+pub fn print_node<M,P>(
     node: &Node,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState>,
+    state: Option<&SimpleState<M,P>>,
     status: &[impl AsRef<str>],
     sections: Vec<Vec<Row>>,
-) {
+)
+where M: Borrow<Model>, P: Borrow<SimplePlan<M>> {
     format::print_box(
         &format!("{}", node.id),
-        &node.op_name,
+        &node.op.name(),
         &node.name,
         &status,
         [

@@ -1,72 +1,26 @@
-use std::ops::Deref;
-use std::sync::Arc;
+use std::borrow::Borrow;
+use std::marker::PhantomData;
 
-use model::{eval_order_for_nodes, Model, Node};
+use model::{eval_order, Model, Node};
 use ops::prelude::*;
 
 #[derive(Debug, Clone)]
-pub struct RawSimplePlan {
-    pub model: Model,
-    pub input_ids: Vec<usize>,
-    pub output_ids: Vec<usize>,
+pub struct SimplePlan<M: Borrow<Model>> {
+    pub model: M,
     pub order: Vec<usize>,
 }
 
-impl RawSimplePlan {
-    pub fn new(
-        model: &Model,
-        inputs: &[impl AsRef<str>],
-        outputs: &[impl AsRef<str>],
-    ) -> TfdResult<RawSimplePlan> {
-        let input_ids: Vec<usize> = inputs
-            .iter()
-            .map(|n| Ok(model.node_by_name(n.as_ref())?.id))
-            .collect::<TfdResult<_>>()?;
-        let output_ids: Vec<usize> = outputs
-            .iter()
-            .map(|n| Ok(model.node_by_name(n.as_ref())?.id))
-            .collect::<TfdResult<_>>()?;
-        let order = eval_order_for_nodes(&model.nodes(), &*output_ids)?;
-        Ok(RawSimplePlan {
-            model: model.clone(),
+impl<M: Borrow<Model>> SimplePlan<M> {
+    pub fn new(model: M) -> TfdResult<SimplePlan<M>> {
+        let order = eval_order(model.borrow())?;
+        Ok(SimplePlan {
+            model,
             order,
-            input_ids,
-            output_ids,
         })
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct SimplePlan(Arc<RawSimplePlan>);
-
-impl Deref for SimplePlan {
-    type Target = RawSimplePlan;
-    fn deref(&self) -> &RawSimplePlan {
-        &self.0
-    }
-}
-
-impl SimplePlan {
-    pub fn new(
-        model: &Model,
-        inputs: &[impl AsRef<str>],
-        outputs: &[impl AsRef<str>],
-    ) -> TfdResult<SimplePlan> {
-        Ok(SimplePlan(Arc::new(RawSimplePlan::new(
-            model, inputs, outputs,
-        )?)))
-    }
-
-    pub fn for_model(
-        model: &Model,
-    ) -> TfdResult<SimplePlan> {
-        let input:Vec<&str> = model.inputs()?.iter().map(|n| &*n.name).collect();
-        let output:Vec<&str> = model.outputs()?.iter().map(|n| &*n.name).collect();
-        Self::new(model, &input, &output)
-    }
-
-    pub fn run(&self, inputs: TVec<Tensor>) -> TfdResult<Vec<TVec<Tensor>>> {
-        let mut state = SimpleState::new(&self)?;
+    pub fn run(&self, inputs: TVec<Tensor>) -> TfdResult<Vec<Tensor>> {
+        let mut state = SimpleState::new(self)?;
         state.set_inputs(inputs)?;
         for &n in &self.order {
             if state.values[n].is_none() {
@@ -76,22 +30,25 @@ impl SimplePlan {
         state.take_outputs()
     }
 
-    pub fn state(&self) -> TfdResult<SimpleState> {
-        SimpleState::new(self)
+    pub fn model(&self) -> &Model {
+        self.model.borrow()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct SimpleState {
-    plan: SimplePlan,
+pub struct SimpleState<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> {
+    plan: P,
     pub values: Vec<Option<TVec<Value>>>,
+    _phantom: PhantomData<M>,
 }
 
-impl SimpleState {
-    pub fn new(plan: &SimplePlan) -> TfdResult<SimpleState> {
+impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
+    pub fn new(plan: P) -> TfdResult<SimpleState<M, P>> {
+        let values = vec![None; plan.borrow().model.borrow().nodes().len()];
         Ok(SimpleState {
-            plan: plan.clone(),
-            values: vec![None; plan.model.nodes().len()],
+            plan,
+            values,
+            _phantom: PhantomData,
         })
     }
 
@@ -105,31 +62,40 @@ impl SimpleState {
         let SimpleState {
             ref plan,
             ref mut values,
+            ..
         } = self;
-        inputs
-            .into_iter()
-            .zip(plan.input_ids.iter())
-            .for_each(|(t, &id)| values[id] = Some(tvec![t.into()]));
+        plan.borrow()
+            .model()
+            .inputs()?
+            .iter()
+            .zip(inputs)
+            .for_each(|(input, t)| values[input.node] = Some(tvec![t.into()]));
         Ok(())
     }
 
     pub fn set_input(&mut self, input: usize, t: Tensor) -> TfdResult<()> {
-        let id = self.plan.input_ids[input];
+        let id = self.model().inputs()?[input].node;
         self.values[id] = Some(tvec![t.into()]);
         Ok(())
     }
 
-    pub fn take_outputs(&mut self) -> TfdResult<Vec<TVec<Tensor>>> {
+    pub fn take_outputs(&mut self) -> TfdResult<Vec<Tensor>> {
+        let SimpleState {
+            ref plan,
+            ref mut values,
+            ..
+        } = self;
         let mut v = vec![];
-        for &id in &self.plan.output_ids {
-            v.push(
-                self.values[id]
-                    .take()
-                    .ok_or_else(|| format!("Value for {:?} is not computed", &self.model().nodes()[id]))?
-                    .into_iter()
-                    .map(Value::into_tensor)
-                    .collect(),
-            )
+        for o in plan.borrow().model().outputs()?.iter() {
+            let vs = values[o.node].as_mut().ok_or_else(|| {
+                format!(
+                    "Value for {:?} is not computed",
+                    &plan.borrow().model().nodes()[o.node]
+                )
+            })?;
+            let mut replacement: Value = Tensor::from(::std::f32::NAN).into();
+            ::std::mem::swap(&mut replacement, &mut vs[o.slot]);
+            v.push(replacement.into_tensor())
         }
         Ok(v)
     }
@@ -144,39 +110,47 @@ impl SimpleState {
     }
 
     pub fn compute_one(&mut self, node: usize) -> TfdResult<()> {
-        let node: &Node = &self.plan.model.nodes()[node];
+        let SimpleState {
+            ref plan,
+            ref mut values,
+            ..
+        } = self;
+        let plan = plan.borrow();
+        let nodes = plan.model().nodes();
+        let node: &Node = &nodes[node];
         let mut inputs: TVec<Value> = tvec![];
         for i in &node.inputs {
-            let prec_node = &self.model().nodes()[i.node];
-            let prec = self.values[i.node].as_ref().ok_or(format!(
+            let prec_node = &nodes[i.node];
+            let prec = values[i.node].as_ref().ok_or(format!(
                 "Computing {}, precursor {} not done:",
                 node.name, prec_node.name
             ))?;
             inputs.push(prec[i.slot].clone().into())
         }
-        let values = node.op.eval(inputs)?;
-        self.values[node.id] = Some(values);
+        values[node.id] = Some(node.op.eval(inputs)?);
         Ok(())
     }
 
     pub fn compute_recursively(&mut self, node: usize) -> TfdResult<()> {
-        let precs: Vec<usize> = self.plan.model.nodes()[node]
-            .inputs
-            .iter()
-            .map(|i| i.node)
-            .collect();
-        for i in precs.into_iter() {
-            if self.values[i].is_none() {
-                self.compute_recursively(i)?
+        let values = {
+            let precs: Vec<usize> = self.model().nodes()[node]
+                .inputs
+                .iter()
+                .map(|i| i.node)
+                .collect();
+            for i in precs.into_iter() {
+                if self.values[i].is_none() {
+                    self.compute_recursively(i)?
+                }
             }
-        }
-        let mut inputs: TVec<Value> = tvec![];
-        let node: &Node = &self.plan.model.nodes()[node];
-        for i in &node.inputs {
-            inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
-        }
-        let values = node.op.eval(inputs)?;
-        self.values[node.id] = Some(values);
+            let mut inputs: TVec<Value> = tvec![];
+            let node: &Node = &self.model().nodes()[node];
+            for i in &node.inputs {
+                inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
+            }
+            node.op.eval(inputs)?
+        };
+        self.values[node] = Some(values);
         Ok(())
     }
 
@@ -194,7 +168,11 @@ impl SimpleState {
             .collect())
     }
 
+    pub fn plan(&self) -> &SimplePlan<M> {
+        &self.plan.borrow()
+    }
+
     pub fn model(&self) -> &Model {
-        &self.plan.model
+        self.plan().model()
     }
 }

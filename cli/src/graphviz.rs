@@ -1,9 +1,11 @@
 #![allow(dead_code)]
+use std::io;
+use std::io::Write;
+use std::borrow::Borrow;
 
 use dot;
 use errors::*;
-use std::io;
-use std::io::Write;
+use tfdeploy::Model;
 use tfdeploy::analyser::*;
 
 type Nd<'a> = (usize, &'a String, &'a String, bool);
@@ -82,7 +84,7 @@ impl<'a> dot::GraphWalk<'a, Nd<'a>, Ed<'a>> for Graph<'a> {
 
 /// Writes a DOT export of the analysed graph to a given Writer.
 pub fn render_dot<W: Write>(
-    analyser: &Analyser,
+    analyser: &Analyser<impl Borrow<Model>>,
     red_nodes: &Vec<usize>,
     red_edges: &Vec<usize>,
     writer: &mut W,
@@ -118,7 +120,7 @@ pub fn render_dot<W: Write>(
 
 /// Displays a DOT export of the analysed graph on the standard output.
 pub fn display_dot(
-    analyser: &Analyser,
+    analyser: &Analyser<impl Borrow<Model>>,
     red_nodes: &Vec<usize>,
     red_edges: &Vec<usize>,
 ) -> CliResult<()> {
@@ -127,7 +129,7 @@ pub fn display_dot(
 
 /// Displays a render of the analysed graph using the `dot` command.
 pub fn display_graph(
-    analyser: &Analyser,
+    analyser: &Analyser<impl Borrow<Model>>,
     red_nodes: &Vec<usize>,
     red_edges: &Vec<usize>,
 ) -> CliResult<()> {

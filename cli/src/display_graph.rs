@@ -3,9 +3,8 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
 use tfdeploy;
-use tfdeploy::analyser::Analyser;
 use tfdeploy::model::OutletId;
-use tfdeploy::TfdFrom;
+use tfdeploy::{ Model, TfdFrom };
 use tfdeploy_tf::tfpb::graph::GraphDef;
 use tfdeploy_onnx::pb::ModelProto;
 use CliResult;
@@ -178,13 +177,13 @@ impl DisplayGraph {
         Ok(())
     }
 
-    pub fn from_nodes(tfnodes: &[impl Borrow<tfdeploy::Node>]) -> CliResult<DisplayGraph> {
-        let mut nodes: Vec<Node> = tfnodes
+    pub fn from_model(model: &Model) -> CliResult<DisplayGraph> {
+        let mut nodes: Vec<Node> = model.nodes()
             .iter()
             .map(|n| Node {
                 id: n.borrow().id,
                 name: n.borrow().name.clone(),
-                op_name: n.borrow().op_name.clone(),
+                op_name: n.borrow().op.name().to_string(),
                 tfd_op: n.borrow().op.name().to_string(),
                 label: None,
                 more_lines: vec![],
@@ -195,19 +194,16 @@ impl DisplayGraph {
             })
             .collect();
         let mut edges = vec![];
-        for node in tfnodes.iter() {
-            for (ix, input) in node.borrow().inputs.iter().enumerate() {
+        for node in model.nodes() {
+            for (ix, &input) in node.borrow().inputs.iter().enumerate() {
+                let fact = model.fact(input)?;
                 let edge = Edge {
                     id: edges.len(),
-                    src: *input,
+                    src: input,
                     dst_node_id: node.borrow().id,
                     dst_node_input: ix,
                     main: ix == 0,
-                    label: tfnodes[input.node]
-                        .borrow()
-                        .op()
-                        .const_value()
-                        .map(|v| format!("Const {:?}", v)),
+                    label: Some(format!("{:?}", fact)),
                 };
                 nodes[edge.src.node].outputs.push(edges.len());
                 nodes[node.borrow().id].inputs.push(edges.len());
@@ -266,7 +262,8 @@ impl DisplayGraph {
         Ok(self)
     }
 
-    pub fn with_analyser(mut self, analyser: &Analyser) -> CliResult<DisplayGraph> {
+    /*
+    pub fn with_analyser(mut self, analyser: &Analyser<impl Borrow<Model>>) -> CliResult<DisplayGraph> {
         {
             let index: HashMap<(OutletId, usize, usize), usize> = self
                 .edges
@@ -283,4 +280,5 @@ impl DisplayGraph {
         }
         Ok(self)
     }
+    */
 }

@@ -1,122 +1,89 @@
+use std::borrow::Borrow;
 use std::collections::VecDeque;
-use std::ops::Deref;
-use std::sync::Arc;
+use std::marker::PhantomData;
 
-use ops::prelude::*;
 use analyser::prelude::*;
 use model::*;
+use ops::prelude::*;
 
 pub mod types;
 pub mod values;
 
 pub mod prelude {
     pub use streaming::types::OpBuffer;
-    pub use streaming::values::{ Stream, StepValue };
+    pub use streaming::values::{StepValue, Stream};
 }
 
 use streaming::values::StepValue;
 
 #[derive(Clone, Debug)]
-pub struct RawStreamingPlan {
-    model: Model,
-    input_nodes: Vec<(OutletId, StreamInfo)>,
-    output: OutletId,
+pub struct StreamingPlan<M:Borrow<Model>> {
+    model: M,
+    //    input_nodes: Vec<(OutletId, StreamInfo)>,
     proto_inputs: Vec<TVec<StepValue>>,
-    stream_infos: Vec<TVec<Option<StreamInfo>>>,
-    successors: Vec<TVec<TVec<InletId>>>,
+    //    stream_infos: Vec<TVec<Option<StreamInfo>>>,
 }
 
-impl RawStreamingPlan {
-    pub fn new(
-        model: &Model,
-        inputs: Vec<(&str, TensorFact)>,
-        output: Option<&str>,
-    ) -> TfdResult<RawStreamingPlan> {
-        let output_node = match output {
-            Some(name) => model.node_by_name(name)?,
-            None => model.nodes().last().unwrap(),
-        };
-
-        let mut analyser = Analyser::new(&model, &output_node.name)?;
-        let mut input_nodes = vec![];
-
-        // Pre-compute the constant part of the graph using the analyser.
-        for input in inputs {
-            analyser.hint(input.0, &input.1)?;
-            input_nodes.push((
-                OutletId::new(model.node_by_name(input.0)?.id, 0),
-                input
-                    .1
-                    .stream_info()?
-                    .ok_or_else(|| format!("No streaming dim for {:?}", input))?,
-            ));
-        }
-        analyser.analyse()?;
-
-        let mut stream_infos = Vec::with_capacity(model.nodes().len());
-        let mut proto_inputs = Vec::with_capacity(model.nodes().len());
-        let mut successors: Vec<TVec<TVec<InletId>>> = vec![tvec![]; model.nodes().len()];
-        for node in model.nodes() {
+impl<M:Borrow<Model>> StreamingPlan<M> {
+    pub fn new(model: M) -> TfdResult<StreamingPlan<M>> {
+        let mut proto_inputs = Vec::with_capacity(model.borrow().nodes().len());
+        for node in model.borrow().nodes() {
             let mut inputs = tvec!();
             for ix in 0..node.inputs.len() {
-                let edge_id = analyser.prev_edges[node.id][ix];
-                let edge = &analyser.edges[edge_id];
-                if let Some(info) = edge.fact.stream_info()? {
+                let edge_id = node.inputs[ix];
+                let fact = model.borrow().fact(edge_id)?;
+                if let Some(info) = fact.stream_info()? {
                     inputs.push(StepValue::Stream(Stream {
                         info,
                         offset: 0,
                         chunk: None,
                     }));
                 } else {
-                    let value: Value = edge
-                        .fact
-                        .concretize()
-                        .ok_or_else(|| "Failed analysis")?
-                        .into();
+                    let value: Value = fact.concretize().ok_or_else(|| "Failed analysis")?.into();
                     inputs.push(StepValue::Const(value.into_shared()))
                 }
-                let from = edge.from.unwrap(); //checked
-                while successors[from.node].len() <= from.slot {
-                    successors[from.node].push(tvec!())
-                }
-                successors[from.node][from.slot].push(InletId::new(node.id, ix));
             }
             proto_inputs.push(inputs);
+            /*
             let mut outputs = tvec!();
             for edge_id in &analyser.next_edges[node.id] {
                 let edge = &analyser.edges[*edge_id];
                 outputs.push(edge.fact.stream_info()?);
             }
             stream_infos.push(outputs);
+            */
         }
 
-        Ok(RawStreamingPlan {
-            model: analyser.finalize_model()?,
-            stream_infos,
+        Ok(StreamingPlan {
+            model: model,
+            // stream_infos,
             proto_inputs,
-            successors,
-            output: OutletId::new(output_node.id, 0),
-            input_nodes,
+            // input_nodes,
         })
     }
 
-    pub fn stream_info(&self, outlet: &OutletId) -> Option<StreamInfo> {
-        *self.stream_infos.get(outlet.node)?.get(outlet.slot)?
+    pub fn stream_info(&self, outlet: OutletId) -> TfdResult<Option<StreamInfo>> {
+        self.model().fact(outlet)?.stream_info()
     }
 
     pub fn output_stream_info(&self) -> TfdResult<StreamInfo> {
-        self.stream_info(&self.output)
+        self.stream_info(self.model().outputs()?[0])?
             .ok_or_else(|| "Output is not a stream".into())
     }
 
-    pub fn successors(&self, edge: OutletId) -> &[InletId] {
-        self.successors[edge.node]
-            .get(edge.slot)
-            .map(|v| &v[..])
-            .unwrap_or(&[])
+    pub fn successors(&self, edge: OutletId) -> impl Iterator<Item = InletId> + '_ {
+        self.model().nodes()[edge.node].outputs[edge.slot]
+            .successors
+            .iter()
+            .cloned()
+    }
+
+    pub fn model(&self) -> &Model {
+        &self.model.borrow()
     }
 }
 
+/*
 #[derive(Clone, Debug)]
 pub struct StreamingPlan(Arc<RawStreamingPlan>);
 
@@ -131,8 +98,6 @@ impl StreamingPlan {
     /// guessed automatically.
     pub fn new(
         model: &Model,
-        inputs: Vec<(&str, TensorFact)>,
-        output: Option<&str>,
     ) -> TfdResult<StreamingPlan> {
         Ok(StreamingPlan(Arc::new(RawStreamingPlan::new(
             model, inputs, output,
@@ -151,9 +116,6 @@ impl StreamingPlan {
         Ok(state)
     }
 
-    pub fn model(&self) -> &Model {
-        &self.model
-    }
 }
 
 impl Deref for StreamingPlan {
@@ -162,17 +124,31 @@ impl Deref for StreamingPlan {
         &*self.0
     }
 }
+*/
 
 #[derive(Clone, Debug)]
-pub struct StreamingModelState {
-    plan: StreamingPlan,
+pub struct StreamingModelState<M:Borrow<Model>, P:Borrow<StreamingPlan<M>>> {
+    plan: P,
     inlets_offset: Vec<TVec<u64>>,
     buffers: Vec<Box<OpBuffer>>,
     queue: VecDeque<(InletId, Value)>,
     outputs: Vec<TVec<Tensor>>,
+    _phantom: PhantomData<M>,
 }
 
-impl StreamingModelState {
+impl<M: Borrow<Model>, P:Borrow<StreamingPlan<M>>> StreamingModelState<M, P> {
+    pub fn new(plan: P) -> TfdResult<StreamingModelState<M, P>> {
+        let mut state = StreamingModelState {
+            plan,
+            inlets_offset: vec![],
+            buffers: vec![],
+            queue: VecDeque::new(),
+            outputs: vec![],
+            _phantom: PhantomData
+        };
+        state.reset()?;
+        Ok(state)
+    }
     /// Runs one streaming evaluation step.
     ///
     /// The step starts by feeding a new chunk of data into one of the
@@ -182,8 +158,8 @@ impl StreamingModelState {
     /// The method will return a Vec<Vec<Tensor>>, which will contain
     /// a Vec<Tensor> for every chunk that was produced by the output
     /// during the evaluation step, with one Tensor per output port.
-    pub fn step(&mut self, input_id: usize, input_chunk: Tensor) -> TfdResult<Vec<TVec<Tensor>>> {
-        self.step_wrapping_ops(input_id, input_chunk, |node, inputs, buffers| {
+    pub fn step(&mut self, input_chunk: Tensor) -> TfdResult<Vec<TVec<Tensor>>> {
+        self.step_wrapping_ops(input_chunk, |node, inputs, buffers| {
             node.op.step(inputs, buffers)
         })
     }
@@ -194,30 +170,32 @@ impl StreamingModelState {
     #[doc(hidden)]
     pub fn step_wrapping_ops<W>(
         &mut self,
-        input_id: usize,
         input_chunk: Tensor,
         mut node_step: W,
     ) -> TfdResult<Vec<TVec<Tensor>>>
     where
-        W: FnMut(&Node, TVec<StepValue>, &mut Box<OpBuffer>)
-            -> TfdResult<Option<TVec<Value>>>,
+        W: FnMut(&Node, TVec<StepValue>, &mut Box<OpBuffer>) -> TfdResult<Option<TVec<Value>>>,
     {
-        let (input_outlet, _input_stream_info) = self.plan.input_nodes[input_id];
+        let input_outlet = self.model().inputs()?[0];
         self.enqueue(input_chunk.into(), input_outlet);
 
         while let Some((inlet, chunk)) = self.queue.pop_front() {
             let output = {
-                let node = &self.plan.model.nodes()[inlet.node];
+                let node = &self.plan.borrow().model().nodes()[inlet.node];
                 debug!(
                     "Feeding node: {} {:?} ({}), chunk={:?} inlet:{:?}",
-                    node.id, node.name, node.op_name, chunk, inlet,
+                    node.id,
+                    node.name,
+                    node.op.name(),
+                    chunk,
+                    inlet,
                 );
 
-                let mut inputs: TVec<StepValue> = self.plan.proto_inputs[node.id].clone();
+                let mut inputs: TVec<StepValue> = self.plan().proto_inputs[node.id].clone();
                 debug!("proto input: {:?}", inputs);
-                if let StepValue::Stream(ref mut stream) = inputs[inlet.inlet] {
-                    let offset = self.inlets_offset[inlet.node][inlet.inlet];
-                    self.inlets_offset[inlet.node][inlet.inlet] +=
+                if let StepValue::Stream(ref mut stream) = inputs[inlet.slot] {
+                    let offset = self.inlets_offset[inlet.node][inlet.slot];
+                    self.inlets_offset[inlet.node][inlet.slot] +=
                         chunk.shape()[stream.info.axis] as u64;
                     stream.offset = offset;
                     stream.chunk = Some(chunk);
@@ -225,20 +203,26 @@ impl StreamingModelState {
 
                 debug!(
                     "Pushing to {} {:?} ({}), inputs: {:?}",
-                    node.id, node.name, node.op_name, inputs
+                    node.id,
+                    node.name,
+                    node.op.name(),
+                    inputs
                 );
                 let output = node_step(node, inputs, &mut self.buffers[node.id])?;
 
-                let node = &self.plan.model.nodes()[inlet.node];
+                let node = &self.model().nodes()[inlet.node];
                 debug!(
                     "Node: {} {:?} ({}), generated chunk={:?}",
-                    node.id, node.name, node.op_name, &output
+                    node.id,
+                    node.name,
+                    node.op.name(),
+                    &output
                 );
                 output
             };
 
             if let Some(mut output_chunks) = output {
-                if inlet.node == self.plan.output.node {
+                if inlet.node == self.model().outputs()?[0].node {
                     // If we've reached the output, just save the chunks.
                     self.outputs.push(
                         output_chunks
@@ -251,8 +235,8 @@ impl StreamingModelState {
                     let tensor = value.into_tensor();
                     let outlet = OutletId::new(inlet.node, port);
                     let info = self
-                        .plan
-                        .stream_info(&outlet)
+                        .plan()
+                        .stream_info(outlet)?
                         .ok_or_else(|| "Expected a stream")?;
 
                     if tensor.shape()[info.axis] > 1 {
@@ -272,19 +256,23 @@ impl StreamingModelState {
     }
 
     fn enqueue(&mut self, value: Value, outlet: OutletId) {
-        let dst = self.plan.successors(outlet);
-        if dst.len() == 1 {
-            self.queue.push_back((dst[0], value));
+        let mut dst = self.plan.borrow().successors(outlet);
+        if dst.size_hint() == (1, Some(1)) {
+            self.queue.push_back((dst.next().unwrap(), value));
         } else {
             let value = value.into_shared();
-            for dst in dst.iter() {
-                self.queue.push_back((*dst, value.clone()));
+            for dst in dst {
+                self.queue.push_back((dst, value.clone()));
             }
         }
     }
 
+    pub fn plan(&self) -> &StreamingPlan<M> {
+        &self.plan.borrow()
+    }
+
     pub fn model(&self) -> &Model {
-        &self.plan.model
+        &self.plan().model()
     }
 
     /// Resets the model state.

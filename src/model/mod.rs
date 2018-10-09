@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
+use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 
 mod order;
-pub use self::order::eval_order_for_nodes;
+pub use self::order::eval_order;
+pub use analyser::types::TensorFact;
 
 use {ops, TfdResult};
 
@@ -13,16 +13,23 @@ use {ops, TfdResult};
 pub struct Node {
     pub id: usize,
     pub name: String,
-    pub op_name: String,
     pub inputs: Vec<OutletId>,
     #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: Box<ops::Op>,
+    pub outputs: TVec<OutletFact>,
 }
 
 impl Node {
     pub fn op(&self) -> &ops::Op {
         &*self.op
     }
+}
+
+#[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
+pub struct OutletFact {
+    pub fact: TensorFact,
+    pub successors: Vec<InletId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -39,55 +46,68 @@ impl OutletId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct InletId {
     pub node: usize,
-    pub inlet: usize,
+    pub slot: usize,
 }
 
 impl InletId {
-    pub fn new(node: usize, inlet: usize) -> InletId {
-        InletId { node, inlet }
+    pub fn new(node: usize, slot: usize) -> InletId {
+        InletId { node, slot }
     }
 }
 
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
 /// Model is Tfdeploy workhouse.
-#[derive(Clone, Debug)]
-pub struct RawModel {
+#[derive(Clone, Debug, Default)]
+pub struct Model {
     nodes: Vec<Node>,
     nodes_by_name: HashMap<String, usize>,
-    input_nodes: Option<Vec<usize>>,
-    output_nodes: Option<Vec<usize>>,
+    inputs: Vec<OutletId>,
+    outputs: Vec<OutletId>,
 }
 
-impl RawModel {
-    pub fn new(mut nodes: Vec<Node>, nodes_by_name: HashMap<String, usize>) -> RawModel {
-        let outlets: HashSet<OutletId> = nodes
-            .iter()
-            .filter(|n| n.op_name != "Sink")
-            .map(|n| OutletId::new(n.id, 0))
-            .collect();
-        let used: HashSet<OutletId> = nodes
-            .iter()
-            .flat_map(|n| n.inputs.iter().cloned())
-            .collect();
-        for &missing in outlets.difference(&used) {
-            let id = nodes.len();
-            nodes.push(Node {
-                id,
-                name: format!("Sink-{}", id),
-                op_name: "Sink".to_string(),
-                inputs: vec![missing],
-                op: Box::new(ops::sink::Sink::new(::analyser::TensorFact::default())),
-            });
+impl Model {
+    pub fn add_node(
+        &mut self,
+        name: String,
+        op: Box<ops::Op>,
+    ) -> TfdResult<usize> {
+        let id = self.nodes.len();
+        self.nodes_by_name.insert(name.clone(), id);
+        let is_input = op.name() == "Source";
+        let node = Node {
+            id,
+            name,
+            op,
+            inputs: vec![],
+            outputs: tvec!(OutletFact::default()),
+        };
+        if is_input {
+            self.inputs.push(OutletId::new(id, 0));
         }
-        RawModel {
-            nodes,
-            nodes_by_name,
-            input_nodes: None,
-            output_nodes: None,
+        self.outputs.push(OutletId::new(id, 0));
+        self.nodes.push(node);
+        Ok(id)
+    }
+
+    pub fn add_edge(&mut self, outlet: OutletId, inlet: InletId) -> TfdResult<()> {
+        {
+            let prec = &mut self.nodes[outlet.node];
+            while prec.outputs.len() <= outlet.slot {
+                prec.outputs.push(OutletFact::default());
+            }
+            prec.outputs[outlet.slot].successors.push(inlet);
+            self.outputs.retain(|&o| o != outlet);
         }
+        let succ = &mut self.nodes[inlet.node];
+        if succ.inputs.len() != inlet.slot {
+            bail!("Edges must be added in order and consecutive. Trying to connect input {:?} of node {:?} ", inlet.slot, succ)
+        }
+        succ.inputs.push(outlet);
+        Ok(())
     }
 
     pub fn node_by_name(&self, name: &str) -> TfdResult<&Node> {
@@ -110,11 +130,13 @@ impl RawModel {
         &mut self,
         inputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TfdResult<()> {
-        let ids: Vec<usize> = inputs
+        let ids: Vec<OutletId> = inputs
             .into_iter()
-            .map(|s| self.node_by_name(s.as_ref()).map(|n| n.id))
-            .collect::<TfdResult<_>>()?;
-        self.input_nodes = Some(ids);
+            .map(|s| {
+                self.node_by_name(s.as_ref())
+                    .map(|n| OutletId::new(n.id, 0))
+            }).collect::<TfdResult<_>>()?;
+        self.inputs = ids;
         Ok(())
     }
 
@@ -122,55 +144,52 @@ impl RawModel {
         &mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TfdResult<()> {
-        let ids: Vec<usize> = outputs
+        let ids: Vec<OutletId> = outputs
             .into_iter()
-            .map(|s| self.node_by_name(s.as_ref()).map(|n| n.id))
-            .collect::<TfdResult<_>>()?;
-        self.output_nodes = Some(ids);
+            .map(|s| {
+                self.node_by_name(s.as_ref())
+                    .map(|n| OutletId::new(n.id, 0))
+            }).collect::<TfdResult<_>>()?;
+        self.outputs = ids;
         Ok(())
     }
 
-    pub fn inputs(&self) -> TfdResult<Vec<&Node>> {
-        if let Some(i) = self.input_nodes.as_ref() {
-            Ok(i.iter().map(|n| &self.nodes[*n]).collect())
-        } else {
-            Ok(self
-                .nodes
-                .iter()
-                .filter(|n| n.op.name() == "Source")
-                .collect())
+    pub fn fact(&self, outlet: OutletId) -> TfdResult<&TensorFact> {
+        let outlets = &self.nodes[outlet.node].outputs;
+        Ok(&outlets[outlet.slot].fact)
+    }
+
+    pub fn set_fact(&mut self, outlet: OutletId, fact: TensorFact) -> TfdResult<()> {
+        let outlets = &mut self.nodes[outlet.node].outputs;
+        if outlets.len() <= outlet.slot {
+            outlets.push(OutletFact::default());
         }
+        outlets[outlet.slot].fact = fact;
+        Ok(())
     }
 
-    pub fn outputs(&self) -> TfdResult<Vec<&Node>> {
-        if let Some(i) = self.output_nodes.as_ref() {
-            Ok(i.iter().map(|n| &self.nodes[*n]).collect())
-        } else {
-            Ok(self.nodes.iter().filter(|n| n.op.name() == "Sink")
-               .flat_map(|n|
-                      n.inputs.iter().map(|i| &self.nodes[i.node]))
-               .collect())
-        }
+    pub fn inputs_fact(&self, ix:usize) -> TfdResult<&TensorFact> {
+        let input = self.inputs()?[ix];
+        self.fact(input)
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct Model(pub Arc<RawModel>);
-
-impl Model {
-    pub fn analyser(&self) -> TfdResult<::analyser::Analyser> {
-        let output = self
-            .outputs()?
-            .get(0)
-            .map(|n| &n.name)
-            .ok_or("Model without output")?;
-        ::analyser::Analyser::new(&self, &*output)
+    pub fn input_fact(&self) -> TfdResult<&TensorFact> {
+        self.inputs_fact(0)
     }
-}
 
-impl Deref for Model {
-    type Target = RawModel;
-    fn deref(&self) -> &RawModel {
-        &*self.0
+    pub fn inputs(&self) -> TfdResult<&[OutletId]> {
+        Ok(&self.inputs)
+    }
+
+    pub fn outputs(&self) -> TfdResult<&[OutletId]> {
+        Ok(&self.outputs)
+    }
+
+    pub fn analyse(&mut self) -> TfdResult<()> {
+        ::analyser::Analyser::new(self)?.analyse()
+    }
+
+    pub fn into_arc(self) -> Arc<Model> {
+        Arc::new(self)
     }
 }

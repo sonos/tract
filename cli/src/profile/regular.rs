@@ -28,12 +28,12 @@ pub fn handle_benching(
     };
 
     let ref model = params.tfd_model;
-    let plan = SimplePlan::for_model(model)?;
+    let plan = SimplePlan::new(model)?;
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(make_inputs(&params.inputs)?)?;
+        let _ = plan.run(make_inputs(&[params.tfd_model.input_fact()?.clone()])?)?;
         iters += 1;
     }
     let dur = Duration::since(&start, iters);
@@ -63,11 +63,11 @@ pub fn handle(
     let ref model = params.tfd_model;
 
     info!("Running entire network");
-    let plan = SimplePlan::for_model(model)?;
+    let plan = SimplePlan::new(model)?;
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(make_inputs(&params.inputs)?)?;
+        let _ = plan.run(make_inputs(&[params.tfd_model.input_fact()?.clone()])?)?;
         iters += 1;
     }
     let entire = Duration::since(&start, iters);
@@ -94,7 +94,7 @@ pub fn handle(
             progress.inc();
         }
 
-        if node.op_name == "Placeholder" {
+        if node.op.name() == "Source" {
             if log_enabled!(Info) {
                 print_node(
                     &node,
