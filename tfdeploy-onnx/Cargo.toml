@@ -23,4 +23,5 @@ mio_httpc = { version = "0.6", features = ["rtls"] }
 serde = "1"
 serde_json = "1"
 serde_derive = "1"
+simplelog = "0.5"
 tar = "0.4"

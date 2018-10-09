@@ -4,6 +4,17 @@ use tfdeploy::*;
 use tfdeploy_onnx::pb::TensorProto;
 use tfdeploy_onnx::*;
 
+#[allow(dead_code)]
+fn setup_test_logger() {
+    use simplelog::{Config, LevelFilter, TermLogger};
+    use std::sync::Once;
+
+    static START: Once = Once::new();
+    START.call_once(|| {
+        TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+    });
+}
+
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     let mut vec = tvec!();
     let len = fs::read_dir(path)
@@ -42,6 +53,7 @@ struct DataJson {
 }
 
 pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
+    // setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -56,6 +68,7 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
                 .timeout_ms(600_000)
                 .exec()
                 .unwrap();
+            info!("Downloaded {:?}", data.url);
             let gz = ::flate2::read::GzDecoder::new(&*body);
             let mut tar = ::tar::Archive::new(gz);
             let tmp = test_path.join("tmp");
@@ -68,8 +81,11 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
     } else {
         test_path
     };
-    let model = for_path(&path.join("model.onnx")).unwrap();
-    let plan = SimplePlan::for_model(&model).unwrap();
+    let model_file = path.join("model.onnx");
+    debug!("Loading {:?}", model_file);
+    let model = for_path(&model_file).unwrap();
+    debug!("Loaded {:?}", model_file);
+    let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
         if d.metadata().unwrap().is_dir() && d
@@ -79,7 +95,7 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
             .starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
-            let computed = plan.run(inputs).unwrap().remove(0);
+            let computed = plan.run(inputs).unwrap();
             for (a, b) in computed.iter().zip(expected.iter()) {
                 if !a.close_enough(b, true) {
                     panic!("Different result: got:{:?} expected:{:?}", a, b)

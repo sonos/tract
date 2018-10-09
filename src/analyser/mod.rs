@@ -77,7 +77,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
             }).map(|(_, _, fact)| fact.clone())
             .collect();
 
-        let mut outputs = node
+        let outputs = node
             .outputs
             .iter()
             .map(|outlet| &outlet.fact)

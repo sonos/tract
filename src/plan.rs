@@ -149,9 +149,9 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             for i in &node.inputs {
                 inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
             }
-            node.op.eval(inputs).map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?;
+            node.op.eval(inputs).map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
         };
-        self.values[node.id] = Some(vs);
+        self.values[node] = Some(values);
         Ok(())
     }
 
