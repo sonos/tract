@@ -5,7 +5,7 @@ use errors::*;
 use model::{Model, OutletId, TVec};
 use ops::Op;
 
-// mod constants;
+mod constants;
 pub mod types;
 
 #[allow(unused_imports)]

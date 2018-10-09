@@ -422,7 +422,6 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     };
 
     let params = Parameters::from_clap(&matches)?;
-    let streaming = params.tfd_model.input_fact()?.stream_info()?.is_some();
 
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
@@ -447,11 +446,14 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             dump::handle(params, assert_outputs, OutputParameters::from_clap(m)?)
         }
 
-        ("profile", Some(m)) => profile::handle(
-            params,
-            ProfilingMode::from_clap(&m, streaming)?,
-            OutputParameters::from_clap(m)?,
-        ),
+        ("profile", Some(m)) => {
+            let streaming = params.tfd_model.input_fact()?.stream_info()?.is_some();
+            profile::handle(
+                params,
+                ProfilingMode::from_clap(&m, streaming)?,
+                OutputParameters::from_clap(m)?,
+            )
+        },
 
         ("analyse", Some(m)) => analyse::handle(params, false, OutputParameters::from_clap(m)?),
 

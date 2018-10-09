@@ -70,11 +70,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn add_node(
-        &mut self,
-        name: String,
-        op: Box<ops::Op>,
-    ) -> TfdResult<usize> {
+    pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TfdResult<usize> {
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
         let is_input = op.name() == "Source";
@@ -110,22 +106,6 @@ impl Model {
         Ok(())
     }
 
-    pub fn node_by_name(&self, name: &str) -> TfdResult<&Node> {
-        let id: &usize = self
-            .nodes_by_name
-            .get(name)
-            .ok_or_else(|| format!("Node named {} not found", name))?;
-        Ok(&self.nodes[*id])
-    }
-
-    pub fn node_names(&self) -> Vec<&str> {
-        self.nodes.iter().map(|s| &*s.name).collect()
-    }
-
-    pub fn nodes(&self) -> &[Node] {
-        &*self.nodes
-    }
-
     pub fn set_inputs(
         &mut self,
         inputs: impl IntoIterator<Item = impl AsRef<str>>,
@@ -154,11 +134,6 @@ impl Model {
         Ok(())
     }
 
-    pub fn fact(&self, outlet: OutletId) -> TfdResult<&TensorFact> {
-        let outlets = &self.nodes[outlet.node].outputs;
-        Ok(&outlets[outlet.slot].fact)
-    }
-
     pub fn set_fact(&mut self, outlet: OutletId, fact: TensorFact) -> TfdResult<()> {
         let outlets = &mut self.nodes[outlet.node].outputs;
         if outlets.len() <= outlet.slot {
@@ -168,7 +143,32 @@ impl Model {
         Ok(())
     }
 
-    pub fn inputs_fact(&self, ix:usize) -> TfdResult<&TensorFact> {
+    pub fn analyse(&mut self) -> TfdResult<()> {
+        ::analyser::Analyser::new(self)?.analyse()
+    }
+
+    pub fn node_by_name(&self, name: &str) -> TfdResult<&Node> {
+        let id: &usize = self
+            .nodes_by_name
+            .get(name)
+            .ok_or_else(|| format!("Node named {} not found", name))?;
+        Ok(&self.nodes[*id])
+    }
+
+    pub fn node_names(&self) -> Vec<&str> {
+        self.nodes.iter().map(|s| &*s.name).collect()
+    }
+
+    pub fn nodes(&self) -> &[Node] {
+        &*self.nodes
+    }
+
+    pub fn fact(&self, outlet: OutletId) -> TfdResult<&TensorFact> {
+        let outlets = &self.nodes[outlet.node].outputs;
+        Ok(&outlets[outlet.slot].fact)
+    }
+
+    pub fn inputs_fact(&self, ix: usize) -> TfdResult<&TensorFact> {
         let input = self.inputs()?[ix];
         self.fact(input)
     }
@@ -181,7 +181,7 @@ impl Model {
         Ok(&self.inputs)
     }
 
-    pub fn outputs_fact(&self, ix:usize) -> TfdResult<&TensorFact> {
+    pub fn outputs_fact(&self, ix: usize) -> TfdResult<&TensorFact> {
         let output = self.outputs()?[ix];
         self.fact(output)
     }
@@ -192,10 +192,6 @@ impl Model {
 
     pub fn outputs(&self) -> TfdResult<&[OutletId]> {
         Ok(&self.outputs)
-    }
-
-    pub fn analyse(&mut self) -> TfdResult<()> {
-        ::analyser::Analyser::new(self)?.analyse()
     }
 
     pub fn into_arc(self) -> Arc<Model> {
