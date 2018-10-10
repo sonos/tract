@@ -66,7 +66,8 @@ pub fn render(model: &Model, params: &OutputParameters) -> CliResult<()> {
             (0, 1) => print!("{}", DOWN_RIGHT.color(node_color)),
             (1, 0) => print!("{}", "╵".color(node_color)),
             (u, d) => {
-                for _ in 0..u.min(d) {
+                print!("{}", "┝".color(node_color));
+                for _ in 1..u.min(d) {
                     print!("{}", "┿".color(node_color));
                 }
                 for _ in u..d {
@@ -102,7 +103,7 @@ pub fn render(model: &Model, params: &OutputParameters) -> CliResult<()> {
                 }
                 print!("{}", VERTICAL_RIGHT.color(color));
                 for _ in 02..output.successors.len() {
-                    print!("{}", HORIZONTAL.color(color));
+                    print!("{}", DOWN_HORIZONTAL.color(color));
                 }
                 println!("{}", DOWN_LEFT.color(color));
             }

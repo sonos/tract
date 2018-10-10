@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 
+use bit_set;
+
 mod dsl;
 mod order;
 pub use self::order::eval_order;
@@ -100,10 +102,13 @@ impl Model {
             self.outputs.retain(|&o| o != outlet);
         }
         let succ = &mut self.nodes[inlet.node];
-        if succ.inputs.len() != inlet.slot {
+        if inlet.slot == succ.inputs.len() {
+            succ.inputs.push(outlet);
+        } else if inlet.slot < succ.inputs.len() {
+            succ.inputs[inlet.slot] = outlet;
+        } else {
             bail!("Edges must be added in order and consecutive. Trying to connect input {:?} of node {:?} ", inlet.slot, succ)
         }
-        succ.inputs.push(outlet);
         Ok(())
     }
 
@@ -167,6 +172,39 @@ impl Model {
         Ok(())
     }
 
+    pub fn prop_constants(&mut self) -> TfdResult<()> {
+        let mut done = bit_set::BitSet::with_capacity(self.nodes.len());
+        let mut needed:Vec<usize> = vec!();
+        for t in self.outputs()?.iter().map(|n| n.node) {
+            needed.push(t);
+        }
+        while let Some(&node) = needed.last() {
+            if done.contains(node) {
+                needed.pop();
+                continue;
+            }
+            if self.nodes[node].inputs.iter().all(|i| done.contains(i.node)) {
+                needed.pop();
+                done.insert(node);
+            } else {
+                for ix in 0..self.nodes[node].inputs.len() {
+                    use analyser::types::Fact;
+                    let source = self.nodes[node].inputs[ix];
+                    if self.nodes[source.node].op().name() != "Const" && self.fact(source)?.is_concrete() {
+                        use self::dsl::ModelDsl;
+                        let konst = self.fact(source)?.concretize().unwrap();
+                        let id = self.nodes.len();
+                        let id = self.add_const(format!("Const-{}", id), konst)?;
+                        self.add_edge(OutletId::new(id, 0), InletId::new(node, ix))?;
+                    } else {
+                        needed.push(source.node);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn compact(&self) -> TfdResult<Model> {
         let mut model = Model::default();
         let mut map = HashMap::new();
@@ -186,6 +224,7 @@ impl Model {
 
     pub fn into_optimized(mut self) -> TfdResult<Model> {
         self.reduce()?;
+        self.prop_constants()?;
         self.compact()
     }
 
