@@ -2,8 +2,7 @@ use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-use super::Conv;
-use ops::nn::{ Patch, DataFormat };
+use ops::nn::{ Patch, DataFormat, PaddingSpec };
 
 use insideout::InsideOut;
 
@@ -21,27 +20,29 @@ pub struct FixedParamsConv<D: Datum> {
 
 impl<D: Datum> FixedParamsConv<D> {
     pub fn new(
-        conv: &Conv,
+        data_fmt: DataFormat,
+        kernel_is_hwio: bool,
+        dilations: Vec<usize>,
+        strides: Vec<usize>,
+        kernel_spatial_shape: &[usize],
+        padding: PaddingSpec,
         input_full_shape: &[usize],
         kernel: ArrayViewD<D>,
         bias: Option<ArrayViewD<D>>,
     ) -> TfdResult<FixedParamsConv<D>> {
-        let output_channels = if conv.kernel_is_hwio {
+        let output_channels = if kernel_is_hwio {
             *kernel.shape().last().unwrap()
         } else {
             kernel.shape()[0]
         };
 
         let spatial_rank = input_full_shape.len() - 2;
-        let dilations = conv.dilations.clone().unwrap_or(vec![1; spatial_rank]);
-        let strides = conv.strides.clone().unwrap_or(vec![1; spatial_rank]);
-        let kernel_spatial_shape = &kernel.shape()[conv.axis_kernel_spatial()..][..spatial_rank];
 
         let patch = Patch::new(
-            conv.data_fmt,
+            data_fmt,
             dilations,
             kernel_spatial_shape.to_vec(),
-            &conv.padding,
+            &padding,
             strides,
             input_full_shape.to_vec(),
         );
@@ -53,7 +54,7 @@ impl<D: Datum> FixedParamsConv<D> {
         let n = patch.output_spatial_shape.iter().product();
         let kernel = kernel.to_shared();
 
-        let kernel: Array2<D> = if conv.kernel_is_hwio {
+        let kernel: Array2<D> = if kernel_is_hwio {
             let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
             permutation.extend(0..(kernel.ndim() - 2));
             let permuted = kernel.permuted_axes(permutation);
@@ -70,7 +71,7 @@ impl<D: Datum> FixedParamsConv<D> {
             }).inside_out()?;
 
         Ok(FixedParamsConv {
-            kernel_is_hwio: conv.kernel_is_hwio,
+            kernel_is_hwio,
             patch,
             kernel,
             full_output_shape: shape,

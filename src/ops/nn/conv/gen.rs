@@ -1,7 +1,7 @@
 use analyser::rules::prelude::*;
 use ops::prelude::*;
 
-use super::FixedParamsConv;
+use super::{FixedParamsConv, ReducedConv};
 use dim::DimLike;
 use ops::nn::DataFormat;
 use ops::nn::PaddingSpec;
@@ -27,7 +27,7 @@ impl Conv {
         }
     }
 
-    fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[D]) -> Vec<D> {
+    fn output_shape<D: DimLike, ID: Into<D> + Copy>(&self, ishape: &[D], kshape: &[ID]) -> Vec<D> {
         let mut result = ishape.to_vec();
         let ishape = self.data_fmt.shape(ishape);
         let spatial_rank = ishape.hw_rank();
@@ -39,7 +39,7 @@ impl Conv {
             self.dilations.as_ref().unwrap_or(&ones),
             self.strides.as_ref().unwrap_or(&ones),
         );
-        let channels_out = kshape[(self.kernel_is_hwio as usize)*(kshape.len() - 1)];
+        let channels_out = kshape[(self.kernel_is_hwio as usize) * (kshape.len() - 1)].into();
         result[ishape.c_axis()] = channels_out;
         result[ishape.hw_axes()].copy_from_slice(&computed.output);
         result
@@ -59,16 +59,57 @@ impl Op for Conv {
             let (input, kernel, bias) = args_3!(inputs);
             (input, kernel, Some(bias))
         };
-        let convoler = FixedParamsConv::new(
+        let reduced = ReducedConv::new(
             &self,
             input.shape(),
-            kernel.to_array_view::<f32>()?,
-            bias.as_ref()
-                .map(|b| b.to_array_view::<f32>())
-                .inside_out()?,
+            &self.output_shape(input.shape(), kernel.shape()),
+            kernel.into_array::<f32>()?,
+            bias.map(|b| b.into_array::<f32>()).inside_out()?,
         )?;
-        let output = convoler.convolve(&input.to_array_view::<f32>()?)?;
-        Ok(tvec!(output.into()))
+        reduced.eval(tvec!(input))
+    }
+
+    fn reduce(
+        &self,
+        mut inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+    ) -> TfdResult<Option<ReducedOpRewire>> {
+        if inputs.len() == 2 {
+            let (input, kernel) = args_2!(inputs);
+            if let (Some(ishape), Some(kvalue)) =
+                (input.shape.concretize(), kernel.value.concretize())
+            {
+                let reduced = ReducedConv::new(
+                    &self,
+                    &ishape,
+                    &self.output_shape(&ishape, kvalue.shape()),
+                    kvalue.into_array::<f32>()?,
+                    None,
+                )?;
+                return Ok(Some(ReducedOpRewire {
+                    new_op: Box::new(reduced),
+                    rewired: tvec!(0),
+                }));
+            }
+        } else {
+            let (input, kernel, bias) = args_3!(inputs);
+            if let (Some(ishape), Some(kvalue), Some(bias)) =
+                (input.shape.concretize(), kernel.value.concretize(), bias.value.concretize())
+            {
+                let reduced = ReducedConv::new(
+                    &self,
+                    &ishape,
+                    &self.output_shape(&ishape, kvalue.shape()),
+                    kvalue.into_array::<f32>()?,
+                    Some(bias.into_array::<f32>()?)
+                )?;
+                return Ok(Some(ReducedOpRewire {
+                    new_op: Box::new(reduced),
+                    rewired: tvec!(0),
+                }));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -109,30 +150,26 @@ impl InferenceRulesOp for Conv {
             }
             Ok(())
         })?;
-        s.given_2(
-            &inputs[0].rank,
-            &inputs[1].rank,
-            move |s, irank, krank| {
-                let input_c = if self.data_fmt == DataFormat::NHWC {
-                    &inputs[0].shape[irank as usize - 1]
-                } else {
-                    &inputs[0].shape[1]
-                };
-                let filter_i = if self.kernel_is_hwio {
-                    &inputs[1].shape[krank as usize - 2]
-                } else {
-                    &inputs[1].shape[1]
-                };
-                s.equals(input_c, filter_i)
-            }
-        )?;
+        s.given_2(&inputs[0].rank, &inputs[1].rank, move |s, irank, krank| {
+            let input_c = if self.data_fmt == DataFormat::NHWC {
+                &inputs[0].shape[irank as usize - 1]
+            } else {
+                &inputs[0].shape[1]
+            };
+            let filter_i = if self.kernel_is_hwio {
+                &inputs[1].shape[krank as usize - 2]
+            } else {
+                &inputs[1].shape[1]
+            };
+            s.equals(input_c, filter_i)
+        })?;
         s.given_2(
             &inputs[0].shape,
             &inputs[1].shape,
             move |s, ishape, kshape| {
                 let oshape = self.output_shape(&*ishape, &*kshape);
                 s.equals(&outputs[0].shape, oshape)
-            }
+            },
         )
     }
 }

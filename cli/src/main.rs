@@ -94,6 +94,7 @@ fn main() {
             "Override output nodes name (auto-detects otherwise).")
 
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
+        (@arg optimize: -O --optimize "Optimize after model load")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
     );
@@ -311,6 +312,11 @@ impl Parameters {
             tfd_model.analyse()?;
         } else {
             info!("Skipping analyse");
+        }
+
+        if matches.is_present("optimize") {
+            info!("Optimize");
+            tfd_model = tfd_model.into_optimized()?;
         }
 
         Ok(Parameters {

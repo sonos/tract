@@ -26,6 +26,8 @@ pub trait DimLike:
     + ops::Sub<usize, Output = Self>
     + ops::Mul<usize, Output = Self>
     + ops::Div<usize, Output = Self>
+    + Send + Sync
+    + 'static
 {
     fn div_ceil(&self, other: usize) -> Self {
         (*self + other - 1) / other

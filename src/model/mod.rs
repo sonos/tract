@@ -147,6 +147,51 @@ impl Model {
         ::analyser::Analyser::new(self)?.analyse()
     }
 
+    pub fn reduce(&mut self) -> TfdResult<()> {
+        for id in self.eval_order()? {
+            let reduced = {
+                let node = &self.nodes[id];
+                let input_facts:TVec<&TensorFact> = node.inputs.iter().map(|o| self.fact(*o)).collect::<TfdResult<_>>()?;
+                let output_facts:TVec<&TensorFact> = node.outputs.iter().map(|o| &o.fact).collect();
+                node.op.reduce(input_facts, output_facts)?
+            };
+            if let Some(red) = reduced {
+                let mut node = &mut self.nodes[id];
+                let ::ops::ReducedOpRewire { new_op, rewired } = red;
+                node.op = new_op;
+                let new_inputs = rewired.into_iter().map(|ix| node.inputs[ix]).collect();
+                node.inputs = new_inputs;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn compact(&self) -> TfdResult<Model> {
+        let mut model = Model::default();
+        let mut map = HashMap::new();
+        for old_id in self.eval_order()? {
+            let old_node = &self.nodes[old_id];
+            let new_id = model.add_node(old_node.name.clone(), old_node.op.clone())?;
+            map.insert(old_id, new_id);
+            for (ix, output) in old_node.outputs.iter().enumerate() {
+                model.set_fact(OutletId::new(new_id, ix), output.fact.clone())?;
+            }
+            for (ix, input) in old_node.inputs.iter().enumerate() {
+                model.add_edge(OutletId::new(map[&input.node], input.slot), InletId::new(new_id, ix))?;
+            }
+        }
+        Ok(model)
+    }
+
+    pub fn into_optimized(mut self) -> TfdResult<Model> {
+        self.reduce()?;
+        self.compact()
+    }
+
+    pub fn eval_order(&self) -> TfdResult<Vec<usize>> {
+        eval_order(&self)
+    }
+
     pub fn node_by_name(&self, name: &str) -> TfdResult<&Node> {
         let id: &usize = self
             .nodes_by_name

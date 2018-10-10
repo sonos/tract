@@ -366,6 +366,7 @@ impl<T: Datum> Op for StridedSlice<T> {
         self.base.step::<T>(inputs, buffer)
     }
 
+    /*
     fn final_prep(
         &self,
         inputs: TVec<TensorFact>,
@@ -373,6 +374,7 @@ impl<T: Datum> Op for StridedSlice<T> {
     ) -> TfdResult<Option<Box<Op>>> {
         self.base.final_prep(inputs, outputs)
     }
+    */
 }
 
 impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
@@ -425,6 +427,7 @@ impl Op for StridedSliceD {
         }
     }
 
+    /*
     fn final_prep(
         &self,
         inputs: TVec<TensorFact>,
@@ -432,6 +435,7 @@ impl Op for StridedSliceD {
     ) -> TfdResult<Option<Box<Op>>> {
         self.base.final_prep(inputs, outputs)
     }
+    */
 }
 
 impl InferenceRulesOp for StridedSliceD {

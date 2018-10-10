@@ -24,7 +24,7 @@ pub mod unimpl;
 mod types;
 
 pub mod prelude {
-    pub use super::{InferenceOp, Op};
+    pub use super::{InferenceOp, Op, ReducedOpRewire};
     pub use ops::types::Value;
     pub use streaming::types::{OpBuffer, QueuesBuffer};
     pub use streaming::values::{StepValue, Stream, StreamInfo};
@@ -114,11 +114,11 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
         }
     }
 
-    fn final_prep(
+    fn reduce(
         &self,
-        _inputs: TVec<TensorFact>,
-        _outputs: TVec<TensorFact>,
-    ) -> TfdResult<Option<Box<Op>>> {
+        _inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+    ) -> TfdResult<Option<ReducedOpRewire>> {
         Ok(None)
     }
 
@@ -140,4 +140,10 @@ pub trait InferenceOp {
 }
 
 clone_trait_object!(Op);
+
+#[derive(Clone, Debug)]
+pub struct ReducedOpRewire {
+    pub new_op: Box<Op>,
+    pub rewired: TVec<usize>,
+}
 
