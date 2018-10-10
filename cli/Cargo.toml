@@ -5,6 +5,7 @@ authors = ["Romain Liautaud <romain.liautaud@snips.ai>"]
 autobenches = false
 
 [dependencies]
+box_drawing = "0.1"
 clap = "2.31"
 colored = "1.6"
 conform = { path = "../conform" }

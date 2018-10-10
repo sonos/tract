@@ -55,23 +55,20 @@ impl Algo {
                 None,
             )),
             &Algo::Fixed => {
-                let conv = Conv::new(
-                    DataFormat::NHWC,
-                    true,
-                    None,
-                    None,
-                    if padding == Padding::Valid {
-                        PaddingSpec::Valid
-                    } else {
-                        PaddingSpec::SameUpper
-                    },
-                    None,
-                );
                 let input: TVec<Value> = tvec![mk(&[1, 82, 1, 40]).into()];
                 let kernel = mk(&[41, 1, 40, 128]);
                 Box::new(
                     FixedParamsConv::new(
-                        &conv,
+                        DataFormat::NHWC,
+                        true,
+                        vec!(1,1),
+                        vec!(1,1),
+                        &[41,40],
+                        if padding == Padding::Valid {
+                            PaddingSpec::Valid
+                        } else {
+                            PaddingSpec::SameUpper
+                        },
                         input[0].shape(),
                         kernel.to_array_view::<f32>().unwrap(),
                         None,

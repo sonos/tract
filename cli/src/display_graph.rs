@@ -102,6 +102,7 @@ impl DisplayGraph {
         }
         Ok(())
     }
+
     pub fn render_node(&self, node: &Node, _params: &OutputParameters) -> CliResult<()> {
         use colored::Colorize;
         // node output are not ordered by slot number
@@ -262,23 +263,4 @@ impl DisplayGraph {
         Ok(self)
     }
 
-    /*
-    pub fn with_analyser(mut self, analyser: &Analyser<impl Borrow<Model>>) -> CliResult<DisplayGraph> {
-        {
-            let index: HashMap<(OutletId, usize, usize), usize> = self
-                .edges
-                .iter()
-                .enumerate()
-                .map(|(ix, edge)| ((edge.src, edge.dst_node_id, edge.dst_node_input), ix))
-                .collect();
-            for an_edge in &analyser.edges {
-                if let (Some(from), Some(to_node)) = (an_edge.from, an_edge.to_node) {
-                    let key = (from, to_node, an_edge.to_input);
-                    self.edges[index[&key]].label = Some(format!("{:?}", an_edge.fact));
-                }
-            }
-        }
-        Ok(self)
-    }
-    */
 }

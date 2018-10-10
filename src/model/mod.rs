@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 
+mod dsl;
 mod order;
 pub use self::order::eval_order;
 pub use analyser::types::TensorFact;

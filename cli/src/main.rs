@@ -1,3 +1,4 @@
+extern crate box_drawing;
 #[macro_use]
 extern crate clap;
 extern crate colored;
@@ -50,6 +51,7 @@ mod analyse;
 mod compare;
 mod display_graph;
 mod dump;
+mod draw;
 mod errors;
 mod format;
 // mod graphviz;
@@ -112,6 +114,9 @@ fn main() {
                 .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
         );
     app = app.subcommand(output_options(dump));
+
+    let draw = clap::SubCommand::with_name("draw");
+    app = app.subcommand(output_options(draw));
 
     let profile = clap::SubCommand::with_name("profile")
         .help("Benchmarks tfdeploy on randomly generated input.")
@@ -444,6 +449,8 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         }
 
         ("stream-check", Some(m)) => stream_check::handle(params, OutputParameters::from_clap(m)?),
+
+        ("draw", Some(m)) => ::draw::render(&params.tfd_model, &OutputParameters::from_clap(m)?),
 
         ("dump", Some(m)) => {
             let assert_outputs: Option<Vec<TensorFact>> = m
