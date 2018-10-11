@@ -36,8 +36,6 @@ impl<D: Datum> FixedParamsConv<D> {
             kernel.shape()[0]
         };
 
-        let spatial_rank = input_full_shape.len() - 2;
-
         let patch = Patch::new(
             data_fmt,
             dilations,

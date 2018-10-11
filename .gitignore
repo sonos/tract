@@ -1,5 +1,6 @@
 target
 **/*.rs.bk
+*.rustfmt
 Cargo.lock
 examples/data
 tfdeploy-onnx/.onnx

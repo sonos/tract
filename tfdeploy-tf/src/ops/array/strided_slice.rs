@@ -302,6 +302,7 @@ impl BaseStridedSlice {
         })
     }
 
+    /*
     fn final_prep(
         &self,
         mut inputs: TVec<TensorFact>,
@@ -341,6 +342,7 @@ impl BaseStridedSlice {
         }
         Ok(None)
     }
+    */
 }
 
 #[derive(Debug, Default, Clone, new)]

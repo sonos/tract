@@ -21,18 +21,21 @@ pub struct Buffer<T: Datum + LinalgScalar> {
 
 impl<T: Datum + LinalgScalar> OpBuffer for Buffer<T> {}
 
+/*
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let patch = LocalPatch::build(pb)?;
     Ok(boxed_new!(Conv2D(dtype)(patch)))
 }
+*/
 
-/*
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
-    let data_format = pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC");
-    if data_format == b"NCHW" {
-        Err("NCHW data_format not implemented")?
-    }
+    use ::tfdeploy::ops::nn::*;
+    let data_format = if pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC") == b"NHWC" {
+        DataFormat::NHWC
+    } else {
+        DataFormat::NCHW
+    };
     let strides: Vec<usize> = pb.get_attr_list_int("strides")?;
     if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
         Err(format!(
@@ -49,9 +52,8 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
             String::from_utf8_lossy(s)
         ))?,
     };
-    Ok(Box::new(::tfdeploy::ops::nn::Conv::new(true, true, None, None, padding, Some(strides[1..3].to_vec()))))
+    Ok(Box::new(Conv::new(data_format, true, None, None, padding, Some(strides[1..3].to_vec()))))
 }
-*/
 
 impl<T: Datum + LinalgScalar> Conv2D<T> {
     /// Performs a 2D convolution on an input tensor and a filter.
