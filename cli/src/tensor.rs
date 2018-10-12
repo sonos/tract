@@ -41,7 +41,8 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
 }
 
 fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
-    let mut file = fs::File::open(filename)?;
+    let mut file = fs::File::open(filename)
+        .map_err(|e| format!("Reading tensor from {}, {:?}", filename, e))?;
     let mut data = String::new();
     file.read_to_string(&mut data)?;
 

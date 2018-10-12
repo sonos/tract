@@ -89,6 +89,9 @@ fn main() {
         (@arg input: -i --input +takes_value
             "Set input value (@file or 3x4xi32)")
 
+        (@arg stream_axis: -s --("stream-axis") +takes_value
+            "Set Axis number to stream upon (first is 0)")
+
         (@arg input_node: --("input-node") +takes_value
             "Override input nodes names (auto-detects otherwise).")
 
@@ -300,9 +303,12 @@ impl Parameters {
                 let t = tensor::for_string(v)?;
                 // obliterate value in input (the analyser/optimizer would fold
                 // the graph)
-                let fact = TensorFact {
+                let mut fact = TensorFact {
                     value: tfdeploy::analyser::GenericFact::Any, ..t
                 };
+                if let Some(axis) = matches.value_of("stream_axis") {
+                    fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tfdeploy::TDim::s().into()
+                }
                 vs.push(t.value.concretize());
                 let outlet = tfd_model.inputs()?[ix];
                 tfd_model.set_fact(outlet, fact)?;

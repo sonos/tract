@@ -117,12 +117,6 @@ impl DisplayGraph {
         let mut output_ports:Vec<(usize, String)> = output_ports.into_iter().collect();
         output_ports.sort();
         let mut sections = vec![
-            vec!(Row::Double("impl:".to_string(),
-                if node.tfd_op == "Unimplemented" {
-                    node.tfd_op.red().to_string()
-                } else {
-                    node.tfd_op.clone()
-                })),
             node.attrs
                 .iter()
                 .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))

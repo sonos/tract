@@ -2,14 +2,13 @@ use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 
-use bit_set;
-
 mod dsl;
 mod order;
 pub use self::order::eval_order;
 pub use analyser::types::TensorFact;
 
 use {ops, TfdResult};
+pub use self::dsl::ModelDsl;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -68,8 +67,8 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 pub struct Model {
     nodes: Vec<Node>,
     nodes_by_name: HashMap<String, usize>,
-    inputs: Vec<OutletId>,
-    outputs: Vec<OutletId>,
+    pub(crate) inputs: Vec<OutletId>,
+    pub(crate) outputs: Vec<OutletId>,
 }
 
 impl Model {
@@ -153,97 +152,10 @@ impl Model {
         ::analyser::Analyser::new(self)?.analyse()
     }
 
-    pub fn reduce(&mut self) -> TfdResult<()> {
-        for id in self.eval_order()? {
-            let reduced = {
-                let node = &self.nodes[id];
-                let input_facts: TVec<&TensorFact> = node
-                    .inputs
-                    .iter()
-                    .map(|o| self.fact(*o))
-                    .collect::<TfdResult<_>>()?;
-                let output_facts: TVec<&TensorFact> =
-                    node.outputs.iter().map(|o| &o.fact).collect();
-                node.op.reduce(input_facts, output_facts)?
-            };
-            if let Some(red) = reduced {
-                let mut node = &mut self.nodes[id];
-                let ::ops::ReducedOpRewire { new_op, rewired } = red;
-                node.op = new_op;
-                let new_inputs = rewired.into_iter().map(|ix| node.inputs[ix]).collect();
-                node.inputs = new_inputs;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn prop_constants(&mut self) -> TfdResult<()> {
-        let mut done = bit_set::BitSet::with_capacity(self.nodes.len());
-        let mut needed: Vec<usize> = vec![];
-        for t in self.outputs()?.iter().map(|n| n.node) {
-            needed.push(t);
-        }
-        while let Some(&node) = needed.last() {
-            if done.contains(node) {
-                needed.pop();
-                continue;
-            }
-            if self.nodes[node]
-                .inputs
-                .iter()
-                .all(|i| done.contains(i.node))
-            {
-                needed.pop();
-                done.insert(node);
-            } else {
-                for ix in 0..self.nodes[node].inputs.len() {
-                    use analyser::types::Fact;
-                    let source = self.nodes[node].inputs[ix];
-                    if self.nodes[source.node].op().name() != "Const"
-                        && self.fact(source)?.is_concrete()
-                    {
-                        use self::dsl::ModelDsl;
-                        let konst = self.fact(source)?.concretize().unwrap();
-                        let id = self.nodes.len();
-                        let id = self.add_const(format!("Const-{}", id), konst.clone())?;
-                        self.add_edge(OutletId::new(id, 0), InletId::new(node, ix))?;
-                        self.set_fact(OutletId::new(id, 0), konst.into())?;
-                    } else {
-                        needed.push(source.node);
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn compact(&self) -> TfdResult<Model> {
-        let mut model = Model::default();
-        let mut map = HashMap::new();
-        for old_id in self.eval_order()? {
-            let old_node = &self.nodes[old_id];
-            let new_id = model.add_node(old_node.name.clone(), old_node.op.clone())?;
-            map.insert(old_id, new_id);
-            for (ix, output) in old_node.outputs.iter().enumerate() {
-                model.set_fact(OutletId::new(new_id, ix), output.fact.clone())?;
-            }
-            for (ix, input) in old_node.inputs.iter().enumerate() {
-                model.add_edge(
-                    OutletId::new(map[&input.node], input.slot),
-                    InletId::new(new_id, ix),
-                )?;
-            }
-        }
-        // maintaining order of i/o interface
-        model.inputs = self.inputs()?.iter().map(|i| OutletId::new(map[&i.node], i.slot)).collect();
-        model.outputs = self.outputs()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
-        Ok(model)
-    }
-
     pub fn into_optimized(mut self) -> TfdResult<Model> {
-        self.reduce()?;
-        self.prop_constants()?;
-        self.compact()
+        ::optim::reduce(&mut self)?;
+        ::optim::prop_const(&mut self)?;
+        ::optim::compact(&self)
     }
 
     pub fn eval_order(&self) -> TfdResult<Vec<usize>> {
@@ -264,6 +176,10 @@ impl Model {
 
     pub fn nodes(&self) -> &[Node] {
         &*self.nodes
+    }
+
+    pub fn mut_nodes(&mut self) -> &mut [Node] {
+        &mut *self.nodes
     }
 
     pub fn fact(&self, outlet: OutletId) -> TfdResult<&TensorFact> {

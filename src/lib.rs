@@ -96,6 +96,7 @@ pub mod errors;
 pub mod model;
 #[macro_use]
 pub mod ops;
+pub mod optim;
 pub mod plan;
 pub mod streaming;
 pub mod tensor;
