@@ -157,8 +157,13 @@ impl Model {
         for id in self.eval_order()? {
             let reduced = {
                 let node = &self.nodes[id];
-                let input_facts:TVec<&TensorFact> = node.inputs.iter().map(|o| self.fact(*o)).collect::<TfdResult<_>>()?;
-                let output_facts:TVec<&TensorFact> = node.outputs.iter().map(|o| &o.fact).collect();
+                let input_facts: TVec<&TensorFact> = node
+                    .inputs
+                    .iter()
+                    .map(|o| self.fact(*o))
+                    .collect::<TfdResult<_>>()?;
+                let output_facts: TVec<&TensorFact> =
+                    node.outputs.iter().map(|o| &o.fact).collect();
                 node.op.reduce(input_facts, output_facts)?
             };
             if let Some(red) = reduced {
@@ -174,7 +179,7 @@ impl Model {
 
     pub fn prop_constants(&mut self) -> TfdResult<()> {
         let mut done = bit_set::BitSet::with_capacity(self.nodes.len());
-        let mut needed:Vec<usize> = vec!();
+        let mut needed: Vec<usize> = vec![];
         for t in self.outputs()?.iter().map(|n| n.node) {
             needed.push(t);
         }
@@ -183,19 +188,26 @@ impl Model {
                 needed.pop();
                 continue;
             }
-            if self.nodes[node].inputs.iter().all(|i| done.contains(i.node)) {
+            if self.nodes[node]
+                .inputs
+                .iter()
+                .all(|i| done.contains(i.node))
+            {
                 needed.pop();
                 done.insert(node);
             } else {
                 for ix in 0..self.nodes[node].inputs.len() {
                     use analyser::types::Fact;
                     let source = self.nodes[node].inputs[ix];
-                    if self.nodes[source.node].op().name() != "Const" && self.fact(source)?.is_concrete() {
+                    if self.nodes[source.node].op().name() != "Const"
+                        && self.fact(source)?.is_concrete()
+                    {
                         use self::dsl::ModelDsl;
                         let konst = self.fact(source)?.concretize().unwrap();
                         let id = self.nodes.len();
-                        let id = self.add_const(format!("Const-{}", id), konst)?;
+                        let id = self.add_const(format!("Const-{}", id), konst.clone())?;
                         self.add_edge(OutletId::new(id, 0), InletId::new(node, ix))?;
+                        self.set_fact(OutletId::new(id, 0), konst.into())?;
                     } else {
                         needed.push(source.node);
                     }
@@ -216,9 +228,15 @@ impl Model {
                 model.set_fact(OutletId::new(new_id, ix), output.fact.clone())?;
             }
             for (ix, input) in old_node.inputs.iter().enumerate() {
-                model.add_edge(OutletId::new(map[&input.node], input.slot), InletId::new(new_id, ix))?;
+                model.add_edge(
+                    OutletId::new(map[&input.node], input.slot),
+                    InletId::new(new_id, ix),
+                )?;
             }
         }
+        // maintaining order of i/o interface
+        model.inputs = self.inputs()?.iter().map(|i| OutletId::new(map[&i.node], i.slot)).collect();
+        model.outputs = self.outputs()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
         Ok(model)
     }
 

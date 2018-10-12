@@ -51,13 +51,17 @@ pub fn make_test_file(tests_set: &str) {
         .collect();
     tests.sort();
     writeln!(rs, "mod {} {{", tests_set.replace("-","_"));
-    for t in tests {
-        writeln!(rs, "#[test]");
-        if !working_list.contains(&t) {
-            writeln!(rs, "#[ignore]");
+    for (s, optim) in &[("plain", false), ("optim", true)] {
+        writeln!(rs, "mod {} {{", s);
+        for t in &tests {
+            writeln!(rs, "#[test]");
+            if !working_list.contains(&t) {
+                writeln!(rs, "#[ignore]");
+            }
+            writeln!(rs, "fn {}() {{", t);
+            writeln!(rs, "::onnx::run_one({:?}, {:?}, {:?})", node_tests, t, optim);
+            writeln!(rs, "}}");
         }
-        writeln!(rs, "fn {}() {{", t);
-        writeln!(rs, "::onnx::run_one({:?}, {:?})", node_tests, t);
         writeln!(rs, "}}");
     }
     writeln!(rs, "}}");

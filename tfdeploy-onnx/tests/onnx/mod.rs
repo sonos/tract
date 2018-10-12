@@ -52,8 +52,8 @@ struct DataJson {
     url: String,
 }
 
-pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
-    // setup_test_logger();
+pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str, optim:bool) {
+//    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -83,8 +83,12 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
     };
     let model_file = path.join("model.onnx");
     debug!("Loading {:?}", model_file);
-    let model = for_path(&model_file).unwrap();
+    let mut model = for_path(&model_file).unwrap();
     debug!("Loaded {:?}", model_file);
+    if optim {
+        model = model.into_optimized().unwrap();
+    }
+//    debug!("Model: {:#?}", model);
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
@@ -96,9 +100,9 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str) {
         {
             let (inputs, expected) = load_dataset(&d.path());
             let computed = plan.run(inputs).unwrap();
-            for (a, b) in computed.iter().zip(expected.iter()) {
+            for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
                 if !a.close_enough(b, true) {
-                    panic!("Different result: got:{:?} expected:{:?}", a, b)
+                    panic!("Different result for output #{}: got:{:?} expected:{:?}", ix, a, b)
                 }
             }
         }
