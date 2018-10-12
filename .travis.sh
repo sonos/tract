@@ -16,6 +16,6 @@ cargo build --release
 cargo test --release --all 
 cargo check --benches --all # running benches on travis is useless
 
-# cargo run --release -p cli -- \
-#     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
-#     dump -q --assert-output 1x1000x1x1xf32
+cargo run --release -p cli -- \
+    $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
+    dump -q --assert-output 1x1000x1x1xf32
