@@ -369,7 +369,8 @@ impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
 }
 
 macro_rules! tensor {
-    ($t:ident, $v:ident, $as_one:ident, $as:ident, $take:ident, $make:ident, [$(($cast:ident, $as_cast:ident)),*]) => {
+    ($t:ident, $v:ident, $as_one:ident, $as:ident, $take:ident, $make:ident,
+        [$(($cast:ident, $as_cast:ident)),*]) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
                 Tensor::$v(arr0(it).into_dyn())
@@ -456,8 +457,14 @@ trait TryInto<D: Datum> {
     fn try_into(self) -> TfdResult<D>;
 }
 
-impl<A: Into<D>, D: Datum> TryInto<D> for A {
+impl<F: ::num::cast::AsPrimitive<D>, D: Datum> TryInto<D> for F {
     fn try_into(self) -> TfdResult<D> {
+        Ok(self.as_())
+    }
+}
+
+impl TryInto<TDim> for i32 {
+    fn try_into(self) -> TfdResult<TDim> {
         Ok(self.into())
     }
 }
@@ -478,7 +485,9 @@ tensor!(bool, Bool, as_bool, as_bools, take_bools, bools, []);
 tensor!(f64, F64, as_f64, as_f64s, take_f64s, f64s, []);
 tensor!(f32, F32, as_f32, as_f32s, take_f32s, f32s, []);
 tensor!(i8, I8, as_i8, as_i8s, take_i8s, i8s, []);
-tensor!(i16, I16, as_i16, as_i16s, take_i16s, i16s, []);
+tensor!(i16, I16, as_i16, as_i16s, take_i16s, i16s,
+        [(I8, as_i8s)]
+);
 tensor!(
     i32,
     I32,
@@ -486,7 +495,7 @@ tensor!(
     as_i32s,
     take_i32s,
     i32s,
-    [(TDim, as_dims)]
+    [(TDim, as_dims), (I8, as_i8s), (I16, as_i16s)]
 );
 tensor!(
     i64,
@@ -495,7 +504,7 @@ tensor!(
     as_i64s,
     take_i64s,
     i64s,
-    [(TDim, as_dims)]
+    [(TDim, as_dims), (I8, as_i8s), (I16, as_i16s), (I32, as_i32s)]
 );
 tensor!(u8, U8, as_u8, as_u8s, take_u8s, u8s, []);
 tensor!(u16, U16, as_u16, as_u16s, take_u16s, u16s, []);

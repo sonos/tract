@@ -128,6 +128,11 @@ test_reshape_one_dim
 test_reshape_reduced_dims
 test_reshape_reordered_dims
 test_reshape_negative_dim
+test_slice
+test_slice_default_axes
+test_slice_end_out_of_bounds
+test_slice_neg
+test_slice_start_out_of_bounds
 test_sigmoid
 test_sigmoid_example
 test_sin

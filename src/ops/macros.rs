@@ -374,6 +374,7 @@ macro_rules! assert_backward {
     };
 }
 
+#[macro_export]
 macro_rules! dispatch_datum {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
@@ -392,7 +393,7 @@ macro_rules! dispatch_datum {
     }
 }
 
-#[warn(unused_macros)]
+#[macro_export]
 macro_rules! dispatch_floatlike {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {

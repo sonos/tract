@@ -1,7 +1,9 @@
 use analyser::rules::prelude::*;
 use ops::prelude::*;
 
-#[derive(Debug, Clone, new)]
+use super::RmDims;
+
+#[derive(Debug, Clone, new, Default)]
 pub struct Squeeze {
     axes: Option<Vec<usize>>,
 }
@@ -17,7 +19,7 @@ impl Squeeze {
             }
             Ok(shape)
         } else {
-            Ok(input.iter().cloned().filter(|&d| d == D::one()).collect())
+            Ok(input.iter().cloned().filter(|&d| d != D::one()).collect())
         }
     }
 
@@ -37,6 +39,21 @@ impl Op for Squeeze {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
+    }
+
+    fn reduce(
+        &self,
+        _inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+    ) -> TfdResult<Option<ReducedOpRewire>> {
+        if let Some(dims) = &self.axes {
+            Ok(Some(ReducedOpRewire {
+                    new_op: Box::new(RmDims::new(dims.clone())),
+                    rewired: tvec!(0)
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }
 
