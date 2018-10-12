@@ -153,7 +153,8 @@ impl Model {
     }
 
     pub fn into_optimized(mut self) -> TfdResult<Model> {
-        ::optim::reduce(&mut self)?;
+        use optim::OptimizerPass;
+        ::optim::Reduce::pass(&mut self)?;
         ::optim::prop_const(&mut self)?;
         ::optim::compact(&self)
     }
