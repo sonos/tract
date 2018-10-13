@@ -310,7 +310,8 @@ impl Tensor {
             && mb
                 .iter()
                 .zip(ma.iter())
-                .map(|(&a, &b)| (a, b, a.is_nan() && b.is_nan() || (b - a).abs() < margin))
+                .map(|(&a, &b)| (a, b, a.is_nan() && b.is_nan() || a == b || (b - a).abs() <= margin))
+                .inspect(|t| println!("{:?}",t))
                 .all(|t| t.2)
     }
 
