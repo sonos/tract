@@ -7,7 +7,8 @@ use format::*;
 use itertools::Itertools;
 use tfdeploy::{Model, Node};
 
-use {OutputParameters, Parameters, ProfilingMode, SomeGraphDef};
+use {Parameters, ProfilingMode, SomeGraphDef};
+use display_graph::DisplayOptions;
 
 mod regular;
 mod streaming;
@@ -33,14 +34,14 @@ impl ProfileData {
         &mut self,
         model: &Model,
         graph: &SomeGraphDef,
-        output_params: &OutputParameters,
+        display_options: DisplayOptions,
     ) -> CliResult<()> {
         let sum = self.summed();
         let nodes: Vec<&Node> = model.nodes().iter().map(|a| &*a).collect();
         let mut display_graph =
-            ::display_graph::DisplayGraph::from_model(model)?.with_graph_def(&graph)?;
+            ::display_graph::DisplayGraph::from_model_and_options(model, display_options)?.with_graph_def(&graph)?;
         for (ix, measure) in self.nodes.iter() {
-            display_graph.nodes[*ix].label = Some(dur_avg_oneline_ratio(*measure, sum));
+            display_graph.add_node_label(*ix, dur_avg_oneline_ratio(*measure, sum))?;
         }
         let top5: Vec<usize> = self
             .nodes
@@ -55,11 +56,9 @@ impl ProfileData {
             .take(5)
             .map(|a| *a.0)
             .collect();
-        for node in display_graph.nodes.iter_mut() {
-            node.hidden = !top5.contains(&node.id);
-        }
+        display_graph.options.node_ids = Some(top5);
         println!("Most time consuming nodes:");
-        display_graph.render(&output_params)?;
+        display_graph.render()?;
         Ok(())
     }
 
@@ -117,17 +116,17 @@ impl ProfileData {
 pub fn handle(
     params: Parameters,
     profiling: ProfilingMode,
-    output_params: OutputParameters,
+    display_options: DisplayOptions,
 ) -> CliResult<()> {
     match &profiling {
-        ProfilingMode::Regular { .. } => regular::handle(params, profiling, output_params),
+        ProfilingMode::Regular { .. } => regular::handle(params, profiling, display_options),
         ProfilingMode::RegularBenching { .. } => {
-            regular::handle_benching(params, profiling, output_params)
+            regular::handle_benching(params, profiling)
         }
-        ProfilingMode::StreamCruising => streaming::handle_cruise(params, output_params),
-        ProfilingMode::StreamBuffering => streaming::handle_buffering(params, output_params),
+        ProfilingMode::StreamCruising => streaming::handle_cruise(params, display_options),
+        ProfilingMode::StreamBuffering => streaming::handle_buffering(params, display_options),
         ProfilingMode::StreamBenching { .. } => {
-            streaming::handle_bench(params, profiling, output_params)
+            streaming::handle_bench(params, profiling, display_options)
         }
     }
 }

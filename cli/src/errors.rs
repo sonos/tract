@@ -1,7 +1,6 @@
 #[cfg(feature = "tensorflow")]
 use conform;
 use ndarray;
-use serde_json;
 use tfdeploy;
 
 /// Configures error handling for this crate.
@@ -17,7 +16,6 @@ error_chain! {
     foreign_links {
         Io(::std::io::Error);
         NumParseInt(::std::num::ParseIntError);
-        SerdeJson(serde_json::Error);
         NdarrayShape(ndarray::ShapeError);
     }
 }

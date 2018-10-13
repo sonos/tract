@@ -3,7 +3,8 @@ use pbr::ProgressBar;
 use simplelog::Level::Info;
 
 use errors::*;
-use {OutputParameters, Parameters, ProfilingMode};
+use {Parameters, ProfilingMode};
+use display_graph::DisplayOptions;
 
 use format::*;
 use profile::ProfileData;
@@ -15,7 +16,6 @@ use tfdeploy::plan::{SimplePlan, SimpleState};
 pub fn handle_benching(
     params: Parameters,
     profiling: ProfilingMode,
-    _output_params: OutputParameters,
 ) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching {
         max_iters,
@@ -46,7 +46,7 @@ pub fn handle_benching(
 pub fn handle(
     params: Parameters,
     profiling: ProfilingMode,
-    output_parameters: OutputParameters,
+    display_options: DisplayOptions
 ) -> CliResult<()> {
     use colored::Colorize;
 
@@ -140,7 +140,7 @@ pub fn handle(
 
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, &output_parameters)?;
+    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, display_options)?;
     println!();
 
     profile.print_most_consuming_ops(&params.tfd_model)?;

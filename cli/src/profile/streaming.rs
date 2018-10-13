@@ -12,7 +12,8 @@ use rusage::{Duration, Instant};
 use tfdeploy::analyser::Fact;
 use tfdeploy::streaming::*;
 use tfdeploy::{Tensor, Model};
-use {OutputParameters, Parameters, ProfilingMode};
+use {Parameters, ProfilingMode};
+use display_graph::DisplayOptions;
 
 fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>, Tensor)> {
     let start = Instant::now();
@@ -62,7 +63,7 @@ fn bufferize<P:Borrow<StreamingPlan<M>>, M:Borrow<Model>>(state: &mut StreamingM
 pub fn handle_bench(
     params: Parameters,
     profiling: ProfilingMode,
-    _output_params: OutputParameters,
+    _display_options: DisplayOptions,
 ) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::StreamBenching {
         max_iters,
@@ -96,7 +97,7 @@ pub fn handle_bench(
     Ok(())
 }
 
-pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
+pub fn handle_cruise(params: Parameters, display_options: DisplayOptions) -> CliResult<()> {
     let (plan, chunk) = build_streaming_plan(&params)?;
     let plan = Arc::new(plan);
     let mut state = StreamingModelState::new(Arc::clone(&plan))?;
@@ -112,7 +113,7 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Cli
         });
     }
 
-    profile.print_most_consuming_nodes(plan.model(), &params.graph, &output_params)?;
+    profile.print_most_consuming_nodes(plan.model(), &params.graph, display_options)?;
     println!();
 
     profile.print_most_consuming_ops(plan.model())?;
@@ -121,7 +122,7 @@ pub fn handle_cruise(params: Parameters, output_params: OutputParameters) -> Cli
 }
 
 /// Handles the `profile` subcommand when there are streaming dimensions.
-pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
+pub fn handle_buffering(params: Parameters, display_options: DisplayOptions) -> CliResult<()> {
     let start = Instant::now();
     info!("Initializing the StreamingModelState.");
     let (plan, _chunk) = build_streaming_plan(&params)?;
@@ -213,7 +214,7 @@ pub fn handle_buffering(params: Parameters, output_params: OutputParameters) -> 
     println!();
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&plan.model(), &params.graph, &output_params)?;
+    profile.print_most_consuming_nodes(&plan.model(), &params.graph, display_options)?;
     println!();
 
     profile.print_most_consuming_ops(&plan.model())?;

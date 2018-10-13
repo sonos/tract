@@ -127,7 +127,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             ))?;
             inputs.push(prec[i.slot].clone().into())
         }
-        let vs = node.op.eval(inputs).map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?;
+        let vs = node.op.eval(inputs).map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
         values[node.id] = Some(vs);
         Ok(())
     }

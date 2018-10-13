@@ -10,7 +10,7 @@ impl Op for UnimplementedOp {
     }
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        Err(format!("unimplemented operation: {} {:?}", self.0, self.1))?
+        Err(format!("unimplemented operation: {}", self.0))?
     }
 }
 

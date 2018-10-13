@@ -4,7 +4,6 @@ extern crate clap;
 extern crate colored;
 #[cfg(feature = "tensorflow")]
 extern crate conform;
-extern crate dot;
 #[macro_use]
 extern crate error_chain;
 extern crate insideout;
@@ -25,13 +24,7 @@ extern crate libc;
 extern crate pbr;
 extern crate tfdeploy_onnx;
 extern crate tfdeploy_tf;
-#[macro_use]
-extern crate rouille;
 extern crate open;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
 
 use std::process;
 use std::str::FromStr;
@@ -44,26 +37,22 @@ use tfdeploy_tf::tfpb;
 use tfpb::graph::GraphDef;
 
 use errors::*;
-#[allow(unused_imports)]
-use format::Row;
+use display_graph::DisplayOptions;
 
-mod analyse;
 mod compare;
 mod display_graph;
 mod dump;
 mod draw;
 mod errors;
 mod format;
-// mod graphviz;
-mod optimize_check;
+// mod optimize_check;
 mod profile;
 mod prune;
 mod run;
 mod rusage;
-mod stream_check;
+// mod stream_check;
 mod tensor;
 mod utils;
-mod web;
 
 /// The default maximum for iterations and time.
 const DEFAULT_MAX_ITERS: u64 = 100_000;
@@ -184,17 +173,6 @@ fn main() {
 fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
     use clap::*;
     command
-        .arg(
-            Arg::with_name("web")
-                .long("web")
-                .help("Display int a web interface"),
-        )
-        .arg(
-            Arg::with_name("json")
-                .long("json")
-                .takes_value(true)
-                .help("output to a json file"),
-        )
         .arg(
             Arg::with_name("quiet")
                 .short("q")
@@ -388,31 +366,17 @@ impl ProfilingMode {
     }
 }
 
-pub struct OutputParameters {
-    web: bool,
-    konst: bool,
-    quiet: bool,
-    json: Option<String>,
-    node_id: Option<usize>,
-    op_name: Option<String>,
-    node_name: Option<String>,
-    successors: Option<usize>,
+pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<DisplayOptions> {
+    Ok(DisplayOptions {
+        konst: matches.is_present("const"),
+        quiet: matches.is_present("quiet"),
+        node_ids: matches.values_of("node_id").map(|id| id.map(|id| id.parse().unwrap()).collect()),
+        node_name: matches.value_of("node_name").map(String::from),
+        op_name: matches.value_of("op_name").map(String::from),
+        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
+    })
 }
 
-impl OutputParameters {
-    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<OutputParameters> {
-        Ok(OutputParameters {
-            web: matches.is_present("web"),
-            konst: matches.is_present("const"),
-            quiet: matches.is_present("quiet"),
-            json: matches.value_of("json").map(String::from),
-            node_id: matches.value_of("node_id").map(|id| id.parse().unwrap()),
-            node_name: matches.value_of("node_name").map(String::from),
-            op_name: matches.value_of("op_name").map(String::from),
-            successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
-        })
-    }
-}
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> CliResult<()> {
@@ -441,42 +405,42 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     let params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
-        ("compare", Some(m)) => compare::handle(params, OutputParameters::from_clap(m)?),
+        ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
 
         ("run", Some(m)) => {
             let assert_outputs: Option<Vec<TensorFact>> = m
                 .values_of("assert-output")
                 .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
-            run::handle(params, assert_outputs, OutputParameters::from_clap(m)?)
+            run::handle(params, assert_outputs)
         }
 
+        /*
         ("optimize-check", Some(m)) => {
-            optimize_check::handle(params, OutputParameters::from_clap(m)?)
+            optimize_check::handle(params, display_options_from_clap(m)?)
         }
 
-        ("stream-check", Some(m)) => stream_check::handle(params, OutputParameters::from_clap(m)?),
+        ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
+        */
 
-        ("draw", Some(m)) => ::draw::render(&params.tfd_model, &OutputParameters::from_clap(m)?),
+        ("draw", Some(m)) => ::draw::render(&params.tfd_model),
 
         ("dump", Some(m)) => {
             let assert_outputs: Option<Vec<TensorFact>> = m
                 .values_of("assert-output")
                 .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
-            dump::handle(params, assert_outputs, OutputParameters::from_clap(m)?)
+            dump::handle(params, assert_outputs, display_options_from_clap(m)?)
         }
 
+        /*
         ("profile", Some(m)) => {
             let streaming = params.tfd_model.input_fact()?.stream_info()?.is_some();
             profile::handle(
                 params,
                 ProfilingMode::from_clap(&m, streaming)?,
-                OutputParameters::from_clap(m)?,
+                display_options_from_clap(m)?,
             )
         },
-
-        ("analyse", Some(m)) => analyse::handle(params, false, OutputParameters::from_clap(m)?),
-
-        ("optimize", Some(m)) => analyse::handle(params, true, OutputParameters::from_clap(m)?),
+        */
 
         (s, _) => bail!("Unknown subcommand {}.", s),
     }

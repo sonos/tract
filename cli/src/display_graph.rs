@@ -1,111 +1,81 @@
 use format::Row;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::fs;
-use tfdeploy;
-use tfdeploy::model::OutletId;
-use tfdeploy::{ Model, TfdFrom };
+use tfdeploy::{ Model, Node };
 use tfdeploy_tf::tfpb::graph::GraphDef;
 use tfdeploy_onnx::pb::ModelProto;
 use CliResult;
-use OutputParameters;
 use SomeGraphDef;
 
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "OutletId")]
-struct OutletIdDef {
-    node: usize,
-    slot: usize,
+#[derive(Debug, Clone, Default)]
+pub struct DisplayOptions {
+    pub konst: bool,
+    pub quiet: bool,
+    pub node_ids: Option<Vec<usize>>,
+    pub op_name: Option<String>,
+    pub node_name: Option<String>,
+    pub successors: Option<usize>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct Edge {
-    pub id: usize,
-    #[serde(with = "OutletIdDef")]
-    pub src: OutletId,
-    pub dst_node_id: usize,
-    pub dst_node_input: usize,
-    pub main: bool,
-    pub label: Option<String>,
+#[derive(Debug, Clone)]
+pub struct DisplayGraph<M:Borrow<Model>> {
+    model: M,
+    pub options: DisplayOptions,
+    node_labels: HashMap<usize, Vec<String>>,
+    node_sections: HashMap<usize, Vec<Vec<Row>>>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct Node {
-    pub id: usize,
-    pub name: String,
-    pub op_name: String,
-    pub tfd_op: String,
-    pub label: Option<String>,
-    pub more_lines: Vec<String>,
-    pub attrs: Vec<(String, String)>,
-    pub inputs: Vec<usize>,
-    pub outputs: Vec<usize>,
-    pub hidden: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct DisplayGraph {
-    pub nodes: Vec<Node>,
-    pub edges: Vec<Edge>,
-}
-
-impl DisplayGraph {
-    pub fn render(&self, params: &OutputParameters) -> CliResult<()> {
-        if params.web {
-            ::web::open_web(&self, params)
-        } else if params.quiet {
-            Ok(())
-        } else if let Some(json) = params.json.as_ref() {
-            ::serde_json::to_writer(fs::File::create(json)?, self)?;
-            Ok(())
-        } else {
-            self.render_console(params)
+impl<M:Borrow<Model>> DisplayGraph<M> {
+    pub fn render(&self) -> CliResult<()> {
+        let model = self.model.borrow();
+        if let Some(nodes) = &self.options.node_ids {
+            for &node in nodes {
+                let node = &model.nodes()[node];
+                self.render_node(node)?;
+            }
+            return Ok(())
         }
-    }
-
-    pub fn render_console(&self, params: &OutputParameters) -> CliResult<()> {
-        if let Some(node) = params.node_id {
-            let node = &self.nodes[node];
-            return self.render_node(node, params);
-        }
-        if let Some(node_name) = &params.node_name {
-            if let Some(node) = &self.nodes.iter().find(|n| n.name == &**node_name) {
-                return self.render_node(node, params);
+        if let Some(node_name) = &self.options.node_name {
+            if let Ok(node) = model.node_by_name(node_name) {
+                return self.render_node(node);
             } else {
                 return Ok(());
             }
         }
-        for node in &self.nodes {
-            if node.op_name == "Const" && !params.konst {
+        for node in model.nodes().iter() {
+            if node.op().name() == "Const" && !self.options.konst {
                 continue;
             }
+            /*
             if node.hidden {
                 continue;
             }
-            if params
+            */
+            if self.options
                 .op_name
                 .as_ref()
-                .map(|name| name != &*node.op_name)
+                .map(|name| name != &*node.op.name())
                 .unwrap_or(false)
             {
                 continue;
             }
-            if params
+            if self.options
                 .successors
                 .as_ref()
-                .map(|id| !node.inputs.iter().any(|i| self.edges[*i].src.slot == *id))
+                .map(|id| !node.inputs.iter().any(|i| i.slot == *id))
                 .unwrap_or(false)
             {
                 continue;
             }
-            self.render_node(&node, params)?
+            self.render_node(&node)?
         }
         Ok(())
     }
 
-    pub fn render_node(&self, node: &Node, _params: &OutputParameters) -> CliResult<()> {
+    pub fn render_node(&self, node: &Node) -> CliResult<()> {
         use colored::Colorize;
         // node output are not ordered by slot number
+        /*
         let output_ports: HashMap<usize, String> = node
             .outputs
             .iter()
@@ -116,44 +86,39 @@ impl DisplayGraph {
             .collect();
         let mut output_ports:Vec<(usize, String)> = output_ports.into_iter().collect();
         output_ports.sort();
-        let mut sections = vec![
+        */
+        let sections = vec![
+            /*
             node.attrs
                 .iter()
                 .map(|a| Row::Double(format!("Attribute {}:", a.0.bold()), a.1.clone()))
                 .collect(),
+            */
             node.inputs
                 .iter()
                 .enumerate()
                 .map(|(ix, a)| {
-                    let edge = &self.edges[*a];
-                    Row::Double(
-                        if edge.src.slot == 0 {
-                            format!(
-                                "Input {}: Node #{}",
-                                ix.to_string().bold(),
-                                edge.src.node.to_string().bold()
-                            )
-                        } else {
-                            format!(
-                                "Input {}: Node #{}/{}",
-                                ix.to_string().bold(),
-                                edge.src.node.to_string().bold(),
-                                edge.src.slot.to_string().bold()
-                            )
-                        },
-                        edge.label.clone().unwrap_or_else(|| "".to_string()),
-                    )
+                    Ok(Row::Double(
+                        format!(
+                            "Input {}: Node #{}/{}",
+                            ix.to_string().bold(),
+                            a.node.to_string().bold(),
+                            a.slot.to_string().bold()
+                        ),
+                        format!("{:?}", self.model.borrow().fact(*a)?)
+                    ))
                 })
-                .collect(),
-            output_ports.into_iter()
-                .map(|(ix,edge_label)| {
+                .collect::<CliResult<_>>()?,
+            node.outputs.iter().enumerate()
+                .map(|(ix,outlet)| {
                     Row::Double(
                         format!("Output {}:", ix.to_string().bold()),
-                        edge_label
+                        format!("{:?}", outlet.fact)
                     )
                 })
                 .collect(),
         ];
+                /*
         if node.more_lines.len() > 0 {
             sections.push(
                 node.more_lines
@@ -162,60 +127,35 @@ impl DisplayGraph {
                     .collect(),
             );
         }
+        */
         ::format::print_box(
             &node.id.to_string(),
-            &node.op_name,
+            &node.op.name(),
             &node.name,
-            &*node.label.as_ref().map(|a| vec![a]).unwrap_or(vec![]),
+            self.node_labels.get(&node.id).map(|v|v.as_slice()).unwrap_or(&[]),
             sections,
         );
         Ok(())
     }
 
-    pub fn from_model(model: &Model) -> CliResult<DisplayGraph> {
-        let mut nodes: Vec<Node> = model.nodes()
-            .iter()
-            .map(|n| Node {
-                id: n.borrow().id,
-                name: n.borrow().name.clone(),
-                op_name: n.borrow().op.name().to_string(),
-                tfd_op: n.borrow().op.name().to_string(),
-                label: None,
-                more_lines: vec![],
-                attrs: vec![],
-                inputs: vec![],
-                outputs: vec![],
-                hidden: false,
-            })
-            .collect();
-        let mut edges = vec![];
-        for node in model.nodes() {
-            for (ix, &input) in node.borrow().inputs.iter().enumerate() {
-                let fact = model.fact(input)?;
-                let edge = Edge {
-                    id: edges.len(),
-                    src: input,
-                    dst_node_id: node.borrow().id,
-                    dst_node_input: ix,
-                    main: ix == 0,
-                    label: Some(format!("{:?}", fact)),
-                };
-                nodes[edge.src.node].outputs.push(edges.len());
-                nodes[node.borrow().id].inputs.push(edges.len());
-                edges.push(edge);
-            }
-        }
-        Ok(DisplayGraph { nodes, edges })
+    pub fn from_model_and_options(model: M, options: DisplayOptions) -> CliResult<DisplayGraph<M>> {
+        Ok(DisplayGraph { model, options, node_labels: HashMap::new(), node_sections: HashMap::new() })
     }
 
-    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph> {
+    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<M>> {
         match graph_def {
             SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
             SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
         }
     }
 
-    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph> {
+    pub fn add_node_label(&mut self, id: usize, label: String) -> CliResult<()> {
+        self.node_labels.entry(id).or_insert(vec!()).push(label);
+            Ok(())
+    }
+
+    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<M>> {
+        /*
         let index_to_graph_def: HashMap<String, usize> =
             self.nodes.iter().map(|n| (n.name.clone(), n.id)).collect();
         for gnode in graph_def.get_node().iter() {
@@ -231,10 +171,12 @@ impl DisplayGraph {
                 self.nodes[*node_id].attrs.sort();
             }
         }
+        */
         Ok(self)
     }
 
-    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph> {
+    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<M>> {
+        /*
         let index_to_graph_def: HashMap<String, usize> =
             self.nodes.iter().map(|n| (n.name.clone(), n.id)).collect();
         for gnode in model_proto.get_graph().get_node().iter() {
@@ -254,7 +196,7 @@ impl DisplayGraph {
                 self.nodes[*node_id].attrs.sort();
             }
         }
+        */
         Ok(self)
     }
-
 }

@@ -1,9 +1,9 @@
 use tfdeploy::SimplePlan;
 use tfdeploy::analyser::TensorFact;
 use errors::*;
-use {OutputParameters, Parameters};
+use Parameters;
 
-pub fn handle(params: Parameters, assert_outputs:Option<Vec<TensorFact>>, _output_params: OutputParameters) -> CliResult<()> {
+pub fn handle(params: Parameters, assert_outputs:Option<Vec<TensorFact>>) -> CliResult<()> {
     let tfd = params.tfd_model;
 
     let plan = SimplePlan::new(&tfd)?;

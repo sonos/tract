@@ -51,9 +51,11 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
 
     let eval_order = ::tfdeploy::model::eval_order(&stream_model)?;
 
+    /*
     for mut dn in &mut display_graph.nodes {
         dn.hidden = true;
     }
+    */
 
     // plan and state for reference batch mode
     let batch_plan = SimplePlan::new(&batch_model)?;
@@ -63,7 +65,6 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
     let mut failure = false;
 
     for node in eval_order.iter() {
-        let dn = &mut display_graph.nodes[*node];
         let node = &stream_model.nodes()[*node];
         //        println!("node: {:?}", node);
 
@@ -168,10 +169,10 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
         }
         println!("matched : {}", matched);
         if matched == wanted_matches {
-            dn.label = Some("OK".green().to_string());
+            display_graph.add_node_label(node.id, "OK".green().to_string())?;
         } else {
-            dn.label = Some("MISMATCH".red().to_string());
-            dn.hidden = false;
+            display_graph.add_node_label(node.id, "MISMATCH".red().to_string())?;
+            // dn.hidden = false;
             //            dn.more_lines.push(format!("matched {} records streaming dim {:?}", matched, out_edge_fact.stream_dim()?));
             //            dn.more_lines.extend(lines.into_iter());
             failure = true;

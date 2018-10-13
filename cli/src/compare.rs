@@ -6,16 +6,17 @@ use tfdeploy::{ Tensor, TensorFact };
 use errors::*;
 use format::*;
 use utils::*;
-use {OutputParameters, Parameters};
+use Parameters;
+use display_graph::DisplayOptions;
 
 /// Handles the `compare` subcommand.
 #[cfg(not(feature = "tensorflow"))]
-pub fn handle(_params: Parameters, _: OutputParameters) -> CliResult<()> {
+pub fn handle(_params: Parameters, _: DisplayOptions) -> CliResult<()> {
     bail!("Comparison requires the `tensorflow` feature.")
 }
 
 #[cfg(feature = "tensorflow")]
-pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
+pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
     use colored::Colorize;
     use format::Row;
 

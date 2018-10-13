@@ -3,7 +3,7 @@ use colored::Color;
 use colored::Colorize;
 use tfdeploy::model::OutletId;
 use tfdeploy::Model;
-use {CliResult, OutputParameters};
+use CliResult;
 
 const COLORS: &'static [Color] = &[
     Color::Red,
@@ -22,7 +22,7 @@ const COLORS: &'static [Color] = &[
     Color::BrightWhite,
 ];
 
-pub fn render(model: &Model, params: &OutputParameters) -> CliResult<()> {
+pub fn render(model: &Model) -> CliResult<()> {
     let mut next_color: usize = 0;
     let mut wires: Vec<(OutletId, Color)> = vec![];
     for node in model.eval_order()? {
