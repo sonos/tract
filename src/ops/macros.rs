@@ -399,6 +399,24 @@ macro_rules! args_4 {
 
 #[allow(unused_macros)]
 #[macro_export]
+macro_rules! args_5 {
+    ($inputs:expr) => {{
+        if $inputs.len() != 5 {
+            Err("Expected 5 args")?
+        }
+        $inputs.reverse();
+        (
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+            $inputs.pop().unwrap(),
+        )
+    }};
+}
+
+#[allow(unused_macros)]
+#[macro_export]
 macro_rules! boxed_new {
     ($op:tt($dtype:expr)($($arg:expr),*)) => { {
         use $crate::DatumType;

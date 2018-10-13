@@ -5,6 +5,11 @@ test_AvgPool2d_stride
 test_AvgPool3d
 test_AvgPool3d_stride
 test_AvgPool3d_stride1_pad0_gpu_input
+test_BatchNorm1d_3d_input_eval
+test_BatchNorm2d_eval
+test_BatchNorm2d_momentum_eval
+test_BatchNorm3d_eval
+test_BatchNorm3d_momentum_eval
 test_Conv1d
 test_Conv1d_dilated
 test_Conv1d_groups

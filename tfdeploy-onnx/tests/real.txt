@@ -1,2 +1,4 @@
+test_densenet121
+test_inception_v2
 test_squeezenet
 test_vgg19

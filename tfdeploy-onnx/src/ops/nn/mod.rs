@@ -7,6 +7,7 @@ use pb::NodeProto;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AveragePool", average_pool);
+    reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
     reg.insert("Dropout", |_| Ok(Box::new(tfdops::identity::Identity::default())));
     reg.insert("ELU", elu);
@@ -54,6 +55,17 @@ fn strides(node: &NodeProto) -> TfdResult<Option<Vec<usize>>> {
     Ok(node
         .get_attr_opt_ints("strides")?
         .map(|i| i.iter().map(|&i| i as usize).collect()))
+}
+
+pub fn batch_normalization(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let epsilon = node.get_attr_opt_float("epsilon")?.unwrap_or(1e-5);
+    let spatial = node.get_attr_opt_int("spatial")?.unwrap_or(0);
+    assert_eq!(spatial, 0);
+    Ok(Box::new(tfdops::nn::BatchNorm::new(
+        DataFormat::NCHW,
+        epsilon,
+        spatial != 0
+    )))
 }
 
 pub fn conv(node: &NodeProto) -> TfdResult<Box<Op>> {
