@@ -61,6 +61,69 @@ macro_rules! element_map {
     };
 }
 
+macro_rules! element_map_with_params {
+    ($Name:ident, [$($type:ty),*], {$($pname:ident : $pty:ty),*}, $expr:item) => {
+        #[derive(Debug, Clone, new, Default)]
+        pub struct $Name {
+            $( $pname: $pty ),*
+        }
+
+        impl ::ops::Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
+
+            /// Evaluates the operation given the input tensors.
+            fn eval(
+                &self,
+                mut inputs: $crate::TVec<$crate::ops::Value>,
+            ) -> $crate::TfdResult<$crate::TVec<$crate::ops::Value>> {
+                use $crate::tensor::Datum;
+                let a = args_1!(inputs);
+                let dt = a.datum_type();
+                $expr;
+                $(if dt == <$type>::datum_type() {
+                    let mut a = a.into_array::<$type>()?;
+                    a.mapv_inplace(|x| eval_one(self,x));
+                    return Ok(tvec![a.into()])
+                })*
+                bail!("{} not covering {:?}", stringify!($Name), dt)
+            }
+
+            /// Evaluates one step of the operation on the given input tensors.
+            fn step(
+                &self,
+                mut inputs: $crate::TVec<$crate::ops::StepValue>,
+                _buffer: &mut Box<$crate::streaming::types::OpBuffer>,
+            ) -> $crate::TfdResult<Option<$crate::TVec<$crate::ops::Value>>> {
+                let a = args_1!(inputs);
+                match a.into_value() {
+                    None => Ok(None),
+                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
+                }
+            }
+        }
+
+        impl $crate::analyser::rules::InferenceRulesOp for $Name {
+            /// Infers properties about the input and output tensors.
+            fn rules<'r, 'p: 'r, 's: 'r>(
+                &'s self,
+                s: &mut $crate::analyser::rules::prelude::Solver<'r>,
+                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
+            ) -> $crate::analyser::rules::InferenceResult {
+                s.equals(&inputs.len, 1)?;
+                s.equals(&outputs.len, 1)?;
+                s.equals_all(wrap![
+                    &inputs[0].datum_type,
+                    &outputs[0].datum_type,
+                ])?;
+                s.equals(&inputs[0].shape, &outputs[0].shape)
+            }
+        }
+    };
+}
+
 macro_rules! element_bin {
     ($Name:ident, [$($type:ty),*] => $to:ty { $expr:expr }) => {
         element_bin!($Name, match $($type => $to { $expr } ),*);

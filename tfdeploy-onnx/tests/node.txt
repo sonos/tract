@@ -70,7 +70,16 @@ test_hardmax_axis_1
 test_hardmax_axis_2
 test_hardmax_default_axis
 test_hardmax_example
+test_hardsigmoid
+test_hardsigmoid
+test_hardsigmoid_default
+test_hardsigmoid_default
+test_hardsigmoid_example
+test_hardsigmoid_example
 test_identity
+test_leakyrelu
+test_leakyrelu_default
+test_leakyrelu_example
 test_less
 test_less_bcast
 test_log
@@ -130,6 +139,9 @@ test_reshape_negative_dim
 test_reshape_one_dim
 test_reshape_reduced_dims
 test_reshape_reordered_dims
+test_selu
+test_selu_default
+test_selu_example
 test_sigmoid
 test_sigmoid_example
 test_sin

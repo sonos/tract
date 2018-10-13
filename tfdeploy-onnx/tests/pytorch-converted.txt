@@ -31,6 +31,10 @@ test_Conv3d_groups
 test_Conv3d_no_bias
 test_Conv3d_stride
 test_Conv3d_stride_padding
+test_LeakyReLU
+test_LeakyReLU
+test_LeakyReLU_with_negval
+test_LeakyReLU_with_negval
 test_Linear
 test_LogSoftmax
 test_MaxPool1d
@@ -41,6 +45,8 @@ test_MaxPool3d_stride
 test_MaxPool3d_stride_padding
 test_PoissonNLLLLoss_no_reduce
 test_ReLU
+test_SELU
+test_SELU
 test_Sigmoid
 test_Softmax
 test_Softmin

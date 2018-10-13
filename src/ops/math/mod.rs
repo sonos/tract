@@ -4,7 +4,6 @@ use ops::prelude::*;
 pub use self::gemm::Gemm;
 
 element_map!(Abs, [f32, i32], |x| x.abs());
-
 element_map!(Exp, [f32, f64], |x| x.exp());
 element_map!(Ln, [f32, f64], |x| x.ln());
 element_map!(Sqrt, [f32, f64], |x| x.sqrt());

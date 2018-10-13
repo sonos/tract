@@ -9,16 +9,20 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("Conv", conv);
     reg.insert("Dropout", |_| Ok(Box::new(tfdops::identity::Identity::default())));
+    reg.insert("ELU", elu);
     reg.insert("GlobalAveragePool", |_| Ok(Box::new(tfdops::nn::GlobalAvgPool::default())));
     reg.insert("GlobalLpPool", global_lp_pool);
     reg.insert("GlobalMaxPool", |_| Ok(Box::new(tfdops::nn::GlobalMaxPool::default())));
     reg.insert("Hardmax", layer_hard_max);
+    reg.insert("HardSigmoid", hard_sigmoid);
+    reg.insert("LeakyRelu", leaky_relu);
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn);
-    reg.insert("Softmax", layer_soft_max);
     reg.insert("MaxPool", max_pool);
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
+    reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));
+    reg.insert("Softmax", layer_soft_max);
     reg.insert("Softplus", |_| Ok(Box::new(tfdops::nn::Softplus::default())));
     reg.insert("Softsign", |_| Ok(Box::new(tfdops::nn::Softsign::default())));
 }
@@ -86,12 +90,23 @@ pub fn average_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     )))
 }
 
+pub fn elu(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
+    Ok(Box::new(tfdops::nn::Elu::new(alpha)))
+}
+
 pub fn global_lp_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     let p: usize = node
         .get_attr_opt_int("p")?
         .map(|i| i as usize)
         .unwrap_or(2);
     Ok(Box::new(tfdops::nn::GlobalLpPool::new(p)))
+}
+
+pub fn hard_sigmoid(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(0.2);
+    let beta = node.get_attr_opt_float("beta")?.unwrap_or(0.5);
+    Ok(Box::new(tfdops::nn::Hardsigmoid::new(alpha, beta)))
 }
 
 pub fn layer_hard_max(node: &NodeProto) -> TfdResult<Box<Op>> {
@@ -116,6 +131,11 @@ pub fn layer_soft_max(node: &NodeProto) -> TfdResult<Box<Op>> {
         .map(|i| i as usize)
         .unwrap_or(1);
     Ok(Box::new(tfdops::nn::LayerSoftmax::new(axis)))
+}
+
+pub fn leaky_relu(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(0.01);
+    Ok(Box::new(tfdops::nn::LeakyRelu::new(alpha)))
 }
 
 pub fn lrn(node: &NodeProto) -> TfdResult<Box<Op>> {
@@ -143,3 +163,8 @@ pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     )))
 }
 
+pub fn selu(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.67326);
+    let gamma = node.get_attr_opt_float("gamma")?.unwrap_or(1.0507);
+    Ok(Box::new(tfdops::nn::Selu::new(alpha, gamma)))
+}
