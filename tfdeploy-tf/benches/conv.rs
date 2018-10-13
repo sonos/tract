@@ -35,7 +35,7 @@ enum Padding {
 }
 
 impl Algo {
-    fn build(&self, padding:Padding) -> Box<Op> {
+    fn build(&self, padding: Padding) -> Box<Op> {
         match self {
             &Algo::Conv2d => Box::new(Conv2D::<f32>::new(if padding == Padding::Valid {
                 LocalPatch::valid(1, 1)
@@ -53,6 +53,7 @@ impl Algo {
                     PaddingSpec::SameUpper
                 },
                 None,
+                1,
             )),
             &Algo::Fixed => {
                 let input: TVec<Value> = tvec![mk(&[1, 82, 1, 40]).into()];
@@ -61,9 +62,9 @@ impl Algo {
                     FixedParamsConv::new(
                         DataFormat::NHWC,
                         true,
-                        vec!(1,1),
-                        vec!(1,1),
-                        &[41,40],
+                        vec![1, 1],
+                        vec![1, 1],
+                        &[41, 40],
                         if padding == Padding::Valid {
                             PaddingSpec::Valid
                         } else {
@@ -72,6 +73,7 @@ impl Algo {
                         input[0].shape(),
                         kernel.to_array_view::<f32>().unwrap(),
                         None,
+                        1,
                     ).unwrap(),
                 )
             }
@@ -88,9 +90,12 @@ fn bench_conv(bencher: &mut Criterion) {
             b.iter(|| op.eval(inputs.clone()).unwrap())
         },
         &[
-        (Algo::Conv2d, Padding::Same), (Algo::Conv2d, Padding::Valid),
-        (Algo::Gen, Padding::Same), (Algo::Gen, Padding::Valid),
-        (Algo::Fixed, Padding::Same), (Algo::Fixed, Padding::Valid),
+            (Algo::Conv2d, Padding::Same),
+            (Algo::Conv2d, Padding::Valid),
+            (Algo::Gen, Padding::Same),
+            (Algo::Gen, Padding::Valid),
+            (Algo::Fixed, Padding::Same),
+            (Algo::Fixed, Padding::Valid),
         ],
     );
 }

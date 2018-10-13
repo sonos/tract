@@ -17,6 +17,7 @@ pub struct ReducedConv<D:DimLike, T:Datum> {
     bias: Option<ArrayD<T>>,
     full_input_shape: Vec<D>,
     full_output_shape: Vec<D>,
+    group: usize,
 }
 
 impl<T: Datum, D:DimLike> ReducedConv<D,T> {
@@ -26,6 +27,7 @@ impl<T: Datum, D:DimLike> ReducedConv<D,T> {
         full_output_shape: &[D],
         kernel: ArrayD<T>,
         bias: Option<ArrayD<T>>,
+        group: usize,
     ) -> TfdResult<ReducedConv<D,T>> {
         let spatial_rank = full_input_shape.len() - 2;
         let dilations = conv.dilations.clone().unwrap_or(vec![1; spatial_rank]);
@@ -41,6 +43,7 @@ impl<T: Datum, D:DimLike> ReducedConv<D,T> {
             bias,
             full_input_shape: full_input_shape.to_vec(),
             full_output_shape: full_output_shape.to_vec(),
+            group,
         })
     }
 }
@@ -68,7 +71,8 @@ where
             self.padding.clone(),
             input.shape(),
             self.kernel.view(),
-            self.bias.as_ref().map(|b| b.view())
+            self.bias.as_ref().map(|b| b.view()),
+            self.group
         )?;
         let output = convoler.convolve(&input.to_array_view::<T>()?)?;
         Ok(tvec!(output.into()))

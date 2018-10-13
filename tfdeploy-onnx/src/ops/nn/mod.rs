@@ -54,6 +54,7 @@ pub fn conv(node: &NodeProto) -> TfdResult<Box<Op>> {
     let kernel_shape = node
         .get_attr_opt_ints("kernel_shape")?
         .map(|i| i.iter().map(|&i| i as usize).collect());
+    let group = node.get_attr_opt_int("group")?.unwrap_or(1);
     Ok(Box::new(tfdops::nn::Conv::new(
         DataFormat::NCHW,
         false,
@@ -61,6 +62,7 @@ pub fn conv(node: &NodeProto) -> TfdResult<Box<Op>> {
         kernel_shape,
         pad(node)?,
         strides(node)?,
+        group as usize,
     )))
 }
 

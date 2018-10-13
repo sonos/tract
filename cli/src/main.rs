@@ -47,7 +47,6 @@ mod errors;
 mod format;
 // mod optimize_check;
 mod profile;
-mod prune;
 mod run;
 mod rusage;
 // mod stream_check;

@@ -1,14 +1,14 @@
 use analyser::rules::prelude::*;
 use ops::prelude::*;
 
-use super::{FixedParamsConv, ReducedConv};
+use super::ReducedConv;
 use dim::DimLike;
 use ops::nn::DataFormat;
 use ops::nn::PaddingSpec;
 
 use insideout::InsideOut;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new)]
 pub struct Conv {
     pub(super) data_fmt: DataFormat,
     pub(super) kernel_is_hwio: bool, // default is oihw (onnx)
@@ -16,6 +16,21 @@ pub struct Conv {
     kernel_shape: Option<Vec<usize>>,
     pub(super) padding: PaddingSpec,
     pub(super) strides: Option<Vec<usize>>,
+    pub(super) group: usize,
+}
+
+impl ::std::default::Default for Conv {
+    fn default() -> Conv {
+        Conv {
+            data_fmt: DataFormat::default(),
+            kernel_is_hwio: false,
+            dilations: None,
+            kernel_shape: None,
+            padding: PaddingSpec::default(),
+            strides: None,
+            group: 1
+        }
+    }
 }
 
 impl Conv {
@@ -65,6 +80,7 @@ impl Op for Conv {
             &self.output_shape(input.shape(), kernel.shape()),
             kernel.into_array::<f32>()?,
             bias.map(|b| b.into_array::<f32>()).inside_out()?,
+            self.group,
         )?;
         reduced.eval(tvec!(input))
     }
@@ -85,6 +101,7 @@ impl Op for Conv {
                     &self.output_shape(&ishape, kvalue.shape()),
                     kvalue.into_array::<f32>()?,
                     None,
+                    self.group,
                 )?;
                 return Ok(Some(ReducedOpRewire {
                     new_op: Box::new(reduced),
@@ -101,7 +118,8 @@ impl Op for Conv {
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
                     kvalue.into_array::<f32>()?,
-                    Some(bias.into_array::<f32>()?)
+                    Some(bias.into_array::<f32>()?),
+                    self.group,
                 )?;
                 return Ok(Some(ReducedOpRewire {
                     new_op: Box::new(reduced),
@@ -161,7 +179,7 @@ impl InferenceRulesOp for Conv {
             } else {
                 &inputs[1].shape[1]
             };
-            s.equals(input_c, filter_i)
+            s.equals(input_c.bex(), self.group as i64 * filter_i.bex())
         })?;
         s.given_2(
             &inputs[0].shape,
@@ -236,7 +254,7 @@ mod test {
 
     #[test]
     fn test_infer_nhwc() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
         let facts = op
             .infer_facts(
                 tvec!(
@@ -253,7 +271,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_1() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
         let res = op
             .eval(tvec!(
                 ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into(),
@@ -267,7 +285,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_2() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
         let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
         let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
         let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
@@ -277,7 +295,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None);
+        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
             .eval(tvec!(
                 arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),

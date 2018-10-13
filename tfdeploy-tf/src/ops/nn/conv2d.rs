@@ -52,7 +52,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
             String::from_utf8_lossy(s)
         ))?,
     };
-    Ok(Box::new(Conv::new(data_format, true, None, None, padding, Some(strides[1..3].to_vec()))))
+    Ok(Box::new(Conv::new(data_format, true, None, None, padding, Some(strides[1..3].to_vec()), 1)))
 }
 
 impl<T: Datum + LinalgScalar> Conv2D<T> {
@@ -311,6 +311,7 @@ mod tests {
                 Padding::Same => PaddingSpec::SameUpper,
             },
             Some(vec![v_stride, h_stride]),
+            1,
         ))
     }
 
