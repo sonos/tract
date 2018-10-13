@@ -19,6 +19,8 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("MaxPool", max_pool);
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));
+    reg.insert("Softplus", |_| Ok(Box::new(tfdops::nn::Softplus::default())));
+    reg.insert("Softsign", |_| Ok(Box::new(tfdops::nn::Softsign::default())));
 }
 
 fn pad(node: &NodeProto) -> TfdResult<PaddingSpec> {

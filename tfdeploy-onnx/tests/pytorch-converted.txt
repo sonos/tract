@@ -44,6 +44,7 @@ test_ReLU
 test_Sigmoid
 test_Softmax
 test_Softmin
+test_Softplus
 test_Softsign
 test_Tanh
 test_log_softmax_dim3
