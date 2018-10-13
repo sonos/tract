@@ -2,6 +2,7 @@ mod gemm;
 
 use ops::prelude::*;
 pub use self::gemm::Gemm;
+use num::traits::AsPrimitive;
 
 element_map!(Abs, [f32, i32], |x| x.abs());
 element_map!(Exp, [f32, f64], |x| x.exp());
@@ -12,6 +13,14 @@ element_map!(Rsqrt, [f32], |x| x.sqrt().recip());
 
 element_map!(Ceil, [f32, f64], |x| x.ceil());
 element_map!(Floor, [f32, f64], |x| x.floor());
+
+element_map_with_params!(Clip, [f32, f64], { min: f32, max: f32 },
+    fn eval_one<T>(clip: &Clip, x:T) -> T
+    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    {
+        x.max(clip.min.as_()).min(clip.max.as_())
+    }
+);
 
 element_map!(Cos, [f32, f64], |x| x.cos());
 element_map!(Sin, [f32, f64], |x| x.sin());

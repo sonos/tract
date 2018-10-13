@@ -18,6 +18,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Abs", |_| Ok(Box::new(tfdops::math::Abs::default())));
     reg.insert("Ceil", |_| Ok(Box::new(tfdops::math::Ceil::default())));
     reg.insert("Floor", |_| Ok(Box::new(tfdops::math::Floor::default())));
+    reg.insert("Clip", clip);
 
     reg.insert("Cos", |_| Ok(Box::new(tfdops::math::Cos::default())));
     reg.insert("Sin", |_| Ok(Box::new(tfdops::math::Sin::default())));
@@ -39,6 +40,12 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Tanh", |_| Ok(Box::new(tfdops::math::Tanh::default())));
 
     reg.insert("Gemm", gemm);
+}
+
+pub fn clip(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let min = node.get_attr_opt_float("min")?.unwrap_or(::std::f32::MIN);
+    let max = node.get_attr_opt_float("max")?.unwrap_or(::std::f32::MAX);
+    Ok(Box::new(tfdops::math::Clip::new(min, max)))
 }
 
 pub fn gemm(node: &NodeProto) -> TfdResult<Box<Op>> {

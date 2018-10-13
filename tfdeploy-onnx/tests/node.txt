@@ -32,6 +32,14 @@ test_basic_conv_with_padding
 test_basic_conv_without_padding
 test_ceil
 test_ceil_example
+test_clip
+test_clip_default_inbounds
+test_clip_default_max
+test_clip_default_min
+test_clip_example
+test_clip_inbounds
+test_clip_outbounds
+test_clip_splitbounds
 test_concat_1d_axis_0
 test_concat_2d_axis_0
 test_concat_2d_axis_1
