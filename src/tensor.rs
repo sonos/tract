@@ -302,7 +302,7 @@ impl Tensor {
         let avg = ma.iter().filter(|a| a.is_finite()).map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().filter(|a| a.is_finite()).map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
         let margin = if approx {
-            (dev / 5.0).max(avg.abs() / 10_000.0)
+            (dev / 5.0).max(avg.abs() / 10_000.0).max(1e-5)
         } else {
             0.0
         };
