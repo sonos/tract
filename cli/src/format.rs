@@ -213,7 +213,7 @@ where M: Borrow<Model>, P: Borrow<SimplePlan<M>> {
                     outlet.node,
                     outlet.slot
                 ),
-                data.partial_dump(false).unwrap(),
+                data.dump(false).unwrap(),
             ));
         }
     }

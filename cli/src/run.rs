@@ -9,6 +9,10 @@ pub fn handle(params: Parameters, assert_outputs:Option<Vec<TensorFact>>) -> Cli
     let plan = SimplePlan::new(&tfd)?;
     let outputs = plan.run(params.inputs.unwrap().iter().map(|t| t.clone().unwrap()).collect())?;
 
+    for (ix, output) in outputs.iter().enumerate() {
+        println!("output #{}\n{}\n", ix, output.dump(true)?);
+    }
+
     if let Some(asserts) = assert_outputs {
         ::utils::check_outputs(&outputs, &asserts)?;
     }

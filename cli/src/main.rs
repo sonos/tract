@@ -21,10 +21,10 @@ extern crate textwrap;
 extern crate tfdeploy;
 extern crate atty;
 extern crate libc;
+extern crate open;
 extern crate pbr;
 extern crate tfdeploy_onnx;
 extern crate tfdeploy_tf;
-extern crate open;
 
 use std::process;
 use std::str::FromStr;
@@ -36,13 +36,13 @@ use tfdeploy::analyser::TensorFact;
 use tfdeploy_tf::tfpb;
 use tfpb::graph::GraphDef;
 
-use errors::*;
 use display_graph::DisplayOptions;
+use errors::*;
 
 mod compare;
 mod display_graph;
-mod dump;
 mod draw;
+mod dump;
 mod errors;
 mod format;
 // mod optimize_check;
@@ -115,21 +115,18 @@ fn main() {
             Arg::with_name("bench")
                 .long("bench")
                 .help("Run as an overall bench"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("max_iters")
                 .takes_value(true)
                 .long("max-iters")
                 .short("n")
                 .help("Sets the maximum number of iterations for each node [default: 100_000]."),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("max-time")
                 .takes_value(true)
                 .long("max-time")
                 .help("Sets the maximum execution time for each node (in ms) [default: 5000]."),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("buffering")
                 .short("b")
                 .help("Run the stream network without inner instrumentations"),
@@ -177,32 +174,27 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .short("q")
                 .long("quiet")
                 .help("don't dump"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("node_id")
                 .long("node-id")
                 .takes_value(true)
                 .help("Select a node to dump"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("successors")
                 .long("successors")
                 .takes_value(true)
                 .help("Show successors of node"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("op_name")
                 .long("op-name")
                 .takes_value(true)
                 .help("Select one op to dump"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("node_name")
                 .long("node-name")
                 .takes_value(true)
                 .help("Select one node to dump"),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("const")
                 .long("const")
                 .help("also display consts nodes"),
@@ -275,13 +267,14 @@ impl Parameters {
 
         let inputs = if let Some(inputs) = matches.values_of("input") {
             use tfdeploy::analyser::Fact;
-            let mut vs = vec!();
+            let mut vs = vec![];
             for (ix, v) in inputs.enumerate() {
                 let t = tensor::for_string(v)?;
                 // obliterate value in input (the analyser/optimizer would fold
                 // the graph)
                 let mut fact = TensorFact {
-                    value: tfdeploy::analyser::GenericFact::Any, ..t
+                    value: tfdeploy::analyser::GenericFact::Any,
+                    ..t
                 };
                 if let Some(axis) = matches.value_of("stream_axis") {
                     fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tfdeploy::TDim::s().into()
@@ -312,7 +305,7 @@ impl Parameters {
             graph,
             tfd_model,
             tf_model,
-            inputs
+            inputs,
         })
     }
 }
@@ -369,13 +362,14 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
         quiet: matches.is_present("quiet"),
-        node_ids: matches.values_of("node_id").map(|id| id.map(|id| id.parse().unwrap()).collect()),
+        node_ids: matches
+            .values_of("node_id")
+            .map(|id| id.map(|id| id.parse().unwrap()).collect()),
         node_name: matches.value_of("node_name").map(String::from),
         op_name: matches.value_of("op_name").map(String::from),
         successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
     })
 }
-
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> CliResult<()> {
@@ -420,7 +414,6 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
         */
-
         ("draw", Some(m)) => ::draw::render(&params.tfd_model),
 
         ("dump", Some(m)) => {
@@ -440,7 +433,6 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             )
         },
         */
-
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
 }

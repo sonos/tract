@@ -204,7 +204,7 @@ impl Tensor {
     }
 
 
-    pub fn partial_dump(&self, _single_line: bool) -> TfdResult<String> {
+    pub fn dump(&self, force_full:bool) -> TfdResult<String> {
         macro_rules! fmt_scalar {
             ($a:ident) => { format!(
                     "Scalar {:?} {:?}",
@@ -213,13 +213,22 @@ impl Tensor {
                 )
             }
         }
-        macro_rules! fmt_trunc {
-            ($a:ident) => { format!(
-                    "shape:{:?} {:?} {}...",
-                    self.shape(),
-                    self.datum_type(),
-                    $a.iter().take(4).map(|v| format!("{:?}", v)).join(", ")
-                )
+        macro_rules! fmt_big {
+            ($a:ident) => {
+                if force_full {
+                    format!(
+                        "shape:{:?} {:?} {:?}",
+                        self.shape(),
+                        self.datum_type(),
+                        $a)
+                } else {
+                    format!(
+                        "shape:{:?} {:?} {}...",
+                        self.shape(),
+                        self.datum_type(),
+                        $a.iter().take(4).map(|v| format!("{:?}", v)).join(", ")
+                    )
+                }
             }
         }
         macro_rules! fmt_small {
@@ -242,17 +251,17 @@ impl Tensor {
         } else if self.shape().iter().product::<usize>() > 8 {
             use itertools::Itertools;
             Ok(match self {
-                &Tensor::Bool(ref a) => fmt_trunc!(a),
-                &Tensor::U8(ref a) => fmt_trunc!(a),
-                &Tensor::U16(ref a) => fmt_trunc!(a),
-                &Tensor::I8(ref a) => fmt_trunc!(a),
-                &Tensor::I16(ref a) => fmt_trunc!(a),
-                &Tensor::I32(ref a) => fmt_trunc!(a),
-                &Tensor::I64(ref a) => fmt_trunc!(a),
-                &Tensor::F32(ref a) => fmt_trunc!(a),
-                &Tensor::F64(ref a) => fmt_trunc!(a),
-                &Tensor::String(ref a) => fmt_trunc!(a),
-                &Tensor::TDim(ref a) => fmt_trunc!(a),
+                &Tensor::Bool(ref a) => fmt_big!(a),
+                &Tensor::U8(ref a) => fmt_big!(a),
+                &Tensor::U16(ref a) => fmt_big!(a),
+                &Tensor::I8(ref a) => fmt_big!(a),
+                &Tensor::I16(ref a) => fmt_big!(a),
+                &Tensor::I32(ref a) => fmt_big!(a),
+                &Tensor::I64(ref a) => fmt_big!(a),
+                &Tensor::F32(ref a) => fmt_big!(a),
+                &Tensor::F64(ref a) => fmt_big!(a),
+                &Tensor::String(ref a) => fmt_big!(a),
+                &Tensor::TDim(ref a) => fmt_big!(a),
             })
         } else {
             Ok(match self {
@@ -293,7 +302,7 @@ impl Tensor {
         let avg = ma.iter().filter(|a| a.is_finite()).map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
         let dev = (ma.iter().filter(|a| a.is_finite()).map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
         let margin = if approx {
-            (dev / 10.0).max(avg.abs() / 10_000.0)
+            (dev / 5.0).max(avg.abs() / 10_000.0)
         } else {
             0.0
         };
@@ -301,7 +310,8 @@ impl Tensor {
             && mb
                 .iter()
                 .zip(ma.iter())
-                .all(|(&a, &b)| (a.is_nan() && b.is_nan()) || (b - a).abs() <= margin)
+                .map(|(&a, &b)| (a, b, a.is_nan() && b.is_nan() || (b - a).abs() < margin))
+                .all(|t| t.2)
     }
 
     pub fn into_array<D: Datum>(self) -> TfdResult<ArrayD<D>> {
@@ -323,7 +333,7 @@ impl Tensor {
 
 impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let content = self.partial_dump(true).unwrap_or("Error".to_string());
+        let content = self.dump(false).unwrap_or("Error".to_string());
         write!(formatter, "Tensor {}", content)
     }
 }
