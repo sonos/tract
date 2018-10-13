@@ -69,10 +69,13 @@ impl TfdFrom<pb::ModelProto> for Model {
                 model.add_edge(outlets_by_name[&*input], InletId::new(id, ix))?;
             }
         }
+        let mut outputs = vec!();
         for output in graph.get_output().iter() {
             let fact = output.get_field_type().get_tensor_type().to_tfd()?;
+            outputs.push(outlets_by_name[output.get_name()]);
             model.set_fact(outlets_by_name[output.get_name()], fact)?;
         }
+        model.set_outputs_outlets(&outputs)?;
         Ok(model)
     }
 }

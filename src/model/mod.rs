@@ -7,8 +7,8 @@ mod order;
 pub use self::order::eval_order;
 pub use analyser::types::TensorFact;
 
-use {ops, TfdResult};
 pub use self::dsl::ModelDsl;
+use {ops, TfdResult};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -139,6 +139,11 @@ impl Model {
                     .map(|n| OutletId::new(n.id, 0))
             }).collect::<TfdResult<_>>()?;
         self.outputs = ids;
+        Ok(())
+    }
+
+    pub fn set_outputs_outlets(&mut self, outputs: &[OutletId]) -> TfdResult<()> {
+        self.outputs = outputs.to_vec();
         Ok(())
     }
 

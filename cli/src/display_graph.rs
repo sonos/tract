@@ -27,6 +27,9 @@ pub struct DisplayGraph<M:Borrow<Model>> {
 
 impl<M:Borrow<Model>> DisplayGraph<M> {
     pub fn render(&self) -> CliResult<()> {
+        if self.options.quiet {
+            return Ok(())
+        }
         let model = self.model.borrow();
         if let Some(nodes) = &self.options.node_ids {
             for &node in nodes {
@@ -111,10 +114,18 @@ impl<M:Borrow<Model>> DisplayGraph<M> {
                 .collect::<CliResult<_>>()?,
             node.outputs.iter().enumerate()
                 .map(|(ix,outlet)| {
-                    Row::Double(
-                        format!("Output {}:", ix.to_string().bold()),
-                        format!("{:?}", outlet.fact)
-                    )
+                    if let Some(pos) = self.model.borrow().outputs().unwrap().iter().position(|&o| o==::tfdeploy::model::OutletId::new(node.id, ix)) {
+                        Row::Double(
+                            format!("Output {}:", ix.to_string().bold()),
+                            format!("{:?} {} #{}", outlet.fact, "Model output".bold(),
+                                    pos)
+                        )
+                    } else {
+                        Row::Double(
+                            format!("Output {}:", ix.to_string().bold()),
+                            format!("{:?}", outlet.fact)
+                        )
+                    }
                 })
                 .collect(),
         ];
