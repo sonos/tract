@@ -129,6 +129,10 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
     fn rounding_errors(&self) -> bool {
         false
     }
+
+    fn noutputs(&self) -> usize {
+        1
+    }
 }
 
 pub trait InferenceOp {

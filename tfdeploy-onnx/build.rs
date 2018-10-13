@@ -35,7 +35,10 @@ pub fn make_test_file(tests_set: &str) {
         .join(tests_set)
         .with_extension("txt");
     let working_list: Vec<String> = if let Ok(list) = fs::read_to_string(&working_list_file) {
-        list.split("\n").map(|s| s.to_string()).collect()
+        list.split("\n")
+            .map(|s| s.to_string())
+            .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
+            .collect()
     } else {
         vec![]
     };
@@ -50,7 +53,7 @@ pub fn make_test_file(tests_set: &str) {
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
         .collect();
     tests.sort();
-    writeln!(rs, "mod {} {{", tests_set.replace("-","_"));
+    writeln!(rs, "mod {} {{", tests_set.replace("-", "_"));
     for (s, optim) in &[("plain", false), ("optim", true)] {
         writeln!(rs, "mod {} {{", s);
         for t in &tests {
@@ -59,7 +62,11 @@ pub fn make_test_file(tests_set: &str) {
                 writeln!(rs, "#[ignore]");
             }
             writeln!(rs, "fn {}() {{", t);
-            writeln!(rs, "::onnx::run_one({:?}, {:?}, {:?})", node_tests, t, optim);
+            writeln!(
+                rs,
+                "::onnx::run_one({:?}, {:?}, {:?})",
+                node_tests, t, optim
+            );
             writeln!(rs, "}}");
         }
         writeln!(rs, "}}");

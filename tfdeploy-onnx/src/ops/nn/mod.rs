@@ -135,6 +135,7 @@ pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
         kernel_shape,
         pad,
         strides,
+        node.get_output().len() == 2,
     )))
 }
 

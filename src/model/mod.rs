@@ -76,6 +76,7 @@ impl Model {
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
         let is_input = op.name() == "Source";
+        let noutputs = op.noutputs();
         let node = Node {
             id,
             name,
@@ -86,7 +87,9 @@ impl Model {
         if is_input {
             self.inputs.push(OutletId::new(id, 0));
         }
-        self.outputs.push(OutletId::new(id, 0));
+        for o in 0..noutputs {
+            self.outputs.push(OutletId::new(id, o));
+        }
         self.nodes.push(node);
         Ok(id)
     }

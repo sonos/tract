@@ -11,7 +11,7 @@ fn setup_test_logger() {
 
     static START: Once = Once::new();
     START.call_once(|| {
-        TermLogger::init(LevelFilter::Info, Config::default()).unwrap()
+        TermLogger::init(LevelFilter::Debug, Config::default()).unwrap()
     });
 }
 
@@ -88,7 +88,7 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str, optim:bool) {
     if optim {
         model = model.into_optimized().unwrap();
     }
-//    debug!("Model: {:#?}", model);
+//    println!("Model: {:#?}", model);
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();

@@ -150,6 +150,15 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
             })
         }
     }
+
+    pub fn global_offset_for(&self, coords:&[usize], patch_index: usize) -> usize {
+        let center = coords
+            .iter()
+            .zip(self.fast_strides.iter())
+            .map(|(&a, &b)| b * a as isize)
+            .sum::<isize>();
+        (center + self.patch.standard_layout_data_field[patch_index]) as usize
+    }
 }
 
 pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
