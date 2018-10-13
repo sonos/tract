@@ -100,6 +100,9 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str, optim:bool) {
         {
             let (inputs, expected) = load_dataset(&d.path());
             let computed = plan.run(inputs).unwrap();
+            if computed.len() != expected.len() {
+                panic!("Different number of results: got:{} expected:{}", computed.len(), expected.len());
+            }
             for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
                 if !a.close_enough(b, true) {
                     panic!("Different result for output #{}: got:{:?} expected:{:?}", ix, a, b)
