@@ -88,6 +88,7 @@ test_hardmax_axis_1
 test_hardmax_axis_2
 test_hardmax_default_axis
 test_hardmax_example
+test_hardmax_one_hot
 test_hardsigmoid
 test_hardsigmoid
 test_hardsigmoid_default
@@ -107,6 +108,7 @@ test_logsoftmax_axis_1
 test_logsoftmax_axis_2
 test_logsoftmax_default_axis
 test_logsoftmax_example_1
+test_logsoftmax_large_number
 test_lrn
 test_lrn_default
 test_max_example
@@ -174,6 +176,7 @@ test_softmax_axis_1
 test_softmax_axis_2
 test_softmax_default_axis
 test_softmax_example
+test_softmax_large_number
 test_softplus
 test_softplus
 test_softplus_example

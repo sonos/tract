@@ -18,6 +18,7 @@ impl LayerHardmax {
             let max = layer
                 .iter()
                 .enumerate()
+                .rev()
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(b.0.cmp(&a.0)))
                 .map(|(ix, _)| ix)
                 .unwrap_or(0);
@@ -69,7 +70,11 @@ impl LayerLogSoftmax {
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
         array.outer_iter_mut().for_each(|mut layer| {
-            layer.mapv_inplace(|x| x.exp());
+            // https://jamesmccaffrey.wordpress.com/2016/03/04/the-max-trick-when-computing-softmax/
+            let max:Option<D> = layer.iter()
+                .max_by(|a, b| a.partial_cmp(&b).unwrap_or(::std::cmp::Ordering::Equal))
+                .cloned();
+            layer.mapv_inplace(|x| (x-max.unwrap()).exp());
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| (x / divisor).ln());
         });
@@ -116,7 +121,11 @@ impl LayerSoftmax {
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
         array.outer_iter_mut().for_each(|mut layer| {
-            layer.mapv_inplace(|x| x.exp());
+            // https://jamesmccaffrey.wordpress.com/2016/03/04/the-max-trick-when-computing-softmax/
+            let max:Option<D> = layer.iter()
+                .max_by(|a, b| a.partial_cmp(&b).unwrap_or(::std::cmp::Ordering::Equal))
+                .cloned();
+            layer.mapv_inplace(|x| (x-max.unwrap()).exp());
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| x / divisor);
         });
