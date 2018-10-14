@@ -72,6 +72,7 @@ test_flatten_axis0
 test_flatten_axis1
 test_flatten_axis2
 test_flatten_axis3
+test_flatten_default_axis
 test_floor
 test_floor_example
 test_gemm_broadcast

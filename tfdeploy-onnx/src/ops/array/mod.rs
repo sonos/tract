@@ -26,7 +26,7 @@ pub fn concat(node: &NodeProto) -> TfdResult<Box<Op>> {
 }
 
 pub fn flatten(node: &NodeProto) -> TfdResult<Box<Op>> {
-    let axis = node.get_attr_int("axis")?;
+    let axis = node.get_attr_opt_int("axis")?.unwrap_or(1);
     Ok(Box::new(tfdops::array::Flatten::new(axis as usize)))
 }
 
