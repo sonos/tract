@@ -10,7 +10,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
     reg.insert("Dropout", |_| Ok(Box::new(tfdops::identity::Identity::default())));
-    reg.insert("ELU", elu);
+    reg.insert("Elu", elu);
     reg.insert("GlobalAveragePool", |_| Ok(Box::new(tfdops::nn::GlobalAvgPool::default())));
     reg.insert("GlobalLpPool", global_lp_pool);
     reg.insert("GlobalMaxPool", |_| Ok(Box::new(tfdops::nn::GlobalMaxPool::default())));

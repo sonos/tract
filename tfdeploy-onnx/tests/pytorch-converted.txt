@@ -36,6 +36,7 @@ test_Conv3d_groups
 test_Conv3d_no_bias
 test_Conv3d_stride
 test_Conv3d_stride_padding
+test_ELU
 test_LeakyReLU
 test_LeakyReLU
 test_LeakyReLU_with_negval

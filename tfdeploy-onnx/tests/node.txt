@@ -59,6 +59,9 @@ test_div_bcast
 test_div_example
 test_dropout_default
 test_dropout_random
+test_elu
+test_elu_default
+test_elu_example
 test_equal
 test_equal_bcast
 test_exp

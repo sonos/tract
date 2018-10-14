@@ -17,7 +17,6 @@ extern crate rand;
 extern crate simplelog;
 extern crate terminal_size;
 extern crate textwrap;
-#[macro_use]
 extern crate tfdeploy;
 extern crate atty;
 extern crate libc;
@@ -414,7 +413,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
         */
-        ("draw", Some(m)) => ::draw::render(&params.tfd_model),
+        ("draw", _) => ::draw::render(&params.tfd_model),
 
         ("dump", Some(m)) => {
             let assert_outputs: Option<Vec<TensorFact>> = m
