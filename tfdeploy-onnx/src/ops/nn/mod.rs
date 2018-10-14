@@ -1,31 +1,67 @@
 use tfdeploy::ops as tfdops;
-use tfdeploy::ops::nn::{ DataFormat, PaddingSpec};
+use tfdeploy::ops::nn::{DataFormat, PaddingSpec};
 use tfdeploy::ops::prelude::*;
 
 use ops::OpRegister;
 use pb::NodeProto;
 
+macro_rules! reduce {
+    ($id:ident) => {
+        |node| {
+            let axes = node
+                .get_attr_opt_ints("axes")?
+                .map(|axes| axes.iter().map(|&i| i as usize).collect());
+            let keep_dims = node.get_attr_opt_int("keepdims")?.unwrap_or(1i64) == 1;
+            Ok(Box::new(tfdops::nn::Reduce::new(
+                axes,
+                keep_dims,
+                tfdops::nn::Reducer::$id,
+            )))
+        }
+    };
+}
+
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
-    reg.insert("Dropout", |_| Ok(Box::new(tfdops::identity::Identity::default())));
+    reg.insert("Dropout", |_| {
+        Ok(Box::new(tfdops::identity::Identity::default()))
+    });
     reg.insert("Elu", elu);
-    reg.insert("GlobalAveragePool", |_| Ok(Box::new(tfdops::nn::GlobalAvgPool::default())));
+    reg.insert("GlobalAveragePool", |_| {
+        Ok(Box::new(tfdops::nn::GlobalAvgPool::default()))
+    });
     reg.insert("GlobalLpPool", global_lp_pool);
-    reg.insert("GlobalMaxPool", |_| Ok(Box::new(tfdops::nn::GlobalMaxPool::default())));
+    reg.insert("GlobalMaxPool", |_| {
+        Ok(Box::new(tfdops::nn::GlobalMaxPool::default()))
+    });
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("HardSigmoid", hard_sigmoid);
     reg.insert("LeakyRelu", leaky_relu);
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn);
     reg.insert("MaxPool", max_pool);
+    reg.insert("ReduceL1", reduce!(L1));
+    reg.insert("ReduceL2", reduce!(L2));
+    reg.insert("ReduceLogSum", reduce!(LogSum));
+    reg.insert("ReduceLogSumExp", reduce!(LogSumExp));
+    reg.insert("ReduceMax", reduce!(Max));
+    reg.insert("ReduceMean", reduce!(Mean));
+    reg.insert("ReduceMin", reduce!(Min));
+    reg.insert("ReduceProd", reduce!(Prod));
+    reg.insert("ReduceSum", reduce!(Sum));
+    reg.insert("ReduceSumSquare", reduce!(SumSquare));
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));
     reg.insert("Softmax", layer_soft_max);
-    reg.insert("Softplus", |_| Ok(Box::new(tfdops::nn::Softplus::default())));
-    reg.insert("Softsign", |_| Ok(Box::new(tfdops::nn::Softsign::default())));
+    reg.insert("Softplus", |_| {
+        Ok(Box::new(tfdops::nn::Softplus::default()))
+    });
+    reg.insert("Softsign", |_| {
+        Ok(Box::new(tfdops::nn::Softsign::default()))
+    });
 }
 
 fn pad(node: &NodeProto) -> TfdResult<PaddingSpec> {
@@ -64,7 +100,7 @@ pub fn batch_normalization(node: &NodeProto) -> TfdResult<Box<Op>> {
     Ok(Box::new(tfdops::nn::BatchNorm::new(
         DataFormat::NCHW,
         epsilon,
-        spatial != 0
+        spatial != 0,
     )))
 }
 
@@ -108,10 +144,7 @@ pub fn elu(node: &NodeProto) -> TfdResult<Box<Op>> {
 }
 
 pub fn global_lp_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
-    let p: usize = node
-        .get_attr_opt_int("p")?
-        .map(|i| i as usize)
-        .unwrap_or(2);
+    let p: usize = node.get_attr_opt_int("p")?.map(|i| i as usize).unwrap_or(2);
     Ok(Box::new(tfdops::nn::GlobalLpPool::new(p)))
 }
 

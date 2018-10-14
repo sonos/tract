@@ -8,6 +8,7 @@ mod lrn;
 mod maxpool;
 mod padding;
 mod patches;
+mod reduce;
 
 pub use self::avgpool::AvgPool;
 pub use self::batch_norm::BatchNorm;
@@ -19,6 +20,7 @@ pub use self::lrn::Lrn;
 pub use self::maxpool::MaxPool;
 pub use self::padding::PaddingSpec;
 pub use self::patches::Patch;
+pub use self::reduce::{Reduce, Reducer};
 
 use num::traits::AsPrimitive;
 
