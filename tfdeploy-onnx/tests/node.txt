@@ -68,6 +68,10 @@ test_exp
 test_exp_example
 test_expand_dim_changed
 test_expand_dim_unchanged
+test_flatten_axis0
+test_flatten_axis1
+test_flatten_axis2
+test_flatten_axis3
 test_floor
 test_floor_example
 test_gemm_broadcast

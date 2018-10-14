@@ -13,6 +13,7 @@ test_operator_clip
 test_operator_concat2
 test_operator_conv
 test_operator_exp
+test_operator_flatten
 test_operator_index
 test_operator_max
 test_operator_maxpool
@@ -24,3 +25,4 @@ test_operator_pow
 test_operator_selu
 test_operator_sqrt
 test_operator_symbolic_override_nested
+test_operator_view

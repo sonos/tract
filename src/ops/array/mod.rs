@@ -44,6 +44,7 @@
 mod add_dims;
 mod broadcast;
 mod concat;
+mod flatten;
 mod reshape;
 mod rm_dims;
 mod squeeze;
@@ -51,6 +52,7 @@ mod squeeze;
 pub use self::add_dims::AddDims;
 pub use self::broadcast::MultiBroadcastTo;
 pub use self::concat::Concat;
+pub use self::flatten::Flatten;
 pub use self::reshape::Reshape;
 pub use self::rm_dims::RmDims;
 pub use self::squeeze::Squeeze;

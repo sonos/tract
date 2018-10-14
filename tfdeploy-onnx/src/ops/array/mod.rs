@@ -11,6 +11,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Expand", |_| {
         Ok(Box::new(tfdops::array::MultiBroadcastTo::default()))
     });
+    reg.insert("Flatten", flatten);
     reg.insert("Reshape", |_| {
         Ok(Box::new(tfdops::array::Reshape::default()))
     });
@@ -22,6 +23,11 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 pub fn concat(node: &NodeProto) -> TfdResult<Box<Op>> {
     let axis = node.get_attr_int("axis")?;
     Ok(Box::new(tfdops::array::Concat::new(axis as usize)))
+}
+
+pub fn flatten(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let axis = node.get_attr_int("axis")?;
+    Ok(Box::new(tfdops::array::Flatten::new(axis as usize)))
 }
 
 pub fn slice(node: &NodeProto) -> TfdResult<Box<Op>> {
