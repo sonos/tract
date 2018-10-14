@@ -206,13 +206,11 @@ macro_rules! element_bin {
                 let b = &inputs[1];
                 let c = &outputs[0];
 
-                s.given(&inputs[0].datum_type, move |s, dta| {
-                    s.given(&inputs[1].datum_type, move |s, dtb| {
-                        if let Some(dt) = dta.common_super_type(dtb) {
-                            s.equals(&outputs[0].datum_type, dt)?;
-                        }
-                        Ok(())
-                    })
+                s.given(&inputs[0].datum_type, move |s, dt| {
+                    $(if dt == <$type>::datum_type() {
+                        return s.equals(&outputs[0].datum_type, <$to>::datum_type());
+                    })*
+                    bail!("{} not covering {:?}", stringify!($Name), dt)
                 })?;
                 s.equals(&outputs.len, 1)?;
                 s.with(&a.shape, move |s, a_shape| {

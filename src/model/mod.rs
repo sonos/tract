@@ -160,6 +160,22 @@ impl Model {
         ::analyser::Analyser::new(self)?.analyse()
     }
 
+    pub fn missing_type_shape(&self) -> TfdResult<Vec<OutletId>> {
+        use analyser::types::Fact;
+        Ok(self
+            .eval_order()?
+            .iter()
+            .flat_map(|&node| {
+                self.nodes[node]
+                    .outputs
+                    .iter()
+                    .enumerate()
+                    .map(move |(ix, outlet)| (OutletId::new(node,ix), outlet))
+            }).filter(|(_, o)| !o.fact.datum_type.is_concrete() || !o.fact.shape.is_concrete())
+            .map(|(id,_)| id)
+            .collect())
+    }
+
     pub fn into_optimized(mut self) -> TfdResult<Model> {
         use optim::OptimizerPass;
         ::optim::Reduce::pass(&mut self)?;

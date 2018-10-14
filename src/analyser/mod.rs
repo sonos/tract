@@ -42,7 +42,8 @@ impl<M: BorrowMut<Model>> Analyser<M> {
                 None => return Ok(()),
                 Some(n) => *n,
             };
-            let changed_edges = self.step(node)?;
+            let changed_edges = self.step(node)
+                .map_err(|e| format!("Analysing node {:?}, {:?}", node, e))?;
             for (edge, _fact) in changed_edges {
                 trace!("Changed edge: {:?}", edge);
                 for dst in self.model.borrow().nodes()[edge.node].outputs[edge.slot]

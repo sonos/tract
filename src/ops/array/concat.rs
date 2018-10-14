@@ -51,7 +51,7 @@ impl InferenceRulesOp for Concat {
             }
             s.given(&inputs[0].rank, move |s, axes| {
                 let axes = axes as usize;
-                for axis in n..axes {
+                for axis in (self.axis+1)..axes {
                     s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])?;
                     s.equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect())?;
                 }

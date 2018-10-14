@@ -62,6 +62,7 @@ impl InferenceRulesOp for AvgPool {
     ) -> InferenceResult {
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[0].shape, move |s, ishape| {
             let ishape = self.data_fmt.shape(ishape);
             let ones = vec!(1; ishape.hw_rank());
