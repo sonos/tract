@@ -26,9 +26,10 @@ mod types;
 pub mod prelude {
     pub use super::{InferenceOp, Op, ReducedOpRewire};
     pub use ops::types::Value;
+    pub use analyser::types::*;
     pub use streaming::types::{OpBuffer, QueuesBuffer};
     pub use streaming::values::{StepValue, Stream, StreamInfo};
-    pub use dim::{TDim, DimLike};
+    pub use dim::{TDim, DimLike, ToDim};
     pub use model::TVec;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
@@ -145,7 +146,7 @@ pub trait InferenceOp {
 
 clone_trait_object!(Op);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, new)]
 pub struct ReducedOpRewire {
     pub new_op: Box<Op>,
     pub rewired: TVec<usize>,

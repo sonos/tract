@@ -7,7 +7,7 @@ use tfpb::node_def::NodeDef;
 pub mod conv2d;
 pub mod local_patch;
 pub mod pools;
-pub mod space_to_batch;
+pub mod s2b;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AvgPool", pools::pool::<pools::AvgPooler>);
@@ -16,8 +16,8 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Relu", with_T!(::tfdeploy::ops::nn::Relu));
     reg.insert("Sigmoid", with_T!(::tfdeploy::ops::nn::Sigmoid));
     reg.insert("Softmax", Softmax::build);
-    reg.insert("SpaceToBatchND", space_to_batch::space_to_batch_nd);
-    reg.insert("BatchToSpaceND", space_to_batch::batch_to_space_nd);
+    reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);
+    reg.insert("BatchToSpaceND", s2b::batch_to_space_nd);
 }
 
 #[derive(Debug, Clone)]

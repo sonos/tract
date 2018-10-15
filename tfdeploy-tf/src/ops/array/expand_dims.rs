@@ -1,5 +1,4 @@
 use tfdeploy::ops::prelude::*;
-use tfdeploy::analyser::*;
 use tfdeploy::analyser::rules::prelude::*;
 
 pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {

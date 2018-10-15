@@ -9,16 +9,20 @@ impl super::OptimizerPass for Reduce {
         for id in model.eval_order()? {
             let reduced = {
                 let node = &model.nodes()[id];
+                debug!("Consider unarize {:?}", node);
                 let input_facts: TVec<&TensorFact> = node
                     .inputs
                     .iter()
                     .map(|o| model.fact(*o))
+                    .inspect(|fact| trace!("   Input {:?}", fact))
                     .collect::<TfdResult<_>>()?;
                 let output_facts: TVec<&TensorFact> =
                     node.outputs.iter().map(|o| &o.fact).collect();
-                node.op.reduce(input_facts, output_facts)?
+                node.op.reduce(input_facts, output_facts)
+                    .map_err(|e| format!("Unarizing node {:?}, {:?}", node, e))?
             };
             if let Some(red) = reduced {
+                debug!("  Unarize {:?}", red);
                 let mut node = &mut model.mut_nodes()[id];
                 let ::ops::ReducedOpRewire { new_op, rewired } = red;
                 node.op = new_op;
