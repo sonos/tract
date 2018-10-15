@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
+use ndarray::prelude::*;
 use tfdeploy::analyser::prelude::*;
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
-use ndarray::prelude::*;
 use tfdeploy::TfdResult;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
@@ -196,8 +196,7 @@ impl BaseStridedSlice {
                 .map(|(d, i)| {
                     (*i as i32 * bounds[d].stride + bounds[d].begin.to_integer().unwrap() as i32)
                         as usize
-                })
-                .collect();
+                }).collect();
             input[&*coord]
         });
         let output = output.into_shape(end_shape)?;
@@ -278,28 +277,33 @@ impl BaseStridedSlice {
             &inputs[2].shape[0],
             &inputs[3].shape[0]
         ))?;
-        s.given_4(&inputs[0].shape, &inputs[1].value, &inputs[2].value, &inputs[3].value,
-                  move |s, input_shape, begin, end, stride| {
-            let casted_begin = TDim::tensor_cast_to_array(&begin).unwrap();
-            let begin = casted_begin.view().into_dimensionality().unwrap();
-            let casted_end =TDim::tensor_cast_to_array(&end).unwrap();
-            let end = casted_end.view().into_dimensionality().unwrap();
-            let stride = stride
-                .as_i32s()
-                .unwrap()
-                .view()
-                .into_dimensionality()
-                .unwrap();
-            let mut current_out_dim = 0;
-            for (ix, d) in input_shape.iter().enumerate() {
-                if !self.must_shrink(ix) {
-                    let preped = self.prepare_one_dim(ix, *d, &begin, &end, &stride);
-                    s.equals(&outputs[0].shape[current_out_dim], preped.soft_len()?)?;
-                    current_out_dim += 1;
+        s.given_4(
+            &inputs[0].shape,
+            &inputs[1].value,
+            &inputs[2].value,
+            &inputs[3].value,
+            move |s, input_shape, begin, end, stride| {
+                let casted_begin = TDim::tensor_cast_to_array(&begin).unwrap();
+                let begin = casted_begin.view().into_dimensionality().unwrap();
+                let casted_end = TDim::tensor_cast_to_array(&end).unwrap();
+                let end = casted_end.view().into_dimensionality().unwrap();
+                let stride = stride
+                    .as_i32s()
+                    .unwrap()
+                    .view()
+                    .into_dimensionality()
+                    .unwrap();
+                let mut current_out_dim = 0;
+                for (ix, d) in input_shape.iter().enumerate() {
+                    if !self.must_shrink(ix) {
+                        let preped = self.prepare_one_dim(ix, *d, &begin, &end, &stride);
+                        s.equals(&outputs[0].shape[current_out_dim], preped.soft_len()?)?;
+                        current_out_dim += 1;
+                    }
                 }
-            }
-            s.equals(&outputs[0].rank, current_out_dim as i64)
-        })
+                s.equals(&outputs[0].rank, current_out_dim as i64)
+            },
+        )
     }
 
     /*
@@ -368,15 +372,54 @@ impl<T: Datum> Op for StridedSlice<T> {
         self.base.step::<T>(inputs, buffer)
     }
 
-    /*
-    fn final_prep(
+    fn reduce(
         &self,
-        inputs: TVec<TensorFact>,
-        outputs: TVec<TensorFact>,
-    ) -> TfdResult<Option<Box<Op>>> {
-        self.base.final_prep(inputs, outputs)
+        mut inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+    ) -> TfdResult<Option<ReducedOpRewire>> {
+        let (input, begin, end, strides) = args_4!(inputs);
+        if let (Some(input_shape), Some(begin), Some(end), Some(strides)) = (
+            input.shape.concretize(),
+            begin.value.concretize(),
+            end.value.concretize(),
+            strides.value.concretize(),
+        ) {
+            if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
+                info!("Failed to unarize StridedSlices because of strides");
+                return Ok(None);
+            }
+            let begin_view = begin
+                .cast_to_array::<TDim>()?
+                .into_owned()
+                .into_dimensionality()?;
+            let end_view = end
+                .cast_to_array::<TDim>()?
+                .into_owned()
+                .into_dimensionality()?;
+            let strides_view = strides
+                .cast_to_array::<i32>()?
+                .into_owned()
+                .into_dimensionality()?;
+            let mut prunes = vec![];
+            for ix in 0..input_shape.len() {
+                let dim = self.base.prepare_one_dim(
+                    ix,
+                    input_shape[ix],
+                    &begin_view.view(),
+                    &end_view.view(),
+                    &strides_view.view(),
+                );
+                prunes.push((
+                    dim.begin.to_integer()? as usize,
+                    (input_shape[ix] - dim.end).to_integer()? as usize,
+                ));
+            }
+            let op = ::tfdeploy::ops::array::Slice::new(prunes);
+            Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
+        } else {
+            Ok(None)
+        }
     }
-    */
 }
 
 impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
@@ -495,8 +538,8 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use ndarray::*;
-    use tfdeploy::Tensor;
     use tfdeploy::ops::InferenceOp;
+    use tfdeploy::Tensor;
 
     fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
     where
@@ -511,9 +554,9 @@ mod tests {
             end.into().into(),
             strides.into().into(),
         ]).unwrap()
-            .pop()
-            .unwrap()
-            .into_tensor()
+        .pop()
+        .unwrap()
+        .into_tensor()
     }
 
     // https://www.tensorflow.org/api_docs/python/tf/strided_slice
@@ -675,8 +718,8 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
-        let (input_facts, output_facts) =
-            op.infer_facts(
+        let (input_facts, output_facts) = op
+            .infer_facts(
                 tvec![input, begin.clone(), end.clone(), strides.clone()],
                 tvec![TensorFact::default()],
             ).unwrap();
@@ -709,8 +752,8 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 1]));
         let strides = TensorFact::from(arr1(&[1i32, 1]));
 
-        let (input_facts, output_facts) =
-            op.infer_facts(
+        let (input_facts, output_facts) = op
+            .infer_facts(
                 tvec![input, begin.clone(), end.clone(), strides.clone()],
                 tvec![TensorFact::default()],
             ).unwrap();
@@ -743,8 +786,8 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
-        let (_, output_facts) =
-            op.infer_facts(
+        let (_, output_facts) = op
+            .infer_facts(
                 tvec![input, begin, end, strides],
                 tvec![TensorFact::default()],
             ).unwrap();
@@ -766,8 +809,8 @@ mod tests {
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
 
-        let (_, output_facts) =
-            op.infer_facts(
+        let (_, output_facts) = op
+            .infer_facts(
                 tvec![input, begin, end, strides],
                 tvec![TensorFact::default()],
             ).unwrap();

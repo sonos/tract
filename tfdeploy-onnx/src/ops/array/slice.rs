@@ -1,6 +1,7 @@
 use ndarray::prelude::*;
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
+use tfdeploy::analyser::prelude::*;
+use tfdeploy::analyser::rules::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice {
@@ -35,7 +36,7 @@ impl Slice {
 
 impl Op for Slice {
     fn name(&self) -> &str {
-        "Slice"
+        "onnx.Slice"
     }
 
     /// Evaluates the operation given the input tensors.

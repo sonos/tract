@@ -12,6 +12,7 @@ use SomeGraphDef;
 pub struct DisplayOptions {
     pub konst: bool,
     pub quiet: bool,
+    pub debug_op: bool,
     pub node_ids: Option<Vec<usize>>,
     pub op_name: Option<String>,
     pub node_name: Option<String>,
@@ -75,7 +76,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
 
     pub fn render_node(&self, node: &Node) -> CliResult<()> {
         // node output are not ordered by slot number
-        let mut sections = vec![
+        let mut sections:Vec<Vec<Row>> = vec![
             node.inputs
                 .iter()
                 .enumerate()
@@ -114,6 +115,9 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                     }
                 }).collect(),
         ];
+        if self.options.debug_op {
+            sections.push(vec!(Row::Simple(format!("{:?}", node.op))));
+        }
         if let Some(node_sections) = self.node_sections.get(&node.id) {
             for s in node_sections {
                 sections.push(s.clone());

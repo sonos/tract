@@ -43,17 +43,20 @@ impl Op for SpaceToBatch {
             paddings.value.concretize(),
             output.shape.concretize(),
         ) {
-            let paddings = paddings.cast_to_array::<TDim>()?.into_owned().into_dimensionality::<Ix2>()?;
-            let paddings = paddings.outer_iter().map(|p| {
-                Ok(match (p[0].to_integer(), p[1].to_integer()) {
+            let paddings_view = paddings.cast_to_array::<TDim>()?.into_owned().into_dimensionality::<Ix2>()?;
+            let mut paddings = vec!();
+            for p in paddings_view.outer_iter() {
+                let pad = match (p[0].to_integer(), p[1].to_integer()) {
                     (Ok(bef), Ok(aft)) => super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize),
                     (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
                     (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
                     _ => {
-                        bail!("Failed to unarize SpaceToBatch because of padding")
+                        info!("Failed to unarize SpaceToBatch because of padding");
+                        return Ok(None)
                     }
-                })
-            }).collect::<TfdResult<_>>()?;
+                };
+                paddings.push(pad);
+            }
             let op = super::unary::SpaceToBatchUnary::new(
                 self.datum_type,
                 input_shape,

@@ -174,6 +174,10 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .long("quiet")
                 .help("don't dump"),
         ).arg(
+            Arg::with_name("debug-op")
+                .long("debug-op")
+                .help("show debug dump for each op"),
+        ).arg(
             Arg::with_name("node_id")
                 .long("node-id")
                 .takes_value(true)
@@ -361,6 +365,7 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
         quiet: matches.is_present("quiet"),
+        debug_op: matches.is_present("debug-op"),
         node_ids: matches
             .values_of("node_id")
             .map(|id| id.map(|id| id.parse().unwrap()).collect()),
