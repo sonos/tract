@@ -1,4 +1,5 @@
 use analyser::rules::prelude::*;
+use ndarray::*;
 use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
@@ -8,14 +9,16 @@ pub struct Slice {
 
 impl Slice {
     fn eval_t<T: Datum>(&self, input: Value) -> TfdResult<Value> {
-        use ndarray::*;
         let input = input.to_array_view::<T>()?;
         let slice_spec: Vec<SliceOrIndex> = self
             .prune
             .iter()
-            .map(|&(a, b)| (a as isize ..(-(b as isize) - 1)).into())
-            .collect();
-        let slice_info = SliceInfo::<_,IxDyn>::new(slice_spec).unwrap();
+            .map(|&(a, b)| SliceOrIndex::Slice {
+                start: a as isize,
+                end: if b != 0 { Some(-(b as isize)) } else { None },
+                step: 1,
+            }).collect();
+        let slice_info = SliceInfo::<_, IxDyn>::new(slice_spec).unwrap();
         let slice = input.slice(&slice_info.as_ref());
         Ok(slice.to_owned().into())
     }
@@ -46,8 +49,11 @@ impl InferenceRulesOp for Slice {
         s.equals(&outputs.len, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        for (ix, &(a,b)) in self.prune.iter().enumerate() {
-            s.equals(&inputs[0].shape[ix], outputs[0].shape[ix].bex() - a.to_dim() - b.to_dim())?;
+        for (ix, &(a, b)) in self.prune.iter().enumerate() {
+            s.equals(
+                &inputs[0].shape[ix],
+                outputs[0].shape[ix].bex() - a.to_dim() - b.to_dim(),
+            )?;
         }
         Ok(())
     }
