@@ -43,12 +43,23 @@ impl Op for SpaceToBatch {
             paddings.value.concretize(),
             output.shape.concretize(),
         ) {
+            let paddings = paddings.cast_to_array::<TDim>()?.into_owned().into_dimensionality::<Ix2>()?;
+            let paddings = paddings.outer_iter().map(|p| {
+                Ok(match (p[0].to_integer(), p[1].to_integer()) {
+                    (Ok(bef), Ok(aft)) => super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize),
+                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
+                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                    _ => {
+                        bail!("Failed to unarize SpaceToBatch because of padding")
+                    }
+                })
+            }).collect::<TfdResult<_>>()?;
             let op = super::unary::SpaceToBatchUnary::new(
                 self.datum_type,
                 input_shape,
                 output_shape,
                 block_shape.into_array::<i32>()?.into_dimensionality()?,
-                paddings.cast_to_array::<i32>()?.into_owned().into_dimensionality()?,
+                paddings
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
         } else {
@@ -116,12 +127,23 @@ impl Op for BatchToSpace {
             paddings.value.concretize(),
             output.shape.concretize(),
         ) {
+            let paddings = paddings.cast_to_array::<TDim>()?.into_owned().into_dimensionality::<Ix2>()?;
+            let paddings = paddings.outer_iter().map(|p| {
+                Ok(match (p[0].to_integer(), p[1].to_integer()) {
+                    (Ok(bef), Ok(aft)) => super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize),
+                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
+                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                    _ => {
+                        bail!("Failed to unarize SpaceToBatch because of padding")
+                    }
+                })
+            }).collect::<TfdResult<_>>()?;
             let op = super::unary::BatchToSpaceUnary::new(
                 self.datum_type,
                 input_shape,
                 output_shape,
                 block_shape.into_array::<i32>()?.into_dimensionality()?,
-                paddings.cast_to_array::<i32>()?.into_owned().into_dimensionality()?,
+                paddings
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
         } else {
