@@ -39,6 +39,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 
     reg.insert("Tanh", |_| Ok(Box::new(tfdops::math::Tanh::default())));
 
+    reg.insert("MatMul", |_| Ok(Box::new(tfdops::math::MatMul::default())));
     reg.insert("Gemm", gemm);
 }
 

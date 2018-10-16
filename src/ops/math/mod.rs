@@ -1,7 +1,9 @@
 mod gemm;
+mod mat_mul;
 
 use ops::prelude::*;
 pub use self::gemm::Gemm;
+pub use self::mat_mul::MatMul;
 use num::traits::AsPrimitive;
 
 element_map!(Abs, [f32, i32], |x| x.abs());
