@@ -24,6 +24,12 @@ pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<GraphDef> {
     graphdef_for_reader(fs::File::open(p)?)
 }
 
+pub fn optimize(model: Model) -> TfdResult<Model> {
+    let model = model.into_optimized()?;
+    let model = ::optim::untf_convos(model)?;
+    model.into_optimized()
+}
+
 impl TfdFrom<GraphDef> for Model {
     fn tfd_from(graph: &GraphDef) -> TfdResult<Model> {
         let mut model = Model::default();

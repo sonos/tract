@@ -22,6 +22,27 @@ pub struct ComputedPaddedDim<D:DimLike> {
 }
 
 impl PaddingSpec {
+    pub fn valid_dim(&self, d: usize) -> bool {
+        match self {
+            PaddingSpec::Valid => true,
+            PaddingSpec::Explicit(a,b) => a[d] == 0 && b[d] == 0,
+            _ => false,
+        }
+    }
+
+    pub fn rm_axis(&self, d: usize) -> PaddingSpec {
+        match self {
+            PaddingSpec::Explicit(a,b) => {
+                let mut a = a.clone();
+                let mut b = b.clone();
+                a.remove(d);
+                b.remove(d);
+                PaddingSpec::Explicit(a,b)
+            }
+            _ => self.clone()
+        }
+    }
+
     pub fn compute<D: DimLike, KD: Into<D> + Copy>(
         &self,
         input_spatial_shape: &[D],

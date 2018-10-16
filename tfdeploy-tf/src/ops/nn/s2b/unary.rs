@@ -11,11 +11,11 @@ pub enum PaddingStrat {
 
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatchUnary {
-    datum_type: DatumType,
-    space_shape: Vec<TDim>,
-    batch_shape: Vec<TDim>,
-    block_shape: Array1<i32>,
-    pad: Vec<PaddingStrat>,
+    pub datum_type: DatumType,
+    pub space_shape: Vec<TDim>,
+    pub batch_shape: Vec<TDim>,
+    pub block_shape: Array1<i32>,
+    pub pad: Vec<PaddingStrat>,
 }
 
 impl Op for SpaceToBatchUnary {

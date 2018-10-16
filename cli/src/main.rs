@@ -300,6 +300,9 @@ impl Parameters {
 
         if matches.is_present("optimize") {
             info!("Optimize");
+            if format == "tf" {
+                tfd_model = ::tfdeploy_tf::model::optimize(tfd_model)?;
+            }
             tfd_model = tfd_model.into_optimized()?;
         }
 

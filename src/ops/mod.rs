@@ -1,6 +1,8 @@
 //! TensorFlow Ops
 use std::fmt::Debug;
 
+use downcast_rs::Downcast;
+
 use analyser::prelude::*;
 use model::TVec;
 
@@ -44,7 +46,8 @@ pub use streaming::types::{OpBuffer, QueuesBuffer, EmptyBuffer};
 pub use streaming::values::StepValue;
 
 /// A Tensorflow operation.
-pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp {
+impl_downcast!(Op);
+pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast {
     fn name(&self) -> &str;
 
     /// Evaluates the operation given the input tensors.

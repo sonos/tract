@@ -2,7 +2,7 @@ use ndarray::*;
 use num::Zero;
 
 pub mod raw;
-mod unary;
+pub mod unary;
 use tfdeploy::ops::prelude::*;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {

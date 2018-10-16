@@ -27,11 +27,32 @@ impl DatumType {
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
             DatumType::Bool => &[DatumType::Bool],
-            DatumType::U8 => &[DatumType::U8, DatumType::I16, DatumType::I32, DatumType::I64,
-DatumType::TDim],
-            DatumType::U16 => &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim],
-            DatumType::I8 => &[DatumType::I8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim],
-            DatumType::I16 => &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::U8 => &[
+                DatumType::U8,
+                DatumType::I16,
+                DatumType::I32,
+                DatumType::I64,
+                DatumType::TDim,
+            ],
+            DatumType::U16 => &[
+                DatumType::U16,
+                DatumType::I32,
+                DatumType::I64,
+                DatumType::TDim,
+            ],
+            DatumType::I8 => &[
+                DatumType::I8,
+                DatumType::I16,
+                DatumType::I32,
+                DatumType::I64,
+                DatumType::TDim,
+            ],
+            DatumType::I16 => &[
+                DatumType::I16,
+                DatumType::I32,
+                DatumType::I64,
+                DatumType::TDim,
+            ],
             DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim],
             DatumType::I64 => &[DatumType::I64, DatumType::TDim],
             DatumType::F32 => &[DatumType::F32, DatumType::F64],
@@ -91,15 +112,7 @@ impl<'a, T: Clone + 'a> MaybeOwnedArray<'a, T> {
     }
 }
 
-pub trait Datum:
-    Copy
-    + Clone
-    + Send
-    + Sync
-    + fmt::Debug
-    + Default
-    + 'static
-{
+pub trait Datum: Copy + Clone + Send + Sync + fmt::Debug + Default + 'static {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
 
@@ -126,12 +139,10 @@ pub enum Tensor {
 
 impl Tensor {
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TfdResult<Tensor> {
-        let value: Vec<T> = 
-            ::std::slice::from_raw_parts(
-                content.as_ptr() as _,
-                content.len() / ::std::mem::size_of::<T>(),
-            )
-        .to_vec();
+        let value: Vec<T> = ::std::slice::from_raw_parts(
+            content.as_ptr() as _,
+            content.len() / ::std::mem::size_of::<T>(),
+        ).to_vec();
         Ok(ArrayD::from_shape_vec(shape, value)?.into())
     }
 
@@ -149,6 +160,23 @@ impl Tensor {
             &Tensor::TDim(ref it) => it.shape(),
             &Tensor::String(ref it) => it.shape(),
         }
+    }
+
+    pub fn into_shape(self, shape: &[usize]) -> TfdResult<Tensor> {
+        let shaped = match self {
+            Tensor::Bool(it) => it.into_shape(shape)?.into(),
+            Tensor::U8(it) => it.into_shape(shape)?.into(),
+            Tensor::U16(it) => it.into_shape(shape)?.into(),
+            Tensor::I8(it) => it.into_shape(shape)?.into(),
+            Tensor::I16(it) => it.into_shape(shape)?.into(),
+            Tensor::I32(it) => it.into_shape(shape)?.into(),
+            Tensor::I64(it) => it.into_shape(shape)?.into(),
+            Tensor::F32(it) => it.into_shape(shape)?.into(),
+            Tensor::F64(it) => it.into_shape(shape)?.into(),
+            Tensor::TDim(it) => it.into_shape(shape)?.into(),
+            Tensor::String(it) => it.into_shape(shape)?.into(),
+        };
+        Ok(shaped)
     }
 
     pub fn reduce(&mut self) {
@@ -191,7 +219,7 @@ impl Tensor {
             &Tensor::F32(_) => self.axis_chunks_t::<f32>(axis, size),
             &Tensor::F64(_) => self.axis_chunks_t::<f64>(axis, size),
             &Tensor::TDim(_) => self.axis_chunks_t::<TDim>(axis, size),
-            &Tensor::String(_) => bail!("String is not a datum")
+            &Tensor::String(_) => bail!("String is not a datum"),
         }
     }
 
@@ -203,24 +231,20 @@ impl Tensor {
             .collect())
     }
 
-
-    pub fn dump(&self, force_full:bool) -> TfdResult<String> {
+    pub fn dump(&self, force_full: bool) -> TfdResult<String> {
         macro_rules! fmt_scalar {
-            ($a:ident) => { format!(
+            ($a:ident) => {
+                format!(
                     "Scalar {:?} {:?}",
                     self.datum_type(),
                     $a.as_slice().unwrap()[0]
                 )
-            }
+            };
         }
         macro_rules! fmt_big {
             ($a:ident) => {
                 if force_full {
-                    format!(
-                        "shape:{:?} {:?} {:?}",
-                        self.shape(),
-                        self.datum_type(),
-                        $a)
+                    format!("shape:{:?} {:?} {:?}", self.shape(), self.datum_type(), $a)
                 } else {
                     format!(
                         "shape:{:?} {:?} {}...",
@@ -229,10 +253,12 @@ impl Tensor {
                         $a.iter().take(4).map(|v| format!("{:?}", v)).join(", ")
                     )
                 }
-            }
+            };
         }
         macro_rules! fmt_small {
-            ($a:ident) => { format!("{:?} {:?}", self.datum_type(), $a).replace("\n", " ") }
+            ($a:ident) => {
+                format!("{:?} {:?}", self.datum_type(), $a).replace("\n", " ")
+            };
         }
         if self.shape().len() == 0 {
             Ok(match self {
@@ -299,20 +325,36 @@ impl Tensor {
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
         let ma = self.approx();
         let mb = other.approx();
-        let avg = ma.iter().filter(|a| a.is_finite()).map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
-        let dev = (ma.iter().filter(|a| a.is_finite()).map(|&a| (a - avg).powi(2)).sum::<f32>() / ma.len() as f32).sqrt();
+        let avg = ma
+            .iter()
+            .filter(|a| a.is_finite())
+            .map(|&a| a.abs())
+            .sum::<f32>()
+            / ma.len() as f32;
+        let dev = (ma
+            .iter()
+            .filter(|a| a.is_finite())
+            .map(|&a| (a - avg).powi(2))
+            .sum::<f32>()
+            / ma.len() as f32)
+            .sqrt();
         let margin = if approx {
             (dev / 5.0).max(avg.abs() / 10_000.0).max(1e-5)
         } else {
             0.0
         };
-        ma.shape() == mb.shape()
-            && mb
-                .iter()
-                .zip(ma.iter())
-                .map(|(&a, &b)| (a, b, a.is_nan() && b.is_nan() || a == b || (b - a).abs() <= margin))
-                .inspect(|t| println!("{:?}",t))
-                .all(|t| t.2)
+        ma.shape() == mb.shape() && mb
+            .iter()
+            .zip(ma.iter())
+            .map(|(&a, &b)| {
+                (
+                    a,
+                    b,
+                    a.is_nan() && b.is_nan() || a == b || (b - a).abs() <= margin,
+                )
+            })
+        //.inspect(|t| println!("{:?}", t))
+            .all(|t| t.2)
     }
 
     pub fn into_array<D: Datum>(self) -> TfdResult<ArrayD<D>> {
@@ -328,7 +370,9 @@ impl Tensor {
     }
 
     pub fn cast_to<D: Datum>(&self) -> TfdResult<Tensor> {
-        Ok(<D as Datum>::tensor_cast_to_array(&self)?.into_owned().into())
+        Ok(<D as Datum>::tensor_cast_to_array(&self)?
+            .into_owned()
+            .into())
     }
 }
 
@@ -496,9 +540,7 @@ tensor!(bool, Bool, as_bool, as_bools, take_bools, bools, []);
 tensor!(f64, F64, as_f64, as_f64s, take_f64s, f64s, []);
 tensor!(f32, F32, as_f32, as_f32s, take_f32s, f32s, []);
 tensor!(i8, I8, as_i8, as_i8s, take_i8s, i8s, []);
-tensor!(i16, I16, as_i16, as_i16s, take_i16s, i16s,
-        [(I8, as_i8s)]
-);
+tensor!(i16, I16, as_i16, as_i16s, take_i16s, i16s, [(I8, as_i8s)]);
 tensor!(
     i32,
     I32,
@@ -515,7 +557,12 @@ tensor!(
     as_i64s,
     take_i64s,
     i64s,
-    [(TDim, as_dims), (I8, as_i8s), (I16, as_i16s), (I32, as_i32s)]
+    [
+        (TDim, as_dims),
+        (I8, as_i8s),
+        (I16, as_i16s),
+        (I32, as_i32s)
+    ]
 );
 tensor!(u8, U8, as_u8, as_u8s, take_u8s, u8s, []);
 tensor!(u16, U16, as_u16, as_u16s, take_u16s, u16s, []);

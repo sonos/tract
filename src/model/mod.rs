@@ -25,6 +25,13 @@ impl Node {
     pub fn op(&self) -> &ops::Op {
         &*self.op
     }
+
+    pub fn op_as<O:ops::Op>(&self) -> Option<&O> {
+        self.op().downcast_ref::<O>()
+    }
+    pub fn op_is<O:ops::Op>(&self) -> bool {
+        self.op_as::<O>().is_some()
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -170,9 +177,9 @@ impl Model {
                     .outputs
                     .iter()
                     .enumerate()
-                    .map(move |(ix, outlet)| (OutletId::new(node,ix), outlet))
+                    .map(move |(ix, outlet)| (OutletId::new(node, ix), outlet))
             }).filter(|(_, o)| !o.fact.datum_type.is_concrete() || !o.fact.shape.is_concrete())
-            .map(|(id,_)| id)
+            .map(|(id, _)| id)
             .collect())
     }
 
@@ -197,6 +204,10 @@ impl Model {
 
     pub fn node_names(&self) -> Vec<&str> {
         self.nodes.iter().map(|s| &*s.name).collect()
+    }
+
+    pub fn node(&self, id:usize) -> &Node {
+        &self.nodes[id]
     }
 
     pub fn nodes(&self) -> &[Node] {
@@ -242,3 +253,5 @@ impl Model {
         Arc::new(self)
     }
 }
+
+

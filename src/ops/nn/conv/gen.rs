@@ -1,12 +1,10 @@
 use analyser::rules::prelude::*;
 use ops::prelude::*;
 
-use super::ReducedConv;
+use super::ConvUnary;
 use dim::DimLike;
 use ops::nn::DataFormat;
 use ops::nn::PaddingSpec;
-
-use insideout::InsideOut;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv {
@@ -72,14 +70,16 @@ impl Op for Conv {
             (input, kernel, None)
         } else {
             let (input, kernel, bias) = args_3!(inputs);
-            (input, kernel, Some(bias))
+            (input, kernel, Some(bias.into_tensor()))
         };
-        let reduced = ReducedConv::new(
+        let ishape:Vec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
+        let kshape:Vec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
+        let reduced = ConvUnary::new(
             &self,
-            input.shape(),
-            &self.output_shape(input.shape(), kernel.shape()),
-            kernel.into_array::<f32>()?,
-            bias.map(|b| b.into_array::<f32>()).inside_out()?,
+            &ishape,
+            &self.output_shape(&ishape, &kshape),
+            kernel.into_tensor(),
+            bias,
             self.group,
         )?;
         reduced.eval(tvec!(input))
@@ -95,11 +95,11 @@ impl Op for Conv {
             if let (Some(ishape), Some(kvalue)) =
                 (input.shape.concretize(), kernel.value.concretize())
             {
-                let reduced = ReducedConv::new(
+                let reduced = ConvUnary::new(
                     &self,
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue.into_array::<f32>()?,
+                    kvalue,
                     None,
                     self.group,
                 )?;
@@ -113,12 +113,12 @@ impl Op for Conv {
             if let (Some(ishape), Some(kvalue), Some(bias)) =
                 (input.shape.concretize(), kernel.value.concretize(), bias.value.concretize())
             {
-                let reduced = ReducedConv::new(
+                let reduced = ConvUnary::new(
                     &self,
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue.into_array::<f32>()?,
-                    Some(bias.into_array::<f32>()?),
+                    kvalue,
+                    Some(bias),
                     self.group,
                 )?;
                 return Ok(Some(ReducedOpRewire {

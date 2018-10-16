@@ -3,7 +3,7 @@ use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct AddDims {
-    axes: Vec<usize>,
+    pub axes: Vec<usize>,
 }
 
 impl AddDims {
