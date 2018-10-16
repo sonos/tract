@@ -187,7 +187,9 @@ impl Model {
         use optim::OptimizerPass;
         ::optim::Reduce::pass(&mut self)?;
         ::optim::prop_const(&mut self)?;
-        ::optim::compact(&self)
+        let mut model = ::optim::compact(&self)?;
+        model.analyse()?;
+        Ok(model)
     }
 
     pub fn eval_order(&self) -> TfdResult<Vec<usize>> {

@@ -45,6 +45,7 @@ impl InferenceRulesOp for Slice {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
+        println!("self: {:?}", self);
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -52,7 +53,7 @@ impl InferenceRulesOp for Slice {
         for (ix, &(a, b)) in self.prune.iter().enumerate() {
             s.equals(
                 &inputs[0].shape[ix],
-                outputs[0].shape[ix].bex() - a.to_dim() - b.to_dim(),
+                outputs[0].shape[ix].bex() + a.to_dim() + b.to_dim(),
             )?;
         }
         Ok(())
