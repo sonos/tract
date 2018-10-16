@@ -137,11 +137,15 @@ impl Op for ConvUnary {
 impl InferenceRulesOp for ConvUnary {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        _solver: &mut Solver<'r>,
-        _inputs: &'p TensorsProxy,
-        _outputs: &'p TensorsProxy,
+        s: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
-        // FIXME
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].shape, self.full_input_shape.clone())?;
+        s.equals(&outputs[0].shape, self.full_output_shape.clone())?;
         Ok(())
     }
 }

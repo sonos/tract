@@ -45,7 +45,6 @@ impl InferenceRulesOp for Slice {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
-        println!("self: {:?}", self);
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
