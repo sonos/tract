@@ -132,6 +132,34 @@ impl Op for ConvUnary {
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
+
+    fn reduce(
+        &self,
+        _inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+    ) -> TfdResult<Option<ReducedOpRewire>> {
+        let spatial_rank = self.full_input_shape.len() - 2;
+        let kernel_spatial_shape =
+            &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
+        if kernel_spatial_shape.iter().product::<usize>() == 1
+            && self.dilations.iter().all(|&x| x == 1)
+            && self.strides.iter().all(|&x| x == 1)
+            && self.group == 1
+            && self.bias.is_none()
+            && (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
+        {
+            if self.kernel_is_hwio && self.data_fmt == DataFormat::NHWC {
+                use ops::math::mat_mul::MatMulUnaryA;
+                let kernel_shape = &self.kernel.shape()[spatial_rank..];
+                let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
+                return Ok(Some(ReducedOpRewire::new(
+                    Box::new(MatMulUnaryA::new(kernel)),
+                    tvec!(0),
+                )));
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl InferenceRulesOp for ConvUnary {

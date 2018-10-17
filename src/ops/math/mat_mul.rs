@@ -2,86 +2,68 @@ use analyser::rules::prelude::*;
 use ndarray::*;
 use ops::prelude::*;
 
+fn make_slicer(coords: &[usize]) -> TfdResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
+    let mut slice: Vec<SliceOrIndex> = coords
+        .iter()
+        .map(|&ix| SliceOrIndex::Index(ix as _))
+        .collect();
+    slice.push(SliceOrIndex::from(..));
+    slice.push(SliceOrIndex::from(..));
+    Ok(SliceInfo::new(slice)?)
+}
+
+fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TfdResult<Tensor> {
+    let a = a.to_array_view::<T>()?;
+    let b = b.to_array_view::<T>()?;
+    let (ashape, bshape, cshape) = infer_shapes(a.shape().to_vec(), b.shape().to_vec())?;
+    let a = a.into_shape(ashape)?;
+    let b = b.into_shape(bshape)?;
+    let mut c = unsafe { Array::uninitialized(&*cshape) };
+
+    for prefix in indices(&cshape[..(cshape.len() - 2)]).into_iter() {
+        let a_slice = make_slicer(&prefix.slice())?;
+        let b_slice = make_slicer(&prefix.slice())?;
+        let c_slice = make_slicer(&prefix.slice())?;
+        let a1: ArrayViewD<T> = a.slice(&a_slice.as_ref());
+        let b1: ArrayViewD<T> = b.slice(&b_slice.as_ref());
+        let c1: ArrayViewMutD<T> = c.slice_mut(&c_slice.as_ref());
+
+        linalg::general_mat_mul(
+            T::one(),
+            &a1.into_dimensionality()?,
+            &b1.into_dimensionality()?,
+            T::zero(),
+            &mut c1.into_dimensionality()?,
+        );
+    }
+    Ok(c.into())
+}
+
+fn infer_shapes<D: DimLike>(mut ashape: Vec<D>, mut bshape: Vec<D>) -> TfdResult<(Vec<D>, Vec<D>, Vec<D>)> {
+    if ashape.len() < 2 {
+        ashape.insert(0, D::one());
+    }
+    if bshape.len() < 2 {
+        bshape.push(D::one());
+    }
+    while ashape.len() < bshape.len() {
+        ashape.insert(0, D::one());
+    }
+    while bshape.len() < ashape.len() {
+        bshape.insert(0, D::one());
+    }
+    let cshape_prefix = ::broadcast::multi_broadcast(&[
+        &ashape[..(ashape.len() - 2)],
+        &bshape[..(bshape.len() - 2)],
+    ]).ok_or("Could not broadcast")?;
+    let mut cshape: Vec<D> = cshape_prefix.clone();
+    cshape.push(ashape[ashape.len() - 2]);
+    cshape.push(bshape[bshape.len() - 1]);
+    Ok((ashape, bshape, cshape))
+}
+
 #[derive(Debug, Clone, new, Default)]
 pub struct MatMul {}
-
-impl MatMul {
-    fn eval_t<T: Datum + LinalgScalar>(&self, a: Value, b: Value) -> TfdResult<Value> {
-        let a = a.to_array_view::<T>()?;
-        let b = b.to_array_view::<T>()?;
-        let mut ashape = a.shape().to_vec();
-        let mut bshape = b.shape().to_vec();
-        if ashape.len() < 2 {
-            ashape.insert(0, 1);
-        }
-        if bshape.len() < 2 {
-            bshape.push(1);
-        }
-        let cshape_prefix = ::broadcast::multi_broadcast(&[
-            &ashape[..(ashape.len() - 2)],
-            &bshape[..(bshape.len() - 2)],
-        ]).ok_or("Could not broadcast")?;
-        let mut cshape: Vec<usize> = cshape_prefix.clone();
-        cshape.push(ashape[ashape.len() - 2]);
-        cshape.push(bshape[bshape.len() - 1]);
-        let mut c = unsafe { Array::uninitialized(&*cshape) };
-        for prefix in indices(&cshape_prefix[..]).into_iter() {
-            let mut a_slice: Vec<SliceOrIndex> = prefix
-                .slice()
-                .iter()
-                .map(|&ix| SliceOrIndex::Index(ix as _))
-                .collect();
-            let mut b_slice: Vec<SliceOrIndex> = prefix
-                .slice()
-                .iter()
-                .map(|&ix| SliceOrIndex::Index(ix as _))
-                .collect();
-            let mut c_slice: Vec<SliceOrIndex> = prefix
-                .slice()
-                .iter()
-                .map(|&ix| SliceOrIndex::Index(ix as _))
-                .collect();
-            a_slice.push(SliceOrIndex::Slice {
-                start: 0,
-                end: None,
-                step: 1,
-            });
-            a_slice.push(SliceOrIndex::Slice {
-                start: 0,
-                end: None,
-                step: 1,
-            });
-            b_slice.push(SliceOrIndex::Slice {
-                start: 0,
-                end: None,
-                step: 1,
-            });
-            b_slice.push(SliceOrIndex::Slice {
-                start: 0,
-                end: None,
-                step: 1,
-            });
-            c_slice.push(SliceOrIndex::Slice {
-                start: 0,
-                end: None,
-                step: 1,
-            });
-            c_slice.push(SliceOrIndex::Slice {
-                start: 0,
-                end: None,
-                step: 1,
-            });
-            linalg::general_mat_mul(
-                T::one(),
-                &a.slice(SliceInfo::new(a_slice)?.as_ref()),
-                &b.slice(SliceInfo::new(b_slice)?.as_ref()),
-                T::zero(),
-                &mut c.slice_mut(SliceInfo::new(c_slice)?.as_ref()),
-            );
-        }
-        Ok(c.into())
-    }
-}
 
 impl Op for MatMul {
     fn name(&self) -> &str {
@@ -90,8 +72,8 @@ impl Op for MatMul {
 
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (a, b) = args_2!(inputs);
-        let c = dispatch_floatlike!(Self::eval_t(a.datum_type())(self, a, b))?;
-        Ok(tvec!(c))
+        let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), b.as_tensor()))?;
+        Ok(tvec!(c.into()))
     }
 }
 
@@ -109,22 +91,83 @@ impl InferenceRulesOp for MatMul {
         s.given_2(
             &inputs[0].shape,
             &inputs[1].shape,
-            move |s, mut ashape, mut bshape| {
-                if ashape.len() < 2 {
-                    ashape.insert(0, 1.to_dim());
-                }
-                if bshape.len() < 2 {
-                    bshape.push(1.to_dim());
-                }
-                let mut cshape = ::broadcast::multi_broadcast(&[
-                    &ashape[..(ashape.len() - 2)],
-                    &bshape[..(bshape.len() - 2)],
-                ]).ok_or("Could not broadcast")?;
-                cshape.push(ashape[ashape.len() - 2]);
-                cshape.push(bshape[bshape.len() - 1]);
+            move |s, ashape, bshape| {
+                let (_, _, cshape) = infer_shapes(ashape, bshape)?;
                 s.equals(&outputs[0].shape, cshape)
             },
         )?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, new)]
+pub struct MatMulUnaryA {
+    b: Tensor,
+}
+
+impl Op for MatMulUnaryA {
+    fn name(&self) -> &str {
+        "MatMulUnaryA"
+    }
+
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let a = args_1!(inputs);
+        let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), &self.b))?;
+        Ok(tvec!(c.into()))
+    }
+}
+
+impl InferenceRulesOp for MatMulUnaryA {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.given(&inputs[0].shape, move |s, ashape| {
+            let bshape: Vec<TDim> = self.b.shape().iter().map(|x| x.to_dim()).collect();
+            let (_, _, cshape) = infer_shapes(ashape, bshape)?;
+            s.equals(&outputs[0].shape, cshape)
+        })?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, new)]
+pub struct MatMulUnaryB {
+    a: Tensor,
+}
+
+impl Op for MatMulUnaryB {
+    fn name(&self) -> &str {
+        "MatMulUnaryB"
+    }
+
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let b = args_1!(inputs);
+        let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, b.as_tensor()))?;
+        Ok(tvec!(c.into()))
+    }
+}
+
+impl InferenceRulesOp for MatMulUnaryB {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.given(&inputs[0].shape, move |s, bshape| {
+            let ashape: Vec<TDim> = self.a.shape().iter().map(|x| x.to_dim()).collect();
+            let (_, _, cshape) = infer_shapes(ashape, bshape)?;
+            s.equals(&outputs[0].shape, cshape)
+        })?;
         Ok(())
     }
 }

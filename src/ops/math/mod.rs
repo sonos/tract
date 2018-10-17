@@ -1,5 +1,5 @@
-mod gemm;
-mod mat_mul;
+pub mod gemm;
+pub mod mat_mul;
 
 use ops::prelude::*;
 pub use self::gemm::Gemm;
