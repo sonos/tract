@@ -3,6 +3,8 @@ use ops::Op;
 use tensor::Tensor;
 use TfdResult;
 
+pub use super::{Model, InletId, OutletId};
+
 pub trait ModelDsl {
     fn single_prec(&self, id: usize) -> TfdResult<Option<&Node>>;
     fn single_prec_at(&self, id: usize, count: usize) -> TfdResult<Option<&Node>>;
@@ -10,6 +12,7 @@ pub trait ModelDsl {
     fn single_succ_at(&self, id: usize, count: usize) -> TfdResult<Option<&Node>>;
 
     fn add_source<S: AsRef<str>>(&mut self, name: S) -> TfdResult<usize>;
+    fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TfdResult<usize>;
     fn add_const<S: AsRef<str>>(&mut self, name: S, t: Tensor) -> TfdResult<usize>;
     fn chain<S: AsRef<str>>(&mut self, name: S, op: Box<Op>) -> TfdResult<usize>;
 
@@ -31,9 +34,13 @@ pub trait ModelDsl {
 
 impl ModelDsl for ::model::Model {
     fn add_source<S: AsRef<str>>(&mut self, name: S) -> TfdResult<usize> {
+        self.add_source_fact(name, TensorFact::default())
+    }
+
+    fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TfdResult<usize> {
         self.add_node(
             name.as_ref().to_owned(),
-            Box::new(::ops::source::Source::default()),
+            Box::new(::ops::source::Source::new(fact)),
         )
     }
 

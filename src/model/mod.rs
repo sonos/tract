@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 
-mod dsl;
+pub mod dsl;
 mod order;
 pub use self::order::eval_order;
 pub use analyser::types::TensorFact;
@@ -160,6 +160,36 @@ impl Model {
             outlets.push(OutletFact::default());
         }
         outlets[outlet.slot].fact = fact;
+        Ok(())
+    }
+
+    pub fn facts(&self, id: usize) -> TfdResult<(TVec<&TensorFact>, TVec<&TensorFact>)> {
+        let node = &self.nodes[id];
+
+        let inputs: TVec<&TensorFact> = node
+            .inputs
+            .iter()
+            .enumerate()
+            .map(|(ix, outlet)| (ix, outlet, self.fact(*outlet).unwrap()))
+            .inspect(|(ix, outlet, fact)| {
+                trace!("Input {} from {:?}: {:?}", ix, outlet, fact);
+            }).map(|(_, _, fact)| fact)
+            .collect();
+
+        let outputs = node
+            .outputs
+            .iter()
+            .map(|outlet| &outlet.fact)
+            .enumerate()
+            .inspect(|(ix, fact)| trace!("Output {}: {:?}", ix, fact))
+            .map(|(_ix, f)| f)
+            .collect();
+
+        Ok((inputs, outputs))
+    }
+
+    pub fn analyse_one(&mut self, id: usize) -> TfdResult<()> {
+        let _ = ::analyser::Analyser::new(self)?.analyse_one(id)?;
         Ok(())
     }
 

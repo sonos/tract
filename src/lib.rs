@@ -98,6 +98,7 @@ pub mod model;
 pub mod ops;
 pub mod optim;
 pub mod plan;
+pub mod pulse;
 pub mod streaming;
 pub mod tensor;
 

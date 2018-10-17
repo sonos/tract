@@ -332,15 +332,11 @@ impl<'rules> Solver<'rules> {
     /// - Ok(Some(facts)) otherwise, with `facts` the new TensorFacts.
     pub fn infer_facts(
         self,
-        mut facts: (TVec<TensorFact>, TVec<TensorFact>),
+        facts: (TVec<&TensorFact>, TVec<&TensorFact>),
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        for f in &mut facts.0 {
-            f.reduce();
-        }
-        for f in &mut facts.1 {
-            f.reduce();
-        }
-        let mut context = Context::new(facts.0, facts.1);
+        let mut context = Context::new(
+            facts.0.iter().map(|&f| f.clone().reduced()).collect(),
+            facts.1.iter().map(|&f| f.clone().reduced()).collect());
 
         // Apply the rules until reaching a fixed point.
         let mut changed = true;
@@ -647,9 +643,10 @@ mod tests {
     fn solver_exact_size() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs.len, 1).unwrap();
+        let any = TensorFact::new();
 
         let facts = solver
-            .infer_facts((tvec![TensorFact::new()].into(), tvec![].into()))
+            .infer_facts((tvec![&any].into(), tvec![].into()))
             .unwrap();
         assert_eq!(facts, (tvec![TensorFact::new()].into(), tvec![].into()));
     }
@@ -659,8 +656,9 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[1].datum_type, DatumType::I32).unwrap();
 
+        let any = TensorFact::new();
         let facts = solver
-            .infer_facts((tvec![TensorFact::new(), TensorFact::new()], tvec![]))
+            .infer_facts((tvec![&any, &any], tvec![]))
             .unwrap();
         let expected = (
             tvec![
@@ -681,8 +679,9 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 2).unwrap();
 
+        let any = TensorFact::new();
         let facts = solver
-            .infer_facts((tvec![TensorFact::new()], tvec![]))
+            .infer_facts((tvec![&any], tvec![]))
             .unwrap();
         let expected = (
             tvec![TensorFact {
@@ -700,8 +699,9 @@ mod tests {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].shape[1], 0.to_dim()).unwrap();
 
+        let any = TensorFact::new();
         let facts = solver
-            .infer_facts((tvec![TensorFact::new()], tvec![]))
+            .infer_facts((tvec![&any], tvec![]))
             .unwrap();
         let expected = (
             tvec![TensorFact {
@@ -722,8 +722,9 @@ mod tests {
         solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]).unwrap();
         solver.equals(&inputs[0].shape[1], 3.to_dim()).unwrap();
 
+        let any = TensorFact::new();
         let facts = solver
-            .infer_facts((tvec![TensorFact::new()], tvec![]))
+            .infer_facts((tvec![&any], tvec![]))
             .unwrap();
         let expected = (
             tvec![TensorFact {
@@ -756,8 +757,9 @@ mod tests {
         let (mut solver, inputs, outputs) = bootstrap();
         solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]).unwrap();
 
+        let any = TensorFact::new();
         let facts = solver
-            .infer_facts((tvec![TensorFact::new()], tvec![TensorFact::new()]))
+            .infer_facts((tvec![&any], tvec![&any]))
             .unwrap();
         let expected = (tvec![TensorFact::new()], tvec![TensorFact::new()]);
 
@@ -773,8 +775,9 @@ mod tests {
             shape: shapefact![_, 2, _],
             ..TensorFact::new()
         };
+        let any = TensorFact::new();
         let facts = solver
-            .infer_facts((tvec![TensorFact::new()], tvec![output.clone()]))
+            .infer_facts((tvec![&any], tvec![&output]))
             .unwrap();
         let expected = (
             tvec![TensorFact {

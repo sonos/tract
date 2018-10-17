@@ -102,6 +102,11 @@ impl TensorFact {
             tensor.reduce()
         }
     }
+
+    pub fn reduced(mut self) -> Self {
+        self.reduce();
+        self
+    }
 }
 
 impl Fact for TensorFact {

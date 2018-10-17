@@ -166,6 +166,15 @@ macro_rules! element_bin {
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
 
+            fn pulsify(
+                &self,
+                _inputs: TVec<&TensorFact>,
+                _outputs: TVec<&TensorFact>,
+                _pulse: usize
+            ) -> TfdResult<::pulse::PulsifiedOp> {
+                Ok(PulsifiedOp::op(Box::new(self.clone())))
+            }
+
             /// Returns a new streaming buffer for the operation.
             fn new_buffer(&self) -> Box<$crate::streaming::types::OpBuffer> {
                 Box::new($crate::ops::QueuesBuffer::new(2))
@@ -212,6 +221,7 @@ macro_rules! element_bin {
                     })*
                     bail!("{} not covering {:?}", stringify!($Name), dt)
                 })?;
+                s.equals(&inputs.len, 2)?;
                 s.equals(&outputs.len, 1)?;
                 s.with(&a.shape, move |s, a_shape| {
                     s.with(&b.shape, move |s, b_shape| {

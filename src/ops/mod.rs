@@ -29,6 +29,7 @@ pub mod prelude {
     pub use super::{InferenceOp, Op, ReducedOpRewire};
     pub use ops::types::Value;
     pub use analyser::types::*;
+    pub use pulse::PulsifiedOp;
     pub use streaming::types::{OpBuffer, QueuesBuffer};
     pub use streaming::values::{StepValue, Stream, StreamInfo};
     pub use dim::{TDim, DimLike, ToDim};
@@ -96,8 +97,8 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Down
     /// and the refined properties about the inputs and outputs otherwise.
     fn infer(
         &self,
-        inputs: TVec<TensorFact>,
-        outputs: TVec<TensorFact>,
+        inputs: TVec<&TensorFact>,
+        outputs: TVec<&TensorFact>,
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
 
@@ -126,6 +127,15 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Down
         Ok(None)
     }
 
+    fn pulsify(
+        &self,
+        _inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+        _pulse: usize
+    ) -> TfdResult<::pulse::PulsifiedOp> {
+        bail!("Operator {} do not support pulsification", self.name())
+    }
+
     fn const_value(&self) -> Option<Value> {
         None
     }
@@ -142,8 +152,8 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Down
 pub trait InferenceOp {
     fn infer_facts(
         &self,
-        inputs: TVec<TensorFact>,
-        outputs: TVec<TensorFact>,
+        inputs: TVec<&TensorFact>,
+        outputs: TVec<&TensorFact>,
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)>;
 }
 

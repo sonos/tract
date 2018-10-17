@@ -59,8 +59,8 @@ pub trait InferenceRulesOp {
 impl<O: InferenceRulesOp> ::ops::InferenceOp for O {
     fn infer_facts(
         &self,
-        inputs: TVec<TensorFact>,
-        outputs: TVec<TensorFact>,
+        inputs: TVec<&TensorFact>,
+        outputs: TVec<&TensorFact>,
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let inputs_proxy = TensorsProxy::new(vec![0].into());
         let outputs_proxy = TensorsProxy::new(vec![1].into());

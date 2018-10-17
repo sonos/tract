@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeSet;
 
 use errors::*;
-use model::{Model, OutletId, TVec};
+use model::*;
 use ops::Op;
 
 pub mod types;
@@ -42,7 +42,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
                 None => return Ok(()),
                 Some(n) => *n,
             };
-            let changed_edges = self.step(node)
+            let changed_edges = self.analyse_one(node)
                 .map_err(|e| format!("Analysing node {:?}, {:?}", node, e))?;
             for (edge, _fact) in changed_edges {
                 trace!("Changed edge: {:?}", edge);
@@ -64,34 +64,9 @@ impl<M: BorrowMut<Model>> Analyser<M> {
         }
     }
 
-    pub fn facts(&self, node: usize) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let node = &self.model.borrow().nodes()[node];
-
-        let inputs: TVec<TensorFact> = node
-            .inputs
-            .iter()
-            .enumerate()
-            .map(|(ix, outlet)| (ix, outlet, self.model.borrow().fact(*outlet).unwrap()))
-            .inspect(|(ix, outlet, fact)| {
-                trace!("Input {} from {:?}: {:?}", ix, outlet, fact);
-            }).map(|(_, _, fact)| fact.clone())
-            .collect();
-
-        let outputs = node
-            .outputs
-            .iter()
-            .map(|outlet| &outlet.fact)
-            .enumerate()
-            .inspect(|(ix, fact)| trace!("Output {}: {:?}", ix, fact))
-            .map(|(_ix, f)| f.clone())
-            .collect();
-
-        Ok((inputs, outputs))
-    }
-
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
-    fn step(&mut self, node: usize) -> TfdResult<Vec<(OutletId, TensorFact)>> {
+    pub fn analyse_one(&mut self, node: usize) -> TfdResult<Vec<(OutletId, TensorFact)>> {
         let mut changed_edges = vec![];
         {
             let node = &self.model.borrow().nodes()[node];
@@ -102,7 +77,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
                 node.op.name(),
             );
 
-            let (inputs, outputs) = self.facts(node.id)?;
+            let (inputs, outputs) = self.model.borrow().facts(node.id)?;
 
             let inferred = node.op.infer(inputs, outputs).map_err(|e| {
                 format!(

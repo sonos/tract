@@ -1,5 +1,5 @@
-use ops::prelude::*;
 use analyser::rules::prelude::*;
+use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Const {
@@ -27,6 +27,15 @@ impl Op for Const {
 
     fn const_value(&self) -> Option<Value> {
         Some(self.value.clone())
+    }
+
+    fn pulsify(
+        &self,
+        _inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+        _pulse: usize,
+    ) -> TfdResult<PulsifiedOp> {
+        return Ok(PulsifiedOp::op(Box::new(self.clone())));
     }
 }
 
