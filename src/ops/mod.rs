@@ -50,27 +50,27 @@ pub trait OpState: Debug {
     fn eval(&mut self, op: &Op, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 }
 
+impl OpState for Option<Box<OpState>> {
+    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        match self {
+            Some(state) => state.eval(op, inputs),
+            None => op.as_stateless().unwrap().eval(inputs),
+        }
+    }
+}
+
 pub trait StatelessOp: Op {
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 }
 
 pub trait OpStateManage {
-    fn state(&self) -> TfdResult<Box<OpState>>;
+    fn state(&self) -> TfdResult<Option<Box<OpState>>>;
     fn as_stateless(&self) -> Option<&StatelessOp>;
 }
 
-#[derive(Debug)]
-struct NoState;
-
-impl OpState for NoState {
-    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        op.as_stateless().unwrap().eval(inputs)
-    }
-}
-
 impl<O:Op+StatelessOp+Clone> OpStateManage for O {
-    fn state(&self) -> TfdResult<Box<OpState>> {
-        Ok(Box::new(NoState))
+    fn state(&self) -> TfdResult<Option<Box<OpState>>> {
+        Ok(None)
     }
 
     fn as_stateless(&self) -> Option<&StatelessOp> {

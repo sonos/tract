@@ -35,7 +35,7 @@ impl<M: Borrow<Model>> SimplePlan<M> {
 #[derive(Debug)]
 pub struct SimpleState<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> {
     plan: P,
-    pub states: Vec<Box<OpState>>,
+    pub states: Vec<Option<Box<OpState>>>,
     pub values: Vec<Option<TVec<Value>>>,
     _phantom: PhantomData<M>,
 }
