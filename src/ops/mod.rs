@@ -47,7 +47,7 @@ pub use streaming::types::{OpBuffer, QueuesBuffer, EmptyBuffer};
 pub use streaming::values::StepValue;
 
 pub trait OpState: Debug {
-    fn eval(&mut self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
+    fn eval(&mut self, op: &Op, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 }
 
 pub trait StatelessOp: Op {
@@ -60,17 +60,17 @@ pub trait OpStateManage {
 }
 
 #[derive(Debug)]
-struct StatelessWrapper(Box<StatelessOp>);
+struct NoState;
 
-impl OpState for StatelessWrapper {
-    fn eval(&mut self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        self.0.eval(inputs)
+impl OpState for NoState {
+    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        op.as_stateless().unwrap().eval(inputs)
     }
 }
 
 impl<O:Op+StatelessOp+Clone> OpStateManage for O {
     fn state(&self) -> TfdResult<Box<OpState>> {
-        Ok(Box::new(StatelessWrapper(Box::new(self.clone()))))
+        Ok(Box::new(NoState))
     }
 
     fn as_stateless(&self) -> Option<&StatelessOp> {

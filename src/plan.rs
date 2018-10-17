@@ -134,7 +134,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             inputs.push(prec[i.slot].clone().into())
         }
         let vs = self.states[node.id]
-            .eval(inputs)
+            .eval(nodes[node.id].op(), inputs)
             .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
         values[node.id] = Some(vs);
         Ok(())
@@ -159,8 +159,9 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
                 }
             }
-            self.states[node]
-                .eval(inputs)
+            let Self { ref mut states, ref plan, .. } = self;
+            states[node]
+                .eval(plan.borrow().model().nodes()[node].op(), inputs)
                 .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
         };
         self.values[node] = Some(values);
