@@ -35,12 +35,6 @@ impl Op for Squeeze {
         "Squeeze"
     }
 
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        let input = args_1!(inputs);
-        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
-    }
-
     fn reduce(
         &self,
         _inputs: TVec<&TensorFact>,
@@ -55,6 +49,15 @@ impl Op for Squeeze {
             Ok(None)
         }
     }
+}
+
+impl StatelessOp for Squeeze {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let input = args_1!(inputs);
+        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
+    }
+
 }
 
 impl InferenceRulesOp for Squeeze {

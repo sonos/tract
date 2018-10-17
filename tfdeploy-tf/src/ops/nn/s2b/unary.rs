@@ -22,7 +22,9 @@ impl Op for SpaceToBatchUnary {
     fn name(&self) -> &str {
         "SpaceToBatchUnary"
     }
+}
 
+impl StatelessOp for SpaceToBatchUnary {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
@@ -79,7 +81,9 @@ impl Op for BatchToSpaceUnary {
     fn name(&self) -> &str {
         "BatchToSpaceUnary"
     }
+}
 
+impl StatelessOp for BatchToSpaceUnary {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };

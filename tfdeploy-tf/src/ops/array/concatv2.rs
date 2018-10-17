@@ -16,12 +16,7 @@ pub struct ConcatV2<T: Datum> {
     t: PhantomData<T>,
 }
 
-impl<T: Datum> Op for ConcatV2<T> {
-    fn name(&self) -> &str {
-        "tf.ConvatV2"
-    }
-
-    /// Evaluates the operation given the input tensors.
+impl<T:Datum> StatelessOp for ConcatV2<T> {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let axis: i32 = inputs
             .pop()
@@ -31,6 +26,12 @@ impl<T: Datum> Op for ConcatV2<T> {
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
         Ok(tvec![result.into()])
+    }
+}
+
+impl<T: Datum> Op for ConcatV2<T> {
+    fn name(&self) -> &str {
+        "tf.ConvatV2"
     }
 
     /// Returns a new streaming buffer for the operation.

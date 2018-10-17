@@ -32,6 +32,12 @@ impl Op for MaxPool {
         "MaxPool"
     }
 
+    fn noutputs(&self) -> usize {
+        if self.with_index_outputs { 2 } else { 1 }
+    }
+}
+
+impl StatelessOp for MaxPool {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
@@ -66,10 +72,6 @@ impl Op for MaxPool {
         } else {
             Ok(tvec!(values.into()))
         }
-    }
-
-    fn noutputs(&self) -> usize {
-        if self.with_index_outputs { 2 } else { 1 }
     }
 }
 

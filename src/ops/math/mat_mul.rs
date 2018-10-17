@@ -69,7 +69,9 @@ impl Op for MatMul {
     fn name(&self) -> &str {
         "MatMul"
     }
+}
 
+impl StatelessOp for MatMul {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (a, b) = args_2!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), b.as_tensor()))?;
@@ -109,7 +111,9 @@ impl Op for MatMulUnaryA {
     fn name(&self) -> &str {
         "MatMulUnaryA"
     }
+}
 
+impl StatelessOp for MatMulUnaryA {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let a = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), &self.b))?;
@@ -145,7 +149,9 @@ impl Op for MatMulUnaryB {
     fn name(&self) -> &str {
         "MatMulUnaryB"
     }
+}
 
+impl StatelessOp for MatMulUnaryB {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let b = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, b.as_tensor()))?;

@@ -9,11 +9,6 @@ impl Op for Identity {
         "Identity"
     }
 
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        Ok(inputs)
-    }
-
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
         &self,
@@ -25,6 +20,13 @@ impl Op for Identity {
             None => Ok(None),
             Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
         }
+    }
+}
+
+impl StatelessOp for Identity {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        Ok(inputs)
     }
 }
 

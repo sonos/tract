@@ -13,6 +13,7 @@ use ndarray::prelude::*;
 use proptest::prelude::*;
 use tfdeploy::tensor::arr4;
 use tfdeploy::tensor::Datum;
+use tfdeploy::ops::OpStateManage;
 use tfdeploy_tf::tfpb;
 use tfdeploy_tf::tfpb::types::DataType::DT_INT32;
 use tfdeploy_tf::tfpb::types::DataType::DT_FLOAT;
@@ -90,6 +91,8 @@ fn batch_to_space_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
         .prop_map(|(i, bs, p)| {
             use tfdeploy::ops::Op;
             let batches: TfdTensor = tfdeploy_tf::ops::nn::s2b::raw::SpaceToBatch::new(f32::datum_type())
+                .as_stateless()
+                .unwrap()
                 .eval(tvec![i.into(), bs.clone().into(), p.clone().into()])
                 .unwrap()
                 .remove(0)

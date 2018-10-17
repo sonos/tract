@@ -59,30 +59,14 @@ where
     fn name(&self) -> &str {
         "tf.Pad"
     }
+}
 
-    /// Evaluates the operation given the input tensors.
+impl<T: Datum+Zero> StatelessOp for Pad<T> {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
         Ok(tvec![Self::compute(&input, paddings, None)?.into()])
-    }
-
-    fn step(
-        &self,
-        mut inputs: TVec<StepValue>,
-        _buffer: &mut Box<OpBuffer>,
-    ) -> TfdResult<Option<TVec<Value>>> {
-        if let (StepValue::Stream(stream), StepValue::Const(paddings)) = args_2!(inputs) {
-            if let Some(chunk) = stream.chunk {
-                let chunk = chunk.to_array_view::<T>()?;
-                let paddings = i32::tensor_to_view(&paddings)?.into_dimensionality()?;
-                return Ok(Some(tvec![
-                    Self::compute(&chunk, paddings, Some(stream.info.axis))?.into(),
-                ]));
-            }
-        }
-        Ok(None)
     }
 }
 

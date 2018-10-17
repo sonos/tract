@@ -6,12 +6,7 @@ macro_rules! element_map {
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name($crate::analyser::TypeFact);
 
-        impl ::ops::Op for $Name {
-            fn name(&self) -> &str {
-                stringify!($Name)
-            }
-
-            /// Evaluates the operation given the input tensors.
+        impl $crate::ops::StatelessOp for $Name {
             fn eval(
                 &self,
                 mut inputs: $crate::TVec<$crate::ops::Value>,
@@ -27,17 +22,11 @@ macro_rules! element_map {
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
 
-            /// Evaluates one step of the operation on the given input tensors.
-            fn step(
-                &self,
-                mut inputs: $crate::TVec<$crate::ops::StepValue>,
-                _buffer: &mut Box<$crate::streaming::types::OpBuffer>,
-            ) -> $crate::TfdResult<Option<$crate::TVec<$crate::ops::Value>>> {
-                let a = args_1!(inputs);
-                match a.into_value() {
-                    None => Ok(None),
-                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
-                }
+        }
+
+        impl $crate::ops::Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
             }
         }
 
@@ -68,12 +57,7 @@ macro_rules! element_map_with_params {
             $( $pname: $pty ),*
         }
 
-        impl ::ops::Op for $Name {
-            fn name(&self) -> &str {
-                stringify!($Name)
-            }
-
-            /// Evaluates the operation given the input tensors.
+        impl $crate::ops::StatelessOp for $Name {
             fn eval(
                 &self,
                 mut inputs: $crate::TVec<$crate::ops::Value>,
@@ -89,18 +73,11 @@ macro_rules! element_map_with_params {
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
+        }
 
-            /// Evaluates one step of the operation on the given input tensors.
-            fn step(
-                &self,
-                mut inputs: $crate::TVec<$crate::ops::StepValue>,
-                _buffer: &mut Box<$crate::streaming::types::OpBuffer>,
-            ) -> $crate::TfdResult<Option<$crate::TVec<$crate::ops::Value>>> {
-                let a = args_1!(inputs);
-                match a.into_value() {
-                    None => Ok(None),
-                    Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
-                }
+        impl $crate::ops::Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
             }
         }
 
@@ -135,12 +112,7 @@ macro_rules! element_bin {
         #[derive(Debug, Clone, Default, new)]
         pub struct $Name($crate::analyser::TypeFact);
 
-        impl Op for $Name {
-            fn name(&self) -> &str {
-                stringify!($Name)
-            }
-
-            /// Evaluates the operation given the input tensors.
+        impl $crate::ops::StatelessOp for $Name {
             fn eval(
                 &self,
                 mut inputs: TVec<$crate::ops::Value>,
@@ -165,6 +137,12 @@ macro_rules! element_bin {
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
+        }
+
+        impl $crate::ops::Op for $Name {
+            fn name(&self) -> &str {
+                stringify!($Name)
+            }
 
             fn pulsify(
                 &self,
@@ -173,33 +151,6 @@ macro_rules! element_bin {
                 _pulse: usize
             ) -> TfdResult<::pulse::PulsifiedOp> {
                 Ok(PulsifiedOp::op(Box::new(self.clone())))
-            }
-
-            /// Returns a new streaming buffer for the operation.
-            fn new_buffer(&self) -> Box<$crate::streaming::types::OpBuffer> {
-                Box::new($crate::ops::QueuesBuffer::new(2))
-            }
-
-            /// Evaluates one step of the operation on the given input tensors.
-            fn step(
-                &self,
-                inputs: TVec<$crate::ops::StepValue>,
-                buffer: &mut Box<$crate::streaming::types::OpBuffer>,
-            ) -> $crate::TfdResult<Option<TVec<$crate::ops::Value>>> {
-                let buffer = buffer.downcast_mut::<$crate::ops::QueuesBuffer>()
-                    .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
-
-                // If we don't have a value for some of the inputs yet, we buffer
-                // the current values to reuse them on the next call.
-                buffer.append(inputs)?;
-
-                if buffer[0].is_empty() || buffer[1].is_empty() {
-                    Ok(None)
-                } else {
-                    let a = buffer[0].pop_front().unwrap();
-                    let b = buffer[1].pop_front().unwrap();
-                    Ok(Some(self.eval(tvec![a, b])?))
-                }
             }
         }
 
@@ -254,6 +205,9 @@ macro_rules! element_nary {
             fn name(&self) -> &str {
                 stringify!($Name)
             }
+        }
+
+        impl StatelessOp for $Name {
             /// Evaluates the operation given the input tensors.
             fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
                 use $crate::tensor::Datum;
@@ -285,34 +239,6 @@ macro_rules! element_nary {
                     return Ok(tvec![c.into()])
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
-            }
-
-            /// Returns a new streaming buffer for the operation.
-            fn new_buffer(&self) -> Box<OpBuffer> {
-                Box::new(QueuesBuffer::new(self.n.expect("FIXME: revamp streaming state")))
-            }
-
-            fn step(
-                &self,
-                inputs: TVec<StepValue>,
-                buffer: &mut Box<OpBuffer>,
-            ) -> TfdResult<Option<TVec<Value>>> {
-                let buffer = buffer
-                    .downcast_mut::<QueuesBuffer>()
-                    .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
-
-                buffer.append(inputs)?;
-
-                if buffer.iter().any(|q| q.is_empty()) {
-                    Ok(None)
-                } else {
-                    let chunks = buffer
-                        .iter_mut()
-                        .map(|b| b.pop_front().unwrap())
-                        .collect::<TVec<_>>();
-
-                    Ok(Some(self.eval(chunks)?))
-                }
             }
         }
 
@@ -442,8 +368,9 @@ macro_rules! boxed_new {
 #[macro_export]
 macro_rules! assert_forward {
     ($op:expr, $input:ident, $output:ident) => {
+        let any = TensorFact::new();
         assert_eq!(
-            $op.infer_facts(tvec![$input.clone()], tvec![TensorFact::new()])
+            $op.infer_facts(tvec![&$input], tvec![&any])
                 .unwrap(),
             (tvec![$input.clone()], tvec![$output])
         )
@@ -455,8 +382,9 @@ macro_rules! assert_forward {
 #[macro_export]
 macro_rules! assert_backward {
     ($op:expr, $input:ident, $output:ident) => {
+        let any = TensorFact::new();
         assert_eq!(
-            $op.infer_facts(tvec![TensorFact::new()], tvec![$output.clone()])
+            $op.infer_facts(tvec![&any], tvec![&$output])
                 .unwrap(),
             (tvec![$input], tvec![$output.clone()])
         )

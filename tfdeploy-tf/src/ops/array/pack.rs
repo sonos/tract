@@ -38,7 +38,9 @@ impl Op for Pack {
     fn name(&self) -> &str {
         "tf.Pack"
     }
+}
 
+impl StatelessOp for Pack {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let dt = DatumType::super_type_for(inputs.iter().map(|dt| dt.datum_type()))
@@ -149,8 +151,9 @@ mod tests {
         let pack = Pack::new(DatumType::I32, 2, 0);
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
+        let any = TensorFact::default();
         let (_, output_facts) = pack
-            .infer_facts(tvec![a, b], tvec![TensorFact::default()])
+            .infer_facts(tvec![&a, &b], tvec![&any])
             .unwrap();
         let exp: TVec<TensorFact> = tvec!(TensorFact::dt_shape(DatumType::TDim, vec![2usize]));
         assert_eq!(output_facts, exp)
@@ -161,8 +164,9 @@ mod tests {
         let pack = Pack::new(DatumType::I32, 2, 0);
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
+        let any = TensorFact::default();
         let (_, output_facts) = pack
-            .infer(tvec![a, b], tvec![TensorFact::default()])
+            .infer(tvec![&a, &b], tvec![&any])
             .unwrap();
         let exp: TVec<TensorFact> = tvec!(Tensor::from(arr1(&[TDim::zero(), TDim::zero()])).into());
         assert_eq!(output_facts, exp);

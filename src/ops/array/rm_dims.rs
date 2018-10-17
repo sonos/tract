@@ -27,7 +27,9 @@ impl Op for RmDims {
     fn name(&self) -> &str {
         "RmDims"
     }
+}
 
+impl StatelessOp for RmDims {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);

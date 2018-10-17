@@ -26,8 +26,9 @@ impl Op for AddDims {
     fn name(&self) -> &str {
         "AddDims"
     }
+}
 
-    /// Evaluates the operation given the input tensors.
+impl StatelessOp for AddDims {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))

@@ -39,7 +39,9 @@ impl Op for Shape {
     fn name(&self) -> &str {
         "tf.Shape"
     }
+}
 
+impl StatelessOp for Shape {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let data = inputs[0].as_f32s().ok_or("Expect input #0 to be f32")?;

@@ -57,10 +57,11 @@ mod tests {
         let input = TensorFact::default()
             .with_datum_type(DatumType::TDim)
             .with_shape(shapefact![1, 1, (TDim::stream() - 2), 16]);
+        let any = TensorFact::default();
 
         let op = Squeeze::new(Some(vec![1]));
         let inferred = op
-            .infer_facts(tvec!(input), tvec!(TensorFact::default()))
+            .infer_facts(tvec!(&input), tvec!(&any))
             .unwrap();
 
         let expect: TVec<_> = tvec!(

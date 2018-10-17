@@ -16,6 +16,9 @@ impl Op for MultiBroadcastTo {
     fn name(&self) -> &str {
         "MultiBroadcastTo"
     }
+}
+
+impl StatelessOp for MultiBroadcastTo {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, dims) = args_2!(inputs);

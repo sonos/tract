@@ -35,7 +35,9 @@ impl Op for LayerHardmax {
     fn name(&self) -> &str {
         "LayerHardmax"
     }
+}
 
+impl StatelessOp for LayerHardmax {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
@@ -86,7 +88,9 @@ impl Op for LayerLogSoftmax {
     fn name(&self) -> &str {
         "LayerLogSoftmax"
     }
+}
 
+impl StatelessOp for LayerLogSoftmax {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
@@ -137,7 +141,9 @@ impl Op for LayerSoftmax {
     fn name(&self) -> &str {
         "LayerSoftmax"
     }
+}
 
+impl StatelessOp for LayerSoftmax {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))

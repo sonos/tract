@@ -12,24 +12,6 @@ impl Op for SpaceToBatch {
         "SpaceToBatch"
     }
 
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        let (input, block_shape, paddings) = args_3!(inputs);
-        let block_shape = block_shape
-            .cast_to_array()?
-            .into_owned()
-            .into_dimensionality()?;
-        let paddings = paddings
-            .cast_to_array()?
-            .into_owned()
-            .into_dimensionality()?;
-        let r = dispatch_numbers!(super::space_to_batch(input.datum_type())(
-            input,
-            &block_shape.view(),
-            &paddings.view()
-        ))?;
-        Ok(tvec!(r))
-    }
-
     fn reduce(
         &self,
         mut inputs: TVec<&TensorFact>,
@@ -71,6 +53,27 @@ impl Op for SpaceToBatch {
     }
 }
 
+impl StatelessOp for SpaceToBatch {
+
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let (input, block_shape, paddings) = args_3!(inputs);
+        let block_shape = block_shape
+            .cast_to_array()?
+            .into_owned()
+            .into_dimensionality()?;
+        let paddings = paddings
+            .cast_to_array()?
+            .into_owned()
+            .into_dimensionality()?;
+        let r = dispatch_numbers!(super::space_to_batch(input.datum_type())(
+            input,
+            &block_shape.view(),
+            &paddings.view()
+        ))?;
+        Ok(tvec!(r))
+    }
+}
+
 impl InferenceRulesOp for SpaceToBatch {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -100,21 +103,6 @@ pub struct BatchToSpace {
 impl Op for BatchToSpace {
     fn name(&self) -> &str {
         "BatchToSpace"
-    }
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        let (input, block_shape, crops) = args_3!(inputs);
-        let block_shape = block_shape
-            .cast_to_array()?
-            .into_owned()
-            .into_dimensionality()?;
-        let crops = crops.cast_to_array()?.into_owned().into_dimensionality()?;
-        let r = dispatch_numbers!(super::batch_to_space(input.datum_type())(
-            input,
-            &block_shape.view(),
-            &crops.view()
-        ))?;
-        Ok(tvec!(r))
     }
 
     fn reduce(
@@ -152,6 +140,24 @@ impl Op for BatchToSpace {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl StatelessOp for BatchToSpace {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let (input, block_shape, crops) = args_3!(inputs);
+        let block_shape = block_shape
+            .cast_to_array()?
+            .into_owned()
+            .into_dimensionality()?;
+        let crops = crops.cast_to_array()?.into_owned().into_dimensionality()?;
+        let r = dispatch_numbers!(super::batch_to_space(input.datum_type())(
+            input,
+            &block_shape.view(),
+            &crops.view()
+        ))?;
+        Ok(tvec!(r))
     }
 }
 

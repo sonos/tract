@@ -12,24 +12,6 @@ impl Op for ExpandDims {
     fn name(&self) -> &str {
         "tf.ExpandDims"
     }
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        let (data, dims) = args_2!(inputs);
-        let data = data
-            .into_tensor()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
-        let dims = dims.as_i32s().ok_or("Expected a i32 matrix")?;
-        let mut shape = data.shape().to_vec();
-        for d in dims.iter() {
-            if *d >= 0 {
-                shape.insert(*d as usize, 1);
-            } else {
-                Err(format!("unimplemented ExpandDims with negative parameter"))?
-            }
-        }
-        Ok(tvec![Tensor::from(data.into_shape(shape)?).into()])
-    }
 
     /// Evaluates one step of the operation on the given input tensors.
     fn step(
@@ -68,6 +50,26 @@ impl Op for ExpandDims {
         } else {
             Ok(None)
         }
+    }
+}
+
+impl StatelessOp for ExpandDims {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let (data, dims) = args_2!(inputs);
+        let data = data
+            .into_tensor()
+            .take_f32s()
+            .ok_or("Expected a f32 matrix")?;
+        let dims = dims.as_i32s().ok_or("Expected a i32 matrix")?;
+        let mut shape = data.shape().to_vec();
+        for d in dims.iter() {
+            if *d >= 0 {
+                shape.insert(*d as usize, 1);
+            } else {
+                Err(format!("unimplemented ExpandDims with negative parameter"))?
+            }
+        }
+        Ok(tvec![Tensor::from(data.into_shape(shape)?).into()])
     }
 }
 

@@ -64,27 +64,6 @@ impl Op for Conv {
         "Conv"
     }
 
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        let (input, kernel, bias) = if inputs.len() == 2 {
-            let (input, kernel) = args_2!(inputs);
-            (input, kernel, None)
-        } else {
-            let (input, kernel, bias) = args_3!(inputs);
-            (input, kernel, Some(bias.into_tensor()))
-        };
-        let ishape:Vec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
-        let kshape:Vec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
-        let reduced = ConvUnary::new(
-            &self,
-            &ishape,
-            &self.output_shape(&ishape, &kshape),
-            kernel.into_tensor(),
-            bias,
-            self.group,
-        )?;
-        reduced.eval(tvec!(input))
-    }
-
     fn reduce(
         &self,
         mut inputs: TVec<&TensorFact>,
@@ -128,6 +107,29 @@ impl Op for Conv {
             }
         }
         Ok(None)
+    }
+}
+
+impl StatelessOp for Conv {
+    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        let (input, kernel, bias) = if inputs.len() == 2 {
+            let (input, kernel) = args_2!(inputs);
+            (input, kernel, None)
+        } else {
+            let (input, kernel, bias) = args_3!(inputs);
+            (input, kernel, Some(bias.into_tensor()))
+        };
+        let ishape:Vec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
+        let kshape:Vec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
+        let reduced = ConvUnary::new(
+            &self,
+            &ishape,
+            &self.output_shape(&ishape, &kshape),
+            kernel.into_tensor(),
+            bias,
+            self.group,
+        )?;
+        reduced.eval(tvec!(input))
     }
 }
 

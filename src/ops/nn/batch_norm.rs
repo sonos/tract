@@ -40,7 +40,9 @@ impl Op for BatchNorm {
     fn name(&self) -> &str {
         "BatchNorm"
     }
+}
 
+impl StatelessOp for BatchNorm {
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }

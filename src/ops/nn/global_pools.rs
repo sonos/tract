@@ -34,7 +34,9 @@ impl Op for GlobalAvgPool {
     fn name(&self) -> &str {
         "GlobalAvgPool"
     }
+}
 
+impl StatelessOp for GlobalAvgPool {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
@@ -88,7 +90,9 @@ impl Op for GlobalLpPool {
     fn name(&self) -> &str {
         "GlobalLpPool"
     }
+}
 
+impl StatelessOp for GlobalLpPool {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
@@ -137,7 +141,9 @@ impl Op for GlobalMaxPool {
     fn name(&self) -> &str {
         "GlobalMaxPool"
     }
+}
 
+impl StatelessOp for GlobalMaxPool {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))

@@ -28,9 +28,12 @@ pub fn infer_forward_concrete(
     }
 
     // If we know the value of all the inputs, we can deduce everything.
-    let output_value = op.eval(input_values)?.pop().unwrap();
+    if let Some(stateless) = op.as_stateless() {
+        let output_value = stateless.eval(input_values)?.pop().unwrap();
+        return Ok(Some(tvec![tensor_to_fact(output_value.into_tensor())]))
+    }
 
-    Ok(Some(tvec![tensor_to_fact(output_value.into_tensor())]))
+    Ok(None)
 }
 
 /// Infers basic shape facts in the case of broadcasting operators.

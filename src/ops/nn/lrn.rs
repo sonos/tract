@@ -39,7 +39,9 @@ impl Op for Lrn {
     fn name(&self) -> &str {
         "Lrn"
     }
+}
 
+impl StatelessOp for Lrn {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))

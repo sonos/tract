@@ -17,8 +17,9 @@ impl Op for Flatten {
     fn name(&self) -> &str {
         "Flatten"
     }
+}
 
-    /// Evaluates the operation given the input tensors.
+impl StatelessOp for Flatten {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         let shape_0 = input.shape()[..self.axis].iter().product::<usize>();

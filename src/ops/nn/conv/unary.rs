@@ -129,10 +129,6 @@ impl Op for ConvUnary {
         "ConvUnary"
     }
 
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
-    }
-
     fn reduce(
         &self,
         _inputs: TVec<&TensorFact>,
@@ -161,6 +157,13 @@ impl Op for ConvUnary {
         Ok(None)
     }
 }
+
+impl StatelessOp for ConvUnary {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+    }
+}
+
 
 impl InferenceRulesOp for ConvUnary {
     fn rules<'r, 'p: 'r, 's: 'r>(

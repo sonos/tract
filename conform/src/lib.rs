@@ -139,7 +139,7 @@ pub fn infer<S: AsRef<str>>(
     let _found = &state.values[output.id].as_ref().unwrap();
 
     info!("Checking inference consistency on {}", output.name);
-    let inputs_vectors: TVec<TensorFact> = output
+    let input_vectors: TVec<TensorFact> = output
         .inputs
         .iter()
         .map(|outlet| {
@@ -156,7 +156,10 @@ pub fn infer<S: AsRef<str>>(
             .into(),
     ];
 
-    let e = output.op.infer_facts(inputs_vectors, output_vectors);
+    let input_facts = input_vectors.iter().collect();
+    let output_facts = output_vectors.iter().collect();
+
+    let e = output.op.infer_facts(input_facts, output_facts);
     prop_assert!(e.is_ok(), "{:?}", e);
 
     Ok(())

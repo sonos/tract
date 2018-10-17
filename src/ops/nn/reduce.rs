@@ -218,7 +218,9 @@ impl Op for Reduce {
     fn name(&self) -> &str {
         "Reduce"
     }
+}
 
+impl StatelessOp for Reduce {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Ok(tvec!(self.reducer.reduce(&self, args_1!(inputs))?))
     }

@@ -28,7 +28,9 @@ impl Op for Slice {
     fn name(&self) -> &str {
         "Slice"
     }
+}
 
+impl StatelessOp for Slice {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);

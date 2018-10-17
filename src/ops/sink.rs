@@ -10,8 +10,9 @@ impl Op for Sink {
     fn name(&self) -> &str {
         "Sink"
     }
+}
 
-    /// Evaluates the operation given the input tensors.
+impl StatelessOp for Sink {
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Ok(tvec!())
     }

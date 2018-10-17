@@ -48,7 +48,9 @@ impl Op for Gemm {
     fn name(&self) -> &str {
         "Gemm"
     }
+}
 
+impl StatelessOp for Gemm {
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
@@ -108,7 +110,9 @@ impl Op for GemmUnaryA {
     fn name(&self) -> &str {
         "GemmUnaryA"
     }
+}
 
+impl StatelessOp for GemmUnaryA {
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
@@ -167,7 +171,9 @@ impl Op for GemmUnaryB {
     fn name(&self) -> &str {
         "GemmUnaryB"
     }
+}
 
+impl StatelessOp for GemmUnaryB {
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }

@@ -13,10 +13,7 @@ pub struct SimplePlan<M: Borrow<Model>> {
 impl<M: Borrow<Model>> SimplePlan<M> {
     pub fn new(model: M) -> TfdResult<SimplePlan<M>> {
         let order = eval_order(model.borrow())?;
-        Ok(SimplePlan {
-            model,
-            order,
-        })
+        Ok(SimplePlan { model, order })
     }
 
     pub fn run(&self, inputs: TVec<Tensor>) -> TfdResult<Vec<Tensor>> {
@@ -35,9 +32,10 @@ impl<M: Borrow<Model>> SimplePlan<M> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SimpleState<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> {
     plan: P,
+    pub states: Vec<Box<OpState>>,
     pub values: Vec<Option<TVec<Value>>>,
     _phantom: PhantomData<M>,
 }
@@ -45,7 +43,15 @@ pub struct SimpleState<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> {
 impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
     pub fn new(plan: P) -> TfdResult<SimpleState<M, P>> {
         let values = vec![None; plan.borrow().model.borrow().nodes().len()];
+        let states = plan
+            .borrow()
+            .model()
+            .nodes()
+            .iter()
+            .map(|n| n.op().state())
+            .collect::<TfdResult<_>>()?;
         Ok(SimpleState {
+            states,
             plan,
             values,
             _phantom: PhantomData,
@@ -127,7 +133,9 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             ))?;
             inputs.push(prec[i.slot].clone().into())
         }
-        let vs = node.op.eval(inputs).map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+        let vs = self.states[node.id]
+            .eval(inputs)
+            .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -145,11 +153,15 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                 }
             }
             let mut inputs: TVec<Value> = tvec![];
-            let node: &Node = &self.model().nodes()[node];
-            for i in &node.inputs {
-                inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
+            {
+                let node: &Node = &self.model().nodes()[node];
+                for i in &node.inputs {
+                    inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
+                }
             }
-            node.op.eval(inputs).map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
+            self.states[node]
+                .eval(inputs)
+                .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
         };
         self.values[node] = Some(values);
         Ok(())

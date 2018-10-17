@@ -8,7 +8,9 @@ impl Op for UnimplementedOp {
     fn name(&self) -> &str {
         "Unimplemented"
     }
-    /// Evaluates the operation given the input tensors.
+}
+
+impl StatelessOp for UnimplementedOp {
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }

@@ -87,7 +87,7 @@ fn bench_conv(bencher: &mut Criterion) {
         "conv",
         move |b, &(algo, pad)| {
             let op = algo.build(*pad);
-            b.iter(|| op.eval(inputs.clone()).unwrap())
+            b.iter(|| op.as_stateless().unwrap().eval(inputs.clone()).unwrap())
         },
         &[
             (Algo::Conv2d, Padding::Same),

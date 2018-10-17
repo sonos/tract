@@ -42,8 +42,9 @@ impl Op for Reshape {
     fn name(&self) -> &str {
         "Reshape"
     }
+}
 
-    /// Evaluates the operation given the input tensors.
+impl StatelessOp for Reshape {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, shape) = args_2!(inputs);
         let shape: Vec<isize> = shape

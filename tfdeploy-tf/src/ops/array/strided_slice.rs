@@ -355,13 +355,15 @@ pub struct StridedSlice<T: Datum> {
     _phantom: PhantomData<T>,
 }
 
+impl<T:Datum> StatelessOp for StridedSlice<T> {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        self.base.eval::<T>(inputs)
+    }
+}
+
 impl<T: Datum> Op for StridedSlice<T> {
     fn name(&self) -> &str {
         "tf.StridedSlice"
-    }
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        self.base.eval::<T>(inputs)
     }
 
     fn step(
@@ -438,11 +440,7 @@ pub struct StridedSliceD {
     base: BaseStridedSlice,
 }
 
-impl Op for StridedSliceD {
-    fn name(&self) -> &str {
-        "tf.StridedSliceD"
-    }
-    /// Evaluates the operation given the input tensors.
+impl StatelessOp for StridedSliceD {
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let dt = inputs[0].datum_type();
         match dt {
@@ -450,6 +448,12 @@ impl Op for StridedSliceD {
             DatumType::I32 => self.base.eval::<i32>(inputs),
             _ => panic!("StridedSliceD only covering i32 and Dim"),
         }
+    }
+}
+
+impl Op for StridedSliceD {
+    fn name(&self) -> &str {
+        "tf.StridedSliceD"
     }
 
     fn step(
@@ -471,16 +475,6 @@ impl Op for StridedSliceD {
             Ok(None)
         }
     }
-
-    /*
-    fn final_prep(
-        &self,
-        inputs: TVec<TensorFact>,
-        outputs: TVec<TensorFact>,
-    ) -> TfdResult<Option<Box<Op>>> {
-        self.base.final_prep(inputs, outputs)
-    }
-    */
 }
 
 impl InferenceRulesOp for StridedSliceD {
@@ -491,45 +485,6 @@ impl InferenceRulesOp for StridedSliceD {
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
-    }
-}
-
-#[derive(Debug, Default, Clone, new)]
-pub struct SkipBeginStreamStridedSlice {
-    skip: u64,
-}
-
-impl Op for SkipBeginStreamStridedSlice {
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        panic!("only streaming op impl");
-    }
-    fn name(&self) -> &str {
-        "tf.StridedSlice.SkipBegin"
-    }
-    fn step(
-        &self,
-        mut inputs: TVec<StepValue>,
-        _buffer: &mut Box<OpBuffer>,
-    ) -> TfdResult<Option<TVec<Value>>> {
-        let Stream { offset, chunk, .. } = inputs
-            .remove(0)
-            .into_stream()
-            .ok_or("Input 0 expected to be a stream")?;
-        if offset < self.skip {
-            Ok(None)
-        } else {
-            Ok(chunk.map(|d| tvec!(d)))
-        }
-    }
-}
-
-impl InferenceOp for SkipBeginStreamStridedSlice {
-    fn infer_facts(
-        &self,
-        _inputs: TVec<TensorFact>,
-        _outputs: TVec<TensorFact>,
-    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        panic!();
     }
 }
 
@@ -717,11 +672,12 @@ mod tests {
         let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+        let any = TensorFact::default();
 
         let (input_facts, output_facts) = op
             .infer_facts(
-                tvec![input, begin.clone(), end.clone(), strides.clone()],
-                tvec![TensorFact::default()],
+                tvec![&input, &begin, &end, &strides],
+                tvec![&any],
             ).unwrap();
         assert_eq!(
             input_facts,
@@ -751,11 +707,12 @@ mod tests {
         let begin = TensorFact::from(arr1(&[0i32, 0]));
         let end = TensorFact::from(arr1(&[0i32, 1]));
         let strides = TensorFact::from(arr1(&[1i32, 1]));
+        let any = TensorFact::default();
 
         let (input_facts, output_facts) = op
             .infer_facts(
-                tvec![input, begin.clone(), end.clone(), strides.clone()],
-                tvec![TensorFact::default()],
+                tvec![&input, &begin, &end, &strides],
+                tvec![&any],
             ).unwrap();
         assert_eq!(
             input_facts,
@@ -785,11 +742,12 @@ mod tests {
         let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+        let any = TensorFact::default();
 
         let (_, output_facts) = op
             .infer_facts(
-                tvec![input, begin, end, strides],
-                tvec![TensorFact::default()],
+                tvec![&input, &begin, &end, &strides],
+                tvec![&any],
             ).unwrap();
 
         assert_eq!(
@@ -808,11 +766,12 @@ mod tests {
         let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
         let end = TensorFact::from(arr1(&[0i32, 0, 0]));
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+        let any = TensorFact::default();
 
         let (_, output_facts) = op
             .infer_facts(
-                tvec![input, begin, end, strides],
-                tvec![TensorFact::default()],
+                tvec![&input, &begin, &end, &strides],
+                tvec![&any],
             ).unwrap();
 
         assert_eq!(

@@ -11,12 +11,6 @@ impl Op for Source {
         "Source"
     }
 
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        panic!("Source should not get evaluated")
-    }
-
-    /// overriden to not run eval
     fn infer(
         &self,
         inputs: TVec<&TensorFact>,
@@ -32,6 +26,13 @@ impl Op for Source {
             return Ok(PulsifiedOp::op(Box::new(Self::new(pulse_fact.clone()))))
         }
         bail!("Could not pulsify {:?}", self)
+    }
+}
+
+impl StatelessOp for Source {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        panic!("Source should not get evaluated")
     }
 }
 

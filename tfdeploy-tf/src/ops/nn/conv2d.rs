@@ -105,10 +105,7 @@ impl<T: Datum + LinalgScalar> Conv2D<T> {
     }
 }
 
-impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
-    fn name(&self) -> &str {
-        "tf.Conv2D"
-    }
+impl<T: Datum+LinalgScalar> StatelessOp for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
@@ -119,6 +116,13 @@ impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
         Ok(tvec![
             self.convolve(&data, filter, true, true)?.into_dyn().into(),
         ])
+    }
+}
+
+
+impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
+    fn name(&self) -> &str {
+        "tf.Conv2D"
     }
 
     /// Returns a new streaming buffer for the operation.
@@ -317,6 +321,8 @@ mod tests {
 
     fn verify(input: Tensor, filter: Tensor, stride: usize, padding: Padding, expect: &[f32]) {
         let result = make_conv(stride, stride, padding)
+            .as_stateless()
+            .unwrap()
             .eval(tvec![input.into(), filter.into()])
             .unwrap()
             .remove(0);
@@ -425,7 +431,7 @@ mod tests {
         let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        let result = conv
+        let result = conv.as_stateless().unwrap()
             .eval(tvec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
@@ -445,7 +451,7 @@ mod tests {
             Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
         assert!(exp.close_enough(
-            &conv.eval(tvec![data.into(), filter.into()]).unwrap()[0],
+            &conv.as_stateless().unwrap().eval(tvec![data.into(), filter.into()]).unwrap()[0],
             true
         ))
     }
@@ -455,9 +461,10 @@ mod tests {
         let op = make_conv(1, 3, Padding::Valid);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
+        let any = TensorFact::default();
 
         let (_, mut output_facts) = op
-            .infer_facts(tvec![img, ker], tvec![TensorFact::default()])
+            .infer_facts(tvec![&img, &ker], tvec![&any])
             .unwrap();
 
         output_facts[0].reduce();
@@ -475,9 +482,10 @@ mod tests {
         let op = make_conv(1, 1, Padding::Same);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
+        let any = TensorFact::default();
 
         let (_, output_facts) = op
-            .infer_facts(tvec![img, ker], tvec![TensorFact::default()])
+            .infer_facts(tvec![&img, &ker], tvec![&any])
             .unwrap();
 
         assert_eq!(

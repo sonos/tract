@@ -20,11 +20,6 @@ impl Op for Const {
         "Const"
     }
 
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        Ok(tvec![self.value.clone()])
-    }
-
     fn const_value(&self) -> Option<Value> {
         Some(self.value.clone())
     }
@@ -37,6 +32,13 @@ impl Op for Const {
     ) -> TfdResult<PulsifiedOp> {
         return Ok(PulsifiedOp::op(Box::new(self.clone())));
     }
+}
+
+impl StatelessOp for Const {
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        Ok(tvec![self.value.clone()])
+    }
+
 }
 
 impl InferenceRulesOp for Const {

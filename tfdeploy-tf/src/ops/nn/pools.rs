@@ -26,7 +26,9 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     fn name(&self) -> &str {
         "Pool"
     }
-    /// Evaluates the operation given the input tensors.
+}
+
+impl <P:Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let m_input = args_1!(inputs);
         let data = m_input

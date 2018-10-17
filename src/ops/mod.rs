@@ -26,7 +26,7 @@ pub mod unimpl;
 mod types;
 
 pub mod prelude {
-    pub use super::{InferenceOp, Op, ReducedOpRewire};
+    pub use super::{InferenceOp, Op, ReducedOpRewire, StatelessOp, OpState};
     pub use ops::types::Value;
     pub use analyser::types::*;
     pub use pulse::PulsifiedOp;
@@ -46,13 +46,42 @@ use self::types::{ Value};
 pub use streaming::types::{OpBuffer, QueuesBuffer, EmptyBuffer};
 pub use streaming::values::StepValue;
 
+pub trait OpState: Debug {
+    fn eval(&mut self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
+}
+
+pub trait StatelessOp: Op {
+    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
+}
+
+pub trait OpStateManage {
+    fn state(&self) -> TfdResult<Box<OpState>>;
+    fn as_stateless(&self) -> Option<&StatelessOp>;
+}
+
+#[derive(Debug)]
+struct StatelessWrapper(Box<StatelessOp>);
+
+impl OpState for StatelessWrapper {
+    fn eval(&mut self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        self.0.eval(inputs)
+    }
+}
+
+impl<O:Op+StatelessOp+Clone> OpStateManage for O {
+    fn state(&self) -> TfdResult<Box<OpState>> {
+        Ok(Box::new(StatelessWrapper(Box::new(self.clone()))))
+    }
+
+    fn as_stateless(&self) -> Option<&StatelessOp> {
+        Some(self)
+    }
+}
+
 /// A Tensorflow operation.
 impl_downcast!(Op);
-pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast {
+pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + OpStateManage {
     fn name(&self) -> &str;
-
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 
     /// Returns a new streaming buffer for the operation.
     fn new_buffer(&self) -> Box<OpBuffer> {
@@ -102,21 +131,23 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Down
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
 
-        if infered_inputs.iter().all(|i| i.value.is_concrete()) {
-            let input_values = infered_inputs
-                .iter()
-                .map(|i| i.value.concretize().unwrap().clone().into())
-                .collect(); // checked
-            let output_value = self.eval(input_values)?.pop().unwrap();
-            Ok((
-                infered_inputs,
-                tvec![::analyser::helpers::tensor_to_fact(
-                    output_value.into_tensor(),
-                )],
-            ))
-        } else {
-            Ok((infered_inputs, infered_outputs))
+        if let Some(stateless) = self.as_stateless() {
+            if infered_inputs.iter().all(|i| i.value.is_concrete()) {
+                let input_values = infered_inputs
+                    .iter()
+                    .map(|i| i.value.concretize().unwrap().clone().into())
+                    .collect(); // checked
+                let output_value = stateless.eval(input_values)?.pop().unwrap();
+                return Ok((
+                    infered_inputs,
+                    tvec![::analyser::helpers::tensor_to_fact(
+                        output_value.into_tensor(),
+                    )],
+                ))
+            }
         }
+
+        Ok((infered_inputs, infered_outputs))
     }
 
     fn reduce(

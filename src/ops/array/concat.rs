@@ -21,7 +21,9 @@ impl Op for Concat {
     fn name(&self) -> &str {
         "Concat"
     }
+}
 
+impl StatelessOp for Concat {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, inputs))
