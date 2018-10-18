@@ -64,6 +64,17 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(())
     }
 
+    pub fn eval_all_in_order(&mut self) -> TfdResult<()> {
+        use ops::source::Source;
+        let order = self.plan().order.clone(); //FIXME
+        for n in order.into_iter() {
+            if self.model().nodes()[n].op_as::<Source>().is_none() {
+                self.compute_one(n)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TfdResult<()> {
         let SimpleState {
             ref plan,
