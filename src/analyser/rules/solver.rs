@@ -336,7 +336,8 @@ impl<'rules> Solver<'rules> {
     ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let mut context = Context::new(
             facts.0.iter().map(|&f| f.clone().reduced()).collect(),
-            facts.1.iter().map(|&f| f.clone().reduced()).collect());
+            facts.1.iter().map(|&f| f.clone().reduced()).collect(),
+        );
 
         // Apply the rules until reaching a fixed point.
         let mut changed = true;
@@ -389,7 +390,7 @@ impl<'rules> Solver<'rules> {
     /// solver.equals(outputs[0].rank, inputs[1].shape[0]);
     /// solver.equals(outputs[1].rank, 3);
     /// ```
-    pub fn equals<T, A, B>(&mut self, left: A, right: B) -> InferenceResult 
+    pub fn equals<T, A, B>(&mut self, left: A, right: B) -> InferenceResult
     where
         T: Output + Fact + 'static,
         A: IntoExp<T>,
@@ -563,10 +564,17 @@ macro_rules! given_tuple {
 
 given_tuple!(Given2Rule, given_2, a, b);
 impl<'rules> Solver<'rules> {
-    pub fn given_2<T1, T2, A1, A2, F>(&mut self, item_1: A1, item_2: A2, closure: F) -> InferenceResult
+    pub fn given_2<T1, T2, A1, A2, F>(
+        &mut self,
+        item_1: A1,
+        item_2: A2,
+        closure: F,
+    ) -> InferenceResult
     where
-        A1: IntoExp<T1>, T1: Fact + Output + 'static,
-        A2: IntoExp<T2>, T2: Fact + Output + 'static,
+        A1: IntoExp<T1>,
+        T1: Fact + Output + 'static,
+        A2: IntoExp<T2>,
+        T2: Fact + Output + 'static,
         F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete) -> InferenceResult + 'rules,
     {
         let rule = Given2Rule::new(item_1.bex(), item_2.bex(), closure);
@@ -577,12 +585,22 @@ impl<'rules> Solver<'rules> {
 
 given_tuple!(Given3Rule, given_3, a, b, c);
 impl<'rules> Solver<'rules> {
-    pub fn given_3<T1, T2, T3, A1, A2, A3, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, closure: F) -> InferenceResult
+    pub fn given_3<T1, T2, T3, A1, A2, A3, F>(
+        &mut self,
+        item_1: A1,
+        item_2: A2,
+        item_3: A3,
+        closure: F,
+    ) -> InferenceResult
     where
-        A1: IntoExp<T1>, T1: Fact + Output + 'static,
-        A2: IntoExp<T2>, T2: Fact + Output + 'static,
-        A3: IntoExp<T3>, T3: Fact + Output + 'static,
-        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete) -> InferenceResult + 'rules,
+        A1: IntoExp<T1>,
+        T1: Fact + Output + 'static,
+        A2: IntoExp<T2>,
+        T2: Fact + Output + 'static,
+        A3: IntoExp<T3>,
+        T3: Fact + Output + 'static,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete) -> InferenceResult
+            + 'rules,
     {
         let rule = Given3Rule::new(item_1.bex(), item_2.bex(), item_3.bex(), closure);
         self.rules.push(Box::new(rule));
@@ -592,15 +610,34 @@ impl<'rules> Solver<'rules> {
 
 given_tuple!(Given4Rule, given_4, a, b, c, d);
 impl<'rules> Solver<'rules> {
-    pub fn given_4<T1, T2, T3, T4, A1, A2, A3, A4, F>(&mut self, item_1: A1, item_2: A2, item_3: A3, item_4: A4, closure: F) -> InferenceResult
+    pub fn given_4<T1, T2, T3, T4, A1, A2, A3, A4, F>(
+        &mut self,
+        item_1: A1,
+        item_2: A2,
+        item_3: A3,
+        item_4: A4,
+        closure: F,
+    ) -> InferenceResult
     where
-        A1: IntoExp<T1>, T1: Fact + Output + 'static,
-        A2: IntoExp<T2>, T2: Fact + Output + 'static,
-        A3: IntoExp<T3>, T3: Fact + Output + 'static,
-        A4: IntoExp<T4>, T4: Fact + Output + 'static,
-        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete, T4::Concrete) -> InferenceResult + 'rules,
+        A1: IntoExp<T1>,
+        T1: Fact + Output + 'static,
+        A2: IntoExp<T2>,
+        T2: Fact + Output + 'static,
+        A3: IntoExp<T3>,
+        T3: Fact + Output + 'static,
+        A4: IntoExp<T4>,
+        T4: Fact + Output + 'static,
+        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete, T4::Concrete)
+                -> InferenceResult
+            + 'rules,
     {
-        let rule = Given4Rule::new(item_1.bex(), item_2.bex(), item_3.bex(), item_4.bex(), closure);
+        let rule = Given4Rule::new(
+            item_1.bex(),
+            item_2.bex(),
+            item_3.bex(),
+            item_4.bex(),
+            closure,
+        );
         self.rules.push(Box::new(rule));
         Ok(())
     }
@@ -654,12 +691,12 @@ mod tests {
     #[test]
     fn solver_dynamic_size() {
         let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs[1].datum_type, DatumType::I32).unwrap();
+        solver
+            .equals(&inputs[1].datum_type, DatumType::I32)
+            .unwrap();
 
         let any = TensorFact::new();
-        let facts = solver
-            .infer_facts((tvec![&any, &any], tvec![]))
-            .unwrap();
+        let facts = solver.infer_facts((tvec![&any, &any], tvec![])).unwrap();
         let expected = (
             tvec![
                 TensorFact::new(),
@@ -680,9 +717,7 @@ mod tests {
         solver.equals(&inputs[0].rank, 2).unwrap();
 
         let any = TensorFact::new();
-        let facts = solver
-            .infer_facts((tvec![&any], tvec![]))
-            .unwrap();
+        let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
         let expected = (
             tvec![TensorFact {
                 shape: shapefact![_, _],
@@ -700,9 +735,7 @@ mod tests {
         solver.equals(&inputs[0].shape[1], 0.to_dim()).unwrap();
 
         let any = TensorFact::new();
-        let facts = solver
-            .infer_facts((tvec![&any], tvec![]))
-            .unwrap();
+        let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
         let expected = (
             tvec![TensorFact {
                 shape: shapefact![_, 0; ..],
@@ -718,14 +751,16 @@ mod tests {
     fn solver_ranks() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 3).unwrap();
-        solver.equals(&inputs[0].shape[0], &inputs[0].shape[1]).unwrap();
-        solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]).unwrap();
+        solver
+            .equals(&inputs[0].shape[0], &inputs[0].shape[1])
+            .unwrap();
+        solver
+            .equals(&inputs[0].shape[1], &inputs[0].shape[2])
+            .unwrap();
         solver.equals(&inputs[0].shape[1], 3.to_dim()).unwrap();
 
         let any = TensorFact::new();
-        let facts = solver
-            .infer_facts((tvec![&any], tvec![]))
-            .unwrap();
+        let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
         let expected = (
             tvec![TensorFact {
                 shape: shapefact![3, 3, 3],
@@ -755,12 +790,12 @@ mod tests {
     #[test]
     fn solver_backward_1() {
         let (mut solver, inputs, outputs) = bootstrap();
-        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]).unwrap();
+        solver
+            .equals(&inputs[0].shape[1], &outputs[0].shape[1])
+            .unwrap();
 
         let any = TensorFact::new();
-        let facts = solver
-            .infer_facts((tvec![&any], tvec![&any]))
-            .unwrap();
+        let facts = solver.infer_facts((tvec![&any], tvec![&any])).unwrap();
         let expected = (tvec![TensorFact::new()], tvec![TensorFact::new()]);
 
         assert_eq!(facts, expected);
@@ -769,16 +804,16 @@ mod tests {
     #[test]
     fn solver_backward_2() {
         let (mut solver, inputs, outputs) = bootstrap();
-        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]).unwrap();
+        solver
+            .equals(&inputs[0].shape[1], &outputs[0].shape[1])
+            .unwrap();
 
         let output = TensorFact {
             shape: shapefact![_, 2, _],
             ..TensorFact::new()
         };
         let any = TensorFact::new();
-        let facts = solver
-            .infer_facts((tvec![&any], tvec![&output]))
-            .unwrap();
+        let facts = solver.infer_facts((tvec![&any], tvec![&output])).unwrap();
         let expected = (
             tvec![TensorFact {
                 shape: shapefact![_, 2; ..],

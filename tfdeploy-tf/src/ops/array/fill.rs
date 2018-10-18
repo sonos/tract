@@ -23,8 +23,7 @@ where
     }
 }
 
-impl<T:Datum> StatelessOp for Fill<T> {
-
+impl<T: Datum> StatelessOp for Fill<T> {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_array_view()?;

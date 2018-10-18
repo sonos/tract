@@ -67,15 +67,12 @@ impl InferenceRulesOp for Pack {
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].rank, inputs[0].rank.bex() + 1)?;
         s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
-        s.given_all(
-            (0..n).map(move |i| &inputs[i].datum_type),
-            move |s, dts| {
-                if let Some(dt) = DatumType::super_type_for(dts) {
-                    s.equals(&outputs[0].datum_type, dt)?;
-                }
-                Ok(())
-            },
-        )?;
+        s.given_all((0..n).map(move |i| &inputs[i].datum_type), move |s, dts| {
+            if let Some(dt) = DatumType::super_type_for(dts) {
+                s.equals(&outputs[0].datum_type, dt)?;
+            }
+            Ok(())
+        })?;
         s.given(&inputs[0].rank, move |s, r| {
             for d in 0..r as usize {
                 s.equals_all((0..n).map(|i| inputs[i].shape[d].bex()).collect())?;
@@ -85,7 +82,7 @@ impl InferenceRulesOp for Pack {
         s.given(&inputs[0].rank, move |s, r| {
             for d in 0..axis {
                 s.equals(&outputs[0].shape[d], &inputs[0].shape[d])?;
-            };
+            }
             if r > 0 {
                 for d in axis..(r as usize - 1) {
                     s.equals(&outputs[0].shape[d + 1], &inputs[0].shape[d])?
@@ -152,9 +149,7 @@ mod tests {
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
         let any = TensorFact::default();
-        let (_, output_facts) = pack
-            .infer_facts(tvec![&a, &b], tvec![&any])
-            .unwrap();
+        let (_, output_facts) = pack.infer_facts(tvec![&a, &b], tvec![&any]).unwrap();
         let exp: TVec<TensorFact> = tvec!(TensorFact::dt_shape(DatumType::TDim, vec![2usize]));
         assert_eq!(output_facts, exp)
     }
@@ -165,9 +160,7 @@ mod tests {
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
         let any = TensorFact::default();
-        let (_, output_facts) = pack
-            .infer(tvec![&a, &b], tvec![&any])
-            .unwrap();
+        let (_, output_facts) = pack.infer(tvec![&a, &b], tvec![&any]).unwrap();
         let exp: TVec<TensorFact> = tvec!(Tensor::from(arr1(&[TDim::zero(), TDim::zero()])).into());
         assert_eq!(output_facts, exp);
     }

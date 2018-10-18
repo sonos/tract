@@ -1,13 +1,13 @@
 use tfdeploy::analyser::rules::prelude::*;
-use tfdeploy::ops::prelude::*;
 use tfdeploy::ops::array::Squeeze;
+use tfdeploy::ops::prelude::*;
 
 pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
     if let Some(mut squeeze_dims) = squeeze_dims {
         if squeeze_dims.len() > 0 {
             squeeze_dims.sort();
-            return Ok(Box::new(Squeeze::new(Some(squeeze_dims))))
+            return Ok(Box::new(Squeeze::new(Some(squeeze_dims))));
         }
     }
     Ok(Box::new(Squeeze::default()))
@@ -17,8 +17,8 @@ pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tfdeploy::dim::TDim;
     use ndarray::*;
+    use tfdeploy::dim::TDim;
     use tfdeploy::ops::InferenceOp;
     use tfdeploy::Tensor;
 
@@ -60,9 +60,7 @@ mod tests {
         let any = TensorFact::default();
 
         let op = Squeeze::new(Some(vec![1]));
-        let inferred = op
-            .infer_facts(tvec!(&input), tvec!(&any))
-            .unwrap();
+        let inferred = op.infer_facts(tvec!(&input), tvec!(&any)).unwrap();
 
         let expect: TVec<_> = tvec!(
             TensorFact::default()

@@ -30,7 +30,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
 */
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
-    use ::tfdeploy::ops::nn::*;
+    use tfdeploy::ops::nn::*;
     let data_format = if pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC") == b"NHWC" {
         DataFormat::NHWC
     } else {
@@ -52,7 +52,15 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
             String::from_utf8_lossy(s)
         ))?,
     };
-    Ok(Box::new(Conv::new(data_format, true, None, None, padding, Some(strides[1..3].to_vec()), 1)))
+    Ok(Box::new(Conv::new(
+        data_format,
+        true,
+        None,
+        None,
+        padding,
+        Some(strides[1..3].to_vec()),
+        1,
+    )))
 }
 
 impl<T: Datum + LinalgScalar> Conv2D<T> {
@@ -105,7 +113,7 @@ impl<T: Datum + LinalgScalar> Conv2D<T> {
     }
 }
 
-impl<T: Datum+LinalgScalar> StatelessOp for Conv2D<T> {
+impl<T: Datum + LinalgScalar> StatelessOp for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
@@ -118,7 +126,6 @@ impl<T: Datum+LinalgScalar> StatelessOp for Conv2D<T> {
         ])
     }
 }
-
 
 impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
     fn name(&self) -> &str {
@@ -273,7 +280,7 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tfdeploy::ops::nn::{ Conv, DataFormat, PaddingSpec };
+    use tfdeploy::ops::nn::{Conv, DataFormat, PaddingSpec};
     use tfdeploy::Tensor;
 
     fn mk(sizes: &[usize]) -> Tensor {
@@ -336,15 +343,13 @@ mod tests {
     fn testConv2D3CNoopFilter() {
         verify(
             mk(&[1, 2, 3, 3]),
-            arr4(&[[[
-                 [1.0f32, 0.0, 0.0],
-                 [0.0, 1.0, 0.0],
-                 [0.0, 0.0, 1.0]
-            ]]]).into(),
+            arr4(&[[[[1.0f32, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]]).into(),
             1,
             Padding::Valid,
-            &[ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
-            10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0 ]
+            &[
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                16.0, 17.0, 18.0,
+            ],
         )
     }
 
@@ -431,7 +436,9 @@ mod tests {
         let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
         let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
-        let result = conv.as_stateless().unwrap()
+        let result = conv
+            .as_stateless()
+            .unwrap()
             .eval(tvec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
@@ -450,10 +457,16 @@ mod tests {
         let exp: Tensor =
             Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
-        assert!(exp.close_enough(
-            &conv.as_stateless().unwrap().eval(tvec![data.into(), filter.into()]).unwrap()[0],
-            true
-        ))
+        assert!(
+            exp.close_enough(
+                &conv
+                    .as_stateless()
+                    .unwrap()
+                    .eval(tvec![data.into(), filter.into()])
+                    .unwrap()[0],
+                true
+            )
+        )
     }
 
     #[test]
@@ -463,9 +476,7 @@ mod tests {
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
         let any = TensorFact::default();
 
-        let (_, mut output_facts) = op
-            .infer_facts(tvec![&img, &ker], tvec![&any])
-            .unwrap();
+        let (_, mut output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();
 
         output_facts[0].reduce();
         assert_eq!(
@@ -484,9 +495,7 @@ mod tests {
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
         let any = TensorFact::default();
 
-        let (_, output_facts) = op
-            .infer_facts(tvec![&img, &ker], tvec![&any])
-            .unwrap();
+        let (_, output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();
 
         assert_eq!(
             output_facts,

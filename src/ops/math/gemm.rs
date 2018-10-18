@@ -31,13 +31,8 @@ impl Gemm {
         } else {
             c.to_array_view::<T>()?
                 .broadcast(c_shape)
-                .ok_or_else(|| {
-                    format!(
-                        "Incompatible broadcast: {:?} to {:?}",
-                        c.shape(),
-                        c_shape
-                    )
-                })?.to_owned()
+                .ok_or_else(|| format!("Incompatible broadcast: {:?} to {:?}", c.shape(), c_shape))?
+                .to_owned()
         };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
         Ok(tvec!(c.into()))
@@ -100,7 +95,11 @@ impl GemmUnaryA {
         let at = if self.trans_a { a.t() } else { a };
         let b = self.b.to_array_view::<T>()?.into_dimensionality()?;
         let bt = if self.trans_b { b.t() } else { b };
-        let mut c = self.c.to_array_view::<T>()?.into_dimensionality()?.to_owned();
+        let mut c = self
+            .c
+            .to_array_view::<T>()?
+            .into_dimensionality()?
+            .to_owned();
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
         Ok(tvec!(c.into()))
     }
@@ -161,7 +160,11 @@ impl GemmUnaryB {
         let a = self.a.to_array_view::<T>()?.into_dimensionality()?;
         let at = if self.trans_a { a.t() } else { a };
         let bt = if self.trans_b { b.t() } else { b };
-        let mut c = self.c.to_array_view::<T>()?.into_dimensionality()?.to_owned();
+        let mut c = self
+            .c
+            .to_array_view::<T>()?
+            .into_dimensionality()?
+            .to_owned();
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
         Ok(tvec!(c.into()))
     }

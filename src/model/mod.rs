@@ -26,10 +26,10 @@ impl Node {
         &*self.op
     }
 
-    pub fn op_as<O:ops::Op>(&self) -> Option<&O> {
+    pub fn op_as<O: ops::Op>(&self) -> Option<&O> {
         self.op().downcast_ref::<O>()
     }
-    pub fn op_is<O:ops::Op>(&self) -> bool {
+    pub fn op_is<O: ops::Op>(&self) -> bool {
         self.op_as::<O>().is_some()
     }
 }
@@ -238,7 +238,7 @@ impl Model {
         self.nodes.iter().map(|s| &*s.name).collect()
     }
 
-    pub fn node(&self, id:usize) -> &Node {
+    pub fn node(&self, id: usize) -> &Node {
         &self.nodes[id]
     }
 
@@ -285,5 +285,3 @@ impl Model {
         Arc::new(self)
     }
 }
-
-

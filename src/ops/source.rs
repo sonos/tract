@@ -19,11 +19,16 @@ impl Op for Source {
         self.infer_facts(inputs, outputs)
     }
 
-    fn pulsify(&self, _inputs:TVec<&TensorFact>, _outputs:TVec<&TensorFact>, pulse: usize) -> TfdResult<PulsifiedOp> {
+    fn pulsify(
+        &self,
+        _inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+        pulse: usize,
+    ) -> TfdResult<PulsifiedOp> {
         if let Some(stream) = self.fact.stream_info()? {
             let mut pulse_fact = self.fact.clone();
             pulse_fact.shape.dims[stream.axis] = pulse.to_dim().into();
-            return Ok(PulsifiedOp::op(Box::new(Self::new(pulse_fact.clone()))))
+            return Ok(PulsifiedOp::op(Box::new(Self::new(pulse_fact.clone()))));
         }
         bail!("Could not pulsify {:?}", self)
     }
@@ -55,4 +60,3 @@ impl InferenceRulesOp for Source {
         Ok(())
     }
 }
-

@@ -18,7 +18,7 @@ impl DataFormat {
     pub fn shape<D, S>(&self, shape: S) -> DataShape<D, S>
     where
         D: DimLike,
-        S: AsRef<[D]>+fmt::Debug,
+        S: AsRef<[D]> + fmt::Debug,
     {
         DataShape {
             fmt: *self,
@@ -67,7 +67,7 @@ where
     }
 
     pub fn hw_axes(&self) -> ::std::ops::Range<usize> {
-        self.h_axis()..self.h_axis()+self.hw_rank()
+        self.h_axis()..self.h_axis() + self.hw_rank()
     }
 
     pub fn n_dim(&self) -> D {

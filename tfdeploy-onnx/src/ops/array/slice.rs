@@ -1,6 +1,6 @@
 use ndarray::prelude::*;
-use tfdeploy::ops::prelude::*;
 use tfdeploy::analyser::rules::prelude::*;
+use tfdeploy::ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice {
@@ -68,7 +68,7 @@ impl InferenceRulesOp for Slice {
             (0..shape.len()).try_for_each(move |axis| {
                 let d = shape[axis];
                 let spec = if let Some(axes) = self.axes.as_ref() {
-                    if let Some(ix) = axes.iter().position(|&a| a==axis) {
+                    if let Some(ix) = axes.iter().position(|&a| a == axis) {
                         Some((self.starts[ix], self.ends[ix]))
                     } else {
                         None

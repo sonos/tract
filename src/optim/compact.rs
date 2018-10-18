@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use { Model, TfdResult };
 use model::{InletId, OutletId};
+use std::collections::HashMap;
+use {Model, TfdResult};
 
 pub fn compact(old: &Model) -> TfdResult<Model> {
     let mut model = Model::default();
@@ -20,8 +20,15 @@ pub fn compact(old: &Model) -> TfdResult<Model> {
         }
     }
     // maintaining order of i/o interface
-    model.inputs = old.inputs()?.iter().map(|i| OutletId::new(map[&i.node], i.slot)).collect();
-    model.outputs = old.outputs()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
+    model.inputs = old
+        .inputs()?
+        .iter()
+        .map(|i| OutletId::new(map[&i.node], i.slot))
+        .collect();
+    model.outputs = old
+        .outputs()?
+        .iter()
+        .map(|o| OutletId::new(map[&o.node], o.slot))
+        .collect();
     Ok(model)
 }
-

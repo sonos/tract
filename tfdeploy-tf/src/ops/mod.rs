@@ -32,7 +32,7 @@ impl OpBuilder {
             Some(builder) => builder(pb),
             None => Ok(Box::new(::tfdeploy::ops::unimpl::UnimplementedOp(
                 pb.get_op().to_string(),
-                format!("{:?}", pb)
+                format!("{:?}", pb),
             ))),
         }
     }

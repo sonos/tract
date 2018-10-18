@@ -1,5 +1,5 @@
-use tfdeploy::ops::prelude::*;
 use tfdeploy::analyser::rules::prelude::*;
+use tfdeploy::ops::prelude::*;
 
 pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     Ok(Box::new(ExpandDims))
@@ -44,8 +44,10 @@ impl Op for ExpandDims {
         if let Some(dims) = dims.concretize() {
             let dims = dims.cast_to_array::<i64>()?;
             Ok(Some(ReducedOpRewire {
-                    new_op: Box::new(::tfdeploy::ops::array::AddDims::new(dims.view().iter().map(|&i| i as usize).collect())),
-                    rewired: tvec!(0)
+                new_op: Box::new(::tfdeploy::ops::array::AddDims::new(
+                    dims.view().iter().map(|&i| i as usize).collect(),
+                )),
+                rewired: tvec!(0),
             }))
         } else {
             Ok(None)

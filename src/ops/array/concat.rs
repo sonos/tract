@@ -45,15 +45,20 @@ impl InferenceRulesOp for Concat {
             s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
             s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
             s.equals(
-                SumExp::new((0..n).map(|i| (&inputs[i].shape[self.axis]).bex()).collect()),
-                &outputs[0].shape[self.axis])?;
+                SumExp::new(
+                    (0..n)
+                        .map(|i| (&inputs[i].shape[self.axis]).bex())
+                        .collect(),
+                ),
+                &outputs[0].shape[self.axis],
+            )?;
             for axis in 0..self.axis {
                 s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])?;
                 s.equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect())?;
             }
             s.given(&inputs[0].rank, move |s, axes| {
                 let axes = axes as usize;
-                for axis in (self.axis+1)..axes {
+                for axis in (self.axis + 1)..axes {
                     s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])?;
                     s.equals_all((0..n).map(|i| inputs[i].shape[axis].bex()).collect())?;
                 }

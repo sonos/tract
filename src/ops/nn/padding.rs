@@ -15,7 +15,7 @@ impl Default for PaddingSpec {
 }
 
 #[derive(Debug, Clone)]
-pub struct ComputedPaddedDim<D:DimLike> {
+pub struct ComputedPaddedDim<D: DimLike> {
     pub pad_before: Vec<D>,
     pub pad_after: Vec<D>,
     pub output: Vec<D>,
@@ -25,21 +25,21 @@ impl PaddingSpec {
     pub fn valid_dim(&self, d: usize) -> bool {
         match self {
             PaddingSpec::Valid => true,
-            PaddingSpec::Explicit(a,b) => a[d] == 0 && b[d] == 0,
+            PaddingSpec::Explicit(a, b) => a[d] == 0 && b[d] == 0,
             _ => false,
         }
     }
 
     pub fn rm_axis(&self, d: usize) -> PaddingSpec {
         match self {
-            PaddingSpec::Explicit(a,b) => {
+            PaddingSpec::Explicit(a, b) => {
                 let mut a = a.clone();
                 let mut b = b.clone();
                 a.remove(d);
                 b.remove(d);
-                PaddingSpec::Explicit(a,b)
+                PaddingSpec::Explicit(a, b)
             }
-            _ => self.clone()
+            _ => self.clone(),
         }
     }
 
@@ -143,7 +143,9 @@ impl PaddingSpec {
             }
         }
         ComputedPaddedDim {
-        pad_before, pad_after, output: dims
+            pad_before,
+            pad_after,
+            output: dims,
         }
     }
 }

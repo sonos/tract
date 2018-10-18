@@ -1,5 +1,5 @@
-use tfdeploy::*;
 use pb::*;
+use tfdeploy::*;
 
 impl TfdFrom<TensorProto_DataType> for DatumType {
     fn tfd_from(t: &TensorProto_DataType) -> TfdResult<DatumType> {
@@ -69,15 +69,19 @@ impl TfdFrom<TensorProto> for Tensor {
                     DatumType::I64 => Tensor::from_raw::<i64>(&*shape, t.get_raw_data()),
                     DatumType::F32 => Tensor::from_raw::<f32>(&*shape, t.get_raw_data()),
                     DatumType::F64 => Tensor::from_raw::<f64>(&*shape, t.get_raw_data()),
-                    DatumType::Bool => {
-                        Ok(Tensor::from_raw::<u8>(&*shape, t.get_raw_data())?.into_array::<u8>()?.mapv(|x| x != 0).into())
-                    }
+                    DatumType::Bool => Ok(Tensor::from_raw::<u8>(&*shape, t.get_raw_data())?
+                        .into_array::<u8>()?
+                        .mapv(|x| x != 0)
+                        .into()),
                     _ => unimplemented!("FIXME, tensor loading"),
                 }
             }
         } else {
             match dt {
-                DatumType::Bool => Ok(Tensor::i32s(&*shape, t.get_int32_data())?.into_array::<i32>()?.mapv(|x| x != 0).into()),
+                DatumType::Bool => Ok(Tensor::i32s(&*shape, t.get_int32_data())?
+                    .into_array::<i32>()?
+                    .mapv(|x| x != 0)
+                    .into()),
                 DatumType::U8 => Tensor::i32s(&*shape, t.get_int32_data())?.cast_to::<u8>(),
                 DatumType::U16 => Tensor::i32s(&*shape, t.get_int32_data())?.cast_to::<u16>(),
                 DatumType::I8 => Tensor::i32s(&*shape, t.get_int32_data())?.cast_to::<i8>(),

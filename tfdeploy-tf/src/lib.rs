@@ -14,7 +14,7 @@
 //! // build a simple model that just add 3 to each input component
 //! let model = tfdeploy_tf::for_path("tests/models/plus3.pb").unwrap();
 //!
-//! // we build an execution plan. default input and output are inferred from 
+//! // we build an execution plan. default input and output are inferred from
 //! // the model graph
 //! let plan = SimplePlan::new(&model).unwrap();
 //!
@@ -46,11 +46,11 @@ extern crate protobuf;
 #[macro_use]
 extern crate tfdeploy;
 
-pub mod tfpb;
 pub mod model;
-pub mod tensor;
 pub mod ops;
 pub mod optim;
+pub mod tensor;
+pub mod tfpb;
 
 pub use self::model::for_path;
 pub use self::model::for_reader;
@@ -58,4 +58,3 @@ pub use self::model::for_reader;
 pub trait ToTensorflow<Tf>: Sized {
     fn to_tf(&self) -> tfdeploy::TfdResult<Tf>;
 }
-

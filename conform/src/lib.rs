@@ -37,9 +37,9 @@ pub mod tf;
 pub use protobuf::Message;
 
 use tfdeploy::analyser::TensorFact;
-use tfdeploy_tf::tfpb;
 use tfdeploy::TVec;
 use tfdeploy::Tensor as TfdTensor;
+use tfdeploy_tf::tfpb;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
 
@@ -64,8 +64,7 @@ pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
                 let mut dim = TensorShapeProto_Dim::new();
                 dim.set_size(d as i64);
                 dim
-            })
-            .collect(),
+            }).collect(),
     );
     shape
 }
@@ -85,10 +84,12 @@ pub fn compare<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let mut model = tfdeploy_tf::for_reader(&*graph)?;
-    model.set_inputs(&inputs
+    model.set_inputs(
+        &inputs
             .iter()
             .map(|pair| pair.0.as_ref())
-            .collect::<Vec<&str>>())?;
+            .collect::<Vec<&str>>(),
+    )?;
     model.set_outputs(&[output])?;
     let plan = tfdeploy::SimplePlan::new(&model)?;
     let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
@@ -123,10 +124,12 @@ pub fn infer<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let mut model = tfdeploy_tf::for_reader(&*graph)?;
-    model.set_inputs(&inputs
+    model.set_inputs(
+        &inputs
             .iter()
             .map(|pair| pair.0.as_ref())
-            .collect::<Vec<&str>>())?;
+            .collect::<Vec<&str>>(),
+    )?;
     model.set_outputs(&[output])?;
     let plan = tfdeploy::SimplePlan::new(&model)?;
     let mut state = tfdeploy::plan::SimpleState::new(&plan)?;
@@ -147,8 +150,7 @@ pub fn infer<S: AsRef<str>>(
                 .as_tensor()
                 .clone()
                 .into()
-        })
-        .collect();
+        }).collect();
     let output_vectors: TVec<TensorFact> = tvec![
         state.values[output.id].as_ref().unwrap()[0]
             .as_tensor()

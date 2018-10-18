@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
-use std::{ fmt, ops };
+use std::{fmt, ops};
 
 use downcast_rs::Downcast;
 
 use ops::prelude::*;
-
 
 /// A streaming buffer for a Tensorflow operation.
 ///
@@ -75,4 +74,3 @@ impl ops::IndexMut<usize> for QueuesBuffer {
         &mut self.0[index]
     }
 }
-

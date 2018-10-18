@@ -159,7 +159,11 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
                 }
             }
-            let Self { ref mut states, ref plan, .. } = self;
+            let Self {
+                ref mut states,
+                ref plan,
+                ..
+            } = self;
             states[node]
                 .eval(plan.borrow().model().nodes()[node].op(), inputs)
                 .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?

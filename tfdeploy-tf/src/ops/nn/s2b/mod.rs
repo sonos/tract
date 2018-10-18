@@ -212,10 +212,8 @@ mod tests {
         let any = TensorFact::default();
 
         let (_, outputs) = op
-            .infer_facts(
-                tvec!(&data, &block_shape, &paddings),
-                tvec!(&any)
-            ).unwrap();
+            .infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any))
+            .unwrap();
 
         assert_eq!(
             outputs[0],
@@ -232,10 +230,8 @@ mod tests {
         let any = TensorFact::default();
 
         let (_, mut outputs) = op
-            .infer_facts(
-                tvec!(&data, &block_shape, &paddings),
-                tvec!(&any),
-            ).unwrap();
+            .infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any))
+            .unwrap();
         println!("raw: {:?}", outputs[0]);
         outputs[0].reduce();
         println!("reduced: {:?}", outputs[0]);

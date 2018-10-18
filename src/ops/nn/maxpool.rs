@@ -33,7 +33,11 @@ impl Op for MaxPool {
     }
 
     fn noutputs(&self) -> usize {
-        if self.with_index_outputs { 2 } else { 1 }
+        if self.with_index_outputs {
+            2
+        } else {
+            1
+        }
     }
 }
 
@@ -56,7 +60,7 @@ impl StatelessOp for MaxPool {
             let max = visitor
                 .at(&coords.slice())
                 .enumerate()
-                .filter_map(|(ix, v)| v.map(|v| (ix,v)))
+                .filter_map(|(ix, v)| v.map(|v| (ix, v)))
                 .fold(
                     (0, ::std::f32::MIN),
                     |acc, v| if acc.1 < v.1 { v } else { acc },

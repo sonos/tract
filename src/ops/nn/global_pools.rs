@@ -56,15 +56,11 @@ impl InferenceRulesOp for GlobalAvgPool {
 
 #[derive(Debug, Clone, new, Default)]
 pub struct GlobalLpPool {
-    p:usize
-    //    data_is_nhwc: bool, // default is nchw (onnx)
+    p: usize, //    data_is_nhwc: bool, // default is nchw (onnx)
 }
 
 impl GlobalLpPool {
-    fn eval_t<D: Datum + ::num::Float>(
-        &self,
-        input: Value,
-    ) -> TfdResult<TVec<Value>> {
+    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TfdResult<TVec<Value>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -76,11 +72,17 @@ impl GlobalLpPool {
         let input = array.into_shape(((n * c), divisor))?;
         let divisor = D::from(divisor).unwrap();
         let result = if self.p == 1 {
-            input.fold_axis(Axis(1), D::zero(), |&a,&b| a + b.abs()).map(|a| *a/divisor)
+            input
+                .fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs())
+                .map(|a| *a / divisor)
         } else if self.p == 2 {
-            input.fold_axis(Axis(1), D::zero(), |&a,&b| a + b*b).map(|a| a.sqrt()/divisor)
+            input
+                .fold_axis(Axis(1), D::zero(), |&a, &b| a + b * b)
+                .map(|a| a.sqrt() / divisor)
         } else {
-            input.fold_axis(Axis(1), D::zero(), |&a,&b| a + b.abs().powi(self.p as i32)).map(|a| a.powf(D::from(self.p).unwrap().recip())/divisor)
+            input
+                .fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs().powi(self.p as i32))
+                .map(|a| a.powf(D::from(self.p).unwrap().recip()) / divisor)
         };
         Ok(tvec!(result.into_shape(final_shape)?.into()))
     }
@@ -116,10 +118,7 @@ pub struct GlobalMaxPool {
 }
 
 impl GlobalMaxPool {
-    fn eval_t<D: Datum + ::num::Float>(
-        &self,
-        input: Value,
-    ) -> TfdResult<TVec<Value>> {
+    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TfdResult<TVec<Value>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -130,7 +129,7 @@ impl GlobalMaxPool {
         let divisor = array.len() / (n * c);
         let result: Tensor = array
             .into_shape(((n * c), divisor))?
-            .fold_axis(Axis(1), D::min_value(), |a,b| a.max(*b))
+            .fold_axis(Axis(1), D::min_value(), |a, b| a.max(*b))
             .into_shape(final_shape)?
             .into();
         Ok(tvec!(result.into()))

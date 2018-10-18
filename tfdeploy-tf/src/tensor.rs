@@ -1,7 +1,7 @@
+use tfdeploy::{DatumType, Tensor, TfdFrom, TfdResult};
 use tfpb::tensor::TensorProto;
 use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use tfpb::types::DataType;
-use tfdeploy::{ DatumType, TfdResult, TfdFrom, Tensor };
 use ToTensorflow;
 
 impl TfdFrom<DataType> for DatumType {
@@ -81,8 +81,7 @@ impl ToTensorflow<TensorProto> for Tensor {
                 let mut dim = TensorShapeProto_Dim::new();
                 dim.size = *d as _;
                 dim
-            })
-            .collect();
+            }).collect();
         shape.set_dim(::protobuf::RepeatedField::from_vec(dims));
         let mut tensor = TensorProto::new();
         tensor.set_tensor_shape(shape);

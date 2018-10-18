@@ -1,13 +1,13 @@
 #![allow(unused_imports)]
 use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::plan::{SimplePlan, SimpleState};
-use tfdeploy::{ Tensor, TensorFact };
+use tfdeploy::{Tensor, TensorFact};
 
+use display_graph::DisplayOptions;
 use errors::*;
 use format::*;
 use utils::*;
 use Parameters;
-use display_graph::DisplayOptions;
 
 /// Handles the `compare` subcommand.
 #[cfg(not(feature = "tensorflow"))]
@@ -28,7 +28,12 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
-    let pairs = params.input_nodes.iter().map(|s| &**s).zip(generated.iter().cloned()).collect();
+    let pairs = params
+        .input_nodes
+        .iter()
+        .map(|s| &**s)
+        .zip(generated.iter().cloned())
+        .collect();
     let mut tf_outputs = tf.unwrap().run_get_all(pairs)?;
 
     // Execute the model step-by-step on tfdeploy.
@@ -76,8 +81,14 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
             }
 
             _ => {
-                let tfd_output:Vec<Tensor> = state.values[n].as_ref().unwrap().iter().map(|v| v.as_tensor().to_owned()).collect();
-                let expected:Vec<TensorFact> = tf_output.iter().map(|m| m.clone().into()).collect();
+                let tfd_output: Vec<Tensor> = state.values[n]
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_tensor().to_owned())
+                    .collect();
+                let expected: Vec<TensorFact> =
+                    tf_output.iter().map(|m| m.clone().into()).collect();
                 match check_outputs(&tfd_output, &expected) {
                     Err(_) => {
                         failures += 1;
@@ -102,8 +113,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                                 let infos = data.partial_dump(false).unwrap();
 
                                 format!("{} {} {}", header, reason.red().bold().to_string(), infos)
-                            })
-                            .collect::<Vec<_>>();
+                            }).collect::<Vec<_>>();
                         dn.more_lines.extend(mismatches);
                         dn.label = Some("MISM.".red().to_string());
                         dn.hidden = false;

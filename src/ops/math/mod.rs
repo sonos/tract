@@ -1,10 +1,10 @@
 pub mod gemm;
 pub mod mat_mul;
 
-use ops::prelude::*;
 pub use self::gemm::Gemm;
 pub use self::mat_mul::MatMul;
 use num::traits::AsPrimitive;
+use ops::prelude::*;
 
 element_map!(Abs, [f32, i32], |x| x.abs());
 element_map!(Exp, [f32, f64], |x| x.exp());
@@ -44,7 +44,7 @@ element_bin!(Pow, match
 
 element_map!(Tanh, [f32, f64], |x| x.tanh());
 
-fn fcmp<F: ::num::Float>(a:&F,b:&F) -> ::std::cmp::Ordering {
+fn fcmp<F: ::num::Float>(a: &F, b: &F) -> ::std::cmp::Ordering {
     a.partial_cmp(b).unwrap()
 }
 
@@ -61,7 +61,6 @@ element_nary!(MeanN, match
   f32 => f32 { |v:&[f32]| v.iter().cloned().sum::<f32>() / v.len() as f32 },
   f64 => f64 { |v:&[f64]| v.iter().cloned().sum::<f64>() / v.len() as f64 }
 );
-
 
 #[cfg(test)]
 mod tests {

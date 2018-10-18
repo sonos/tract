@@ -77,10 +77,10 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tfdeploy::Tensor {
     let image = ::image::open(&p).unwrap().to_rgb();
     let resized = ::image::imageops::resize(&image, 299, 299, ::image::FilterType::Triangle);
-    let image: ::tfdeploy::Tensor = ::ndarray::Array4::from_shape_fn(
-        (1, 299, 299, 3),
-        |(_, y, x, c)| resized[(x as _, y as _)][c] as f32 / 255.0,
-    ).into_dyn()
+    let image: ::tfdeploy::Tensor =
+        ::ndarray::Array4::from_shape_fn((1, 299, 299, 3), |(_, y, x, c)| {
+            resized[(x as _, y as _)][c] as f32 / 255.0
+        }).into_dyn()
         .into();
     image
 }

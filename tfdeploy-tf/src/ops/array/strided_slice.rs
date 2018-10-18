@@ -355,7 +355,7 @@ pub struct StridedSlice<T: Datum> {
     _phantom: PhantomData<T>,
 }
 
-impl<T:Datum> StatelessOp for StridedSlice<T> {
+impl<T: Datum> StatelessOp for StridedSlice<T> {
     fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         self.base.eval::<T>(inputs)
     }
@@ -675,10 +675,8 @@ mod tests {
         let any = TensorFact::default();
 
         let (input_facts, output_facts) = op
-            .infer_facts(
-                tvec![&input, &begin, &end, &strides],
-                tvec![&any],
-            ).unwrap();
+            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
+            .unwrap();
         assert_eq!(
             input_facts,
             tvec![
@@ -710,10 +708,8 @@ mod tests {
         let any = TensorFact::default();
 
         let (input_facts, output_facts) = op
-            .infer_facts(
-                tvec![&input, &begin, &end, &strides],
-                tvec![&any],
-            ).unwrap();
+            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
+            .unwrap();
         assert_eq!(
             input_facts,
             tvec![
@@ -745,10 +741,8 @@ mod tests {
         let any = TensorFact::default();
 
         let (_, output_facts) = op
-            .infer_facts(
-                tvec![&input, &begin, &end, &strides],
-                tvec![&any],
-            ).unwrap();
+            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
+            .unwrap();
 
         assert_eq!(
             output_facts,
@@ -769,10 +763,8 @@ mod tests {
         let any = TensorFact::default();
 
         let (_, output_facts) = op
-            .infer_facts(
-                tvec![&input, &begin, &end, &strides],
-                tvec![&any],
-            ).unwrap();
+            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
+            .unwrap();
 
         assert_eq!(
             output_facts,

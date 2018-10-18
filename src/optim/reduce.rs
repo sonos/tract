@@ -1,9 +1,8 @@
-use { Model, TfdResult, TensorFact, TVec };
+use {Model, TVec, TensorFact, TfdResult};
 
 pub struct Reduce;
 
 impl super::OptimizerPass for Reduce {
-
     fn pass(model: &mut Model) -> TfdResult<bool> {
         let mut done_something = false;
         for id in model.eval_order()? {
@@ -18,7 +17,8 @@ impl super::OptimizerPass for Reduce {
                     .collect::<TfdResult<_>>()?;
                 let output_facts: TVec<&TensorFact> =
                     node.outputs.iter().map(|o| &o.fact).collect();
-                node.op.reduce(input_facts, output_facts)
+                node.op
+                    .reduce(input_facts, output_facts)
                     .map_err(|e| format!("Unarizing node {:?}, {:?}", node, e))?
             };
             if let Some(red) = reduced {
@@ -33,5 +33,4 @@ impl super::OptimizerPass for Reduce {
         }
         Ok(done_something)
     }
-
 }

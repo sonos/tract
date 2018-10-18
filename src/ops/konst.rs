@@ -38,7 +38,6 @@ impl StatelessOp for Const {
     fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         Ok(tvec![self.value.clone()])
     }
-
 }
 
 impl InferenceRulesOp for Const {

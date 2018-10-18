@@ -21,8 +21,7 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
         .map(|s| match *s {
             "S" => Ok(TDim::stream()),         // Streaming dimension.
             _ => Ok(s.parse::<i64>()?.into()), // Regular dimension.
-        })
-    .collect::<TfdResult<Vec<TDim>>>()?;
+        }).collect::<TfdResult<Vec<TDim>>>()?;
 
     if shape.iter().filter(|o| o.is_stream()).count() > 1 {
         bail!("The <size> argument doesn't support more than one streaming dimension.");
@@ -66,10 +65,10 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 
             array.into_shape(
                 shape
-                .iter()
-                .map(|i| i.to_integer().unwrap_or(missing as i64) as usize)
-                .collect::<Vec<_>>(),
-                )?
+                    .iter()
+                    .map(|i| i.to_integer().unwrap_or(missing as i64) as usize)
+                    .collect::<Vec<_>>(),
+            )?
         }};
     }
 
@@ -105,20 +104,17 @@ pub fn for_string(value: &str) -> CliResult<TensorFact> {
 }
 
 pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<Tensor>> {
-    values
-        .iter()
-        .map(|v|tensor_for_fact(v, None))
-        .collect()
+    values.iter().map(|v| tensor_for_fact(v, None)).collect()
 }
 
 pub fn make_inputs_stream(values: &[TensorFact], stream_dim: usize) -> CliResult<TVec<Tensor>> {
     values
         .iter()
-        .map(|v|tensor_for_fact(v, Some(stream_dim)))
+        .map(|v| tensor_for_fact(v, Some(stream_dim)))
         .collect()
 }
 
-pub fn tensor_for_fact(fact: &TensorFact, streaming_dim:Option<usize>) -> CliResult<Tensor> {
+pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
     if let Some(value) = fact.concretize() {
         Ok(value.clone())
     } else {
@@ -130,9 +126,14 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim:Option<usize>) -> CliRes
                 .concretize()
                 .unwrap()
                 .iter()
-                .map(|d| d.to_integer().ok().map(|d| d as usize).or(streaming_dim).unwrap())
-                .collect(),
-            fact.datum_type.concretize().unwrap()
+                .map(|d| {
+                    d.to_integer()
+                        .ok()
+                        .map(|d| d as usize)
+                        .or(streaming_dim)
+                        .unwrap()
+                }).collect(),
+            fact.datum_type.concretize().unwrap(),
         ))
     }
 }

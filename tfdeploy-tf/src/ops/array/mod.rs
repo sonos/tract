@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
+use ops::OpRegister;
 use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
-use ops::OpRegister;
 
 mod concatv2;
 mod expand_dims;
@@ -15,8 +15,9 @@ mod strided_slice;
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", expand_dims::build);
-    reg.insert("Identity",
-               |_| Ok(Box::new(::tfdeploy::ops::identity::Identity::default())));
+    reg.insert("Identity", |_| {
+        Ok(Box::new(::tfdeploy::ops::identity::Identity::default()))
+    });
     reg.insert("Fill", fill::fill);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);

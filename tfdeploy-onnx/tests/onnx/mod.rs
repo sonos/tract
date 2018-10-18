@@ -10,9 +10,7 @@ fn setup_test_logger() {
     use std::sync::Once;
 
     static START: Once = Once::new();
-    START.call_once(|| {
-        TermLogger::init(LevelFilter::Debug, Config::default()).unwrap()
-    });
+    START.call_once(|| TermLogger::init(LevelFilter::Debug, Config::default()).unwrap());
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
@@ -31,8 +29,8 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     for i in 0..len {
         let filename = path.join(format!("{}_{}.pb", prefix, i));
         let mut file = fs::File::open(filename)
-                .map_err(|e| format!("accessing {:?}, {:?}", path, e))
-                    .unwrap();
+            .map_err(|e| format!("accessing {:?}, {:?}", path, e))
+            .unwrap();
         let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
         vec.push(tensor.to_tfd().unwrap())
     }
@@ -52,8 +50,8 @@ struct DataJson {
     url: String,
 }
 
-pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str, optim:bool) {
-//    setup_test_logger();
+pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
+    //    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -92,7 +90,7 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str, optim:bool) {
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
-//    println!("Model: {:#?}", model);
+    //    println!("Model: {:#?}", model);
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
@@ -105,11 +103,18 @@ pub fn run_one<P:AsRef<path::Path>>(root: P, test: &str, optim:bool) {
             let (inputs, expected) = load_dataset(&d.path());
             let computed = plan.run(inputs).unwrap();
             if computed.len() != expected.len() {
-                panic!("Different number of results: got:{} expected:{}", computed.len(), expected.len());
+                panic!(
+                    "Different number of results: got:{} expected:{}",
+                    computed.len(),
+                    expected.len()
+                );
             }
             for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
                 if !a.close_enough(b, true) {
-                    panic!("Different result for output #{}: got:{:?} expected:{:?}", ix, a, b)
+                    panic!(
+                        "Different result for output #{}: got:{:?} expected:{:?}",
+                        ix, a, b
+                    )
                 }
             }
         }

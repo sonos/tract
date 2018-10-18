@@ -2,8 +2,8 @@ extern crate ndarray;
 extern crate tfdeploy;
 extern crate tfdeploy_tf;
 use tfdeploy_tf::tfpb;
-use tfdeploy_tf::ToTensorflow;
 use tfdeploy_tf::tfpb::types::DataType::DT_FLOAT;
+use tfdeploy_tf::ToTensorflow;
 
 fn main() {
     let plus3 = tfpb::node()

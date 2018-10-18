@@ -7,7 +7,7 @@ pub struct Reshape {}
 impl Reshape {
     fn compute_shape<D: DimLike>(&self, input: &[D], shape: &[isize]) -> TfdResult<Vec<D>> {
         if shape.iter().all(|d| *d > 0) {
-            return Ok(shape.iter().map(|&d| D::from(d as usize)).collect())
+            return Ok(shape.iter().map(|&d| D::from(d as usize)).collect());
         }
         let mut result: Vec<D> = shape
             .iter()
@@ -20,13 +20,16 @@ impl Reshape {
                 }
             }).collect();
         if let Some(minus_one) = shape.iter().position(|d| *d == -1) {
-            let prod_input: usize = input.iter()
+            let prod_input: usize = input
+                .iter()
                 .try_fold(1, |acc, dim| dim.to_integer().map(|a| a as usize * acc))?;
             let prod_shape: usize = result
                 .iter()
                 .enumerate()
                 .filter(|(ix, _)| *ix != minus_one)
-                .try_fold(1, |acc, (_, dim)| dim.to_integer().map(|a| a as usize * acc))?;
+                .try_fold(1, |acc, (_, dim)| {
+                    dim.to_integer().map(|a| a as usize * acc)
+                })?;
             result[minus_one] = D::from(prod_input / prod_shape);
         }
         Ok(result)

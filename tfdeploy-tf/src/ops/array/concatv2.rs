@@ -1,5 +1,5 @@
-use tfdeploy::analyser::rules::prelude::*;
 use ndarray::prelude::*;
+use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
@@ -16,7 +16,7 @@ pub struct ConcatV2<T: Datum> {
     t: PhantomData<T>,
 }
 
-impl<T:Datum> StatelessOp for ConcatV2<T> {
+impl<T: Datum> StatelessOp for ConcatV2<T> {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let axis: i32 = inputs
             .pop()
@@ -118,10 +118,10 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
             trace!("axis for Concatv2: {}", axis);
             for d in 0..axis {
                 s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
-            };
+            }
             for d in 0..axis {
                 s.equals(&inputs[0].shape[d], &outputs[0].shape[d])?;
-            };
+            }
             s.given(&inputs[0].rank, move |s, rank| {
                 trace!("Given rank {}", rank);
                 for d in (axis + 1)..(rank as usize) {

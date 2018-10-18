@@ -31,7 +31,7 @@ impl NodeProto {
     pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<Tensor>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)? {
             Some(attr) => Ok(Some(attr.get_t().to_tfd()?)),
-            None => Ok(None)
+            None => Ok(None),
         }
     }
 
@@ -49,7 +49,7 @@ impl NodeProto {
     pub fn get_attr_opt_str(&self, name: &str) -> TfdResult<Option<&str>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRING)? {
             Some(attr) => Ok(Some(::std::str::from_utf8(attr.get_s())?)),
-            None => Ok(None)
+            None => Ok(None),
         }
     }
 
@@ -67,7 +67,7 @@ impl NodeProto {
     pub fn get_attr_opt_int(&self, name: &str) -> TfdResult<Option<i64>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INT)? {
             Some(attr) => Ok(Some(attr.get_i())),
-            None => Ok(None)
+            None => Ok(None),
         }
     }
 
@@ -85,7 +85,7 @@ impl NodeProto {
     pub fn get_attr_opt_float(&self, name: &str) -> TfdResult<Option<f32>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOAT)? {
             Some(attr) => Ok(Some(attr.get_f())),
-            None => Ok(None)
+            None => Ok(None),
         }
     }
 
@@ -103,7 +103,7 @@ impl NodeProto {
     pub fn get_attr_opt_ints(&self, name: &str) -> TfdResult<Option<&[i64]>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)? {
             Some(attr) => Ok(Some(attr.get_ints())),
-            None => Ok(None)
+            None => Ok(None),
         }
     }
 

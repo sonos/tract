@@ -7,7 +7,7 @@ pub struct AddDims {
 }
 
 impl AddDims {
-    fn compute_shape<D:DimLike>(&self, input: &[D]) -> Vec<D> {
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> Vec<D> {
         let mut shape = input.to_vec();
         for &axis in &self.axes {
             shape.insert(axis, D::one())
@@ -44,7 +44,10 @@ impl InferenceRulesOp for AddDims {
     ) -> InferenceResult {
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        s.equals(&outputs[0].rank, (&inputs[0].rank).bex() + self.axes.len() as i64)?;
+        s.equals(
+            &outputs[0].rank,
+            (&inputs[0].rank).bex() + self.axes.len() as i64,
+        )?;
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape);
             s.equals(&outputs[0].shape, output_shape)

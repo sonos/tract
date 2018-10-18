@@ -29,7 +29,6 @@ impl StatefullOp for Delay {
     }
 }
 
-
 impl InferenceRulesOp for Delay {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -55,4 +54,3 @@ impl InferenceRulesOp for Delay {
         Ok(())
     }
 }
-

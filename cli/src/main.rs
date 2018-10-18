@@ -13,15 +13,15 @@ extern crate log;
 extern crate ndarray;
 #[macro_use]
 extern crate prettytable;
+extern crate atty;
+extern crate libc;
+extern crate open;
+extern crate pbr;
 extern crate rand;
 extern crate simplelog;
 extern crate terminal_size;
 extern crate textwrap;
 extern crate tfdeploy;
-extern crate atty;
-extern crate libc;
-extern crate open;
-extern crate pbr;
 extern crate tfdeploy_onnx;
 extern crate tfdeploy_tf;
 
