@@ -1,6 +1,6 @@
 use analyser::rules::prelude::*;
-use ops::prelude::*;
 use ndarray::*;
+use ops::prelude::*;
 
 #[derive(Debug, new)]
 struct DelayState {
@@ -9,7 +9,7 @@ struct DelayState {
 }
 
 impl DelayState {
-    pub fn eval_t<T:Datum>(&mut self, op: &Delay, input:Value) -> TfdResult<Value> {
+    pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Value) -> TfdResult<Value> {
         let axis_id = op
             .stream_input_fact
             .stream_info()?
@@ -18,24 +18,37 @@ impl DelayState {
         let axis = Axis(axis_id);
         let input = input.to_array_view::<T>()?;
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
-        if op.delay < op.pulse {
-            let mut output = unsafe { ArrayD::<T>::uninitialized(input.shape()) };
-            // pulse 4 delay 1 input 0 1 2 3
-            // copy buffer to output beginning
-            output.slice_axis_mut(axis, Slice::from(..(op.pulse-op.delay))).assign(&buffer);
-            // copy 0 1 2 from input beg to output end
-            output.slice_axis_mut(axis, Slice::from(op.delay..))
-                .assign(&input.slice_axis(axis, Slice::from(..(op.pulse-op.delay))));
-            // copy end of input to buffer
-            buffer.assign(&input.slice_axis(axis, Slice::from((op.pulse-op.delay)..)));
-            Ok(output.into())
+        // generate output
+        let buffered = op.delay + op.overlap;
+        let mut output_shape: Vec<_> = input.shape().to_vec();
+        let output_len = op.pulse + op.overlap;
+        output_shape[axis_id] = output_len;
+        // build output
+        let output = if op.delay < op.pulse  {
+            let mut output = unsafe { ArrayD::<T>::uninitialized(output_shape) };
+            let from_input = op.pulse - op.delay;
+            let from_buffer = output_len - from_input;
+            output
+                .slice_axis_mut(axis, Slice::from(..from_buffer))
+                .assign(&buffer.slice_axis(axis, Slice::from(..from_buffer)));
+            output
+                .slice_axis_mut(axis, Slice::from(from_buffer..))
+                .assign(&input.slice_axis(axis, Slice::from(..from_input)));
+            output
         } else {
-            let output = buffer.slice_axis(axis, Slice::from(0..op.pulse)).to_owned();
+            buffer.slice_axis(axis, Slice::from(..output_len)).to_owned()
+        };
+        // maintain buffer
+        if buffered < op.pulse {
+            buffer.assign(&input.slice_axis(axis, Slice::from((op.pulse - buffered)..)));
+        } else {
             let stride = buffer.strides()[axis_id] as usize * op.pulse;
             buffer.as_slice_mut().unwrap().rotate_left(stride);
-            buffer.slice_axis_mut(axis, Slice::from((op.delay - op.pulse)..)).assign(&input);
-            Ok(output.into())
+            buffer
+                .slice_axis_mut(axis, Slice::from((buffered - op.pulse)..))
+                .assign(&input);
         }
+        Ok(output.into())
     }
 }
 
@@ -43,7 +56,9 @@ impl OpState for DelayState {
     fn eval(&mut self, op: &Op, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, op, input))?))
+        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
+            self, op, input
+        ))?))
     }
 }
 
@@ -52,6 +67,7 @@ struct Delay {
     stream_input_fact: TensorFact,
     pulse: usize,
     delay: usize,
+    overlap: usize,
 }
 
 impl Op for Delay {
@@ -88,7 +104,7 @@ impl StatefullOp for Delay {
                 if ax != axis {
                     dim.to_integer().unwrap() as usize
                 } else {
-                    self.delay
+                    self.delay + self.overlap
                 }
             }).collect();
         let buffer = dispatch_datum!(self::make_buffer(dt)(&buffer_shape));
@@ -129,38 +145,57 @@ impl InferenceRulesOp for Delay {
 
 #[cfg(test)]
 mod test {
-    use ::*;
     use super::*;
     use model::dsl::*;
+    use *;
 
-    fn test_pulse_delay(pulse: usize, delay: usize) {
+    fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {
         let mut model = Model::default();
-        let stream_fact = TensorFact::dt_shape(u8::datum_type(), vec!(TDim::s()));
-        let pulse_fact = TensorFact::dt_shape(u8::datum_type(), vec!(pulse));
+        let stream_fact = TensorFact::dt_shape(u8::datum_type(), vec![TDim::s()]);
+        let pulse_fact = TensorFact::dt_shape(u8::datum_type(), vec![pulse]);
         model.add_source_fact("source", pulse_fact).unwrap();
-        model.chain("delay", Box::new(Delay::new(stream_fact, pulse, delay))).unwrap();
+        model
+            .chain(
+                "delay",
+                Box::new(Delay::new(stream_fact, pulse, delay, overlap)),
+            ).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = ::plan::SimpleState::new(plan).unwrap();
 
         for i in 0..5 {
-            let input = arr1(&[0u8, 1, 2, 3]) + 4 * i;
-            let expect = input.mapv(|i| i.saturating_sub(delay as u8) as u8);
+            let input: Vec<u8> = (pulse * i..(pulse * (i + 1))).map(|a| a as u8).collect();
+            let expect: Vec<u8> = (pulse * i..(pulse * (i + 1) + overlap))
+                .map(|i| i.saturating_sub(delay + overlap) as u8)
+                .collect();
             state.reset().unwrap();
-            state.set_input(0, input.into()).unwrap();
+            state.set_input(0, Tensor::from(arr1(&input))).unwrap();
             state.eval_all_in_order().unwrap();
             let output = state.take_outputs().unwrap();
-            assert_eq!(output[0].as_u8s().unwrap(), &expect.into_dimensionality().unwrap());
+            assert_eq!(
+                output[0].as_u8s().unwrap().as_slice().unwrap(),
+                &*expect
+            );
         }
     }
 
     #[test]
     fn sub_pulse() {
-        test_pulse_delay(4, 1);
+        test_pulse_delay_over(4, 1, 0);
     }
 
     #[test]
     fn supra_pulse() {
-        test_pulse_delay(4, 5);
+        test_pulse_delay_over(4, 5, 0);
+    }
+
+    #[test]
+    fn sub_pulse_context() {
+        test_pulse_delay_over(4, 0, 2);
+    }
+
+    #[test]
+    fn supra_pulse_context() {
+        test_pulse_delay_over(4, 0, 6);
     }
 }
