@@ -26,7 +26,7 @@ pub mod unimpl;
 mod types;
 
 pub mod prelude {
-    pub use super::{InferenceOp, Op, ReducedOpRewire, StatelessOp, OpState};
+    pub use super::{InferenceOp, Op, ReducedOpRewire, StatelessOp, StatefullOp, OpState};
     pub use ops::types::Value;
     pub use analyser::types::*;
     pub use pulse::PulsifiedOp;
@@ -47,7 +47,7 @@ pub use streaming::types::{OpBuffer, QueuesBuffer, EmptyBuffer};
 pub use streaming::values::StepValue;
 
 pub trait OpState: Debug {
-    fn eval(&mut self, op: &Op, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
+    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 }
 
 impl OpState for Option<Box<OpState>> {
@@ -59,16 +59,18 @@ impl OpState for Option<Box<OpState>> {
     }
 }
 
-pub trait StatelessOp: Op {
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
+pub trait StatelessOp {
+    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 }
 
-pub trait OpStateManage {
+pub trait StatefullOp {
     fn state(&self) -> TfdResult<Option<Box<OpState>>>;
-    fn as_stateless(&self) -> Option<&StatelessOp>;
+    fn as_stateless(&self) -> Option<&StatelessOp> {
+        None
+    }
 }
 
-impl<O:Op+StatelessOp+Clone> OpStateManage for O {
+impl<O:StatelessOp+Clone> StatefullOp for O {
     fn state(&self) -> TfdResult<Option<Box<OpState>>> {
         Ok(None)
     }
@@ -80,7 +82,7 @@ impl<O:Op+StatelessOp+Clone> OpStateManage for O {
 
 /// A Tensorflow operation.
 impl_downcast!(Op);
-pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + OpStateManage {
+pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp {
     fn name(&self) -> &str;
 
     /// Returns a new streaming buffer for the operation.
