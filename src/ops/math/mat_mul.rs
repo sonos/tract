@@ -39,7 +39,10 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TfdResult<Tensor> 
     Ok(c.into())
 }
 
-fn infer_shapes<D: DimLike>(mut ashape: Vec<D>, mut bshape: Vec<D>) -> TfdResult<(Vec<D>, Vec<D>, Vec<D>)> {
+fn infer_shapes<D: DimLike>(
+    mut ashape: Vec<D>,
+    mut bshape: Vec<D>,
+) -> TfdResult<(Vec<D>, Vec<D>, Vec<D>)> {
     if ashape.len() < 2 {
         ashape.insert(0, D::one());
     }

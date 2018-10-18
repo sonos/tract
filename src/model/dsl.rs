@@ -3,7 +3,7 @@ use ops::Op;
 use tensor::Tensor;
 use TfdResult;
 
-pub use super::{Model, InletId, OutletId};
+pub use super::{InletId, Model, OutletId};
 
 pub trait ModelDsl {
     fn single_prec(&self, id: usize) -> TfdResult<Option<&Node>>;
@@ -135,16 +135,21 @@ impl ModelDsl for ::model::Model {
         after: usize,
         nodes: Vec<(String, Box<Op>)>,
     ) -> TfdResult<()> {
-        let first_replaced = self.single_prec_at(node, before)?
-            .ok_or("Failed to replace, geometry is not right")?.id;
+        let first_replaced = self
+            .single_prec_at(node, before)?
+            .ok_or("Failed to replace, geometry is not right")?
+            .id;
         let mut tap = self.node(first_replaced).inputs[0];
         for (name, op) in nodes.into_iter() {
             let id = self.tap_and_chain(tap, name, op)?;
             tap = OutletId::new(id, 0);
         }
-        let successors:Vec<InletId> = self.single_succ_at(node, after)?
+        let successors: Vec<InletId> = self
+            .single_succ_at(node, after)?
             .ok_or("Failed to replace, geometry is not right")?
-            .outputs[0].successors.clone();
+            .outputs[0]
+            .successors
+            .clone();
         for &succ in &successors {
             self.add_edge(tap, succ)?;
         }

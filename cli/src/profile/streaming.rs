@@ -4,6 +4,7 @@ use std::borrow::Borrow;
 use std::sync::Arc;
 use std::thread;
 
+use display_graph::DisplayOptions;
 use errors::*;
 use format::*;
 use ndarray::Axis;
@@ -11,9 +12,8 @@ use profile::ProfileData;
 use rusage::{Duration, Instant};
 use tfdeploy::analyser::Fact;
 use tfdeploy::streaming::*;
-use tfdeploy::{Tensor, Model};
+use tfdeploy::{Model, Tensor};
 use {Parameters, ProfilingMode};
-use display_graph::DisplayOptions;
 
 fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>, Tensor)> {
     let start = Instant::now();
@@ -33,15 +33,21 @@ fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>
         .shape
         .dims
         .iter()
-        .map(|d| d.concretize().and_then(|d| d.to_integer().ok()).unwrap_or(1) as usize)
-        .collect::<Vec<_>>();
+        .map(|d| {
+            d.concretize()
+                .and_then(|d| d.to_integer().ok())
+                .unwrap_or(1) as usize
+        }).collect::<Vec<_>>();
     let chunk = ::tensor::random(chunk_shape, input.datum_type.concretize().unwrap());
 
     Ok((plan, chunk))
 }
 
 // feed the network until it outputs something
-fn bufferize<P:Borrow<StreamingPlan<M>>, M:Borrow<Model>>(state: &mut StreamingModelState<M, P>, chunk: &Tensor) -> CliResult<()> {
+fn bufferize<P: Borrow<StreamingPlan<M>>, M: Borrow<Model>>(
+    state: &mut StreamingModelState<M, P>,
+    chunk: &Tensor,
+) -> CliResult<()> {
     let buffering = Instant::now();
     info!("Buffering...");
     let mut buffered = 0;
@@ -138,9 +144,9 @@ pub fn handle_buffering(params: Parameters, display_options: DisplayOptions) -> 
 
     let plan = Arc::new(plan);
 
-    let mut states = (0..100).map(|_| 
-        StreamingModelState::new(Arc::clone(&plan)).unwrap()
-    ).collect::<Vec<_>>();
+    let mut states = (0..100)
+        .map(|_| StreamingModelState::new(Arc::clone(&plan)).unwrap())
+        .collect::<Vec<_>>();
 
     if log_enabled!(Info) {
         println!();
@@ -151,9 +157,13 @@ pub fn handle_buffering(params: Parameters, display_options: DisplayOptions) -> 
         .shape
         .dims
         .iter()
-        .map(|d| d.concretize().map(|d| d.to_integer().unwrap()).unwrap_or(20) as usize)
-        .collect::<Vec<_>>();
-    let data = input.concretize()
+        .map(|d| {
+            d.concretize()
+                .map(|d| d.to_integer().unwrap())
+                .unwrap_or(20) as usize
+        }).collect::<Vec<_>>();
+    let data = input
+        .concretize()
         .unwrap_or_else(|| ::tensor::random(shape, input.datum_type.concretize().unwrap()));
 
     // Split the input data into chunks along the streaming axis.

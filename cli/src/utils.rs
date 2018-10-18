@@ -1,11 +1,10 @@
-use CliResult;
-use tfdeploy::Tensor;
-use tfdeploy::analyser::TensorFact;
 use tfdeploy::analyser::Fact;
+use tfdeploy::analyser::TensorFact;
+use tfdeploy::Tensor;
+use CliResult;
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.
-pub fn check_outputs(got: &[Tensor], expected: &[TensorFact]) -> CliResult<()>
-{
+pub fn check_outputs(got: &[Tensor], expected: &[TensorFact]) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!(
             "Number of output differ: got:{}, expected:{}",
@@ -26,4 +25,3 @@ pub fn check_outputs(got: &[Tensor], expected: &[TensorFact]) -> CliResult<()>
 
     Ok(())
 }
-

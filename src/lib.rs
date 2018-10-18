@@ -24,7 +24,7 @@
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
 //! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();
 //!
-//! // we build an execution plan. default input and output are inferred from 
+//! // we build an execution plan. default input and output are inferred from
 //! // the model graph
 //! let plan = SimplePlan::new(&model).unwrap();
 //!

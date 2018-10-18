@@ -34,8 +34,8 @@ pub mod prelude {
     pub use self::super::path::*;
     pub use self::super::proxies::*;
     pub use self::super::solver::*;
-    pub use self::super::InferenceRulesOp;
     pub use self::super::InferenceResult;
+    pub use self::super::InferenceRulesOp;
     pub use analyser::prelude::*;
     pub use dim::{TDim, ToDim};
     pub use model::TVec;

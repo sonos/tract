@@ -1,7 +1,8 @@
 use num::One;
 
-pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<Vec<T>> 
-where T:One + PartialEq + Copy
+pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<Vec<T>>
+where
+    T: One + PartialEq + Copy,
 {
     let len = shapes.iter().map(|shape| shape.as_ref().len()).max()?;
     let mut shape = Vec::with_capacity(len);

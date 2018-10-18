@@ -7,8 +7,8 @@ use format::*;
 use itertools::Itertools;
 use tfdeploy::{Model, Node};
 
-use {Parameters, ProfilingMode, SomeGraphDef};
 use display_graph::DisplayOptions;
+use {Parameters, ProfilingMode, SomeGraphDef};
 
 mod regular;
 mod streaming;
@@ -39,7 +39,8 @@ impl ProfileData {
         let sum = self.summed();
         let nodes: Vec<&Node> = model.nodes().iter().map(|a| &*a).collect();
         let mut display_graph =
-            ::display_graph::DisplayGraph::from_model_and_options(model, display_options)?.with_graph_def(&graph)?;
+            ::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
+                .with_graph_def(&graph)?;
         for (ix, measure) in self.nodes.iter() {
             display_graph.add_node_label(*ix, dur_avg_oneline_ratio(*measure, sum))?;
         }
@@ -50,8 +51,7 @@ impl ProfileData {
                 a.avg_real()
                     .partial_cmp(&b.avg_real())
                     .unwrap_or(::std::cmp::Ordering::Greater)
-            })
-            .iter()
+            }).iter()
             .rev()
             .take(5)
             .map(|a| *a.0)
@@ -120,9 +120,7 @@ pub fn handle(
 ) -> CliResult<()> {
     match &profiling {
         ProfilingMode::Regular { .. } => regular::handle(params, profiling, display_options),
-        ProfilingMode::RegularBenching { .. } => {
-            regular::handle_benching(params, profiling)
-        }
+        ProfilingMode::RegularBenching { .. } => regular::handle_benching(params, profiling),
         ProfilingMode::StreamCruising => streaming::handle_cruise(params, display_options),
         ProfilingMode::StreamBuffering => streaming::handle_buffering(params, display_options),
         ProfilingMode::StreamBenching { .. } => {

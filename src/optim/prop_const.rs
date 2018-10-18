@@ -1,6 +1,6 @@
 use bit_set;
-use { Model, TfdResult };
 use model::{InletId, OutletId};
+use {Model, TfdResult};
 
 pub fn prop_const(model: &mut Model) -> TfdResult<()> {
     let mut done = bit_set::BitSet::with_capacity(model.nodes().len());
@@ -41,4 +41,3 @@ pub fn prop_const(model: &mut Model) -> TfdResult<()> {
     }
     Ok(())
 }
-

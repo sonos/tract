@@ -28,7 +28,11 @@ impl Patch {
     ) -> Patch {
         use ops::nn::padding::ComputedPaddedDim;
         let input_shape = data_fmt.shape(input_full_shape);
-        let ComputedPaddedDim {pad_after, pad_before, output} = padding.compute(
+        let ComputedPaddedDim {
+            pad_after,
+            pad_before,
+            output,
+        } = padding.compute(
             input_shape.hw_dims(),
             &kernel_spatial_shape,
             &*dilations,
@@ -151,7 +155,7 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
         }
     }
 
-    pub fn global_offset_for(&self, coords:&[usize], patch_index: usize) -> usize {
+    pub fn global_offset_for(&self, coords: &[usize], patch_index: usize) -> usize {
         let center = coords
             .iter()
             .zip(self.fast_strides.iter())

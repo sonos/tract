@@ -1,7 +1,7 @@
-use analyser::rules::prelude::*;
-use ops::prelude::*;
 use self::super::DataFormat;
+use analyser::rules::prelude::*;
 use num::traits::AsPrimitive;
+use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct BatchNorm {
@@ -15,7 +15,8 @@ impl BatchNorm {
         &self,
         mut inputs: TVec<Value>,
     ) -> TfdResult<TVec<Value>>
-        where f32: AsPrimitive<T>
+    where
+        f32: AsPrimitive<T>,
     {
         let (x, scale, beta, mean, var) = args_5!(inputs);
         let mut x = x.into_array::<T>()?;
@@ -28,11 +29,11 @@ impl BatchNorm {
         ::ndarray::indices_of(&x).into_iter().for_each(|coords| {
             let c = coords[c_axis];
             let v = x[&coords];
-            let v = (v-mean[c]) / (var[c] + self.epsilon.as_()).sqrt();
-            let v = v*scale[c] + beta[c];
+            let v = (v - mean[c]) / (var[c] + self.epsilon.as_()).sqrt();
+            let v = v * scale[c] + beta[c];
             x[&coords] = v;
         });
-        return Ok(tvec!(x.into()))
+        return Ok(tvec!(x.into()));
     }
 }
 
@@ -58,18 +59,20 @@ impl InferenceRulesOp for BatchNorm {
         s.equals(&inputs.len, 5)?;
         s.equals(&outputs.len, 1)?;
         s.equals_all(wrap!(
-                &outputs[0].datum_type,
-                &inputs[0].datum_type,
-                &inputs[1].datum_type,
-                &inputs[2].datum_type,
-                &inputs[3].datum_type,
-                &inputs[4].datum_type))?;
+            &outputs[0].datum_type,
+            &inputs[0].datum_type,
+            &inputs[1].datum_type,
+            &inputs[2].datum_type,
+            &inputs[3].datum_type,
+            &inputs[4].datum_type
+        ))?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         s.equals_all(wrap!(
-                &inputs[1].shape,
-                &inputs[2].shape,
-                &inputs[3].shape,
-                &inputs[4].shape))?;
+            &inputs[1].shape,
+            &inputs[2].shape,
+            &inputs[3].shape,
+            &inputs[4].shape
+        ))?;
         s.given(&inputs[0].shape, move |s, shape| {
             let c = self.data_format.shape(shape).c_dim();
             s.equals(&inputs[1].shape[0], c)

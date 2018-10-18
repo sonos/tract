@@ -26,7 +26,7 @@ impl ::std::default::Default for Conv {
             kernel_shape: None,
             padding: PaddingSpec::default(),
             strides: None,
-            group: 1
+            group: 1,
         }
     }
 }
@@ -89,9 +89,11 @@ impl Op for Conv {
             }
         } else {
             let (input, kernel, bias) = args_3!(inputs);
-            if let (Some(ishape), Some(kvalue), Some(bias)) =
-                (input.shape.concretize(), kernel.value.concretize(), bias.value.concretize())
-            {
+            if let (Some(ishape), Some(kvalue), Some(bias)) = (
+                input.shape.concretize(),
+                kernel.value.concretize(),
+                bias.value.concretize(),
+            ) {
                 let reduced = ConvUnary::new(
                     &self,
                     &ishape,
@@ -119,8 +121,8 @@ impl StatelessOp for Conv {
             let (input, kernel, bias) = args_3!(inputs);
             (input, kernel, Some(bias.into_tensor()))
         };
-        let ishape:Vec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
-        let kshape:Vec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
+        let ishape: Vec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
+        let kshape: Vec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
         let reduced = ConvUnary::new(
             &self,
             &ishape,
@@ -208,7 +210,9 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
         assert_eq!(
             facts.1,
             tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2)))
@@ -221,7 +225,9 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(3, 2, 1, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
         assert_eq!(
             facts.1,
             tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 3, 1, 1)))
@@ -235,7 +241,9 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
         assert_eq!(
             facts.1,
             tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2)))
@@ -248,7 +256,9 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 2, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
         assert_eq!(
             facts.1,
             tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 1)))

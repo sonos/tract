@@ -11,9 +11,9 @@ use conform::*;
 use ndarray::prelude::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
+use tfdeploy::Tensor as TfdTensor;
 use tfdeploy_tf::tfpb;
 use tfdeploy_tf::tfpb::types::DataType::DT_INT32;
-use tfdeploy::Tensor as TfdTensor;
 
 fn strat() -> BoxedStrategy<(usize, Vec<TfdTensor>)> {
     // input rank

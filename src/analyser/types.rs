@@ -309,9 +309,8 @@ impl Fact for ShapeFact {
                     x,
                     y
                 ),
-            })
-            .collect::<TfdResult<_>>()
-                .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
+            }).collect::<TfdResult<_>>()
+            .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
 
         if x.open && y.open {
             Ok(ShapeFact::open(dimensions))
@@ -345,7 +344,9 @@ impl<'a> From<&'a [usize]> for ShapeFact {
 impl From<Option<Vec<usize>>> for ShapeFact {
     /// Converts an vector of usize into a closed shape.
     fn from(shape: Option<Vec<usize>>) -> ShapeFact {
-        shape.map(|s| ShapeFact::from(s)).unwrap_or(ShapeFact::default())
+        shape
+            .map(|s| ShapeFact::from(s))
+            .unwrap_or(ShapeFact::default())
     }
 }
 

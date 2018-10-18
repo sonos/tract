@@ -78,7 +78,12 @@ pub fn render(model: &Model) -> CliResult<()> {
                 }
             }
         }
-        println!(" {} {} {}", format!("{}", node.id).color(node_color), node.op.name(), node.name);
+        println!(
+            " {} {} {}",
+            format!("{}", node.id).color(node_color),
+            node.op.name(),
+            node.name
+        );
         wires.truncate(first_input_wire);
         for (ix, output) in node.outputs.iter().enumerate() {
             if output.successors.len() == 0 {
@@ -92,13 +97,10 @@ pub fn render(model: &Model) -> CliResult<()> {
                 col
             };
             for _ in 0..output.successors.len() {
-                wires.push((
-                    OutletId::new(node.id, ix),
-                    node_color,
-                ));
+                wires.push((OutletId::new(node.id, ix), node_color));
             }
             if output.successors.len() > 1 {
-                for wire in &wires[0..(first_input_wire+ix)] {
+                for wire in &wires[0..(first_input_wire + ix)] {
                     print!("{}", VERTICAL.color(wire.1));
                 }
                 print!("{}", VERTICAL_RIGHT.color(color));

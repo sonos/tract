@@ -49,16 +49,16 @@ impl Reducer {
         let dt = input.datum_type();
         match self {
             Reducer::L1 => match dt {
-                DatumType::U8   => self.reduce_t::<u8,_>(reduce,input,l1u_t),
-                DatumType::U16  => self.reduce_t::<u16,_>(reduce,input,l1u_t),
-                DatumType::I8   => self.reduce_t::<i8,_>(reduce,input,l1s_t),
-                DatumType::I16  => self.reduce_t::<i16,_>(reduce,input,l1s_t),
-                DatumType::I32  => self.reduce_t::<i32,_>(reduce,input,l1s_t),
-                DatumType::I64  => self.reduce_t::<i64,_>(reduce,input,l1s_t),
-                DatumType::F32  => self.reduce_t::<f32,_>(reduce,input,l1s_t),
-                DatumType::F64  => self.reduce_t::<f64,_>(reduce,input,l1s_t),
-                _ => bail!("{:?} is not a number valid for L1 norm", dt)
-            }
+                DatumType::U8 => self.reduce_t::<u8, _>(reduce, input, l1u_t),
+                DatumType::U16 => self.reduce_t::<u16, _>(reduce, input, l1u_t),
+                DatumType::I8 => self.reduce_t::<i8, _>(reduce, input, l1s_t),
+                DatumType::I16 => self.reduce_t::<i16, _>(reduce, input, l1s_t),
+                DatumType::I32 => self.reduce_t::<i32, _>(reduce, input, l1s_t),
+                DatumType::I64 => self.reduce_t::<i64, _>(reduce, input, l1s_t),
+                DatumType::F32 => self.reduce_t::<f32, _>(reduce, input, l1s_t),
+                DatumType::F64 => self.reduce_t::<f64, _>(reduce, input, l1s_t),
+                _ => bail!("{:?} is not a number valid for L1 norm", dt),
+            },
             Reducer::L2 => reduce_numbers!(Self::reduce_t(dt)(self, reduce, input, l2_t)),
             Reducer::LogSum => {
                 reduce_floatlike!(Self::reduce_t(dt)(self, reduce, input, log_sum_t))
@@ -134,9 +134,11 @@ where
 fn l2_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
     T: Datum + AsPrimitive<f64>,
-    f64: AsPrimitive<T>
+    f64: AsPrimitive<T>,
 {
-    v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2)).sqrt().as_()
+    v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2))
+        .sqrt()
+        .as_()
 }
 
 fn log_sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
@@ -148,7 +150,7 @@ where
 
 fn log_sum_exp_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Zero + num::Float
+    T: Datum + num::Zero + num::Float,
 {
     let max = v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v });
     max + v.fold(T::zero(), |acc, &v| acc + (v - max).exp()).ln()

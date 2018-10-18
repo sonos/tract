@@ -12,9 +12,9 @@ use objekt;
 mod macros;
 
 pub mod array;
+pub mod identity;
 #[cfg(features = "image_ops")]
 pub mod image;
-pub mod identity;
 pub mod konst;
 pub mod logic;
 pub mod math;
@@ -26,25 +26,25 @@ pub mod unimpl;
 mod types;
 
 pub mod prelude {
-    pub use super::{InferenceOp, Op, ReducedOpRewire, StatelessOp, StatefullOp, OpState};
-    pub use ops::types::Value;
+    pub use super::{InferenceOp, Op, OpState, ReducedOpRewire, StatefullOp, StatelessOp};
     pub use analyser::types::*;
-    pub use pulse::PulsifiedOp;
-    pub use streaming::types::{OpBuffer, QueuesBuffer};
-    pub use streaming::values::{StepValue, Stream, StreamInfo};
-    pub use dim::{TDim, DimLike, ToDim};
+    pub use dim::{DimLike, TDim, ToDim};
     pub use model::TVec;
+    pub use ops::types::Value;
+    pub use pulse::PulsifiedOp;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use tensor::{Datum, DatumType, Tensor};
+    pub use streaming::types::{OpBuffer, QueuesBuffer};
+    pub use streaming::values::{StepValue, Stream, StreamInfo};
     pub use tensor::arr4;
+    pub use tensor::{Datum, DatumType, Tensor};
     pub use TfdResult;
 }
 
-use TfdResult;
-use self::types::{ Value};
-pub use streaming::types::{OpBuffer, QueuesBuffer, EmptyBuffer};
+use self::types::Value;
+pub use streaming::types::{EmptyBuffer, OpBuffer, QueuesBuffer};
 pub use streaming::values::StepValue;
+use TfdResult;
 
 pub trait OpState: Debug {
     fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
@@ -70,7 +70,7 @@ pub trait StatefullOp {
     }
 }
 
-impl<O:StatelessOp+Clone> StatefullOp for O {
+impl<O: StatelessOp + Clone> StatefullOp for O {
     fn state(&self) -> TfdResult<Option<Box<OpState>>> {
         Ok(None)
     }
@@ -82,7 +82,9 @@ impl<O:StatelessOp+Clone> StatefullOp for O {
 
 /// A Tensorflow operation.
 impl_downcast!(Op);
-pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp {
+pub trait Op:
+    Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp
+{
     fn name(&self) -> &str;
 
     /// Returns a new streaming buffer for the operation.
@@ -145,7 +147,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Down
                     tvec![::analyser::helpers::tensor_to_fact(
                         output_value.into_tensor(),
                     )],
-                ))
+                ));
             }
         }
 
@@ -164,7 +166,7 @@ pub trait Op: Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Down
         &self,
         _inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-        _pulse: usize
+        _pulse: usize,
     ) -> TfdResult<::pulse::PulsifiedOp> {
         bail!("Operator {} do not support pulsification", self.name())
     }
@@ -197,4 +199,3 @@ pub struct ReducedOpRewire {
     pub new_op: Box<Op>,
     pub rewired: TVec<usize>,
 }
-

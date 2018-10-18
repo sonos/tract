@@ -2,7 +2,7 @@ use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-use ops::nn::{ Patch, DataFormat, PaddingSpec };
+use ops::nn::{DataFormat, PaddingSpec, Patch};
 
 use insideout::InsideOut;
 
@@ -88,7 +88,7 @@ impl<D> FixedParamsConv<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    pub(super) fn convolve<'i>(&'i self, input: &'i ArrayViewD<'i,D>) -> TfdResult<ArrayD<D>> {
+    pub(super) fn convolve<'i>(&'i self, input: &'i ArrayViewD<'i, D>) -> TfdResult<ArrayD<D>> {
         let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
         let mut mega_matrix = unsafe { Array2::<D>::uninitialized((self.k, self.n)) };
         let input_shape = &self.patch.input_shape;
@@ -106,7 +106,7 @@ where
                     let mut col = col.iter_mut();
                     for ci in 0..ci_per_group {
                         coords[input_shape.n_axis()] = i;
-                        coords[input_shape.c_axis()] = ci + g*ci_per_group;
+                        coords[input_shape.c_axis()] = ci + g * ci_per_group;
                         for v in visitor.at(&coords.slice()) {
                             *col.next().expect("geometry error in conv") = v.unwrap_or(D::zero());
                         }
@@ -115,23 +115,33 @@ where
 
                 let mut output_subview = output.view_mut();
                 output_subview.slice_axis_inplace(Axis(input_shape.n_axis()), (i..(i + 1)).into());
-                output_subview.slice_axis_inplace(Axis(input_shape.c_axis()), (g*co_per_group..(g+1)*co_per_group).into());
+                output_subview.slice_axis_inplace(
+                    Axis(input_shape.c_axis()),
+                    (g * co_per_group..(g + 1) * co_per_group).into(),
+                );
                 match self.patch.input_shape.fmt {
                     DataFormat::NHWC => {
                         let mut output_panel = output_subview.into_shape((self.n, self.m))?;
                         ::ndarray::linalg::general_mat_mul(
                             D::one(),
-                            &self.kernel.slice_axis(Axis(0), (co_per_group*g..co_per_group*(g+1)).into()),
+                            &self.kernel.slice_axis(
+                                Axis(0),
+                                (co_per_group * g..co_per_group * (g + 1)).into(),
+                            ),
                             &mega_matrix,
                             D::zero(),
                             &mut output_panel.reversed_axes(),
                         );
                     }
                     DataFormat::NCHW => {
-                        let mut output_panel = output_subview.into_shape((self.m/self.group, self.n))?;
+                        let mut output_panel =
+                            output_subview.into_shape((self.m / self.group, self.n))?;
                         ::ndarray::linalg::general_mat_mul(
                             D::one(),
-                            &self.kernel.slice_axis(Axis(0), (co_per_group*g..co_per_group*(g+1)).into()),
+                            &self.kernel.slice_axis(
+                                Axis(0),
+                                (co_per_group * g..co_per_group * (g + 1)).into(),
+                            ),
                             &mega_matrix,
                             D::zero(),
                             &mut output_panel,

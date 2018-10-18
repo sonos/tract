@@ -37,4 +37,3 @@ impl InferenceRulesOp for Sink {
         Ok(())
     }
 }
-

@@ -5,8 +5,8 @@ use analyser::prelude::*;
 use analyser::rules::prelude::*;
 use model::TVec;
 use std::fmt;
-use TfdResult;
 use Tensor;
+use TfdResult;
 
 use num::cast::ToPrimitive;
 
@@ -242,7 +242,9 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             fact.value = fact.value.unify(&value)?;
             if let Some(tensor) = fact.value.concretize() {
                 fact.shape = fact.shape.unify(&ShapeFact::from(tensor.shape()))?;
-                fact.datum_type = fact.datum_type.unify(&TypeFact::from(tensor.datum_type()))?;
+                fact.datum_type = fact
+                    .datum_type
+                    .unify(&TypeFact::from(tensor.datum_type()))?;
             }
             Ok(())
         }

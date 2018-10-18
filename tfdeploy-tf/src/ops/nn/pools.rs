@@ -1,6 +1,6 @@
 use super::local_patch::*;
-use tfdeploy::analyser::rules::prelude::*;
 use ndarray::prelude::*;
+use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'static {
@@ -28,7 +28,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
     }
 }
 
-impl <P:Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
+impl<P: Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let m_input = args_1!(inputs);
         let data = m_input

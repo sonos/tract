@@ -164,7 +164,6 @@ impl StatelessOp for ConvUnary {
     }
 }
 
-
 impl InferenceRulesOp for ConvUnary {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

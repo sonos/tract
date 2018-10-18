@@ -76,7 +76,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
 
     pub fn render_node(&self, node: &Node) -> CliResult<()> {
         // node output are not ordered by slot number
-        let mut sections:Vec<Vec<Row>> = vec![
+        let mut sections: Vec<Vec<Row>> = vec![
             node.inputs
                 .iter()
                 .enumerate()
@@ -116,7 +116,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 }).collect(),
         ];
         if self.options.debug_op {
-            sections.push(vec!(Row::Simple(format!("{:?}", node.op))));
+            sections.push(vec![Row::Simple(format!("{:?}", node.op))]);
         }
         if let Some(node_sections) = self.node_sections.get(&node.id) {
             for s in node_sections {
@@ -197,10 +197,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                     } else {
                         format!("{:?}", a)
                     };
-                    v.push(Row::Double(
-                        format!("Attr {}:", a.get_name().bold()),
-                        value,
-                    ));
+                    v.push(Row::Double(format!("Attr {}:", a.get_name().bold()), value));
                 }
                 self.add_node_section(id, v)?;
             }

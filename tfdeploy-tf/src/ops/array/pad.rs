@@ -33,8 +33,7 @@ impl<T: Datum + Zero> Pad<T> {
                 } else {
                     dim
                 }
-            })
-            .collect();
+            }).collect();
         let mut index_in_input = vec![0; input.ndim()];
         let result = Array::from_shape_fn(shape, |index| {
             for i in 0..input.ndim() {
@@ -54,14 +53,14 @@ impl<T: Datum + Zero> Pad<T> {
 
 impl<T> Op for Pad<T>
 where
-    T: Datum+Zero,
+    T: Datum + Zero,
 {
     fn name(&self) -> &str {
         "tf.Pad"
     }
 }
 
-impl<T: Datum+Zero> StatelessOp for Pad<T> {
+impl<T: Datum + Zero> StatelessOp for Pad<T> {
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
@@ -70,7 +69,7 @@ impl<T: Datum+Zero> StatelessOp for Pad<T> {
     }
 }
 
-impl<T: Datum+Zero> InferenceRulesOp for Pad<T> {
+impl<T: Datum + Zero> InferenceRulesOp for Pad<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,

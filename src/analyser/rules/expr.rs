@@ -1,6 +1,6 @@
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{Add, Neg, Sub, Div, Mul};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 use num::cast::ToPrimitive;
 use num::Zero;
@@ -8,7 +8,7 @@ use num::Zero;
 use analyser::prelude::*;
 use analyser::rules::prelude::*;
 use dim::TDim;
-use {DatumType, TfdResult, Tensor};
+use {DatumType, Tensor, TfdResult};
 
 /// A trait for values produced by expressions.
 pub trait Output: fmt::Debug + Clone + PartialEq {
@@ -277,7 +277,8 @@ where
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TfdResult<T> {
-        context.get(&self.0)
+        context
+            .get(&self.0)
             .map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
     }
 
@@ -286,7 +287,8 @@ where
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
-        context.set(&self.0, new)
+        context
+            .set(&self.0, new)
             .map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
         Ok(diff)
     }

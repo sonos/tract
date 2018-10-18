@@ -8,7 +8,10 @@ pub struct LayerHardmax {
 }
 
 impl LayerHardmax {
-    fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive>(&self, input: Value) -> TfdResult<TVec<Value>> {
+    fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive>(
+        &self,
+        input: Value,
+    ) -> TfdResult<TVec<Value>> {
         let array = input.into_array::<D>()?;
         let shape = array.shape().to_vec();
         let first_dim: usize = array.shape()[0..self.axis].iter().product();
@@ -73,10 +76,11 @@ impl LayerLogSoftmax {
         let mut array = array.into_shape((first_dim, second_dim))?;
         array.outer_iter_mut().for_each(|mut layer| {
             // https://jamesmccaffrey.wordpress.com/2016/03/04/the-max-trick-when-computing-softmax/
-            let max:Option<D> = layer.iter()
+            let max: Option<D> = layer
+                .iter()
                 .max_by(|a, b| a.partial_cmp(&b).unwrap_or(::std::cmp::Ordering::Equal))
                 .cloned();
-            layer.mapv_inplace(|x| (x-max.unwrap()).exp());
+            layer.mapv_inplace(|x| (x - max.unwrap()).exp());
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| (x / divisor).ln());
         });
@@ -126,10 +130,11 @@ impl LayerSoftmax {
         let mut array = array.into_shape((first_dim, second_dim))?;
         array.outer_iter_mut().for_each(|mut layer| {
             // https://jamesmccaffrey.wordpress.com/2016/03/04/the-max-trick-when-computing-softmax/
-            let max:Option<D> = layer.iter()
+            let max: Option<D> = layer
+                .iter()
                 .max_by(|a, b| a.partial_cmp(&b).unwrap_or(::std::cmp::Ordering::Equal))
                 .cloned();
-            layer.mapv_inplace(|x| (x-max.unwrap()).exp());
+            layer.mapv_inplace(|x| (x - max.unwrap()).exp());
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| x / divisor);
         });

@@ -25,16 +25,21 @@ impl Op for SpaceToBatch {
             paddings.value.concretize(),
             output.shape.concretize(),
         ) {
-            let paddings_view = paddings.cast_to_array::<TDim>()?.into_owned().into_dimensionality::<Ix2>()?;
-            let mut paddings = vec!();
+            let paddings_view = paddings
+                .cast_to_array::<TDim>()?
+                .into_owned()
+                .into_dimensionality::<Ix2>()?;
+            let mut paddings = vec![];
             for p in paddings_view.outer_iter() {
                 let pad = match (p[0].to_integer(), p[1].to_integer()) {
-                    (Ok(bef), Ok(aft)) => super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize),
+                    (Ok(bef), Ok(aft)) => {
+                        super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
+                    }
                     (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
                     (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
                     _ => {
                         info!("Failed to unarize SpaceToBatch because of padding");
-                        return Ok(None)
+                        return Ok(None);
                     }
                 };
                 paddings.push(pad);
@@ -44,7 +49,7 @@ impl Op for SpaceToBatch {
                 input_shape,
                 output_shape,
                 block_shape.into_array::<i32>()?.into_dimensionality()?,
-                paddings
+                paddings,
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
         } else {
@@ -54,7 +59,6 @@ impl Op for SpaceToBatch {
 }
 
 impl StatelessOp for SpaceToBatch {
-
     fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape
@@ -118,23 +122,28 @@ impl Op for BatchToSpace {
             paddings.value.concretize(),
             output.shape.concretize(),
         ) {
-            let paddings = paddings.cast_to_array::<TDim>()?.into_owned().into_dimensionality::<Ix2>()?;
-            let paddings = paddings.outer_iter().map(|p| {
-                Ok(match (p[0].to_integer(), p[1].to_integer()) {
-                    (Ok(bef), Ok(aft)) => super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize),
-                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
-                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
-                    _ => {
-                        bail!("Failed to unarize SpaceToBatch because of padding")
-                    }
-                })
-            }).collect::<TfdResult<_>>()?;
+            let paddings = paddings
+                .cast_to_array::<TDim>()?
+                .into_owned()
+                .into_dimensionality::<Ix2>()?;
+            let paddings = paddings
+                .outer_iter()
+                .map(|p| {
+                    Ok(match (p[0].to_integer(), p[1].to_integer()) {
+                        (Ok(bef), Ok(aft)) => {
+                            super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
+                        }
+                        (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
+                        (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                        _ => bail!("Failed to unarize SpaceToBatch because of padding"),
+                    })
+                }).collect::<TfdResult<_>>()?;
             let op = super::unary::BatchToSpaceUnary::new(
                 self.datum_type,
                 input_shape,
                 output_shape,
                 block_shape.into_array::<i32>()?.into_dimensionality()?,
-                paddings
+                paddings,
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
         } else {

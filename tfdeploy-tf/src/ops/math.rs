@@ -1,8 +1,8 @@
 use tfdeploy::ops as tfdops;
 
-use tfpb::node_def::NodeDef;
 use ops::OpRegister;
 use tfdeploy::TfdResult;
+use tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Abs", with_T!(tfdops::math::Abs));
@@ -23,4 +23,3 @@ pub fn add_n(pb: &NodeDef) -> TfdResult<Box<tfdops::Op>> {
     let n = pb.get_attr_int("N")?;
     Ok(Box::new(tfdops::math::AddN::new(dtype.into(), Some(n))))
 }
-

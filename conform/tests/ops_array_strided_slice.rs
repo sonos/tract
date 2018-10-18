@@ -10,9 +10,9 @@ extern crate tfdeploy_tf;
 use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
+use tfdeploy::Tensor as TfdTensor;
 use tfdeploy_tf::tfpb;
 use tfdeploy_tf::tfpb::types::DataType::DT_INT32;
-use tfdeploy::Tensor as TfdTensor;
 
 fn strided_slice_strat() -> BoxedStrategy<(
     TfdTensor,
@@ -46,50 +46,35 @@ fn strided_slice_strat() -> BoxedStrategy<(
                 0..(1 << rank),
             ),
         )
-    })
-        .prop_map(|(dims, masks)| {
-            let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
-            let size: i32 = shape.iter().map(|d| *d as i32).product();
-            (
-                TfdTensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
-                Array::from_vec(
-                    dims.iter()
-                        .map(|d| {
-                            if d.4 {
-                                d.1 - d.0
-                            } else {
-                                d.1
-                            }
-                        })
-                        .collect(),
-                ).into(),
-                Array::from_vec(
-                    dims.iter()
-                        .map(|d| {
-                            if d.5 {
-                                d.2 - d.0
-                            } else {
-                                d.2
-                            }
-                        })
-                        .collect(),
-                ).into(),
-                Array::from_vec(
-                    dims.iter()
-                        .enumerate()
-                        .map(|(ix, d)| {
-                            if d.2 == d.1 || masks.4 & (1 << ix) != 0 {
-                                1
-                            } else {
-                                d.3 as i32 * (d.2 as i32 - d.1 as i32).signum()
-                            }
-                        })
-                        .collect(),
-                ).into(),
-                masks,
-            )
-        })
-        .boxed()
+    }).prop_map(|(dims, masks)| {
+        let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
+        let size: i32 = shape.iter().map(|d| *d as i32).product();
+        (
+            TfdTensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
+            Array::from_vec(
+                dims.iter()
+                    .map(|d| if d.4 { d.1 - d.0 } else { d.1 })
+                    .collect(),
+            ).into(),
+            Array::from_vec(
+                dims.iter()
+                    .map(|d| if d.5 { d.2 - d.0 } else { d.2 })
+                    .collect(),
+            ).into(),
+            Array::from_vec(
+                dims.iter()
+                    .enumerate()
+                    .map(|(ix, d)| {
+                        if d.2 == d.1 || masks.4 & (1 << ix) != 0 {
+                            1
+                        } else {
+                            d.3 as i32 * (d.2 as i32 - d.1 as i32).signum()
+                        }
+                    }).collect(),
+            ).into(),
+            masks,
+        )
+    }).boxed()
 }
 
 proptest! {
@@ -134,8 +119,7 @@ fn strided_slice_1() {
                 .input("end")
                 .input("stride")
                 .op("StridedSlice"),
-        )
-        .write_to_bytes()
+        ).write_to_bytes()
         .unwrap();
 
     let inputs = vec![
@@ -165,8 +149,7 @@ fn strided_slice_2() {
                 .input("end")
                 .input("stride")
                 .op("StridedSlice"),
-        )
-        .write_to_bytes()
+        ).write_to_bytes()
         .unwrap();
 
     let inputs = vec![

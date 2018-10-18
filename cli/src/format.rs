@@ -7,8 +7,8 @@ use prettytable::Table;
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tfdeploy;
-use tfdeploy::plan::{ SimplePlan, SimpleState};
-use tfdeploy::{ Model, Node };
+use tfdeploy::plan::{SimplePlan, SimpleState};
+use tfdeploy::{Model, Node};
 
 use colored::Colorize;
 use format;
@@ -48,8 +48,7 @@ fn format_no_right_border() -> TableFormat {
                 pt::format::LinePosition::Bottom,
             ],
             pt::format::LineSeparator::new('-', '+', '+', '+'),
-        )
-        .padding(1, 1)
+        ).padding(1, 1)
         .build()
 }
 
@@ -169,12 +168,15 @@ pub fn print_box(
 }
 
 /// Returns information about a node.
-fn node_info<M,P>(
+fn node_info<M, P>(
     node: &tfdeploy::Node,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState<M,P>>,
+    state: Option<&SimpleState<M, P>>,
 ) -> Vec<Vec<Row>>
-where M: Borrow<Model>, P: Borrow<SimplePlan<M>> {
+where
+    M: Borrow<Model>,
+    P: Borrow<SimplePlan<M>>,
+{
     // First section: node attributes.
     let mut attributes = Vec::new();
     if let SomeGraphDef::Tf(graph) = graph {
@@ -222,23 +224,22 @@ where M: Borrow<Model>, P: Borrow<SimplePlan<M>> {
 }
 
 /// Prints information about a node.
-pub fn print_node<M,P>(
+pub fn print_node<M, P>(
     node: &Node,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState<M,P>>,
+    state: Option<&SimpleState<M, P>>,
     status: &[impl AsRef<str>],
     sections: Vec<Vec<Row>>,
-)
-where M: Borrow<Model>, P: Borrow<SimplePlan<M>> {
+) where
+    M: Borrow<Model>,
+    P: Borrow<SimplePlan<M>>,
+{
     format::print_box(
         &format!("{}", node.id),
         &node.op.name(),
         &node.name,
         &status,
-        [
-        format::node_info(&node, &graph, state),
-        sections]
-        .concat(),
+        [format::node_info(&node, &graph, state), sections].concat(),
     );
 }
 

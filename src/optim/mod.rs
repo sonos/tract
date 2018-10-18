@@ -1,4 +1,4 @@
-use { Model, TfdResult };
+use {Model, TfdResult};
 
 mod compact;
 mod prop_const;
@@ -11,4 +11,3 @@ pub use self::reduce::Reduce;
 pub trait OptimizerPass {
     fn pass(model: &mut Model) -> TfdResult<bool>;
 }
-

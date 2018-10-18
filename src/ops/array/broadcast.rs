@@ -54,7 +54,8 @@ impl InferenceRulesOp for MultiBroadcastTo {
                     .map(|i| TDim::from(*i))
                     .collect();
                 let dims = ::broadcast::multi_broadcast(&[&*dims, &*shape])
-                    .ok_or("incompatible shapes").unwrap();
+                    .ok_or("incompatible shapes")
+                    .unwrap();
                 s.equals(&outputs[0].shape, ShapeFact::from(dims))
             })
         })

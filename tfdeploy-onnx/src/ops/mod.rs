@@ -1,5 +1,5 @@
-use tfdeploy::ops::prelude::*;
 use pb::NodeProto;
+use tfdeploy::ops::prelude::*;
 
 mod array;
 mod logic;
@@ -14,7 +14,9 @@ impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
         reg.insert("Constant", konst);
-        reg.insert("Identity", |_| Ok(Box::new(::tfdeploy::ops::identity::Identity::default())));
+        reg.insert("Identity", |_| {
+            Ok(Box::new(::tfdeploy::ops::identity::Identity::default()))
+        });
         logic::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
@@ -30,7 +32,7 @@ impl OpBuilder {
             Some(builder) => builder(pb),
             None => Ok(Box::new(::tfdeploy::ops::unimpl::UnimplementedOp(
                 pb.get_op_type().to_string(),
-                format!("{:?}", pb)
+                format!("{:?}", pb),
             ))),
         }
     }

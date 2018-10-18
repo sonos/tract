@@ -34,7 +34,7 @@
 /// * [Slice](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Slice),
 ///     unary, attr are: begins, ends, and optional axes remapping them
 /// * [Upsample](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Upsample),
-///     unary, attrs are scales (floats) and mode of interpolation (nearest or 
+///     unary, attrs are scales (floats) and mode of interpolation (nearest or
 ///     linear). not impl.
 /// * DynamicSlice, experimental, not impl
 ///

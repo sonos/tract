@@ -2,9 +2,9 @@ use atty;
 use pbr::ProgressBar;
 use simplelog::Level::Info;
 
+use display_graph::DisplayOptions;
 use errors::*;
 use {Parameters, ProfilingMode};
-use display_graph::DisplayOptions;
 
 use format::*;
 use profile::ProfileData;
@@ -13,10 +13,7 @@ use tensor::make_inputs;
 
 use tfdeploy::plan::{SimplePlan, SimpleState};
 
-pub fn handle_benching(
-    params: Parameters,
-    profiling: ProfilingMode,
-) -> CliResult<()> {
+pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching {
         max_iters,
         max_time,
@@ -46,7 +43,7 @@ pub fn handle_benching(
 pub fn handle(
     params: Parameters,
     profiling: ProfilingMode,
-    display_options: DisplayOptions
+    display_options: DisplayOptions,
 ) -> CliResult<()> {
     use colored::Colorize;
 

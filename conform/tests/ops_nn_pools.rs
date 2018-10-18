@@ -28,8 +28,7 @@ fn img_and_pool(
                 Just((ih, iw, ic)),
                 (1..kh.min(ih + 1).max(2), 1..kw.min(iw + 1).max(2)),
             )
-        })
-        .prop_flat_map(|((ih, iw, ic), k)| {
+        }).prop_flat_map(|((ih, iw, ic), k)| {
             let i_size = iw * ih * ic;
             (
                 Just((1, ih, iw, ic)),
@@ -38,16 +37,14 @@ fn img_and_pool(
                 prop_oneof!("VALID", "SAME"),
                 1..(k.0.min(k.1).max(2)),
             )
-        })
-        .prop_map(|(img_shape, k, img, padding, stride)| {
+        }).prop_map(|(img_shape, k, img, padding, stride)| {
             (
                 Array::from_vec(img).into_shape(img_shape).unwrap().into(),
                 k,
                 padding,
                 stride,
             )
-        })
-        .boxed()
+        }).boxed()
 }
 
 proptest! {

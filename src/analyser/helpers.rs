@@ -30,7 +30,7 @@ pub fn infer_forward_concrete(
     // If we know the value of all the inputs, we can deduce everything.
     if let Some(stateless) = op.as_stateless() {
         let output_value = stateless.eval(input_values)?.pop().unwrap();
-        return Ok(Some(tvec![tensor_to_fact(output_value.into_tensor())]))
+        return Ok(Some(tvec![tensor_to_fact(output_value.into_tensor())]));
     }
 
     Ok(None)
@@ -96,7 +96,10 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TfdResult<Option<Shape
 }
 
 /// Infers basic facts in the case of unary or binary operators.
-pub fn infer_forward_basic(op: &Op, inputs: Vec<&TensorFact>) -> TfdResult<Option<TVec<TensorFact>>> {
+pub fn infer_forward_basic(
+    op: &Op,
+    inputs: Vec<&TensorFact>,
+) -> TfdResult<Option<TVec<TensorFact>>> {
     if let Some(output) = infer_forward_concrete(op, &inputs)? {
         return Ok(Some(output));
     }

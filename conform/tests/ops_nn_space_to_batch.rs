@@ -14,10 +14,10 @@ use proptest::prelude::*;
 use tfdeploy::ops::StatefullOp;
 use tfdeploy::tensor::arr4;
 use tfdeploy::tensor::Datum;
-use tfdeploy_tf::tfpb;
-use tfdeploy_tf::tfpb::types::DataType::DT_INT32;
-use tfdeploy_tf::tfpb::types::DataType::DT_FLOAT;
 use tfdeploy::Tensor as TfdTensor;
+use tfdeploy_tf::tfpb;
+use tfdeploy_tf::tfpb::types::DataType::DT_FLOAT;
+use tfdeploy_tf::tfpb::types::DataType::DT_INT32;
 
 fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
     use proptest::collection::vec;
@@ -25,7 +25,8 @@ fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
         1usize..4,
         vec(1usize..8, 1usize..4),
         vec(1usize..8, 1usize..4),
-    ).prop_flat_map(|(b, spatial_dims, non_spatial_dims)| {
+    )
+        .prop_flat_map(|(b, spatial_dims, non_spatial_dims)| {
             (
                 Just(b),
                 Just(spatial_dims.clone()),
@@ -33,11 +34,9 @@ fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
                 vec(1usize..4, spatial_dims.len()..spatial_dims.len() + 1),
                 vec(0usize..4, spatial_dims.len()..spatial_dims.len() + 1),
             )
-        })
-        .prop_filter("block < input", |&(_, ref sd, _, ref bs, _)| {
+        }).prop_filter("block < input", |&(_, ref sd, _, ref bs, _)| {
             bs.iter().zip(sd.iter()).all(|(bs, is)| bs <= is)
-        })
-        .prop_map(
+        }).prop_map(
             |(b, sd, nsd, bs, left_pad): (
                 usize,
                 Vec<usize>,
@@ -64,8 +63,7 @@ fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
                 });
                 (input.into(), block_size.into(), padding.into_dyn().into())
             },
-        )
-        .boxed()
+        ).boxed()
 }
 
 proptest! {
@@ -89,16 +87,16 @@ proptest! {
 fn batch_to_space_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
-            let batches: TfdTensor = tfdeploy_tf::ops::nn::s2b::raw::SpaceToBatch::new(f32::datum_type())
-                .as_stateless()
-                .unwrap()
-                .eval(tvec![i.into(), bs.clone().into(), p.clone().into()])
-                .unwrap()
-                .remove(0)
-                .into_tensor();
+            let batches: TfdTensor =
+                tfdeploy_tf::ops::nn::s2b::raw::SpaceToBatch::new(f32::datum_type())
+                    .as_stateless()
+                    .unwrap()
+                    .eval(tvec![i.into(), bs.clone().into(), p.clone().into()])
+                    .unwrap()
+                    .remove(0)
+                    .into_tensor();
             (batches, bs, p)
-        })
-        .boxed()
+        }).boxed()
 }
 
 proptest! {

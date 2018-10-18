@@ -17,14 +17,14 @@ pub mod prelude {
 use streaming::values::StepValue;
 
 #[derive(Clone, Debug)]
-pub struct StreamingPlan<M:Borrow<Model>> {
+pub struct StreamingPlan<M: Borrow<Model>> {
     model: M,
     //    input_nodes: Vec<(OutletId, StreamInfo)>,
     proto_inputs: Vec<TVec<StepValue>>,
     //    stream_infos: Vec<TVec<Option<StreamInfo>>>,
 }
 
-impl<M:Borrow<Model>> StreamingPlan<M> {
+impl<M: Borrow<Model>> StreamingPlan<M> {
     pub fn new(model: M) -> TfdResult<StreamingPlan<M>> {
         let mut proto_inputs = Vec::with_capacity(model.borrow().nodes().len());
         for node in model.borrow().nodes() {
@@ -127,7 +127,7 @@ impl Deref for StreamingPlan {
 */
 
 #[derive(Clone, Debug)]
-pub struct StreamingModelState<M:Borrow<Model>, P:Borrow<StreamingPlan<M>>> {
+pub struct StreamingModelState<M: Borrow<Model>, P: Borrow<StreamingPlan<M>>> {
     plan: P,
     inlets_offset: Vec<TVec<u64>>,
     buffers: Vec<Box<OpBuffer>>,
@@ -136,7 +136,7 @@ pub struct StreamingModelState<M:Borrow<Model>, P:Borrow<StreamingPlan<M>>> {
     _phantom: PhantomData<M>,
 }
 
-impl<M: Borrow<Model>, P:Borrow<StreamingPlan<M>>> StreamingModelState<M, P> {
+impl<M: Borrow<Model>, P: Borrow<StreamingPlan<M>>> StreamingModelState<M, P> {
     pub fn new(plan: P) -> TfdResult<StreamingModelState<M, P>> {
         let mut state = StreamingModelState {
             plan,
@@ -144,7 +144,7 @@ impl<M: Borrow<Model>, P:Borrow<StreamingPlan<M>>> StreamingModelState<M, P> {
             buffers: vec![],
             queue: VecDeque::new(),
             outputs: vec![],
-            _phantom: PhantomData
+            _phantom: PhantomData,
         };
         state.reset()?;
         Ok(state)

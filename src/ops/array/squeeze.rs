@@ -9,7 +9,7 @@ pub struct Squeeze {
 }
 
 impl Squeeze {
-    fn compute_shape<D:DimLike>(&self, input: &[D]) -> TfdResult<Vec<D>> {
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TfdResult<Vec<D>> {
         if let Some(ref axes) = self.axes {
             let mut shape = input.to_vec();
             for &axis in axes.iter().rev() {
@@ -42,8 +42,8 @@ impl Op for Squeeze {
     ) -> TfdResult<Option<ReducedOpRewire>> {
         if let Some(dims) = &self.axes {
             Ok(Some(ReducedOpRewire {
-                    new_op: Box::new(RmDims::new(dims.clone())),
-                    rewired: tvec!(0)
+                new_op: Box::new(RmDims::new(dims.clone())),
+                rewired: tvec!(0),
             }))
         } else {
             Ok(None)
@@ -57,7 +57,6 @@ impl StatelessOp for Squeeze {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }
-
 }
 
 impl InferenceRulesOp for Squeeze {
@@ -70,7 +69,10 @@ impl InferenceRulesOp for Squeeze {
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if let Some(ref axes) = self.axes {
-            s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - axes.len() as i64)?;
+            s.equals(
+                &outputs[0].rank,
+                (&inputs[0].rank).bex() - axes.len() as i64,
+            )?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape)?;
