@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use model::dsl::*;
 use ops::prelude::*;
 
-// pub mod delay;
+pub mod delay;
 
 pub struct PulsifiedOp {
     pub op: Box<Op>,

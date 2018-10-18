@@ -8,16 +8,27 @@ struct Delay {
     count: usize,
 }
 
+#[derive(Debug)]
+struct DelayState;
+
+impl OpState for DelayState {
+    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+        Ok(inputs)
+    }
+}
+
 impl Op for Delay {
     fn name(&self) -> &str {
         "Delay"
     }
+}
 
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        unimplemented!();
+impl StatefullOp for Delay {
+    fn state(&self) -> TfdResult<Option<Box<OpState>>> {
+        Ok(Some(Box::new(DelayState)))
     }
 }
+
 
 impl InferenceRulesOp for Delay {
     /// Registers the inference rules of the operator.
