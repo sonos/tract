@@ -119,6 +119,7 @@ pub trait Datum: Copy + Clone + Send + Sync + fmt::Debug + Default + 'static {
     fn tensor_into_array(m: Tensor) -> TfdResult<ArrayD<Self>>;
     fn tensor_cast_to_array(m: &Tensor) -> TfdResult<MaybeOwnedArray<Self>>;
     fn tensor_to_view(m: &Tensor) -> TfdResult<ArrayViewD<Self>>;
+    fn tensor_to_view_mut(m: &mut Tensor) -> TfdResult<ArrayViewMutD<Self>>;
     fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
 }
 
@@ -365,6 +366,10 @@ impl Tensor {
         <D as Datum>::tensor_to_view(self)
     }
 
+    pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TfdResult<ArrayViewMutD<'a, D>> {
+        <D as Datum>::tensor_to_view_mut(self)
+    }
+
     pub fn cast_to_array<D: Datum>(&self) -> TfdResult<MaybeOwnedArray<D>> {
         <D as Datum>::tensor_cast_to_array(self)
     }
@@ -424,7 +429,7 @@ impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
 }
 
 macro_rules! tensor {
-    ($t:ident, $v:ident, $as_one:ident, $as:ident, $take:ident, $make:ident,
+    ($t:ident, $v:ident, $as_one:ident, $as:ident, $as_mut:ident, $take:ident, $make:ident,
         [$(($cast:ident, $as_cast:ident)),*]) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
@@ -447,6 +452,14 @@ macro_rules! tensor {
 
             pub fn $as(&self) -> Option<&ArrayD<$t>> {
                 if let &Tensor::$v(ref it) = self {
+                    Some(it)
+                } else {
+                    None
+                }
+            }
+
+            pub fn $as_mut(&mut self) -> Option<&mut ArrayD<$t>> {
+                if let &mut Tensor::$v(ref mut it) = self {
                     Some(it)
                 } else {
                     None
@@ -484,6 +497,12 @@ macro_rules! tensor {
                 m.$as()
                     .map(|m| m.view())
                     .ok_or_else(|| format!("Type mismatch unwrapping to {}: {:?}", Self::name(), &m).into())
+            }
+
+            fn tensor_to_view_mut(m: &mut Tensor) -> TfdResult<ArrayViewMutD<Self>> {
+                m.$as_mut()
+                    .map(|m| m.view_mut())
+                    .ok_or_else(|| format!("Type mismatch unwrapping to {}", Self::name()).into())
             }
 
             fn array_into_tensor(m: ArrayD<Self>) -> Tensor {
@@ -536,16 +555,17 @@ impl TryInto<i64> for TDim {
     }
 }
 
-tensor!(bool, Bool, as_bool, as_bools, take_bools, bools, []);
-tensor!(f64, F64, as_f64, as_f64s, take_f64s, f64s, []);
-tensor!(f32, F32, as_f32, as_f32s, take_f32s, f32s, []);
-tensor!(i8, I8, as_i8, as_i8s, take_i8s, i8s, []);
-tensor!(i16, I16, as_i16, as_i16s, take_i16s, i16s, [(I8, as_i8s)]);
+tensor!(bool, Bool, as_bool, as_bools, as_bools_mut, take_bools, bools, []);
+tensor!(f64, F64, as_f64, as_f64s, as_f64s_mut, take_f64s, f64s, []);
+tensor!(f32, F32, as_f32, as_f32s, as_f32s_mut, take_f32s, f32s, []);
+tensor!(i8, I8, as_i8, as_i8s, as_i8s_mut, take_i8s, i8s, []);
+tensor!(i16, I16, as_i16, as_i16s, as_i16_mut, take_i16s, i16s, [(I8, as_i8s)]);
 tensor!(
     i32,
     I32,
     as_i32,
     as_i32s,
+    as_i32_mut,
     take_i32s,
     i32s,
     [(TDim, as_dims), (I8, as_i8s), (I16, as_i16s)]
@@ -555,6 +575,7 @@ tensor!(
     I64,
     as_i64,
     as_i64s,
+    as_i64s_mut,
     take_i64s,
     i64s,
     [
@@ -564,13 +585,14 @@ tensor!(
         (I32, as_i32s)
     ]
 );
-tensor!(u8, U8, as_u8, as_u8s, take_u8s, u8s, []);
-tensor!(u16, U16, as_u16, as_u16s, take_u16s, u16s, []);
+tensor!(u8, U8, as_u8, as_u8s, as_u8s_mut, take_u8s, u8s, []);
+tensor!(u16, U16, as_u16, as_u16s, as_u16s_mut, take_u16s, u16s, []);
 tensor!(
     TDim,
     TDim,
     as_dim,
     as_dims,
+    as_dims_mut,
     take_dims,
     dims,
     [(I32, as_i32s)]
