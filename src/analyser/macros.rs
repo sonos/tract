@@ -30,7 +30,7 @@ macro_rules! dimfact {
         $crate::analyser::types::DimFact::default()
     };
     (S) => {
-        $crate::analyser::types::DimFact::Streamed
+        $crate::analyser::types::GenericFact::Only(TDim::s())
     };
     ($arg:expr) => {
         $crate::analyser::types::GenericFact::Only($arg.to_dim())

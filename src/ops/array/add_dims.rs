@@ -29,12 +29,12 @@ impl Op for AddDims {
     fn pulsify(
         &self,
         mut inputs: TVec<&PulsedTensorFact>,
-    ) -> TfdResult<::pulse::PulsifiedOp> {
+    ) -> TfdResult<Vec<PulsifiedOp>> {
         let input = args_1!(inputs);
-        let shape_after = self.compute_shape(&input.stream_input_shape()?);
         let mut fact = input.clone();
-        fact.fact.shape = ShapeFact::from(shape_after);
-        Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
+        fact.shape = self.compute_shape(&input.shape);
+        fact.axis += self.axes.iter().filter(|&ax| *ax <= input.axis).count();
+        Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))))
     }
 }
 

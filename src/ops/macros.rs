@@ -27,8 +27,8 @@ macro_rules! element_map {
                 stringify!($Name)
             }
 
-            fn pulsify( &self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<PulsifiedOp> {
-                Ok(PulsifiedOp::op(Box::new(self.clone()), inputs[0].clone()))
+            fn pulsify( &self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
+                Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(inputs[0].clone()))))
             }
 
         }
@@ -170,12 +170,12 @@ macro_rules! element_bin {
                     Ok(None)
                 }
 
-                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<PulsifiedOp> {
+                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
                     let mut fact = inputs[0].clone();
-                    $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
-                        fact.fact.datum_type = <$to>::datum_type().into();
+                    $(if fact.dt == <$type>::datum_type() {
+                        fact.dt = <$to>::datum_type().into();
                     })*
-                    Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
+                    Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))))
                 }
             }
 
@@ -228,12 +228,12 @@ macro_rules! element_bin {
                     stringify!($name)
                 }
 
-                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<PulsifiedOp> {
+                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
                     let mut fact = inputs[0].clone();
-                    $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
-                        fact.fact.datum_type = <$to>::datum_type().into();
+                    $(if fact.dt == <$type>::datum_type() {
+                        fact.dt = <$to>::datum_type().into();
                     })*
-                    Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
+                    Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))))
                 }
             }
 
@@ -294,12 +294,12 @@ macro_rules! element_nary {
             fn pulsify(
                 &self,
                 inputs: TVec<&PulsedTensorFact>,
-            ) -> TfdResult<PulsifiedOp> {
+            ) -> TfdResult<Vec<PulsifiedOp>> {
                 let mut fact = inputs[0].clone();
-                $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
-                    fact.fact.datum_type = <$to>::datum_type().into();
+                $(if fact.dt == <$type>::datum_type() {
+                    fact.dt = <$to>::datum_type().into();
                 })*
-                Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
+                Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))))
             }
         }
 

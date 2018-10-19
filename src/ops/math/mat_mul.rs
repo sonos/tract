@@ -113,6 +113,14 @@ impl Op for MatMulUnaryA {
     fn name(&self) -> &str {
         "MatMulUnaryA"
     }
+
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
+        let input = args_1!(inputs);
+        if input.axis >= input.shape.len() - 1 {
+            bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
+        }
+        Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(input.clone()))))
+    }
 }
 
 impl StatelessOp for MatMulUnaryA {

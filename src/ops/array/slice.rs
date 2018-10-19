@@ -28,22 +28,24 @@ impl Op for Slice {
         "Slice"
     }
 
-    fn pulsify(
-        &self,
-        mut inputs: TVec<&PulsedTensorFact>,
-    ) -> TfdResult<::pulse::PulsifiedOp> {
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<PulsifiedOp>> {
         let input = args_1!(inputs);
-        let axis = input.axis()?;
-        println!("Pulsify: {:?}", self);
-        if self.prune.iter().enumerate().all(|(ax, &(a,b))| ax == axis || (a == 0 && b == 0)) {
-            let delay = self.prune[axis].0;
+        if self
+            .prune
+            .iter()
+            .enumerate()
+            .all(|(ax, &(a, b))| ax == input.axis || (a == 0 && b == 0))
+        {
+            let delay = self.prune[input.axis].0;
             let mut fact = input.clone();
             fact.delay += delay;
-            return Ok(PulsifiedOp::op(Box::new(::pulse::delay::Delay::new(inputs[0].clone(), delay, 0)), fact))
+            return Ok(vec![PulsifiedOp::new(
+                Box::new(::pulse::delay::Delay::new(input.clone(), delay, 0)),
+                tvec!(fact),
+            )]);
         }
         unimplemented!();
     }
-
 }
 
 impl StatelessOp for Slice {
