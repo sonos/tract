@@ -1,5 +1,4 @@
 #![allow(unused_imports)]
-use simplelog::Level::{Error, Info, Trace};
 use tfdeploy::plan::{SimplePlan, SimpleState};
 use tfdeploy::{Tensor, TensorFact};
 

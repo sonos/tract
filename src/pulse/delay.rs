@@ -10,23 +10,20 @@ struct DelayState {
 
 impl DelayState {
     pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Value) -> TfdResult<Value> {
-        let axis_id = op
-            .stream_input_fact
-            .stream_info()?
-            .ok_or("Can't delay a non streaming tensor")?
-            .axis;
+        let axis_id = op.input_fact.axis()?;
         let axis = Axis(axis_id);
         let input = input.to_array_view::<T>()?;
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
         // generate output
         let buffered = op.delay + op.overlap;
         let mut output_shape: Vec<_> = input.shape().to_vec();
-        let output_len = op.pulse + op.overlap;
+        let input_len = op.input_fact.actual_size;
+        let output_len = input_len + op.overlap;
         output_shape[axis_id] = output_len;
         // build output
-        let output = if op.delay < op.pulse  {
+        let output = if op.delay < input_len  {
             let mut output = unsafe { ArrayD::<T>::uninitialized(output_shape) };
-            let from_input = op.pulse - op.delay;
+            let from_input = input_len - op.delay;
             let from_buffer = output_len - from_input;
             output
                 .slice_axis_mut(axis, Slice::from(..from_buffer))
@@ -39,13 +36,13 @@ impl DelayState {
             buffer.slice_axis(axis, Slice::from(..output_len)).to_owned()
         };
         // maintain buffer
-        if buffered < op.pulse {
-            buffer.assign(&input.slice_axis(axis, Slice::from((op.pulse - buffered)..)));
+        if buffered < input_len {
+            buffer.assign(&input.slice_axis(axis, Slice::from((input_len - buffered)..)));
         } else {
-            let stride = buffer.strides()[axis_id] as usize * op.pulse;
+            let stride = buffer.strides()[axis_id] as usize * input_len;
             buffer.as_slice_mut().unwrap().rotate_left(stride);
             buffer
-                .slice_axis_mut(axis, Slice::from((buffered - op.pulse)..))
+                .slice_axis_mut(axis, Slice::from((buffered - input_len)..))
                 .assign(&input);
         }
         Ok(output.into())
@@ -62,10 +59,9 @@ impl OpState for DelayState {
     }
 }
 
-#[derive(Clone, Default, Debug, new)]
-struct Delay {
-    stream_input_fact: TensorFact,
-    pulse: usize,
+#[derive(Clone, Debug, new)]
+pub struct Delay {
+    input_fact: PulsedTensorFact,
     delay: usize,
     overlap: usize,
 }
@@ -83,20 +79,18 @@ fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
 impl StatefullOp for Delay {
     fn state(&self) -> TfdResult<Option<Box<OpState>>> {
         let dt = self
-            .stream_input_fact
+            .input_fact
+            .fact
             .datum_type
             .concretize()
             .ok_or("Delay with abstract tensor type")?;
         let shape = self
-            .stream_input_fact
+            .input_fact
+            .fact
             .shape
             .concretize()
             .ok_or("Delay with abstract tensor shape")?;
-        let axis = self
-            .stream_input_fact
-            .stream_info()?
-            .ok_or("Can't delay a non streaming tensor")?
-            .axis;
+        let axis = self.input_fact.axis()?;
         let buffer_shape: Vec<_> = shape
             .iter()
             .enumerate()
@@ -120,25 +114,6 @@ impl InferenceRulesOp for Delay {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
-        s.equals(&inputs.len, 0)?;
-        s.equals(&outputs.len, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        let axis = self
-            .stream_input_fact
-            .stream_info()?
-            .ok_or("Can't delay a non streaming tensor")?
-            .axis;
-        s.given(&inputs[0].rank, move |s, rank| {
-            for ax in 0..(rank as usize) {
-                if ax == axis {
-                    s.equals(&outputs[0].shape[ax], self.pulse.to_dim())?;
-                } else {
-                    s.equals(&outputs[0].shape[ax], &inputs[0].shape[ax])?;
-                }
-            }
-            Ok(())
-        })?;
         Ok(())
     }
 }

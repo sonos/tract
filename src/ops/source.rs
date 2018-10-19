@@ -3,7 +3,7 @@ use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Source {
-    fact: TensorFact,
+    pub fact: TensorFact,
 }
 
 impl Op for Source {
@@ -19,19 +19,6 @@ impl Op for Source {
         self.infer_facts(inputs, outputs)
     }
 
-    fn pulsify(
-        &self,
-        _inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        pulse: usize,
-    ) -> TfdResult<PulsifiedOp> {
-        if let Some(stream) = self.fact.stream_info()? {
-            let mut pulse_fact = self.fact.clone();
-            pulse_fact.shape.dims[stream.axis] = pulse.to_dim().into();
-            return Ok(PulsifiedOp::op(Box::new(Self::new(pulse_fact.clone()))));
-        }
-        bail!("Could not pulsify {:?}", self)
-    }
 }
 
 impl StatelessOp for Source {

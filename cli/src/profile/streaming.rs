@@ -1,8 +1,8 @@
-use simplelog::Level::Info;
-
 use std::borrow::Borrow;
 use std::sync::Arc;
 use std::thread;
+
+use log::Level::Info;
 
 use display_graph::DisplayOptions;
 use errors::*;

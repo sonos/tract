@@ -21,13 +21,20 @@ macro_rules! element_map {
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
-
         }
 
         impl $crate::ops::Op for $Name {
             fn name(&self) -> &str {
                 stringify!($Name)
             }
+
+            fn pulsify(
+                &self,
+                inputs: $crate::TVec<&$crate::ops::prelude::PulsedTensorFact>,
+            ) -> $crate::TfdResult<$crate::pulse::PulsifiedOp> {
+                Ok($crate::pulse::PulsifiedOp::op(Box::new(self.clone()), inputs[0].clone()))
+            }
+
         }
 
         impl $crate::analyser::rules::InferenceRulesOp for $Name {
@@ -146,11 +153,13 @@ macro_rules! element_bin {
 
             fn pulsify(
                 &self,
-                _inputs: TVec<&TensorFact>,
-                _outputs: TVec<&TensorFact>,
-                _pulse: usize
-            ) -> TfdResult<::pulse::PulsifiedOp> {
-                Ok(PulsifiedOp::op(Box::new(self.clone())))
+                inputs: $crate::TVec<&$crate::ops::prelude::PulsedTensorFact>,
+            ) -> $crate::TfdResult<$crate::pulse::PulsifiedOp> {
+                let mut fact = inputs[0].clone();
+                $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
+                    fact.fact.datum_type = <$to>::datum_type().into();
+                })*
+                Ok($crate::pulse::PulsifiedOp::op(Box::new(self.clone()), fact))
             }
         }
 
@@ -204,6 +213,17 @@ macro_rules! element_nary {
         impl Op for $Name {
             fn name(&self) -> &str {
                 stringify!($Name)
+            }
+
+            fn pulsify(
+                &self,
+                inputs: $crate::TVec<&$crate::ops::prelude::PulsedTensorFact>,
+            ) -> $crate::TfdResult<$crate::pulse::PulsifiedOp> {
+                let mut fact = inputs[0].clone();
+                $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
+                    fact.fact.datum_type = <$to>::datum_type().into();
+                })*
+                Ok($crate::pulse::PulsifiedOp::op(Box::new(self.clone()), fact))
             }
         }
 
