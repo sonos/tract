@@ -23,15 +23,6 @@ impl Op for Const {
     fn const_value(&self) -> Option<Value> {
         Some(self.value.clone())
     }
-
-    fn pulsify(
-        &self,
-        _inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        _pulse: usize,
-    ) -> TfdResult<PulsifiedOp> {
-        return Ok(PulsifiedOp::op(Box::new(self.clone())));
-    }
 }
 
 impl StatelessOp for Const {

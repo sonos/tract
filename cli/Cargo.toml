@@ -16,7 +16,7 @@ log = "0.4"
 ndarray = "0.12"
 prettytable-rs = { git = "https://github.com/liautaud/prettytable-rs" }
 rand = "0.5"
-simplelog = "0.5"
+pretty_env_logger = "0.2"
 terminal_size = "0.1.7"
 textwrap = "0.10"
 tfdeploy = { path = "..", features=["serialize"] }

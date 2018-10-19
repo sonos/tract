@@ -26,6 +26,17 @@ impl Op for AddDims {
     fn name(&self) -> &str {
         "AddDims"
     }
+
+    fn pulsify(
+        &self,
+        mut inputs: TVec<&PulsedTensorFact>,
+    ) -> TfdResult<::pulse::PulsifiedOp> {
+        let input = args_1!(inputs);
+        let shape_after = self.compute_shape(&input.stream_input_shape()?);
+        let mut fact = input.clone();
+        fact.fact.shape = ShapeFact::from(shape_after);
+        Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
+    }
 }
 
 impl StatelessOp for AddDims {

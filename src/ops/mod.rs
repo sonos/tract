@@ -31,7 +31,7 @@ pub mod prelude {
     pub use dim::{DimLike, TDim, ToDim};
     pub use model::TVec;
     pub use ops::types::Value;
-    pub use pulse::PulsifiedOp;
+    pub use pulse::{PulsifiedOp, PulsedTensorFact};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use streaming::types::{OpBuffer, QueuesBuffer};
@@ -44,6 +44,7 @@ pub mod prelude {
 use self::types::Value;
 pub use streaming::types::{EmptyBuffer, OpBuffer, QueuesBuffer};
 pub use streaming::values::StepValue;
+pub use pulse::PulsedTensorFact;
 use TfdResult;
 
 pub trait OpState: Debug {
@@ -164,9 +165,7 @@ pub trait Op:
 
     fn pulsify(
         &self,
-        _inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        _pulse: usize,
+        _inputs: TVec<&PulsedTensorFact>,
     ) -> TfdResult<::pulse::PulsifiedOp> {
         bail!("Operator {} do not support pulsification", self.name())
     }

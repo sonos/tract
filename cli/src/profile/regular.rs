@@ -1,6 +1,7 @@
 use atty;
 use pbr::ProgressBar;
-use simplelog::Level::Info;
+
+use log::Level::Info;
 
 use display_graph::DisplayOptions;
 use errors::*;

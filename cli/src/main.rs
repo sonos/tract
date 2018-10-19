@@ -17,8 +17,8 @@ extern crate atty;
 extern crate libc;
 extern crate open;
 extern crate pbr;
+extern crate pretty_env_logger;
 extern crate rand;
-extern crate simplelog;
 extern crate terminal_size;
 extern crate textwrap;
 extern crate tfdeploy;
@@ -29,8 +29,6 @@ use std::process;
 use std::str::FromStr;
 
 use insideout::InsideOut;
-use simplelog::Level::{Error, Trace};
-use simplelog::{Config, LevelFilter, TermLogger};
 use tfdeploy::analyser::TensorFact;
 use tfdeploy_tf::tfpb;
 use tfpb::graph::GraphDef;
@@ -87,6 +85,7 @@ fn main() {
 
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
         (@arg optimize: -O --optimize "Optimize after model load")
+        (@arg pulse: --pulse +takes_value "Translate to pulse network")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
     );
@@ -298,12 +297,18 @@ impl Parameters {
             info!("Skipping analyse");
         }
 
-        if matches.is_present("optimize") {
+        let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
+
+        if matches.is_present("optimize") || pulse.is_some() {
             info!("Optimize");
             if format == "tf" {
                 tfd_model = ::tfdeploy_tf::model::optimize(tfd_model)?;
             }
             tfd_model = tfd_model.into_optimized()?;
+        }
+
+        if let Some(pulse) = pulse {
+            tfd_model = ::tfdeploy::pulse::PulsifiedModel::new(&tfd_model, pulse)?.model;
         }
 
         Ok(Parameters {
@@ -381,26 +386,17 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     // Configure the logging level.
-    let level = match matches.occurrences_of("verbosity") {
-        0 => LevelFilter::Warn,
-        1 => LevelFilter::Info,
-        2 => LevelFilter::Debug,
-        _ => LevelFilter::Trace,
-    };
+    if ::std::env::var("RUST_LOG").is_err() {
+        let level = match matches.occurrences_of("verbosity") {
+            0 => "tfdeploy=warn",
+            1 => "tfdeploy=info",
+            2 => "tfdeploy=debug",
+            _ => "tfdeploy=trace",
+        };
+        ::std::env::set_var("RUST_LOG", level);
+    }
 
-    let log_config = Config {
-        time: None,
-        time_format: None,
-        level: Some(Error),
-        target: None,
-        location: Some(Trace),
-    };
-
-    if TermLogger::init(level, log_config).is_err()
-        && simplelog::SimpleLogger::init(level, log_config).is_err()
-    {
-        panic!("Could not initiatize logger")
-    };
+    pretty_env_logger::init();
 
     let params = Parameters::from_clap(&matches)?;
 

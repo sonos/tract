@@ -1,3 +1,4 @@
+use ops::source::Source;
 use std::collections::HashMap;
 
 use model::dsl::*;
@@ -5,13 +6,37 @@ use ops::prelude::*;
 
 pub mod delay;
 
+#[derive(Clone, Debug)]
+pub struct PulsedTensorFact {
+    pub fact: TensorFact,
+    pub actual_size: usize,
+    pub delay: usize,
+}
+
+impl PulsedTensorFact {
+    pub fn axis(&self) -> TfdResult<usize> {
+        self.fact
+            .stream_info()?
+            .map(|si| si.axis)
+            .ok_or("PulsedTensorFact not pulsed".into())
+    }
+
+    pub fn stream_input_shape(&self) -> TfdResult<Vec<TDim>> {
+        self.fact.shape.concretize().ok_or("Can not pulsify an untyped graph".into())
+    }
+}
+
 pub struct PulsifiedOp {
     pub op: Box<Op>,
+    pub outputs: TVec<PulsedTensorFact>,
 }
 
 impl PulsifiedOp {
-    pub fn op(op: Box<Op>) -> PulsifiedOp {
-        PulsifiedOp { op }
+    pub fn op(op: Box<Op>, fact: PulsedTensorFact) -> PulsifiedOp {
+        PulsifiedOp {
+            op,
+            outputs: tvec!(fact),
+        }
     }
 }
 
@@ -23,19 +48,45 @@ impl PulsifiedModel {
     pub fn new(old: &Model, pulse: usize) -> TfdResult<PulsifiedModel> {
         let mut model = Model::default();
         let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
+        let mut facts: HashMap<OutletId, PulsedTensorFact> = HashMap::new();
         for old_id in old.eval_order()? {
-            let PulsifiedOp { op, .. } = {
-                let (in_fact, out_fact) = old.facts(old_id)?;
-                old.node(old_id).op().pulsify(in_fact, out_fact, pulse)?
-            };
-            let new_id = model.add_node(old.node(old_id).name.clone(), op)?;
-            for (ix, input) in old.node(old_id).inputs.iter().enumerate() {
-                model.add_edge(mapping[&input], InletId::new(new_id, ix))?;
+            debug!("pulsify {:?}", old.node(old_id));
+            if let Some(source) = old.node(old_id).op_as::<Source>() {
+                let node = old.node(old_id);
+                let mut fact = node.outputs[0].fact.clone();
+                let axis = fact
+                    .stream_info()?
+                    .ok_or("Found a non straming source in pulsify")?
+                    .axis;
+                fact.shape.dims[axis] = pulse.to_dim().into();
+                let id = model.add_source_fact(node.name.clone(), fact.clone())?;
+                let pulsed_fact = PulsedTensorFact {
+                    fact,
+                    actual_size: pulse,
+                    delay: 0,
+                };
+                facts.insert(OutletId::new(id, 0), pulsed_fact);
+                mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
+            } else {
+                let inputs = old
+                    .node(old_id)
+                    .inputs
+                    .iter()
+                    .map(|i| &facts[&mapping[i]])
+                    .collect();
+                trace!("  inputs: {:?}", inputs);
+                let pulsed = old.node(old_id).op().pulsify(inputs)?;
+                let new_id = model.add_node(old.node(old_id).name.clone(), pulsed.op)?;
+                for (ix, input) in old.node(old_id).inputs.iter().enumerate() {
+                    model.add_edge(mapping[&input], InletId::new(new_id, ix))?;
+                }
+                for ix in 0..model.node(new_id).op().noutputs() {
+                    mapping.insert(OutletId::new(old_id, ix), OutletId::new(new_id, ix));
+                }
+                model.analyse_one(new_id)?;
             }
-            for ix in 0..model.node(new_id).op().noutputs() {
-                mapping.insert(OutletId::new(old_id, ix), OutletId::new(new_id, ix));
-            }
-            model.analyse_one(new_id)?;
+            trace!("  mappings: {:?}", mapping);
+            trace!("  facts: {:?}", facts);
         }
         Ok(PulsifiedModel { model })
     }
