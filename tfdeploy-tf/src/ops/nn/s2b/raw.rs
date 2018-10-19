@@ -1,6 +1,7 @@
 use ndarray::prelude::*;
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
+
+use tfdeploy::analyser::rules::TensorProxy;
 
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatch {

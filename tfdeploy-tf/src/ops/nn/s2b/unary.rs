@@ -1,5 +1,4 @@
 use ndarray::*;
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 #[derive(Debug, Copy, Clone)]

@@ -1,4 +1,3 @@
-use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 #[derive(Debug, Clone, Default)]
@@ -7,19 +6,6 @@ pub struct Identity;
 impl Op for Identity {
     fn name(&self) -> &str {
         "Identity"
-    }
-
-    /// Evaluates one step of the operation on the given input tensors.
-    fn step(
-        &self,
-        mut inputs: TVec<StepValue>,
-        _: &mut Box<OpBuffer>,
-    ) -> TfdResult<Option<TVec<Value>>> {
-        let input = args_1!(inputs);
-        match input.into_value() {
-            None => Ok(None),
-            Some(tv) => Ok(Some(self.eval(tvec![tv])?)),
-        }
     }
 }
 

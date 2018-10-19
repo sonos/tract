@@ -1,4 +1,3 @@
-use analyser::rules::prelude::*;
 use insideout::InsideOut;
 use ops::prelude::*;
 

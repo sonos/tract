@@ -29,7 +29,7 @@ use std::process;
 use std::str::FromStr;
 
 use insideout::InsideOut;
-use tfdeploy::analyser::TensorFact;
+use tfdeploy::ops::prelude::*;
 use tfdeploy_tf::tfpb;
 use tfpb::graph::GraphDef;
 
@@ -268,14 +268,13 @@ impl Parameters {
         };
 
         let inputs = if let Some(inputs) = matches.values_of("input") {
-            use tfdeploy::analyser::Fact;
             let mut vs = vec![];
             for (ix, v) in inputs.enumerate() {
                 let t = tensor::for_string(v)?;
                 // obliterate value in input (the analyser/optimizer would fold
                 // the graph)
                 let mut fact = TensorFact {
-                    value: tfdeploy::analyser::GenericFact::Any,
+                    value: Default::default(),
                     ..t
                 };
                 if let Some(axis) = matches.value_of("stream_axis") {

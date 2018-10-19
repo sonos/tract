@@ -51,7 +51,7 @@ impl PulsifiedModel {
         let mut facts: HashMap<OutletId, PulsedTensorFact> = HashMap::new();
         for old_id in old.eval_order()? {
             debug!("pulsify {:?}", old.node(old_id));
-            if let Some(source) = old.node(old_id).op_as::<Source>() {
+            if old.node(old_id).op_as::<Source>().is_some() {
                 let node = old.node(old_id);
                 let mut fact = node.outputs[0].fact.clone();
                 let axis = fact
@@ -68,19 +68,23 @@ impl PulsifiedModel {
                 facts.insert(OutletId::new(id, 0), pulsed_fact);
                 mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
             } else {
-                let inputs = old
-                    .node(old_id)
-                    .inputs
-                    .iter()
-                    .map(|i| &facts[&mapping[i]])
-                    .collect();
-                trace!("  inputs: {:?}", inputs);
-                let pulsed = old.node(old_id).op().pulsify(inputs)?;
-                let new_id = model.add_node(old.node(old_id).name.clone(), pulsed.op)?;
+                let pulsed = {
+                    let inputs = old
+                        .node(old_id)
+                        .inputs
+                        .iter()
+                        .map(|i| &facts[&mapping[i]])
+                        .collect();
+                    trace!("  inputs: {:?}", inputs);
+                    old.node(old_id).op().pulsify(inputs)?
+                };
+                let PulsifiedOp { op, outputs } = pulsed;
+                let new_id = model.add_node(old.node(old_id).name.clone(), op)?;
                 for (ix, input) in old.node(old_id).inputs.iter().enumerate() {
                     model.add_edge(mapping[&input], InletId::new(new_id, ix))?;
                 }
-                for ix in 0..model.node(new_id).op().noutputs() {
+                for (ix, output_fact) in outputs.into_iter().enumerate() {
+                    facts.insert(OutletId::new(new_id, ix), output_fact);
                     mapping.insert(OutletId::new(old_id, ix), OutletId::new(new_id, ix));
                 }
                 model.analyse_one(new_id)?;
@@ -126,13 +130,6 @@ mod tests {
                 "a",
                 TensorFact::shape(vec![TDim::s(), 2.to_dim(), 3.to_dim()]),
             ).unwrap();
-        let add = model
-            .chain("add", Box::new(::ops::math::Add::default()))
-            .unwrap();
-        let b = model.add_const("b", Tensor::from(12)).unwrap();
-        model
-            .add_edge(OutletId::new(b, 0), InletId::new(add, 1))
-            .unwrap();
 
         let pulse = PulsifiedModel::new(&model, 4).unwrap();
 

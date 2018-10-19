@@ -1,4 +1,3 @@
-use analyser::rules::prelude::*;
 use ndarray::*;
 use ops::prelude::*;
 

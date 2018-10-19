@@ -2,10 +2,10 @@
 #[macro_export]
 macro_rules! typefact {
     (_) => {
-        $crate::analyser::TypeFact::default()
+        $crate::analyser::types::TypeFact::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::analyser::TypeFact = $crate::analyser::GenericFact::Only($arg);
+        let fact: $crate::analyser::types::TypeFact = $crate::analyser::types::GenericFact::Only($arg);
         fact
     }};
 }
@@ -14,26 +14,26 @@ macro_rules! typefact {
 #[macro_export]
 macro_rules! shapefact {
     () =>
-        ($crate::analyser::ShapeFact::closed(vec![]));
+        ($crate::analyser::types::ShapeFact::closed(vec![]));
     (..) =>
-        ($crate::analyser::ShapeFact::open(vec![]));
+        ($crate::analyser::types::ShapeFact::open(vec![]));
     ($($arg:tt),+; ..) =>
-        ($crate::analyser::ShapeFact::open(vec![$(dimfact!($arg)),+]));
+        ($crate::analyser::types::ShapeFact::open(vec![$(dimfact!($arg)),+]));
     ($($arg:tt),+) =>
-        ($crate::analyser::ShapeFact::closed(vec![$(dimfact!($arg)),+]));
+        ($crate::analyser::types::ShapeFact::closed(vec![$(dimfact!($arg)),+]));
 }
 
 /// Constructs a dimension fact.
 #[macro_export]
 macro_rules! dimfact {
     (_) => {
-        $crate::analyser::DimFact::default()
+        $crate::analyser::types::DimFact::default()
     };
     (S) => {
-        $crate::analyser::DimFact::Streamed
+        $crate::analyser::types::DimFact::Streamed
     };
     ($arg:expr) => {
-        $crate::analyser::GenericFact::Only($arg.to_dim())
+        $crate::analyser::types::GenericFact::Only($arg.to_dim())
     };
 }
 
@@ -41,10 +41,10 @@ macro_rules! dimfact {
 #[macro_export]
 macro_rules! valuefact {
     (_) => {
-        $crate::analyser::ValueFact::default()
+        $crate::analyser::types::ValueFact::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::analyser::ValueFact = $crate::analyser::GenericFact::Only($arg);
+        let fact: $crate::analyser::types::ValueFact = $crate::analyser::types::GenericFact::Only($arg);
         fact
     }};
 }

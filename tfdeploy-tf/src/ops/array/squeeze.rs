@@ -1,4 +1,3 @@
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::array::Squeeze;
 use tfdeploy::ops::prelude::*;
 

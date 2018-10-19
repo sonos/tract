@@ -13,12 +13,6 @@ pub struct Stream {
     pub chunk: Option<Value>,
 }
 
-#[derive(Debug, Copy, Clone, Default)]
-pub struct StreamInfo {
-    pub axis: usize,
-    pub len: TDim,
-}
-
 impl StepValue {
     pub fn as_value(&self) -> Option<&Value> {
         match self {

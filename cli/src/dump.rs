@@ -1,7 +1,6 @@
 use display_graph::*;
 use errors::*;
-use tfdeploy::analyser::Fact;
-use tfdeploy::analyser::TensorFact;
+use tfdeploy::ops::prelude::*;
 use Parameters;
 
 pub fn handle(

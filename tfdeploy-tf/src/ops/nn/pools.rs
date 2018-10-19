@@ -1,6 +1,5 @@
 use super::local_patch::*;
 use ndarray::prelude::*;
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'static {

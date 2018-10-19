@@ -1,20 +1,10 @@
 use std::borrow::BorrowMut;
 use std::collections::BTreeSet;
 
-use errors::*;
 use model::*;
-use ops::Op;
+use ops::prelude::*;
 
 pub mod types;
-
-#[allow(unused_imports)]
-pub mod prelude {
-    pub use super::types::*;
-    pub use super::Analyser;
-    use TfdResult;
-}
-
-pub use self::prelude::*;
 
 #[macro_use]
 pub mod macros;

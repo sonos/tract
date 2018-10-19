@@ -3,15 +3,14 @@ macro_rules! element_map {
         element_map!($Name, match $($type => $expr),*);
     };
     ($Name:ident, match $($type:ty => $expr:expr),*) => {
-        #[derive(Debug, Clone, new, Default)]
-        pub struct $Name($crate::analyser::TypeFact);
+        #[allow(unused_imports)]
+        use $crate::ops::prelude::*;
 
-        impl $crate::ops::StatelessOp for $Name {
-            fn eval(
-                &self,
-                mut inputs: $crate::TVec<$crate::ops::Value>,
-            ) -> $crate::TfdResult<$crate::TVec<$crate::ops::Value>> {
-                use $crate::tensor::Datum;
+        #[derive(Debug, Clone, new, Default)]
+        pub struct $Name(TypeFact);
+
+        impl StatelessOp for $Name {
+            fn eval(&self, mut inputs: TVec<Value>,) -> TfdResult<TVec<Value>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
@@ -23,28 +22,25 @@ macro_rules! element_map {
             }
         }
 
-        impl $crate::ops::Op for $Name {
+        impl Op for $Name {
             fn name(&self) -> &str {
                 stringify!($Name)
             }
 
-            fn pulsify(
-                &self,
-                inputs: $crate::TVec<&$crate::ops::prelude::PulsedTensorFact>,
-            ) -> $crate::TfdResult<$crate::pulse::PulsifiedOp> {
-                Ok($crate::pulse::PulsifiedOp::op(Box::new(self.clone()), inputs[0].clone()))
+            fn pulsify( &self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<PulsifiedOp> {
+                Ok(PulsifiedOp::op(Box::new(self.clone()), inputs[0].clone()))
             }
 
         }
 
-        impl $crate::analyser::rules::InferenceRulesOp for $Name {
+        impl InferenceRulesOp for $Name {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
-                s: &mut $crate::analyser::rules::prelude::Solver<'r>,
-                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-            ) -> $crate::analyser::rules::InferenceResult {
+                s: &mut Solver<'r>,
+                inputs: &'p TensorsProxy,
+                outputs: &'p TensorsProxy,
+            ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
                 s.equals_all(wrap![
@@ -59,17 +55,16 @@ macro_rules! element_map {
 
 macro_rules! element_map_with_params {
     ($Name:ident, [$($type:ty),*], {$($pname:ident : $pty:ty),*}, $expr:item) => {
+        #[allow(unused_imports)]
+        use $crate::ops::prelude::*;
+
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name {
             $( $pname: $pty ),*
         }
 
-        impl $crate::ops::StatelessOp for $Name {
-            fn eval(
-                &self,
-                mut inputs: $crate::TVec<$crate::ops::Value>,
-            ) -> $crate::TfdResult<$crate::TVec<$crate::ops::Value>> {
-                use $crate::tensor::Datum;
+        impl StatelessOp for $Name {
+            fn eval(&self, mut inputs: TVec<Value>,) -> TfdResult<TVec<Value>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $expr;
@@ -82,20 +77,20 @@ macro_rules! element_map_with_params {
             }
         }
 
-        impl $crate::ops::Op for $Name {
+        impl Op for $Name {
             fn name(&self) -> &str {
                 stringify!($Name)
             }
         }
 
-        impl $crate::analyser::rules::InferenceRulesOp for $Name {
+        impl InferenceRulesOp for $Name {
             /// Infers properties about the input and output tensors.
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
-                s: &mut $crate::analyser::rules::prelude::Solver<'r>,
-                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-            ) -> $crate::analyser::rules::InferenceResult {
+                s: &mut Solver<'r>,
+                inputs: &'p TensorsProxy,
+                outputs: &'p TensorsProxy,
+            ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
                 s.equals_all(wrap![
@@ -109,23 +104,23 @@ macro_rules! element_map_with_params {
 }
 
 macro_rules! element_bin {
-    ($Name:ident, [$($type:ty),*] => $to:ty { $expr:expr }) => {
-        element_bin!($Name, match $($type => $to { $expr } ),*);
+    ($name:ident, [$($type:ty),*] => $to:ty { $expr:expr }) => {
+        element_bin!($name, match $($type => $to { $expr } ),*);
     };
-    ($Name:ident, [$($type:ty),*] { $expr:expr }) => {
-        element_bin!($Name, match $($type => $type { $expr } ),*);
+    ($name:ident, [$($type:ty),*] { $expr:expr }) => {
+        element_bin!($name, match $($type => $type { $expr } ),*);
     };
-    ($Name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
-        #[derive(Debug, Clone, Default, new)]
-        pub struct $Name($crate::analyser::TypeFact);
+    ($name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
+        #[allow(non_snake_case)]
+        pub mod $name {
+            #[allow(unused_imports)]
+            use $crate::ops::prelude::*;
 
-        impl $crate::ops::StatelessOp for $Name {
-            fn eval(
-                &self,
-                mut inputs: TVec<$crate::ops::Value>,
-            ) -> $crate::TfdResult<TVec<$crate::ops::Value>> {
-                use $crate::tensor::Datum;
-                let (a, b) = args_2!(inputs);
+            pub fn default() -> Bin {
+                Bin::default()
+            }
+
+            fn eval_bin(a: Value, b: &Value) -> TfdResult<Value> {
                 let shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
                     .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
                                            a.shape(), b.shape()))?;
@@ -140,57 +135,135 @@ macro_rules! element_bin {
                         .and_broadcast(&a)
                         .and_broadcast(&b.view())
                         .apply(|c,&a:&$type,&b:&$type| *c = $expr(a,b));
-                    return Ok(tvec![c.into()])
+                    return Ok(c.into())
                 })*
-                bail!("{} not covering {:?}", stringify!($Name), dt)
-            }
-        }
-
-        impl $crate::ops::Op for $Name {
-            fn name(&self) -> &str {
-                stringify!($Name)
+                bail!("{} not covering {:?}", stringify!($name), dt)
             }
 
-            fn pulsify(
-                &self,
-                inputs: $crate::TVec<&$crate::ops::prelude::PulsedTensorFact>,
-            ) -> $crate::TfdResult<$crate::pulse::PulsifiedOp> {
-                let mut fact = inputs[0].clone();
-                $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
-                    fact.fact.datum_type = <$to>::datum_type().into();
-                })*
-                Ok($crate::pulse::PulsifiedOp::op(Box::new(self.clone()), fact))
+            #[derive(Debug, Clone, Default, new)]
+            pub struct Bin(TypeFact);
+
+            impl StatelessOp for Bin {
+                fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+                    let (a, b) = args_2!(inputs);
+                    Ok(tvec!(eval_bin(a, &b)?))
+                }
+
             }
-        }
 
-        impl $crate::analyser::rules::InferenceRulesOp for $Name {
-            /// Infers properties about the input and output tensors.
-            fn rules<'r, 'p: 'r, 's: 'r>(
-                &'s self,
-                s: &mut $crate::analyser::rules::prelude::Solver<'r>,
-                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-            ) -> $crate::analyser::rules::InferenceResult {
-                let a = &inputs[0];
-                let b = &inputs[1];
-                let c = &outputs[0];
+            impl Op for Bin {
+                fn name(&self) -> &str {
+                    stringify!($name)
+                }
 
-                s.given(&inputs[0].datum_type, move |s, dt| {
-                    $(if dt == <$type>::datum_type() {
-                        return s.equals(&outputs[0].datum_type, <$to>::datum_type());
+                fn reduce(&self, inputs: TVec<&TensorFact>, _outputs: TVec<&TensorFact>,
+                ) -> TfdResult<Option<ReducedOpRewire>> {
+                    if let Some(b) = inputs[1].value.concretize() {
+                        return Ok(Some(ReducedOpRewire {
+                            new_op: Box::new(UnaryA {
+                                dt: self.0,
+                                b: b.into(),
+                            }),
+                            rewired: tvec!(0)
+                        }))
+                    }
+                    Ok(None)
+                }
+
+                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<PulsifiedOp> {
+                    let mut fact = inputs[0].clone();
+                    $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
+                        fact.fact.datum_type = <$to>::datum_type().into();
                     })*
-                    bail!("{} not covering {:?}", stringify!($Name), dt)
-                })?;
-                s.equals(&inputs.len, 2)?;
-                s.equals(&outputs.len, 1)?;
-                s.with(&a.shape, move |s, a_shape| {
-                    s.with(&b.shape, move |s, b_shape| {
-                        if let Ok(Some(c_shape)) = ::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape]) {
+                    Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
+                }
+            }
+
+            impl InferenceRulesOp for Bin {
+                /// Infers properties about the input and output tensors.
+                fn rules<'r, 'p: 'r, 's: 'r>(
+                    &'s self,
+                    s: &mut Solver<'r>,
+                    inputs: &'p TensorsProxy,
+                    outputs: &'p TensorsProxy,
+                ) -> InferenceResult {
+                    let a = &inputs[0];
+                    let b = &inputs[1];
+                    let c = &outputs[0];
+
+                    s.given(&inputs[0].datum_type, move |s, dt| {
+                        $(if dt == <$type>::datum_type() {
+                            return s.equals(&outputs[0].datum_type, <$to>::datum_type());
+                        })*
+                        bail!("{} not covering {:?}", stringify!($name), dt)
+                    })?;
+                    s.equals(&inputs.len, 2)?;
+                    s.equals(&outputs.len, 1)?;
+                    s.with(&a.shape, move |s, a_shape| {
+                        s.with(&b.shape, move |s, b_shape| {
+                            if let Ok(Some(c_shape)) = $crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape]) {
+                                s.equals(&c.shape, c_shape)?;
+                            }
+                            Ok(())
+                        })
+                    })
+                }
+            }
+
+            #[derive(Debug, Clone, new)]
+            pub struct UnaryA {
+                dt: TypeFact,
+                b: Value,
+            }
+
+            impl StatelessOp for UnaryA {
+                fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+                    let a = args_1!(inputs);
+                    Ok(tvec!(eval_bin(a, &self.b)?))
+                }
+            }
+
+            impl Op for UnaryA {
+                fn name(&self) -> &str {
+                    stringify!($name)
+                }
+
+                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<PulsifiedOp> {
+                    let mut fact = inputs[0].clone();
+                    $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
+                        fact.fact.datum_type = <$to>::datum_type().into();
+                    })*
+                    Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
+                }
+            }
+
+            impl InferenceRulesOp for UnaryA {
+                /// Infers properties about the input and output tensors.
+                fn rules<'r, 'p: 'r, 's: 'r>(
+                    &'s self,
+                    s: &mut Solver<'r>,
+                    inputs: &'p TensorsProxy,
+                    outputs: &'p TensorsProxy,
+                ) -> InferenceResult {
+                    let a = &inputs[0];
+                    let c = &outputs[0];
+
+                    s.given(&inputs[0].datum_type, move |s, dt| {
+                        $(if dt == <$type>::datum_type() {
+                            return s.equals(&outputs[0].datum_type, <$to>::datum_type());
+                        })*
+                        bail!("{} not covering {:?}", stringify!($name), dt)
+                    })?;
+                    s.equals(&inputs.len, 1)?;
+                    s.equals(&outputs.len, 1)?;
+                    s.with(&a.shape, move |s, a_shape| {
+                        let b_shape = self.b.shape();
+                        if let Ok(Some(c_shape)) = $crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape.into()]) {
                             s.equals(&c.shape, c_shape)?;
                         }
                         Ok(())
                     })
-                })
+                }
             }
         }
     };
@@ -204,9 +277,12 @@ macro_rules! element_nary {
         element_nary!($Name, match $($type => $type { $expr } ),*);
     };
     ($Name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
+        #[allow(unused_imports)]
+        use $crate::ops::prelude::*;
+
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name {
-            datum: $crate::analyser::types::TypeFact,
+            datum: TypeFact,
             n: Option<usize>,
         }
 
@@ -217,21 +293,20 @@ macro_rules! element_nary {
 
             fn pulsify(
                 &self,
-                inputs: $crate::TVec<&$crate::ops::prelude::PulsedTensorFact>,
-            ) -> $crate::TfdResult<$crate::pulse::PulsifiedOp> {
+                inputs: TVec<&PulsedTensorFact>,
+            ) -> TfdResult<PulsifiedOp> {
                 let mut fact = inputs[0].clone();
                 $(if fact.fact.datum_type.concretize().unwrap() == <$type>::datum_type() {
                     fact.fact.datum_type = <$to>::datum_type().into();
                 })*
-                Ok($crate::pulse::PulsifiedOp::op(Box::new(self.clone()), fact))
+                Ok(PulsifiedOp::op(Box::new(self.clone()), fact))
             }
         }
 
         impl StatelessOp for $Name {
             /// Evaluates the operation given the input tensors.
             fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-                use $crate::tensor::Datum;
-                use $crate::ndarray::ArrayViewD;
+                use $crate::ndarray::{ ArrayD, ArrayViewD };
                 if let Some(n) = self.n {
                     if inputs.len() != n {
                         bail!("Expected {} inputs, got {}", n, inputs.len());
@@ -252,7 +327,7 @@ macro_rules! element_nary {
                     let broadcasted:Vec<_> = views.iter()
                         .map(|a| a.broadcast(&*shape).unwrap())
                         .collect();
-                    let c = $crate::ndarray::ArrayD::<$to>::from_shape_fn(shape, |dims| {
+                    let c = ArrayD::<$to>::from_shape_fn(shape, |dims| {
                         let values:Vec<$type> = broadcasted.iter().map(|i| i[&dims]).collect();
                         $expr(&values)
                     });
@@ -262,14 +337,13 @@ macro_rules! element_nary {
             }
         }
 
-        impl $crate::analyser::rules::InferenceRulesOp for $Name {
+        impl InferenceRulesOp for $Name {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
-                s: &mut $crate::analyser::rules::prelude::Solver<'r>,
-                inputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-                outputs: &'p $crate::analyser::rules::prelude::TensorsProxy,
-            ) -> $crate::analyser::rules::InferenceResult {
-                use $crate::analyser::rules::prelude::*;
+                s: &mut Solver<'r>,
+                inputs: &'p TensorsProxy,
+                outputs: &'p TensorsProxy,
+            ) -> InferenceResult {
                 if let Some(n) = self.n {
                     s.equals(&inputs.len, n as i64)?;
                 }

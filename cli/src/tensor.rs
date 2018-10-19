@@ -1,11 +1,9 @@
 use std::fs;
 use std::io::Read;
 
-use tfdeploy::analyser::TensorFact;
 use tfdeploy::*;
+use tfdeploy::ops::prelude::*;
 use CliResult;
-
-use tfdeploy::analyser::Fact;
 
 pub fn for_size(size: &str) -> CliResult<TensorFact> {
     let splits = size.split("x").collect::<Vec<_>>();

@@ -1,14 +1,11 @@
-//! TODO(liautaud):
-//! Right now most of the code in this module is duplicated to handle both
-//! &T and &mut T, so I should find a way to abstract this.
-use analyser::prelude::*;
-use analyser::rules::prelude::*;
-use model::TVec;
 use std::fmt;
-use Tensor;
-use TfdResult;
 
 use num::cast::ToPrimitive;
+
+use ops::prelude::*;
+
+use self::super::expr::*;
+use self::super::solver::Context;
 
 /// A symbolic path for a value.
 #[derive(PartialEq, Clone)]

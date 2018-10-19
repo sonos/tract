@@ -1,10 +1,13 @@
 use std::fmt;
-
-use analyser::prelude::*;
-use analyser::rules::prelude::*;
 use std::ops::Index;
 
 use num::cast::ToPrimitive;
+
+use ops::prelude::*;
+
+use self::super::cache::Cache;
+use self::super::path::Path;
+use self::super::expr::Output;
 
 /// A proxy for any value.
 pub trait Proxy {

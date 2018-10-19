@@ -36,9 +36,7 @@ pub mod tf;
 
 pub use protobuf::Message;
 
-use tfdeploy::analyser::TensorFact;
-use tfdeploy::TVec;
-use tfdeploy::Tensor as TfdTensor;
+use tfdeploy::ops::prelude::*;
 use tfdeploy_tf::tfpb;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
@@ -79,7 +77,7 @@ pub fn placeholder_i32(name: &str) -> tfpb::node_def::NodeDef {
 
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
-    inputs: Vec<(S, TfdTensor)>,
+    inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
@@ -102,7 +100,7 @@ pub fn compare<S: AsRef<str>>(
     let found = &state.values[output.id].as_ref().unwrap();
 
     // Run Tensorflow
-    let tf_inputs: Vec<(&str, TfdTensor)> = inputs
+    let tf_inputs: Vec<(&str, Tensor)> = inputs
         .iter()
         .map(|(s, m)| (s.as_ref(), m.clone()))
         .collect();
@@ -119,7 +117,7 @@ pub fn compare<S: AsRef<str>>(
 
 pub fn infer<S: AsRef<str>>(
     graph: &[u8],
-    inputs: Vec<(S, TfdTensor)>,
+    inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD

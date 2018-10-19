@@ -1,4 +1,3 @@
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
@@ -11,28 +10,6 @@ pub struct ExpandDims;
 impl Op for ExpandDims {
     fn name(&self) -> &str {
         "tf.ExpandDims"
-    }
-
-    /// Evaluates one step of the operation on the given input tensors.
-    fn step(
-        &self,
-        mut inputs: TVec<StepValue>,
-        _: &mut Box<OpBuffer>,
-    ) -> TfdResult<Option<TVec<Value>>> {
-        let (data, dims) = args_2!(inputs);
-
-        let dims = if let StepValue::Const(dims) = dims {
-            dims
-        } else {
-            bail!("Dims input should not be streamed.")
-        };
-
-        let data = data.into_stream().ok_or("Data input should be streamed.")?;
-
-        match data.chunk {
-            None => Ok(None),
-            Some(tv) => Ok(Some(self.eval(tvec![tv, dims])?)),
-        }
     }
 
     fn reduce(

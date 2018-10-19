@@ -2,7 +2,6 @@ use std::borrow::Borrow;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 
-use analyser::prelude::*;
 use model::*;
 use ops::prelude::*;
 

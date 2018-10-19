@@ -1,5 +1,5 @@
-use analyser::rules::prelude::*;
-use ndarray::prelude::*;
+use ndarray::*;
+
 use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
@@ -45,7 +45,7 @@ impl InferenceRulesOp for Concat {
             s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
             s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
             s.equals(
-                SumExp::new(
+                ::analyser::rules::expr::SumExp::new(
                     (0..n)
                         .map(|i| (&inputs[i].shape[self.axis]).bex())
                         .collect(),

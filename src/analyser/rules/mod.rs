@@ -22,27 +22,16 @@ macro_rules! wrap {
     ($($x:expr,)*) => (wrap![$($x),*]);
 }
 
+use ops::prelude::*;
+
 mod cache;
 pub mod expr;
 mod path;
 mod proxies;
 mod solver;
 
-pub mod prelude {
-    pub use self::super::cache::*;
-    pub use self::super::expr::*;
-    pub use self::super::path::*;
-    pub use self::super::proxies::*;
-    pub use self::super::solver::*;
-    pub use self::super::InferenceResult;
-    pub use self::super::InferenceRulesOp;
-    pub use analyser::prelude::*;
-    pub use dim::{TDim, ToDim};
-    pub use model::TVec;
-    pub use TfdResult;
-}
-
-use self::prelude::*;
+pub use self::solver::Solver;
+pub use self::proxies::*;
 
 pub type InferenceResult = TfdResult<()>;
 

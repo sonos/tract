@@ -1,5 +1,4 @@
 use ndarray::prelude::*;
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
@@ -32,68 +31,6 @@ impl<T: Datum> StatelessOp for ConcatV2<T> {
 impl<T: Datum> Op for ConcatV2<T> {
     fn name(&self) -> &str {
         "tf.ConvatV2"
-    }
-
-    /// Returns a new streaming buffer for the operation.
-    fn new_buffer(&self) -> Box<OpBuffer> {
-        Box::new(QueuesBuffer::new(self.n))
-    }
-
-    /// Evaluates one step of the operation on the given input tensors.
-    fn step(
-        &self,
-        mut inputs: TVec<StepValue>,
-        buffer: &mut Box<OpBuffer>,
-    ) -> TfdResult<Option<TVec<Value>>> {
-        // According to https://www.tensorflow.org/api_docs/python/tf/concat,
-        // the number of dimensions of each input tensor must match, and all
-        // dimensions except `axis` must be equal. In particular, this means
-        // that all the input tensors must have the same streaming dimension.
-        // That leaves us with two cases:
-        // - Either all the tensors are streamed along `axis`, in which case
-        //   we push every slice we receive as input directly to the output.
-        // - Or they are streamed along another dimension, so we buffer them
-        //   until we have a chunk for each, and we push their concatenation
-        //   as the output chunk.
-
-        let n = inputs
-            .pop()
-            .ok_or("Unexpectedly found zero inputs in ConcatV2")?;
-        let axis_tensor = n.into_const().ok_or("Axis input should not be streamed.")?;
-        let axis: i32 = axis_tensor.as_i32().ok_or("Expected a i32 scalar")?;
-
-        if inputs
-            .iter()
-            .all(|i| i.stream_info().map(|i| i.axis) == Some(axis as usize))
-        {
-            // All the input tensors are streamed along `axis`.
-            let chunk = inputs
-                .into_iter()
-                .map(|sv| sv.into_value().ok_or("Expected a value".into()))
-                .collect::<TfdResult<TVec<Value>>>()?;
-
-            Ok(Some(chunk))
-        } else {
-            // All the input tensors are streamed along a non-`axis` dimension.
-            let buffer = buffer
-                .downcast_mut::<QueuesBuffer>()
-                .ok_or("The buffer can't be downcasted to QueuesBuffer.")?;
-
-            buffer.append(inputs)?;
-
-            if buffer.iter_mut().any(|q| q.is_empty()) {
-                Ok(None)
-            } else {
-                let mut chunks = buffer
-                    .iter_mut()
-                    .map(|b| b.pop_front().unwrap())
-                    .collect::<TVec<_>>();
-
-                chunks.push(axis_tensor);
-
-                Ok(Some(self.eval(chunks)?))
-            }
-        }
     }
 }
 

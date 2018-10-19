@@ -5,10 +5,11 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use num::cast::ToPrimitive;
 use num::Zero;
 
-use analyser::prelude::*;
-use analyser::rules::prelude::*;
-use dim::TDim;
-use {DatumType, Tensor, TfdResult};
+use ops::prelude::*;
+
+use self::super::path::Path;
+use self::super::proxies::*;
+use self::super::solver::Context;
 
 /// A trait for values produced by expressions.
 pub trait Output: fmt::Debug + Clone + PartialEq {
