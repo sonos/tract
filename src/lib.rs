@@ -99,12 +99,11 @@ pub mod ops;
 pub mod optim;
 pub mod plan;
 pub mod pulse;
-pub mod streaming;
 pub mod tensor;
 
 pub use errors::*;
 
-pub use analyser::TensorFact;
+pub use analyser::types::TensorFact;
 pub use dim::TDim;
 pub use model::{Model, Node, TVec};
 pub use plan::SimplePlan;

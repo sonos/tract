@@ -1,4 +1,3 @@
-use analyser::rules::prelude::*;
 use ndarray::prelude::*;
 use num;
 use num::cast::AsPrimitive;

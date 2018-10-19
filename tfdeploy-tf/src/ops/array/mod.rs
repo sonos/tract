@@ -1,6 +1,5 @@
 use ndarray::prelude::*;
 use ops::OpRegister;
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 
 mod concatv2;

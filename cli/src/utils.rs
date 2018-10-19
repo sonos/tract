@@ -1,6 +1,4 @@
-use tfdeploy::analyser::Fact;
-use tfdeploy::analyser::TensorFact;
-use tfdeploy::Tensor;
+use tfdeploy::ops::prelude::*;
 use CliResult;
 
 /// Compares the outputs of a node in tfdeploy and tensorflow.

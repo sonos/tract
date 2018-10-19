@@ -10,8 +10,7 @@ use format::*;
 use ndarray::Axis;
 use profile::ProfileData;
 use rusage::{Duration, Instant};
-use tfdeploy::analyser::Fact;
-use tfdeploy::streaming::*;
+use tfdeploy::prelude::op::*;
 use tfdeploy::{Model, Tensor};
 use {Parameters, ProfilingMode};
 

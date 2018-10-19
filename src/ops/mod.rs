@@ -3,7 +3,6 @@ use std::fmt::Debug;
 
 use downcast_rs::Downcast;
 
-use analyser::prelude::*;
 use model::TVec;
 
 use objekt;
@@ -19,33 +18,35 @@ pub mod konst;
 pub mod logic;
 pub mod math;
 pub mod nn;
-pub mod sink;
 pub mod source;
 pub mod unimpl;
 
 mod types;
 
+#[derive(Debug, Copy, Clone, Default)]
+pub struct StreamInfo {
+    pub axis: usize,
+    pub len: TDim,
+}
+
 pub mod prelude {
-    pub use super::{InferenceOp, Op, OpState, ReducedOpRewire, StatefullOp, StatelessOp};
-    pub use analyser::types::*;
+    pub use super::{InferenceOp, Op, OpState, ReducedOpRewire, StatefullOp, StatelessOp, StreamInfo};
     pub use dim::{DimLike, TDim, ToDim};
+    pub use analyser::types::*;
+    pub use analyser::types::TypeFact;
+    pub use analyser::rules::{ InferenceResult, InferenceRulesOp, Solver, TensorsProxy };
+    pub use analyser::rules::expr::{ IntoExp, ToDimExp };
     pub use model::TVec;
     pub use ops::types::Value;
     pub use pulse::{PulsifiedOp, PulsedTensorFact};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use streaming::types::{OpBuffer, QueuesBuffer};
-    pub use streaming::values::{StepValue, Stream, StreamInfo};
     pub use tensor::arr4;
     pub use tensor::{Datum, DatumType, Tensor};
     pub use TfdResult;
 }
 
-use self::types::Value;
-pub use streaming::types::{EmptyBuffer, OpBuffer, QueuesBuffer};
-pub use streaming::values::StepValue;
-pub use pulse::PulsedTensorFact;
-use TfdResult;
+use self::prelude::*;
 
 pub trait OpState: Debug {
     fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
@@ -87,40 +88,6 @@ pub trait Op:
     Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp
 {
     fn name(&self) -> &str;
-
-    /// Returns a new streaming buffer for the operation.
-    fn new_buffer(&self) -> Box<OpBuffer> {
-        Box::new(EmptyBuffer {})
-    }
-
-    /// Evaluates one step of the operation on the given input tensors.
-    /// This is only implemented for operators which support streaming.
-    ///
-    /// The input tensors are annotated with an Option<usize>:
-    /// - None if the tensor doesn't have a streaming dimension.
-    /// - Option(d) if the tensor is being streamed on dimension d.
-    ///
-    /// If an input tensor has a streaming dimension, the corresponding
-    /// Value will only contain a _chunk_ of input of size 1 along
-    /// that dimension. Note that each chunk will only be passed once
-    /// to the step function, so it should use the provided buffer to
-    /// store whichever chunks it needs for future computations.
-    ///
-    /// The function should return Some(chunks) when it has computed
-    /// new chunks, and None if it has computed an intermediary result
-    /// successfully but doesn't have new output chunks ready yet.
-    ///
-    /// For operators like Concat, multiple input tensors might have a
-    /// streaming dimension. In that case, at each call to step, only
-    /// one of the streaming inputs will receive new chunk while the
-    /// others will receive None.
-    fn step(
-        &self,
-        _inputs: TVec<StepValue>,
-        _buffer: &mut Box<OpBuffer>,
-    ) -> TfdResult<Option<TVec<Value>>> {
-        bail!("Streaming is not available for operator {:?}", self)
-    }
 
     /// Infers properties about the input and output tensors.
     ///

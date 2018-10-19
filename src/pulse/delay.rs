@@ -1,4 +1,3 @@
-use analyser::rules::prelude::*;
 use ndarray::*;
 use ops::prelude::*;
 
@@ -110,9 +109,9 @@ impl InferenceRulesOp for Delay {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        _s: &mut Solver<'r>,
+        _inputs: &'p TensorsProxy,
+        _outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         Ok(())
     }
@@ -126,13 +125,17 @@ mod test {
 
     fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {
         let mut model = Model::default();
-        let stream_fact = TensorFact::dt_shape(u8::datum_type(), vec![TDim::s()]);
+        let stream_fact = PulsedTensorFact {
+            fact: TensorFact::dt_shape(u8::datum_type(), vec![TDim::s()]),
+            actual_size: pulse,
+            delay: 0,
+        };
         let pulse_fact = TensorFact::dt_shape(u8::datum_type(), vec![pulse]);
         model.add_source_fact("source", pulse_fact).unwrap();
         model
             .chain(
                 "delay",
-                Box::new(Delay::new(stream_fact, pulse, delay, overlap)),
+                Box::new(Delay::new(stream_fact, delay, overlap)),
             ).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();

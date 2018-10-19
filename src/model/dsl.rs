@@ -38,10 +38,12 @@ impl ModelDsl for ::model::Model {
     }
 
     fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TfdResult<usize> {
-        self.add_node(
+        let id = self.add_node(
             name.as_ref().to_owned(),
-            Box::new(::ops::source::Source::new(fact)),
-        )
+            Box::new(::ops::source::Source::new(fact.clone())),
+        )?;
+        self.set_fact(OutletId::new(id, 0), fact)?;
+        Ok(id)
     }
 
     fn add_const<S: AsRef<str>>(&mut self, name: S, t: Tensor) -> TfdResult<usize> {

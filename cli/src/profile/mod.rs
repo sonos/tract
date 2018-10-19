@@ -11,7 +11,7 @@ use display_graph::DisplayOptions;
 use {Parameters, ProfilingMode, SomeGraphDef};
 
 mod regular;
-mod streaming;
+//mod streaming;
 
 #[derive(Debug)]
 pub struct ProfileData {
@@ -121,10 +121,13 @@ pub fn handle(
     match &profiling {
         ProfilingMode::Regular { .. } => regular::handle(params, profiling, display_options),
         ProfilingMode::RegularBenching { .. } => regular::handle_benching(params, profiling),
+        /*
         ProfilingMode::StreamCruising => streaming::handle_cruise(params, display_options),
         ProfilingMode::StreamBuffering => streaming::handle_buffering(params, display_options),
         ProfilingMode::StreamBenching { .. } => {
             streaming::handle_bench(params, profiling, display_options)
         }
+        */
+        _ => unimplemented!()
     }
 }

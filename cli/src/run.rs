@@ -1,5 +1,5 @@
 use errors::*;
-use tfdeploy::analyser::TensorFact;
+use tfdeploy::ops::prelude::*;
 use tfdeploy::SimplePlan;
 use Parameters;
 

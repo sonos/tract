@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num::Zero;
 
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
 use tfdeploy::TfdResult;
 

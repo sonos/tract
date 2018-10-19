@@ -1,8 +1,6 @@
 use std::marker::PhantomData;
 
-use tfdeploy::analyser::rules::prelude::*;
 use tfdeploy::ops::prelude::*;
-use tfdeploy::TfdResult;
 
 #[derive(Debug, Clone, Default, new)]
 pub struct Fill<T: Datum> {

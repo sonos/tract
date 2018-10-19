@@ -3,10 +3,10 @@ use std::ops::{Add, Neg};
 
 use num::Zero;
 
-use analyser::prelude::*;
-use analyser::rules::prelude::*;
-use model::TVec;
-use TfdResult;
+use ops::prelude::*;
+
+use self::super::expr::{ Exp, IntoExp, Output, TExp };
+use self::super::path::{ Path, get_path, set_path };
 
 /// A structure that holds the current sets of TensorFacts.
 ///

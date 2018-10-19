@@ -1,4 +1,3 @@
-use analyser::rules::prelude::*;
 use ops::prelude::*;
 
 use super::ConvUnary;

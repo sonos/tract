@@ -1,4 +1,5 @@
-use {Model, TVec, TensorFact, TfdResult};
+use ops::prelude::*;
+use ::Model;
 
 pub struct Reduce;
 

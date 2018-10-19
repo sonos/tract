@@ -1,5 +1,4 @@
 use self::super::DataFormat;
-use analyser::rules::prelude::*;
 use num::traits::AsPrimitive;
 use ops::prelude::*;
 
