@@ -9,16 +9,15 @@ struct DelayState {
 
 impl DelayState {
     pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Value) -> TfdResult<Value> {
-        let axis_id = op.input_fact.axis()?;
-        let axis = Axis(axis_id);
+        let axis = Axis(op.input_fact.axis);
         let input = input.to_array_view::<T>()?;
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
-        // generate output
+
         let buffered = op.delay + op.overlap;
-        let mut output_shape: Vec<_> = input.shape().to_vec();
-        let input_len = op.input_fact.actual_size;
+        let mut output_shape: Vec<_> = op.input_fact.shape.clone();
+        let input_len = op.input_fact.shape[op.input_fact.axis];
         let output_len = input_len + op.overlap;
-        output_shape[axis_id] = output_len;
+        output_shape[op.input_fact.axis] = output_len;
         // build output
         let output = if op.delay < input_len  {
             let mut output = unsafe { ArrayD::<T>::uninitialized(output_shape) };
@@ -38,7 +37,7 @@ impl DelayState {
         if buffered < input_len {
             buffer.assign(&input.slice_axis(axis, Slice::from((input_len - buffered)..)));
         } else {
-            let stride = buffer.strides()[axis_id] as usize * input_len;
+            let stride = buffer.strides()[op.input_fact.axis] as usize * input_len;
             buffer.as_slice_mut().unwrap().rotate_left(stride);
             buffer
                 .slice_axis_mut(axis, Slice::from((buffered - input_len)..))
@@ -77,30 +76,9 @@ fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
 
 impl StatefullOp for Delay {
     fn state(&self) -> TfdResult<Option<Box<OpState>>> {
-        let dt = self
-            .input_fact
-            .fact
-            .datum_type
-            .concretize()
-            .ok_or("Delay with abstract tensor type")?;
-        let shape = self
-            .input_fact
-            .fact
-            .shape
-            .concretize()
-            .ok_or("Delay with abstract tensor shape")?;
-        let axis = self.input_fact.axis()?;
-        let buffer_shape: Vec<_> = shape
-            .iter()
-            .enumerate()
-            .map(|(ax, &dim)| {
-                if ax != axis {
-                    dim.to_integer().unwrap() as usize
-                } else {
-                    self.delay + self.overlap
-                }
-            }).collect();
-        let buffer = dispatch_datum!(self::make_buffer(dt)(&buffer_shape));
+        let mut buffer_shape: Vec<_> = self.input_fact.shape.clone();
+        buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
+        let buffer = dispatch_datum!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
         Ok(Some(Box::new(DelayState { buffer, batch: 0 })))
     }
 }
@@ -125,17 +103,18 @@ mod test {
 
     fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {
         let mut model = Model::default();
-        let stream_fact = PulsedTensorFact {
-            fact: TensorFact::dt_shape(u8::datum_type(), vec![TDim::s()]),
-            actual_size: pulse,
+        let fact = PulsedTensorFact {
+            dt: u8::datum_type(),
+            shape: vec!(pulse),
+            axis: 0,
+            dim: TDim::s(),
             delay: 0,
         };
-        let pulse_fact = TensorFact::dt_shape(u8::datum_type(), vec![pulse]);
-        model.add_source_fact("source", pulse_fact).unwrap();
+        model.add_source_fact("source", fact.to_little_fact()).unwrap();
         model
             .chain(
                 "delay",
-                Box::new(Delay::new(stream_fact, delay, overlap)),
+                Box::new(Delay::new(fact, delay, overlap)),
             ).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();

@@ -155,6 +155,73 @@ impl Op for ConvUnary {
         }
         Ok(None)
     }
+
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<::pulse::PulsifiedOp>> {
+        let input = args_1!(inputs);
+        let shape = self.data_fmt.shape(&input.shape);
+        if input.axis == shape.n_axis() {
+            let mut op = self.clone();
+            op.full_output_shape[input.axis] = input.pulse().to_dim();
+            let mut fact = input.clone();
+            fact.shape = op
+                .full_output_shape
+                .iter()
+                .enumerate()
+                .map(|(ax, &d)| {
+                    if ax == input.axis {
+                        input.pulse()
+                    } else {
+                        d.to_integer().unwrap() as usize
+                    }
+                }).collect();
+            Ok(vec![PulsifiedOp::new(Box::new(op), tvec!(fact))])
+        } else if input.axis == shape.c_axis() {
+            bail!("Can not pulsify convolution alongs the input channel axis");
+        } else {
+            let spatial_rank = self.full_input_shape.len() - 2;
+            let geo_axis = input.axis - shape.h_axis();
+            let kernel_spatial_shape =
+                &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
+            println!("geo_axis: {:?}", geo_axis);
+            let kernel_len = (kernel_spatial_shape[geo_axis] - 1)
+                * self.strides[geo_axis]
+                * self.dilations[geo_axis];
+            println!("kernel_len: {:?}", kernel_len);
+            let mut augmented_fact = input.clone();
+            augmented_fact.shape[augmented_fact.axis] += kernel_len;
+            augmented_fact.delay += kernel_len;
+
+            let mut conv_op = self.clone();
+            conv_op.full_input_shape[input.axis] = augmented_fact.pulse().to_dim();
+            conv_op.full_output_shape[input.axis] =
+                (augmented_fact.pulse() - kernel_len / self.strides[geo_axis]).to_dim();
+            let mut conv_fact = input.clone();
+            conv_fact.shape = self
+                .full_output_shape
+                .iter()
+                .enumerate()
+                .map(|(ax, &d)| {
+                    if ax == input.axis {
+                        input.pulse() / self.strides[geo_axis]
+                    } else {
+                        d.to_integer().unwrap() as usize
+                    }
+                }).collect();
+            conv_fact.delay += kernel_len;
+
+            let memory = PulsifiedOp::new(
+                Box::new(::pulse::delay::Delay::new(
+                    input.clone(),
+                    0,
+                    kernel_len,
+                )),
+                tvec!(augmented_fact),
+            );
+
+            let conv = PulsifiedOp::new(Box::new(conv_op), tvec!(conv_fact));
+            Ok(vec![memory, conv])
+        }
+    }
 }
 
 impl StatelessOp for ConvUnary {

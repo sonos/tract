@@ -30,15 +30,17 @@ pub struct StreamInfo {
 }
 
 pub mod prelude {
-    pub use super::{InferenceOp, Op, OpState, ReducedOpRewire, StatefullOp, StatelessOp, StreamInfo};
-    pub use dim::{DimLike, TDim, ToDim};
-    pub use analyser::types::*;
+    pub use super::{
+        InferenceOp, Op, OpState, ReducedOpRewire, StatefullOp, StatelessOp, StreamInfo,
+    };
+    pub use analyser::rules::expr::{IntoExp, ToDimExp};
+    pub use analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorsProxy};
     pub use analyser::types::TypeFact;
-    pub use analyser::rules::{ InferenceResult, InferenceRulesOp, Solver, TensorsProxy };
-    pub use analyser::rules::expr::{ IntoExp, ToDimExp };
+    pub use analyser::types::*;
+    pub use dim::{DimLike, TDim, ToDim};
     pub use model::TVec;
     pub use ops::types::Value;
-    pub use pulse::{PulsifiedOp, PulsedTensorFact};
+    pub use pulse::{PulsedTensorFact, PulsifiedOp};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tensor::arr4;
@@ -130,10 +132,7 @@ pub trait Op:
         Ok(None)
     }
 
-    fn pulsify(
-        &self,
-        _inputs: TVec<&PulsedTensorFact>,
-    ) -> TfdResult<::pulse::PulsifiedOp> {
+    fn pulsify(&self, _inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<::pulse::PulsifiedOp>> {
         bail!("Operator {} do not support pulsification", self.name())
     }
 
