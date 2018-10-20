@@ -155,25 +155,25 @@ pub fn hard_sigmoid(node: &NodeProto) -> TfdResult<Box<Op>> {
 }
 
 pub fn layer_hard_max(node: &NodeProto) -> TfdResult<Box<Op>> {
-    let axis: usize = node
+    let axis: isize = node
         .get_attr_opt_int("axis")?
-        .map(|i| i as usize)
+        .map(|i| i as isize)
         .unwrap_or(1);
     Ok(Box::new(tfdops::nn::LayerHardmax::new(axis)))
 }
 
 pub fn layer_log_soft_max(node: &NodeProto) -> TfdResult<Box<Op>> {
-    let axis: usize = node
+    let axis: isize = node
         .get_attr_opt_int("axis")?
-        .map(|i| i as usize)
+        .map(|i| i as isize)
         .unwrap_or(1);
     Ok(Box::new(tfdops::nn::LayerLogSoftmax::new(axis)))
 }
 
 pub fn layer_soft_max(node: &NodeProto) -> TfdResult<Box<Op>> {
-    let axis: usize = node
+    let axis: isize = node
         .get_attr_opt_int("axis")?
-        .map(|i| i as usize)
+        .map(|i| i as isize)
         .unwrap_or(1);
     Ok(Box::new(tfdops::nn::LayerSoftmax::new(axis)))
 }
