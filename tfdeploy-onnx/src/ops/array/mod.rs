@@ -15,6 +15,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Reshape", |_| {
         Ok(Box::new(tfdops::array::Reshape::default()))
     });
+    reg.insert("Shape", |_| {
+        Ok(Box::new(tfdops::array::Shape::default()))
+    });
     reg.insert("Slice", slice);
     reg.insert("Squeeze", squeeze);
     reg.insert("Unsqueeze", unsqueeze);

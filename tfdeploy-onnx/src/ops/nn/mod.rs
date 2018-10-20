@@ -42,6 +42,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn);
     reg.insert("MaxPool", max_pool);
+    reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("ReduceL1", reduce!(L1));
     reg.insert("ReduceL2", reduce!(L2));
     reg.insert("ReduceLogSum", reduce!(LogSum));
@@ -53,6 +54,8 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ReduceSum", reduce!(Sum));
     reg.insert("ReduceSumSquare", reduce!(SumSquare));
     reg.insert("Relu", |_| Ok(Box::new(tfdops::nn::Relu::default())));
+    reg.insert("ScaledTanh", scaled_tanh);
+    reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_| Ok(Box::new(tfdops::nn::Sigmoid::default())));
     reg.insert("Softmax", layer_soft_max);
@@ -208,8 +211,26 @@ pub fn max_pool(node: &NodeProto) -> TfdResult<Box<Op>> {
     )))
 }
 
+pub fn parametric_softplus(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_float("alpha")?;
+    let beta = node.get_attr_float("beta")?;
+    Ok(Box::new(tfdops::nn::ParametricSoftplus::new(alpha, beta)))
+}
+
+pub fn scaled_tanh(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_float("alpha")?;
+    let beta = node.get_attr_float("beta")?;
+    Ok(Box::new(tfdops::nn::ScaledTanh::new(alpha, beta)))
+}
+
 pub fn selu(node: &NodeProto) -> TfdResult<Box<Op>> {
     let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.67326);
     let gamma = node.get_attr_opt_float("gamma")?.unwrap_or(1.0507);
     Ok(Box::new(tfdops::nn::Selu::new(alpha, gamma)))
 }
+
+pub fn thresholded_relu(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
+    Ok(Box::new(tfdops::nn::ThresholdedRelu::new(alpha)))
+}
+
