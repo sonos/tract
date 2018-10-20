@@ -2,8 +2,7 @@ use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct LayerHardmax {
-    axis: usize,
-    //    data_is_nhwc: bool, // default is nchw (onnx)
+    axis: isize,
 }
 
 impl LayerHardmax {
@@ -13,7 +12,8 @@ impl LayerHardmax {
     ) -> TfdResult<TVec<Value>> {
         let array = input.into_array::<D>()?;
         let shape = array.shape().to_vec();
-        let first_dim: usize = array.shape()[0..self.axis].iter().product();
+        let axis = if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
+        let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
         array.outer_iter_mut().for_each(|mut layer| {
@@ -59,8 +59,7 @@ impl InferenceRulesOp for LayerHardmax {
 
 #[derive(Debug, Clone, new, Default)]
 pub struct LayerLogSoftmax {
-    axis: usize,
-    //    data_is_nhwc: bool, // default is nchw (onnx)
+    axis: isize,
 }
 
 impl LayerLogSoftmax {
@@ -70,7 +69,8 @@ impl LayerLogSoftmax {
     ) -> TfdResult<TVec<Value>> {
         let array = input.into_array::<D>()?;
         let shape = array.shape().to_vec();
-        let first_dim: usize = array.shape()[0..self.axis].iter().product();
+        let axis = if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
+        let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
         array.outer_iter_mut().for_each(|mut layer| {
@@ -113,8 +113,7 @@ impl InferenceRulesOp for LayerLogSoftmax {
 
 #[derive(Debug, Clone, new, Default)]
 pub struct LayerSoftmax {
-    axis: usize,
-    //    data_is_nhwc: bool, // default is nchw (onnx)
+    axis: isize,
 }
 
 impl LayerSoftmax {
@@ -124,7 +123,8 @@ impl LayerSoftmax {
     ) -> TfdResult<TVec<Value>> {
         let array = input.into_array::<D>()?;
         let shape = array.shape().to_vec();
-        let first_dim: usize = array.shape()[0..self.axis].iter().product();
+        let axis = if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
+        let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
         array.outer_iter_mut().for_each(|mut layer| {

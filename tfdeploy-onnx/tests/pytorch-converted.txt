@@ -60,5 +60,6 @@ test_Softplus
 test_Softsign
 test_Tanh
 test_log_softmax_dim3
+test_log_softmax_lastdim
 test_softmax_functional_dim3
 test_softmax_lastdim
