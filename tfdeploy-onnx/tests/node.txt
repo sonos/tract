@@ -259,6 +259,9 @@ test_tan
 test_tan_example
 test_tanh
 test_tanh_example
+test_thresholdedrelu
+test_thresholdedrelu_default
+test_thresholdedrelu_example
 test_unsqueeze
 test_xor2d
 test_xor3d

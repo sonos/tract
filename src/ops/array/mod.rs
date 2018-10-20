@@ -47,6 +47,7 @@ mod concat;
 mod flatten;
 mod reshape;
 mod rm_dims;
+mod shape;
 mod slice;
 mod squeeze;
 
@@ -56,5 +57,6 @@ pub use self::concat::Concat;
 pub use self::flatten::Flatten;
 pub use self::reshape::Reshape;
 pub use self::rm_dims::RmDims;
+pub use self::shape::Shape;
 pub use self::slice::Slice;
 pub use self::squeeze::Squeeze;

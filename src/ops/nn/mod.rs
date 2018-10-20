@@ -71,6 +71,22 @@ element_map_with_params!(
     }
 );
 
+element_map_with_params!(ParametricSoftplus, [f32, f64], {alpha: f32, beta: f32},
+    fn eval_one<T>(s: &ParametricSoftplus, x:T) -> T
+    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    {
+        s.alpha.as_() * ((s.beta.as_() * x).exp() + 1.0.as_()).ln()
+    }
+);
+
+element_map_with_params!(ScaledTanh, [f32, f64], {alpha: f32, beta: f32},
+    fn eval_one<T>(s: &ScaledTanh, x:T) -> T
+    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    {
+        s.alpha.as_() * (s.beta.as_() * x).tanh()
+    }
+);
+
 element_map_with_params!(Selu, [f32, f64], {alpha: f32, gamma: f32},
     fn eval_one<T>(s: &Selu, x:T) -> T
     where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
@@ -80,5 +96,13 @@ element_map_with_params!(Selu, [f32, f64], {alpha: f32, gamma: f32},
         } else {
             s.gamma.as_() * x
         }
+    }
+);
+
+element_map_with_params!(ThresholdedRelu, [f32, f64], {alpha: f32},
+    fn eval_one<T>(s: &ThresholdedRelu, x:T) -> T
+    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    {
+        if x <= s.alpha.as_() { 0.0.as_() } else { x }
     }
 );
