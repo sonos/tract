@@ -42,6 +42,7 @@ test_LeakyReLU
 test_LeakyReLU_with_negval
 test_LeakyReLU_with_negval
 test_Linear
+test_Linear_no_bias
 test_LogSoftmax
 test_MaxPool1d
 test_MaxPool1d_stride

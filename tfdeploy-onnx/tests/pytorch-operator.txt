@@ -21,6 +21,7 @@ test_operator_min
 test_operator_mm
 test_operator_non_float_params
 test_operator_params
+test_operator_permute2
 test_operator_pow
 test_operator_reduced_mean
 test_operator_reduced_mean_keepdim
