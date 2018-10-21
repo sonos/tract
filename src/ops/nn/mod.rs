@@ -1,3 +1,4 @@
+mod arg_max_min;
 mod avgpool;
 mod batch_norm;
 mod conv;
@@ -10,6 +11,7 @@ mod padding;
 mod patches;
 mod reduce;
 
+pub use self::arg_max_min::ArgMaxMin;
 pub use self::avgpool::AvgPool;
 pub use self::batch_norm::BatchNorm;
 pub use self::conv::{Conv, ConvUnary, FixedParamsConv};
