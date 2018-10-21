@@ -22,6 +22,8 @@ macro_rules! reduce {
 }
 
 pub fn register_all_ops(reg: &mut OpRegister) {
+    reg.insert("ArgMax", arg_max_min);
+    reg.insert("ArgMin", arg_max_min);
     reg.insert("AveragePool", average_pool);
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
@@ -94,6 +96,16 @@ fn strides(node: &NodeProto) -> TfdResult<Option<Vec<usize>>> {
     Ok(node
         .get_attr_opt_ints("strides")?
         .map(|i| i.iter().map(|&i| i as usize).collect()))
+}
+
+pub fn arg_max_min(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let max = node.get_op_type() == "ArgMax";
+    let axis = node
+        .get_attr_opt_int("axis")?
+        .map(|i| i as usize)
+        .unwrap_or(0);
+    let keepdims = node.get_attr_opt_int("keepdims")?.unwrap_or(1i64) == 1;
+    Ok(Box::new(tfdops::nn::ArgMaxMin::new(max, axis, keepdims)))
 }
 
 pub fn batch_normalization(node: &NodeProto) -> TfdResult<Box<Op>> {
