@@ -16,7 +16,10 @@ pub fn register_all_ops(reg: &mut OpRegister) {
         Ok(Box::new(tfdops::array::Reshape::default()))
     });
     reg.insert("Shape", |_| {
-        Ok(Box::new(tfdops::array::Shape::default()))
+        Ok(Box::new(tfdops::array::Shape::new(DatumType::I64)))
+    });
+    reg.insert("Size", |_| {
+        Ok(Box::new(tfdops::array::Size::new(DatumType::I64)))
     });
     reg.insert("Slice", slice);
     reg.insert("Squeeze", squeeze);

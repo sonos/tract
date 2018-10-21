@@ -1,3 +1,5 @@
+use tfdeploy::ops::prelude::*;
+
 use ops::OpRegister;
 
 mod concatv2;
@@ -19,8 +21,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
     reg.insert("Reshape", reshape::reshape);
-    reg.insert("Shape", |_| Ok(Box::new(::tfdeploy::ops::array::Shape::default())));
+    reg.insert("Shape", |_| {
+        Ok(Box::new(::tfdeploy::ops::array::Shape::new(DatumType::I32)))
+    });
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("StridedSlice", strided_slice::build);
 }
-
