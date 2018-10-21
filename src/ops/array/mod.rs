@@ -48,6 +48,7 @@ mod flatten;
 mod reshape;
 mod rm_dims;
 mod shape;
+mod size;
 mod slice;
 mod squeeze;
 
@@ -58,5 +59,6 @@ pub use self::flatten::Flatten;
 pub use self::reshape::Reshape;
 pub use self::rm_dims::RmDims;
 pub use self::shape::Shape;
+pub use self::size::Size;
 pub use self::slice::Slice;
 pub use self::squeeze::Squeeze;
