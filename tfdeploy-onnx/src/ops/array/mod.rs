@@ -21,6 +21,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Size", |_| {
         Ok(Box::new(tfdops::array::Size::new(DatumType::I64)))
     });
+    reg.insert("Transpose", transpose);
     reg.insert("Slice", slice);
     reg.insert("Squeeze", squeeze);
     reg.insert("Unsqueeze", unsqueeze);
@@ -52,6 +53,13 @@ pub fn squeeze(node: &NodeProto) -> TfdResult<Box<Op>> {
         .get_attr_opt_ints("axes")?
         .map(|l| l.iter().map(|&a| a as usize).collect());
     Ok(Box::new(tfdops::array::Squeeze::new(axes)))
+}
+
+pub fn transpose(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let perm = node
+        .get_attr_opt_ints("perm")?
+        .map(|axes| axes.iter().map(|&a| a as usize).collect());
+    Ok(Box::new(tfdops::array::PermuteAxes::new(perm)))
 }
 
 pub fn unsqueeze(node: &NodeProto) -> TfdResult<Box<Op>> {
