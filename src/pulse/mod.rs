@@ -57,6 +57,11 @@ impl PulsedTensorFact {
         TensorFact::dt_shape(self.dt, self.shape.clone())
     }
 
+    pub fn big_shape(&self) -> Vec<TDim> {
+        self.shape.iter().enumerate().map(|(ix, &d)|
+            if ix == self.axis { self.dim } else { d.to_dim() }).collect()
+    }
+
     pub fn to_big_fact(&self) -> TensorFact {
         let mut fact = self.to_little_fact();
         fact.shape.dims[self.axis] = self.dim.into();
@@ -101,9 +106,15 @@ impl PulsifiedModel {
                     old.node(old_id).op().pulsify(inputs)?
                 };
                 let mut previous = None;
-                for pulsed in pulsed_chain.into_iter() {
+                let count = pulsed_chain.len();
+                for (ix,pulsed) in pulsed_chain.into_iter().enumerate() {
                     let PulsifiedOp { op, outputs } = pulsed;
-                    let new_id = model.add_node(old.node(old_id).name.clone(), op)?;
+                    let name = if ix == count-1 {
+                        old.node(old_id).name.clone()
+                    } else {
+                        format!("{}#{}", old.node(old_id).name, ix)
+                    };
+                    let new_id = model.add_node(name, op)?;
                     if let Some(prev) = previous {
                         model.add_edge(OutletId::new(prev, 0), InletId::new(new_id, 0))?;
                     } else {
@@ -121,6 +132,16 @@ impl PulsifiedModel {
             }
         }
         Ok(PulsifiedModel { model, facts })
+    }
+
+    pub fn output_fact(&self) -> TfdResult<&PulsedTensorFact> {
+        let output = self.model.outputs()?[0];
+        Ok(&self.facts[&output])
+    }
+
+    pub fn input_fact(&self) -> TfdResult<&PulsedTensorFact> {
+        let input = self.model.inputs()?[0];
+        Ok(&self.facts[&input])
     }
 }
 

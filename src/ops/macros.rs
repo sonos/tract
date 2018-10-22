@@ -377,7 +377,9 @@ macro_rules! args_1 {
         if $inputs.len() != 1 {
             Err("Expected 1 arg")?
         }
-        $inputs.pop().unwrap()
+        let result = $inputs.pop().unwrap();
+        ::std::mem::drop($inputs);
+        result
     }};
 }
 
@@ -388,7 +390,9 @@ macro_rules! args_2 {
             Err("Expected 2 args")?
         }
         $inputs.reverse();
-        ($inputs.pop().unwrap(), $inputs.pop().unwrap())
+        let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap());
+        ::std::mem::drop($inputs);
+        result
     }};
 }
 
@@ -400,11 +404,13 @@ macro_rules! args_3 {
             Err("Expected 3 args")?
         }
         $inputs.reverse();
-        (
+        let result = (
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
-        )
+        );
+        ::std::mem::drop($inputs);
+        result
     }};
 }
 
@@ -416,12 +422,14 @@ macro_rules! args_4 {
             Err("Expected 4 args")?
         }
         $inputs.reverse();
-        (
+        let result = (
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
-        )
+        );
+        ::std::mem::drop($inputs);
+        result
     }};
 }
 
@@ -433,13 +441,15 @@ macro_rules! args_5 {
             Err("Expected 5 args")?
         }
         $inputs.reverse();
-        (
+        let result = (
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
             $inputs.pop().unwrap(),
-        )
+        );
+        ::std::mem::drop($inputs);
+        result
     }};
 }
 

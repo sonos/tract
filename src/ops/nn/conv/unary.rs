@@ -182,11 +182,9 @@ impl Op for ConvUnary {
             let geo_axis = input.axis - shape.h_axis();
             let kernel_spatial_shape =
                 &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
-            println!("geo_axis: {:?}", geo_axis);
             let kernel_len = (kernel_spatial_shape[geo_axis] - 1)
                 * self.strides[geo_axis]
                 * self.dilations[geo_axis];
-            println!("kernel_len: {:?}", kernel_len);
             let mut augmented_fact = input.clone();
             augmented_fact.shape[augmented_fact.axis] += kernel_len;
             augmented_fact.delay += kernel_len;
@@ -208,6 +206,7 @@ impl Op for ConvUnary {
                     }
                 }).collect();
             conv_fact.delay += kernel_len;
+            conv_fact.dim -= kernel_len.to_dim();
 
             let memory = PulsifiedOp::new(
                 Box::new(::pulse::delay::Delay::new(

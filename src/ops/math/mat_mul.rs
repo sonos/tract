@@ -114,12 +114,20 @@ impl Op for MatMulUnaryA {
         "MatMulUnaryA"
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<PulsifiedOp>> {
         let input = args_1!(inputs);
         if input.axis >= input.shape.len() - 1 {
             bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
         }
-        Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(input.clone()))))
+        let (_, _, cshape_pulse) = infer_shapes(input.shape.to_vec(), self.b.shape().to_vec())?;
+        let (_, _, cshape_full) = infer_shapes(
+            input.big_shape(),
+            self.b.shape().iter().map(|d| d.to_dim()).collect(),
+        )?;
+        let mut fact = input.clone();
+        fact.shape = cshape_pulse;
+        fact.dim = cshape_full[fact.axis];
+        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))])
     }
 }
 
