@@ -158,6 +158,18 @@ fn main() {
 
     let matches = app.get_matches();
 
+    if ::std::env::var("RUST_LOG").is_err() {
+        let level = match matches.occurrences_of("verbosity") {
+            0 => "cli=warn,tfdeploy=warn",
+            1 => "cli=info,tfdeploy=info",
+            2 => "cli=debug,tfdeploy=debug",
+            _ => "cli=trace,tfdeploy=trace",
+        };
+        ::std::env::set_var("RUST_LOG", level);
+    }
+
+    pretty_env_logger::init();
+
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());
         process::exit(1)
@@ -215,6 +227,7 @@ pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
     tfd_model: tfdeploy::Model,
+    pulsified_model: Option<tfdeploy::pulse::PulsifiedModel>,
 
     #[cfg(feature = "tensorflow")]
     tf_model: Option<conform::tf::Tensorflow>,
@@ -306,15 +319,19 @@ impl Parameters {
             tfd_model = tfd_model.into_optimized()?;
         }
 
-        if let Some(pulse) = pulse {
-            tfd_model = ::tfdeploy::pulse::PulsifiedModel::new(&tfd_model, pulse)?.model;
-        }
+        let pulsified_model = if let Some(pulse) = pulse {
+            info!("Pulsify {}", pulse);
+            Some(::tfdeploy::pulse::PulsifiedModel::new(&tfd_model, pulse)?)
+        } else {
+            None
+        };
 
         Ok(Parameters {
             name: name.to_string(),
             graph,
             tfd_model,
             tf_model,
+            pulsified_model,
             inputs,
         })
     }
@@ -384,25 +401,13 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> CliResult<()> {
-    // Configure the logging level.
-    if ::std::env::var("RUST_LOG").is_err() {
-        let level = match matches.occurrences_of("verbosity") {
-            0 => "tfdeploy=warn",
-            1 => "tfdeploy=info",
-            2 => "tfdeploy=debug",
-            _ => "tfdeploy=trace",
-        };
-        ::std::env::set_var("RUST_LOG", level);
-    }
-
-    pretty_env_logger::init();
-
     let params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
 
         ("run", Some(m)) => {
+            println!("RUN");
             let assert_outputs: Option<Vec<TensorFact>> = m
                 .values_of("assert-output")
                 .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
@@ -416,7 +421,11 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
         */
-        ("draw", _) => ::draw::render(&params.tfd_model),
+        ("draw", _) => if let Some(pulse_model) = params.pulsified_model.as_ref() {
+            ::draw::render(&pulse_model.model)
+        } else {
+            ::draw::render(&params.tfd_model)
+        }
 
         ("dump", Some(m)) => {
             let assert_outputs: Option<Vec<TensorFact>> = m
