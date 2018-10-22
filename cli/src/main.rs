@@ -407,7 +407,6 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
 
         ("run", Some(m)) => {
-            println!("RUN");
             let assert_outputs: Option<Vec<TensorFact>> = m
                 .values_of("assert-output")
                 .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
