@@ -53,11 +53,11 @@ impl PulsedTensorFact {
         self.shape[self.axis]
     }
 
-    pub fn to_little_fact(&self) -> TensorFact {
+    pub fn to_pulse_fact(&self) -> TensorFact {
         TensorFact::dt_shape(self.dt, self.shape.clone())
     }
 
-    pub fn big_shape(&self) -> Vec<TDim> {
+    pub fn streaming_shape(&self) -> Vec<TDim> {
         self.shape
             .iter()
             .enumerate()
@@ -70,8 +70,8 @@ impl PulsedTensorFact {
             }).collect()
     }
 
-    pub fn to_big_fact(&self) -> TensorFact {
-        let mut fact = self.to_little_fact();
+    pub fn to_streaming_fact(&self) -> TensorFact {
+        let mut fact = self.to_pulse_fact();
         fact.shape.dims[self.axis] = self.dim.into();
         fact
     }
@@ -87,20 +87,22 @@ pub fn pulsify(
     old: &Model,
     pulse: usize,
 ) -> TfdResult<(Model, PulsedTensorFact, PulsedTensorFact)> {
-    let p_model = PulsifiedModel::new(old, pulse)?;
-    let in_fact: PulsedTensorFact = p_model.input_fact()?.clone();
-    let out_fact: PulsedTensorFact = p_model.output_fact()?.clone();
+    let mut p_model = PulsifiedModel::new(old, pulse)?;
+    let in_id = p_model.model.inputs()?[0];
+    let out_id = p_model.model.outputs()?[0];
+    let in_fact: PulsedTensorFact = p_model.facts.remove(&in_id).unwrap();
+    let out_fact: PulsedTensorFact = p_model.facts.remove(&out_id).unwrap();
     Ok((p_model.model, in_fact, out_fact))
 }
 
 #[derive(Clone, Debug)]
-pub struct PulsifiedModel {
-    pub model: Model,
-    pub facts: HashMap<OutletId, PulsedTensorFact>,
+struct PulsifiedModel {
+    model: Model,
+    facts: HashMap<OutletId, PulsedTensorFact>,
 }
 
 impl PulsifiedModel {
-    pub fn new(old: &Model, pulse: usize) -> TfdResult<PulsifiedModel> {
+    fn new(old: &Model, pulse: usize) -> TfdResult<PulsifiedModel> {
         let mut model = Model::default();
         let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
         let mut facts: HashMap<OutletId, PulsedTensorFact> = HashMap::new();
@@ -109,7 +111,7 @@ impl PulsifiedModel {
                 let node = old.node(old_id);
                 let pulsed_fact =
                     PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
-                let id = model.add_source_fact(node.name.clone(), pulsed_fact.to_little_fact())?;
+                let id = model.add_source_fact(node.name.clone(), pulsed_fact.to_pulse_fact())?;
                 facts.insert(OutletId::new(id, 0), pulsed_fact);
                 mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
             } else {
@@ -142,7 +144,7 @@ impl PulsifiedModel {
                     };
                     previous = Some(new_id);
                     for (ix, output_fact) in outputs.into_iter().enumerate() {
-                        model.set_fact(OutletId::new(new_id, ix), output_fact.to_little_fact())?;
+                        model.set_fact(OutletId::new(new_id, ix), output_fact.to_pulse_fact())?;
                         facts.insert(OutletId::new(new_id, ix), output_fact);
                         mapping.insert(OutletId::new(old_id, ix), OutletId::new(new_id, ix));
                     }
@@ -152,15 +154,6 @@ impl PulsifiedModel {
         Ok(PulsifiedModel { model, facts })
     }
 
-    pub fn output_fact(&self) -> TfdResult<&PulsedTensorFact> {
-        let output = self.model.outputs()?[0];
-        Ok(&self.facts[&output])
-    }
-
-    pub fn input_fact(&self) -> TfdResult<&PulsedTensorFact> {
-        let input = self.model.inputs()?[0];
-        Ok(&self.facts[&input])
-    }
 }
 
 #[cfg(test)]

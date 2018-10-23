@@ -121,7 +121,7 @@ impl Op for MatMulUnaryA {
         }
         let (_, _, cshape_pulse) = infer_shapes(input.shape.to_vec(), self.b.shape().to_vec())?;
         let (_, _, cshape_full) = infer_shapes(
-            input.big_shape(),
+            input.streaming_shape(),
             self.b.shape().iter().map(|d| d.to_dim()).collect(),
         )?;
         let mut fact = input.clone();
