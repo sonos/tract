@@ -11,17 +11,13 @@ impl DelayState {
     pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Value) -> TfdResult<Value> {
         let axis = Axis(op.input_fact.axis);
         let input = input.to_array_view::<T>()?;
-//        println!("\nself: {:?}", op);
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
 
         let buffered = op.delay + op.overlap;
-//        println!("buffered: {}", buffered);
         let mut output_shape: Vec<_> = op.input_fact.shape.clone();
         let input_pulse = op.input_fact.pulse();
         let output_pulse = input_pulse + op.overlap;
         output_shape[op.input_fact.axis] = output_pulse;
-//        println!("input: {:?}", input);
-//        println!("buffer: {:?}", buffer);
         // build output
         let output = if op.delay < input_pulse  {
             let mut output = unsafe { ArrayD::<T>::uninitialized(output_shape) };
@@ -47,7 +43,6 @@ impl DelayState {
                 .slice_axis_mut(axis, Slice::from((buffered - input_pulse)..))
                 .assign(&input);
         }
-//        println!("\n");
         Ok(output.into())
     }
 }
@@ -115,7 +110,7 @@ mod test {
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source_fact("source", fact.to_little_fact()).unwrap();
+        model.add_source_fact("source", fact.to_pulse_fact()).unwrap();
         model
             .chain(
                 "delay",
@@ -172,7 +167,7 @@ mod test {
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source_fact("source", fact.to_little_fact()).unwrap();
+        model.add_source_fact("source", fact.to_pulse_fact()).unwrap();
         model
             .chain(
                 "delay-1",
