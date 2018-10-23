@@ -46,7 +46,7 @@ impl ConvUnary {
         })
     }
 
-    fn eval_t<T>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>>
+    fn to_fixed_params<T>(&self, input_shape: &[usize]) -> TfdResult<FixedParamsConv<T>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
@@ -54,23 +54,37 @@ impl ConvUnary {
         let kernel_spatial_shape =
             &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
 
-        let input = args_1!(inputs);
-        let convoler = FixedParamsConv::new(
+        FixedParamsConv::new(
             self.data_fmt,
             self.kernel_is_hwio,
             self.dilations.clone(),
             self.strides.clone(),
             kernel_spatial_shape,
             self.padding.clone(),
-            input.shape(),
+            input_shape,
             self.kernel.to_array_view::<T>()?,
             self.bias
                 .as_ref()
                 .map(|b| b.to_array_view::<T>())
                 .inside_out()?,
             self.group,
-        )?;
-        let output = convoler.convolve(&input.to_array_view::<T>()?)?;
+        )
+    }
+
+    fn to_boxed_fixed_params_op<T>(&self, shape: &[usize]) -> TfdResult<Box<Op>>
+    where
+        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    {
+        Ok(Box::new(self.to_fixed_params::<T>(shape)?))
+    }
+
+    fn eval_t<T>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>>
+    where
+        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    {
+        let input = args_1!(inputs);
+        let conv = self.to_fixed_params::<T>(&input.shape())?;
+        let output = conv.convolve(&input.to_array_view::<T>()?)?;
         Ok(tvec!(output.into()))
     }
 
@@ -130,7 +144,7 @@ impl Op for ConvUnary {
 
     fn reduce(
         &self,
-        _inputs: TVec<&TensorFact>,
+        inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
     ) -> TfdResult<Option<ReducedOpRewire>> {
         let spatial_rank = self.full_input_shape.len() - 2;
@@ -151,6 +165,18 @@ impl Op for ConvUnary {
                     Box::new(MatMulUnaryA::new(kernel)),
                     tvec!(0),
                 )));
+            }
+        } else if let (Some(shape), Some(dt)) = (
+            inputs[0].shape.concretize(),
+            inputs[0].datum_type.concretize(),
+        ) {
+            if inputs[0].stream_info()?.is_none() {
+                let shape: Vec<usize> = shape
+                    .iter()
+                    .map(|d| d.to_integer().unwrap() as usize)
+                    .collect();
+                let op = dispatch_floatlike!(Self::to_boxed_fixed_params_op(dt)(self, &shape))?;
+                return Ok(Some(ReducedOpRewire::new(op, tvec!(0))));
             }
         }
         Ok(None)
@@ -209,11 +235,7 @@ impl Op for ConvUnary {
             conv_fact.dim -= kernel_len.to_dim();
 
             let memory = PulsifiedOp::new(
-                Box::new(::pulse::delay::Delay::new(
-                    input.clone(),
-                    0,
-                    kernel_len,
-                )),
+                Box::new(::pulse::delay::Delay::new(input.clone(), 0, kernel_len)),
                 tvec!(augmented_fact),
             );
 
