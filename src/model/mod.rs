@@ -163,6 +163,11 @@ impl Model {
         Ok(())
     }
 
+    pub fn set_input_fact(&mut self, input:usize, fact: TensorFact) -> TfdResult<()> {
+        let outlet = self.inputs()?[input];
+        self.set_fact(outlet, fact)
+    }
+
     pub fn facts(&self, id: usize) -> TfdResult<(TVec<&TensorFact>, TVec<&TensorFact>)> {
         let node = &self.nodes[id];
 

@@ -50,7 +50,7 @@ pub mod prelude {
 
 use self::prelude::*;
 
-pub trait OpState: Debug {
+pub trait OpState: Debug + Send {
     fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
 }
 
