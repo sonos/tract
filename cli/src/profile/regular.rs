@@ -32,9 +32,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        state.reset()?;
-        state.set_inputs(make_inputs(&[model.input_fact()?.clone()])?)?;
-        state.eval_all_in_order()?;
+        state.run(make_inputs(&[model.input_fact()?.clone()])?)?;
         iters += 1;
     }
     let dur = Duration::since(&start, iters);

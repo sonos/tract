@@ -21,6 +21,7 @@ extern crate pretty_env_logger;
 extern crate rand;
 extern crate terminal_size;
 extern crate textwrap;
+#[macro_use]
 extern crate tfdeploy;
 extern crate tfdeploy_onnx;
 extern crate tfdeploy_tf;

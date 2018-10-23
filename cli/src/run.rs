@@ -21,7 +21,7 @@ pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> Cl
     Ok(())
 }
 
-fn run_regular(params: Parameters) -> CliResult<Vec<Tensor>> {
+fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
     let tfd = params.tfd_model;
     let plan = SimplePlan::new(&tfd)?;
     Ok(plan.run(
@@ -34,7 +34,7 @@ fn run_regular(params: Parameters) -> CliResult<Vec<Tensor>> {
     )?)
 }
 
-fn run_pulse(params: Parameters) -> CliResult<Vec<Tensor>> {
+fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     let (input_fact, output_fact) = params.pulse_facts.unwrap();
     let output_pulse = output_fact.pulse();
 //    println!("output_fact: {:?}", output_fact);
@@ -52,8 +52,7 @@ fn run_pulse(params: Parameters) -> CliResult<Vec<Tensor>> {
     let pulse = input_fact.pulse();
     let mut result = ::ndarray::ArrayD::<f32>::default(output_shape);
     for (ix, chunk) in input.axis_chunks(axis, pulse)?.into_iter().enumerate() {
-        state.reset()?;
-        if chunk.shape()[input_fact.axis] < pulse {
+        let input = if chunk.shape()[input_fact.axis] < pulse {
             let mut chunk_shape = chunk.shape().to_vec();
             chunk_shape[input_fact.axis] = pulse;
             let mut padded_chunk = ::ndarray::ArrayD::<f32>::default(chunk_shape);
@@ -61,19 +60,18 @@ fn run_pulse(params: Parameters) -> CliResult<Vec<Tensor>> {
                 ::ndarray::Axis(input_fact.axis),
                 (..chunk.shape()[input_fact.axis]).into()
             ).assign(&chunk.to_array_view::<f32>()?);
-            state.set_input(0, padded_chunk.into())?;
+            padded_chunk.into()
         } else {
-            state.set_input(0, chunk)?;
-        }
-        state.eval_all_in_order()?;
-        let result_chunk = state.take_outputs()?.remove(0).into_array::<f32>()?;
+            chunk
+        };
+        let mut outputs = state.run(tvec!(input))?;
+        let result_chunk = outputs.remove(0).into_array::<f32>()?;
         result.slice_axis_mut(
             ::ndarray::Axis(output_fact.axis),
             ((output_pulse * ix)..(output_pulse * (ix + 1))).into(),
         ).assign(&result_chunk);
     }
-//    println!("must slice: {:?}", output_fact.delay..(output_fact.delay+output_dim as usize));
     result.slice_axis_inplace(::ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
     result.slice_axis_inplace(::ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
-    Ok(vec!(result.into()))
+    Ok(tvec!(result.into()))
 }
