@@ -16,15 +16,9 @@ impl<M: Borrow<Model>> SimplePlan<M> {
         Ok(SimplePlan { model, order })
     }
 
-    pub fn run(&self, inputs: TVec<Tensor>) -> TfdResult<Vec<Tensor>> {
+    pub fn run(&self, inputs: TVec<Tensor>) -> TfdResult<TVec<Tensor>> {
         let mut state = SimpleState::new(self)?;
-        state.set_inputs(inputs)?;
-        for &n in &self.order {
-            if state.values[n].is_none() {
-                state.compute_one(n)?;
-            }
-        }
-        state.take_outputs()
+        state.run(inputs)
     }
 
     pub fn model(&self) -> &Model {
@@ -58,21 +52,59 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         })
     }
 
-    /// Reset internal state.
-    pub fn reset(&mut self) -> TfdResult<()> {
+    /// Reset wires state.
+    pub fn reset_wires(&mut self) -> TfdResult<()> {
         self.values.iter_mut().for_each(|s| *s = None);
         Ok(())
     }
 
-    pub fn eval_all_in_order(&mut self) -> TfdResult<()> {
+    /// Reset wires state.
+    pub fn reset_op_states(&mut self) -> TfdResult<()> {
+        self.states = self.plan
+            .borrow()
+            .model()
+            .nodes()
+            .iter()
+            .map(|n| n.op().state())
+            .collect::<TfdResult<_>>()?;
+        Ok(())
+    }
+
+    pub fn run(&mut self, inputs:TVec<Tensor>) -> TfdResult<TVec<Tensor>> {
         use ops::source::Source;
-        let order = self.plan().order.clone(); //FIXME
-        for n in order.into_iter() {
-            if self.model().nodes()[n].op_as::<Source>().is_none() {
-                self.compute_one(n)?;
+        let mut result = tvec!();
+        {
+            let &mut SimpleState { ref plan, ref mut states, ref mut values, .. } = self;
+            let model = plan.borrow().model();
+            for (input,v) in model.inputs()?.iter().zip(inputs.into_iter()) {
+                values[input.node] = Some(tvec!(v.into()));
+            }
+            for n in plan.borrow().order.iter() {
+                let node: &Node = model.node(*n);
+                if node.op_as::<Source>().is_none() {
+                    let mut inputs: TVec<Value> = tvec![];
+                    for i in &node.inputs {
+                        let prec_node = model.node(i.node);
+                        let prec = values[i.node].as_ref().ok_or_else(|| format!(
+                            "Computing {}, precursor {} not done:",
+                            node.name, prec_node.name
+                        ))?;
+                        inputs.push(prec[i.slot].clone().into())
+                    }
+                    let vs = states[node.id]
+                        .eval(node.op(), inputs)
+                        .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+                    values[node.id] = Some(vs);
+                }
+            }
+            for output in model.outputs()? {
+                let mut val = Value::from(Tensor::from(0f32));
+                ::std::mem::swap(&mut val, &mut values[output.node].as_mut().unwrap()[output.slot]);
+                result.push(val.into_tensor());
             }
         }
-        Ok(())
+        self.reset_wires()?;
+        Ok(result)
     }
 
     pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TfdResult<()> {

@@ -125,10 +125,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1) + overlap))
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
-            state.reset().unwrap();
-            state.set_input(0, Tensor::from(arr1(&input))).unwrap();
-            state.eval_all_in_order().unwrap();
-            let output = state.take_outputs().unwrap();
+            let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
             assert_eq!(
                 output[0].as_u8s().unwrap().as_slice().unwrap(),
                 &*expect
@@ -194,10 +191,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1)))
                 .map(|i| i.saturating_sub(4) as u8)
                 .collect();
-            state.reset().unwrap();
-            state.set_input(0, Tensor::from(arr1(&input))).unwrap();
-            state.eval_all_in_order().unwrap();
-            let output = state.take_outputs().unwrap();
+            let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
             assert_eq!(
                 output[0].as_u8s().unwrap().as_slice().unwrap(),
                 &*expect

@@ -153,7 +153,6 @@ impl PulsifiedModel {
         }
         Ok(PulsifiedModel { model, facts })
     }
-
 }
 
 #[cfg(test)]
@@ -241,12 +240,10 @@ mod tests {
 
         for p in 0..(input.len() / pulse) {
             let chunk = &input[(p * pulse)..((p + 1) * pulse)];
-            state.reset().unwrap();
-            state
-                .set_input(0, Tensor::f32s(&[1, 1, 4], chunk).unwrap())
+            let mut outputs = state
+                .run(tvec!(Tensor::f32s(&[1, 1, 4], chunk).unwrap()))
                 .unwrap();
-            state.eval_all_in_order().unwrap();
-            got.extend(state.take_outputs().unwrap()[0].as_f32s().unwrap().iter());
+            got.extend(outputs.remove(0).as_f32s().unwrap().iter());
         }
 
         assert_eq!(&got[2..], outputs[0].as_f32s().unwrap().as_slice().unwrap());
