@@ -227,7 +227,7 @@ pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
     tfd_model: tfdeploy::Model,
-    pulsified_model: Option<tfdeploy::pulse::PulsifiedModel>,
+    pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
     #[cfg(feature = "tensorflow")]
     tf_model: Option<conform::tf::Tensorflow>,
@@ -319,9 +319,16 @@ impl Parameters {
             tfd_model = tfd_model.into_optimized()?;
         }
 
-        let pulsified_model = if let Some(pulse) = pulse {
+        let pulse_facts = if let Some(pulse) = pulse {
             info!("Pulsify {}", pulse);
-            Some(::tfdeploy::pulse::PulsifiedModel::new(&tfd_model, pulse)?)
+            let (model, ifact, ofact) = ::tfdeploy::pulse::pulsify(&tfd_model, pulse)?;
+            if matches.is_present("optimize") {
+                info!("Optimize pulsing network");
+                tfd_model = model.into_optimized()?;
+            } else {
+                tfd_model = model;
+            };
+            Some((ifact, ofact))
         } else {
             None
         };
@@ -331,7 +338,7 @@ impl Parameters {
             graph,
             tfd_model,
             tf_model,
-            pulsified_model,
+            pulse_facts,
             inputs,
         })
     }
@@ -340,13 +347,10 @@ impl Parameters {
 pub enum ProfilingMode {
     Regular { max_iters: u64, max_time: u64 },
     RegularBenching { max_iters: u64, max_time: u64 },
-    StreamCruising,
-    StreamBuffering,
-    StreamBenching { max_iters: u64, max_time: u64 },
 }
 
 impl ProfilingMode {
-    pub fn from_clap(matches: &clap::ArgMatches, streaming: bool) -> CliResult<ProfilingMode> {
+    pub fn from_clap(matches: &clap::ArgMatches) -> CliResult<ProfilingMode> {
         let max_iters = matches
             .value_of("max_iters")
             .map(u64::from_str)
@@ -357,28 +361,15 @@ impl ProfilingMode {
             .map(u64::from_str)
             .inside_out()?
             .unwrap_or(DEFAULT_MAX_TIME);
-        let mode = if streaming {
-            if matches.is_present("buffering") {
-                ProfilingMode::StreamBuffering
-            } else if matches.is_present("bench") {
-                ProfilingMode::StreamBenching {
-                    max_iters,
-                    max_time,
-                }
-            } else {
-                ProfilingMode::StreamCruising
+        let mode = if matches.is_present("bench") {
+            ProfilingMode::RegularBenching {
+                max_iters,
+                max_time,
             }
         } else {
-            if matches.is_present("bench") {
-                ProfilingMode::RegularBenching {
-                    max_iters,
-                    max_time,
-                }
-            } else {
-                ProfilingMode::Regular {
-                    max_iters,
-                    max_time,
-                }
+            ProfilingMode::Regular {
+                max_iters,
+                max_time,
             }
         };
         Ok(mode)
@@ -420,11 +411,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
         */
-        ("draw", _) => if let Some(pulse_model) = params.pulsified_model.as_ref() {
-            ::draw::render(&pulse_model.model)
-        } else {
-            ::draw::render(&params.tfd_model)
-        }
+        ("draw", _) => ::draw::render(&params.tfd_model),
 
         ("dump", Some(m)) => {
             let assert_outputs: Option<Vec<TensorFact>> = m
@@ -433,16 +420,12 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             dump::handle(params, assert_outputs, display_options_from_clap(m)?)
         }
 
-        /*
-        ("profile", Some(m)) => {
-            let streaming = params.tfd_model.input_fact()?.stream_info()?.is_some();
-            profile::handle(
-                params,
-                ProfilingMode::from_clap(&m, streaming)?,
-                display_options_from_clap(m)?,
-            )
-        },
-        */
+        ("profile", Some(m)) => profile::handle(
+            params,
+            ProfilingMode::from_clap(&m)?,
+            display_options_from_clap(m)?,
+        ),
+
         (s, _) => bail!("Unknown subcommand {}.", s),
     }
 }

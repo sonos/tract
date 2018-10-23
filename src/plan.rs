@@ -138,7 +138,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         let mut inputs: TVec<Value> = tvec![];
         for i in &node.inputs {
             let prec_node = &nodes[i.node];
-            let prec = values[i.node].as_ref().ok_or(format!(
+            let prec = values[i.node].as_ref().ok_or_else(|| format!(
                 "Computing {}, precursor {} not done:",
                 node.name, prec_node.name
             ))?;

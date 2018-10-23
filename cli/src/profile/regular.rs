@@ -25,13 +25,16 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
         bail!("Expecting bench profile mode")
     };
 
-    let ref model = params.tfd_model;
+    let model = &params.tfd_model;
     let plan = SimplePlan::new(model)?;
+    let mut state = SimpleState::new(plan)?;
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(make_inputs(&[params.tfd_model.input_fact()?.clone()])?)?;
+        state.reset()?;
+        state.set_inputs(make_inputs(&[model.input_fact()?.clone()])?)?;
+        state.eval_all_in_order()?;
         iters += 1;
     }
     let dur = Duration::since(&start, iters);
@@ -74,6 +77,7 @@ pub fn handle(
     info!("Running for {} ms max. for each node.", max_time);
 
     let mut state = SimpleState::new(&plan)?;
+    state.set_inputs(make_inputs(&[params.tfd_model.input_fact()?.clone()])?)?;
     debug!("Using execution plan: {:?}", plan);
 
     let mut profile = ProfileData::new(model);
@@ -83,6 +87,7 @@ pub fn handle(
         println!();
         print_header(format!("Profiling for {}:", params.name), "white");
     }
+
 
     // Then execute the plan while profiling each step.
     for &n in &plan.order {

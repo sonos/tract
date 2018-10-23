@@ -58,8 +58,16 @@ impl PulsedTensorFact {
     }
 
     pub fn big_shape(&self) -> Vec<TDim> {
-        self.shape.iter().enumerate().map(|(ix, &d)|
-            if ix == self.axis { self.dim } else { d.to_dim() }).collect()
+        self.shape
+            .iter()
+            .enumerate()
+            .map(|(ix, &d)| {
+                if ix == self.axis {
+                    self.dim
+                } else {
+                    d.to_dim()
+                }
+            }).collect()
     }
 
     pub fn to_big_fact(&self) -> TensorFact {
@@ -73,6 +81,16 @@ impl PulsedTensorFact {
 pub struct PulsifiedOp {
     pub op: Box<Op>,
     pub outputs: TVec<PulsedTensorFact>,
+}
+
+pub fn pulsify(
+    old: &Model,
+    pulse: usize,
+) -> TfdResult<(Model, PulsedTensorFact, PulsedTensorFact)> {
+    let p_model = PulsifiedModel::new(old, pulse)?;
+    let in_fact: PulsedTensorFact = p_model.input_fact()?.clone();
+    let out_fact: PulsedTensorFact = p_model.output_fact()?.clone();
+    Ok((p_model.model, in_fact, out_fact))
 }
 
 #[derive(Clone, Debug)]
@@ -107,9 +125,9 @@ impl PulsifiedModel {
                 };
                 let mut previous = None;
                 let count = pulsed_chain.len();
-                for (ix,pulsed) in pulsed_chain.into_iter().enumerate() {
+                for (ix, pulsed) in pulsed_chain.into_iter().enumerate() {
                     let PulsifiedOp { op, outputs } = pulsed;
-                    let name = if ix == count-1 {
+                    let name = if ix == count - 1 {
                         old.node(old_id).name.clone()
                     } else {
                         format!("{}#{}", old.node(old_id).name, ix)
