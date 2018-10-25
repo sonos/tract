@@ -24,31 +24,35 @@ pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> Cl
 fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
     let tfd = params.tfd_model;
     let plan = SimplePlan::new(&tfd)?;
-    Ok(plan.run(
-        params
-            .inputs
-            .unwrap()
-            .iter()
-            .map(|t| t.clone().unwrap())
-            .collect(),
-    )?)
+    let mut inputs:TVec<Tensor> = tvec!();
+    for (ix, input) in tfd.inputs()?.iter().enumerate() {
+        if let Some(input) = params.inputs.as_ref().and_then(|v| v.get(ix)).and_then(|t| t.as_ref()) {
+            inputs.push(input.to_owned());
+        } else {
+            let fact = tfd.fact(*input)?;
+            inputs.push(::tensor::tensor_for_fact(fact, None)?);
+        }
+    }
+    info!("Running");
+    Ok(plan.run(inputs)?)
 }
 
 fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     let (input_fact, output_fact) = params.pulse_facts.unwrap();
     let output_pulse = output_fact.pulse();
-//    println!("output_fact: {:?}", output_fact);
+    //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
     let input: &Tensor = &params.inputs.as_ref().unwrap()[0].as_ref().unwrap();
-//    println!("input_shape: {:?}", input.shape());
+    //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
-//    println!("output_fact: {:?}", output_fact);
+    //    println!("output_fact: {:?}", output_fact);
     let output_dim = output_fact.dim.eval(input_dim as i64).unwrap() as i64;
     let mut output_shape = output_fact.shape.to_vec();
-    output_shape[output_fact.axis] = output_dim as usize + output_fact.delay + 4*output_fact.pulse();
+    output_shape[output_fact.axis] =
+        output_dim as usize + output_fact.delay + 4 * output_fact.pulse();
     let plan = SimplePlan::new(&params.tfd_model)?;
     let mut state = ::tfdeploy::plan::SimpleState::new(&plan)?;
-//    println!("output_shape: {:?}", output_shape);
+    //    println!("output_shape: {:?}", output_shape);
     let pulse = input_fact.pulse();
     let mut result = ::ndarray::ArrayD::<f32>::default(output_shape);
     for (ix, chunk) in input.axis_chunks(axis, pulse)?.into_iter().enumerate() {
@@ -56,22 +60,30 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
             let mut chunk_shape = chunk.shape().to_vec();
             chunk_shape[input_fact.axis] = pulse;
             let mut padded_chunk = ::ndarray::ArrayD::<f32>::default(chunk_shape);
-            padded_chunk.slice_axis_mut(
-                ::ndarray::Axis(input_fact.axis),
-                (..chunk.shape()[input_fact.axis]).into()
-            ).assign(&chunk.to_array_view::<f32>()?);
+            padded_chunk
+                .slice_axis_mut(
+                    ::ndarray::Axis(input_fact.axis),
+                    (..chunk.shape()[input_fact.axis]).into(),
+                ).assign(&chunk.to_array_view::<f32>()?);
             padded_chunk.into()
         } else {
             chunk
         };
         let mut outputs = state.run(tvec!(input))?;
         let result_chunk = outputs.remove(0).into_array::<f32>()?;
-        result.slice_axis_mut(
-            ::ndarray::Axis(output_fact.axis),
-            ((output_pulse * ix)..(output_pulse * (ix + 1))).into(),
-        ).assign(&result_chunk);
+        result
+            .slice_axis_mut(
+                ::ndarray::Axis(output_fact.axis),
+                ((output_pulse * ix)..(output_pulse * (ix + 1))).into(),
+            ).assign(&result_chunk);
     }
-    result.slice_axis_inplace(::ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
-    result.slice_axis_inplace(::ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
+    result.slice_axis_inplace(
+        ::ndarray::Axis(output_fact.axis),
+        (output_fact.delay..).into(),
+    );
+    result.slice_axis_inplace(
+        ::ndarray::Axis(output_fact.axis),
+        (..output_dim as usize).into(),
+    );
     Ok(tvec!(result.into()))
 }
