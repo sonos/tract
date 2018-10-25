@@ -150,6 +150,8 @@ impl InferenceRulesOp for Conv {
                 )?;
             }
         }
+        s.equals(&inputs[0].rank, &inputs[1].rank)?;
+        s.equals(&outputs[0].rank, &inputs[1].rank)?;
         s.equals(&outputs.len, 1)?;
         s.equals_all(wrap![
             &outputs[0].datum_type,
