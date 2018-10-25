@@ -1,10 +1,14 @@
 use ndarray::*;
 use ops::prelude::*;
 
-fn make_slicer(coords: &[usize]) -> TfdResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
+fn make_slicer(coords: &[usize], shape:&[usize]) -> TfdResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
     let mut slice: Vec<SliceOrIndex> = coords
         .iter()
-        .map(|&ix| SliceOrIndex::Index(ix as _))
+        .zip(shape.iter())
+        .map(|(&c, &d)| {
+            let a = if c < d { c } else { 0 };
+            SliceOrIndex::Index(a as _)
+        })
         .collect();
     slice.push(SliceOrIndex::from(..));
     slice.push(SliceOrIndex::from(..));
@@ -20,9 +24,9 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TfdResult<Tensor> 
     let mut c = unsafe { Array::uninitialized(&*cshape) };
 
     for prefix in indices(&cshape[..(cshape.len() - 2)]).into_iter() {
-        let a_slice = make_slicer(&prefix.slice())?;
-        let b_slice = make_slicer(&prefix.slice())?;
-        let c_slice = make_slicer(&prefix.slice())?;
+        let a_slice = make_slicer(&prefix.slice(), a.shape())?;
+        let b_slice = make_slicer(&prefix.slice(), b.shape())?;
+        let c_slice = make_slicer(&prefix.slice(), &*cshape)?;
         let a1: ArrayViewD<T> = a.slice(&a_slice.as_ref());
         let b1: ArrayViewD<T> = b.slice(&b_slice.as_ref());
         let c1: ArrayViewMutD<T> = c.slice_mut(&c_slice.as_ref());
