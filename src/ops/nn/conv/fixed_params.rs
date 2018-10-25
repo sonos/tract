@@ -24,7 +24,6 @@ impl<D: Datum> FixedParamsConv<D> {
         kernel_is_hwio: bool,
         dilations: Vec<usize>,
         strides: Vec<usize>,
-        kernel_spatial_shape: &[usize],
         padding: PaddingSpec,
         input_full_shape: &[usize],
         kernel: ArrayViewD<D>,
@@ -35,6 +34,12 @@ impl<D: Datum> FixedParamsConv<D> {
             *kernel.shape().last().unwrap()
         } else {
             kernel.shape()[0]
+        };
+
+        let kernel_spatial_shape = if kernel_is_hwio {
+            &kernel.shape()[..(input_full_shape.len() - 2)]
+        } else {
+            &kernel.shape()[2..]
         };
 
         let patch = Patch::new(

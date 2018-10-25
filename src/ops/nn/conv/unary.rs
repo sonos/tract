@@ -50,16 +50,11 @@ impl ConvUnary {
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        let spatial_rank = self.full_input_shape.len() - 2;
-        let kernel_spatial_shape =
-            &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
-
         FixedParamsConv::new(
             self.data_fmt,
             self.kernel_is_hwio,
             self.dilations.clone(),
             self.strides.clone(),
-            kernel_spatial_shape,
             self.padding.clone(),
             input_shape,
             self.kernel.to_array_view::<T>()?,

@@ -64,7 +64,6 @@ impl Algo {
                         true,
                         vec![1, 1],
                         vec![1, 1],
-                        &[41, 40],
                         if padding == Padding::Valid {
                             PaddingSpec::Valid
                         } else {
