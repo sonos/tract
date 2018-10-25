@@ -183,10 +183,13 @@ where
 {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        _solver: &mut Solver<'r>,
-        _inputs: &'p TensorsProxy,
-        _outputs: &'p TensorsProxy,
+        s: &mut Solver<'r>,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&outputs[0].shape, ShapeFact::from(&*self.full_output_shape))?;
         Ok(())
     }
 }
