@@ -358,7 +358,7 @@ impl ProfilingMode {
             .inside_out()?
             .unwrap_or(DEFAULT_MAX_ITERS);
         let max_time = matches
-            .value_of("max_time")
+            .value_of("max-time")
             .map(u64::from_str)
             .inside_out()?
             .unwrap_or(DEFAULT_MAX_TIME);

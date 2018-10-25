@@ -183,23 +183,24 @@ where
         let proto_node = graph
             .get_node()
             .iter()
-            .find(|n| n.get_name() == node.name)
-            .unwrap();
+            .find(|n| n.get_name() == node.name);
 
-        for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
-            attributes.push(Row::Double(
-                format!("Attribute {}:", attr.0.bold()),
-                if attr.1.has_tensor() {
-                    let tensor = attr.1.get_tensor();
-                    format!(
-                        "Tensor: {:?} {:?}",
-                        tensor.get_dtype(),
-                        tensor.get_tensor_shape().get_dim()
-                    )
-                } else {
-                    format!("{:?}", attr.1)
-                },
-            ));
+        if let Some(proto_node) = proto_node {
+            for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
+                attributes.push(Row::Double(
+                    format!("Attribute {}:", attr.0.bold()),
+                    if attr.1.has_tensor() {
+                        let tensor = attr.1.get_tensor();
+                        format!(
+                            "Tensor: {:?} {:?}",
+                            tensor.get_dtype(),
+                            tensor.get_tensor_shape().get_dim()
+                        )
+                    } else {
+                        format!("{:?}", attr.1)
+                    },
+                ));
+            }
         }
     }
 

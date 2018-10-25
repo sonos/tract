@@ -168,7 +168,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", tfdeploy::tensor::Tensor::tfd_from(a.1.get_tensor())?)
+                        format!("{:?}", ::tfdeploy::tensor::Tensor::tfd_from(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };

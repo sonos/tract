@@ -37,7 +37,6 @@ impl ProfileData {
         display_options: DisplayOptions,
     ) -> CliResult<()> {
         let sum = self.summed();
-        let nodes: Vec<&Node> = model.nodes().iter().map(|a| &*a).collect();
         let mut display_graph =
             ::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
                 .with_graph_def(&graph)?;
@@ -121,13 +120,5 @@ pub fn handle(
     match &profiling {
         ProfilingMode::Regular { .. } => regular::handle(params, profiling, display_options),
         ProfilingMode::RegularBenching { .. } => regular::handle_benching(params, profiling),
-        /*
-        ProfilingMode::StreamCruising => streaming::handle_cruise(params, display_options),
-        ProfilingMode::StreamBuffering => streaming::handle_buffering(params, display_options),
-        ProfilingMode::StreamBenching { .. } => {
-            streaming::handle_bench(params, profiling, display_options)
-        }
-        */
-        _ => unimplemented!()
     }
 }

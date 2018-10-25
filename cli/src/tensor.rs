@@ -105,13 +105,6 @@ pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<Tensor>> {
     values.iter().map(|v| tensor_for_fact(v, None)).collect()
 }
 
-pub fn make_inputs_stream(values: &[TensorFact], stream_dim: usize) -> CliResult<TVec<Tensor>> {
-    values
-        .iter()
-        .map(|v| tensor_for_fact(v, Some(stream_dim)))
-        .collect()
-}
-
 pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
     if let Some(value) = fact.concretize() {
         Ok(value.clone())
