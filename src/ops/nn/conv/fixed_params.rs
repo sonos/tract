@@ -189,6 +189,9 @@ where
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, D::datum_type())?;
+        s.equals(&outputs[0].datum_type, D::datum_type())?;
+        s.equals(&inputs[0].shape, ShapeFact::from(&*self.patch.input_shape.shape))?;
         s.equals(&outputs[0].shape, ShapeFact::from(&*self.full_output_shape))?;
         Ok(())
     }
