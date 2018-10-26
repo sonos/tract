@@ -163,23 +163,20 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
     }
 
     pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<M>> {
-        /*
-        let index_to_graph_def: HashMap<String, usize> =
-            self.nodes.iter().map(|n| (n.name.clone(), n.id)).collect();
         for gnode in graph_def.get_node().iter() {
-            if let Some(node_id) = index_to_graph_def.get(gnode.get_name()) {
+            if let Ok(node_id) = self.model.borrow().node_by_name(gnode.get_name()).map(|n| n.id) {
+                let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
                         format!("{:?}", tfdeploy::tensor::Tensor::tfd_from(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };
-                    self.nodes[*node_id].attrs.push((a.0.to_owned(), value));
+                    v.push(Row::Double(format!("Attr {}:", a.0.bold()), value));
                 }
-                self.nodes[*node_id].attrs.sort();
+                self.add_node_section(node_id, v)?;
             }
         }
-        */
         Ok(self)
     }
 
