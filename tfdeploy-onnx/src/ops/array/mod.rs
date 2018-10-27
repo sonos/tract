@@ -23,6 +23,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     });
     reg.insert("Transpose", transpose);
     reg.insert("Slice", slice);
+    reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
     reg.insert("Unsqueeze", unsqueeze);
 }
@@ -45,6 +46,16 @@ pub fn slice(node: &NodeProto) -> TfdResult<Box<Op>> {
         axes.map(|a| a.into_iter().map(|&d| d as _).collect()),
         begin.iter().map(|&d| d as _).collect(),
         end.iter().map(|&d| d as _).collect(),
+    )))
+}
+
+pub fn split(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let axis = node.get_attr_opt_int("axis")?.unwrap_or(0);
+    let split = node.get_attr_opt_ints("split")?;
+    Ok(Box::new(tfdops::array::Split::new(
+        axis as usize,
+        node.get_output().len(),
+        split.map(|a| a.into_iter().map(|&d| d as _).collect()),
     )))
 }
 
