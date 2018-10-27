@@ -51,6 +51,7 @@ mod rm_dims;
 mod shape;
 mod size;
 mod slice;
+mod split;
 mod squeeze;
 
 pub use self::add_dims::AddDims;
@@ -63,4 +64,5 @@ pub use self::rm_dims::RmDims;
 pub use self::shape::Shape;
 pub use self::size::Size;
 pub use self::slice::Slice;
+pub use self::split::Split;
 pub use self::squeeze::Squeeze;

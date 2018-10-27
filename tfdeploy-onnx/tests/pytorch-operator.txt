@@ -9,6 +9,7 @@ test_operator_addconstant
 test_operator_addconstant
 test_operator_addmm
 test_operator_basic
+test_operator_chunk
 test_operator_clip
 test_operator_concat2
 test_operator_conv
