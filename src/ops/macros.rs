@@ -115,6 +115,8 @@ macro_rules! element_bin {
         pub mod $name {
             #[allow(unused_imports)]
             use $crate::ops::prelude::*;
+            #[allow(unused_imports)]
+            use num::Float;
 
             pub fn default() -> Bin {
                 Bin::default()
@@ -504,6 +506,7 @@ macro_rules! dispatch_datum {
             DatumType::I16  => $($path)::*::<i16>($($args),*),
             DatumType::I32  => $($path)::*::<i32>($($args),*),
             DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
@@ -522,6 +525,7 @@ macro_rules! dispatch_numbers {
             DatumType::I16  => $($path)::*::<i16>($($args),*),
             DatumType::I32  => $($path)::*::<i32>($($args),*),
             DatumType::I64  => $($path)::*::<i64>($($args),*),
+            DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             _ => bail!("{:?} is not a number", $dt)
@@ -533,6 +537,7 @@ macro_rules! dispatch_numbers {
 macro_rules! dispatch_floatlike {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
+            DatumType::F16  => $($path)::*::<f32>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             _ => bail!("{:?} is not float-like", $dt)

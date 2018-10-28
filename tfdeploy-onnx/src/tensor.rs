@@ -1,5 +1,6 @@
 use pb::*;
 use tfdeploy::*;
+use tfdeploy::f16::f16;
 
 impl TfdFrom<TensorProto_DataType> for DatumType {
     fn tfd_from(t: &TensorProto_DataType) -> TfdResult<DatumType> {
@@ -12,6 +13,7 @@ impl TfdFrom<TensorProto_DataType> for DatumType {
             &INT16 => Ok(DatumType::I16),
             &INT32 => Ok(DatumType::I32),
             &INT64 => Ok(DatumType::I64),
+            &FLOAT16 => Ok(DatumType::F16),
             &FLOAT => Ok(DatumType::F32),
             &DOUBLE => Ok(DatumType::F64),
             &STRING => Ok(DatumType::String),
@@ -67,6 +69,7 @@ impl TfdFrom<TensorProto> for Tensor {
                     DatumType::I16 => Tensor::from_raw::<i16>(&*shape, t.get_raw_data()),
                     DatumType::I32 => Tensor::from_raw::<i32>(&*shape, t.get_raw_data()),
                     DatumType::I64 => Tensor::from_raw::<i64>(&*shape, t.get_raw_data()),
+                    DatumType::F16 => Tensor::from_raw::<f16>(&*shape, t.get_raw_data()),
                     DatumType::F32 => Tensor::from_raw::<f32>(&*shape, t.get_raw_data()),
                     DatumType::F64 => Tensor::from_raw::<f64>(&*shape, t.get_raw_data()),
                     DatumType::Bool => Ok(Tensor::from_raw::<u8>(&*shape, t.get_raw_data())?

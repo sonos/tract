@@ -4,6 +4,8 @@ use ndarray::prelude::*;
 use std::fmt;
 use TfdResult;
 
+use f16::f16;
+
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 
@@ -17,6 +19,7 @@ pub enum DatumType {
     I16,
     I32,
     I64,
+    F16,
     F32,
     F64,
     TDim,
@@ -55,6 +58,7 @@ impl DatumType {
             ],
             DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim],
             DatumType::I64 => &[DatumType::I64, DatumType::TDim],
+            DatumType::F16 => &[DatumType::F16, DatumType::F32, DatumType::F64],
             DatumType::F32 => &[DatumType::F32, DatumType::F64],
             DatumType::F64 => &[DatumType::F64],
             DatumType::String => &[DatumType::String],
@@ -126,6 +130,7 @@ pub trait Datum: Copy + Clone + Send + Sync + fmt::Debug + Default + 'static {
 #[derive(Clone, PartialEq)]
 pub enum Tensor {
     Bool(ArrayD<bool>),
+    F16(ArrayD<f16>),
     F32(ArrayD<f32>),
     F64(ArrayD<f64>),
     I8(ArrayD<i8>),
@@ -156,6 +161,7 @@ impl Tensor {
             &Tensor::I16(ref it) => it.shape(),
             &Tensor::I32(ref it) => it.shape(),
             &Tensor::I64(ref it) => it.shape(),
+            &Tensor::F16(ref it) => it.shape(),
             &Tensor::F32(ref it) => it.shape(),
             &Tensor::F64(ref it) => it.shape(),
             &Tensor::TDim(ref it) => it.shape(),
@@ -172,6 +178,7 @@ impl Tensor {
             Tensor::I16(it) => it.into_shape(shape)?.into(),
             Tensor::I32(it) => it.into_shape(shape)?.into(),
             Tensor::I64(it) => it.into_shape(shape)?.into(),
+            Tensor::F16(it) => it.into_shape(shape)?.into(),
             Tensor::F32(it) => it.into_shape(shape)?.into(),
             Tensor::F64(it) => it.into_shape(shape)?.into(),
             Tensor::TDim(it) => it.into_shape(shape)?.into(),
@@ -201,6 +208,7 @@ impl Tensor {
             &Tensor::I16(_) => DatumType::I16,
             &Tensor::I32(_) => DatumType::I32,
             &Tensor::I64(_) => DatumType::I64,
+            &Tensor::F16(_) => DatumType::F16,
             &Tensor::F32(_) => DatumType::F32,
             &Tensor::F64(_) => DatumType::F64,
             &Tensor::TDim(_) => DatumType::TDim,
@@ -217,6 +225,7 @@ impl Tensor {
             &Tensor::I16(_) => self.axis_chunks_t::<i16>(axis, size),
             &Tensor::I32(_) => self.axis_chunks_t::<i32>(axis, size),
             &Tensor::I64(_) => self.axis_chunks_t::<i64>(axis, size),
+            &Tensor::F16(_) => self.axis_chunks_t::<f16>(axis, size),
             &Tensor::F32(_) => self.axis_chunks_t::<f32>(axis, size),
             &Tensor::F64(_) => self.axis_chunks_t::<f64>(axis, size),
             &Tensor::TDim(_) => self.axis_chunks_t::<TDim>(axis, size),
@@ -270,6 +279,7 @@ impl Tensor {
                 &Tensor::I16(ref a) => fmt_scalar!(a),
                 &Tensor::I32(ref a) => fmt_scalar!(a),
                 &Tensor::I64(ref a) => fmt_scalar!(a),
+                &Tensor::F16(ref a) => fmt_scalar!(a),
                 &Tensor::F32(ref a) => fmt_scalar!(a),
                 &Tensor::F64(ref a) => fmt_scalar!(a),
                 &Tensor::String(ref a) => fmt_scalar!(a),
@@ -285,6 +295,7 @@ impl Tensor {
                 &Tensor::I16(ref a) => fmt_big!(a),
                 &Tensor::I32(ref a) => fmt_big!(a),
                 &Tensor::I64(ref a) => fmt_big!(a),
+                &Tensor::F16(ref a) => fmt_big!(a),
                 &Tensor::F32(ref a) => fmt_big!(a),
                 &Tensor::F64(ref a) => fmt_big!(a),
                 &Tensor::String(ref a) => fmt_big!(a),
@@ -299,6 +310,7 @@ impl Tensor {
                 &Tensor::I16(ref a) => fmt_small!(a),
                 &Tensor::I32(ref a) => fmt_small!(a),
                 &Tensor::I64(ref a) => fmt_small!(a),
+                &Tensor::F16(ref a) => fmt_small!(a),
                 &Tensor::F32(ref a) => fmt_small!(a),
                 &Tensor::F64(ref a) => fmt_small!(a),
                 &Tensor::String(ref a) => fmt_small!(a),
@@ -316,6 +328,7 @@ impl Tensor {
             &Tensor::I16(ref data) => data.map(|&a| a as f32),
             &Tensor::I32(ref data) => data.map(|&a| a as f32),
             &Tensor::I64(ref data) => data.map(|&a| a as f32),
+            &Tensor::F16(ref data) => data.map(|&a| f32::from(a.0)),
             &Tensor::F32(ref data) => data.to_owned(),
             &Tensor::F64(ref data) => data.map(|&a| a as f32),
             &Tensor::TDim(ref data) => data.map(|&a| a.to_integer().unwrap() as f32),
@@ -414,6 +427,7 @@ impl Serialize for Tensor {
             I16(m) => serialize_inner!(i16, m),
             I32(m) => serialize_inner!(i32, m),
             I64(m) => serialize_inner!(i64, m),
+            F16(m) => serialize_inner!(f16, m),
             F32(m) => serialize_inner!(f32, m),
             F64(m) => serialize_inner!(f64, m),
             TDim(m) => serialize_inner!(TDim, m),
@@ -556,8 +570,9 @@ impl TryInto<i64> for TDim {
 }
 
 tensor!(bool, Bool, as_bool, as_bools, as_bools_mut, take_bools, bools, []);
-tensor!(f64, F64, as_f64, as_f64s, as_f64s_mut, take_f64s, f64s, []);
-tensor!(f32, F32, as_f32, as_f32s, as_f32s_mut, take_f32s, f32s, []);
+tensor!(f16, F16, as_f16, as_f16s, as_f16s_mut, take_f16s, f16s, [(F32, as_f32s), (F64, as_f64s)]);
+tensor!(f32, F32, as_f32, as_f32s, as_f32s_mut, take_f32s, f32s, [(F16, as_f16s), (F64, as_f64s)]);
+tensor!(f64, F64, as_f64, as_f64s, as_f64s_mut, take_f64s, f64s, [(F16, as_f16s), (F32, as_f32s)]);
 tensor!(i8, I8, as_i8, as_i8s, as_i8s_mut, take_i8s, i8s, []);
 tensor!(i16, I16, as_i16, as_i16s, as_i16_mut, take_i16s, i16s, [(I8, as_i8s)]);
 tensor!(

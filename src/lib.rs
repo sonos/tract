@@ -62,6 +62,7 @@ extern crate insideout;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate itertools;
+extern crate half;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
@@ -93,6 +94,7 @@ pub mod analyser;
 mod broadcast;
 pub mod dim;
 pub mod errors;
+pub mod f16;
 pub mod model;
 #[macro_use]
 pub mod ops;
