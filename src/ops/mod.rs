@@ -50,17 +50,8 @@ pub mod prelude {
 
 use self::prelude::*;
 
-pub trait OpState: Debug + Send {
+pub trait OpState: Debug + Send + objekt::Clone {
     fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
-}
-
-impl OpState for Option<Box<OpState>> {
-    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        match self {
-            Some(state) => state.eval(op, inputs),
-            None => op.as_stateless().unwrap().eval(inputs),
-        }
-    }
 }
 
 pub trait StatelessOp {
