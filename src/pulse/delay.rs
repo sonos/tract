@@ -1,10 +1,9 @@
 use ndarray::*;
 use ops::prelude::*;
 
-#[derive(Debug, new)]
+#[derive(Debug, new, Clone)]
 struct DelayState {
     buffer: Tensor,
-    batch: u64,
 }
 
 impl DelayState {
@@ -79,7 +78,7 @@ impl StatefullOp for Delay {
         let mut buffer_shape: Vec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
         let buffer = dispatch_datum!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
-        Ok(Some(Box::new(DelayState { buffer, batch: 0 })))
+        Ok(Some(Box::new(DelayState { buffer })))
     }
 }
 

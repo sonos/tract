@@ -34,6 +34,23 @@ pub struct SimpleState<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> {
     _phantom: PhantomData<M>,
 }
 
+impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M, P> {
+    fn clone(&self) -> SimpleState<M, P> {
+        let states = self
+            .states
+            .iter()
+            .map(|opt: &Option<Box<OpState>>| -> Option<Box<OpState>> {
+                opt.as_ref().map(|b| objekt::clone_box(&**b))
+            }).collect();
+        SimpleState {
+            plan: self.plan.clone(),
+            states,
+            values: self.values.clone(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
 impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
     pub fn new(plan: P) -> TfdResult<SimpleState<M, P>> {
         let values = vec![None; plan.borrow().model.borrow().nodes().len()];
@@ -60,7 +77,8 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
 
     /// Reset wires state.
     pub fn reset_op_states(&mut self) -> TfdResult<()> {
-        self.states = self.plan
+        self.states = self
+            .plan
             .borrow()
             .model()
             .nodes()
@@ -70,13 +88,18 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(())
     }
 
-    pub fn run(&mut self, inputs:TVec<Tensor>) -> TfdResult<TVec<Tensor>> {
+    pub fn run(&mut self, inputs: TVec<Tensor>) -> TfdResult<TVec<Tensor>> {
         use ops::source::Source;
         let mut result = tvec!();
         {
-            let &mut SimpleState { ref plan, ref mut states, ref mut values, .. } = self;
+            let &mut SimpleState {
+                ref plan,
+                ref mut states,
+                ref mut values,
+                ..
+            } = self;
             let model = plan.borrow().model();
-            for (input,v) in model.inputs()?.iter().zip(inputs.into_iter()) {
+            for (input, v) in model.inputs()?.iter().zip(inputs.into_iter()) {
                 values[input.node] = Some(tvec!(v.into()));
             }
             for n in plan.borrow().order.iter() {
@@ -85,21 +108,28 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     let mut inputs: TVec<Value> = tvec![];
                     for i in &node.inputs {
                         let prec_node = model.node(i.node);
-                        let prec = values[i.node].as_ref().ok_or_else(|| format!(
-                            "Computing {}, precursor {} not done:",
-                            node.name, prec_node.name
-                        ))?;
+                        let prec = values[i.node].as_ref().ok_or_else(|| {
+                            format!(
+                                "Computing {}, precursor {} not done:",
+                                node.name, prec_node.name
+                            )
+                        })?;
                         inputs.push(prec[i.slot].clone().into())
                     }
-                    let vs = states[node.id]
-                        .eval(node.op(), inputs)
-                        .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+                    let vs = match states[node.id] {
+                        Some(ref mut state) => state.eval(node.op(), inputs),
+                        None => node.op().as_stateless().unwrap().eval(inputs),
+                    }.map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+
                     values[node.id] = Some(vs);
                 }
             }
             for output in model.outputs()? {
                 let mut val = Value::from(Tensor::from(0f32));
-                ::std::mem::swap(&mut val, &mut values[output.node].as_mut().unwrap()[output.slot]);
+                ::std::mem::swap(
+                    &mut val,
+                    &mut values[output.node].as_mut().unwrap()[output.slot],
+                );
                 result.push(val.into_tensor());
             }
         }
@@ -170,15 +200,18 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         let mut inputs: TVec<Value> = tvec![];
         for i in &node.inputs {
             let prec_node = &nodes[i.node];
-            let prec = values[i.node].as_ref().ok_or_else(|| format!(
-                "Computing {}, precursor {} not done:",
-                node.name, prec_node.name
-            ))?;
+            let prec = values[i.node].as_ref().ok_or_else(|| {
+                format!(
+                    "Computing {}, precursor {} not done:",
+                    node.name, prec_node.name
+                )
+            })?;
             inputs.push(prec[i.slot].clone().into())
         }
-        let vs = self.states[node.id]
-            .eval(nodes[node.id].op(), inputs)
-            .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+        let vs = match self.states[node.id] {
+            Some(ref mut state) => state.eval(node.op(), inputs),
+            None => node.op().as_stateless().unwrap().eval(inputs),
+        }.map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -207,9 +240,10 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                 ref plan,
                 ..
             } = self;
-            states[node]
-                .eval(plan.borrow().model().nodes()[node].op(), inputs)
-                .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
+            match states[node] {
+                Some(ref mut state) => state.eval(plan.borrow().model().nodes()[node].op(), inputs),
+                None => plan.borrow().model().nodes()[node].op().as_stateless().unwrap().eval(inputs),
+            }.map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
         };
         self.values[node] = Some(values);
         Ok(())
