@@ -40,7 +40,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M
             .states
             .iter()
             .map(|opt: &Option<Box<OpState>>| -> Option<Box<OpState>> {
-                opt.as_ref().map(|b| objekt::clone_box(&**b))
+                opt.as_ref().map(|b| ::objekt::clone_box(&**b))
             }).collect();
         SimpleState {
             plan: self.plan.clone(),
