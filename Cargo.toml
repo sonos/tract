@@ -39,7 +39,7 @@ smallvec = "0.6"
 
 [features]
 default = [ ]
-serialize = ["serde", "serde_derive", "num/serde", "smallvec/serde" ]
+serialize = ["serde", "serde_derive", "num/serde", "smallvec/serde", "half/serde" ]
 image_ops = ["image"]
 blas = ["ndarray/blas", "blas-src"]
 blis = ["blas", "blis-src" ]
