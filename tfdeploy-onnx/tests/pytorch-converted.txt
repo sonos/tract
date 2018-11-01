@@ -10,6 +10,7 @@ test_BatchNorm2d_eval
 test_BatchNorm2d_momentum_eval
 test_BatchNorm3d_eval
 test_BatchNorm3d_momentum_eval
+test_ConstantPad2d
 test_Conv1d
 test_Conv1d_dilated
 test_Conv1d_groups
@@ -53,6 +54,8 @@ test_MaxPool3d_stride
 test_MaxPool3d_stride_padding
 test_PoissonNLLLLoss_no_reduce
 test_ReLU
+test_ReflectionPad2d
+test_ReplicationPad2d
 test_SELU
 test_SELU
 test_Sigmoid
@@ -61,6 +64,7 @@ test_Softmin
 test_Softplus
 test_Softsign
 test_Tanh
+test_ZeroPad2d
 test_log_softmax_dim3
 test_log_softmax_lastdim
 test_softmax_functional_dim3

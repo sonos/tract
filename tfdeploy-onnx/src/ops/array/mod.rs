@@ -12,6 +12,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
         Ok(Box::new(tfdops::array::MultiBroadcastTo::default()))
     });
     reg.insert("Flatten", flatten);
+    reg.insert("Pad", pad);
     reg.insert("Reshape", |_| {
         Ok(Box::new(tfdops::array::Reshape::default()))
     });
@@ -37,6 +38,21 @@ pub fn flatten(node: &NodeProto) -> TfdResult<Box<Op>> {
     let axis = node.get_attr_opt_int("axis")?.unwrap_or(1);
     Ok(Box::new(tfdops::array::Flatten::new(axis as usize)))
 }
+
+pub fn pad(node: &NodeProto) -> TfdResult<Box<Op>> {
+    let mode = node.get_attr_opt_str("mode")?;
+    let value = node.get_attr_opt_float("value")?;
+    let mode = match mode {
+        Some("reflect") => tfdops::array::PadMode::Reflect,
+        Some("edge") => tfdops::array::PadMode::Edge,
+        _ => tfdops::array::PadMode::Constant(value.unwrap_or(0.0)),
+    };
+    let pads = node.get_attr_ints("pads")?;
+    let rank = pads.len()/2;
+    let pads = (0..rank).map(|ax| (pads[ax] as usize, pads[ax+rank] as usize)).collect();
+    Ok(Box::new(tfdops::array::Pad::new(pads, mode)))
+}
+
 
 pub fn slice(node: &NodeProto) -> TfdResult<Box<Op>> {
     let axes = node.get_attr_opt_ints("axes")?;
