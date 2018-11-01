@@ -1,5 +1,4 @@
 extern crate box_drawing;
-#[macro_use]
 extern crate clap;
 extern crate colored;
 #[cfg(feature = "tensorflow")]
