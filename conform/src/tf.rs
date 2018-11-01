@@ -64,7 +64,7 @@ impl From<TfdTensor> for TensorHolder {
     fn from(m: TfdTensor) -> TensorHolder {
         match m {
             TfdTensor::Bool(a) => TensorHolder::Bool(Self::to_tensor(a)),
-            TfdTensor::F16(a) => unimplemented!(),
+            TfdTensor::F16(_) => unimplemented!(),
             TfdTensor::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
             TfdTensor::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
             TfdTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
@@ -114,7 +114,7 @@ impl Tensorflow {
                 TensorHolder::I16(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::I64(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::F16(ref it) => unimplemented!(),
+                TensorHolder::F16(_) => unimplemented!(),
                 TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::String(ref it) => step.add_feed(&op, 0, &it),
@@ -155,7 +155,7 @@ impl Tensorflow {
                 TensorHolder::I16(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::I32(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::I64(ref it) => step.add_feed(&op, 0, &it),
-                TensorHolder::F16(ref it) => unimplemented!(),
+                TensorHolder::F16(_) => unimplemented!(),
                 TensorHolder::F32(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::F64(ref it) => step.add_feed(&op, 0, &it),
                 TensorHolder::String(ref it) => step.add_feed(&op, 0, &it),
