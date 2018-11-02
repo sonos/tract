@@ -3,4 +3,5 @@ target
 *.rustfmt
 Cargo.lock
 examples/data
-tfdeploy-onnx/.onnx
+onnx/.onnx/
+tensorflow/exs/inceptionv3/.inception-v3-2016_08_28/
