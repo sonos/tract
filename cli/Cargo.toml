@@ -17,7 +17,7 @@ travis-ci = { repository = "kali/tract" }
 box_drawing = "0.1"
 clap = "2.31"
 colored = "1.6"
-conform = { path = "../tensorflow/conform" }
+tract-tensorflow-conform = { path = "../tensorflow/conform" }
 error-chain = "0.12"
 insideout = "0.1.0"
 lazy_static = "1.0"
