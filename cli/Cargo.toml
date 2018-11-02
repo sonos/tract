@@ -8,7 +8,7 @@ autobenches = false
 box_drawing = "0.1"
 clap = "2.31"
 colored = "1.6"
-conform = { path = "../conform" }
+conform = { path = "../tensorflow/conform" }
 error-chain = "0.12"
 insideout = "0.1.0"
 lazy_static = "1.0"
@@ -19,9 +19,9 @@ rand = "0.5"
 pretty_env_logger = "0.2"
 terminal_size = "0.1.7"
 textwrap = "0.10"
-tfdeploy = { path = "../core", features=["serialize"] }
-tfdeploy-tf = { path = "../tfdeploy-tf" }
-tfdeploy-onnx = { path = "../tfdeploy-onnx" }
+tract = { path = "../core", features=["serialize"] }
+tract-tensorflow = { path = "../tensorflow" }
+tract-onnx = { path = "../onnx" }
 pbr = "1.0"
 atty = "0.2"
 itertools = "0.7"

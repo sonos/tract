@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::Read;
 
-use tfdeploy::*;
-use tfdeploy::ops::prelude::*;
+use tract::*;
+use tract::ops::prelude::*;
 use CliResult;
 
 pub fn for_size(size: &str) -> CliResult<TensorFact> {
@@ -85,7 +85,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 fn for_data(filename: &str) -> CliResult<TensorFact> {
     let tensor = if filename.ends_with(".pb") {
         let mut file = fs::File::open(filename)?;
-        ::tfdeploy_onnx::tensor::from_reader(file)?
+        ::tract_onnx::tensor::from_reader(file)?
     } else {
         tensor_for_text_data(filename)?
     };

@@ -1,7 +1,7 @@
-use tfdeploy::ops::prelude::*;
+use tract::ops::prelude::*;
 use CliResult;
 
-/// Compares the outputs of a node in tfdeploy and tensorflow.
+/// Compares the outputs of a node in tract and tensorflow.
 pub fn check_outputs(got: &[Tensor], expected: &[TensorFact]) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!(

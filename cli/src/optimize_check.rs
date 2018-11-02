@@ -1,5 +1,5 @@
 use errors::*;
-use tfdeploy::plan::SimplePlan;
+use tract::plan::SimplePlan;
 use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult<()> {

@@ -1,3 +1,8 @@
 [workspace]
-members = [ "core", "conform", "exs/inceptionv3", "cli", "tfdeploy-tf", "tfdeploy-onnx" ]
+members = [
+    "core",
+    "tensorflow", "tensorflow/conform", "tensorflow/exs/inceptionv3",
+    "onnx",
+    "cli"
+]
 

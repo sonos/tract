@@ -12,7 +12,7 @@ use profile::ProfileData;
 use rusage::{Duration, Instant};
 use tensor::make_inputs;
 
-use tfdeploy::plan::{SimplePlan, SimpleState};
+use tract::plan::{SimplePlan, SimpleState};
 
 pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching {

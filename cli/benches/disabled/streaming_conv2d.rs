@@ -2,18 +2,18 @@
 extern crate criterion;
 extern crate ndarray;
 extern crate rand;
-extern crate tfdeploy;
+extern crate tract;
 
 use criterion::Criterion;
 use ndarray::Axis;
-use tfdeploy::*;
+use tract::*;
 
 #[path = "../src/utils.rs"]
 mod utils;
 
 fn streaming_conv2d(c: &mut Criterion) {
     let datum_type = DatumType::F32;
-    let model = tfdeploy::for_path("../tests/models/conv2d-large.pb").unwrap();
+    let model = tract::for_path("../tests/models/conv2d-large.pb").unwrap();
     let output = analyser::detect_output(&model).unwrap().unwrap();
 
     let data = utils::random_tensor(vec![41, 40], datum_type);

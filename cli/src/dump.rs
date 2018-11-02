@@ -1,6 +1,6 @@
 use display_graph::*;
 use errors::*;
-use tfdeploy::ops::prelude::*;
+use tract::ops::prelude::*;
 use Parameters;
 
 pub fn handle(

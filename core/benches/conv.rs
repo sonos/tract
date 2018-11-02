@@ -2,14 +2,14 @@
 extern crate criterion;
 extern crate ndarray;
 #[macro_use]
-extern crate tfdeploy;
+extern crate tract;
 
 use criterion::Criterion;
 
-use tfdeploy::ops::nn::{Conv, DataFormat, FixedParamsConv, PaddingSpec};
-use tfdeploy::ops::prelude::*;
+use tract::ops::nn::{Conv, DataFormat, FixedParamsConv, PaddingSpec};
+use tract::ops::prelude::*;
 
-use tfdeploy::ops::Op;
+use tract::ops::Op;
 
 fn mk(sizes: &[usize]) -> Value {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)

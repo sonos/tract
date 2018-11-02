@@ -1,0 +1,61 @@
+use std::collections::HashMap;
+
+use tract::ops::Op;
+use tract::TfdResult;
+
+use tfpb::node_def::NodeDef;
+
+#[macro_use]
+mod macros;
+
+pub mod array;
+pub mod math;
+pub mod nn;
+
+pub type OpRegister = HashMap<&'static str, fn(&NodeDef) -> TfdResult<Box<Op>>>;
+
+pub struct OpBuilder(OpRegister);
+
+impl OpBuilder {
+    pub fn new() -> OpBuilder {
+        let mut reg = OpRegister::new();
+        array::register_all_ops(&mut reg);
+        math::register_all_ops(&mut reg);
+        nn::register_all_ops(&mut reg);
+        reg.insert("Const", konst);
+        reg.insert("Placeholder", placeholder);
+        OpBuilder(reg)
+    }
+
+    pub fn build(&self, pb: &NodeDef) -> TfdResult<Box<Op>> {
+        match self.0.get(pb.get_op()) {
+            Some(builder) => builder(pb),
+            None => Ok(Box::new(::tract::ops::unimpl::UnimplementedOp(
+                pb.get_op().to_string(),
+                format!("{:?}", pb),
+            ))),
+        }
+    }
+}
+
+pub fn konst(node: &NodeDef) -> TfdResult<Box<Op>> {
+    let dtype = node.get_attr_datum_type("dtype")?;
+    let mat = node.get_attr_tensor("value")?;
+
+    if mat.datum_type() != dtype {
+        bail!(
+            "Const node {:?} doesn't have the expected {:?} type.",
+            mat,
+            dtype
+        );
+    }
+
+    Ok(Box::new(::tract::ops::konst::Const::for_tensor(mat)))
+}
+
+pub fn placeholder(node: &NodeDef) -> TfdResult<Box<Op>> {
+    let dt = node.get_attr_datum_type("dtype")?;
+    Ok(Box::new(::tract::ops::source::Source::new(
+        ::tract::analyser::types::TensorFact::dt(dt.into()),
+    )))
+}

@@ -5,21 +5,21 @@
 //! ## Example
 //!
 //! ```
-//! # extern crate tfdeploy;
+//! # extern crate tract;
 //! # extern crate ndarray;
 //! # fn main() {
-//! use tfdeploy::*;
-//! use tfdeploy::model::*;
+//! use tract::*;
+//! use tract::model::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let mut model = Model::default();
 //!
 //! let input = model.add_node("input".to_string(),
-//!     Box::new(tfdeploy::ops::source::Source::default())).unwrap();
+//!     Box::new(tract::ops::source::Source::default())).unwrap();
 //! let three = model.add_node("three".to_string(),
-//!     Box::new(tfdeploy::ops::konst::Const::new(3f32.into()))).unwrap();
+//!     Box::new(tract::ops::konst::Const::new(3f32.into()))).unwrap();
 //! let add = model.add_node("add".to_string(),
-//!     Box::new(tfdeploy::ops::math::Add::default())).unwrap();
+//!     Box::new(tract::ops::math::Add::default())).unwrap();
 //!
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
 //! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();
@@ -43,7 +43,7 @@
 //!
 //! While creating a model from Rust code is usefull for testing the library,
 //! real-life use-cases will usually load a Tensorflow or ONNX model using
-//! tfdeploy-tf or tfdeploy-onnx crates.
+//! tract-tf or tract-onnx crates.
 //!
 //! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 

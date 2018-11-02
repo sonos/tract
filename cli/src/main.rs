@@ -21,16 +21,16 @@ extern crate rand;
 extern crate terminal_size;
 extern crate textwrap;
 #[macro_use]
-extern crate tfdeploy;
-extern crate tfdeploy_onnx;
-extern crate tfdeploy_tf;
+extern crate tract;
+extern crate tract_onnx;
+extern crate tract_tensorflow;
 
 use std::process;
 use std::str::FromStr;
 
 use insideout::InsideOut;
-use tfdeploy::ops::prelude::*;
-use tfdeploy_tf::tfpb;
+use tract::ops::prelude::*;
+use tract_tensorflow::tfpb;
 use tfpb::graph::GraphDef;
 
 use display_graph::DisplayOptions;
@@ -57,10 +57,10 @@ const DEFAULT_MAX_TIME: u64 = 5000;
 /// Entrypoint for the command-line interface.
 fn main() {
     use clap::*;
-    let mut app = clap_app!(("tfdeploy-cli") =>
+    let mut app = clap_app!(("tract-cli") =>
         (version: "1.0")
         (author: "Romain Liautaud <romain.liautaud@snips.ai>")
-        (about: "A set of tools to compare tfdeploy with tensorflow.")
+        (about: "A set of tools to compare tract with tensorflow.")
 
         (@setting UnifiedHelpMessage)
         (@setting SubcommandRequired)
@@ -91,7 +91,7 @@ fn main() {
     );
 
     let compare = clap::SubCommand::with_name("compare")
-        .help("Compares the output of tfdeploy and tensorflow on randomly generated input.");
+        .help("Compares the output of tract and tensorflow on randomly generated input.");
     app = app.subcommand(output_options(compare));
 
     let dump = clap::SubCommand::with_name("dump")
@@ -108,7 +108,7 @@ fn main() {
     app = app.subcommand(output_options(draw));
 
     let profile = clap::SubCommand::with_name("profile")
-        .help("Benchmarks tfdeploy on randomly generated input.")
+        .help("Benchmarks tract on randomly generated input.")
         .arg(
             Arg::with_name("bench")
                 .long("bench")
@@ -160,10 +160,10 @@ fn main() {
 
     if ::std::env::var("RUST_LOG").is_err() {
         let level = match matches.occurrences_of("verbosity") {
-            0 => "cli=warn,tfdeploy=warn",
-            1 => "cli=info,tfdeploy=info",
-            2 => "cli=debug,tfdeploy=debug",
-            _ => "cli=trace,tfdeploy=trace",
+            0 => "cli=warn,tract=warn",
+            1 => "cli=info,tract=info",
+            2 => "cli=debug,tract=debug",
+            _ => "cli=trace,tract=trace",
         };
         ::std::env::set_var("RUST_LOG", level);
     }
@@ -218,7 +218,7 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
 #[derive(Debug)]
 pub enum SomeGraphDef {
     Tf(GraphDef),
-    Onnx(tfdeploy_onnx::pb::ModelProto),
+    Onnx(tract_onnx::pb::ModelProto),
 }
 
 /// Structure holding the parsed parameters.
@@ -226,7 +226,7 @@ pub enum SomeGraphDef {
 pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
-    tfd_model: tfdeploy::Model,
+    tfd_model: tract::Model,
     pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
     #[cfg(feature = "tensorflow")]
@@ -236,7 +236,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     tf_model: (),
 
-    inputs: Option<Vec<Option<tfdeploy::Tensor>>>,
+    inputs: Option<Vec<Option<tract::Tensor>>>,
 }
 
 impl Parameters {
@@ -251,12 +251,12 @@ impl Parameters {
                 "tf"
             });
         let (graph, mut tfd_model) = if format == "onnx" {
-            let graph = tfdeploy_onnx::model::model_proto_for_path(&name)?;
-            let tfd = tfdeploy_onnx::for_path(&name)?;
+            let graph = tract_onnx::model::model_proto_for_path(&name)?;
+            let tfd = tract_onnx::for_path(&name)?;
             (SomeGraphDef::Onnx(graph), tfd)
         } else {
-            let graph = tfdeploy_tf::model::graphdef_for_path(&name)?;
-            let tfd_model = tfdeploy_tf::for_path(&name)?;
+            let graph = tract_tensorflow::model::graphdef_for_path(&name)?;
+            let tfd_model = tract_tensorflow::for_path(&name)?;
             (SomeGraphDef::Tf(graph), tfd_model)
         };
 
@@ -291,7 +291,7 @@ impl Parameters {
                     ..t
                 };
                 if let Some(axis) = matches.value_of("stream_axis") {
-                    fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tfdeploy::TDim::s().into()
+                    fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tract::TDim::s().into()
                 }
                 vs.push(t.value.concretize());
                 let outlet = tfd_model.inputs()?[ix];
@@ -314,14 +314,14 @@ impl Parameters {
         if matches.is_present("optimize") || pulse.is_some() {
             info!("Optimize");
             if format == "tf" {
-                tfd_model = ::tfdeploy_tf::model::optimize(tfd_model)?;
+                tfd_model = ::tract_tensorflow::model::optimize(tfd_model)?;
             }
             tfd_model = tfd_model.into_optimized()?;
         }
 
         let pulse_facts = if let Some(pulse) = pulse {
             info!("Pulsify {}", pulse);
-            let (model, ifact, ofact) = ::tfdeploy::pulse::pulsify(&tfd_model, pulse)?;
+            let (model, ifact, ofact) = ::tract::pulse::pulsify(&tfd_model, pulse)?;
             if matches.is_present("optimize") {
                 info!("Optimize pulsing network");
                 tfd_model = model.into_optimized()?;

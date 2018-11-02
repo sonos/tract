@@ -1,6 +1,6 @@
 use errors::*;
-use tfdeploy::ops::prelude::*;
-use tfdeploy::SimplePlan;
+use tract::ops::prelude::*;
+use tract::SimplePlan;
 use Parameters;
 
 pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> CliResult<()> {
@@ -51,7 +51,7 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     output_shape[output_fact.axis] =
         output_dim as usize + output_fact.delay + 4 * output_fact.pulse();
     let plan = SimplePlan::new(&params.tfd_model)?;
-    let mut state = ::tfdeploy::plan::SimpleState::new(&plan)?;
+    let mut state = ::tract::plan::SimpleState::new(&plan)?;
     //    println!("output_shape: {:?}", output_shape);
     let pulse = input_fact.pulse();
     let mut result = ::ndarray::ArrayD::<f32>::default(output_shape);

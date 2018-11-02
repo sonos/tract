@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
-use tfdeploy::plan::{SimplePlan, SimpleState};
-use tfdeploy::{Tensor, TensorFact};
+use tract::plan::{SimplePlan, SimpleState};
+use tract::{Tensor, TensorFact};
 
 use display_graph::DisplayOptions;
 use errors::*;
@@ -35,13 +35,13 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         .collect();
     let mut tf_outputs = tf.unwrap().run_get_all(pairs)?;
 
-    // Execute the model step-by-step on tfdeploy.
+    // Execute the model step-by-step on tract.
     let plan = SimplePlan::new(&tfd, &params.input_nodes, &[&params.output_node])?;
     let mut state = plan.state()?;
     for (ix, input) in generated.clone().into_iter().enumerate() {
         state.set_input(ix, input)?;
     }
-    let plan = ::tfdeploy::model::eval_order_for_nodes(
+    let plan = ::tract::model::eval_order_for_nodes(
         &tfd.nodes(),
         &[tfd.node_by_name(&params.output_node)?.id],
     )?;
@@ -126,7 +126,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
             }
         };
 
-        // Use the output from tensorflow to keep tfdeploy from drifting.
+        // Use the output from tensorflow to keep tract from drifting.
         for (ix, out) in tf_output.iter().enumerate() {
             if dn.outputs.len() > ix {
                 let edge = &mut display_graph.edges[dn.outputs[ix]];

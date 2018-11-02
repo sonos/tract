@@ -1,8 +1,8 @@
 use box_drawing::light::*;
 use colored::Color;
 use colored::Colorize;
-use tfdeploy::model::OutletId;
-use tfdeploy::Model;
+use tract::model::OutletId;
+use tract::Model;
 use CliResult;
 
 const COLORS: &'static [Color] = &[
