@@ -1,6 +1,7 @@
 # Tract
 
 [![Build Status](https://travis-ci.org/kali/tract.svg?branch=master)](https://travis-ci.org/kali/tract)
+[![Doc](https://docs.rs/mio/badge.svg)](https://docs.rs/tract)]
 
 A tiny TensorFlow and ONNX inference engine.
 

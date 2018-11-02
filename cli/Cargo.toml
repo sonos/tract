@@ -1,8 +1,17 @@
 [package]
 name = "tract"
 version = "1.0.0"
-authors = ["Romain Liautaud <romain.liautaud@snips.ai>"]
+authors = ["Romain Liautaud <romain.liautaud@snips.ai>",
+"Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT/Apache-2.0"
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/kali/tract"
+keywords = [ "TensorFlow", "NeuralNetworks" ]
+categories = [ "science" ]
 autobenches = false
+
+[badges]
+travis-ci = { repository = "kali/tract" }
 
 [dependencies]
 box_drawing = "0.1"
@@ -14,7 +23,7 @@ insideout = "0.1.0"
 lazy_static = "1.0"
 log = "0.4"
 ndarray = "0.12"
-prettytable-rs = { git = "https://github.com/liautaud/prettytable-rs" }
+prettytable-rs = "0.8"
 rand = "0.5"
 pretty_env_logger = "0.2"
 terminal_size = "0.1.7"

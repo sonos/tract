@@ -95,10 +95,10 @@ fn build_header_wide(cols: usize, op: &str, name: &str, status: &[impl AsRef<str
 
     let mut t = table![[header]];
     if status.len() > 0 {
-        let status = pt::row::Row::new(
+        let status = pt::Row::new(
             status
                 .iter()
-                .map(|s| pt::cell::Cell::new_align(s.as_ref(), pt::format::Alignment::CENTER))
+                .map(|s| pt::Cell::new_align(s.as_ref(), pt::format::Alignment::CENTER))
                 .collect(),
         );
         t.add_row(status);
