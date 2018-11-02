@@ -31,7 +31,6 @@
 //! # }
 //! ```
 //!
-//! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 
 #[macro_use]
 extern crate derive_new;
@@ -45,6 +44,11 @@ extern crate num;
 extern crate protobuf;
 #[macro_use]
 extern crate tract_core;
+#[cfg(feature = "conform")]
+extern crate tensorflow;
+
+#[cfg(feature = "conform")]
+pub mod conform;
 
 pub mod model;
 pub mod ops;

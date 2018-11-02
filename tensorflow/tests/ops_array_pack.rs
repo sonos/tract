@@ -1,19 +1,27 @@
+#![cfg(feature="conform")]
 #![allow(non_snake_case)]
-extern crate conform;
+#[macro_use]
+extern crate log;
 extern crate ndarray;
+extern crate pretty_env_logger;
 #[macro_use]
 extern crate proptest;
-extern crate tensorflow;
+extern crate protobuf;
+#[macro_use]
 extern crate tract_core;
 extern crate tract_tensorflow;
 
-use conform::*;
+mod utils;
+
 use ndarray::prelude::*;
+use tract_tensorflow::conform::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
+use protobuf::Message;
 use tract_core::Tensor as TractTensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
+use utils::*;
 
 fn strat() -> BoxedStrategy<(usize, Vec<TractTensor>)> {
     // input rank

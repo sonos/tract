@@ -1,5 +1,3 @@
-#[cfg(feature = "tensorflow")]
-use conform;
 use ndarray;
 use tract_core;
 
@@ -9,8 +7,8 @@ error_chain! {
         CliError, CliErrorKind, CliResultExt, CliResult;
     }
     links {
-        Conform(conform::Error, conform::ErrorKind) #[cfg(feature="tensorflow")];
         Tract(tract_core::TractError, tract_core::TractErrorKind);
+        TractTensorflowConform(tract_tensorflow::conform::Error, tract_tensorflow::conform::ErrorKind) #[cfg(feature="conform")];
     }
 
     foreign_links {

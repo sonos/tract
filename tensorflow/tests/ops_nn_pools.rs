@@ -1,17 +1,26 @@
+#![cfg(feature="conform")]
 #![allow(non_snake_case)]
-extern crate conform;
+#[macro_use]
+extern crate log;
 extern crate ndarray;
+extern crate pretty_env_logger;
 #[macro_use]
 extern crate proptest;
+extern crate protobuf;
 extern crate tensorflow;
+#[macro_use]
 extern crate tract_core;
 extern crate tract_tensorflow;
 
-use conform::*;
+mod utils;
+
+use tract_tensorflow::conform::*;
 use ndarray::prelude::*;
+use protobuf::Message;
 use proptest::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
+use utils::*;
 
 use tract_core::Tensor as TractTensor;
 

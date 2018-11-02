@@ -1,16 +1,23 @@
+#![cfg(feature="conform")]
 #![allow(non_snake_case)]
-extern crate conform;
+#[macro_use]
+extern crate log;
 extern crate ndarray;
+extern crate pretty_env_logger;
 #[macro_use]
 extern crate proptest;
+extern crate protobuf;
 extern crate tensorflow;
 #[macro_use]
 extern crate tract_core;
 extern crate tract_tensorflow;
 
-use conform::*;
+mod utils;
+
+use tract_tensorflow::conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
+use protobuf::Message;
 use tract_core::ops::StatefullOp;
 use tract_core::tensor::arr4;
 use tract_core::tensor::Datum;
@@ -18,6 +25,7 @@ use tract_core::Tensor as TractTensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
+use utils::*;
 
 fn space_to_batch_strat() -> BoxedStrategy<(TractTensor, TractTensor, TractTensor)> {
     use proptest::collection::vec;

@@ -16,7 +16,7 @@ use ndarray::ArrayD;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use Result;
+use conform::Result;
 
 pub struct Tensorflow {
     session: Session,

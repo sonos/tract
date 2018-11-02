@@ -2,7 +2,6 @@ use std::fs;
 use std::io::Read;
 
 use tract_core::ops::prelude::*;
-use tract_core::*;
 use CliResult;
 
 pub fn for_size(size: &str) -> CliResult<TensorFact> {

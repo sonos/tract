@@ -2,18 +2,33 @@
 name = "tract-tensorflow"
 version = "0.1.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+license = "MIT/Apache-2.0"
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/kali/tract"
+keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
+categories = [ "science" ]
+autobenches = false
+
+[badges]
+travis-ci = { repository = "kali/tract" }
 
 [dependencies]
+tensorflow = { version = "0", optional = true }
 derive-new = "0.5"
 error-chain =  { version = "0.12", default-features=false }
 log = "0.4"
 ndarray = { version = "0.12" }
 num = "0.2"
 protobuf = "2.0"
-tract-core = { path="../core" }
+tract-core = { path = "../core" }
+
+[features]
+conform = [ "tensorflow" ]
 
 [dev-dependencies]
 criterion = "0.2"
+proptest = "0.8"
+pretty_env_logger = "0.2"
 
 [[bench]]
 name = "conv"
