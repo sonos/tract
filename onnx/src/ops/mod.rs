@@ -47,5 +47,5 @@ fn cast(node: &NodeProto) -> TfdResult<Box<Op>> {
     let to = node.get_attr_int("to")?;
     let to = ::pb::TensorProto_DataType::from_i32(to as i32)
         .ok_or_else(|| format!("Can not convert integer {} into a TensorProto_DataType", to))?;
-    Ok(Box::new(::tract_core::ops::cast::Cast::new(to.to_tfd()?)))
+    Ok(Box::new(::tract_core::ops::cast::Cast::new(to.tractify()?)))
 }

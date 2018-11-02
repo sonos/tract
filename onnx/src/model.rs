@@ -13,7 +13,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<Model> {
 
 /// Load a ONNX model from a reader.
 pub fn for_reader<R: ::std::io::Read>(r: R) -> TfdResult<Model> {
-    model_proto_for_reader(r)?.to_tfd()
+    model_proto_for_reader(r)?.tractify()
 }
 
 /// Load a ONNX protobuf graph def from a path
@@ -26,15 +26,15 @@ pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<pb::Mod
     Ok(::protobuf::parse_from_reader(&mut r).map_err(|e| format!("{:?}", e))?)
 }
 
-impl TfdFrom<pb::ModelProto> for Model {
-    fn tfd_from(proto: &pb::ModelProto) -> TfdResult<Model> {
+impl Tractify<pb::ModelProto> for Model {
+    fn tractify(proto: &pb::ModelProto) -> TfdResult<Model> {
         let mut model = Model::default();
         let op_builder = super::ops::OpBuilder::new();
         let graph = proto.get_graph();
         let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
             .iter()
-            .map(|init| Ok((init.get_name(), init.to_tfd()?)))
+            .map(|init| Ok((init.get_name(), init.tractify()?)))
             .collect::<TfdResult<_>>()?;
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.get_input().iter() {
@@ -45,7 +45,7 @@ impl TfdFrom<pb::ModelProto> for Model {
                 )?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             } else {
-                let fact = input.get_field_type().get_tensor_type().to_tfd()?;
+                let fact = input.get_field_type().get_tensor_type().tractify()?;
                 let id = model.add_node(
                     input.get_name().to_owned(),
                     Box::new(::tract_core::ops::source::Source::new(fact)),
@@ -71,7 +71,7 @@ impl TfdFrom<pb::ModelProto> for Model {
         }
         let mut outputs = vec![];
         for output in graph.get_output().iter() {
-            let fact = output.get_field_type().get_tensor_type().to_tfd()?;
+            let fact = output.get_field_type().get_tensor_type().tractify()?;
             outputs.push(outlets_by_name[output.get_name()]);
             model.set_fact(outlets_by_name[output.get_name()], fact)?;
         }

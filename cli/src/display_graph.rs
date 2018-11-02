@@ -2,7 +2,7 @@ use colored::Colorize;
 use format::Row;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use tract_core::{Model, Node, TfdFrom};
+use tract_core::{Model, Node, Tractify};
 use tract_onnx::pb::ModelProto;
 use tract_tensorflow::tfpb::graph::GraphDef;
 use CliResult;
@@ -168,7 +168,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", ::tract_core::tensor::Tensor::tfd_from(a.1.get_tensor())?)
+                        format!("{:?}", ::tract_core::tensor::Tensor::tractify(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };
@@ -190,7 +190,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 let mut v = vec![];
                 for a in gnode.get_attribute().iter() {
                     let value = if a.has_t() {
-                        format!("{:?}", ::tract_core::tensor::Tensor::tfd_from(a.get_t())?)
+                        format!("{:?}", ::tract_core::tensor::Tensor::tractify(a.get_t())?)
                     } else {
                         format!("{:?}", a)
                     };

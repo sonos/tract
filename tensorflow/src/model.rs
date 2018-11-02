@@ -1,7 +1,7 @@
 use std::{fs, path};
 
 use tract_core::model::{InletId, Model, OutletId};
-use tract_core::{TfdFrom, TfdResult, ToTfd};
+use tract_core::{Tractify, TfdResult, ToTfd};
 use tfpb::graph::GraphDef;
 
 /// Load a Tensorflow protobul model from a file.
@@ -11,7 +11,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<Model> {
 
 /// Load a Tfdeploy model from a reader.
 pub fn for_reader<R: ::std::io::Read>(r: R) -> TfdResult<Model> {
-    graphdef_for_reader(r)?.to_tfd()
+    graphdef_for_reader(r)?.tractify()
 }
 
 /// Load a Tensorflow protobuf graph def from a reader.
@@ -30,8 +30,8 @@ pub fn optimize(model: Model) -> TfdResult<Model> {
     model.into_optimized()
 }
 
-impl TfdFrom<GraphDef> for Model {
-    fn tfd_from(graph: &GraphDef) -> TfdResult<Model> {
+impl Tractify<GraphDef> for Model {
+    fn tractify(graph: &GraphDef) -> TfdResult<Model> {
         let mut model = Model::default();
         let op_builder = ::ops::OpBuilder::new();
         for pbnode in graph.get_node().iter() {

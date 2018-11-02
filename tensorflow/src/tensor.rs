@@ -1,11 +1,11 @@
-use tract_core::{DatumType, Tensor, TfdFrom, TfdResult};
+use tract_core::{DatumType, Tensor, Tractify, TfdResult};
 use tfpb::tensor::TensorProto;
 use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use tfpb::types::DataType;
 use ToTensorflow;
 
-impl TfdFrom<DataType> for DatumType {
-    fn tfd_from(t: &DataType) -> TfdResult<DatumType> {
+impl Tractify<DataType> for DatumType {
+    fn tractify(t: &DataType) -> TfdResult<DatumType> {
         match t {
             &DataType::DT_BOOL => Ok(DatumType::Bool),
             &DataType::DT_UINT8 => Ok(DatumType::U8),
@@ -42,8 +42,8 @@ impl ToTensorflow<DataType> for DatumType {
     }
 }
 
-impl TfdFrom<TensorProto> for Tensor {
-    fn tfd_from(t: &TensorProto) -> TfdResult<Tensor> {
+impl Tractify<TensorProto> for Tensor {
+    fn tractify(t: &TensorProto) -> TfdResult<Tensor> {
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
         let dims = shape

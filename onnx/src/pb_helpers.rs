@@ -30,7 +30,7 @@ impl NodeProto {
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<Tensor>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)? {
-            Some(attr) => Ok(Some(attr.get_t().to_tfd()?)),
+            Some(attr) => Ok(Some(attr.get_t().tractify()?)),
             None => Ok(None),
         }
     }

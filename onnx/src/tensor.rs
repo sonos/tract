@@ -2,8 +2,8 @@ use pb::*;
 use tract_core::*;
 use tract_core::f16::f16;
 
-impl TfdFrom<TensorProto_DataType> for DatumType {
-    fn tfd_from(t: &TensorProto_DataType) -> TfdResult<DatumType> {
+impl Tractify<TensorProto_DataType> for DatumType {
+    fn tractify(t: &TensorProto_DataType) -> TfdResult<DatumType> {
         use self::TensorProto_DataType::*;
         match t {
             &BOOL => Ok(DatumType::Bool),
@@ -37,11 +37,11 @@ impl TfdFrom<TensorProto_DataType> for DatumType {
     */
 }
 
-impl TfdFrom<TypeProto_Tensor> for TensorFact {
-    fn tfd_from(t: &TypeProto_Tensor) -> TfdResult<TensorFact> {
+impl Tractify<TypeProto_Tensor> for TensorFact {
+    fn tractify(t: &TypeProto_Tensor) -> TfdResult<TensorFact> {
         let mut fact = TensorFact::default();
         if t.has_elem_type() {
-            fact = fact.with_datum_type(t.get_elem_type().to_tfd()?);
+            fact = fact.with_datum_type(t.get_elem_type().tractify()?);
         }
         if t.has_shape() {
             let shape = t.get_shape();
@@ -56,9 +56,9 @@ impl TfdFrom<TypeProto_Tensor> for TensorFact {
     }
 }
 
-impl TfdFrom<TensorProto> for Tensor {
-    fn tfd_from(t: &TensorProto) -> TfdResult<Tensor> {
-        let dt = t.get_data_type().to_tfd()?;
+impl Tractify<TensorProto> for Tensor {
+    fn tractify(t: &TensorProto) -> TfdResult<Tensor> {
+        let dt = t.get_data_type().tractify()?;
         let shape: Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
         if t.has_raw_data() {
             unsafe {
@@ -101,5 +101,5 @@ impl TfdFrom<TensorProto> for Tensor {
 
 pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<Tensor> {
     let tensor: TensorProto = ::protobuf::parse_from_reader(&mut r).unwrap();
-    tensor.to_tfd()
+    tensor.tractify()
 }

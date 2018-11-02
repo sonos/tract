@@ -118,16 +118,16 @@ fn setup_test_logger() {
     TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
 }
 
-pub trait TfdFrom<Tf>: Sized {
-    fn tfd_from(t: &Tf) -> TfdResult<Self>;
+pub trait Tractify<Other>: Sized {
+    fn tractify(t: &Other) -> TfdResult<Self>;
 }
 
 pub trait ToTfd<Tfd>: Sized {
-    fn to_tfd(&self) -> TfdResult<Tfd>;
+    fn tractify(&self) -> TfdResult<Tfd>;
 }
 
-impl<PB, Tfd: TfdFrom<PB>> ::ToTfd<Tfd> for PB {
-    fn to_tfd(&self) -> TfdResult<Tfd> {
-        Tfd::tfd_from(self)
+impl<PB, Tfd: Tractify<PB>> ::ToTfd<Tfd> for PB {
+    fn tractify(&self) -> TfdResult<Tfd> {
+        Tfd::tractify(self)
     }
 }

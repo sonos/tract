@@ -32,7 +32,7 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
             .map_err(|e| format!("accessing {:?}, {:?}", path, e))
             .unwrap();
         let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
-        vec.push(tensor.to_tfd().unwrap())
+        vec.push(tensor.tractify().unwrap())
     }
     vec
 }

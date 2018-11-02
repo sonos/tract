@@ -118,7 +118,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_opt_datum_type(&self, name: &str) -> TfdResult<Option<tract_core::DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
-            Ok(Some(t.get_field_type().to_tfd()?))
+            Ok(Some(t.get_field_type().tractify()?))
         } else {
             Ok(None)
         }
@@ -131,7 +131,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<tract_core::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
-            Ok(Some(t.to_tfd()?))
+            Ok(Some(t.tractify()?))
         } else {
             Ok(None)
         }
