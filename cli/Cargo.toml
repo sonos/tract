@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "1.0.0"
+version = "0.1.0"
 authors = ["Romain Liautaud <romain.liautaud@snips.ai>",
 "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
@@ -28,9 +28,9 @@ rand = "0.5"
 pretty_env_logger = "0.2"
 terminal_size = "0.1.7"
 textwrap = "0.10"
-tract-core = { path = "../core", features=["serialize"] }
-tract-tensorflow = { path = "../tensorflow" }
-tract-onnx = { path = "../onnx" }
+tract-core = "0.1.0"
+tract-tensorflow = "0.1.0"
+tract-onnx = "0.1.0"
 pbr = "1.0"
 atty = "0.2"
 itertools = "0.7"

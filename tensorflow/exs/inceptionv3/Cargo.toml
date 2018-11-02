@@ -11,14 +11,14 @@ mio_httpc = "*"
 tar = "*"
 tract-core = { path = "../../../core" }
 tract-tensorflow = { path = "../.." }
-conform = { path = "../../conform", optional=true }
+tract-tensorflow-conform = { path = "../../conform", optional=true }
 
 [dev-dependencies]
 criterion = "0.2"
 dinghy-test = "0.3"
 
 [features]
-tensorflow = [ "conform" ]
+tensorflow = [ "tract-tensorflow-conform" ]
 
 [[bench]]
 harness = false
