@@ -4,13 +4,13 @@ version = "0.1.0"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/kali/tensorflow-deploy-rust"
+repository = "https://github.com/kali/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
 
 [badges]
-travis-ci = { repository = "kali/tensorflow-deploy-rust" }
+travis-ci = { repository = "kali/tract" }
 
 [dependencies]
 bit-set="0.5"
