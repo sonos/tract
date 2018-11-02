@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.1.1"
+version = "0.1.2-pre"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -28,9 +28,9 @@ pretty_env_logger = "0.2"
 # tensorflow = { version = "0", optional = true }
 terminal_size = "0.1.7"
 textwrap = "0.10"
-tract-core = "0.1.1"
-tract-tensorflow = "0.1.1"
-tract-onnx = "0.1.1"
+tract-core = { path = "../core" }
+tract-tensorflow = { path = "../tensorflow" }
+tract-onnx = { path = "../onnx" }
 pbr = "1.0"
 atty = "0.2"
 itertools = "0.7"
