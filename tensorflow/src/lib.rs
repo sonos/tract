@@ -31,7 +31,6 @@
 //! # }
 //! ```
 //!
-//! For a more serious example, see [inception v3 example](https://github.com/kali/tensorflow-deploy-rust/blob/master/examples/inceptionv3.rs).
 
 #[macro_use]
 extern crate derive_new;
