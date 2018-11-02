@@ -19,7 +19,7 @@ log = "0.4"
 ndarray = { version = "0.12" }
 num = "0.2"
 protobuf = "2.0"
-tract-core = { path = "../core" }
+tract-core = "0.1.0"
 
 [dev-dependencies]
 criterion = "0.2"
