@@ -1,4 +1,4 @@
-# TF deploy / Rust
+# Tract
 
 [![Build Status](https://travis-ci.org/kali/tract.svg?branch=master)](https://travis-ci.org/kali/tract)
 
