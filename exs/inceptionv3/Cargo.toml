@@ -9,7 +9,7 @@ image = "*"
 ndarray = "*"
 mio_httpc = "*"
 tar = "*"
-tfdeploy = { path = "../.." }
+tfdeploy = { path = "../../core" }
 tfdeploy-tf = { path = "../../tfdeploy-tf" }
 conform = { path = "../../conform", optional=true }
 
