@@ -226,7 +226,7 @@ pub enum SomeGraphDef {
 pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
-    tfd_model: tract_core::Model,
+    tract_model: tract_core::Model,
     pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
     #[cfg(feature = "tensorflow")]
@@ -250,14 +250,14 @@ impl Parameters {
             } else {
                 "tf"
             });
-        let (graph, mut tfd_model) = if format == "onnx" {
+        let (graph, mut tract_model) = if format == "onnx" {
             let graph = tract_onnx::model::model_proto_for_path(&name)?;
-            let tfd = tract_onnx::for_path(&name)?;
-            (SomeGraphDef::Onnx(graph), tfd)
+            let tract = tract_onnx::for_path(&name)?;
+            (SomeGraphDef::Onnx(graph), tract)
         } else {
             let graph = tract_tensorflow::model::graphdef_for_path(&name)?;
-            let tfd_model = tract_tensorflow::for_path(&name)?;
-            (SomeGraphDef::Tf(graph), tfd_model)
+            let tract_model = tract_tensorflow::for_path(&name)?;
+            (SomeGraphDef::Tf(graph), tract_model)
         };
 
         info!("Model {:?} loaded", name);
@@ -273,11 +273,11 @@ impl Parameters {
         let tf_model = ();
 
         if let Some(inputs) = matches.values_of("input_node") {
-            tfd_model.set_inputs(inputs)?;
+            tract_model.set_inputs(inputs)?;
         };
 
         if let Some(outputs) = matches.values_of("output_node") {
-            tfd_model.set_outputs(outputs)?;
+            tract_model.set_outputs(outputs)?;
         };
 
         let inputs = if let Some(inputs) = matches.values_of("input") {
@@ -294,8 +294,8 @@ impl Parameters {
                     fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tract_core::TDim::s().into()
                 }
                 vs.push(t.value.concretize());
-                let outlet = tfd_model.inputs()?[ix];
-                tfd_model.set_fact(outlet, fact)?;
+                let outlet = tract_model.inputs()?[ix];
+                tract_model.set_fact(outlet, fact)?;
             }
             Some(vs)
         } else {
@@ -304,7 +304,7 @@ impl Parameters {
 
         if !matches.is_present("skip_analyse") {
             info!("Running analyse");
-            tfd_model.analyse()?;
+            tract_model.analyse()?;
         } else {
             info!("Skipping analyse");
         }
@@ -314,19 +314,19 @@ impl Parameters {
         if matches.is_present("optimize") || pulse.is_some() {
             info!("Optimize");
             if format == "tf" {
-                tfd_model = ::tract_tensorflow::model::optimize(tfd_model)?;
+                tract_model = ::tract_tensorflow::model::optimize(tract_model)?;
             }
-            tfd_model = tfd_model.into_optimized()?;
+            tract_model = tract_model.into_optimized()?;
         }
 
         let pulse_facts = if let Some(pulse) = pulse {
             info!("Pulsify {}", pulse);
-            let (model, ifact, ofact) = ::tract_core::pulse::pulsify(&tfd_model, pulse)?;
+            let (model, ifact, ofact) = ::tract_core::pulse::pulsify(&tract_model, pulse)?;
             if matches.is_present("optimize") {
                 info!("Optimize pulsing network");
-                tfd_model = model.into_optimized()?;
+                tract_model = model.into_optimized()?;
             } else {
-                tfd_model = model;
+                tract_model = model;
             };
             Some((ifact, ofact))
         } else {
@@ -336,7 +336,7 @@ impl Parameters {
         Ok(Parameters {
             name: name.to_string(),
             graph,
-            tfd_model,
+            tract_model,
             tf_model,
             pulse_facts,
             inputs,
@@ -411,7 +411,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
         */
-        ("draw", _) => ::draw::render(&params.tfd_model),
+        ("draw", _) => ::draw::render(&params.tract_model),
 
         ("dump", Some(m)) => {
             let assert_outputs: Option<Vec<TensorFact>> = m

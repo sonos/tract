@@ -9,7 +9,7 @@ use tract_core::plan::SimpleState;
 use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
-    let model = params.tfd_model;
+    let model = params.tract_model;
     let input = model.input_fact()?;
 
     // First generate random values for the inputs.

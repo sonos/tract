@@ -4,7 +4,7 @@ use ops::prelude::*;
 pub struct Reshape {}
 
 impl Reshape {
-    fn compute_shape<D: DimLike>(&self, input: &[D], shape: &[isize]) -> TfdResult<Vec<D>> {
+    fn compute_shape<D: DimLike>(&self, input: &[D], shape: &[isize]) -> TractResult<Vec<D>> {
         if shape.iter().all(|d| *d > 0) {
             return Ok(shape.iter().map(|&d| D::from(d as usize)).collect());
         }
@@ -35,7 +35,7 @@ impl Reshape {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Value, shape: &[usize]) -> TfdResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Value, shape: &[usize]) -> TractResult<TVec<Value>> {
         Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
     }
 }
@@ -47,7 +47,7 @@ impl Op for Reshape {
 }
 
 impl StatelessOp for Reshape {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (input, shape) = args_2!(inputs);
         let shape: Vec<isize> = shape
             .cast_to_array::<i64>()?

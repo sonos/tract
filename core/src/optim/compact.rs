@@ -1,8 +1,8 @@
 use model::{InletId, OutletId};
 use std::collections::HashMap;
-use {Model, TfdResult};
+use {Model, TractResult};
 
-pub fn compact(old: &Model) -> TfdResult<Model> {
+pub fn compact(old: &Model) -> TractResult<Model> {
     let mut model = Model::default();
     let mut map = HashMap::new();
     for old_id in old.eval_order()? {

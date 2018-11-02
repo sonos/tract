@@ -5,12 +5,12 @@ pub mod raw;
 pub mod unary;
 use tract_core::ops::prelude::*;
 
-pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::SpaceToBatch::new(datum_type)))
 }
 
-pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::BatchToSpace::new(datum_type)))
 }
@@ -19,7 +19,7 @@ fn space_to_batch<T: Datum + Zero>(
     input: Value,
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
-) -> TfdResult<Value> {
+) -> TractResult<Value> {
     let mut data = input.into_array::<T>()?;
 
     for (ix, pad) in paddings.view().outer_iter().enumerate() {
@@ -69,7 +69,7 @@ fn batch_to_space<T: Datum + Zero>(
     input: Value,
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,
-) -> TfdResult<Value> {
+) -> TractResult<Value> {
     let data = input.into_array()?;
     let input_shape = data.shape().to_vec();
     let crops: ArrayView2<i32> = crops.view().into_dimensionality()?;

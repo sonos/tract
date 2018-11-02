@@ -11,12 +11,12 @@ pub struct SimplePlan<M: Borrow<Model>> {
 }
 
 impl<M: Borrow<Model>> SimplePlan<M> {
-    pub fn new(model: M) -> TfdResult<SimplePlan<M>> {
+    pub fn new(model: M) -> TractResult<SimplePlan<M>> {
         let order = eval_order(model.borrow())?;
         Ok(SimplePlan { model, order })
     }
 
-    pub fn run(&self, inputs: TVec<Tensor>) -> TfdResult<TVec<Tensor>> {
+    pub fn run(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let mut state = SimpleState::new(self)?;
         state.run(inputs)
     }
@@ -52,7 +52,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M
 }
 
 impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
-    pub fn new(plan: P) -> TfdResult<SimpleState<M, P>> {
+    pub fn new(plan: P) -> TractResult<SimpleState<M, P>> {
         let values = vec![None; plan.borrow().model.borrow().nodes().len()];
         let states = plan
             .borrow()
@@ -60,7 +60,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             .nodes()
             .iter()
             .map(|n| n.op().state())
-            .collect::<TfdResult<_>>()?;
+            .collect::<TractResult<_>>()?;
         Ok(SimpleState {
             states,
             plan,
@@ -70,13 +70,13 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
     }
 
     /// Reset wires state.
-    pub fn reset_wires(&mut self) -> TfdResult<()> {
+    pub fn reset_wires(&mut self) -> TractResult<()> {
         self.values.iter_mut().for_each(|s| *s = None);
         Ok(())
     }
 
     /// Reset wires state.
-    pub fn reset_op_states(&mut self) -> TfdResult<()> {
+    pub fn reset_op_states(&mut self) -> TractResult<()> {
         self.states = self
             .plan
             .borrow()
@@ -84,11 +84,11 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             .nodes()
             .iter()
             .map(|n| n.op().state())
-            .collect::<TfdResult<_>>()?;
+            .collect::<TractResult<_>>()?;
         Ok(())
     }
 
-    pub fn run(&mut self, inputs: TVec<Tensor>) -> TfdResult<TVec<Tensor>> {
+    pub fn run(&mut self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         use ops::source::Source;
         let mut result = tvec!();
         {
@@ -137,7 +137,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(result)
     }
 
-    pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TfdResult<()> {
+    pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TractResult<()> {
         let SimpleState {
             ref plan,
             ref mut values,
@@ -152,13 +152,13 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(())
     }
 
-    pub fn set_input(&mut self, input: usize, t: Tensor) -> TfdResult<()> {
+    pub fn set_input(&mut self, input: usize, t: Tensor) -> TractResult<()> {
         let id = self.model().inputs()?[input].node;
         self.values[id] = Some(tvec![t.into()]);
         Ok(())
     }
 
-    pub fn take_outputs(&mut self) -> TfdResult<Vec<Tensor>> {
+    pub fn take_outputs(&mut self) -> TractResult<Vec<Tensor>> {
         let SimpleState {
             ref plan,
             ref mut values,
@@ -179,16 +179,16 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(v)
     }
 
-    pub fn set_values(&mut self, id: usize, values: TVec<Tensor>) -> TfdResult<()> {
+    pub fn set_values(&mut self, id: usize, values: TVec<Tensor>) -> TractResult<()> {
         self.values[id] = Some(values.into_iter().map(|t| t.into()).collect());
         Ok(())
     }
 
-    pub fn set_value(&mut self, id: usize, value: Tensor) -> TfdResult<()> {
+    pub fn set_value(&mut self, id: usize, value: Tensor) -> TractResult<()> {
         self.set_values(id, tvec!(value))
     }
 
-    pub fn compute_one(&mut self, node: usize) -> TfdResult<()> {
+    pub fn compute_one(&mut self, node: usize) -> TractResult<()> {
         let SimpleState {
             ref plan,
             ref mut values,
@@ -216,7 +216,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(())
     }
 
-    pub fn compute_recursively(&mut self, node: usize) -> TfdResult<()> {
+    pub fn compute_recursively(&mut self, node: usize) -> TractResult<()> {
         let values = {
             let precs: Vec<usize> = self.model().nodes()[node]
                 .inputs
@@ -249,12 +249,12 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(())
     }
 
-    pub fn take_by_name(&mut self, name: &str) -> TfdResult<TVec<Tensor>> {
+    pub fn take_by_name(&mut self, name: &str) -> TractResult<TVec<Tensor>> {
         let id = self.model().node_by_name(name)?.id;
         Self::take(self, id)
     }
 
-    pub fn take(&mut self, id: usize) -> TfdResult<TVec<Tensor>> {
+    pub fn take(&mut self, id: usize) -> TractResult<TVec<Tensor>> {
         Ok(self.values[id]
             .take()
             .ok_or("Value is not computed")?

@@ -1,6 +1,6 @@
 mod slice;
 
-use tract_core::ops as tfdops;
+use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
 use ops::OpRegister;
@@ -9,18 +9,18 @@ use pb::NodeProto;
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Concat", concat);
     reg.insert("Expand", |_| {
-        Ok(Box::new(tfdops::array::MultiBroadcastTo::default()))
+        Ok(Box::new(tractops::array::MultiBroadcastTo::default()))
     });
     reg.insert("Flatten", flatten);
     reg.insert("Pad", pad);
     reg.insert("Reshape", |_| {
-        Ok(Box::new(tfdops::array::Reshape::default()))
+        Ok(Box::new(tractops::array::Reshape::default()))
     });
     reg.insert("Shape", |_| {
-        Ok(Box::new(tfdops::array::Shape::new(DatumType::I64)))
+        Ok(Box::new(tractops::array::Shape::new(DatumType::I64)))
     });
     reg.insert("Size", |_| {
-        Ok(Box::new(tfdops::array::Size::new(DatumType::I64)))
+        Ok(Box::new(tractops::array::Size::new(DatumType::I64)))
     });
     reg.insert("Transpose", transpose);
     reg.insert("Slice", slice);
@@ -29,32 +29,32 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Unsqueeze", unsqueeze);
 }
 
-pub fn concat(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn concat(node: &NodeProto) -> TractResult<Box<Op>> {
     let axis = node.get_attr_int("axis")?;
-    Ok(Box::new(tfdops::array::Concat::new(axis as usize)))
+    Ok(Box::new(tractops::array::Concat::new(axis as usize)))
 }
 
-pub fn flatten(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn flatten(node: &NodeProto) -> TractResult<Box<Op>> {
     let axis = node.get_attr_opt_int("axis")?.unwrap_or(1);
-    Ok(Box::new(tfdops::array::Flatten::new(axis as usize)))
+    Ok(Box::new(tractops::array::Flatten::new(axis as usize)))
 }
 
-pub fn pad(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
     let mode = node.get_attr_opt_str("mode")?;
     let value = node.get_attr_opt_float("value")?;
     let mode = match mode {
-        Some("reflect") => tfdops::array::PadMode::Reflect,
-        Some("edge") => tfdops::array::PadMode::Edge,
-        _ => tfdops::array::PadMode::Constant(value.unwrap_or(0.0)),
+        Some("reflect") => tractops::array::PadMode::Reflect,
+        Some("edge") => tractops::array::PadMode::Edge,
+        _ => tractops::array::PadMode::Constant(value.unwrap_or(0.0)),
     };
     let pads = node.get_attr_ints("pads")?;
     let rank = pads.len()/2;
     let pads = (0..rank).map(|ax| (pads[ax] as usize, pads[ax+rank] as usize)).collect();
-    Ok(Box::new(tfdops::array::Pad::new(pads, mode)))
+    Ok(Box::new(tractops::array::Pad::new(pads, mode)))
 }
 
 
-pub fn slice(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn slice(node: &NodeProto) -> TractResult<Box<Op>> {
     let axes = node.get_attr_opt_ints("axes")?;
     let begin = node.get_attr_ints("starts")?;
     let end = node.get_attr_ints("ends")?;
@@ -65,35 +65,35 @@ pub fn slice(node: &NodeProto) -> TfdResult<Box<Op>> {
     )))
 }
 
-pub fn split(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn split(node: &NodeProto) -> TractResult<Box<Op>> {
     let axis = node.get_attr_opt_int("axis")?.unwrap_or(0);
     let split = node.get_attr_opt_ints("split")?;
-    Ok(Box::new(tfdops::array::Split::new(
+    Ok(Box::new(tractops::array::Split::new(
         axis as usize,
         node.get_output().len(),
         split.map(|a| a.into_iter().map(|&d| d as _).collect()),
     )))
 }
 
-pub fn squeeze(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn squeeze(node: &NodeProto) -> TractResult<Box<Op>> {
     let axes = node
         .get_attr_opt_ints("axes")?
         .map(|l| l.iter().map(|&a| a as usize).collect());
-    Ok(Box::new(tfdops::array::Squeeze::new(axes)))
+    Ok(Box::new(tractops::array::Squeeze::new(axes)))
 }
 
-pub fn transpose(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn transpose(node: &NodeProto) -> TractResult<Box<Op>> {
     let perm = node
         .get_attr_opt_ints("perm")?
         .map(|axes| axes.iter().map(|&a| a as usize).collect());
-    Ok(Box::new(tfdops::array::PermuteAxes::new(perm)))
+    Ok(Box::new(tractops::array::PermuteAxes::new(perm)))
 }
 
-pub fn unsqueeze(node: &NodeProto) -> TfdResult<Box<Op>> {
+pub fn unsqueeze(node: &NodeProto) -> TractResult<Box<Op>> {
     let axes = node
         .get_attr_ints("axes")?
         .iter()
         .map(|&a| a as usize)
         .collect();
-    Ok(Box::new(tfdops::array::AddDims::new(axes)))
+    Ok(Box::new(tractops::array::AddDims::new(axes)))
 }

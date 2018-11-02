@@ -59,13 +59,13 @@ impl Value {
         self.clone()
     }
 
-    pub fn into_array<'a, D: ::tensor::Datum>(self) -> TfdResult<::ndarray::ArrayD<D>> {
+    pub fn into_array<'a, D: ::tensor::Datum>(self) -> TractResult<::ndarray::ArrayD<D>> {
         self.into_tensor().into_array()
     }
 
     pub fn to_array_view<'a, D: ::tensor::Datum>(
         &'a self,
-    ) -> TfdResult<::ndarray::ArrayViewD<'a, D>> {
+    ) -> TractResult<::ndarray::ArrayViewD<'a, D>> {
         self.as_tensor().to_array_view()
     }
 }

@@ -9,8 +9,8 @@ pub struct Concat {
 
 impl Concat {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
-        let mats: TfdResult<Vec<ArrayViewD<T>>> =
+    fn eval_t<T: Datum>(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+        let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(self.axis as usize), &*mats?)?;
         Ok(tvec![result.into()])
@@ -25,7 +25,7 @@ impl Op for Concat {
 
 impl StatelessOp for Concat {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }

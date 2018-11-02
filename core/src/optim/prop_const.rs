@@ -1,8 +1,8 @@
 use bit_set;
 use model::{InletId, OutletId};
-use {Model, TfdResult};
+use {Model, TractResult};
 
-pub fn prop_const(model: &mut Model) -> TfdResult<()> {
+pub fn prop_const(model: &mut Model) -> TractResult<()> {
     let mut done = bit_set::BitSet::with_capacity(model.nodes().len());
     let mut needed: Vec<usize> = vec![];
     for t in model.outputs()?.iter().map(|n| n.node) {

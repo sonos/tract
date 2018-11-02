@@ -29,7 +29,7 @@ impl<D: Datum> FixedParamsConv<D> {
         kernel: ArrayViewD<D>,
         bias: Option<ArrayViewD<D>>,
         group: usize,
-    ) -> TfdResult<FixedParamsConv<D>> {
+    ) -> TractResult<FixedParamsConv<D>> {
         let output_channels = if kernel_is_hwio {
             *kernel.shape().last().unwrap()
         } else {
@@ -68,7 +68,7 @@ impl<D: Datum> FixedParamsConv<D> {
         };
 
         let bias = bias
-            .map(|bias| -> TfdResult<_> {
+            .map(|bias| -> TractResult<_> {
                 let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
                 bias_shape[1] = output_channels;
                 Ok(bias.view().into_shape(&*bias_shape)?.to_owned())
@@ -92,7 +92,7 @@ impl<D> FixedParamsConv<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    pub(super) fn convolve<'i>(&'i self, input: &'i ArrayViewD<'i, D>) -> TfdResult<ArrayD<D>> {
+    pub(super) fn convolve<'i>(&'i self, input: &'i ArrayViewD<'i, D>) -> TractResult<ArrayD<D>> {
         let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
         let mut mega_matrix = unsafe { Array2::<D>::uninitialized((self.k, self.n)) };
         let input_shape = &self.patch.input_shape;
@@ -176,7 +176,7 @@ impl<D> StatelessOp for FixedParamsConv<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let output = self.convolve(&inputs[0].to_array_view::<D>()?)?;
         Ok(tvec!(output.into()))
     }

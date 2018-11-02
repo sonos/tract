@@ -12,7 +12,7 @@ extern crate tract_tensorflow;
 
 use std::{fs, io, path};
 
-use tract_core::TfdResult;
+use tract_core::TractResult;
 
 fn download() {
     use std::sync::{Once, ONCE_INIT};
@@ -21,7 +21,7 @@ fn download() {
     START.call_once(|| do_download().unwrap());
 }
 
-fn do_download() -> TfdResult<()> {
+fn do_download() -> TractResult<()> {
     let dir = inception_v3_2016_08_28();
     let dir_partial = dir.clone().with_extension("partial");
     if fs::metadata(&dir).is_ok() {
@@ -100,8 +100,8 @@ mod tests {
     #[test]
     fn grace_hopper_is_a_military_uniform() {
         download();
-        let tfd = ::tract_tensorflow::for_path(inception_v3_2016_08_28_frozen()).unwrap();
-        let plan = ::tract_core::SimplePlan::new(&tfd).unwrap();
+        let tract = ::tract_tensorflow::for_path(inception_v3_2016_08_28_frozen()).unwrap();
+        let plan = ::tract_core::SimplePlan::new(&tract).unwrap();
         let input = load_image(hopper());
         let outputs = plan.run(tvec![input]).unwrap();
         let labels = load_labels();

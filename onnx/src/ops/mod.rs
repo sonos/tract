@@ -6,7 +6,7 @@ mod logic;
 mod math;
 mod nn;
 
-pub type OpRegister = HashMap<&'static str, fn(&NodeProto) -> TfdResult<Box<Op>>>;
+pub type OpRegister = HashMap<&'static str, fn(&NodeProto) -> TractResult<Box<Op>>>;
 
 pub struct OpBuilder(OpRegister);
 
@@ -25,7 +25,7 @@ impl OpBuilder {
         OpBuilder(reg)
     }
 
-    pub fn build(&self, pb: &NodeProto) -> TfdResult<Box<Op>> {
+    pub fn build(&self, pb: &NodeProto) -> TractResult<Box<Op>> {
         match self.0.get(pb.get_op_type()) {
             Some(builder) => builder(pb),
             None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp(
@@ -36,14 +36,14 @@ impl OpBuilder {
     }
 }
 
-fn konst(node: &NodeProto) -> TfdResult<Box<Op>> {
+fn konst(node: &NodeProto) -> TractResult<Box<Op>> {
     let v = node.get_attr_tensor("value")?;
     Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(v)))
 }
 
-fn cast(node: &NodeProto) -> TfdResult<Box<Op>> {
+fn cast(node: &NodeProto) -> TractResult<Box<Op>> {
     use protobuf::ProtobufEnum;
-    use tract_core::ToTfd;
+    use tract_core::ToTract;
     let to = node.get_attr_int("to")?;
     let to = ::pb::TensorProto_DataType::from_i32(to as i32)
         .ok_or_else(|| format!("Can not convert integer {} into a TensorProto_DataType", to))?;

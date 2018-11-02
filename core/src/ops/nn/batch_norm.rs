@@ -13,7 +13,7 @@ impl BatchNorm {
     fn eval_t<T: Datum + ::num::Float + ::num::FromPrimitive>(
         &self,
         mut inputs: TVec<Value>,
-    ) -> TfdResult<TVec<Value>>
+    ) -> TractResult<TVec<Value>>
     where
         f32: AsPrimitive<T>,
     {
@@ -43,7 +43,7 @@ impl Op for BatchNorm {
 }
 
 impl StatelessOp for BatchNorm {
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }

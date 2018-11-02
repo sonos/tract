@@ -14,12 +14,12 @@ use proptest::prelude::*;
 use tract_core::ops::StatefullOp;
 use tract_core::tensor::arr4;
 use tract_core::tensor::Datum;
-use tract_core::Tensor as TfdTensor;
+use tract_core::Tensor as TractTensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 
-fn space_to_batch_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
+fn space_to_batch_strat() -> BoxedStrategy<(TractTensor, TractTensor, TractTensor)> {
     use proptest::collection::vec;
     (
         1usize..4,
@@ -84,10 +84,10 @@ proptest! {
     }
 }
 
-fn batch_to_space_strat() -> BoxedStrategy<(TfdTensor, TfdTensor, TfdTensor)> {
+fn batch_to_space_strat() -> BoxedStrategy<(TractTensor, TractTensor, TractTensor)> {
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
-            let batches: TfdTensor =
+            let batches: TractTensor =
                 tract_tensorflow::ops::nn::s2b::raw::SpaceToBatch::new(f32::datum_type())
                     .as_stateless()
                     .unwrap()

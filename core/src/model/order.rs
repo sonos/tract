@@ -1,8 +1,8 @@
 use bit_set;
 use model::Node;
-use TfdResult;
+use TractResult;
 
-pub fn eval_order(model: &super::Model) -> TfdResult<Vec<usize>> {
+pub fn eval_order(model: &super::Model) -> TractResult<Vec<usize>> {
     let targets = model
         .outputs()?
         .iter()
@@ -11,7 +11,7 @@ pub fn eval_order(model: &super::Model) -> TfdResult<Vec<usize>> {
     eval_order_for_nodes(model.nodes(), &targets)
 }
 
-pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> TfdResult<Vec<usize>> {
+pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> TractResult<Vec<usize>> {
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut needed: Vec<usize> = vec![];
     let mut order: Vec<usize> = vec![];

@@ -22,14 +22,14 @@ pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> Cl
 }
 
 fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
-    let tfd = params.tfd_model;
-    let plan = SimplePlan::new(&tfd)?;
+    let tract = params.tract_model;
+    let plan = SimplePlan::new(&tract)?;
     let mut inputs:TVec<Tensor> = tvec!();
-    for (ix, input) in tfd.inputs()?.iter().enumerate() {
+    for (ix, input) in tract.inputs()?.iter().enumerate() {
         if let Some(input) = params.inputs.as_ref().and_then(|v| v.get(ix)).and_then(|t| t.as_ref()) {
             inputs.push(input.to_owned());
         } else {
-            let fact = tfd.fact(*input)?;
+            let fact = tract.fact(*input)?;
             inputs.push(::tensor::tensor_for_fact(fact, None)?);
         }
     }
@@ -50,7 +50,7 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =
         output_dim as usize + output_fact.delay + 4 * output_fact.pulse();
-    let plan = SimplePlan::new(&params.tfd_model)?;
+    let plan = SimplePlan::new(&params.tract_model)?;
     let mut state = ::tract_core::plan::SimpleState::new(&plan)?;
     //    println!("output_shape: {:?}", output_shape);
     let pulse = input_fact.pulse();

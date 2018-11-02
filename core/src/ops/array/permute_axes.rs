@@ -21,7 +21,7 @@ impl PermuteAxes {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Value) -> TfdResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         if let Some(ref axes) = self.axes {
             Ok(tvec![input.into_array::<T>()?.permuted_axes(&**axes).into()])
         } else {
@@ -37,7 +37,7 @@ impl Op for PermuteAxes {
 }
 
 impl StatelessOp for PermuteAxes {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }

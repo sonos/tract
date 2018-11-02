@@ -10,7 +10,7 @@ error_chain! {
     }
     links {
         Conform(conform::Error, conform::ErrorKind) #[cfg(feature="tensorflow")];
-        Tfdeploy(tract_core::TfdError, tract_core::TfdErrorKind);
+        Tract(tract_core::TractError, tract_core::TractErrorKind);
     }
 
     foreign_links {

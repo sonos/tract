@@ -119,15 +119,15 @@ fn setup_test_logger() {
 }
 
 pub trait Tractify<Other>: Sized {
-    fn tractify(t: &Other) -> TfdResult<Self>;
+    fn tractify(t: &Other) -> TractResult<Self>;
 }
 
-pub trait ToTfd<Tfd>: Sized {
-    fn tractify(&self) -> TfdResult<Tfd>;
+pub trait ToTract<Tract>: Sized {
+    fn tractify(&self) -> TractResult<Tract>;
 }
 
-impl<PB, Tfd: Tractify<PB>> ::ToTfd<Tfd> for PB {
-    fn tractify(&self) -> TfdResult<Tfd> {
-        Tfd::tractify(self)
+impl<PB, Tract: Tractify<PB>> ::ToTract<Tract> for PB {
+    fn tractify(&self) -> TractResult<Tract> {
+        Tract::tractify(self)
     }
 }

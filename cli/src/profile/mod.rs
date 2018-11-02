@@ -25,7 +25,7 @@ impl ProfileData {
         }
     }
 
-    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tract_core::TfdResult<()> {
+    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tract_core::TractResult<()> {
         *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
         Ok(())
     }

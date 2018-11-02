@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use ndarray::prelude::*;
 use tract_core::ops::prelude::*;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn build(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
@@ -32,14 +32,14 @@ struct Dim {
 }
 
 impl Dim {
-    fn len(&self) -> TfdResult<usize> {
+    fn len(&self) -> TractResult<usize> {
         Ok(
             (((self.stride.abs() as i32 - 1) + (self.end - self.begin).to_integer()?.abs() as i32)
                 / self.stride.abs()) as usize,
         )
     }
 
-    fn soft_len(&self) -> TfdResult<TDim> {
+    fn soft_len(&self) -> TractResult<TDim> {
         if let Ok(len) = (self.end - self.begin).to_integer() {
             Ok((((self.stride.abs() as i32 - 1) + len.abs() as i32) / self.stride.abs()).to_dim())
         } else if self.stride == 1 {
@@ -141,7 +141,7 @@ impl BaseStridedSlice {
         begin: Value,
         end: Value,
         strides: Value,
-    ) -> TfdResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
+    ) -> TractResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
         let casted_begin = TDim::tensor_cast_to_array(&begin)?;
         let begin = casted_begin.view().into_dimensionality()?;
         let casted_end = TDim::tensor_cast_to_array(&end)?;
@@ -166,16 +166,16 @@ impl BaseStridedSlice {
         let mid_shape: Vec<usize> = bounds
             .iter()
             .map(|d| d.len())
-            .collect::<TfdResult<Vec<usize>>>()?;
+            .collect::<TractResult<Vec<usize>>>()?;
         let end_shape: Vec<usize> = bounds
             .iter()
             .filter(|d| !d.shrink)
             .map(|d| d.len())
-            .collect::<TfdResult<Vec<usize>>>()?;
+            .collect::<TractResult<Vec<usize>>>()?;
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Datum>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval<T: Datum>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -248,7 +248,7 @@ pub struct StridedSlice<T: Datum> {
 }
 
 impl<T: Datum> StatelessOp for StridedSlice<T> {
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         self.base.eval::<T>(inputs)
     }
 }
@@ -262,7 +262,7 @@ impl<T: Datum> Op for StridedSlice<T> {
         &self,
         mut inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         let (input, begin, end, strides) = args_4!(inputs);
         if let (Some(input_shape), Some(begin), Some(end), Some(strides)) = (
             input.shape.concretize(),
@@ -325,7 +325,7 @@ pub struct StridedSliceD {
 }
 
 impl StatelessOp for StridedSliceD {
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let dt = inputs[0].datum_type();
         match dt {
             DatumType::TDim => self.base.eval::<TDim>(inputs),

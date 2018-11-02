@@ -9,7 +9,7 @@ pub struct Slice {
 }
 
 impl Slice {
-    fn eval_t<T: Datum>(&self, input: Value) -> TfdResult<Value> {
+    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<Value> {
         let mut input = input.to_array_view::<T>()?;
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
@@ -40,7 +40,7 @@ impl Op for Slice {
 
 impl StatelessOp for Slice {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
             self, input

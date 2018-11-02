@@ -9,7 +9,7 @@ pub struct Shape {
 }
 
 impl Shape {
-    pub fn coerce_to<T>(shape: &[usize]) -> TfdResult<Value>
+    pub fn coerce_to<T>(shape: &[usize]) -> TractResult<Value>
     where
         T: Datum,
         usize: AsPrimitive<T>,
@@ -27,7 +27,7 @@ impl Op for Shape {
 
 impl StatelessOp for Shape {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let shape = inputs[0].shape();
         Ok(tvec![dispatch_numbers!(Self::coerce_to(self.dt)(&shape))?])
     }

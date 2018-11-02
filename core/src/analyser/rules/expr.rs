@@ -23,7 +23,7 @@ pub trait Output: fmt::Debug + Clone + PartialEq {
 
     /// Retrieves the fact from the Wrapped type.
     /// Panics if wrapped doesn't have the right constructor.
-    fn from_wrapped(wrapped: Wrapped) -> TfdResult<Self>;
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<Self>;
 }
 
 macro_rules! impl_output {
@@ -33,7 +33,7 @@ macro_rules! impl_output {
                 Wrapped::$constr(source)
             }
 
-            fn from_wrapped(wrapped: Wrapped) -> TfdResult<$type> {
+            fn from_wrapped(wrapped: Wrapped) -> TractResult<$type> {
                 if let Wrapped::$constr(v) = wrapped {
                     Ok(v)
                 } else {
@@ -56,7 +56,7 @@ impl Output for usize {
         IntFact::into_wrapped((source as i64).into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TfdResult<usize> {
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<usize> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
         IntFact::from_wrapped(wrapped)?
@@ -72,7 +72,7 @@ impl Output for i64 {
         IntFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TfdResult<i64> {
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<i64> {
         let message = format!("Tried to convert {:?} to a i64.", wrapped);
 
         IntFact::from_wrapped(wrapped)?
@@ -87,7 +87,7 @@ impl Output for Tensor {
         ValueFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TfdResult<Tensor> {
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<Tensor> {
         let message = format!("Tried to convert {:?} to a tensor.", wrapped);
 
         ValueFact::from_wrapped(wrapped)?
@@ -102,7 +102,7 @@ impl Output for TDim {
         DimFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TfdResult<TDim> {
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<TDim> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
         DimFact::from_wrapped(wrapped)?
@@ -124,10 +124,10 @@ pub enum Wrapped {
 /// An expression that can be compared by the solver.
 pub trait TExp<T>: fmt::Debug {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> TfdResult<T>;
+    fn get(&self, context: &Context) -> TractResult<T>;
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool>;
+    fn set(&self, context: &mut Context, value: T) -> TractResult<bool>;
 
     /// Returns the paths that the expression depends on.
     fn get_paths(&self) -> Vec<&Path>;
@@ -136,12 +136,12 @@ pub trait TExp<T>: fmt::Debug {
 pub struct Exp<T>(Box<TExp<T>>);
 impl<T: Fact + Output + Clone + fmt::Debug> TExp<T> for Exp<T> {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> TfdResult<T> {
+    fn get(&self, context: &Context) -> TractResult<T> {
         self.0.get(context)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TractResult<bool> {
         self.0.set(context, value)
     }
 
@@ -175,14 +175,14 @@ where
     T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> TfdResult<T> {
+    fn get(&self, context: &Context) -> TractResult<T> {
         self.0
             .iter()
             .try_fold(T::zero(), |acc, it| Ok(acc + it.0.get(context)?))
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TractResult<bool> {
         let mut sum = T::zero();
         let mut misses = vec![];
 
@@ -238,12 +238,12 @@ where
     T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, _: &Context) -> TfdResult<T> {
+    fn get(&self, _: &Context) -> TractResult<T> {
         Ok(self.0.clone())
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, _: &mut Context, value: T) -> TfdResult<bool> {
+    fn set(&self, _: &mut Context, value: T) -> TractResult<bool> {
         self.0.unify(&value)?;
         Ok(false)
     }
@@ -277,14 +277,14 @@ where
     T: Fact + Output + Clone + ::std::fmt::Debug,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> TfdResult<T> {
+    fn get(&self, context: &Context) -> TractResult<T> {
         context
             .get(&self.0)
             .map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TractResult<bool> {
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
@@ -319,13 +319,13 @@ where
     T: Fact + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone,
 {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> TfdResult<T> {
+    fn get(&self, context: &Context) -> TractResult<T> {
         let v: T = self.1.get(context)?;
         Ok(v * self.0)
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: T) -> TfdResult<bool> {
+    fn set(&self, context: &mut Context, value: T) -> TractResult<bool> {
         let k = &self.0;
         let m = value;
 
@@ -372,7 +372,7 @@ pub struct IntoDimExp(Exp<IntFact>);
 
 impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
-    fn get(&self, context: &Context) -> TfdResult<DimFact> {
+    fn get(&self, context: &Context) -> TractResult<DimFact> {
         use dim::ToDim;
         let v: IntFact = self.0.get(context)?;
         match v {
@@ -382,7 +382,7 @@ impl TExp<DimFact> for IntoDimExp {
     }
 
     /// Tries to set the value of the expression in the given context.
-    fn set(&self, context: &mut Context, value: DimFact) -> TfdResult<bool> {
+    fn set(&self, context: &mut Context, value: DimFact) -> TractResult<bool> {
         if let Some(concrete) = value.concretize() {
             if let Ok(int) = concrete.to_integer() {
                 return self.0.set(context, GenericFact::Only(int));

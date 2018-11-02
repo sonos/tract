@@ -2,7 +2,7 @@ use pb::*;
 use tract_core::*;
 
 impl NodeProto {
-    fn get_attr_opt(&self, name: &str) -> TfdResult<Option<&AttributeProto>> {
+    fn get_attr_opt(&self, name: &str) -> TractResult<Option<&AttributeProto>> {
         Ok(self.get_attribute().iter().find(|a| a.get_name() == name))
     }
 
@@ -10,7 +10,7 @@ impl NodeProto {
         &self,
         name: &str,
         ty: AttributeProto_AttributeType,
-    ) -> TfdResult<Option<&AttributeProto>> {
+    ) -> TractResult<Option<&AttributeProto>> {
         let attr = if let Some(a) = self.get_attr_opt(name)? {
             a
         } else {
@@ -28,14 +28,14 @@ impl NodeProto {
         Ok(Some(attr))
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)? {
             Some(attr) => Ok(Some(attr.get_t().tractify()?)),
             None => Ok(None),
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TfdResult<Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<Tensor> {
         Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected tensor attribute '{}'",
@@ -46,14 +46,14 @@ impl NodeProto {
         })?)
     }
 
-    pub fn get_attr_opt_str(&self, name: &str) -> TfdResult<Option<&str>> {
+    pub fn get_attr_opt_str(&self, name: &str) -> TractResult<Option<&str>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRING)? {
             Some(attr) => Ok(Some(::std::str::from_utf8(attr.get_s())?)),
             None => Ok(None),
         }
     }
 
-    pub fn get_attr_str(&self, name: &str) -> TfdResult<&str> {
+    pub fn get_attr_str(&self, name: &str) -> TractResult<&str> {
         Ok(self.get_attr_opt_str(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected string attribute '{}'",
@@ -64,14 +64,14 @@ impl NodeProto {
         })?)
     }
 
-    pub fn get_attr_opt_int(&self, name: &str) -> TfdResult<Option<i64>> {
+    pub fn get_attr_opt_int(&self, name: &str) -> TractResult<Option<i64>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INT)? {
             Some(attr) => Ok(Some(attr.get_i())),
             None => Ok(None),
         }
     }
 
-    pub fn get_attr_int(&self, name: &str) -> TfdResult<i64> {
+    pub fn get_attr_int(&self, name: &str) -> TractResult<i64> {
         Ok(self.get_attr_opt_int(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected int attribute '{}'",
@@ -82,14 +82,14 @@ impl NodeProto {
         })?)
     }
 
-    pub fn get_attr_opt_float(&self, name: &str) -> TfdResult<Option<f32>> {
+    pub fn get_attr_opt_float(&self, name: &str) -> TractResult<Option<f32>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOAT)? {
             Some(attr) => Ok(Some(attr.get_f())),
             None => Ok(None),
         }
     }
 
-    pub fn get_attr_float(&self, name: &str) -> TfdResult<f32> {
+    pub fn get_attr_float(&self, name: &str) -> TractResult<f32> {
         Ok(self.get_attr_opt_float(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected float attribute '{}'",
@@ -100,14 +100,14 @@ impl NodeProto {
         })?)
     }
 
-    pub fn get_attr_opt_ints(&self, name: &str) -> TfdResult<Option<&[i64]>> {
+    pub fn get_attr_opt_ints(&self, name: &str) -> TractResult<Option<&[i64]>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)? {
             Some(attr) => Ok(Some(attr.get_ints())),
             None => Ok(None),
         }
     }
 
-    pub fn get_attr_ints(&self, name: &str) -> TfdResult<&[i64]> {
+    pub fn get_attr_ints(&self, name: &str) -> TractResult<&[i64]> {
         Ok(self.get_attr_opt_ints(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected list of ints attribute '{}'",

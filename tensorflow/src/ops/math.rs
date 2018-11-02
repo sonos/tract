@@ -1,25 +1,25 @@
-use tract_core::ops as tfdops;
+use tract_core::ops as tractops;
 
 use ops::OpRegister;
-use tract_core::TfdResult;
+use tract_core::TractResult;
 use tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("Abs", with_T!(tfdops::math::Abs));
-    reg.insert("Add", with_T!(tfdops::math::Add::Bin));
+    reg.insert("Abs", with_T!(tractops::math::Abs));
+    reg.insert("Add", with_T!(tractops::math::Add::Bin));
     reg.insert("AddN", add_n);
-    reg.insert("BiasAdd", with_T!(tfdops::math::Add::Bin));
-    reg.insert("Div", with_T!(tfdops::math::Div::Bin));
-    reg.insert("FloorMod", with_T!(tfdops::math::Rem::Bin));
-    reg.insert("Mul", with_T!(tfdops::math::Mul::Bin));
-    reg.insert("Neg", with_T!(tfdops::math::Neg));
-    reg.insert("Rsqrt", with_T!(tfdops::math::Rsqrt));
-    reg.insert("Sub", with_T!(tfdops::math::Sub::Bin));
-    reg.insert("Tanh", with_T!(tfdops::math::Tanh));
+    reg.insert("BiasAdd", with_T!(tractops::math::Add::Bin));
+    reg.insert("Div", with_T!(tractops::math::Div::Bin));
+    reg.insert("FloorMod", with_T!(tractops::math::Rem::Bin));
+    reg.insert("Mul", with_T!(tractops::math::Mul::Bin));
+    reg.insert("Neg", with_T!(tractops::math::Neg));
+    reg.insert("Rsqrt", with_T!(tractops::math::Rsqrt));
+    reg.insert("Sub", with_T!(tractops::math::Sub::Bin));
+    reg.insert("Tanh", with_T!(tractops::math::Tanh));
 }
 
-pub fn add_n(pb: &NodeDef) -> TfdResult<Box<tfdops::Op>> {
+pub fn add_n(pb: &NodeDef) -> TractResult<Box<tractops::Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_attr_int("N")?;
-    Ok(Box::new(tfdops::math::AddN::new(dtype.into(), Some(n))))
+    Ok(Box::new(tractops::math::AddN::new(dtype.into(), Some(n))))
 }

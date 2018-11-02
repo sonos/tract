@@ -1,7 +1,7 @@
 use ndarray::*;
 use ops::prelude::*;
 
-fn make_slicer(coords: &[usize], shape:&[usize]) -> TfdResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
+fn make_slicer(coords: &[usize], shape:&[usize]) -> TractResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
     let mut slice: Vec<SliceOrIndex> = coords
         .iter()
         .zip(shape.iter())
@@ -15,7 +15,7 @@ fn make_slicer(coords: &[usize], shape:&[usize]) -> TfdResult<SliceInfo<Vec<Slic
     Ok(SliceInfo::new(slice)?)
 }
 
-fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TfdResult<Tensor> {
+fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
     let (ashape, bshape, cshape) = infer_shapes(a.shape().to_vec(), b.shape().to_vec())?;
@@ -45,7 +45,7 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TfdResult<Tensor> 
 fn infer_shapes<D: DimLike>(
     mut ashape: Vec<D>,
     mut bshape: Vec<D>,
-) -> TfdResult<(Vec<D>, Vec<D>, Vec<D>)> {
+) -> TractResult<(Vec<D>, Vec<D>, Vec<D>)> {
     if ashape.len() < 2 {
         ashape.insert(0, D::one());
     }
@@ -78,7 +78,7 @@ impl Op for MatMul {
 }
 
 impl StatelessOp for MatMul {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (a, b) = args_2!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), b.as_tensor()))?;
         Ok(tvec!(c.into()))
@@ -118,7 +118,7 @@ impl Op for MatMulUnaryA {
         "MatMulUnaryA"
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<PulsifiedOp>> {
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
         let input = args_1!(inputs);
         if input.axis >= input.shape.len() - 1 {
             bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
@@ -136,7 +136,7 @@ impl Op for MatMulUnaryA {
 }
 
 impl StatelessOp for MatMulUnaryA {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let a = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), &self.b))?;
         Ok(tvec!(c.into()))
@@ -174,7 +174,7 @@ impl Op for MatMulUnaryB {
 }
 
 impl StatelessOp for MatMulUnaryB {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let b = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, b.as_tensor()))?;
         Ok(tvec!(c.into()))

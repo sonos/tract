@@ -4,7 +4,7 @@ use tract_core::ops::prelude::*;
 #[derive(Debug, Clone, new)]
 pub struct Reshape<T: Datum>(PhantomData<T>);
 
-pub fn reshape(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn reshape(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Reshape(dtype)()))
 }
@@ -37,7 +37,7 @@ impl<T: Datum> Op for Reshape<T> {
 }
 
 impl<T: Datum> StatelessOp for Reshape<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (input, dims) = args_2!(inputs);
 
         let input = input.into_array::<T>()?;

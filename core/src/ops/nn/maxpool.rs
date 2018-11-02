@@ -41,7 +41,7 @@ impl Op for MaxPool {
 }
 
 impl StatelessOp for MaxPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
 

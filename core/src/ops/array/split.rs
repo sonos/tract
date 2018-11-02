@@ -9,14 +9,14 @@ pub struct Split {
 }
 
 impl Split {
-    fn split_dims<D:DimLike>(&self, input: D) -> TfdResult<TVec<D>> {
+    fn split_dims<D:DimLike>(&self, input: D) -> TractResult<TVec<D>> {
         if let Some(ref split) = self.split.as_ref() {
             Ok(split.iter().map(|&d| D::from(d)).collect())
         } else {
             Ok(tvec!(input/self.outputs;self. outputs))
         }
     }
-    fn eval_t<T: Datum>(&self, input: Value) -> TfdResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         let mut current = 0;
         let input = input.to_array_view::<T>()?;
         Ok(self.split_dims(input.shape()[self.axis])?.iter().map(|d| {
@@ -35,7 +35,7 @@ impl Op for Split {
 
 impl StatelessOp for Split {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(
             self, input

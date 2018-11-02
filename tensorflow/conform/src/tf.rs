@@ -9,7 +9,7 @@ use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 use tensorflow::Tensor;
 
-use tract_core::Tensor as TfdTensor;
+use tract_core::Tensor as TractTensor;
 
 use ndarray::ArrayD;
 
@@ -60,20 +60,20 @@ impl TensorHolder {
     }
 }
 
-impl From<TfdTensor> for TensorHolder {
-    fn from(m: TfdTensor) -> TensorHolder {
+impl From<TractTensor> for TensorHolder {
+    fn from(m: TractTensor) -> TensorHolder {
         match m {
-            TfdTensor::Bool(a) => TensorHolder::Bool(Self::to_tensor(a)),
-            TfdTensor::F16(_) => unimplemented!(),
-            TfdTensor::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
-            TfdTensor::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
-            TfdTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
-            TfdTensor::I16(a) => TensorHolder::I16(Self::to_tensor(a)),
-            TfdTensor::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
-            TfdTensor::I64(a) => TensorHolder::I64(Self::to_tensor(a)),
-            TfdTensor::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
-            TfdTensor::U16(a) => TensorHolder::U16(Self::to_tensor(a)),
-            TfdTensor::TDim(dims) => {
+            TractTensor::Bool(a) => TensorHolder::Bool(Self::to_tensor(a)),
+            TractTensor::F16(_) => unimplemented!(),
+            TractTensor::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
+            TractTensor::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
+            TractTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
+            TractTensor::I16(a) => TensorHolder::I16(Self::to_tensor(a)),
+            TractTensor::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
+            TractTensor::I64(a) => TensorHolder::I64(Self::to_tensor(a)),
+            TractTensor::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
+            TractTensor::U16(a) => TensorHolder::U16(Self::to_tensor(a)),
+            TractTensor::TDim(dims) => {
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
                     let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
                     TensorHolder::I32(Self::to_tensor(dims))
@@ -81,7 +81,7 @@ impl From<TfdTensor> for TensorHolder {
                     panic!("Streaming used in tensorflow settings")
                 }
             }
-            TfdTensor::String(a) => TensorHolder::String(Self::to_tensor(a)),
+            TractTensor::String(a) => TensorHolder::String(Self::to_tensor(a)),
         }
     }
 }
@@ -95,9 +95,9 @@ impl Tensorflow {
     /// Executes the graph in one batch.
     pub fn run(
         &mut self,
-        inputs: Vec<(&str, TfdTensor)>,
+        inputs: Vec<(&str, TractTensor)>,
         output_name: &str,
-    ) -> Result<Vec<TfdTensor>> {
+    ) -> Result<Vec<TractTensor>> {
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()
             .map(|(name, mat)| (name, mat.into()))
@@ -134,8 +134,8 @@ impl Tensorflow {
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
     pub fn run_get_all(
         &mut self,
-        inputs: Vec<(&str, TfdTensor)>,
-    ) -> Result<HashMap<String, Vec<TfdTensor>>> {
+        inputs: Vec<(&str, TractTensor)>,
+    ) -> Result<HashMap<String, Vec<TractTensor>>> {
         let mut tensors: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
@@ -188,26 +188,26 @@ impl Tensorflow {
     }
 }
 
-/// Converts the output of a Tensorflow node into a Vec<TfdTensor>.
+/// Converts the output of a Tensorflow node into a Vec<TractTensor>.
 fn convert_output(
     step: &mut SessionRunArgs,
     output_type: &DataType,
     output: FetchToken,
-) -> Result<Vec<TfdTensor>> {
+) -> Result<Vec<TractTensor>> {
     macro_rules! convert {
         ($dt:ident) => {
-            TfdTensor::$dt(tensor_to_array(&step.fetch(output)?)?)
+            TractTensor::$dt(tensor_to_array(&step.fetch(output)?)?)
         };
     };
 
-    let tfd_tensor = match output_type {
+    let tract_tensor = match output_type {
         DataType::Float => convert!(F32),
         DataType::UInt8 => convert!(U8),
         DataType::Int8 => convert!(I8),
         DataType::String => convert!(String),
         DataType::Int32 => convert!(I32),
-        t => bail!("Missing Tensor to TfdTensor for type {:?}", t),
+        t => bail!("Missing Tensor to TractTensor for type {:?}", t),
     };
 
-    Ok(vec![tfd_tensor])
+    Ok(vec![tract_tensor])
 }

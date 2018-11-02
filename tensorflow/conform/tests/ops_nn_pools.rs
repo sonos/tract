@@ -13,7 +13,7 @@ use proptest::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 
-use tract_core::Tensor as TfdTensor;
+use tract_core::Tensor as TractTensor;
 
 fn img_and_pool(
     ih: usize,
@@ -21,7 +21,7 @@ fn img_and_pool(
     ic: usize,
     kh: usize,
     kw: usize,
-) -> BoxedStrategy<(TfdTensor, (usize, usize), String, usize)> {
+) -> BoxedStrategy<(TractTensor, (usize, usize), String, usize)> {
     (1..ih, 1..iw, 1..ic)
         .prop_flat_map(move |(ih, iw, ic)| {
             (

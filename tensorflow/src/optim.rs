@@ -3,7 +3,7 @@ use tract_core::ops::nn::ConvUnary;
 use tract_core::ops::prelude::*;
 use tract_core::*;
 
-pub fn untf_convos(mut model: Model) -> TfdResult<Model> {
+pub fn untf_convos(mut model: Model) -> TractResult<Model> {
     undo_all_conv1d_as_conv2d(&mut model)?;
     let mut model = ::tract_core::optim::compact(&model)?;
     undo_all_space_to_batch(&mut model)?;
@@ -19,7 +19,7 @@ macro_rules! some_or_ok_false {
     };
 }
 
-fn undo_all_conv1d_as_conv2d(model: &mut Model) -> TfdResult<bool> {
+fn undo_all_conv1d_as_conv2d(model: &mut Model) -> TractResult<bool> {
     let convs: Vec<usize> = model
         .eval_order()?
         .into_iter()
@@ -31,7 +31,7 @@ fn undo_all_conv1d_as_conv2d(model: &mut Model) -> TfdResult<bool> {
     )
 }
 
-fn undo_conv1d_as_conv2d(model: &mut Model, node_id: usize) -> TfdResult<bool> {
+fn undo_conv1d_as_conv2d(model: &mut Model, node_id: usize) -> TractResult<bool> {
     use tract_core::ops::array::{AddDims, RmDims};
     let new_op = {
         let prec_node = some_or_ok_false!(model.single_prec(node_id)?);
@@ -53,7 +53,7 @@ fn undo_conv1d_as_conv2d(model: &mut Model, node_id: usize) -> TfdResult<bool> {
     Ok(false)
 }
 
-fn undo_all_space_to_batch(model: &mut Model) -> TfdResult<bool> {
+fn undo_all_space_to_batch(model: &mut Model) -> TractResult<bool> {
     let convs: Vec<usize> = model
         .eval_order()?
         .into_iter()
@@ -64,7 +64,7 @@ fn undo_all_space_to_batch(model: &mut Model) -> TfdResult<bool> {
         .try_fold(false, |acc, cv| Ok(acc || undo_space_to_batch(model, cv)?))
 }
 
-fn undo_space_to_batch(model: &mut Model, node_id: usize) -> TfdResult<bool> {
+fn undo_space_to_batch(model: &mut Model, node_id: usize) -> TractResult<bool> {
     use ops::nn::s2b::unary::SpaceToBatchUnary;
     let new_op = {
         let prec_node = some_or_ok_false!(model.single_prec(node_id)?);

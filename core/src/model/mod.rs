@@ -8,7 +8,7 @@ pub use self::order::eval_order;
 pub use analyser::types::TensorFact;
 
 pub use self::dsl::ModelDsl;
-use {ops, TfdResult};
+use {ops, TractResult};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -69,7 +69,7 @@ impl InletId {
 
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
-/// Model is Tfdeploy workhouse.
+/// Model is Tract workhouse.
 #[derive(Clone, Debug, Default)]
 pub struct Model {
     nodes: Vec<Node>,
@@ -79,7 +79,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TfdResult<usize> {
+    pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TractResult<usize> {
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
         let is_input = op.name() == "Source";
@@ -101,7 +101,7 @@ impl Model {
         Ok(id)
     }
 
-    pub fn add_edge(&mut self, outlet: OutletId, inlet: InletId) -> TfdResult<()> {
+    pub fn add_edge(&mut self, outlet: OutletId, inlet: InletId) -> TractResult<()> {
         {
             let prec = &mut self.nodes[outlet.node];
             while prec.outputs.len() <= outlet.slot {
@@ -124,13 +124,13 @@ impl Model {
     pub fn set_inputs(
         &mut self,
         inputs: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> TfdResult<()> {
+    ) -> TractResult<()> {
         let ids: Vec<OutletId> = inputs
             .into_iter()
             .map(|s| {
                 self.node_by_name(s.as_ref())
                     .map(|n| OutletId::new(n.id, 0))
-            }).collect::<TfdResult<_>>()?;
+            }).collect::<TractResult<_>>()?;
         self.inputs = ids;
         Ok(())
     }
@@ -138,23 +138,23 @@ impl Model {
     pub fn set_outputs(
         &mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> TfdResult<()> {
+    ) -> TractResult<()> {
         let ids: Vec<OutletId> = outputs
             .into_iter()
             .map(|s| {
                 self.node_by_name(s.as_ref())
                     .map(|n| OutletId::new(n.id, 0))
-            }).collect::<TfdResult<_>>()?;
+            }).collect::<TractResult<_>>()?;
         self.outputs = ids;
         Ok(())
     }
 
-    pub fn set_outputs_outlets(&mut self, outputs: &[OutletId]) -> TfdResult<()> {
+    pub fn set_outputs_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
         self.outputs = outputs.to_vec();
         Ok(())
     }
 
-    pub fn set_fact(&mut self, outlet: OutletId, fact: TensorFact) -> TfdResult<()> {
+    pub fn set_fact(&mut self, outlet: OutletId, fact: TensorFact) -> TractResult<()> {
         let outlets = &mut self.nodes[outlet.node].outputs;
         if outlets.len() <= outlet.slot {
             outlets.push(OutletFact::default());
@@ -163,12 +163,12 @@ impl Model {
         Ok(())
     }
 
-    pub fn set_input_fact(&mut self, input:usize, fact: TensorFact) -> TfdResult<()> {
+    pub fn set_input_fact(&mut self, input:usize, fact: TensorFact) -> TractResult<()> {
         let outlet = self.inputs()?[input];
         self.set_fact(outlet, fact)
     }
 
-    pub fn facts(&self, id: usize) -> TfdResult<(TVec<&TensorFact>, TVec<&TensorFact>)> {
+    pub fn facts(&self, id: usize) -> TractResult<(TVec<&TensorFact>, TVec<&TensorFact>)> {
         let node = &self.nodes[id];
 
         let inputs: TVec<&TensorFact> = node
@@ -193,16 +193,16 @@ impl Model {
         Ok((inputs, outputs))
     }
 
-    pub fn analyse_one(&mut self, id: usize) -> TfdResult<()> {
+    pub fn analyse_one(&mut self, id: usize) -> TractResult<()> {
         let _ = ::analyser::Analyser::new(self)?.analyse_one(id)?;
         Ok(())
     }
 
-    pub fn analyse(&mut self) -> TfdResult<()> {
+    pub fn analyse(&mut self) -> TractResult<()> {
         ::analyser::Analyser::new(self)?.analyse()
     }
 
-    pub fn missing_type_shape(&self) -> TfdResult<Vec<OutletId>> {
+    pub fn missing_type_shape(&self) -> TractResult<Vec<OutletId>> {
         use analyser::types::Fact;
         Ok(self
             .eval_order()?
@@ -218,7 +218,7 @@ impl Model {
             .collect())
     }
 
-    pub fn into_optimized(mut self) -> TfdResult<Model> {
+    pub fn into_optimized(mut self) -> TractResult<Model> {
         use optim::OptimizerPass;
         ::optim::Reduce::pass(&mut self)?;
         ::optim::prop_const(&mut self)?;
@@ -227,11 +227,11 @@ impl Model {
         Ok(model)
     }
 
-    pub fn eval_order(&self) -> TfdResult<Vec<usize>> {
+    pub fn eval_order(&self) -> TractResult<Vec<usize>> {
         eval_order(&self)
     }
 
-    pub fn node_by_name(&self, name: &str) -> TfdResult<&Node> {
+    pub fn node_by_name(&self, name: &str) -> TractResult<&Node> {
         let id: &usize = self
             .nodes_by_name
             .get(name)
@@ -255,34 +255,34 @@ impl Model {
         &mut *self.nodes
     }
 
-    pub fn fact(&self, outlet: OutletId) -> TfdResult<&TensorFact> {
+    pub fn fact(&self, outlet: OutletId) -> TractResult<&TensorFact> {
         let outlets = &self.nodes[outlet.node].outputs;
         Ok(&outlets[outlet.slot].fact)
     }
 
-    pub fn inputs_fact(&self, ix: usize) -> TfdResult<&TensorFact> {
+    pub fn inputs_fact(&self, ix: usize) -> TractResult<&TensorFact> {
         let input = self.inputs()?[ix];
         self.fact(input)
     }
 
-    pub fn input_fact(&self) -> TfdResult<&TensorFact> {
+    pub fn input_fact(&self) -> TractResult<&TensorFact> {
         self.inputs_fact(0)
     }
 
-    pub fn inputs(&self) -> TfdResult<&[OutletId]> {
+    pub fn inputs(&self) -> TractResult<&[OutletId]> {
         Ok(&self.inputs)
     }
 
-    pub fn outputs_fact(&self, ix: usize) -> TfdResult<&TensorFact> {
+    pub fn outputs_fact(&self, ix: usize) -> TractResult<&TensorFact> {
         let output = self.outputs()?[ix];
         self.fact(output)
     }
 
-    pub fn output_fact(&self) -> TfdResult<&TensorFact> {
+    pub fn output_fact(&self) -> TractResult<&TensorFact> {
         self.outputs_fact(0)
     }
 
-    pub fn outputs(&self) -> TfdResult<&[OutletId]> {
+    pub fn outputs(&self) -> TractResult<&[OutletId]> {
         Ok(&self.outputs)
     }
 

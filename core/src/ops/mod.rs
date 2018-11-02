@@ -47,28 +47,28 @@ pub mod prelude {
     pub use tensor::arr4;
     pub use tensor::{Datum, DatumType, Tensor};
     pub use f16::f16;
-    pub use TfdResult;
+    pub use TractResult;
 }
 
 use self::prelude::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
-    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
+    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TractResult<TVec<Value>>;
 }
 
 pub trait StatelessOp {
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>>;
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>>;
 }
 
 pub trait StatefullOp {
-    fn state(&self) -> TfdResult<Option<Box<OpState>>>;
+    fn state(&self) -> TractResult<Option<Box<OpState>>>;
     fn as_stateless(&self) -> Option<&StatelessOp> {
         None
     }
 }
 
 impl<O: StatelessOp + Clone> StatefullOp for O {
-    fn state(&self) -> TfdResult<Option<Box<OpState>>> {
+    fn state(&self) -> TractResult<Option<Box<OpState>>> {
         Ok(None)
     }
 
@@ -95,7 +95,7 @@ pub trait Op:
         &self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
 
         if let Some(stateless) = self.as_stateless() {
@@ -121,11 +121,11 @@ pub trait Op:
         &self,
         _inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         Ok(None)
     }
 
-    fn pulsify(&self, _inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<::pulse::PulsifiedOp>> {
+    fn pulsify(&self, _inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<::pulse::PulsifiedOp>> {
         bail!("Operator {} do not support pulsification", self.name())
     }
 
@@ -147,7 +147,7 @@ pub trait InferenceOp {
         &self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)>;
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)>;
 }
 
 clone_trait_object!(Op);

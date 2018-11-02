@@ -14,7 +14,7 @@ impl Op for Source {
         &self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         self.infer_facts(inputs, outputs)
     }
 
@@ -22,7 +22,7 @@ impl Op for Source {
 
 impl StatelessOp for Source {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         panic!("Source should not get evaluated")
     }
 }

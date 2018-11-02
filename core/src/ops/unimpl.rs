@@ -10,7 +10,7 @@ impl Op for UnimplementedOp {
 }
 
 impl StatelessOp for UnimplementedOp {
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         Err(format!("unimplemented operation: {}", self.0))?
     }
 }

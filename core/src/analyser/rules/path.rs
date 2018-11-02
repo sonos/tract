@@ -37,7 +37,7 @@ impl fmt::Debug for Path {
 }
 
 /// Returns the value at the given path (starting from a context).
-pub fn get_path(context: &Context, path: &[isize]) -> TfdResult<Wrapped> {
+pub fn get_path(context: &Context, path: &[isize]) -> TractResult<Wrapped> {
     match path[0] {
         0 => get_tensorfacts_path(&context.inputs, &path[1..]),
         1 => get_tensorfacts_path(&context.outputs, &path[1..]),
@@ -50,7 +50,7 @@ pub fn get_path(context: &Context, path: &[isize]) -> TfdResult<Wrapped> {
 }
 
 /// Sets the value at the given path (starting from a context).
-pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> TfdResult<()> {
+pub fn set_path(context: &mut Context, path: &[isize], value: Wrapped) -> TractResult<()> {
     match path[0] {
         0 => set_tensorfacts_path(&mut context.inputs, &path[1..], value),
         1 => set_tensorfacts_path(&mut context.outputs, &path[1..], value),
@@ -76,7 +76,7 @@ fn debug_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
 }
 
 /// Returns the value at the given path (starting from a set of TensorFacts).
-fn get_tensorfacts_path(facts: &TVec<TensorFact>, path: &[isize]) -> TfdResult<Wrapped> {
+fn get_tensorfacts_path(facts: &TVec<TensorFact>, path: &[isize]) -> TractResult<Wrapped> {
     match path {
         // Get the number of facts in the set.
         [-1] => Ok(facts.len().wrap()),
@@ -109,7 +109,7 @@ fn set_tensorfacts_path(
     facts: &mut TVec<TensorFact>,
     path: &[isize],
     value: Wrapped,
-) -> TfdResult<()> {
+) -> TractResult<()> {
     match path {
         // Set the number of facts in the set.
         [-1] => {
@@ -165,7 +165,7 @@ fn debug_tensorfacts_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt
 }
 
 /// Returns the value at the given path (starting from a TensorFact).
-fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> TfdResult<Wrapped> {
+fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> TractResult<Wrapped> {
     match path {
         // Get the type of the TensorFact.
         [0] => Ok(fact.datum_type.clone().wrap()),
@@ -189,7 +189,7 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> TfdResult<Wrapped> 
 }
 
 /// Sets the value at the given path (starting from a TensorFact).
-fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> TfdResult<()> {
+fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) -> TractResult<()> {
     match path {
         // Set the type of the TensorFact.
         [0] => {
@@ -272,7 +272,7 @@ fn debug_tensorfact_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt:
 }
 
 /// Returns the shape or dimension at the given path (starting from a ShapeFact).
-fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> TfdResult<Wrapped> {
+fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> TractResult<Wrapped> {
     match path {
         // Get the whole shape.
         [] => Ok(shape.clone().wrap()),
@@ -303,7 +303,7 @@ fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> TfdResult<Wrapped> {
 }
 
 /// Returns the value at the given path (starting from a ValueFact).
-fn get_value_path(value: &ValueFact, path: &[isize]) -> TfdResult<Wrapped> {
+fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
     trace!("get_value_path path:{:?} value:{:?}", path, value);
     // Return the whole tensor.
     if path == &[-1] || path == &[] {

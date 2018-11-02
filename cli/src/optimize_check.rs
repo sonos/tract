@@ -3,10 +3,10 @@ use tract_core::plan::SimplePlan;
 use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult<()> {
-    let model = &params.tfd_model;
+    let model = &params.tract_model;
 
     // First generate random values for the inputs.
-    let fixed_inputs = ::tensor::make_inputs(&[params.tfd_model.input_fact()?.clone()])?;
+    let fixed_inputs = ::tensor::make_inputs(&[params.tract_model.input_fact()?.clone()])?;
 
     // Run unmodified graph
     let original_plan = SimplePlan::new(model)?;

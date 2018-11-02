@@ -25,7 +25,7 @@ impl Op for Const {
 }
 
 impl StatelessOp for Const {
-    fn eval(&self, _inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         Ok(tvec![self.value.clone()])
     }
 }

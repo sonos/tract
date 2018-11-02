@@ -2,7 +2,7 @@
 
 error_chain!{
     types {
-        TfdError, TfdErrorKind, TfdResultExt, TfdResult;
+        TractError, TractErrorKind, TractResultExt, TractResult;
     }
     foreign_links {
         Image(::image::ImageError) #[cfg(features="image_ops")];

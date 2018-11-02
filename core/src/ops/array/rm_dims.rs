@@ -16,7 +16,7 @@ impl RmDims {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Value) -> TfdResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         let shape = self.compute_shape(input.shape());
         Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
     }
@@ -30,7 +30,7 @@ impl Op for RmDims {
     fn pulsify(
         &self,
         mut inputs: TVec<&PulsedTensorFact>,
-    ) -> TfdResult<Vec<PulsifiedOp>> {
+    ) -> TractResult<Vec<PulsifiedOp>> {
         let input = args_1!(inputs);
         let mut fact = input.clone();
         fact.shape = self.compute_shape(&input.shape);
@@ -41,7 +41,7 @@ impl Op for RmDims {
 
 impl StatelessOp for RmDims {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }

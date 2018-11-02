@@ -1,37 +1,37 @@
 use std::{fs, path};
 
 use tract_core::model::{InletId, Model, OutletId};
-use tract_core::{Tractify, TfdResult, ToTfd};
+use tract_core::{Tractify, TractResult, ToTract};
 use tfpb::graph::GraphDef;
 
 /// Load a Tensorflow protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<Model> {
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {
     for_reader(fs::File::open(p)?)
 }
 
-/// Load a Tfdeploy model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> TfdResult<Model> {
+/// Load a Tract model from a reader.
+pub fn for_reader<R: ::std::io::Read>(r: R) -> TractResult<Model> {
     graphdef_for_reader(r)?.tractify()
 }
 
 /// Load a Tensorflow protobuf graph def from a reader.
-pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<GraphDef> {
+pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<GraphDef> {
     Ok(::protobuf::parse_from_reader::<GraphDef>(&mut r).map_err(|e| format!("{:?}", e))?)
 }
 
 /// Load a Tensorflow protobuf graph def from a path
-pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<GraphDef> {
+pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TractResult<GraphDef> {
     graphdef_for_reader(fs::File::open(p)?)
 }
 
-pub fn optimize(model: Model) -> TfdResult<Model> {
+pub fn optimize(model: Model) -> TractResult<Model> {
     let model = model.into_optimized()?;
     let model = ::optim::untf_convos(model)?;
     model.into_optimized()
 }
 
 impl Tractify<GraphDef> for Model {
-    fn tractify(graph: &GraphDef) -> TfdResult<Model> {
+    fn tractify(graph: &GraphDef) -> TractResult<Model> {
         let mut model = Model::default();
         let op_builder = ::ops::OpBuilder::new();
         for pbnode in graph.get_node().iter() {

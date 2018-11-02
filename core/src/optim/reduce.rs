@@ -4,7 +4,7 @@ use ::Model;
 pub struct Reduce;
 
 impl super::OptimizerPass for Reduce {
-    fn pass(model: &mut Model) -> TfdResult<bool> {
+    fn pass(model: &mut Model) -> TractResult<bool> {
         let mut done_something = false;
         for id in model.eval_order()? {
             let reduced = {
@@ -15,7 +15,7 @@ impl super::OptimizerPass for Reduce {
                     .iter()
                     .map(|o| model.fact(*o))
                     .inspect(|fact| trace!("   Input {:?}", fact))
-                    .collect::<TfdResult<_>>()?;
+                    .collect::<TractResult<_>>()?;
                 let output_facts: TVec<&TensorFact> =
                     node.outputs.iter().map(|o| &o.fact).collect();
                 node.op

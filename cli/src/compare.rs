@@ -19,7 +19,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     use colored::Colorize;
     use format::Row;
 
-    let tfd = params.tfd_model;
+    let tract = params.tract_model;
     let mut tf = params.tf_model;
 
     // First generate random values for the inputs.
@@ -36,18 +36,18 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     let mut tf_outputs = tf.unwrap().run_get_all(pairs)?;
 
     // Execute the model step-by-step on tract.
-    let plan = SimplePlan::new(&tfd, &params.input_nodes, &[&params.output_node])?;
+    let plan = SimplePlan::new(&tract, &params.input_nodes, &[&params.output_node])?;
     let mut state = plan.state()?;
     for (ix, input) in generated.clone().into_iter().enumerate() {
         state.set_input(ix, input)?;
     }
     let plan = ::tract_core::model::eval_order_for_nodes(
-        &tfd.nodes(),
-        &[tfd.node_by_name(&params.output_node)?.id],
+        &tract.nodes(),
+        &[tract.node_by_name(&params.output_node)?.id],
     )?;
     debug!("Using execution plan: {:?}", plan);
 
-    let nodes: Vec<_> = tfd.nodes().iter().map(|a| &*a).collect();
+    let nodes: Vec<_> = tract.nodes().iter().map(|a| &*a).collect();
     let mut display_graph =
         ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
 
@@ -56,7 +56,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     let hidden = !log_enabled!(Info);
 
     for n in plan {
-        let node = &tfd.nodes()[n];
+        let node = &tract.nodes()[n];
         let dn = &mut display_graph.nodes[n];
 
         if node.op_name == "Placeholder" {
@@ -80,7 +80,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
             }
 
             _ => {
-                let tfd_output: Vec<Tensor> = state.values[n]
+                let tract_output: Vec<Tensor> = state.values[n]
                     .as_ref()
                     .unwrap()
                     .iter()
@@ -88,10 +88,10 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                     .collect();
                 let expected: Vec<TensorFact> =
                     tf_output.iter().map(|m| m.clone().into()).collect();
-                match check_outputs(&tfd_output, &expected) {
+                match check_outputs(&tract_output, &expected) {
                     Err(_) => {
                         failures += 1;
-                        let mismatches = tfd_output
+                        let mismatches = tract_output
                             .iter()
                             .enumerate()
                             .map(|(n, data)| {

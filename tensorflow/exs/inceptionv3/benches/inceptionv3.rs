@@ -37,10 +37,10 @@ fn tf(bencher: &mut Criterion) {
     });
 }
 
-fn tfd(bencher: &mut Criterion) {
-    let tfd = ::tract_tensorflow::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
+fn tract(bencher: &mut Criterion) {
+    let tract = ::tract_tensorflow::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(hopper());
-    let plan = ::tract_core::SimplePlan::new(tfd).unwrap();
+    let plan = ::tract_core::SimplePlan::new(tract).unwrap();
     bencher.bench_function("TFD", move |b| {
         b.iter(|| plan.run(tvec![input.clone()]).unwrap())
     });
@@ -53,6 +53,6 @@ pub fn benches() {
         dummy(&mut criterion);
         tf(&mut criterion);
     }
-    tfd(&mut criterion);
+    tract(&mut criterion);
 }
 criterion_main!(benches);

@@ -19,7 +19,7 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
         .map(|s| match *s {
             "S" => Ok(TDim::stream()),         // Streaming dimension.
             _ => Ok(s.parse::<i64>()?.into()), // Regular dimension.
-        }).collect::<TfdResult<Vec<TDim>>>()?;
+        }).collect::<TractResult<Vec<TDim>>>()?;
 
     if shape.iter().filter(|o| o.is_stream()).count() > 1 {
         bail!("The <size> argument doesn't support more than one streaming dimension.");

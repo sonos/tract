@@ -10,7 +10,7 @@ macro_rules! element_map {
         pub struct $Name(TypeFact);
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Value>,) -> TfdResult<TVec<Value>> {
+            fn eval(&self, mut inputs: TVec<Value>,) -> TractResult<TVec<Value>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
@@ -27,7 +27,7 @@ macro_rules! element_map {
                 stringify!($Name)
             }
 
-            fn pulsify( &self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
+            fn pulsify( &self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
                 Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(inputs[0].clone()))))
             }
 
@@ -64,7 +64,7 @@ macro_rules! element_map_with_params {
         }
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Value>,) -> TfdResult<TVec<Value>> {
+            fn eval(&self, mut inputs: TVec<Value>,) -> TractResult<TVec<Value>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $expr;
@@ -122,7 +122,7 @@ macro_rules! element_bin {
                 Bin::default()
             }
 
-            fn eval_bin(a: Value, b: &Value) -> TfdResult<Value> {
+            fn eval_bin(a: Value, b: &Value) -> TractResult<Value> {
                 let shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
                     .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
                                            a.shape(), b.shape()))?;
@@ -146,7 +146,7 @@ macro_rules! element_bin {
             pub struct Bin(TypeFact);
 
             impl StatelessOp for Bin {
-                fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+                fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
                     let (a, b) = args_2!(inputs);
                     Ok(tvec!(eval_bin(a, &b)?))
                 }
@@ -159,7 +159,7 @@ macro_rules! element_bin {
                 }
 
                 fn reduce(&self, inputs: TVec<&TensorFact>, _outputs: TVec<&TensorFact>,
-                ) -> TfdResult<Option<ReducedOpRewire>> {
+                ) -> TractResult<Option<ReducedOpRewire>> {
                     if let Some(b) = inputs[1].value.concretize() {
                         return Ok(Some(ReducedOpRewire {
                             new_op: Box::new(UnaryA {
@@ -172,7 +172,7 @@ macro_rules! element_bin {
                     Ok(None)
                 }
 
-                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
+                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
                     let mut fact = inputs[0].clone();
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
@@ -219,7 +219,7 @@ macro_rules! element_bin {
             }
 
             impl StatelessOp for UnaryA {
-                fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+                fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
                     let a = args_1!(inputs);
                     Ok(tvec!(eval_bin(a, &self.b)?))
                 }
@@ -230,7 +230,7 @@ macro_rules! element_bin {
                     stringify!($name)
                 }
 
-                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TfdResult<Vec<PulsifiedOp>> {
+                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
                     let mut fact = inputs[0].clone();
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
@@ -296,7 +296,7 @@ macro_rules! element_nary {
             fn pulsify(
                 &self,
                 inputs: TVec<&PulsedTensorFact>,
-            ) -> TfdResult<Vec<PulsifiedOp>> {
+            ) -> TractResult<Vec<PulsifiedOp>> {
                 let mut fact = inputs[0].clone();
                 $(if fact.dt == <$type>::datum_type() {
                     fact.dt = <$to>::datum_type().into();
@@ -307,7 +307,7 @@ macro_rules! element_nary {
 
         impl StatelessOp for $Name {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+            fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
                 use $crate::ndarray::{ ArrayD, ArrayViewD };
                 if let Some(n) = self.n {
                     if inputs.len() != n {

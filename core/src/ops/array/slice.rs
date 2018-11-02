@@ -7,7 +7,7 @@ pub struct Slice {
 }
 
 impl Slice {
-    fn eval_t<T: Datum>(&self, input: Value) -> TfdResult<Value> {
+    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<Value> {
         let input = input.to_array_view::<T>()?;
         let slice_spec: Vec<SliceOrIndex> = self
             .prune
@@ -28,7 +28,7 @@ impl Op for Slice {
         "Slice"
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<PulsifiedOp>> {
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
         let input = args_1!(inputs);
         if self
             .prune
@@ -49,7 +49,7 @@ impl Op for Slice {
 
 impl StatelessOp for Slice {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
             self, input

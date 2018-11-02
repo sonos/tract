@@ -10,7 +10,7 @@ impl GlobalAvgPool {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive>(
         &self,
         input: Value,
-    ) -> TfdResult<TVec<Value>> {
+    ) -> TractResult<TVec<Value>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -36,7 +36,7 @@ impl Op for GlobalAvgPool {
 }
 
 impl StatelessOp for GlobalAvgPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -59,7 +59,7 @@ pub struct GlobalLpPool {
 }
 
 impl GlobalLpPool {
-    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TfdResult<TVec<Value>> {
+    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TractResult<TVec<Value>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -94,7 +94,7 @@ impl Op for GlobalLpPool {
 }
 
 impl StatelessOp for GlobalLpPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -117,7 +117,7 @@ pub struct GlobalMaxPool {
 }
 
 impl GlobalMaxPool {
-    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TfdResult<TVec<Value>> {
+    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TractResult<TVec<Value>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -142,7 +142,7 @@ impl Op for GlobalMaxPool {
 }
 
 impl StatelessOp for GlobalMaxPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

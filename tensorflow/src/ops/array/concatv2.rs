@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use tract_core::ops::prelude::*;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn build(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let n = pb.get_attr_int("N")?;
     let t = pb.get_attr_datum_type("T")?;
     let tidx = pb.get_attr_datum_type("Tidx")?;
@@ -16,12 +16,12 @@ pub struct ConcatV2<T: Datum> {
 }
 
 impl<T: Datum> StatelessOp for ConcatV2<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let axis: i32 = inputs
             .pop()
             .and_then(|t| t.as_i32())
             .ok_or("Expected a i32 scalar")?;
-        let mats: TfdResult<Vec<ArrayViewD<T>>> =
+        let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
         Ok(tvec![result.into()])

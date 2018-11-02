@@ -12,7 +12,7 @@ pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'stati
 #[derive(Debug, Clone)]
 pub struct Pool<P: Pooler>(LocalPatch, (usize, usize), PhantomData<P>);
 
-pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let ksize: Vec<usize> = pb.get_attr_list_int("ksize")?;
     Ok(Box::new(Pool::<P>(
         LocalPatch::build(pb)?,
@@ -28,7 +28,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 }
 
 impl<P: Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let m_input = args_1!(inputs);
         let data = m_input
             .into_tensor()

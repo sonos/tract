@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use tract_core::TfdResult;
+use tract_core::TractResult;
 
 use tract_core::dim::TDim;
 
@@ -93,7 +93,7 @@ impl LocalPatch {
         }
     }
 
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<LocalPatch> {
+    pub fn build(pb: &::tfpb::node_def::NodeDef) -> TractResult<LocalPatch> {
         let data_format = pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC");
         if data_format == b"NCHW" {
             Err("NCHW data_format not implemented")?
@@ -145,7 +145,7 @@ impl LocalPatch {
         item: T,
         pad_rows: bool,
         pad_cols: bool,
-    ) -> TfdResult<Option<Array4<T>>>
+    ) -> TractResult<Option<Array4<T>>>
     where
         T: Copy + ::num::Zero + ::std::fmt::Debug,
     {
@@ -241,7 +241,7 @@ impl LocalPatch {
         shape: (usize, usize),
         pad_rows: bool,
         pad_cols: bool,
-    ) -> TfdResult<Array2<T>> {
+    ) -> TractResult<Array2<T>> {
         let img = ImageWrapper(data);
         let (filter_rows, filter_cols) = shape;
 
@@ -286,7 +286,7 @@ impl LocalPatch {
     }
 }
 
-pub fn into_4d<T>(data: ArrayD<T>) -> TfdResult<Array4<T>> {
+pub fn into_4d<T>(data: ArrayD<T>) -> TractResult<Array4<T>> {
     if data.shape().len() != 4 {
         Err(format!("Expected 4D shape, found: {:?}", data.shape()))?
     }

@@ -11,7 +11,7 @@ impl Op for Identity {
 
 impl StatelessOp for Identity {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         Ok(inputs)
     }
 }

@@ -33,7 +33,7 @@ mod solver;
 pub use self::solver::Solver;
 pub use self::proxies::*;
 
-pub type InferenceResult = TfdResult<()>;
+pub type InferenceResult = TractResult<()>;
 
 pub trait InferenceRulesOp {
     /// Registers the inference rules of the operator.
@@ -50,7 +50,7 @@ impl<O: InferenceRulesOp> ::ops::InferenceOp for O {
         &self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TfdResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         let inputs_proxy = TensorsProxy::new(vec![0].into());
         let outputs_proxy = TensorsProxy::new(vec![1].into());
 

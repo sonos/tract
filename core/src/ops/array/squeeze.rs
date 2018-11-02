@@ -8,7 +8,7 @@ pub struct Squeeze {
 }
 
 impl Squeeze {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TfdResult<Vec<D>> {
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<Vec<D>> {
         if let Some(ref axes) = self.axes {
             let mut shape = input.to_vec();
             for &axis in axes.iter().rev() {
@@ -23,7 +23,7 @@ impl Squeeze {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Value) -> TfdResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         let shape = self.compute_shape(input.shape())?;
         Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
     }
@@ -38,7 +38,7 @@ impl Op for Squeeze {
         &self,
         _inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         if let Some(dims) = &self.axes {
             Ok(Some(ReducedOpRewire {
                 new_op: Box::new(RmDims::new(dims.clone())),
@@ -52,7 +52,7 @@ impl Op for Squeeze {
 
 impl StatelessOp for Squeeze {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }

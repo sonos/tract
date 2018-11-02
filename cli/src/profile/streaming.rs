@@ -16,11 +16,11 @@ use {Parameters, ProfilingMode};
 
 fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>, Tensor)> {
     let start = Instant::now();
-    let model = &params.tfd_model;
+    let model = &params.tract_model;
     let input = model.inputs()?[0];
     let input = model.fact(input)?;
 
-    let plan = StreamingPlan::new(&params.tfd_model)?;
+    let plan = StreamingPlan::new(&params.tract_model)?;
 
     let measure = Duration::since(&start, 1);
     info!(
@@ -137,7 +137,7 @@ pub fn handle_buffering(params: Parameters, display_options: DisplayOptions) -> 
         dur_avg_oneline(measure)
     );
 
-    let input = params.tfd_model.input_fact()?;
+    let input = params.tract_model.input_fact()?;
 
     let info = input.stream_info()?.expect("No streaming dim");
 

@@ -7,27 +7,27 @@ use tract_core::*;
 use pb;
 
 /// Load a ONNX protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<Model> {
+pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {
     for_reader(fs::File::open(p)?)
 }
 
 /// Load a ONNX model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> TfdResult<Model> {
+pub fn for_reader<R: ::std::io::Read>(r: R) -> TractResult<Model> {
     model_proto_for_reader(r)?.tractify()
 }
 
 /// Load a ONNX protobuf graph def from a path
-pub fn model_proto_for_path<P: AsRef<path::Path>>(p: P) -> TfdResult<pb::ModelProto> {
+pub fn model_proto_for_path<P: AsRef<path::Path>>(p: P) -> TractResult<pb::ModelProto> {
     model_proto_for_reader(fs::File::open(p)?)
 }
 
 /// Load a ONNX protobuf graph def from a reader.
-pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<pb::ModelProto> {
+pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<pb::ModelProto> {
     Ok(::protobuf::parse_from_reader(&mut r).map_err(|e| format!("{:?}", e))?)
 }
 
 impl Tractify<pb::ModelProto> for Model {
-    fn tractify(proto: &pb::ModelProto) -> TfdResult<Model> {
+    fn tractify(proto: &pb::ModelProto) -> TractResult<Model> {
         let mut model = Model::default();
         let op_builder = super::ops::OpBuilder::new();
         let graph = proto.get_graph();
@@ -35,7 +35,7 @@ impl Tractify<pb::ModelProto> for Model {
             .get_initializer()
             .iter()
             .map(|init| Ok((init.get_name(), init.tractify()?)))
-            .collect::<TfdResult<_>>()?;
+            .collect::<TractResult<_>>()?;
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.get_input().iter() {
             if let Some(init) = initializers.remove(input.get_name()) {

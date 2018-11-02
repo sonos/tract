@@ -17,7 +17,7 @@ impl Op for SpaceToBatch {
         &self,
         mut inputs: TVec<&TensorFact>,
         mut outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let output = args_1!(outputs);
         if let (Some(input_shape), Some(block_shape), Some(paddings), Some(output_shape)) = (
@@ -60,7 +60,7 @@ impl Op for SpaceToBatch {
 }
 
 impl StatelessOp for SpaceToBatch {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape
             .cast_to_array()?
@@ -114,7 +114,7 @@ impl Op for BatchToSpace {
         &self,
         mut inputs: TVec<&TensorFact>,
         mut outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let output = args_1!(outputs);
         if let (Some(input_shape), Some(block_shape), Some(paddings), Some(output_shape)) = (
@@ -138,7 +138,7 @@ impl Op for BatchToSpace {
                         (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
                         _ => bail!("Failed to unarize SpaceToBatch because of padding"),
                     })
-                }).collect::<TfdResult<_>>()?;
+                }).collect::<TractResult<_>>()?;
             let op = super::unary::BatchToSpaceUnary::new(
                 self.datum_type,
                 input_shape,
@@ -155,7 +155,7 @@ impl Op for BatchToSpace {
 
 impl StatelessOp for BatchToSpace {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape
             .cast_to_array()?

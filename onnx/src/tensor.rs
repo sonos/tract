@@ -3,7 +3,7 @@ use tract_core::*;
 use tract_core::f16::f16;
 
 impl Tractify<TensorProto_DataType> for DatumType {
-    fn tractify(t: &TensorProto_DataType) -> TfdResult<DatumType> {
+    fn tractify(t: &TensorProto_DataType) -> TractResult<DatumType> {
         use self::TensorProto_DataType::*;
         match t {
             &BOOL => Ok(DatumType::Bool),
@@ -22,7 +22,7 @@ impl Tractify<TensorProto_DataType> for DatumType {
     }
 
     /*
-    fn to_onnx(&self) -> TfdResult<TensorProto_DataType> {
+    fn to_onnx(&self) -> TractResult<TensorProto_DataType> {
         use self::TensorProto_DataType::*;
         match self {
             DatumType::U8 => Ok(UINT8),
@@ -38,7 +38,7 @@ impl Tractify<TensorProto_DataType> for DatumType {
 }
 
 impl Tractify<TypeProto_Tensor> for TensorFact {
-    fn tractify(t: &TypeProto_Tensor) -> TfdResult<TensorFact> {
+    fn tractify(t: &TypeProto_Tensor) -> TractResult<TensorFact> {
         let mut fact = TensorFact::default();
         if t.has_elem_type() {
             fact = fact.with_datum_type(t.get_elem_type().tractify()?);
@@ -57,7 +57,7 @@ impl Tractify<TypeProto_Tensor> for TensorFact {
 }
 
 impl Tractify<TensorProto> for Tensor {
-    fn tractify(t: &TensorProto) -> TfdResult<Tensor> {
+    fn tractify(t: &TensorProto) -> TractResult<Tensor> {
         let dt = t.get_data_type().tractify()?;
         let shape: Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
         if t.has_raw_data() {
@@ -99,7 +99,7 @@ impl Tractify<TensorProto> for Tensor {
     }
 }
 
-pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TfdResult<Tensor> {
+pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<Tensor> {
     let tensor: TensorProto = ::protobuf::parse_from_reader(&mut r).unwrap();
     tensor.tractify()
 }

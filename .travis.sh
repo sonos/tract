@@ -12,8 +12,8 @@ fi
 
 ONNX_TEST_DATA=$ONNX_CHECKOUT/onnx/backend/test/data
 
-cargo test --release --all
-cargo check --benches --all # running benches on travis is useless
+cargo test --release --all --features serialize
+cargo check --benches --all --features serialize # running benches on travis is useless
 
 cargo run --release -p tract -- \
     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \

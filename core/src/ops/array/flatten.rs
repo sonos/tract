@@ -7,7 +7,7 @@ pub struct Flatten {
 
 impl Flatten {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Value, shape: (usize, usize)) -> TfdResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Value, shape: (usize, usize)) -> TractResult<TVec<Value>> {
         Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
     }
 }
@@ -19,7 +19,7 @@ impl Op for Flatten {
 }
 
 impl StatelessOp for Flatten {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         let shape_0 = input.shape()[..self.axis].iter().product::<usize>();
         let shape_1 = input.shape()[self.axis..].iter().product::<usize>();

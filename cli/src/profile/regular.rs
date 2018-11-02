@@ -25,7 +25,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
         bail!("Expecting bench profile mode")
     };
 
-    let model = &params.tfd_model;
+    let model = &params.tract_model;
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
     info!("Starting bench itself");
@@ -59,14 +59,14 @@ pub fn handle(
         bail!("Expecting regular profile mode")
     };
 
-    let ref model = params.tfd_model;
+    let ref model = params.tract_model;
 
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(make_inputs(&[params.tfd_model.input_fact()?.clone()])?)?;
+        let _ = plan.run(make_inputs(&[params.tract_model.input_fact()?.clone()])?)?;
         iters += 1;
     }
     let entire = Duration::since(&start, iters);
@@ -75,7 +75,7 @@ pub fn handle(
     info!("Running for {} ms max. for each node.", max_time);
 
     let mut state = SimpleState::new(&plan)?;
-    state.set_inputs(make_inputs(&[params.tfd_model.input_fact()?.clone()])?)?;
+    state.set_inputs(make_inputs(&[params.tract_model.input_fact()?.clone()])?)?;
     debug!("Using execution plan: {:?}", plan);
 
     let mut profile = ProfileData::new(model);
@@ -141,10 +141,10 @@ pub fn handle(
 
     print_header(format!("Summary for {}:", params.name), "white");
 
-    profile.print_most_consuming_nodes(&params.tfd_model, &params.graph, display_options)?;
+    profile.print_most_consuming_nodes(&params.tract_model, &params.graph, display_options)?;
     println!();
 
-    profile.print_most_consuming_ops(&params.tfd_model)?;
+    profile.print_most_consuming_ops(&params.tract_model)?;
     println!();
 
     println!("Entire network performance: {}", dur_avg_oneline(entire));

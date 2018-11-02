@@ -7,7 +7,7 @@ pub struct Fill<T: Datum> {
     _phantom: PhantomData<T>,
 }
 
-pub fn fill(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn fill(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Fill(dtype)()))
 }
@@ -22,7 +22,7 @@ where
 }
 
 impl<T: Datum> StatelessOp for Fill<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_array_view()?;
         let value: T = value[[]];

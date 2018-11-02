@@ -67,7 +67,7 @@ impl Op for Conv {
         &self,
         mut inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
             if let (Some(ishape), Some(kvalue)) =
@@ -112,7 +112,7 @@ impl Op for Conv {
 }
 
 impl StatelessOp for Conv {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (input, kernel, bias) = if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
             (input, kernel, None)

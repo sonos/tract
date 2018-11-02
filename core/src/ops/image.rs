@@ -7,12 +7,12 @@ use {Result, Tensor};
 pub struct DecodeJpeg {}
 
 impl DecodeJpeg {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<DecodeJpeg> {
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TractResult<DecodeJpeg> {
         Ok(DecodeJpeg {})
     }
 }
 
-pub fn decode_one(input: &[u8]) -> TfdResult<Array3<u8>> {
+pub fn decode_one(input: &[u8]) -> TractResult<Array3<u8>> {
     use image::GenericImage;
     let image = ::image::load_from_memory(input)?;
     let dim = image.dimensions();
@@ -20,7 +20,7 @@ pub fn decode_one(input: &[u8]) -> TfdResult<Array3<u8>> {
 }
 
 impl Op for DecodeJpeg {
-    fn eval(&self, mut inputs: Vec<Input>) -> TfdResult<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<Input>) -> TractResult<Vec<Input>> {
         let m_input = args_1!(inputs);
         let input = m_input.as_u8s().ok_or("Expected a string")?;
         let image = decode_one(input.as_slice().unwrap())?;
@@ -32,13 +32,13 @@ impl Op for DecodeJpeg {
 pub struct ResizeBilinear {}
 
 impl ResizeBilinear {
-    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<ResizeBilinear> {
+    pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TractResult<ResizeBilinear> {
         Ok(ResizeBilinear {})
     }
 }
 
 impl Op for ResizeBilinear {
-    fn eval(&self, mut inputs: Vec<Input>) -> TfdResult<Vec<Input>> {
+    fn eval(&self, mut inputs: Vec<Input>) -> TractResult<Vec<Input>> {
         use std::cmp::min;
         let (m_images, m_sizes) = args_2!(inputs);
         let images = m_images

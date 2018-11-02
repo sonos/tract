@@ -1,6 +1,6 @@
 use tract_core::ops::prelude::*;
 
-pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     Ok(Box::new(ExpandDims))
 }
 
@@ -16,7 +16,7 @@ impl Op for ExpandDims {
         &self,
         mut inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         let (_, dims) = args_2!(inputs);
         if let Some(dims) = dims.concretize() {
             let dims = dims.cast_to_array::<i64>()?;
@@ -33,7 +33,7 @@ impl Op for ExpandDims {
 }
 
 impl StatelessOp for ExpandDims {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (data, dims) = args_2!(inputs);
         let data = data
             .into_tensor()

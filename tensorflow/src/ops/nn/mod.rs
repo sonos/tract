@@ -23,7 +23,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 pub struct Softmax {}
 
 impl Softmax {
-    pub fn build(_pb: &NodeDef) -> TfdResult<Box<Op>> {
+    pub fn build(_pb: &NodeDef) -> TractResult<Box<Op>> {
         Ok(Box::new(Softmax {}))
     }
 }
@@ -36,7 +36,7 @@ impl Op for Softmax {
 
 impl StatelessOp for Softmax {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let m_input = args_1!(inputs);
         let mut input = m_input
             .into_tensor()

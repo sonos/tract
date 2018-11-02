@@ -1,7 +1,7 @@
 use tract_core::ops::prelude::*;
-use tract_core::TfdResult;
+use tract_core::TractResult;
 
-pub fn pack(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn pack(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;
@@ -18,12 +18,12 @@ pub struct Pack {
 
 impl Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         use ndarray::Axis;
         let arrays = inputs
             .iter()
             .map(|m| Ok(m.cast_to_array::<T>()?))
-            .collect::<TfdResult<Vec<_>>>()?;
+            .collect::<TractResult<Vec<_>>>()?;
         let views: Vec<_> = arrays
             .iter()
             .map(|v| v.view().insert_axis(Axis(self.axis)))
@@ -41,7 +41,7 @@ impl Op for Pack {
 
 impl StatelessOp for Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let dt = DatumType::super_type_for(inputs.iter().map(|dt| dt.datum_type()))
             .ok_or("Could not find a supertype")?;
         match dt {

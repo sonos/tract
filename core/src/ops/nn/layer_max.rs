@@ -9,7 +9,7 @@ impl LayerHardmax {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive>(
         &self,
         input: Value,
-    ) -> TfdResult<TVec<Value>> {
+    ) -> TractResult<TVec<Value>> {
         let array = input.into_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
@@ -40,7 +40,7 @@ impl Op for LayerHardmax {
 }
 
 impl StatelessOp for LayerHardmax {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -66,7 +66,7 @@ impl LayerLogSoftmax {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive + ::std::iter::Sum>(
         &self,
         input: Value,
-    ) -> TfdResult<TVec<Value>> {
+    ) -> TractResult<TVec<Value>> {
         let array = input.into_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
@@ -94,7 +94,7 @@ impl Op for LayerLogSoftmax {
 }
 
 impl StatelessOp for LayerLogSoftmax {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -120,7 +120,7 @@ impl LayerSoftmax {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive + ::std::iter::Sum>(
         &self,
         input: Value,
-    ) -> TfdResult<TVec<Value>> {
+    ) -> TractResult<TVec<Value>> {
         let array = input.into_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
@@ -148,7 +148,7 @@ impl Op for LayerSoftmax {
 }
 
 impl StatelessOp for LayerSoftmax {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

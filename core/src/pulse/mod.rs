@@ -16,7 +16,7 @@ pub struct PulsedTensorFact {
 }
 
 impl PulsedTensorFact {
-    pub fn from_tensor_fact_pulse(tf: &TensorFact, pulse: usize) -> TfdResult<PulsedTensorFact> {
+    pub fn from_tensor_fact_pulse(tf: &TensorFact, pulse: usize) -> TractResult<PulsedTensorFact> {
         let dt = tf
             .datum_type
             .concretize()
@@ -39,7 +39,7 @@ impl PulsedTensorFact {
                 } else {
                     d.to_integer().map(|d| d as usize)
                 }
-            }).collect::<TfdResult<_>>()?;
+            }).collect::<TractResult<_>>()?;
         Ok(PulsedTensorFact {
             dt,
             shape,
@@ -86,7 +86,7 @@ pub struct PulsifiedOp {
 pub fn pulsify(
     old: &Model,
     pulse: usize,
-) -> TfdResult<(Model, PulsedTensorFact, PulsedTensorFact)> {
+) -> TractResult<(Model, PulsedTensorFact, PulsedTensorFact)> {
     let mut p_model = PulsifiedModel::new(old, pulse)?;
     let in_id = p_model.model.inputs()?[0];
     let out_id = p_model.model.outputs()?[0];
@@ -102,7 +102,7 @@ struct PulsifiedModel {
 }
 
 impl PulsifiedModel {
-    fn new(old: &Model, pulse: usize) -> TfdResult<PulsifiedModel> {
+    fn new(old: &Model, pulse: usize) -> TractResult<PulsifiedModel> {
         let mut model = Model::default();
         let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
         let mut facts: HashMap<OutletId, PulsedTensorFact> = HashMap::new();

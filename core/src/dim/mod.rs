@@ -9,7 +9,7 @@ mod stack;
 mod tree;
 
 use self::stack::Stack;
-use TfdResult;
+use TractResult;
 
 pub trait DimLike:
     Copy
@@ -34,15 +34,15 @@ pub trait DimLike:
         (*self + other - 1) / other
     }
 
-    fn to_integer(&self) -> TfdResult<i64>;
+    fn to_integer(&self) -> TractResult<i64>;
 }
 impl DimLike for TDim {
-    fn to_integer(&self) -> TfdResult<i64> {
+    fn to_integer(&self) -> TractResult<i64> {
         TDim::to_integer(self)
     }
 }
 impl DimLike for usize {
-    fn to_integer(&self) -> TfdResult<i64> {
+    fn to_integer(&self) -> TractResult<i64> {
         Ok(*self as i64)
     }
 }
@@ -92,7 +92,7 @@ impl TDim {
         self.as_const().is_none()
     }
 
-    pub fn to_integer(&self) -> TfdResult<i64> {
+    pub fn to_integer(&self) -> TractResult<i64> {
         self.0.eval(&hashmap!())
     }
 

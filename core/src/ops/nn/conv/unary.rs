@@ -27,7 +27,7 @@ impl ConvUnary {
         kernel: Tensor,
         bias: Option<Tensor>,
         group: usize,
-    ) -> TfdResult<ConvUnary> {
+    ) -> TractResult<ConvUnary> {
         let spatial_rank = full_input_shape.len() - 2;
         let dilations = conv.dilations.clone().unwrap_or(vec![1; spatial_rank]);
         let strides = conv.strides.clone().unwrap_or(vec![1; spatial_rank]);
@@ -46,7 +46,7 @@ impl ConvUnary {
         })
     }
 
-    fn to_fixed_params<T>(&self, input_shape: &[usize]) -> TfdResult<FixedParamsConv<T>>
+    fn to_fixed_params<T>(&self, input_shape: &[usize]) -> TractResult<FixedParamsConv<T>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
@@ -66,14 +66,14 @@ impl ConvUnary {
         )
     }
 
-    fn to_boxed_fixed_params_op<T>(&self, shape: &[usize]) -> TfdResult<Box<Op>>
+    fn to_boxed_fixed_params_op<T>(&self, shape: &[usize]) -> TractResult<Box<Op>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
         Ok(Box::new(self.to_fixed_params::<T>(shape)?))
     }
 
-    fn eval_t<T>(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>>
+    fn eval_t<T>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
@@ -83,7 +83,7 @@ impl ConvUnary {
         Ok(tvec!(output.into()))
     }
 
-    pub fn rm_dummy_axis(&self, axis: usize) -> TfdResult<Option<ConvUnary>> {
+    pub fn rm_dummy_axis(&self, axis: usize) -> TractResult<Option<ConvUnary>> {
         let shape = self.data_fmt.shape(&self.full_input_shape);
         if axis < shape.h_axis() {
             return Ok(None);
@@ -141,7 +141,7 @@ impl Op for ConvUnary {
         &self,
         inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-    ) -> TfdResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<ReducedOpRewire>> {
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape =
             &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
@@ -177,7 +177,7 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TfdResult<Vec<::pulse::PulsifiedOp>> {
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<::pulse::PulsifiedOp>> {
         let input = args_1!(inputs);
         let shape = self.data_fmt.shape(&input.shape);
         if input.axis == shape.n_axis() {
@@ -241,7 +241,7 @@ impl Op for ConvUnary {
 }
 
 impl StatelessOp for ConvUnary {
-    fn eval(&self, inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }

@@ -1,7 +1,7 @@
 use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use TfdResult;
+use TractResult;
 
 use num::Zero;
 
@@ -20,7 +20,7 @@ pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
     }
 
     /// Tries to unify the fact with another fact of the same type.
-    fn unify(&self, other: &Self) -> TfdResult<Self>;
+    fn unify(&self, other: &Self) -> TractResult<Self>;
 }
 
 /// Partial information about a tensor.
@@ -92,7 +92,7 @@ impl TensorFact {
         self.with_shape(shape)
     }
 
-    pub fn stream_info(&self) -> TfdResult<Option<StreamInfo>> {
+    pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
         self.shape.stream_info()
     }
 
@@ -118,7 +118,7 @@ impl Fact for TensorFact {
     }
 
     /// Tries to unify the fact with another fact of the same type.
-    fn unify(&self, other: &Self) -> TfdResult<Self> {
+    fn unify(&self, other: &Self) -> TractResult<Self> {
         let tensor = TensorFact {
             datum_type: self.datum_type.unify(&other.datum_type)?,
             shape: self.shape.unify(&other.shape)?,
@@ -179,7 +179,7 @@ impl<T: fmt::Debug + Clone + PartialEq> Fact for GenericFact<T> {
     }
 
     /// Tries to unify the fact with another fact of the same type.
-    fn unify(&self, other: &Self) -> TfdResult<Self> {
+    fn unify(&self, other: &Self) -> TractResult<Self> {
         let fact = match (self, other) {
             (_, GenericFact::Any) => self.clone(),
             (GenericFact::Any, _) => other.clone(),
@@ -242,7 +242,7 @@ impl ShapeFact {
         ShapeFact { open: false, dims }
     }
 
-    pub fn stream_info(&self) -> TfdResult<Option<StreamInfo>> {
+    pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
         let concrete = self
             .concretize()
             .ok_or("Shape has unknown dims, can not find streaming dim for sure.")?;
@@ -288,7 +288,7 @@ impl Fact for ShapeFact {
     }
 
     /// Tries to unify the fact with another fact of the same type.
-    fn unify(&self, other: &Self) -> TfdResult<Self> {
+    fn unify(&self, other: &Self) -> TractResult<Self> {
         let (x, y) = (self, other);
 
         use itertools::EitherOrBoth::{Both, Left, Right};
@@ -309,7 +309,7 @@ impl Fact for ShapeFact {
                     x,
                     y
                 ),
-            }).collect::<TfdResult<_>>()
+            }).collect::<TractResult<_>>()
             .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
 
         if x.open && y.open {

@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use std::fmt;
-use TfdResult;
+use TractResult;
 
 use super::stack::*;
 
@@ -39,7 +39,7 @@ impl fmt::Debug for ExpNode {
 }
 
 impl ExpNode {
-    pub fn from_ops(ops: &Stack) -> TfdResult<ExpNode> {
+    pub fn from_ops(ops: &Stack) -> TractResult<ExpNode> {
         use self::StackOp::*;
         if ops.overflow() {
             Err("Overflown")?;
@@ -99,7 +99,7 @@ impl ExpNode {
         Ok(stack.remove(0))
     }
 
-    pub fn to_ops(&self) -> TfdResult<Stack> {
+    pub fn to_ops(&self) -> TractResult<Stack> {
         match self {
             ExpNode::Val(i) => Ok(Stack::from(*i)),
             ExpNode::Sym(c) => Ok(Stack::sym(*c)),
@@ -149,7 +149,7 @@ impl ExpNode {
         }
     }
 
-    pub fn reduce(self) -> TfdResult<ExpNode> {
+    pub fn reduce(self) -> TractResult<ExpNode> {
         macro_rules! b( ($e:expr) => { Box::new($e) } );
         use self::ExpNode::*;
         let res = match self {
@@ -293,7 +293,7 @@ impl ExpNode {
                         let mut items = items
                             .into_iter()
                             .map(|f| Mul(value, vec![f]).reduce())
-                            .collect::<TfdResult<Vec<ExpNode>>>()?;
+                            .collect::<TractResult<Vec<ExpNode>>>()?;
                         items.sort();
                         Add(items)
                     } else {

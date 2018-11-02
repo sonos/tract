@@ -4,14 +4,14 @@ use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num::Zero;
 
 use tract_core::ops::prelude::*;
-use tract_core::TfdResult;
+use tract_core::TractResult;
 
 #[derive(Debug, Clone, Default, new)]
 pub struct Pad<T: Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
+pub fn pad(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }
@@ -21,7 +21,7 @@ impl<T: Datum + Zero> Pad<T> {
         input: &ArrayViewD<T>,
         paddings: ArrayView2<i32>,
         stream_dim: Option<usize>,
-    ) -> TfdResult<ArrayD<T>> {
+    ) -> TractResult<ArrayD<T>> {
         let shape: Vec<usize> = input
             .shape()
             .iter()
@@ -60,7 +60,7 @@ where
 }
 
 impl<T: Datum + Zero> StatelessOp for Pad<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TfdResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;

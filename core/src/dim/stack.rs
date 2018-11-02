@@ -1,7 +1,7 @@
 use super::tree::ExpNode;
 use std::collections::HashMap;
 use std::{fmt, ops};
-use TfdResult;
+use TractResult;
 
 const EXP_LEN: usize = 128;
 
@@ -66,7 +66,7 @@ impl Stack {
         e
     }
 
-    pub fn eval(&self, values: &HashMap<char, i64>) -> TfdResult<i64> {
+    pub fn eval(&self, values: &HashMap<char, i64>) -> TractResult<i64> {
         use self::StackOp::*;
         if self.overflow() {
             Err("Overflown")?;
@@ -118,7 +118,7 @@ impl Stack {
         Ok(stack[0])
     }
 
-    pub fn format(&self) -> TfdResult<String> {
+    pub fn format(&self) -> TractResult<String> {
         Ok(format!("{:?}", ExpNode::from_ops(&self)?))
     }
 
@@ -186,7 +186,7 @@ impl Stack {
         *self = self.reduced()
     }
 
-    pub fn try_reduce(self) -> TfdResult<Stack> {
+    pub fn try_reduce(self) -> TractResult<Stack> {
         if let Some(_) = self.val() {
             return Ok(self);
         }

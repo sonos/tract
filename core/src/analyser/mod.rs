@@ -19,12 +19,12 @@ pub struct Analyser<M: BorrowMut<Model>> {
 }
 
 impl<M: BorrowMut<Model>> Analyser<M> {
-    pub fn new(model: M) -> TfdResult<Analyser<M>> {
+    pub fn new(model: M) -> TractResult<Analyser<M>> {
         Ok(Analyser { model })
     }
 
     /// Runs the entire analysis at once.
-    pub fn analyse(&mut self) -> TfdResult<()> {
+    pub fn analyse(&mut self) -> TractResult<()> {
         let mut nodes_to_visit: BTreeSet<usize> = (0..self.model.borrow().nodes().len()).collect();
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
@@ -57,7 +57,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
 
     /// Tries to run a single step of the analysis, and returns whether
     /// there was any additional information gained during the step.
-    pub fn analyse_one(&mut self, node: usize) -> TfdResult<Vec<(OutletId, TensorFact)>> {
+    pub fn analyse_one(&mut self, node: usize) -> TractResult<Vec<(OutletId, TensorFact)>> {
         let mut changed_edges = vec![];
         {
             let node = &self.model.borrow().nodes()[node];
