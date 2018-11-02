@@ -9,7 +9,7 @@ image = "*"
 ndarray = "*"
 mio_httpc = "*"
 tar = "*"
-tract = { path = "../../../core" }
+tract-core = { path = "../../../core" }
 tract-tensorflow = { path = "../.." }
 conform = { path = "../../conform", optional=true }
 

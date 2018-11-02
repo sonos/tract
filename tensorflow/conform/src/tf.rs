@@ -9,7 +9,7 @@ use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 use tensorflow::Tensor;
 
-use tract::Tensor as TfdTensor;
+use tract_core::Tensor as TfdTensor;
 
 use ndarray::ArrayD;
 

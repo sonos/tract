@@ -11,5 +11,5 @@ proptest = "0.8"
 protobuf = "2.0"
 simplelog = "0.5"
 tensorflow = "0"
-tract = { path = "../../core" }
+tract-core = { path = "../../core" }
 tract-tensorflow = { path = ".." }

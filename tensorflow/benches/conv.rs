@@ -2,17 +2,17 @@
 extern crate criterion;
 extern crate ndarray;
 #[macro_use]
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 use criterion::Criterion;
 
-use tract::ops::nn::{Conv, DataFormat, FixedParamsConv, PaddingSpec};
-use tract::ops::prelude::*;
+use tract_core::ops::nn::{Conv, DataFormat, FixedParamsConv, PaddingSpec};
+use tract_core::ops::prelude::*;
 use tract_tensorflow::ops::nn::conv2d::*;
 use tract_tensorflow::ops::nn::local_patch::*;
 
-use tract::ops::Op;
+use tract_core::ops::Op;
 
 fn mk(sizes: &[usize]) -> Value {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)

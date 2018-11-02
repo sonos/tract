@@ -1,13 +1,13 @@
-use tract::model::ModelDsl;
-use tract::ops::nn::ConvUnary;
-use tract::ops::prelude::*;
-use tract::*;
+use tract_core::model::ModelDsl;
+use tract_core::ops::nn::ConvUnary;
+use tract_core::ops::prelude::*;
+use tract_core::*;
 
 pub fn untf_convos(mut model: Model) -> TfdResult<Model> {
     undo_all_conv1d_as_conv2d(&mut model)?;
-    let mut model = ::tract::optim::compact(&model)?;
+    let mut model = ::tract_core::optim::compact(&model)?;
     undo_all_space_to_batch(&mut model)?;
-    ::tract::optim::compact(&model)
+    ::tract_core::optim::compact(&model)
 }
 
 macro_rules! some_or_ok_false {
@@ -32,7 +32,7 @@ fn undo_all_conv1d_as_conv2d(model: &mut Model) -> TfdResult<bool> {
 }
 
 fn undo_conv1d_as_conv2d(model: &mut Model, node_id: usize) -> TfdResult<bool> {
-    use tract::ops::array::{AddDims, RmDims};
+    use tract_core::ops::array::{AddDims, RmDims};
     let new_op = {
         let prec_node = some_or_ok_false!(model.single_prec(node_id)?);
         let add_dim_op = some_or_ok_false!(prec_node.op_as::<AddDims>());

@@ -4,13 +4,13 @@ extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate tensorflow;
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
-use tract::Tensor;
+use tract_core::Tensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 
@@ -103,7 +103,7 @@ fn conv_infer_facts_1() {
 
 #[test]
 fn conv_eval_1() {
-    use tract::tensor::arr4;
+    use tract_core::tensor::arr4;
     //   ::conform::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));

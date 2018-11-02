@@ -10,8 +10,8 @@ use format::*;
 use ndarray::Axis;
 use profile::ProfileData;
 use rusage::{Duration, Instant};
-use tract::prelude::op::*;
-use tract::{Model, Tensor};
+use tract_core::prelude::op::*;
+use tract_core::{Model, Tensor};
 use {Parameters, ProfilingMode};
 
 fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>, Tensor)> {

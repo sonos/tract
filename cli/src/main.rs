@@ -21,7 +21,7 @@ extern crate rand;
 extern crate terminal_size;
 extern crate textwrap;
 #[macro_use]
-extern crate tract;
+extern crate tract_core;
 extern crate tract_onnx;
 extern crate tract_tensorflow;
 
@@ -29,7 +29,7 @@ use std::process;
 use std::str::FromStr;
 
 use insideout::InsideOut;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 use tract_tensorflow::tfpb;
 use tfpb::graph::GraphDef;
 
@@ -226,7 +226,7 @@ pub enum SomeGraphDef {
 pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
-    tfd_model: tract::Model,
+    tfd_model: tract_core::Model,
     pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
     #[cfg(feature = "tensorflow")]
@@ -236,7 +236,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     tf_model: (),
 
-    inputs: Option<Vec<Option<tract::Tensor>>>,
+    inputs: Option<Vec<Option<tract_core::Tensor>>>,
 }
 
 impl Parameters {
@@ -291,7 +291,7 @@ impl Parameters {
                     ..t
                 };
                 if let Some(axis) = matches.value_of("stream_axis") {
-                    fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tract::TDim::s().into()
+                    fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tract_core::TDim::s().into()
                 }
                 vs.push(t.value.concretize());
                 let outlet = tfd_model.inputs()?[ix];
@@ -321,7 +321,7 @@ impl Parameters {
 
         let pulse_facts = if let Some(pulse) = pulse {
             info!("Pulsify {}", pulse);
-            let (model, ifact, ofact) = ::tract::pulse::pulsify(&tfd_model, pulse)?;
+            let (model, ifact, ofact) = ::tract_core::pulse::pulsify(&tfd_model, pulse)?;
             if matches.is_present("optimize") {
                 info!("Optimize pulsing network");
                 tfd_model = model.into_optimized()?;

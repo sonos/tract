@@ -11,7 +11,7 @@ extern crate serde_json;
 extern crate serde_derive;
 extern crate simplelog;
 extern crate tar;
-extern crate tract;
+extern crate tract_core;
 extern crate tract_onnx;
 
 mod onnx;

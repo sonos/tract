@@ -1,4 +1,4 @@
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 use CliResult;
 
 /// Compares the outputs of a node in tract and tensorflow.

@@ -1,4 +1,4 @@
-use tract::ops as tfdops;
+use tract_core::ops as tfdops;
 
 use ops::OpRegister;
 

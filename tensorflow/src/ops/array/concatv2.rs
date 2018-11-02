@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let n = pb.get_attr_int("N")?;

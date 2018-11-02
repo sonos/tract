@@ -4,7 +4,7 @@ extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate tensorflow;
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 use conform::*;
@@ -13,7 +13,7 @@ use proptest::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 
-use tract::Tensor as TfdTensor;
+use tract_core::Tensor as TfdTensor;
 
 fn img_and_pool(
     ih: usize,

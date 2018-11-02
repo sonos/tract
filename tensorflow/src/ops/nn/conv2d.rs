@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use super::local_patch::*;
 use ndarray::prelude::*;
 use ndarray::LinalgScalar;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum + LinalgScalar>(LocalPatch, PhantomData<T>);
@@ -17,7 +17,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
 */
 
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
-    use tract::ops::nn::*;
+    use tract_core::ops::nn::*;
     let data_format = if pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC") == b"NHWC" {
         DataFormat::NHWC
     } else {
@@ -32,8 +32,8 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     };
     let padding = pb.get_attr_raw_str("padding")?;
     let padding = match padding {
-        b"VALID" => ::tract::ops::nn::PaddingSpec::Valid,
-        b"SAME" => ::tract::ops::nn::PaddingSpec::SameUpper,
+        b"VALID" => ::tract_core::ops::nn::PaddingSpec::Valid,
+        b"SAME" => ::tract_core::ops::nn::PaddingSpec::SameUpper,
         s => Err(format!(
             "unsupported Padding {}",
             String::from_utf8_lossy(s)
@@ -160,8 +160,8 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract::ops::nn::{Conv, DataFormat, PaddingSpec};
-    use tract::Tensor;
+    use tract_core::ops::nn::{Conv, DataFormat, PaddingSpec};
+    use tract_core::Tensor;
 
     fn mk(sizes: &[usize]) -> Tensor {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)

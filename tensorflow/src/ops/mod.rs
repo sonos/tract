@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use tract::ops::Op;
-use tract::TfdResult;
+use tract_core::ops::Op;
+use tract_core::TfdResult;
 
 use tfpb::node_def::NodeDef;
 
@@ -30,7 +30,7 @@ impl OpBuilder {
     pub fn build(&self, pb: &NodeDef) -> TfdResult<Box<Op>> {
         match self.0.get(pb.get_op()) {
             Some(builder) => builder(pb),
-            None => Ok(Box::new(::tract::ops::unimpl::UnimplementedOp(
+            None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp(
                 pb.get_op().to_string(),
                 format!("{:?}", pb),
             ))),
@@ -50,12 +50,12 @@ pub fn konst(node: &NodeDef) -> TfdResult<Box<Op>> {
         );
     }
 
-    Ok(Box::new(::tract::ops::konst::Const::for_tensor(mat)))
+    Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(mat)))
 }
 
 pub fn placeholder(node: &NodeDef) -> TfdResult<Box<Op>> {
     let dt = node.get_attr_datum_type("dtype")?;
-    Ok(Box::new(::tract::ops::source::Source::new(
-        ::tract::analyser::types::TensorFact::dt(dt.into()),
+    Ok(Box::new(::tract_core::ops::source::Source::new(
+        ::tract_core::analyser::types::TensorFact::dt(dt.into()),
     )))
 }

@@ -1,5 +1,5 @@
 use errors::*;
-use tract::plan::SimplePlan;
+use tract_core::plan::SimplePlan;
 use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, _output_params: OutputParameters) -> CliResult<()> {

@@ -1,6 +1,6 @@
 use std::{fs, path};
 
-use tract::*;
+use tract_core::*;
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
 

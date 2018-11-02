@@ -1,8 +1,8 @@
 use box_drawing::light::*;
 use colored::Color;
 use colored::Colorize;
-use tract::model::OutletId;
-use tract::Model;
+use tract_core::model::OutletId;
+use tract_core::Model;
 use CliResult;
 
 const COLORS: &'static [Color] = &[

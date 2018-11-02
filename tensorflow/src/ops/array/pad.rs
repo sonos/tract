@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num::Zero;
 
-use tract::ops::prelude::*;
-use tract::TfdResult;
+use tract_core::ops::prelude::*;
+use tract_core::TfdResult;
 
 #[derive(Debug, Clone, Default, new)]
 pub struct Pad<T: Datum + Zero> {
@@ -104,7 +104,7 @@ impl<T: Datum + Zero> InferenceRulesOp for Pad<T> {
 mod tests {
     use super::*;
     use ndarray::arr2;
-    use tract::Tensor;
+    use tract_core::Tensor;
 
     #[test]
     fn pad_0() {

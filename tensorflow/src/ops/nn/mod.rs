@@ -1,4 +1,4 @@
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 use ops::OpRegister;
 use tfpb::node_def::NodeDef;
@@ -12,8 +12,8 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("AvgPool", pools::pool::<pools::AvgPooler>);
     reg.insert("Conv2D", conv2d::conv2d);
     reg.insert("MaxPool", pools::pool::<pools::MaxPooler>);
-    reg.insert("Relu", with_T!(::tract::ops::nn::Relu));
-    reg.insert("Sigmoid", with_T!(::tract::ops::nn::Sigmoid));
+    reg.insert("Relu", with_T!(::tract_core::ops::nn::Relu));
+    reg.insert("Sigmoid", with_T!(::tract_core::ops::nn::Sigmoid));
     reg.insert("Softmax", Softmax::build);
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);
     reg.insert("BatchToSpaceND", s2b::batch_to_space_nd);

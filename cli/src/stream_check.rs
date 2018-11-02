@@ -2,10 +2,10 @@ use colored::Colorize;
 use errors::*;
 use ndarray::Axis;
 use simplelog::Level::Info;
-use tract::analyser::TensorFact;
-use tract::streaming::prelude::*;
-use tract::{SimplePlan, Tensor};
-use tract::plan::SimpleState;
+use tract_core::analyser::TensorFact;
+use tract_core::streaming::prelude::*;
+use tract_core::{SimplePlan, Tensor};
+use tract_core::plan::SimpleState;
 use {OutputParameters, Parameters};
 
 pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
@@ -49,7 +49,7 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
     let mut display_graph = ::display_graph::DisplayGraph::from_model(&stream_model)?
         .with_graph_def(&params.graph)?;
 
-    let eval_order = ::tract::model::eval_order(&stream_model)?;
+    let eval_order = ::tract_core::model::eval_order(&stream_model)?;
 
     /*
     for mut dn in &mut display_graph.nodes {

@@ -4,14 +4,14 @@ extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate tensorflow;
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 use conform::*;
 use ndarray::prelude::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tract::Tensor as TfdTensor;
+use tract_core::Tensor as TfdTensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 

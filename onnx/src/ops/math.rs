@@ -1,8 +1,8 @@
-use tract::ops as tfdops;
+use tract_core::ops as tfdops;
 
 use ops::OpRegister;
 use pb::NodeProto;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Add", |_| Ok(Box::new(tfdops::math::Add::default())));

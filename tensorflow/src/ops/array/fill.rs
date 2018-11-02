@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 #[derive(Debug, Clone, Default, new)]
 pub struct Fill<T: Datum> {

@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
-use tract::plan::{SimplePlan, SimpleState};
-use tract::{Tensor, TensorFact};
+use tract_core::plan::{SimplePlan, SimpleState};
+use tract_core::{Tensor, TensorFact};
 
 use display_graph::DisplayOptions;
 use errors::*;
@@ -41,7 +41,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     for (ix, input) in generated.clone().into_iter().enumerate() {
         state.set_input(ix, input)?;
     }
-    let plan = ::tract::model::eval_order_for_nodes(
+    let plan = ::tract_core::model::eval_order_for_nodes(
         &tfd.nodes(),
         &[tfd.node_by_name(&params.output_node)?.id],
     )?;

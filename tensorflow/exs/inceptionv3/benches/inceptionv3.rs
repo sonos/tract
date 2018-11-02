@@ -5,7 +5,7 @@ extern crate conform;
 extern crate dinghy_test;
 extern crate inceptionv3;
 #[macro_use]
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 use self::dinghy_test::test_project_path;
@@ -40,7 +40,7 @@ fn tf(bencher: &mut Criterion) {
 fn tfd(bencher: &mut Criterion) {
     let tfd = ::tract_tensorflow::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(hopper());
-    let plan = ::tract::SimplePlan::new(tfd).unwrap();
+    let plan = ::tract_core::SimplePlan::new(tfd).unwrap();
     bencher.bench_function("TFD", move |b| {
         b.iter(|| plan.run(tvec![input.clone()]).unwrap())
     });

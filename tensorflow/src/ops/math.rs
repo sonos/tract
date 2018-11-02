@@ -1,7 +1,7 @@
-use tract::ops as tfdops;
+use tract_core::ops as tfdops;
 
 use ops::OpRegister;
-use tract::TfdResult;
+use tract_core::TfdResult;
 use tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut OpRegister) {

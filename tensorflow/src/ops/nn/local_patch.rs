@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
-use tract::TfdResult;
+use tract_core::TfdResult;
 
-use tract::dim::TDim;
+use tract_core::dim::TDim;
 
 #[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]

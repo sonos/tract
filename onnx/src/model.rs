@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::{fs, path};
 
-use tract::model::{InletId, Model, OutletId};
-use tract::*;
+use tract_core::model::{InletId, Model, OutletId};
+use tract_core::*;
 
 use pb;
 
@@ -41,14 +41,14 @@ impl TfdFrom<pb::ModelProto> for Model {
             if let Some(init) = initializers.remove(input.get_name()) {
                 let id = model.add_node(
                     input.get_name().to_owned(),
-                    Box::new(::tract::ops::konst::Const::new(init.into())),
+                    Box::new(::tract_core::ops::konst::Const::new(init.into())),
                 )?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             } else {
                 let fact = input.get_field_type().get_tensor_type().to_tfd()?;
                 let id = model.add_node(
                     input.get_name().to_owned(),
-                    Box::new(::tract::ops::source::Source::new(fact)),
+                    Box::new(::tract_core::ops::source::Source::new(fact)),
                 )?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             }

@@ -28,12 +28,10 @@ pub mod tensor_shape;
 pub mod types;
 pub mod versions;
 
-use tract as tfd;
-
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
-use tract::{ TfdResult, ToTfd };
+use tract_core::{ TfdResult, ToTfd };
 
 pub fn graph() -> graph::GraphDef {
     graph::GraphDef::new()
@@ -113,12 +111,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_datum_type(&self, name: &str) -> TfdResult<tfd::DatumType> {
+    pub fn get_attr_datum_type(&self, name: &str) -> TfdResult<tract_core::DatumType> {
         Ok(self.get_attr_opt_datum_type(name)?
             .ok_or_else(|| format!("Node {} ({}) expected datum_type attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_datum_type(&self, name: &str) -> TfdResult<Option<tfd::DatumType>> {
+    pub fn get_attr_opt_datum_type(&self, name: &str) -> TfdResult<Option<tract_core::DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
             Ok(Some(t.get_field_type().to_tfd()?))
         } else {
@@ -126,12 +124,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TfdResult<tfd::Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> TfdResult<tract_core::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?
             .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<tfd::Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TfdResult<Option<tract_core::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
             Ok(Some(t.to_tfd()?))
         } else {

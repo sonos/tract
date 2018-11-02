@@ -5,16 +5,16 @@ extern crate ndarray;
 extern crate proptest;
 extern crate tensorflow;
 #[macro_use]
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 use conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
-use tract::ops::StatefullOp;
-use tract::tensor::arr4;
-use tract::tensor::Datum;
-use tract::Tensor as TfdTensor;
+use tract_core::ops::StatefullOp;
+use tract_core::tensor::arr4;
+use tract_core::tensor::Datum;
+use tract_core::Tensor as TfdTensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;

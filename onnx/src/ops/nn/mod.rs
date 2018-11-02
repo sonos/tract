@@ -1,6 +1,6 @@
-use tract::ops as tfdops;
-use tract::ops::nn::{DataFormat, PaddingSpec};
-use tract::ops::prelude::*;
+use tract_core::ops as tfdops;
+use tract_core::ops::nn::{DataFormat, PaddingSpec};
+use tract_core::ops::prelude::*;
 
 use ops::OpRegister;
 use pb::NodeProto;

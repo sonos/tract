@@ -7,12 +7,12 @@ extern crate ndarray;
 extern crate tar;
 #[allow(unused_imports)]
 #[macro_use]
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 use std::{fs, io, path};
 
-use tract::TfdResult;
+use tract_core::TfdResult;
 
 fn download() {
     use std::sync::{Once, ONCE_INIT};
@@ -74,10 +74,10 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
     inception_v3_2016_08_28().join("imagenet_slim_labels.txt")
 }
 
-pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tract::Tensor {
+pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tract_core::Tensor {
     let image = ::image::open(&p).unwrap().to_rgb();
     let resized = ::image::imageops::resize(&image, 299, 299, ::image::FilterType::Triangle);
-    let image: ::tract::Tensor =
+    let image: ::tract_core::Tensor =
         ::ndarray::Array4::from_shape_fn((1, 299, 299, 3), |(_, y, x, c)| {
             resized[(x as _, y as _)][c] as f32 / 255.0
         }).into_dyn()
@@ -101,7 +101,7 @@ mod tests {
     fn grace_hopper_is_a_military_uniform() {
         download();
         let tfd = ::tract_tensorflow::for_path(inception_v3_2016_08_28_frozen()).unwrap();
-        let plan = ::tract::SimplePlan::new(&tfd).unwrap();
+        let plan = ::tract_core::SimplePlan::new(&tfd).unwrap();
         let input = load_image(hopper());
         let outputs = plan.run(tvec![input]).unwrap();
         let labels = load_labels();

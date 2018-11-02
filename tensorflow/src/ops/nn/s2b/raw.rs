@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
-use tract::analyser::rules::TensorProxy;
+use tract_core::analyser::rules::TensorProxy;
 
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatch {

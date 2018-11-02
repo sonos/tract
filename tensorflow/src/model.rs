@@ -1,7 +1,7 @@
 use std::{fs, path};
 
-use tract::model::{InletId, Model, OutletId};
-use tract::{TfdFrom, TfdResult, ToTfd};
+use tract_core::model::{InletId, Model, OutletId};
+use tract_core::{TfdFrom, TfdResult, ToTfd};
 use tfpb::graph::GraphDef;
 
 /// Load a Tensorflow protobul model from a file.

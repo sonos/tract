@@ -5,11 +5,11 @@
 //! ## Example
 //!
 //! ```
-//! # extern crate tract;
+//! # extern crate tract_core;
 //! # extern crate tract_tensorflow;
 //! # extern crate ndarray;
 //! # fn main() {
-//! use tract::*;
+//! use tract_core::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let model = tract_tensorflow::for_path("tests/models/plus3.pb").unwrap();
@@ -44,7 +44,7 @@ extern crate ndarray;
 extern crate num;
 extern crate protobuf;
 #[macro_use]
-extern crate tract;
+extern crate tract_core;
 
 pub mod model;
 pub mod ops;
@@ -56,5 +56,5 @@ pub use self::model::for_path;
 pub use self::model::for_reader;
 
 pub trait ToTensorflow<Tf>: Sized {
-    fn to_tf(&self) -> tract::TfdResult<Tf>;
+    fn to_tf(&self) -> tract_core::TfdResult<Tf>;
 }

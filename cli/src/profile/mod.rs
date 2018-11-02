@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use errors::*;
 use format::*;
 use itertools::Itertools;
-use tract::{Model, Node};
+use tract_core::{Model, Node};
 
 use display_graph::DisplayOptions;
 use {Parameters, ProfilingMode, SomeGraphDef};
@@ -25,7 +25,7 @@ impl ProfileData {
         }
     }
 
-    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tract::TfdResult<()> {
+    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tract_core::TfdResult<()> {
         *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
         Ok(())
     }

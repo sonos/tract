@@ -5,21 +5,21 @@
 //! ## Example
 //!
 //! ```
-//! # extern crate tract;
+//! # extern crate tract_core;
 //! # extern crate ndarray;
 //! # fn main() {
-//! use tract::*;
-//! use tract::model::*;
+//! use tract_core::*;
+//! use tract_core::model::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let mut model = Model::default();
 //!
 //! let input = model.add_node("input".to_string(),
-//!     Box::new(tract::ops::source::Source::default())).unwrap();
+//!     Box::new(tract_core::ops::source::Source::default())).unwrap();
 //! let three = model.add_node("three".to_string(),
-//!     Box::new(tract::ops::konst::Const::new(3f32.into()))).unwrap();
+//!     Box::new(tract_core::ops::konst::Const::new(3f32.into()))).unwrap();
 //! let add = model.add_node("add".to_string(),
-//!     Box::new(tract::ops::math::Add::default())).unwrap();
+//!     Box::new(tract_core::ops::math::Add::default())).unwrap();
 //!
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
 //! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();

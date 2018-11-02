@@ -1,7 +1,7 @@
 #[cfg(feature = "tensorflow")]
 use conform;
 use ndarray;
-use tract;
+use tract_core;
 
 /// Configures error handling for this crate.
 error_chain! {
@@ -10,7 +10,7 @@ error_chain! {
     }
     links {
         Conform(conform::Error, conform::ErrorKind) #[cfg(feature="tensorflow")];
-        Tfdeploy(tract::TfdError, tract::TfdErrorKind);
+        Tfdeploy(tract_core::TfdError, tract_core::TfdErrorKind);
     }
 
     foreign_links {

@@ -1,5 +1,5 @@
 use ndarray::*;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum PaddingStrat {

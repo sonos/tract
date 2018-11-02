@@ -10,7 +10,7 @@ log = "0.4"
 ndarray = { version = "0.12" }
 num = "0.2"
 protobuf = "2.0"
-tract = { path="../core" }
+tract-core = { path="../core" }
 
 [build-dependencies]
 git2 = "0.7"

@@ -11,7 +11,7 @@ extern crate protobuf;
 extern crate simplelog;
 extern crate tensorflow;
 #[macro_use]
-extern crate tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
 error_chain! {
@@ -36,7 +36,7 @@ pub mod tf;
 
 pub use protobuf::Message;
 
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 use tract_tensorflow::tfpb;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
@@ -89,8 +89,8 @@ pub fn compare<S: AsRef<str>>(
             .collect::<Vec<&str>>(),
     )?;
     model.set_outputs(&[output])?;
-    let plan = tract::SimplePlan::new(&model)?;
-    let mut state = tract::plan::SimpleState::new(&plan)?;
+    let plan = tract_core::SimplePlan::new(&model)?;
+    let mut state = tract_core::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }
@@ -129,8 +129,8 @@ pub fn infer<S: AsRef<str>>(
             .collect::<Vec<&str>>(),
     )?;
     model.set_outputs(&[output])?;
-    let plan = tract::SimplePlan::new(&model)?;
-    let mut state = tract::plan::SimpleState::new(&plan)?;
+    let plan = tract_core::SimplePlan::new(&model)?;
+    let mut state = tract_core::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }

@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ndarray::prelude::*;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 pub fn build(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
@@ -300,7 +300,7 @@ impl<T: Datum> Op for StridedSlice<T> {
                     (input_shape[ix] - dim.end).to_integer()? as usize,
                 ));
             }
-            let op = ::tract::ops::array::Slice::new(prunes);
+            let op = ::tract_core::ops::array::Slice::new(prunes);
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
         } else {
             Ok(None)
@@ -357,8 +357,8 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use ndarray::*;
-    use tract::ops::InferenceOp;
-    use tract::Tensor;
+    use tract_core::ops::InferenceOp;
+    use tract_core::Tensor;
 
     fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
     where

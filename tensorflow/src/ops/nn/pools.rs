@@ -1,6 +1,6 @@
 use super::local_patch::*;
 use ndarray::prelude::*;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'static {
     type State;
@@ -130,7 +130,7 @@ impl Pooler for AvgPooler {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract::Tensor;
+    use tract_core::Tensor;
 
     #[test]
     fn test_maxpool_1() {

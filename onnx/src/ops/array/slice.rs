@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice {

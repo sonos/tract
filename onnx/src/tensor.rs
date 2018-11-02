@@ -1,6 +1,6 @@
 use pb::*;
-use tract::*;
-use tract::f16::f16;
+use tract_core::*;
+use tract_core::f16::f16;
 
 impl TfdFrom<TensorProto_DataType> for DatumType {
     fn tfd_from(t: &TensorProto_DataType) -> TfdResult<DatumType> {

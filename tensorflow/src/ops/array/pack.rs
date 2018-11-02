@@ -1,5 +1,5 @@
-use tract::ops::prelude::*;
-use tract::TfdResult;
+use tract_core::ops::prelude::*;
+use tract_core::TfdResult;
 
 pub fn pack(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
@@ -99,8 +99,8 @@ mod tests {
     use super::*;
     use ndarray::prelude::*;
     use num::Zero;
-    use tract::ops::InferenceOp;
-    use tract::Tensor;
+    use tract_core::ops::InferenceOp;
+    use tract_core::Tensor;
 
     #[test]
     fn pack_0() {

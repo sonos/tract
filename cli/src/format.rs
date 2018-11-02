@@ -6,9 +6,9 @@ use prettytable::format::{FormatBuilder, TableFormat};
 use prettytable::Table;
 use terminal_size::{terminal_size, Width};
 use textwrap;
-use tract;
-use tract::plan::{SimplePlan, SimpleState};
-use tract::{Model, Node};
+use tract_core;
+use tract_core::plan::{SimplePlan, SimpleState};
+use tract_core::{Model, Node};
 
 use colored::Colorize;
 use format;
@@ -169,7 +169,7 @@ pub fn print_box(
 
 /// Returns information about a node.
 fn node_info<M, P>(
-    node: &tract::Node,
+    node: &tract_core::Node,
     graph: &SomeGraphDef,
     state: Option<&SimpleState<M, P>>,
 ) -> Vec<Vec<Row>>

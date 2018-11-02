@@ -1,4 +1,4 @@
-use tract::{DatumType, Tensor, TfdFrom, TfdResult};
+use tract_core::{DatumType, Tensor, TfdFrom, TfdResult};
 use tfpb::tensor::TensorProto;
 use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use tfpb::types::DataType;

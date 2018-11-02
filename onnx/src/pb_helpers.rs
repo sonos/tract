@@ -1,5 +1,5 @@
 use pb::*;
-use tract::*;
+use tract_core::*;
 
 impl NodeProto {
     fn get_attr_opt(&self, name: &str) -> TfdResult<Option<&AttributeProto>> {

@@ -1,11 +1,11 @@
 #[macro_use]
 extern crate criterion;
-extern crate tract;
+extern crate tract_core;
 extern crate ndarray;
 extern crate rand;
 
 use ndarray::Axis;
-use tract::*;
+use tract_core::*;
 use criterion::Criterion;
 
 #[path = "../src/utils.rs"]
@@ -13,7 +13,7 @@ mod utils;
 
 fn streaming_diamond(c: &mut Criterion) {
     let datum_type = DatumType::F32;
-    let model = tract::for_path("../tests/models/diamond.pb").unwrap();
+    let model = tract_core::for_path("../tests/models/diamond.pb").unwrap();
     let output = analyser::detect_output(&model).unwrap().unwrap();
 
     let data = utils::random_tensor(vec![41, 40], datum_type);

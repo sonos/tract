@@ -1,6 +1,6 @@
 use display_graph::*;
 use errors::*;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 use Parameters;
 
 pub fn handle(

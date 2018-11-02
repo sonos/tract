@@ -3,7 +3,7 @@ use num::Zero;
 
 pub mod raw;
 pub mod unary;
-use tract::ops::prelude::*;
+use tract_core::ops::prelude::*;
 
 pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> TfdResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
@@ -114,8 +114,8 @@ mod tests {
     #![allow(non_snake_case)]
     use super::raw::{BatchToSpace, SpaceToBatch};
     use super::*;
-    use tract::ops::InferenceOp;
-    use tract::tensor::arr4;
+    use tract_core::ops::InferenceOp;
+    use tract_core::tensor::arr4;
 
     // https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd
     #[test]

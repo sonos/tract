@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::Read;
 
-use tract::*;
-use tract::ops::prelude::*;
+use tract_core::*;
+use tract_core::ops::prelude::*;
 use CliResult;
 
 pub fn for_size(size: &str) -> CliResult<TensorFact> {
