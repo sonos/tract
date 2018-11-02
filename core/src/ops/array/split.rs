@@ -5,11 +5,11 @@ use ops::prelude::*;
 pub struct Split {
     axis: usize,
     outputs: usize,
-    split: Option<Vec<usize>>
+    split: Option<Vec<usize>>,
 }
 
 impl Split {
-    fn split_dims<D:DimLike>(&self, input: D) -> TractResult<TVec<D>> {
+    fn split_dims<D: DimLike>(&self, input: D) -> TractResult<TVec<D>> {
         if let Some(ref split) = self.split.as_ref() {
             Ok(split.iter().map(|&d| D::from(d)).collect())
         } else {
@@ -19,11 +19,16 @@ impl Split {
     fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         let mut current = 0;
         let input = input.to_array_view::<T>()?;
-        Ok(self.split_dims(input.shape()[self.axis])?.iter().map(|d| {
-            let slice = input.slice_axis(Axis(self.axis), (current..current+d).into()).to_owned();
-            current += d;
-            slice.into()
-        }).collect())
+        Ok(self
+            .split_dims(input.shape()[self.axis])?
+            .iter()
+            .map(|d| {
+                let slice = input
+                    .slice_axis(Axis(self.axis), (current..current + d).into())
+                    .to_owned();
+                current += d;
+                slice.into()
+            }).collect())
     }
 }
 
@@ -37,9 +42,7 @@ impl StatelessOp for Split {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let input = args_1!(inputs);
-        dispatch_datum!(Self::eval_t(input.datum_type())(
-            self, input
-        ))
+        dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }
 }
 

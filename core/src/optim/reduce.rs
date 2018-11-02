@@ -1,5 +1,5 @@
 use ops::prelude::*;
-use ::Model;
+use Model;
 
 pub struct Reduce;
 
@@ -9,7 +9,12 @@ impl super::OptimizerPass for Reduce {
         for id in model.eval_order()? {
             let reduced = {
                 let node = &model.nodes()[id];
-                debug!("Consider unarize {:?} #{} ({})", node.name, node.id, node.op().name());
+                debug!(
+                    "Consider unarize {:?} #{} ({})",
+                    node.name,
+                    node.id,
+                    node.op().name()
+                );
                 let input_facts: TVec<&TensorFact> = node
                     .inputs
                     .iter()

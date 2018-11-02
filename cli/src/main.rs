@@ -29,9 +29,9 @@ use std::process;
 use std::str::FromStr;
 
 use insideout::InsideOut;
+use tfpb::graph::GraphDef;
 use tract_core::ops::prelude::*;
 use tract_tensorflow::tfpb;
-use tfpb::graph::GraphDef;
 
 use display_graph::DisplayOptions;
 use errors::*;

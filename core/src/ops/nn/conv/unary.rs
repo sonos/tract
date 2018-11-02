@@ -177,7 +177,10 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<::pulse::PulsifiedOp>> {
+    fn pulsify(
+        &self,
+        mut inputs: TVec<&PulsedTensorFact>,
+    ) -> TractResult<Vec<::pulse::PulsifiedOp>> {
         let input = args_1!(inputs);
         let shape = self.data_fmt.shape(&input.shape);
         if input.axis == shape.n_axis() {

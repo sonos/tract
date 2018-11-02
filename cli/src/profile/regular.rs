@@ -86,7 +86,6 @@ pub fn handle(
         print_header(format!("Profiling for {}:", params.name), "white");
     }
 
-
     // Then execute the plan while profiling each step.
     for &n in &plan.order {
         let node = &model.nodes()[n];

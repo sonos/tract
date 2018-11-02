@@ -48,11 +48,12 @@ pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
         _ => tractops::array::PadMode::Constant(value.unwrap_or(0.0)),
     };
     let pads = node.get_attr_ints("pads")?;
-    let rank = pads.len()/2;
-    let pads = (0..rank).map(|ax| (pads[ax] as usize, pads[ax+rank] as usize)).collect();
+    let rank = pads.len() / 2;
+    let pads = (0..rank)
+        .map(|ax| (pads[ax] as usize, pads[ax + rank] as usize))
+        .collect();
     Ok(Box::new(tractops::array::Pad::new(pads, mode)))
 }
-
 
 pub fn slice(node: &NodeProto) -> TractResult<Box<Op>> {
     let axes = node.get_attr_opt_ints("axes")?;

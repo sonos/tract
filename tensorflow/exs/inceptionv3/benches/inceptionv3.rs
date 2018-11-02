@@ -38,7 +38,8 @@ fn tf(bencher: &mut Criterion) {
 }
 
 fn tract(bencher: &mut Criterion) {
-    let tract = ::tract_tensorflow::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
+    let tract =
+        ::tract_tensorflow::for_path(inceptionv3::inception_v3_2016_08_28_frozen()).unwrap();
     let input = inceptionv3::load_image(hopper());
     let plan = ::tract_core::SimplePlan::new(tract).unwrap();
     bencher.bench_function("TFD", move |b| {

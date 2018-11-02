@@ -1,8 +1,8 @@
 use std::{fs, path};
 
-use tract_core::model::{InletId, Model, OutletId};
-use tract_core::{Tractify, TractResult, ToTract};
 use tfpb::graph::GraphDef;
+use tract_core::model::{InletId, Model, OutletId};
+use tract_core::{ToTract, TractResult, Tractify};
 
 /// Load a Tensorflow protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {

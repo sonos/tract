@@ -101,10 +101,19 @@ element_map_with_params!(Selu, [f32, f64], {alpha: f32, gamma: f32},
     }
 );
 
-element_map_with_params!(ThresholdedRelu, [f32, f64], {alpha: f32},
-    fn eval_one<T>(s: &ThresholdedRelu, x:T) -> T
-    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+element_map_with_params!(
+    ThresholdedRelu,
+    [f32, f64],
+    { alpha: f32 },
+    fn eval_one<T>(s: &ThresholdedRelu, x: T) -> T
+    where
+        T: Datum + ::num::Float,
+        f32: ::num::cast::AsPrimitive<T>,
     {
-        if x <= s.alpha.as_() { 0.0.as_() } else { x }
+        if x <= s.alpha.as_() {
+            0.0.as_()
+        } else {
+            x
+        }
     }
 );

@@ -1,8 +1,8 @@
 use tract_core::ops as tractops;
 
 use ops::OpRegister;
-use tract_core::TractResult;
 use tfpb::node_def::NodeDef;
+use tract_core::TractResult;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Abs", with_T!(tractops::math::Abs));

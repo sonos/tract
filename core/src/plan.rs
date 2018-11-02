@@ -242,7 +242,11 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             } = self;
             match states[node] {
                 Some(ref mut state) => state.eval(plan.borrow().model().nodes()[node].op(), inputs),
-                None => plan.borrow().model().nodes()[node].op().as_stateless().unwrap().eval(inputs),
+                None => plan.borrow().model().nodes()[node]
+                    .op()
+                    .as_stateless()
+                    .unwrap()
+                    .eval(inputs),
             }.map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
         };
         self.values[node] = Some(values);

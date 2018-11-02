@@ -59,7 +59,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
-    reg.insert("Sigmoid", |_| Ok(Box::new(tractops::nn::Sigmoid::default())));
+    reg.insert("Sigmoid", |_| {
+        Ok(Box::new(tractops::nn::Sigmoid::default()))
+    });
     reg.insert("Softmax", layer_soft_max);
     reg.insert("Softplus", |_| {
         Ok(Box::new(tractops::nn::Softplus::default()))
@@ -245,4 +247,3 @@ pub fn thresholded_relu(node: &NodeProto) -> TractResult<Box<Op>> {
     let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
     Ok(Box::new(tractops::nn::ThresholdedRelu::new(alpha)))
 }
-

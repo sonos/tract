@@ -367,7 +367,7 @@ impl Tensor {
                     a.is_nan() && b.is_nan() || a == b || (b - a).abs() <= margin,
                 )
             })
-        //.inspect(|t| println!("{:?}", t))
+            //.inspect(|t| println!("{:?}", t))
             .all(|t| t.2)
     }
 
@@ -569,12 +569,57 @@ impl TryInto<i64> for TDim {
     }
 }
 
-tensor!(bool, Bool, as_bool, as_bools, as_bools_mut, take_bools, bools, []);
-tensor!(f16, F16, as_f16, as_f16s, as_f16s_mut, take_f16s, f16s, [(F32, as_f32s), (F64, as_f64s)]);
-tensor!(f32, F32, as_f32, as_f32s, as_f32s_mut, take_f32s, f32s, [(F16, as_f16s), (F64, as_f64s)]);
-tensor!(f64, F64, as_f64, as_f64s, as_f64s_mut, take_f64s, f64s, [(F16, as_f16s), (F32, as_f32s)]);
+tensor!(
+    bool,
+    Bool,
+    as_bool,
+    as_bools,
+    as_bools_mut,
+    take_bools,
+    bools,
+    []
+);
+tensor!(
+    f16,
+    F16,
+    as_f16,
+    as_f16s,
+    as_f16s_mut,
+    take_f16s,
+    f16s,
+    [(F32, as_f32s), (F64, as_f64s)]
+);
+tensor!(
+    f32,
+    F32,
+    as_f32,
+    as_f32s,
+    as_f32s_mut,
+    take_f32s,
+    f32s,
+    [(F16, as_f16s), (F64, as_f64s)]
+);
+tensor!(
+    f64,
+    F64,
+    as_f64,
+    as_f64s,
+    as_f64s_mut,
+    take_f64s,
+    f64s,
+    [(F16, as_f16s), (F32, as_f32s)]
+);
 tensor!(i8, I8, as_i8, as_i8s, as_i8s_mut, take_i8s, i8s, []);
-tensor!(i16, I16, as_i16, as_i16s, as_i16_mut, take_i16s, i16s, [(I8, as_i8s)]);
+tensor!(
+    i16,
+    I16,
+    as_i16,
+    as_i16s,
+    as_i16_mut,
+    take_i16s,
+    i16s,
+    [(I8, as_i8s)]
+);
 tensor!(
     i32,
     I32,

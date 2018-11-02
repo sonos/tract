@@ -17,7 +17,6 @@ impl Op for Source {
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
         self.infer_facts(inputs, outputs)
     }
-
 }
 
 impl StatelessOp for Source {

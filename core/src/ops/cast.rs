@@ -2,7 +2,7 @@ use ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Cast {
-    to: DatumType
+    to: DatumType,
 }
 
 impl Cast {

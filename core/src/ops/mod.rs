@@ -11,10 +11,10 @@ use objekt;
 mod macros;
 
 pub mod array;
+pub mod cast;
 pub mod identity;
 #[cfg(features = "image_ops")]
 pub mod image;
-pub mod cast;
 pub mod konst;
 pub mod logic;
 pub mod math;
@@ -39,6 +39,7 @@ pub mod prelude {
     pub use analyser::types::TypeFact;
     pub use analyser::types::*;
     pub use dim::{DimLike, TDim, ToDim};
+    pub use f16::f16;
     pub use model::TVec;
     pub use ops::types::Value;
     pub use pulse::{PulsedTensorFact, PulsifiedOp};
@@ -46,7 +47,6 @@ pub mod prelude {
     pub use std::marker::PhantomData;
     pub use tensor::arr4;
     pub use tensor::{Datum, DatumType, Tensor};
-    pub use f16::f16;
     pub use TractResult;
 }
 

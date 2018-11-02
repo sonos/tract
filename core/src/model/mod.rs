@@ -163,7 +163,7 @@ impl Model {
         Ok(())
     }
 
-    pub fn set_input_fact(&mut self, input:usize, fact: TensorFact) -> TractResult<()> {
+    pub fn set_input_fact(&mut self, input: usize, fact: TensorFact) -> TractResult<()> {
         let outlet = self.inputs()?[input];
         self.set_fact(outlet, fact)
     }

@@ -18,7 +18,7 @@ impl DelayState {
         let output_pulse = input_pulse + op.overlap;
         output_shape[op.input_fact.axis] = output_pulse;
         // build output
-        let output = if op.delay < input_pulse  {
+        let output = if op.delay < input_pulse {
             let mut output = unsafe { ArrayD::<T>::uninitialized(output_shape) };
             let from_input = input_pulse - op.delay;
             let from_buffer = output_pulse - from_input;
@@ -30,7 +30,9 @@ impl DelayState {
                 .assign(&input.slice_axis(axis, Slice::from(..from_input)));
             output
         } else {
-            buffer.slice_axis(axis, Slice::from(..output_pulse)).to_owned()
+            buffer
+                .slice_axis(axis, Slice::from(..output_pulse))
+                .to_owned()
         };
         // maintain buffer
         if buffered < input_pulse {
@@ -104,17 +106,17 @@ mod test {
         let mut model = Model::default();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec!(pulse),
+            shape: vec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source_fact("source", fact.to_pulse_fact()).unwrap();
         model
-            .chain(
-                "delay",
-                Box::new(Delay::new(fact, delay, overlap)),
-            ).unwrap();
+            .add_source_fact("source", fact.to_pulse_fact())
+            .unwrap();
+        model
+            .chain("delay", Box::new(Delay::new(fact, delay, overlap)))
+            .unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = ::plan::SimpleState::new(plan).unwrap();
@@ -125,10 +127,7 @@ mod test {
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
             let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
-            assert_eq!(
-                output[0].as_u8s().unwrap().as_slice().unwrap(),
-                &*expect
-            );
+            assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
         }
     }
 
@@ -158,29 +157,27 @@ mod test {
         let mut model = Model::default();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec!(pulse),
+            shape: vec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source_fact("source", fact.to_pulse_fact()).unwrap();
         model
-            .chain(
-                "delay-1",
-                Box::new(Delay::new(fact, 2, 0)),
-            ).unwrap();
+            .add_source_fact("source", fact.to_pulse_fact())
+            .unwrap();
+        model
+            .chain("delay-1", Box::new(Delay::new(fact, 2, 0)))
+            .unwrap();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec!(pulse),
+            shape: vec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 2,
         };
         model
-            .chain(
-                "delay-2",
-                Box::new(Delay::new(fact, 2, 0))
-            ).unwrap();
+            .chain("delay-2", Box::new(Delay::new(fact, 2, 0)))
+            .unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = ::plan::SimpleState::new(plan).unwrap();
@@ -191,10 +188,7 @@ mod test {
                 .map(|i| i.saturating_sub(4) as u8)
                 .collect();
             let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
-            assert_eq!(
-                output[0].as_u8s().unwrap().as_slice().unwrap(),
-                &*expect
-            );
+            assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
         }
     }
 }

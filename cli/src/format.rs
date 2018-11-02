@@ -180,10 +180,7 @@ where
     // First section: node attributes.
     let mut attributes = Vec::new();
     if let SomeGraphDef::Tf(graph) = graph {
-        let proto_node = graph
-            .get_node()
-            .iter()
-            .find(|n| n.get_name() == node.name);
+        let proto_node = graph.get_node().iter().find(|n| n.get_name() == node.name);
 
         if let Some(proto_node) = proto_node {
             for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {

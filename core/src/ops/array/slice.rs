@@ -40,7 +40,9 @@ impl Op for Slice {
             let mut fact = input.clone();
             fact.delay += delay;
             fact.dim -= delay.to_dim();
-            return Ok(vec![PulsifiedOp::new(Box::new(::ops::identity::Identity::default()), tvec!(fact),
+            return Ok(vec![PulsifiedOp::new(
+                Box::new(::ops::identity::Identity::default()),
+                tvec!(fact),
             )]);
         }
         unimplemented!();

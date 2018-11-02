@@ -59,7 +59,7 @@ pub use self::add_dims::AddDims;
 pub use self::broadcast::MultiBroadcastTo;
 pub use self::concat::Concat;
 pub use self::flatten::Flatten;
-pub use self::pad::{ Pad, PadMode };
+pub use self::pad::{Pad, PadMode};
 pub use self::permute_axes::PermuteAxes;
 pub use self::reshape::Reshape;
 pub use self::rm_dims::RmDims;

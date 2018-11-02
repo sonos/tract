@@ -8,7 +8,7 @@ pub struct PermuteAxes {
 impl PermuteAxes {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> Vec<D> {
         if let Some(ref axes) = self.axes {
-            let mut new_shape = vec!(D::zero(); input.len());
+            let mut new_shape = vec![D::zero(); input.len()];
             for (ix, &d) in axes.iter().enumerate() {
                 new_shape[ix] = input[d];
             }
@@ -23,7 +23,9 @@ impl PermuteAxes {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         if let Some(ref axes) = self.axes {
-            Ok(tvec![input.into_array::<T>()?.permuted_axes(&**axes).into()])
+            Ok(tvec![
+                input.into_array::<T>()?.permuted_axes(&**axes).into()
+            ])
         } else {
             Ok(tvec![input.into_array::<T>()?.reversed_axes().into()])
         }

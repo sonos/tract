@@ -1,6 +1,6 @@
 use ndarray::*;
-use ops::prelude::*;
 use num::traits::AsPrimitive;
+use ops::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PadMode {
@@ -22,10 +22,12 @@ pub struct Pad {
 
 impl Pad {
     fn eval_t<T>(&self, input: Value) -> TractResult<Value>
-        where T: Datum, f32: AsPrimitive<T>
+    where
+        T: Datum,
+        f32: AsPrimitive<T>,
     {
         let input = input.to_array_view::<T>()?;
-        let output_shape:Vec<usize> = input
+        let output_shape: Vec<usize> = input
             .shape()
             .iter()
             .zip(self.pads.iter())
@@ -53,26 +55,28 @@ impl Pad {
                 {
                     let (mut pad, data) = output.view_mut().split_at(axis, bef);
                     for i in 0..bef {
-                        let mut target = pad.slice_axis_mut(axis, Slice::from(i..i+1));
+                        let mut target = pad.slice_axis_mut(axis, Slice::from(i..i + 1));
                         let source_slice = match self.mode {
                             PadMode::Edge => 0,
-                            PadMode::Reflect => bef-i,
+                            PadMode::Reflect => bef - i,
                             _ => panic!(),
                         };
-                        let source = data.slice_axis(axis, Slice::from(source_slice..source_slice+1));
+                        let source =
+                            data.slice_axis(axis, Slice::from(source_slice..source_slice + 1));
                         target.assign(&source);
                     }
                 }
                 {
-                    let (data, mut pad) = output.view_mut().split_at(axis, dim-aft);
+                    let (data, mut pad) = output.view_mut().split_at(axis, dim - aft);
                     for i in 0..aft {
-                        let mut target = pad.slice_axis_mut(axis, Slice::from(i..i+1));
+                        let mut target = pad.slice_axis_mut(axis, Slice::from(i..i + 1));
                         let source_slice = match self.mode {
-                            PadMode::Edge => dim-aft-1,
-                            PadMode::Reflect => dim-aft-2-i,
+                            PadMode::Edge => dim - aft - 1,
+                            PadMode::Reflect => dim - aft - 2 - i,
                             _ => panic!(),
                         };
-                        let source = data.slice_axis(axis, Slice::from(source_slice..source_slice+1));
+                        let source =
+                            data.slice_axis(axis, Slice::from(source_slice..source_slice + 1));
                         target.assign(&source);
                     }
                 }

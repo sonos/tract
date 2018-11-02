@@ -12,17 +12,13 @@ impl ArgMaxMin {
     fn eval_t<T: Datum + PartialOrd>(&self, input: Value) -> TractResult<Value> {
         use std::cmp::Ordering;
         let array = input.to_array_view::<T>()?;
-        let f:fn(&(usize, &T), &(usize, &T)) -> Ordering = if self.max {
+        let f: fn(&(usize, &T), &(usize, &T)) -> Ordering = if self.max {
             |a, b| a.1.partial_cmp(&b.1).unwrap_or(a.0.cmp(&b.0))
         } else {
             |a, b| b.1.partial_cmp(&a.1).unwrap_or(a.0.cmp(&b.0))
         };
         let mut values = array.map_axis(Axis(self.axis), |row| {
-            row.iter()
-                .enumerate()
-                .max_by(f)
-                .unwrap()
-                .0 as i64
+            row.iter().enumerate().max_by(f).unwrap().0 as i64
         });
         if self.keepdims {
             values = values.insert_axis(Axis(self.axis));

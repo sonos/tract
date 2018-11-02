@@ -30,8 +30,8 @@ mod path;
 mod proxies;
 mod solver;
 
-pub use self::solver::Solver;
 pub use self::proxies::*;
+pub use self::solver::Solver;
 
 pub type InferenceResult = TractResult<()>;
 

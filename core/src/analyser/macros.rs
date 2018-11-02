@@ -5,7 +5,8 @@ macro_rules! typefact {
         $crate::analyser::types::TypeFact::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::analyser::types::TypeFact = $crate::analyser::types::GenericFact::Only($arg);
+        let fact: $crate::analyser::types::TypeFact =
+            $crate::analyser::types::GenericFact::Only($arg);
         fact
     }};
 }
@@ -44,7 +45,8 @@ macro_rules! valuefact {
         $crate::analyser::types::ValueFact::default()
     };
     ($arg:expr) => {{
-        let fact: $crate::analyser::types::ValueFact = $crate::analyser::types::GenericFact::Only($arg);
+        let fact: $crate::analyser::types::ValueFact =
+            $crate::analyser::types::GenericFact::Only($arg);
         fact
     }};
 }

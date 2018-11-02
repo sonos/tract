@@ -5,8 +5,8 @@ use num::Zero;
 
 use ops::prelude::*;
 
-use self::super::expr::{ Exp, IntoExp, Output, TExp };
-use self::super::path::{ Path, get_path, set_path };
+use self::super::expr::{Exp, IntoExp, Output, TExp};
+use self::super::path::{get_path, set_path, Path};
 
 /// A structure that holds the current sets of TensorFacts.
 ///

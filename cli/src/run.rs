@@ -24,9 +24,14 @@ pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> Cl
 fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
     let tract = params.tract_model;
     let plan = SimplePlan::new(&tract)?;
-    let mut inputs:TVec<Tensor> = tvec!();
+    let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.inputs()?.iter().enumerate() {
-        if let Some(input) = params.inputs.as_ref().and_then(|v| v.get(ix)).and_then(|t| t.as_ref()) {
+        if let Some(input) = params
+            .inputs
+            .as_ref()
+            .and_then(|v| v.get(ix))
+            .and_then(|t| t.as_ref())
+        {
             inputs.push(input.to_owned());
         } else {
             let fact = tract.fact(*input)?;

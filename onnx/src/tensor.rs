@@ -1,6 +1,6 @@
 use pb::*;
-use tract_core::*;
 use tract_core::f16::f16;
+use tract_core::*;
 
 impl Tractify<TensorProto_DataType> for DatumType {
     fn tractify(t: &TensorProto_DataType) -> TractResult<DatumType> {

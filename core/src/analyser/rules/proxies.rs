@@ -6,8 +6,8 @@ use num::cast::ToPrimitive;
 use ops::prelude::*;
 
 use self::super::cache::Cache;
-use self::super::path::Path;
 use self::super::expr::Output;
+use self::super::path::Path;
 
 /// A proxy for any value.
 pub trait Proxy {

@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::Read;
 
-use tract_core::*;
 use tract_core::ops::prelude::*;
+use tract_core::*;
 use CliResult;
 
 pub fn for_size(size: &str) -> CliResult<TensorFact> {
@@ -59,7 +59,8 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 
     macro_rules! for_type {
         ($t:ty) => {{
-            let array = ::ndarray::Array::from_iter(values.iter().map(|v| v.parse::<$t>().unwrap()));
+            let array =
+                ::ndarray::Array::from_iter(values.iter().map(|v| v.parse::<$t>().unwrap()));
 
             array.into_shape(
                 shape

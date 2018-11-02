@@ -8,7 +8,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Or", |_| Ok(Box::new(tractops::logic::Or::default())));
     reg.insert("Xor", |_| Ok(Box::new(tractops::logic::Xor::default())));
 
-    reg.insert("Equal", |_| Ok(Box::new(tractops::logic::Equals::default())));
+    reg.insert("Equal", |_| {
+        Ok(Box::new(tractops::logic::Equals::default()))
+    });
     reg.insert("Greater", |_| {
         Ok(Box::new(tractops::logic::Greater::default()))
     });

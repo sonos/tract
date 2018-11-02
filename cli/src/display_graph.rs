@@ -164,11 +164,19 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
 
     pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<M>> {
         for gnode in graph_def.get_node().iter() {
-            if let Ok(node_id) = self.model.borrow().node_by_name(gnode.get_name()).map(|n| n.id) {
+            if let Ok(node_id) = self
+                .model
+                .borrow()
+                .node_by_name(gnode.get_name())
+                .map(|n| n.id)
+            {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", ::tract_core::tensor::Tensor::tractify(a.1.get_tensor())?)
+                        format!(
+                            "{:?}",
+                            ::tract_core::tensor::Tensor::tractify(a.1.get_tensor())?
+                        )
                     } else {
                         format!("{:?}", a.1)
                     };

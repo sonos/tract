@@ -92,7 +92,10 @@ impl num::Float for f16 {
         f16(self.0.signum())
     }
     fn mul_add(self, a: f16, b: f16) -> f16 {
-        (self.0).to_f32().mul_add((a.0).to_f32(), (b.0).to_f32()).into()
+        (self.0)
+            .to_f32()
+            .mul_add((a.0).to_f32(), (b.0).to_f32())
+            .into()
     }
     fn powi(self, i: i32) -> f16 {
         (self.0).to_f32().powi(i).into()
@@ -160,7 +163,6 @@ impl num::cast::AsPrimitive<f16> for f64 {
         f16(half::f16::from_f64(self))
     }
 }
-
 
 impl num::NumCast for f16 {
     fn from<T: num::ToPrimitive>(n: T) -> Option<Self> {

@@ -36,10 +36,10 @@ pub mod tf;
 
 pub use protobuf::Message;
 
-use tract_core::ops::prelude::*;
-use tract_tensorflow::tfpb;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
+use tract_core::ops::prelude::*;
+use tract_tensorflow::tfpb;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,

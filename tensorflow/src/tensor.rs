@@ -1,7 +1,7 @@
-use tract_core::{DatumType, Tensor, Tractify, TractResult};
 use tfpb::tensor::TensorProto;
 use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use tfpb::types::DataType;
+use tract_core::{DatumType, Tensor, TractResult, Tractify};
 use ToTensorflow;
 
 impl Tractify<DataType> for DatumType {

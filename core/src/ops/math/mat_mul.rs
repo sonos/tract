@@ -1,15 +1,17 @@
 use ndarray::*;
 use ops::prelude::*;
 
-fn make_slicer(coords: &[usize], shape:&[usize]) -> TractResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
+fn make_slicer(
+    coords: &[usize],
+    shape: &[usize],
+) -> TractResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
     let mut slice: Vec<SliceOrIndex> = coords
         .iter()
         .zip(shape.iter())
         .map(|(&c, &d)| {
             let a = if c < d { c } else { 0 };
             SliceOrIndex::Index(a as _)
-        })
-        .collect();
+        }).collect();
     slice.push(SliceOrIndex::from(..));
     slice.push(SliceOrIndex::from(..));
     Ok(SliceInfo::new(slice)?)

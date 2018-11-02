@@ -22,7 +22,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Pad", pad::pad);
     reg.insert("Reshape", reshape::reshape);
     reg.insert("Shape", |_| {
-        Ok(Box::new(::tract_core::ops::array::Shape::new(DatumType::I32)))
+        Ok(Box::new(::tract_core::ops::array::Shape::new(
+            DatumType::I32,
+        )))
     });
     reg.insert("Squeeze", squeeze::squeeze);
     reg.insert("StridedSlice", strided_slice::build);
