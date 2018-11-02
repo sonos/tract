@@ -1,8 +1,7 @@
 [package]
 name = "tract"
 version = "0.1.0"
-authors = ["Romain Liautaud <romain.liautaud@snips.ai>",
-"Mathieu Poumeyrol <kali@zoy.org>"]
+authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
 repository = "https://github.com/kali/tract"
@@ -17,7 +16,6 @@ travis-ci = { repository = "kali/tract" }
 box_drawing = "0.1"
 clap = "2.31"
 colored = "1.6"
-tract-tensorflow-conform = { path = "../tensorflow/conform" }
 error-chain = "0.12"
 insideout = "0.1.0"
 lazy_static = "1.0"
@@ -26,11 +24,12 @@ ndarray = "0.12"
 prettytable-rs = "0.8"
 rand = "0.5"
 pretty_env_logger = "0.2"
+tensorflow = { version = "0", optional = true }
 terminal_size = "0.1.7"
 textwrap = "0.10"
-tract-core = "0.1.0"
-tract-tensorflow = "0.1.0"
-tract-onnx = "0.1.0"
+tract-core = { path = "../core" }
+tract-tensorflow = { path = "../tensorflow" }
+tract-onnx = { path = "../onnx" }
 pbr = "1.0"
 atty = "0.2"
 itertools = "0.7"
@@ -39,7 +38,7 @@ open = "1.2"
 
 [features]
 default = []
-tensorflow = []
+with-tensorflow = ["tensorflow"]
 
 [dev-dependencies]
 criterion = "0.2"
