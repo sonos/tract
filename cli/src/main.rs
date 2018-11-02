@@ -12,7 +12,6 @@ extern crate ndarray;
 extern crate prettytable;
 extern crate atty;
 extern crate libc;
-extern crate open;
 extern crate pbr;
 extern crate pretty_env_logger;
 extern crate rand;
