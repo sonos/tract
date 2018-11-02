@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::{Tensor, TensorFact};
+use log::Level::Info;
 
 use display_graph::DisplayOptions;
 use errors::*;
@@ -9,58 +10,49 @@ use utils::*;
 use Parameters;
 
 /// Handles the `compare` subcommand.
-#[cfg(not(feature = "tensorflow"))]
+#[cfg(not(feature = "conform"))]
 pub fn handle(_params: Parameters, _: DisplayOptions) -> CliResult<()> {
     bail!("Comparison requires the `tensorflow` feature.")
 }
 
-#[cfg(feature = "tensorflow")]
+#[cfg(feature = "conform")]
 pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
     use colored::Colorize;
     use format::Row;
 
     let tract = params.tract_model;
-    let mut tf = params.tf_model;
+    let tf = params.tf_model;
 
     // First generate random values for the inputs.
-    let generated = ::tensor::make_inputs(&params.inputs)?;
+    let generated = ::tensor::make_inputs(&[tract.input_fact()?.clone()])?;
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
-    let pairs = params
-        .input_nodes
+    let pairs = tract.inputs()
         .iter()
-        .map(|s| &**s)
+        .map(|s| &*tract.node(s[0].node).name)
         .zip(generated.iter().cloned())
         .collect();
     let mut tf_outputs = tf.unwrap().run_get_all(pairs)?;
 
     // Execute the model step-by-step on tract.
-    let plan = SimplePlan::new(&tract, &params.input_nodes, &[&params.output_node])?;
-    let mut state = plan.state()?;
+    let plan = SimplePlan::new(&tract)?;
+    let mut state = SimpleState::new(plan)?;
     for (ix, input) in generated.clone().into_iter().enumerate() {
         state.set_input(ix, input)?;
     }
-    let plan = ::tract_core::model::eval_order_for_nodes(
-        &tract.nodes(),
-        &[tract.node_by_name(&params.output_node)?.id],
-    )?;
+    let plan = ::tract_core::model::eval_order(&tract)?;
     debug!("Using execution plan: {:?}", plan);
 
-    let nodes: Vec<_> = tract.nodes().iter().map(|a| &*a).collect();
     let mut display_graph =
-        ::display_graph::DisplayGraph::from_nodes(&*nodes)?.with_graph_def(&params.graph)?;
+        ::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?;
 
     let mut failures = 0;
 
-    let hidden = !log_enabled!(Info);
-
     for n in plan {
         let node = &tract.nodes()[n];
-        let dn = &mut display_graph.nodes[n];
 
-        if node.op_name == "Placeholder" {
-            dn.hidden = hidden;
+        if node.op_is::<::tract_core::ops::source::Source>() {
             continue;
         }
 
@@ -74,9 +66,8 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         match state.compute_one(n) {
             Err(e) => {
                 failures += 1;
-                dn.more_lines.push(format!("Error message: {:?}", e));
-                dn.label = Some("ERROR".red().to_string());
-                dn.hidden = false;
+                display_graph.add_node_label(n, "ERROR".red().to_string())?;
+                display_graph.add_node_label(n, format!("Error message: {:?}", e))?;
             }
 
             _ => {
@@ -109,38 +100,29 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                                     "Other error"
                                 };
 
-                                let infos = data.partial_dump(false).unwrap();
-
-                                format!("{} {} {}", header, reason.red().bold().to_string(), infos)
+                                Row::Double(format!("{} {}", header, reason).red().to_string(),
+                                            format!("{:?}", data))
                             }).collect::<Vec<_>>();
-                        dn.more_lines.extend(mismatches);
-                        dn.label = Some("MISM.".red().to_string());
-                        dn.hidden = false;
+                        display_graph.add_node_section(n, mismatches)?;
+                        display_graph.add_node_label(n, "MISM.".red().to_string())?;
                     }
 
                     _ => {
-                        dn.hidden = hidden;
-                        dn.label = Some("OK".green().to_string());
+                        display_graph.add_node_label(n, "OK".green().to_string())?;
                     }
                 }
             }
         };
 
         // Use the output from tensorflow to keep tract from drifting.
-        for (ix, out) in tf_output.iter().enumerate() {
-            if dn.outputs.len() > ix {
-                let edge = &mut display_graph.edges[dn.outputs[ix]];
-                edge.label = Some(format!("{:?}", out));
-            }
-        }
         state.set_values(node.id, tf_output.into())?;
     }
 
     if failures > 0 {
         print_header(format!("There were {} errors:", failures), "red");
-        display_graph.render(&output_params)?;
+        display_graph.render()?;
     } else if log_enabled!(Info) {
-        display_graph.render(&output_params)?;
+        display_graph.render()?;
     } else {
         println!("{}", "Each node passed the comparison.".bold().green());
     }

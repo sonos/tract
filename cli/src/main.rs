@@ -1,8 +1,6 @@
 extern crate box_drawing;
 extern crate clap;
 extern crate colored;
-#[cfg(feature = "tensorflow")]
-extern crate conform;
 #[macro_use]
 extern crate error_chain;
 extern crate insideout;
@@ -222,17 +220,16 @@ pub enum SomeGraphDef {
 }
 
 /// Structure holding the parsed parameters.
-#[derive(Debug)]
 pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
     tract_model: tract_core::Model,
     pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
-    #[cfg(feature = "tensorflow")]
-    tf_model: Option<conform::tf::Tensorflow>,
+    #[cfg(feature = "conform")]
+    tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
 
-    #[cfg(not(feature = "tensorflow"))]
+    #[cfg(not(feature = "conform"))]
     #[allow(dead_code)]
     tf_model: (),
 
@@ -262,14 +259,14 @@ impl Parameters {
 
         info!("Model {:?} loaded", name);
 
-        #[cfg(feature = "tensorflow")]
+        #[cfg(feature = "conform")]
         let tf_model = if format == "tf" {
-            Some(conform::tf::for_path(&name)?)
+            Some(tract_tensorflow::conform::tf::for_path(&name)?)
         } else {
             None
         };
 
-        #[cfg(not(feature = "tensorflow"))]
+        #[cfg(not(feature = "conform"))]
         let tf_model = ();
 
         if let Some(inputs) = matches.values_of("input_node") {

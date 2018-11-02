@@ -24,7 +24,8 @@ ndarray = "0.12"
 prettytable-rs = "0.8"
 rand = "0.5"
 pretty_env_logger = "0.2"
-tensorflow = { version = "0", optional = true }
+# protobuf = { version = "2.0", optional = true }
+# tensorflow = { version = "0", optional = true }
 terminal_size = "0.1.7"
 textwrap = "0.10"
 tract-core = { path = "../core" }
@@ -38,7 +39,7 @@ open = "1.2"
 
 [features]
 default = []
-with-tensorflow = ["tensorflow"]
+conform = [ "tract-tensorflow/conform"  ]
 
 [dev-dependencies]
 criterion = "0.2"

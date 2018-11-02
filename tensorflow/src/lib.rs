@@ -45,6 +45,11 @@ extern crate num;
 extern crate protobuf;
 #[macro_use]
 extern crate tract_core;
+#[cfg(feature = "conform")]
+extern crate tensorflow;
+
+#[cfg(feature = "conform")]
+pub mod conform;
 
 pub mod model;
 pub mod ops;
