@@ -1,6 +1,6 @@
-//! # Tensorflow Deploy
+//! # Tract
 //!
-//! Tiny, no-nonsense, self contained, portable Tensorflow inference.
+//! Tiny, no-nonsense, self contained, portable Tensorflow and ONNX inference.
 //!
 //! ## Example
 //!
@@ -10,14 +10,13 @@
 //! # fn main() {
 //! use tract_core::*;
 //! use tract_core::model::*;
+//! use tract_core::model::dsl::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let mut model = Model::default();
 //!
-//! let input = model.add_node("input".to_string(),
-//!     Box::new(tract_core::ops::source::Source::default())).unwrap();
-//! let three = model.add_node("three".to_string(),
-//!     Box::new(tract_core::ops::konst::Const::new(3f32.into()))).unwrap();
+//! let input = model.add_source("input").unwrap();
+//! let three = model.add_const("three".to_string(), 3f32.into()).unwrap();
 //! let add = model.add_node("add".to_string(),
 //!     Box::new(tract_core::ops::math::Add::default())).unwrap();
 //!
