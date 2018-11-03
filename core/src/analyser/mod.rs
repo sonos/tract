@@ -86,7 +86,6 @@ impl<M: BorrowMut<Model>> Analyser<M> {
                         node.id, node.name, e
                     )
                 })?;
-                unified.reduce();
 
                 if &unified != old_fact {
                     debug!(" Refined {} input #{} to {:?}", node.name, ix, unified);
@@ -96,8 +95,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
 
             for (ix, inferred_fact) in inferred.1.iter().enumerate() {
                 let old_fact = self.model.borrow().fact(OutletId::new(node.id, ix))?;
-                let mut unified = old_fact.unify(inferred_fact)?;
-                unified.reduce();
+                let unified = old_fact.unify(inferred_fact)?;
 
                 if &unified != old_fact {
                     debug!(" Refined {} input #{} to {:?}", node.name, ix, unified);

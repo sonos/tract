@@ -334,10 +334,8 @@ impl<'rules> Solver<'rules> {
         self,
         facts: (TVec<&TensorFact>, TVec<&TensorFact>),
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let mut context = Context::new(
-            facts.0.iter().map(|&f| f.clone().reduced()).collect(),
-            facts.1.iter().map(|&f| f.clone().reduced()).collect(),
-        );
+        let mut context = Context::new( facts.0.into_iter().cloned().collect(), 
+                                        facts.1.into_iter().cloned().collect());
 
         // Apply the rules until reaching a fixed point.
         let mut changed = true;
@@ -374,12 +372,6 @@ impl<'rules> Solver<'rules> {
         }
 
         trace!("  Solver exiting {:?}", context);
-        for i in &mut context.inputs {
-            i.reduce();
-        }
-        for o in &mut context.outputs {
-            o.reduce();
-        }
         Ok((context.inputs, context.outputs))
     }
 

@@ -82,10 +82,6 @@ impl TDim {
         self.to_integer().ok()
     }
 
-    pub fn reduce(&mut self) {
-        self.0.reduce()
-    }
-
     pub fn eval(&self, s: i32) -> Option<i32> {
         self.0.eval(&hashmap!('S' => s)).ok()
     }

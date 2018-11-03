@@ -1,6 +1,5 @@
 use itertools::Itertools;
 use std::fmt;
-use TractResult;
 
 use super::stack::*;
 
@@ -39,19 +38,16 @@ impl fmt::Debug for ExpNode {
 }
 
 impl ExpNode {
-    pub fn from_ops(ops: &Stack) -> TractResult<ExpNode> {
+    pub fn from_ops(ops: &Stack) -> ExpNode {
         use self::StackOp::*;
-        if ops.overflow() {
-            Err("Overflown")?;
-        }
         let mut stack: Vec<ExpNode> = vec![];
         for op in ops.as_ops().iter() {
             match op {
                 Val(v) => stack.push(ExpNode::Val(*v)),
                 Sym(v) => stack.push(ExpNode::Sym(*v)),
                 Add => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    let a = stack.pop().ok_or("Too short stack")?;
+                    let b = stack.pop().expect("Too short stack");
+                    let a = stack.pop().expect("Too short stack");
                     if let ExpNode::Add(mut items) = a {
                         items.push(b);
                         stack.push(ExpNode::Add(items));
@@ -60,102 +56,91 @@ impl ExpNode {
                     }
                 }
                 Neg => {
-                    let a = stack.pop().ok_or("Too short stack")?;
+                    let a = stack.pop().expect("Too short stack");
                     stack.push(ExpNode::Mul(-1, vec![a]));
                 }
-                Sub => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    let a = stack.pop().ok_or("Too short stack")?;
-                    stack.push(ExpNode::Add(vec![a, ExpNode::Mul(-1, vec![b])]));
-                }
                 Div => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    let a = stack.pop().ok_or("Too short stack")?;
+                    let b = stack.pop().expect("Too short stack");
+                    let a = stack.pop().expect("Too short stack");
                     stack.push(ExpNode::Div(Box::new(a), Box::new(b)));
                 }
                 DivCeil => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    let a = stack.pop().ok_or("Too short stack")?;
+                    let b = stack.pop().expect("Too short stack");
+                    let a = stack.pop().expect("Too short stack");
                     stack.push(ExpNode::DivCeil(Box::new(a), Box::new(b)));
                 }
                 Rem => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    let a = stack.pop().ok_or("Too short stack")?;
+                    let b = stack.pop().expect("Too short stack");
+                    let a = stack.pop().expect("Too short stack");
                     stack.push(ExpNode::Rem(Box::new(a), Box::new(b)));
                 }
                 Mul => {
-                    let b = stack.pop().ok_or("Too short stack")?;
-                    let a = stack.pop().ok_or("Too short stack")?;
+                    let b = stack.pop().expect("Too short stack");
+                    let a = stack.pop().expect("Too short stack");
                     stack.push(ExpNode::Mul(1, vec![a, b]));
                 }
             }
         }
-        if stack.len() > 1 {
-            bail!("Too long stack")
-        }
-        if stack.len() < 1 {
-            bail!("Too short stack")
-        }
-        Ok(stack.remove(0))
+        stack.remove(0)
     }
 
-    pub fn to_ops(&self) -> TractResult<Stack> {
+    pub fn to_stack(&self) -> Stack {
         match self {
-            ExpNode::Val(i) => Ok(Stack::from(*i)),
-            ExpNode::Sym(c) => Ok(Stack::sym(*c)),
+            ExpNode::Val(i) => Stack::from(*i),
+            ExpNode::Sym(c) => Stack::sym(*c),
             ExpNode::Add(vec) => {
-                let (first, rest) = vec.split_first().ok_or("Empty add node")?;
-                let mut it = first.to_ops()?;
+                let (first, rest) = vec.split_first().expect("Empty add node");
+                let mut it = first.to_stack();
                 for other in rest {
-                    it.push_all(other.to_ops()?.as_ops());
+                    it.push_all(other.to_stack().as_ops());
                     it.push(StackOp::Add);
                 }
-                Ok(it)
+                it
             }
             ExpNode::Mul(v, vec) => {
                 let mut it = Stack::empty();
                 if *v != 1 {
                     it.push(StackOp::Val(*v));
                 }
-                let (first, rest) = vec.split_first().ok_or("Empty mul node")?;
-                it.push_all(first.to_ops()?.as_ops());
+                let (first, rest) = vec.split_first().expect("Empty mul node");
+                it.push_all(first.to_stack().as_ops());
                 for other in rest {
-                    it.push_all(other.to_ops()?.as_ops());
+                    it.push_all(other.to_stack().as_ops());
                     it.push(StackOp::Mul);
                 }
                 if *v != 1 {
                     it.push(StackOp::Mul);
                 }
-                Ok(it)
+                it
             }
             ExpNode::Div(a, b) => {
-                let mut it = a.to_ops()?;
-                it.push_all(b.to_ops()?.as_ops());
+                let mut it = a.to_stack();
+                it.push_all(b.to_stack().as_ops());
                 it.push(StackOp::Div);
-                Ok(it)
+                it
             }
             ExpNode::Rem(a, b) => {
-                let mut it = a.to_ops()?;
-                it.push_all(b.to_ops()?.as_ops());
+                let mut it = a.to_stack();
+                it.push_all(b.to_stack().as_ops());
                 it.push(StackOp::Rem);
-                Ok(it)
+                it
             }
             ExpNode::DivCeil(a, b) => {
-                let mut it = a.to_ops()?;
-                it.push_all(b.to_ops()?.as_ops());
+                let mut it = a.to_stack();
+                it.push_all(b.to_stack().as_ops());
                 it.push(StackOp::DivCeil);
-                Ok(it)
+                it
             }
         }
     }
 
-    pub fn reduce(self) -> TractResult<ExpNode> {
+    pub fn reduce(self) -> ExpNode {
         macro_rules! b( ($e:expr) => { Box::new($e) } );
         use self::ExpNode::*;
         let res = match self {
             Div(a, b) => {
-                let red_a = a.reduce()?;
-                let red_b = b.reduce()?;
+                let red_a = a.reduce();
+                let red_b = b.reduce();
                 match (red_a, red_b) {
                     (a, Val(1)) => a,
                     (Val(a), Val(b)) => Val(a / b),
@@ -188,16 +173,16 @@ impl ExpNode {
                             out.remove(0)
                         } else {
                             out.sort();
-                            Add(out).reduce()?
+                            Add(out).reduce()
                         }
                     }
                     (Mul(v, factors), Val(b)) => {
                         use num::Integer;
                         let gcd = v.gcd(&b);
                         if gcd == b {
-                            Mul(v / gcd, factors).reduce()?
+                            Mul(v / gcd, factors).reduce()
                         } else if gcd == 1 {
-                            Mul(v, vec![Div(b!(Mul(1, factors).reduce()?), b!(Val(b)))])
+                            Mul(v, vec![Div(b!(Mul(1, factors).reduce()), b!(Val(b)))])
                         } else {
                             Div(b!(Mul(v / gcd, factors)), b!(Val(b / gcd)))
                         }
@@ -207,28 +192,28 @@ impl ExpNode {
             }
             Rem(a, b) => {
                 // a%b = a - b*(a/b)
-                let a = a.reduce()?;
-                let b = b.reduce()?;
+                let a = a.reduce();
+                let b = b.reduce();
                 if b == ExpNode::Val(1) {
                     a
                 } else {
                     Add(vec![
                         a.clone(),
                         Mul(-1, vec![b.clone(), Div(b!(a.clone()), b!(b))]),
-                    ]).reduce()?
+                    ]).reduce()
                 }
             }
             DivCeil(a, b) => {
                 // ceiling(j/m) = floor(j+m-1/m)
-                let red_a = a.reduce()?;
-                let red_b = b.reduce()?;
-                Div(b!(Add(vec![red_a, red_b.clone(), Val(-1)])), b!(red_b)).reduce()?
+                let red_a = a.reduce();
+                let red_b = b.reduce();
+                Div(b!(Add(vec![red_a, red_b.clone(), Val(-1)])), b!(red_b)).reduce()
             }
             Add(mut vec) => {
                 use std::collections::HashMap;
                 let mut reduced: HashMap<ExpNode, i32> = HashMap::new();
                 while let Some(item) = vec.pop() {
-                    let red = item.reduce()?;
+                    let red = item.reduce();
                     match red {
                         Add(items) => {
                             vec.extend(items.into_iter());
@@ -273,7 +258,7 @@ impl ExpNode {
                 let mut value = scale;
                 vec.reverse();
                 while let Some(item) = vec.pop() {
-                    let red: ExpNode = item.reduce()?;
+                    let red: ExpNode = item.reduce();
                     if let Val(v) = red {
                         value *= v;
                     } else if let Mul(v, items) = red {
@@ -293,7 +278,7 @@ impl ExpNode {
                         let mut items = items
                             .into_iter()
                             .map(|f| Mul(value, vec![f]).reduce())
-                            .collect::<TractResult<Vec<ExpNode>>>()?;
+                            .collect::<Vec<ExpNode>>();
                         items.sort();
                         Add(items)
                     } else {
@@ -310,7 +295,7 @@ impl ExpNode {
             it => it,
         };
 
-        Ok(res)
+        res
     }
 }
 
@@ -342,56 +327,53 @@ mod tests {
     #[test]
     fn back_and_forth_1() {
         let e = Stack::from(2) + 3;
-        assert_eq!(e, ExpNode::from_ops(&e).unwrap().to_ops().unwrap());
+        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
     fn back_and_forth_2() {
         let e = Stack::from(2) + 3;
-        assert_eq!(e, ExpNode::from_ops(&e).unwrap().to_ops().unwrap());
+        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
     fn back_and_forth_3() {
         let e = Stack::from(2) * 3;
-        assert_eq!(e, ExpNode::from_ops(&e).unwrap().to_ops().unwrap());
+        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
     fn back_and_forth_4() {
         let e = Stack::sym('S') * 3;
-        assert_eq!(e, ExpNode::from_ops(&e).unwrap().to_ops().unwrap());
+        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
     fn back_and_forth_5() {
         let e = Stack::from(5) / 2;
-        assert_eq!(e, ExpNode::from_ops(&e).unwrap().to_ops().unwrap());
+        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
     fn back_and_forth_6() {
         let e = Stack::from(5) % 2;
-        assert_eq!(e, ExpNode::from_ops(&e).unwrap().to_ops().unwrap());
+        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
     fn back_and_forth_7() {
         let e = Stack::from(5).div_ceil(&2.into());
-        assert_eq!(e, ExpNode::from_ops(&e).unwrap().to_ops().unwrap());
+        assert_eq!(e, ExpNode::from_ops(&e).to_stack());
     }
 
     #[test]
     fn reduce_add() {
-        assert_eq!(add(&Sym('S'), &neg(&Sym('S'))).reduce().unwrap(), Val(0))
+        assert_eq!(add(&Sym('S'), &neg(&Sym('S'))).reduce(), Val(0))
     }
 
     #[test]
     fn reduce_neg_mul() {
-        assert_eq!(
-            neg(&mul(2, &Sym('S'))).reduce().unwrap(),
-            mul(-2, &Sym('S'))
-        )
+        assert_eq!(neg(&mul(2, &Sym('S'))).reduce(), mul(-2, &Sym('S')))
     }
 
     #[test]
@@ -400,8 +382,7 @@ mod tests {
             Add(vec![
                 add(&Sym('S'), &Val(-4)),
                 add(&Val(4), &Mul(1, vec![Val(-2), div(&Sym('S'), &Val(2))])),
-            ]).reduce()
-            .unwrap(),
+            ]).reduce(),
             add(&Sym('S'), &mul(-2, &div(&Sym('S'), &Val(2))))
         )
     }
@@ -412,8 +393,7 @@ mod tests {
             add(
                 &add(&Val(-4), &mul(-2, &div(&Sym('S'), &Val(4)))),
                 &mul(-2, &mul(-1, &div(&Sym('S'), &Val(4))))
-            ).reduce()
-            .unwrap(),
+            ).reduce(),
             Val(-4)
         )
     }
@@ -421,9 +401,7 @@ mod tests {
     #[test]
     fn reduce_cplx_ex_3() {
         assert_eq!(
-            div(&Mul(1, vec![Sym('S'), Val(4)]), &Val(4))
-                .reduce()
-                .unwrap(),
+            div(&Mul(1, vec![Sym('S'), Val(4)]), &Val(4)).reduce(),
             Sym('S')
         )
     }
@@ -440,8 +418,7 @@ mod tests {
                     ]
                 ),
                 &Val(8)
-            ).reduce()
-            .unwrap(),
+            ).reduce(),
             add(&Val(-4), &mul(-8, &div(&Sym('S'), &Val(8))))
         )
     }
@@ -449,54 +426,44 @@ mod tests {
     #[test]
     fn reduce_cplx_ex_5() {
         assert_eq!(
-            mul(-1, &add(&Sym('S'), &Val(-182))).reduce().unwrap(),
+            mul(-1, &add(&Sym('S'), &Val(-182))).reduce(),
             add(&Mul(1, vec![Val(-1), Sym('S')]), &Val(182))
-                .reduce()
-                .unwrap()
+                .reduce(),
         )
     }
 
     #[test]
     fn reduce_mul_1() {
         assert_eq!(
-            Mul(1, vec![Val(2), Sym('S')]).reduce().unwrap(),
+            Mul(1, vec![Val(2), Sym('S')]).reduce(),
             Mul(2, vec![Sym('S')])
         );
         assert_eq!(
-            Mul(1, vec![Sym('S'), Val(2)]).reduce().unwrap(),
+            Mul(1, vec![Sym('S'), Val(2)]).reduce(),
             Mul(2, vec![Sym('S')])
         );
     }
 
     #[test]
     fn reduce_mul_mul_1() {
-        assert_eq!(
-            mul(3, &mul(2, &Sym('S'))).reduce().unwrap(),
-            mul(6, &Sym('S'))
-        )
+        assert_eq!(mul(3, &mul(2, &Sym('S'))).reduce(), mul(6, &Sym('S')))
     }
 
     #[test]
     fn reduce_mul_mul_2() {
-        assert_eq!(
-            mul(-2, &mul(-1, &Sym('S'))).reduce().unwrap(),
-            mul(2, &Sym('S'))
-        )
+        assert_eq!(mul(-2, &mul(-1, &Sym('S'))).reduce(), mul(2, &Sym('S')))
     }
 
     #[test]
     fn reduce_mul_div_1() {
         assert_eq!(
-            mul(2, &div(&mul(-1, &Sym('S')), &Val(3))).reduce().unwrap(),
+            mul(2, &div(&mul(-1, &Sym('S')), &Val(3))).reduce(),
             mul(-2, &div(&Sym('S'), &Val(3)))
         )
     }
 
     #[test]
     fn reduce_rem_div() {
-        assert_eq!(
-            div(&rem(&Sym('S'), &Val(2)), &Val(2)).reduce().unwrap(),
-            Val(0)
-        )
+        assert_eq!(div(&rem(&Sym('S'), &Val(2)), &Val(2)).reduce(), Val(0))
     }
 }

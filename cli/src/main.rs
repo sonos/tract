@@ -296,7 +296,7 @@ impl Parameters {
                         fact.shape
                             .dims()
                             .enumerate()
-                            .map(|(ix, &d)| {
+                            .map(|(ix, d)| {
                                 if ix == axis {
                                     GenericFact::Only(::tract_core::TDim::s())
                                 } else {
@@ -314,6 +314,10 @@ impl Parameters {
         } else {
             None
         };
+
+        for i in 0..100 {
+            tract_model.clone().analyse();
+        }
 
         if !matches.is_present("skip_analyse") {
             info!("Running analyse");

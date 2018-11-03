@@ -95,18 +95,6 @@ impl TensorFact {
     pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
         self.shape.stream_info()
     }
-
-    pub fn reduce(&mut self) {
-        self.shape.reduce();
-        if let GenericFact::Only(ref mut tensor) = self.value {
-            tensor.reduce()
-        }
-    }
-
-    pub fn reduced(mut self) -> Self {
-        self.reduce();
-        self
-    }
 }
 
 impl Fact for TensorFact {
@@ -228,13 +216,45 @@ pub type TypeFact = GenericFact<DatumType>;
 #[derive(Clone, PartialEq)]
 pub struct ShapeFact {
     open: bool,
-    dims: TVec<DimFact>,
+    dims: TVec<GenericFact<i32>>,
+    stream: Option<StreamInfo>,
 }
 
 impl ShapeFact {
     /// Constructs an open shape fact.
     pub fn open(dims: TVec<DimFact>) -> ShapeFact {
-        ShapeFact { open: true, dims }
+        if let Some((ix, &d)) = dims
+            .iter()
+            .enumerate()
+            .find(|(_ix, d)| d.concretize().map(|d| d.is_stream()).unwrap_or(false))
+        {
+            let stream = Some(StreamInfo {
+                axis: ix,
+                len: d.concretize().unwrap(),
+            });
+            ShapeFact {
+                open: true,
+                dims: dims
+                    .iter()
+                    .map(|d| match d {
+                        GenericFact::Only(d) if d.is_stream() => GenericFact::Only(-1),
+                        GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
+                        GenericFact::Any => GenericFact::Any,
+                    }).collect(),
+                stream,
+            }
+        } else {
+            ShapeFact {
+                open: true,
+                dims: dims
+                    .iter()
+                    .map(|d| match d {
+                        GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
+                        GenericFact::Any => GenericFact::Any,
+                    }).collect(),
+                stream: None,
+            }
+        }
     }
 
     pub fn is_open(&self) -> bool {
@@ -243,7 +263,10 @@ impl ShapeFact {
 
     /// Constructs a closed shape fact.
     pub fn closed(dims: TVec<DimFact>) -> ShapeFact {
-        ShapeFact { open: false, dims }
+        ShapeFact {
+            open: false,
+            .. Self::open(dims)
+        }
     }
 
     pub fn rank(&self) -> IntFact {
@@ -254,8 +277,16 @@ impl ShapeFact {
         }.into()
     }
 
-    pub fn dims(&self) -> impl Iterator<Item = &DimFact> {
-        (&self.dims).into_iter()
+    pub fn dims(&self) -> impl Iterator<Item = DimFact> {
+        let stream = self.stream.clone();
+        self.dims.clone().into_iter().map(move |d| match d {
+            GenericFact::Only(-1) => {
+                assert!(stream.is_some());
+                GenericFact::Only(stream.unwrap().len)
+            }
+            GenericFact::Only(d) => GenericFact::Only(d.to_dim()),
+            GenericFact::Any => GenericFact::Any,
+        })
     }
 
     pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
@@ -272,15 +303,6 @@ impl ShapeFact {
             .find(|(_, d)| d.is_stream())
             .map(|(axis, len)| StreamInfo { axis, len }))
     }
-
-    pub fn reduce(&mut self) {
-        for dim in &mut self.dims {
-            match dim {
-                GenericFact::Only(ref mut it) => it.reduce(),
-                _ => (),
-            }
-        }
-    }
 }
 
 impl Fact for ShapeFact {
@@ -293,7 +315,7 @@ impl Fact for ShapeFact {
             return None;
         }
 
-        let dims: TVec<_> = self.dims.iter().filter_map(|d| d.concretize()).collect();
+        let dims: TVec<_> = self.dims().filter_map(|d| d.concretize()).collect();
 
         if dims.len() < self.dims.len() {
             debug!("Impossible to concretize a shape with unknown dimensions.");
@@ -310,15 +332,15 @@ impl Fact for ShapeFact {
         use itertools::EitherOrBoth::{Both, Left, Right};
         use itertools::Itertools;
 
-        let xi = x.dims.iter();
-        let yi = y.dims.iter();
+        let xi = x.dims();
+        let yi = y.dims();
 
         let dimensions: TVec<_> = xi
             .zip_longest(yi)
             .map(|r| match r {
-                Both(a, b) => a.unify(b),
-                Left(d) if y.open => Ok(*d),
-                Right(d) if x.open => Ok(*d),
+                Both(a, b) => a.unify(&b),
+                Left(d) if y.open => Ok(d),
+                Right(d) if x.open => Ok(d),
 
                 Left(_) | Right(_) => bail!(
                     "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",

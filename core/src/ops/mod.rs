@@ -24,7 +24,7 @@ pub mod unimpl;
 
 mod types;
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct StreamInfo {
     pub axis: usize,
     pub len: TDim,

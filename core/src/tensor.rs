@@ -187,18 +187,6 @@ impl Tensor {
         Ok(shaped)
     }
 
-    pub fn reduce(&mut self) {
-        match self {
-            Tensor::TDim(ref mut it) => {
-                it.mapv_inplace(|mut e| {
-                    e.reduce();
-                    e
-                });
-            }
-            _ => (),
-        }
-    }
-
     pub fn datum_type(&self) -> DatumType {
         match self {
             &Tensor::Bool(_) => DatumType::Bool,
