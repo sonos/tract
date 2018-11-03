@@ -229,12 +229,9 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
         let any = TensorFact::default();
 
-        let (_, mut outputs) = op
+        let (_, outputs) = op
             .infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any))
             .unwrap();
-        println!("raw: {:?}", outputs[0]);
-        outputs[0].reduce();
-        println!("reduced: {:?}", outputs[0]);
         assert_eq!(
             outputs[0],
             TensorFact::dt_shape(

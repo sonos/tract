@@ -356,9 +356,8 @@ mod tests {
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
         let any = TensorFact::default();
 
-        let (_, mut output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();
+        let (_, output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();
 
-        output_facts[0].reduce();
         assert_eq!(
             output_facts,
             tvec![TensorFact::dt_shape(

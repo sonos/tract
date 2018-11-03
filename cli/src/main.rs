@@ -315,10 +315,6 @@ impl Parameters {
             None
         };
 
-        for i in 0..100 {
-            tract_model.clone().analyse();
-        }
-
         if !matches.is_present("skip_analyse") {
             info!("Running analyse");
             tract_model.analyse()?;
