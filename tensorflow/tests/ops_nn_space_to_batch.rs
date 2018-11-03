@@ -102,7 +102,7 @@ fn batch_to_space_strat() -> BoxedStrategy<(TractTensor, TractTensor, TractTenso
                     .eval(tvec![i.into(), bs.clone().into(), p.clone().into()])
                     .unwrap()
                     .remove(0)
-                    .into_tensor();
+                    .to_tensor();
             (batches, bs, p)
         }).boxed()
 }

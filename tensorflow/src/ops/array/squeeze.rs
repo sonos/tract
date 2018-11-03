@@ -29,7 +29,7 @@ mod tests {
             .unwrap()
             .pop()
             .unwrap()
-            .into_tensor()
+            .to_tensor()
     }
 
     #[test]

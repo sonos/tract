@@ -18,7 +18,7 @@ fn mk(sizes: &[usize]) -> Value {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
         .into_shape(sizes)
         .unwrap();
-    Value::from(Tensor::F32(data)).into_shared()
+    Value::from(Tensor::from(data))
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]

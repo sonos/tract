@@ -7,9 +7,8 @@ pub struct Const {
 
 impl Const {
     pub fn for_tensor(tensor: Tensor) -> Const {
-        let value: Value = tensor.into();
         Const {
-            value: value.into_shared(),
+            value: tensor.into()
         }
     }
 }

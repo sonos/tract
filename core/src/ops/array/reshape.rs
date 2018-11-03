@@ -36,7 +36,7 @@ impl Reshape {
 
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: Value, shape: &[usize]) -> TractResult<TVec<Value>> {
-        Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
+        Ok(tvec![input.to_array::<T>()?.into_shape(shape)?.into()])
     }
 }
 

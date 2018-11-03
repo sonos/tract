@@ -30,10 +30,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 impl<P: Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
     fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let m_input = args_1!(inputs);
-        let data = m_input
-            .into_tensor()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
+        let data = m_input.to_array::<f32>()?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 

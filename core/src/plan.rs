@@ -16,7 +16,7 @@ impl<M: Borrow<Model>> SimplePlan<M> {
         Ok(SimplePlan { model, order })
     }
 
-    pub fn run(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    pub fn run(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Value>> {
         let mut state = SimpleState::new(self)?;
         state.run(inputs)
     }
@@ -88,7 +88,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(())
     }
 
-    pub fn run(&mut self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    pub fn run(&mut self, inputs: TVec<Tensor>) -> TractResult<TVec<Value>> {
         use ops::source::Source;
         let mut result = tvec!();
         {
@@ -125,12 +125,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                 }
             }
             for output in model.outputs()? {
-                let mut val = Value::from(Tensor::from(0f32));
-                ::std::mem::swap(
-                    &mut val,
-                    &mut values[output.node].as_mut().unwrap()[output.slot],
-                );
-                result.push(val.into_tensor());
+                result.push(values[output.node].as_ref().unwrap()[output.slot].clone())
             }
         }
         self.reset_wires()?;
@@ -158,7 +153,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         Ok(())
     }
 
-    pub fn take_outputs(&mut self) -> TractResult<Vec<Tensor>> {
+    pub fn take_outputs(&mut self) -> TractResult<Vec<Value>> {
         let SimpleState {
             ref plan,
             ref mut values,
@@ -172,9 +167,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     &plan.borrow().model().nodes()[o.node]
                 )
             })?;
-            let mut replacement: Value = Tensor::from(::std::f32::NAN).into();
-            ::std::mem::swap(&mut replacement, &mut vs[o.slot]);
-            v.push(replacement.into_tensor())
+            v.push(vs[o.slot].clone())
         }
         Ok(v)
     }
@@ -263,7 +256,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             .take()
             .ok_or("Value is not computed")?
             .into_iter()
-            .map(Value::into_tensor)
+            .map(|v| v.to_tensor())
             .collect())
     }
 

@@ -24,10 +24,10 @@ impl PermuteAxes {
     fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         if let Some(ref axes) = self.axes {
             Ok(tvec![
-                input.into_array::<T>()?.permuted_axes(&**axes).into()
+                input.to_array::<T>()?.permuted_axes(&**axes).into()
             ])
         } else {
-            Ok(tvec![input.into_array::<T>()?.reversed_axes().into()])
+            Ok(tvec![input.to_array::<T>()?.reversed_axes().into()])
         }
     }
 }

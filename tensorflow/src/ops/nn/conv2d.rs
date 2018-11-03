@@ -110,7 +110,7 @@ impl<T: Datum + LinalgScalar> StatelessOp for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
         let (m_data, m_filter) = args_2!(inputs);
-        let data = m_data.into_array()?;
+        let data = m_data.to_array()?;
         let filter = m_filter.to_array_view()?;
         let data = into_4d(data)?;
 
@@ -214,7 +214,7 @@ mod tests {
             .unwrap()
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
-        let found = result.into_tensor().take_f32s().unwrap();
+        let found = result.to_array_view::<f32>().unwrap();
         let expect = ArrayD::from_shape_vec(found.shape(), expect.to_vec()).unwrap();
         assert_eq!(expect, found);
     }
@@ -322,7 +322,7 @@ mod tests {
             .eval(tvec![data.into(), filter.into()])
             .unwrap()
             .remove(0);
-        assert_eq!(exp, result.into_tensor());
+        assert_eq!(exp, result.to_tensor());
     }
 
     #[test]

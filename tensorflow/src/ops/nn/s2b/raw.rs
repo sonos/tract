@@ -49,7 +49,7 @@ impl Op for SpaceToBatch {
                 self.datum_type,
                 input_shape,
                 output_shape,
-                block_shape.into_array::<i32>()?.into_dimensionality()?,
+                block_shape.to_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
@@ -143,7 +143,7 @@ impl Op for BatchToSpace {
                 self.datum_type,
                 input_shape,
                 output_shape,
-                block_shape.into_array::<i32>()?.into_dimensionality()?,
+                block_shape.to_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
@@ -207,14 +207,14 @@ fn rules<'r, 'p: 'r>(
     s.equals(&block_shape.rank, 1)?;
     s.equals(&paddings.rank, 2)?;
     s.equals(&block_shape.shape[0], &paddings.shape[0])?;
-    s.given(&block_shape.value, move |s, block_shape: Tensor| {
-        let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
+    s.given(&block_shape.value, move |s, block_shape| {
+        let block_shape = block_shape.to_array::<i32>()?;
         let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
         s.equals(
             &batch.shape[0],
             (block_shape_prod as i32) * space.shape[0].bex(),
         )?;
-        s.given(&paddings.value, move |s, paddings: Tensor| {
+        s.given(&paddings.value, move |s, paddings| {
             let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
             let paddings = paddings.view().into_dimensionality().unwrap();
             for d in 0..block_shape.len() {
@@ -226,8 +226,8 @@ fn rules<'r, 'p: 'r>(
             Ok(())
         })
     })?;
-    s.given(&block_shape.value, move |s, block_shape: Tensor| {
-        let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
+    s.given(&block_shape.value, move |s, block_shape| {
+        let block_shape = block_shape.to_array::<i32>()?;
         s.given(&space.rank, move |s, rank: i32| {
             for d in block_shape.len() + 1..(rank as usize) {
                 s.equals(&space.shape[d], &batch.shape[d])?

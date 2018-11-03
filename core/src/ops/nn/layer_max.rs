@@ -10,7 +10,7 @@ impl LayerHardmax {
         &self,
         input: Value,
     ) -> TractResult<TVec<Value>> {
-        let array = input.into_array::<D>()?;
+        let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 {
             shape.len() as isize + self.axis
@@ -71,7 +71,7 @@ impl LayerLogSoftmax {
         &self,
         input: Value,
     ) -> TractResult<TVec<Value>> {
-        let array = input.into_array::<D>()?;
+        let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 {
             shape.len() as isize + self.axis
@@ -129,7 +129,7 @@ impl LayerSoftmax {
         &self,
         input: Value,
     ) -> TractResult<TVec<Value>> {
-        let array = input.into_array::<D>()?;
+        let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 {
             shape.len() as isize + self.axis

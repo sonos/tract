@@ -24,7 +24,7 @@ impl Gemm {
         let bt = if self.trans_b { b.t() } else { b };
         let c_shape = (at.rows(), bt.cols());
         let mut c = if c.shape() == &[c_shape.0, c_shape.1] {
-            c.into_array::<T>()?
+            c.to_array::<T>()?
                 .into_dimensionality::<Ix2>()?
                 .to_owned()
         } else {

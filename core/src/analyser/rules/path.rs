@@ -318,7 +318,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
 
     match value.concretize() {
         None => Ok(IntFact::default().wrap()),
-        Some(tensor) => match tensor {
+        Some(tensor) => match tensor.as_tensor() {
             Tensor::I32(array) => inner!(array),
             Tensor::I8(array) => inner!(array),
             Tensor::U8(array) => inner!(array),

@@ -21,7 +21,7 @@ pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> Cl
     Ok(())
 }
 
-fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
+fn run_regular(params: Parameters) -> CliResult<TVec<Value>> {
     let tract = params.tract_model;
     let plan = SimplePlan::new(&tract)?;
     let mut inputs: TVec<Tensor> = tvec!();
@@ -32,7 +32,7 @@ fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
             .and_then(|v| v.get(ix))
             .and_then(|t| t.as_ref())
         {
-            inputs.push(input.to_owned());
+            inputs.push(input.as_tensor().to_owned());
         } else {
             let fact = tract.fact(*input)?;
             inputs.push(::tensor::tensor_for_fact(fact, None)?);
@@ -42,7 +42,7 @@ fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
     Ok(plan.run(inputs)?)
 }
 
-fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
+fn run_pulse(params: Parameters) -> CliResult<TVec<Value>> {
     let (input_fact, output_fact) = params.pulse_facts.unwrap();
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);
@@ -75,7 +75,7 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
             chunk
         };
         let mut outputs = state.run(tvec!(input))?;
-        let result_chunk = outputs.remove(0).into_array::<f32>()?;
+        let result_chunk = outputs[0].to_array_view::<f32>()?;
         result
             .slice_axis_mut(
                 ::ndarray::Axis(output_fact.axis),

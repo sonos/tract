@@ -14,7 +14,7 @@ macro_rules! element_map {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
-                    let mut a = a.into_array::<$type>()?;
+                    let mut a = a.to_array::<$type>()?;
                     a.mapv_inplace($expr);
                     return Ok(tvec![a.into()])
                 })*
@@ -69,7 +69,7 @@ macro_rules! element_map_with_params {
                 let dt = a.datum_type();
                 $expr;
                 $(if dt == <$type>::datum_type() {
-                    let mut a = a.into_array::<$type>()?;
+                    let mut a = a.to_array::<$type>()?;
                     a.mapv_inplace(|x| eval_one(self,x));
                     return Ok(tvec![a.into()])
                 })*

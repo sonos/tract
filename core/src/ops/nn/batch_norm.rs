@@ -18,13 +18,13 @@ impl BatchNorm {
         f32: AsPrimitive<T>,
     {
         let (x, scale, beta, mean, var) = args_5!(inputs);
-        let mut x = x.into_array::<T>()?;
+        let mut x = x.to_array::<T>()?;
         let c_axis = self.data_format.shape(x.shape()).c_axis();
         let c_dim = self.data_format.shape(x.shape()).c_dim();
-        let scale = scale.into_array::<T>()?.into_shape((c_dim,))?;
-        let beta = beta.into_array::<T>()?.into_shape((c_dim,))?;
-        let mean = mean.into_array::<T>()?.into_shape((c_dim,))?;
-        let var = var.into_array::<T>()?.into_shape((c_dim,))?;
+        let scale = scale.to_array::<T>()?.into_shape((c_dim,))?;
+        let beta = beta.to_array::<T>()?.into_shape((c_dim,))?;
+        let mean = mean.to_array::<T>()?.into_shape((c_dim,))?;
+        let var = var.to_array::<T>()?.into_shape((c_dim,))?;
         ::ndarray::indices_of(&x).into_iter().for_each(|coords| {
             let c = coords[c_axis];
             let v = x[&coords];

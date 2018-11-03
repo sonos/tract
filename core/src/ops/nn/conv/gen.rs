@@ -77,7 +77,7 @@ impl Op for Conv {
                     &self,
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue,
+                    kvalue.to_tensor(),
                     None,
                     self.group,
                 )?;
@@ -97,8 +97,8 @@ impl Op for Conv {
                     &self,
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue,
-                    Some(bias),
+                    kvalue.to_tensor(),
+                    Some(bias.to_tensor()),
                     self.group,
                 )?;
                 return Ok(Some(ReducedOpRewire {
@@ -118,7 +118,7 @@ impl StatelessOp for Conv {
             (input, kernel, None)
         } else {
             let (input, kernel, bias) = args_3!(inputs);
-            (input, kernel, Some(bias.into_tensor()))
+            (input, kernel, Some(bias.to_tensor()))
         };
         let ishape: TVec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
         let kshape: TVec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
@@ -126,7 +126,7 @@ impl StatelessOp for Conv {
             &self,
             &ishape,
             &self.output_shape(&ishape, &kshape),
-            kernel.into_tensor(),
+            kernel.to_tensor(),
             bias,
             self.group,
         )?;

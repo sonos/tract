@@ -107,7 +107,7 @@ pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<Tensor>> {
 
 pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
     if let Some(value) = fact.concretize() {
-        Ok(value.clone())
+        Ok(value.as_tensor().to_owned())
     } else {
         if fact.stream_info()?.is_some() && streaming_dim.is_none() {
             Err("random tensor requires a streaming dim")?

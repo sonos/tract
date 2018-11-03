@@ -1,9 +1,6 @@
-use super::*;
-use ops::Op;
-use tensor::Tensor;
-use TractResult;
+use ops::prelude::*;
 
-pub use super::{InletId, Model, OutletId};
+pub use super::{InletId, Model, Node, OutletId};
 
 pub trait ModelDsl {
     fn single_prec(&self, id: usize) -> TractResult<Option<&Node>>;
@@ -13,7 +10,7 @@ pub trait ModelDsl {
 
     fn add_source<S: AsRef<str>>(&mut self, name: S) -> TractResult<usize>;
     fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TractResult<usize>;
-    fn add_const<S: AsRef<str>>(&mut self, name: S, t: Tensor) -> TractResult<usize>;
+    fn add_const<S: AsRef<str>>(&mut self, name: S, v: Value) -> TractResult<usize>;
     fn chain<S: AsRef<str>>(&mut self, name: S, op: Box<Op>) -> TractResult<usize>;
 
     fn tap_and_chain<S: AsRef<str>>(
@@ -46,10 +43,10 @@ impl ModelDsl for ::model::Model {
         Ok(id)
     }
 
-    fn add_const<S: AsRef<str>>(&mut self, name: S, t: Tensor) -> TractResult<usize> {
+    fn add_const<S: AsRef<str>>(&mut self, name: S, v: Value) -> TractResult<usize> {
         self.add_node(
             name.as_ref().to_owned(),
-            Box::new(::ops::konst::Const::new(t.into())),
+            Box::new(::ops::konst::Const::new(v)),
         )
     }
 

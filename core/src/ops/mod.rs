@@ -107,9 +107,8 @@ pub trait Op:
                 let output_value = stateless.eval(input_values)?.pop().unwrap();
                 return Ok((
                     infered_inputs,
-                    tvec![::analyser::helpers::tensor_to_fact(
-                        output_value.into_tensor(),
-                    )],
+                    tvec![ output_value.into(),
+                    ],
                 ));
             }
         }

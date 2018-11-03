@@ -82,7 +82,7 @@ impl Reducer {
         T: Datum,
     {
         use ndarray::*;
-        let input = input.into_array::<T>()?;
+        let input = input.to_array::<T>()?;
         let full_output_shape: Vec<usize> = input
             .shape()
             .iter()

@@ -20,7 +20,7 @@ fn space_to_batch<T: Datum + Zero>(
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
 ) -> TractResult<Value> {
-    let mut data = input.into_array::<T>()?;
+    let mut data = input.to_array::<T>()?;
 
     for (ix, pad) in paddings.view().outer_iter().enumerate() {
         if pad[0] != 0 {
@@ -70,7 +70,7 @@ fn batch_to_space<T: Datum + Zero>(
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,
 ) -> TractResult<Value> {
-    let data = input.into_array()?;
+    let data = input.to_array()?;
     let input_shape = data.shape().to_vec();
     let crops: ArrayView2<i32> = crops.view().into_dimensionality()?;
 

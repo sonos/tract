@@ -25,7 +25,7 @@ impl Squeeze {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         let shape = self.compute_shape(input.shape())?;
-        Ok(tvec![input.into_array::<T>()?.into_shape(&*shape)?.into()])
+        Ok(tvec![input.to_array::<T>()?.into_shape(&*shape)?.into()])
     }
 }
 

@@ -114,7 +114,7 @@ mod tests {
                 .eval(inputs.clone())
                 .unwrap()
                 .remove(0)
-                .into_tensor(),
+                .to_tensor(),
             Tensor::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
         );
         assert_eq!(
@@ -122,7 +122,7 @@ mod tests {
                 .eval(inputs.clone())
                 .unwrap()
                 .remove(0)
-                .into_tensor(),
+                .to_tensor(),
             Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
         );
     }

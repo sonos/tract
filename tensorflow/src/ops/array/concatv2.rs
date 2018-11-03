@@ -50,7 +50,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         s.equals_all((0..self.n).map(|i| (&inputs[i].rank).bex()).collect())?;
         s.equals(&inputs[n].rank, 0)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        s.given(&inputs[n].value, move |s, axis: Tensor| {
+        s.given(&inputs[n].value, move |s, axis| {
             let axis = axis.as_i32().unwrap() as usize; // checked
             trace!("axis for Concatv2: {}", axis);
             for d in 0..axis {

@@ -1,15 +1,5 @@
 use super::*;
 use model::TVec;
-use tensor::Tensor;
-
-/// Build a TensorFact from a Tensor.
-pub fn tensor_to_fact(tensor: Tensor) -> TensorFact {
-    TensorFact {
-        datum_type: typefact!(tensor.datum_type()),
-        shape: tensor.shape().into(),
-        value: valuefact!(tensor),
-    }
-}
 
 /// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(
@@ -30,7 +20,7 @@ pub fn infer_forward_concrete(
     // If we know the value of all the inputs, we can deduce everything.
     if let Some(stateless) = op.as_stateless() {
         let output_value = stateless.eval(input_values)?.pop().unwrap();
-        return Ok(Some(tvec![tensor_to_fact(output_value.into_tensor())]));
+        return Ok(Some(tvec![output_value.into()]));
     }
 
     Ok(None)

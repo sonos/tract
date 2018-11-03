@@ -82,12 +82,12 @@ impl Output for i32 {
 }
 
 // Converts back and forth between Wrapped and Tensor.
-impl Output for Tensor {
-    fn into_wrapped(source: Tensor) -> Wrapped {
+impl Output for Value {
+    fn into_wrapped(source: Value) -> Wrapped {
         ValueFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TractResult<Tensor> {
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<Value> {
         let message = format!("Tried to convert {:?} to a tensor.", wrapped);
 
         ValueFact::from_wrapped(wrapped)?
@@ -565,7 +565,7 @@ impl<'a> IntoExp<ValueFact> for &'a ValueProxy {
     }
 }
 
-impl IntoExp<ValueFact> for Tensor {
+impl IntoExp<ValueFact> for Value {
     fn bex(self) -> Exp<ValueFact> {
         ConstantExp(self.into()).bex()
     }

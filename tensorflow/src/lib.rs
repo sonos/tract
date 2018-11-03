@@ -26,7 +26,7 @@
 //! let mut tensor = outputs.pop().unwrap();
 //!
 //! // unwrap it as array of f32
-//! let tensor = tensor.take_f32s().unwrap();
+//! let tensor = tensor.to_array_view::<f32>().unwrap();
 //! assert_eq!(tensor, ndarray::arr1(&[4.0, 5.5, 8.0]).into_dyn());
 //! # }
 //! ```

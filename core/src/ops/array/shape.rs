@@ -56,13 +56,13 @@ impl InferenceRulesOp for Shape {
             if shape.iter().any(|&d| d.to_integer().is_err()) {
                 s.equals(&outputs[0].datum_type, DatumType::TDim)?;
                 let array1: Array1<TDim> = Array1::from_iter(shape);
-                let tensor: Tensor = Tensor::from(array1);
+                let tensor: Value = array1.into();
                 s.equals(&outputs[0].value, tensor)
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
                 let array1: Array1<i64> =
                     Array1::from_vec(shape.iter().map(|&i| i.to_integer().unwrap() as i64).collect());
-                let tensor: Tensor = Tensor::from(array1);
+                let tensor: Value = array1.into();
                 s.equals(&outputs[0].value, tensor)
             } else {
                 s.equals(&outputs[0].datum_type, DatumType::I32)?;
@@ -72,7 +72,7 @@ impl InferenceRulesOp for Shape {
                         .map(|&i| i.to_integer().unwrap() as i32)
                         .collect(),
                 );
-                let tensor: Tensor = Tensor::from(array1);
+                let tensor: Value = array1.into();
                 s.equals(&outputs[0].value, tensor)
             }
         })
