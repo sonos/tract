@@ -244,11 +244,11 @@ mod test {
     ) -> usize {
         let patch = Patch::new(
             DataFormat::NCHW,
-            vec![dilation],
-            vec![kdim],
-            &PaddingSpec::Explicit(vec![pad_before], vec![bad_after]),
-            vec![stride],
-            vec![1, 1, input],
+            tvec![dilation],
+            tvec![kdim],
+            &PaddingSpec::Explicit(tvec![pad_before], tvec![bad_after]),
+            tvec![stride],
+            tvec![1, 1, input],
         );
         patch.output_spatial_shape[0]
     }
@@ -276,11 +276,11 @@ mod test {
     fn field(kdim: &[usize], dilations: &[usize]) -> Array2<usize> {
         let patch = Patch::new(
             NCHW,
-            dilations.to_vec(),
-            kdim.to_vec(),
-            &PaddingSpec::Explicit(vec![0; kdim.len()], vec![0; kdim.len()]),
-            vec![1; kdim.len()],
-            vec![10; kdim.len() + 2],
+            dilations.into(),
+            kdim.into(),
+            &PaddingSpec::Explicit(tvec![0; kdim.len()], tvec![0; kdim.len()]),
+            tvec![1; kdim.len()],
+            tvec![10; kdim.len() + 2],
         );
         patch.data_field
     }

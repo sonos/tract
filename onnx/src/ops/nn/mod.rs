@@ -221,7 +221,7 @@ pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
         kernel_shape,
         pad,
         strides,
-        node.get_output().len() == 2,
+        if node.get_output().len() == 2 { Some(DatumType::I64) } else { None },
     )))
 }
 

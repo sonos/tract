@@ -11,9 +11,9 @@ extern crate ndarray;
 #[macro_use]
 extern crate prettytable;
 extern crate atty;
+extern crate env_logger;
 extern crate libc;
 extern crate pbr;
-extern crate env_logger;
 extern crate rand;
 extern crate terminal_size;
 extern crate textwrap;
@@ -165,8 +165,7 @@ fn main() {
         ::std::env::set_var("RUST_LOG", level);
     }
 
-    let env = env_logger::Env::default()
-        .filter_or(env_logger::DEFAULT_FILTER_ENV, "warn");
+    let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "warn");
 
     env_logger::Builder::from_env(env)
         .default_format_timestamp_nanos(true)
@@ -292,7 +291,20 @@ impl Parameters {
                     ..t
                 };
                 if let Some(axis) = matches.value_of("stream_axis") {
-                    fact.shape.dims[axis.parse::<usize>().unwrap()] = ::tract_core::TDim::s().into()
+                    let axis = axis.parse::<usize>().unwrap();
+                    let shape = ShapeFact::closed(
+                        fact.shape
+                            .dims()
+                            .enumerate()
+                            .map(|(ix, &d)| {
+                                if ix == axis {
+                                    GenericFact::Only(::tract_core::TDim::s())
+                                } else {
+                                    d
+                                }
+                            }).collect()
+                    );
+                    fact.shape = shape;
                 }
                 vs.push(t.value.concretize());
                 let outlet = tract_model.inputs()?[ix];

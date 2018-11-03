@@ -106,7 +106,7 @@ mod test {
         let mut model = Model::default();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec![pulse],
+            shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
@@ -157,7 +157,7 @@ mod test {
         let mut model = Model::default();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec![pulse],
+            shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
@@ -170,7 +170,7 @@ mod test {
             .unwrap();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec![pulse],
+            shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 2,

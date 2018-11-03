@@ -171,11 +171,7 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> TractResult<Wrapped
         [0] => Ok(fact.datum_type.clone().wrap()),
 
         // Get the rank of the TensorFact.
-        [1] => if fact.shape.open {
-            Ok(IntFact::default().wrap())
-        } else {
-            Ok(fact.shape.dims.len().wrap())
-        },
+        [1] => Ok(fact.shape.rank().wrap()),
 
         slice if slice[0] == 2 => get_shape_path(&fact.shape, &slice[1..]),
         slice if slice[0] == 3 => get_value_path(&fact.value, &slice[1..]),
@@ -280,15 +276,14 @@ fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> TractResult<Wrapped> {
         // Get a precise dimension.
         [k] => {
             let k = k.to_usize().unwrap();
-
-            if k < shape.dims.len() {
-                Ok(shape.dims[k].wrap())
-            } else if shape.open {
+            if let Some(d) = shape.dims().nth(k) {
+                Ok(d.wrap())
+            } else if shape.is_open() {
                 Ok(dimfact!(_).wrap())
             } else {
                 bail!(
-                    "The closed shape {:?} has no {:?}-th dimension.",
-                    shape.dims,
+                    "{:?} has no {:?}-th dimension.",
+                    shape,
                     k
                 );
             }

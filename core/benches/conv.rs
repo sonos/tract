@@ -53,8 +53,8 @@ impl Algo {
                     FixedParamsConv::new(
                         DataFormat::NHWC,
                         true,
-                        vec![1, 1],
-                        vec![1, 1],
+                        tvec![1, 1],
+                        tvec![1, 1],
                         if padding == Padding::Valid {
                             PaddingSpec::Valid
                         } else {

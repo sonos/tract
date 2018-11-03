@@ -201,7 +201,7 @@ mod tests {
                 Padding::Valid => PaddingSpec::Valid,
                 Padding::Same => PaddingSpec::SameUpper,
             },
-            Some(vec![v_stride, h_stride]),
+            Some(tvec![v_stride, h_stride]),
             1,
         ))
     }

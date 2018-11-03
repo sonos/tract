@@ -71,9 +71,7 @@ impl PulsedTensorFact {
     }
 
     pub fn to_streaming_fact(&self) -> TensorFact {
-        let mut fact = self.to_pulse_fact();
-        fact.shape.dims[self.axis] = self.dim.into();
-        fact
+        TensorFact::dt_shape(self.dt, self.streaming_shape())
     }
 }
 

@@ -206,8 +206,8 @@ mod test {
     #[test]
     fn test_infer_with_known_kshape() {
         let mut op = Conv::default();
-        op.strides = Some(vec![2, 2]);
-        op.kernel_shape = Some(vec![3, 3]);
+        op.strides = Some(tvec![2, 2]);
+        op.kernel_shape = Some(tvec![3, 3]);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();
@@ -238,7 +238,7 @@ mod test {
     #[test]
     fn test_infer_onxx_strides_no_padding() {
         let mut op = Conv::default();
-        op.strides = Some(vec![2, 2]);
+        op.strides = Some(tvec![2, 2]);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();

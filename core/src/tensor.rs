@@ -392,6 +392,10 @@ impl Tensor {
             .into_owned()
             .into())
     }
+
+    pub fn cast_to_dt(&self, dt:DatumType) -> TractResult<Tensor> {
+        dispatch_datum!(Self::cast_to(dt)(self))
+    }
 }
 
 impl fmt::Debug for Tensor {

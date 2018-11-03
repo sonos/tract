@@ -36,40 +36,40 @@ mod tests {
     #[test]
     fn onnx_1() {
         assert_eq!(
-            multi_broadcast(&vec![vec![2, 3, 4, 5], vec![]]),
-            Some(vec![2, 3, 4, 5])
+            multi_broadcast(&tvec![tvec![2, 3, 4, 5], tvec![]]),
+            Some(tvec![2, 3, 4, 5])
         )
     }
 
     #[test]
     fn onnx_2() {
         assert_eq!(
-            multi_broadcast(&vec![vec![2, 3, 4, 5], vec![5]]),
-            Some(vec![2, 3, 4, 5])
+            multi_broadcast(&tvec![tvec![2, 3, 4, 5], tvec![5]]),
+            Some(tvec![2, 3, 4, 5])
         )
     }
 
     #[test]
     fn onnx_3() {
         assert_eq!(
-            multi_broadcast(&vec![vec![4, 5], vec![2, 3, 4, 5]]),
-            Some(vec![2, 3, 4, 5])
+            multi_broadcast(&tvec![tvec![4, 5], tvec![2, 3, 4, 5]]),
+            Some(tvec![2, 3, 4, 5])
         )
     }
 
     #[test]
     fn onnx_4() {
         assert_eq!(
-            multi_broadcast(&vec![vec![1, 4, 5], vec![2, 3, 4, 1]]),
-            Some(vec![2, 3, 4, 5])
+            multi_broadcast(&tvec![tvec![1, 4, 5], tvec![2, 3, 4, 1]]),
+            Some(tvec![2, 3, 4, 5])
         )
     }
 
     #[test]
     fn onnx_5() {
         assert_eq!(
-            multi_broadcast(&vec![vec![3, 4, 5], vec![2, 1, 1, 1]]),
-            Some(vec![2, 3, 4, 5])
+            multi_broadcast(&tvec![tvec![3, 4, 5], tvec![2, 1, 1, 1]]),
+            Some(tvec![2, 3, 4, 5])
         )
     }
 }

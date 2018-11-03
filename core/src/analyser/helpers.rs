@@ -38,27 +38,31 @@ pub fn infer_forward_concrete(
 
 /// Infers basic shape facts in the case of broadcasting operators.
 pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<ShapeFact>> {
-    if shapes.iter().any(|s| s.open) {
+    if shapes.iter().any(|s| s.is_open()) {
         debug!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
         return Ok(None);
     }
 
-    let dims: TVec<_> = shapes.iter().map(|s| &s.dims).collect();
-    let bound = dims.iter().map(|s| s.len()).max().unwrap();
+    let bound = shapes
+        .iter()
+        .map(|s| s.rank().concretize().unwrap())
+        .max()
+        .unwrap() as usize;
 
     let mut output_shape: TVec<DimFact> = tvec![];
 
-    // FIXME(liautaud): Rewrite more clearly and test.
-    for i in 1..(bound + 1) {
+    for i in 0..bound {
         let mut previous = None;
         let mut unknown = 0;
 
-        for shape in &dims {
-            if shape.len() < i {
+        for shape in shapes.iter() {
+            let rank = shape.rank().concretize().unwrap() as usize;
+            let shape: TVec<DimFact> = shape.dims().cloned().collect();
+            if i >= rank {
                 continue;
             }
 
-            match &shape[shape.len() - i] {
+            match shape[rank - i - 1] {
                 GenericFact::Any => unknown += 1,
                 GenericFact::Only(d) if d.is_one() => (),
                 GenericFact::Only(d) => {
@@ -84,7 +88,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
         } else if unknown == 1 && previous == None {
             output_shape.push(GenericFact::Any);
         } else if let Some(previous) = previous {
-            output_shape.push(GenericFact::Only(*previous));
+            output_shape.push(GenericFact::Only(previous));
         } else {
             output_shape.push(GenericFact::Only(1.into()));
         }
@@ -132,16 +136,14 @@ pub fn most_specific_shape<'a, I: IntoIterator<Item = &'a ShapeFact>>(
     let mut best = None;
 
     for shape in iter {
-        if !shape.open {
-            let rank = shape.dims.len();
-
+        if let Some(rank) = shape.rank().concretize() {
             if prev_rank.is_some() && rank != prev_rank.unwrap() {
                 bail!("Rank mismatch between different shapes.");
             } else {
                 prev_rank = Some(rank);
             }
 
-            let concrete = shape.dims.iter().filter(|d| d.is_concrete()).count();
+            let concrete = shape.dims().filter(|d| d.is_concrete()).count();
 
             if prev_concrete.is_none() || concrete > prev_concrete.unwrap() {
                 prev_concrete = Some(concrete);

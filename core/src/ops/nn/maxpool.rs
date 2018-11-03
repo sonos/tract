@@ -9,7 +9,7 @@ pub struct MaxPool {
     kernel_shape: TVec<usize>,
     padding: PaddingSpec,
     strides: Option<TVec<usize>>,
-    with_index_outputs: bool,
+    with_index_outputs: Option<DatumType>,
 }
 
 impl MaxPool {
@@ -32,7 +32,7 @@ impl Op for MaxPool {
     }
 
     fn noutputs(&self) -> usize {
-        if self.with_index_outputs {
+        if self.with_index_outputs.is_some() {
             2
         } else {
             1
@@ -50,7 +50,7 @@ impl StatelessOp for MaxPool {
         let visitor = patch.wrap(&input);
 
         let mut values = unsafe { ArrayD::uninitialized(&*shape) };
-        let mut indices = if self.with_index_outputs {
+        let mut indices = if self.with_index_outputs.is_some() {
             Some(unsafe { ArrayD::uninitialized(&*shape) })
         } else {
             None
@@ -65,13 +65,13 @@ impl StatelessOp for MaxPool {
                     |acc, v| if acc.1 < v.1 { v } else { acc },
                 );
             values[&coords] = max.1;
-            if self.with_index_outputs {
+            if self.with_index_outputs.is_some() {
                 indices.as_mut().unwrap()[coords] =
-                    visitor.global_offset_for(&coords.slice(), max.0) as i64;
+                    visitor.global_offset_for(&coords.slice(), max.0) as i32;
             }
         });
-        if self.with_index_outputs {
-            Ok(tvec!(values.into(), indices.unwrap().into()))
+        if let Some(dt) = self.with_index_outputs {
+            Ok(tvec!(values.into(), Tensor::from(indices.unwrap()).cast_to_dt(dt)?.into()))
         } else {
             Ok(tvec!(values.into()))
         }
@@ -88,8 +88,8 @@ impl InferenceRulesOp for MaxPool {
         s.equals(&outputs.len, self.noutputs() as i32)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        if self.with_index_outputs {
-            s.equals(&outputs[1].datum_type, i32::datum_type())?;
+        if let Some(idt) = self.with_index_outputs {
+            s.equals(&outputs[1].datum_type, idt)?;
             s.equals(&outputs[1].rank, &inputs[0].rank)?;
         }
         s.given(&inputs[0].shape, move |s, ishape| {

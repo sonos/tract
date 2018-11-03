@@ -227,8 +227,8 @@ pub type TypeFact = GenericFact<DatumType>;
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq)]
 pub struct ShapeFact {
-    pub open: bool,
-    pub dims: TVec<DimFact>,
+    open: bool,
+    dims: TVec<DimFact>,
 }
 
 impl ShapeFact {
@@ -237,9 +237,25 @@ impl ShapeFact {
         ShapeFact { open: true, dims }
     }
 
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
     /// Constructs a closed shape fact.
     pub fn closed(dims: TVec<DimFact>) -> ShapeFact {
         ShapeFact { open: false, dims }
+    }
+
+    pub fn rank(&self) -> IntFact {
+        if self.open {
+            GenericFact::Any
+        } else {
+            GenericFact::Only(self.dims.len() as i32)
+        }.into()
+    }
+
+    pub fn dims(&self) -> impl Iterator<Item = &DimFact> {
+        (&self.dims).into_iter()
     }
 
     pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
@@ -337,13 +353,21 @@ impl FromIterator<TDim> for ShapeFact {
 impl FromIterator<usize> for ShapeFact {
     /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(iter.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+        ShapeFact::closed(
+            iter.into_iter()
+                .map(|d| GenericFact::Only(d.to_dim()))
+                .collect(),
+        )
     }
 }
 
-impl<D: ToDim, I: IntoIterator<Item=D>> From<I> for ShapeFact {
+impl<D: ToDim, I: IntoIterator<Item = D>> From<I> for ShapeFact {
     fn from(it: I) -> ShapeFact {
-        ShapeFact::closed(it.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+        ShapeFact::closed(
+            it.into_iter()
+                .map(|d| GenericFact::Only(d.to_dim()))
+                .collect(),
+        )
     }
 }
 
