@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::{fmt, ops};
 use TractResult;
 
-const EXP_LEN: usize = 128;
+const EXP_LEN: usize = 32;
 
 #[derive(Copy, Clone)]
 pub struct Stack {
@@ -15,7 +15,7 @@ pub struct Stack {
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum StackOp {
     Sym(char),
-    Val(i64),
+    Val(i32),
     Neg,
     Add,
     Sub,
@@ -66,12 +66,12 @@ impl Stack {
         e
     }
 
-    pub fn eval(&self, values: &HashMap<char, i64>) -> TractResult<i64> {
+    pub fn eval(&self, values: &HashMap<char, i32>) -> TractResult<i32> {
         use self::StackOp::*;
         if self.overflow() {
             Err("Overflown")?;
         }
-        let mut stack: Vec<i64> = vec![];
+        let mut stack: Vec<i32> = vec![];
         for op in self.as_ops().iter() {
             match op {
                 Val(v) => stack.push(*v),
@@ -101,7 +101,7 @@ impl Stack {
                     let b = stack.pop().ok_or("Too short stack")?;
                     let a = stack.pop().ok_or("Too short stack")?;
                     let (d, r) = a.div_rem(&b);
-                    stack.push(d + (r > 0) as i64);
+                    stack.push(d + (r > 0) as i32);
                 }
                 Rem => {
                     let b = stack.pop().ok_or("Too short stack")?;
@@ -143,7 +143,7 @@ impl Stack {
         }
     }
 
-    pub fn val(&self) -> Option<&i64> {
+    pub fn val(&self) -> Option<&i32> {
         if let StackOp::Val(ref v) = &self.array[0] {
             if self.len == 1 {
                 return Some(v);
@@ -152,7 +152,7 @@ impl Stack {
         return None;
     }
 
-    pub fn mut_val(&mut self) -> Option<&mut i64> {
+    pub fn mut_val(&mut self) -> Option<&mut i32> {
         if let StackOp::Val(ref mut v) = &mut self.array[0] {
             if self.len == 1 {
                 return Some(v);
@@ -195,8 +195,8 @@ impl Stack {
     }
 }
 
-impl From<i64> for Stack {
-    fn from(v: i64) -> Stack {
+impl From<i32> for Stack {
+    fn from(v: i32) -> Stack {
         let mut e = Stack::empty();
         e.push(StackOp::Val(v));
         e
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn const_and_add() {
-        let e: Stack = 2i64.into();
+        let e: Stack = 2i32.into();
         assert_eq!(e.eval(&hashmap!{}).unwrap(), 2);
         let e: Stack = Stack::from(2) + 3;
         assert_eq!(e.eval(&hashmap!{}).unwrap(), 5);
@@ -393,7 +393,7 @@ mod tests {
     fn overflow() {
         let mut e = Stack::from(2);
         for n in 1..EXP_LEN {
-            e += Stack::sym('x') / n as i64;
+            e += Stack::sym('x') / n as i32;
         }
         assert!(e.overflow());
         assert!(e.eval(&hashmap!{}).is_err());

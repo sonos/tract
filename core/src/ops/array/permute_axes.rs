@@ -6,15 +6,15 @@ pub struct PermuteAxes {
 }
 
 impl PermuteAxes {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> Vec<D> {
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         if let Some(ref axes) = self.axes {
-            let mut new_shape = vec![D::zero(); input.len()];
+            let mut new_shape = tvec![D::zero(); input.len()];
             for (ix, &d) in axes.iter().enumerate() {
                 new_shape[ix] = input[d];
             }
             new_shape
         } else {
-            let mut new_shape = input.to_vec();
+            let mut new_shape:TVec<D> = input.iter().cloned().collect();
             new_shape.reverse();
             new_shape
         }

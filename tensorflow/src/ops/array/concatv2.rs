@@ -42,7 +42,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         let n = self.n;
-        s.equals(&inputs.len, n as i64 + 1)?;
+        s.equals(&inputs.len, n as i32 + 1)?;
         s.equals(&outputs.len, 1)?;
         s.equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;

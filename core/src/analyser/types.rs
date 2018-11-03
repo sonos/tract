@@ -228,17 +228,17 @@ pub type TypeFact = GenericFact<DatumType>;
 #[derive(Clone, PartialEq)]
 pub struct ShapeFact {
     pub open: bool,
-    pub dims: Vec<DimFact>,
+    pub dims: TVec<DimFact>,
 }
 
 impl ShapeFact {
     /// Constructs an open shape fact.
-    pub fn open(dims: Vec<DimFact>) -> ShapeFact {
+    pub fn open(dims: TVec<DimFact>) -> ShapeFact {
         ShapeFact { open: true, dims }
     }
 
     /// Constructs a closed shape fact.
-    pub fn closed(dims: Vec<DimFact>) -> ShapeFact {
+    pub fn closed(dims: TVec<DimFact>) -> ShapeFact {
         ShapeFact { open: false, dims }
     }
 
@@ -268,16 +268,16 @@ impl ShapeFact {
 }
 
 impl Fact for ShapeFact {
-    type Concrete = Vec<TDim>;
+    type Concrete = TVec<TDim>;
 
     /// Tries to transform the fact into a `Vec<usize>`, or returns `None`.
-    fn concretize(self: &ShapeFact) -> Option<Vec<TDim>> {
+    fn concretize(self: &ShapeFact) -> Option<TVec<TDim>> {
         if self.open {
             debug!("Impossible to concretize an open shape.");
             return None;
         }
 
-        let dims: Vec<_> = self.dims.iter().filter_map(|d| d.concretize()).collect();
+        let dims: TVec<_> = self.dims.iter().filter_map(|d| d.concretize()).collect();
 
         if dims.len() < self.dims.len() {
             debug!("Impossible to concretize a shape with unknown dimensions.");
@@ -297,7 +297,7 @@ impl Fact for ShapeFact {
         let xi = x.dims.iter();
         let yi = y.dims.iter();
 
-        let dimensions: Vec<_> = xi
+        let dimensions: TVec<_> = xi
             .zip_longest(yi)
             .map(|r| match r {
                 Both(a, b) => a.unify(b),
@@ -323,7 +323,7 @@ impl Fact for ShapeFact {
 impl Default for ShapeFact {
     /// Returns the most general shape fact possible.
     fn default() -> ShapeFact {
-        ShapeFact::open(vec![])
+        ShapeFact::open(tvec![])
     }
 }
 
@@ -334,6 +334,20 @@ impl FromIterator<TDim> for ShapeFact {
     }
 }
 
+impl FromIterator<usize> for ShapeFact {
+    /// Converts an iterator over usize into a closed shape.
+    fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFact {
+        ShapeFact::closed(iter.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+    }
+}
+
+impl<D: ToDim, I: IntoIterator<Item=D>> From<I> for ShapeFact {
+    fn from(it: I) -> ShapeFact {
+        ShapeFact::closed(it.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
+    }
+}
+
+/*
 impl<'a> From<&'a [usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
     fn from(slice: &'a [usize]) -> ShapeFact {
@@ -349,7 +363,9 @@ impl From<Option<Vec<usize>>> for ShapeFact {
             .unwrap_or(ShapeFact::default())
     }
 }
+*/
 
+/*
 impl From<Vec<usize>> for ShapeFact {
     /// Converts an vector of usize into a closed shape.
     fn from(shape: Vec<usize>) -> ShapeFact {
@@ -363,6 +379,7 @@ impl From<Vec<TDim>> for ShapeFact {
         shape.into_iter().collect()
     }
 }
+*/
 
 impl fmt::Debug for ShapeFact {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -386,7 +403,7 @@ pub type DimFact = GenericFact<TDim>;
 /// Partial information about a value.
 pub type ValueFact = GenericFact<Tensor>;
 
-pub type IntFact = GenericFact<i64>;
+pub type IntFact = GenericFact<i32>;
 
 impl<T> Zero for GenericFact<T>
 where

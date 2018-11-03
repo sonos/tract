@@ -9,7 +9,7 @@ pub mod delay;
 #[derive(Clone, Debug)]
 pub struct PulsedTensorFact {
     pub dt: DatumType,
-    pub shape: Vec<usize>,
+    pub shape: TVec<usize>,
     pub axis: usize,
     pub dim: TDim,
     pub delay: usize,

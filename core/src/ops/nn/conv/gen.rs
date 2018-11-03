@@ -9,10 +9,10 @@ use ops::nn::PaddingSpec;
 pub struct Conv {
     pub(super) data_fmt: DataFormat,
     pub(super) kernel_is_hwio: bool, // default is oihw (onnx)
-    pub(super) dilations: Option<Vec<usize>>,
-    kernel_shape: Option<Vec<usize>>,
+    pub(super) dilations: Option<TVec<usize>>,
+    kernel_shape: Option<TVec<usize>>,
     pub(super) padding: PaddingSpec,
-    pub(super) strides: Option<Vec<usize>>,
+    pub(super) strides: Option<TVec<usize>>,
     pub(super) group: usize,
 }
 
@@ -39,11 +39,11 @@ impl Conv {
         }
     }
 
-    fn output_shape<D: DimLike, ID: Into<D> + Copy>(&self, ishape: &[D], kshape: &[ID]) -> Vec<D> {
-        let mut result = ishape.to_vec();
+    fn output_shape<D: DimLike, ID: Into<D> + Copy>(&self, ishape: &[D], kshape: &[ID]) -> TVec<D> {
+        let mut result:TVec<D> = ishape.into();
         let ishape = self.data_fmt.shape(ishape);
         let spatial_rank = ishape.hw_rank();
-        let ones = vec![1; spatial_rank];
+        let ones = tvec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
         let computed = self.padding.compute(
             ishape.hw_dims(),
@@ -120,8 +120,8 @@ impl StatelessOp for Conv {
             let (input, kernel, bias) = args_3!(inputs);
             (input, kernel, Some(bias.into_tensor()))
         };
-        let ishape: Vec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
-        let kshape: Vec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
+        let ishape: TVec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
+        let kshape: TVec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
         let reduced = ConvUnary::new(
             &self,
             &ishape,
@@ -142,11 +142,11 @@ impl InferenceRulesOp for Conv {
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         if let Some(kshape) = &self.kernel_shape {
-            s.equals(&inputs[1].rank, kshape.len() as i64 + 2)?;
+            s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;
             for (ix, dim) in kshape.iter().enumerate() {
                 s.equals(
                     &inputs[1].shape[ix + self.axis_kernel_spatial()],
-                    TDim::from(*dim as i64),
+                    TDim::from(*dim as i32),
                 )?;
             }
         }
@@ -184,7 +184,7 @@ impl InferenceRulesOp for Conv {
             } else {
                 &inputs[1].shape[1]
             };
-            s.equals(input_c.bex(), self.group as i64 * filter_i.bex())
+            s.equals(input_c.bex(), self.group as i32 * filter_i.bex())
         })?;
         s.given_2(
             &inputs[0].shape,

@@ -1,11 +1,12 @@
 use num::One;
+use model::TVec;
 
-pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<Vec<T>>
+pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<TVec<T>>
 where
     T: One + PartialEq + Copy,
 {
     let len = shapes.iter().map(|shape| shape.as_ref().len()).max()?;
-    let mut shape = Vec::with_capacity(len);
+    let mut shape = tvec!();
     for i in 0..len {
         let mut wanted_size = T::one();
         for shape in shapes {
@@ -25,7 +26,7 @@ where
         shape.push(wanted_size)
     }
     shape.reverse();
-    return Some(shape);
+    Some(shape)
 }
 
 #[cfg(test)]

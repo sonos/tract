@@ -6,9 +6,9 @@ use super::{DataFormat, PaddingSpec, Patch};
 #[derive(Debug, Clone, new, Default)]
 pub struct MaxPool {
     data_fmt: DataFormat,
-    kernel_shape: Vec<usize>,
+    kernel_shape: TVec<usize>,
     padding: PaddingSpec,
-    strides: Option<Vec<usize>>,
+    strides: Option<TVec<usize>>,
     with_index_outputs: bool,
 }
 
@@ -17,11 +17,11 @@ impl MaxPool {
         let hw_rank = self.data_fmt.shape(input_full_shape).hw_rank();
         Patch::new(
             self.data_fmt,
-            vec![1; hw_rank],
+            tvec![1; hw_rank],
             self.kernel_shape.clone(),
             &self.padding,
-            self.strides.clone().unwrap_or_else(|| vec![1; hw_rank]),
-            input_full_shape.to_vec(),
+            self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
+            input_full_shape.into(),
         )
     }
 }
@@ -46,16 +46,16 @@ impl StatelessOp for MaxPool {
         let input: ArrayViewD<f32> = input.to_array_view()?;
 
         let patch = self.patch(input.shape());
-        let shape: Vec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
+        let shape: TVec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
         let visitor = patch.wrap(&input);
 
-        let mut values = unsafe { ArrayD::uninitialized(shape.clone()) };
+        let mut values = unsafe { ArrayD::uninitialized(&*shape) };
         let mut indices = if self.with_index_outputs {
-            Some(unsafe { ArrayD::uninitialized(shape.clone()) })
+            Some(unsafe { ArrayD::uninitialized(&*shape) })
         } else {
             None
         };
-        ::ndarray::indices(shape).into_iter().for_each(|coords| {
+        ::ndarray::indices(&*shape).into_iter().for_each(|coords| {
             let max = visitor
                 .at(&coords.slice())
                 .enumerate()
@@ -85,16 +85,16 @@ impl InferenceRulesOp for MaxPool {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
-        s.equals(&outputs.len, self.noutputs() as i64)?;
+        s.equals(&outputs.len, self.noutputs() as i32)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         if self.with_index_outputs {
-            s.equals(&outputs[1].datum_type, i64::datum_type())?;
+            s.equals(&outputs[1].datum_type, i32::datum_type())?;
             s.equals(&outputs[1].rank, &inputs[0].rank)?;
         }
         s.given(&inputs[0].shape, move |s, ishape| {
             let ishape = self.data_fmt.shape(ishape);
-            let ones = vec![1; ishape.hw_rank()];
+            let ones = tvec![1; ishape.hw_rank()];
             let computed = self.padding.compute(
                 ishape.hw_dims(),
                 &*self.kernel_shape,

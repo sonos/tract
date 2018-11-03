@@ -13,13 +13,13 @@ impl DelayState {
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
 
         let buffered = op.delay + op.overlap;
-        let mut output_shape: Vec<_> = op.input_fact.shape.clone();
+        let mut output_shape: TVec<_> = op.input_fact.shape.clone();
         let input_pulse = op.input_fact.pulse();
         let output_pulse = input_pulse + op.overlap;
         output_shape[op.input_fact.axis] = output_pulse;
         // build output
         let output = if op.delay < input_pulse {
-            let mut output = unsafe { ArrayD::<T>::uninitialized(output_shape) };
+            let mut output = unsafe { ArrayD::<T>::uninitialized(&*output_shape) };
             let from_input = input_pulse - op.delay;
             let from_buffer = output_pulse - from_input;
             output
@@ -77,7 +77,7 @@ fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
 
 impl StatefullOp for Delay {
     fn state(&self) -> TractResult<Option<Box<OpState>>> {
-        let mut buffer_shape: Vec<_> = self.input_fact.shape.clone();
+        let mut buffer_shape: TVec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
         let buffer = dispatch_datum!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
         Ok(Some(Box::new(DelayState { buffer })))

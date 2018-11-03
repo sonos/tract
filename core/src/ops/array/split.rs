@@ -54,7 +54,7 @@ impl InferenceRulesOp for Split {
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, self.outputs as i64)?;
+        s.equals(&outputs.len, self.outputs as i32)?;
         (0..self.outputs).try_for_each(|i| {
             s.equals(&inputs[0].datum_type, &outputs[i].datum_type)?;
             s.equals(&inputs[0].rank, &outputs[i].rank)

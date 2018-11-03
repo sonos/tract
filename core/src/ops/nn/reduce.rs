@@ -240,14 +240,14 @@ impl InferenceRulesOp for Reduce {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
         } else if let Some(axes) = self.axes.as_ref() {
             s.equals(
-                (&inputs[0].rank).bex() - axes.len() as i64,
+                (&inputs[0].rank).bex() - axes.len() as i32,
                 &outputs[0].rank,
             )?;
         } else {
             s.equals(&outputs[0].rank, 0)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
-            let out_shape: Vec<TDim> = shape
+            let out_shape: TVec<TDim> = shape
                 .iter()
                 .enumerate()
                 .filter_map(|(ix, &d)| {

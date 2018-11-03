@@ -6,8 +6,8 @@ pub struct AddDims {
 }
 
 impl AddDims {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> Vec<D> {
-        let mut shape = input.to_vec();
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
+        let mut shape:TVec<D> = input.iter().cloned().collect();
         for &axis in &self.axes {
             shape.insert(axis, D::one())
         }
@@ -17,7 +17,7 @@ impl AddDims {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         let shape = self.compute_shape(input.shape());
-        Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
+        Ok(tvec![input.into_array::<T>()?.into_shape(&*shape)?.into()])
     }
 }
 
@@ -53,7 +53,7 @@ impl InferenceRulesOp for AddDims {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(
             &outputs[0].rank,
-            (&inputs[0].rank).bex() + self.axes.len() as i64,
+            (&inputs[0].rank).bex() + self.axes.len() as i32,
         )?;
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape);

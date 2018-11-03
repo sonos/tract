@@ -88,13 +88,13 @@ fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
     }
 }
 
-fn dilations(node: &NodeProto) -> TractResult<Option<Vec<usize>>> {
+fn dilations(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
     Ok(node
         .get_attr_opt_ints("dilations")?
         .map(|i| i.iter().map(|&i| i as usize).collect()))
 }
 
-fn strides(node: &NodeProto) -> TractResult<Option<Vec<usize>>> {
+fn strides(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
     Ok(node
         .get_attr_opt_ints("strides")?
         .map(|i| i.iter().map(|&i| i as usize).collect()))
@@ -138,7 +138,7 @@ pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
-    let kernel_shape: Vec<usize> = node
+    let kernel_shape: TVec<usize> = node
         .get_attr_ints("kernel_shape")?
         .iter()
         .map(|&i| i as usize)
@@ -209,7 +209,7 @@ pub fn lrn(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
-    let kernel_shape: Vec<usize> = node
+    let kernel_shape: TVec<usize> = node
         .get_attr_ints("kernel_shape")?
         .iter()
         .map(|&i| i as usize)

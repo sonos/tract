@@ -235,7 +235,7 @@ impl BaseStridedSlice {
                         current_out_dim += 1;
                     }
                 }
-                s.equals(&outputs[0].rank, current_out_dim as i64)
+                s.equals(&outputs[0].rank, current_out_dim as i32)
             },
         )
     }

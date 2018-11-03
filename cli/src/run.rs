@@ -51,7 +51,7 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);
-    let output_dim = output_fact.dim.eval(input_dim as i64).unwrap() as i64;
+    let output_dim = output_fact.dim.eval(input_dim as i32).unwrap() as i32;
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =
         output_dim as usize + output_fact.delay + 4 * output_fact.pulse();

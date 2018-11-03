@@ -62,7 +62,7 @@ impl InferenceRulesOp for Pack {
     ) -> InferenceResult {
         let n = self.n;
         let axis = self.axis;
-        s.equals(&inputs.len, n as i64)?;
+        s.equals(&inputs.len, n as i32)?;
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].rank, inputs[0].rank.bex() + 1)?;
         s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;

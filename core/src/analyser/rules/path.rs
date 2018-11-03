@@ -203,7 +203,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
                 if k >= 0 {
                     let k = k.to_usize().unwrap();
-                    fact.shape = fact.shape.unify(&ShapeFact::closed(vec![dimfact!(_); k]))?;
+                    fact.shape = fact.shape.unify(&ShapeFact::closed(tvec![dimfact!(_); k]))?;
                 } else {
                     bail!("Infered a negative rank ({})", k)
                 }
@@ -225,7 +225,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             let k = k.to_usize().unwrap();
             let dim = DimFact::from_wrapped(value)?;
 
-            let mut dims = vec![dimfact!(_); k];
+            let mut dims = tvec![dimfact!(_); k];
             dims.push(dim);
 
             fact.shape = fact.shape.unify(&ShapeFact::open(dims))?;
@@ -315,7 +315,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
     macro_rules! inner {
         ($array:expr) => {{
             match $array.get(path.as_slice()) {
-                Some(&v) => Ok((v as i64).wrap()),
+                Some(&v) => Ok((v as i32).wrap()),
                 None => bail!("There is no index {:?} in value {:?}.", path, $array),
             }
         }};

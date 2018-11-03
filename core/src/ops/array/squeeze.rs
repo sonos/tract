@@ -8,9 +8,9 @@ pub struct Squeeze {
 }
 
 impl Squeeze {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<Vec<D>> {
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
-            let mut shape = input.to_vec();
+            let mut shape:TVec<D> = input.iter().cloned().collect();
             for &axis in axes.iter().rev() {
                 if shape.remove(axis) != D::one() {
                     bail!("Attempt to squeeze an axis which dimension in not one");
@@ -25,7 +25,7 @@ impl Squeeze {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
         let shape = self.compute_shape(input.shape())?;
-        Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
+        Ok(tvec![input.into_array::<T>()?.into_shape(&*shape)?.into()])
     }
 }
 
@@ -70,7 +70,7 @@ impl InferenceRulesOp for Squeeze {
         if let Some(ref axes) = self.axes {
             s.equals(
                 &outputs[0].rank,
-                (&inputs[0].rank).bex() - axes.len() as i64,
+                (&inputs[0].rank).bex() - axes.len() as i32,
             )?;
         }
         s.given(&inputs[0].shape, move |s, shape| {

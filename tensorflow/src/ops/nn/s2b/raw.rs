@@ -30,7 +30,7 @@ impl Op for SpaceToBatch {
                 .cast_to_array::<TDim>()?
                 .into_owned()
                 .into_dimensionality::<Ix2>()?;
-            let mut paddings = vec![];
+            let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
                 let pad = match (p[0].to_integer(), p[1].to_integer()) {
                     (Ok(bef), Ok(aft)) => {
@@ -212,7 +212,7 @@ fn rules<'r, 'p: 'r>(
         let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
         s.equals(
             &batch.shape[0],
-            (block_shape_prod as i64) * space.shape[0].bex(),
+            (block_shape_prod as i32) * space.shape[0].bex(),
         )?;
         s.given(&paddings.value, move |s, paddings: Tensor| {
             let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
@@ -220,7 +220,7 @@ fn rules<'r, 'p: 'r>(
             for d in 0..block_shape.len() {
                 s.equals(
                     space.shape[1 + d].bex() + paddings[(d, 0)] + paddings[(d, 1)],
-                    (block_shape[d] as i64) * batch.shape[1 + d].bex(),
+                    (block_shape[d] as i32) * batch.shape[1 + d].bex(),
                 )?;
             }
             Ok(())
@@ -228,7 +228,7 @@ fn rules<'r, 'p: 'r>(
     })?;
     s.given(&block_shape.value, move |s, block_shape: Tensor| {
         let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
-        s.given(&space.rank, move |s, rank: i64| {
+        s.given(&space.rank, move |s, rank: i32| {
             for d in block_shape.len() + 1..(rank as usize) {
                 s.equals(&space.shape[d], &batch.shape[d])?
             }

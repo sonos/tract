@@ -7,9 +7,9 @@ use super::stack::*;
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum ExpNode {
     Sym(char),
-    Val(i64),
+    Val(i32),
     Add(Vec<ExpNode>),
-    Mul(i64, Vec<ExpNode>),
+    Mul(i32, Vec<ExpNode>),
     Div(Box<ExpNode>, Box<ExpNode>),
     Rem(Box<ExpNode>, Box<ExpNode>),
     DivCeil(Box<ExpNode>, Box<ExpNode>),
@@ -226,7 +226,7 @@ impl ExpNode {
             }
             Add(mut vec) => {
                 use std::collections::HashMap;
-                let mut reduced: HashMap<ExpNode, i64> = HashMap::new();
+                let mut reduced: HashMap<ExpNode, i32> = HashMap::new();
                 while let Some(item) = vec.pop() {
                     let red = item.reduce()?;
                     match red {
@@ -331,7 +331,7 @@ mod tests {
         ExpNode::Add(vec![a.clone(), b.clone()])
     }
 
-    fn mul(a: i64, b: &ExpNode) -> ExpNode {
+    fn mul(a: i32, b: &ExpNode) -> ExpNode {
         ExpNode::Mul(a, vec![b.clone()])
     }
 

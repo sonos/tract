@@ -45,7 +45,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
         None,
         None,
         padding,
-        Some(strides[1..3].to_vec()),
+        Some(strides[1..3].into()),
         1,
     )))
 }

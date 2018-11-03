@@ -20,9 +20,10 @@ fn make_slicer(
 fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
-    let (ashape, bshape, cshape) = infer_shapes(a.shape().to_vec(), b.shape().to_vec())?;
-    let a = a.into_shape(ashape)?;
-    let b = b.into_shape(bshape)?;
+    let (ashape, bshape, cshape) = infer_shapes(
+        a.shape().into(), b.shape().into())?;
+    let a = a.into_shape(&*ashape)?;
+    let b = b.into_shape(&*bshape)?;
     let mut c = unsafe { Array::uninitialized(&*cshape) };
 
     for prefix in indices(&cshape[..(cshape.len() - 2)]).into_iter() {
@@ -45,9 +46,9 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
 }
 
 fn infer_shapes<D: DimLike>(
-    mut ashape: Vec<D>,
-    mut bshape: Vec<D>,
-) -> TractResult<(Vec<D>, Vec<D>, Vec<D>)> {
+    mut ashape: TVec<D>,
+    mut bshape: TVec<D>,
+) -> TractResult<(TVec<D>, TVec<D>, TVec<D>)> {
     if ashape.len() < 2 {
         ashape.insert(0, D::one());
     }
@@ -64,7 +65,7 @@ fn infer_shapes<D: DimLike>(
         &ashape[..(ashape.len() - 2)],
         &bshape[..(bshape.len() - 2)],
     ]).ok_or("Could not broadcast")?;
-    let mut cshape: Vec<D> = cshape_prefix.clone();
+    let mut cshape: TVec<D> = cshape_prefix.clone();
     cshape.push(ashape[ashape.len() - 2]);
     cshape.push(bshape[bshape.len() - 1]);
     Ok((ashape, bshape, cshape))
@@ -125,9 +126,9 @@ impl Op for MatMulUnaryA {
         if input.axis >= input.shape.len() - 1 {
             bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
         }
-        let (_, _, cshape_pulse) = infer_shapes(input.shape.to_vec(), self.b.shape().to_vec())?;
+        let (_, _, cshape_pulse) = infer_shapes(input.shape.clone(), self.b.shape().into())?;
         let (_, _, cshape_full) = infer_shapes(
-            input.streaming_shape(),
+            input.streaming_shape().into(),
             self.b.shape().iter().map(|d| d.to_dim()).collect(),
         )?;
         let mut fact = input.clone();
@@ -156,7 +157,7 @@ impl InferenceRulesOp for MatMulUnaryA {
         s.equals(&outputs.len, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, ashape| {
-            let bshape: Vec<TDim> = self.b.shape().iter().map(|x| x.to_dim()).collect();
+            let bshape: TVec<TDim> = self.b.shape().iter().map(|x| x.to_dim()).collect();
             let (_, _, cshape) = infer_shapes(ashape, bshape)?;
             s.equals(&outputs[0].shape, cshape)
         })?;
@@ -194,7 +195,7 @@ impl InferenceRulesOp for MatMulUnaryB {
         s.equals(&outputs.len, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, bshape| {
-            let ashape: Vec<TDim> = self.a.shape().iter().map(|x| x.to_dim()).collect();
+            let ashape: TVec<TDim> = self.a.shape().iter().map(|x| x.to_dim()).collect();
             let (_, _, cshape) = infer_shapes(ashape, bshape)?;
             s.equals(&outputs[0].shape, cshape)
         })?;

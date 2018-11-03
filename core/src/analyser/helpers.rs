@@ -43,10 +43,10 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
         return Ok(None);
     }
 
-    let dims: Vec<_> = shapes.iter().map(|s| &s.dims).collect();
+    let dims: TVec<_> = shapes.iter().map(|s| &s.dims).collect();
     let bound = dims.iter().map(|s| s.len()).max().unwrap();
 
-    let mut output_shape: Vec<DimFact> = vec![];
+    let mut output_shape: TVec<DimFact> = tvec![];
 
     // FIXME(liautaud): Rewrite more clearly and test.
     for i in 1..(bound + 1) {

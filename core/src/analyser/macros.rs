@@ -15,13 +15,13 @@ macro_rules! typefact {
 #[macro_export]
 macro_rules! shapefact {
     () =>
-        ($crate::analyser::types::ShapeFact::closed(vec![]));
+        ($crate::analyser::types::ShapeFact::closed(tvec![]));
     (..) =>
-        ($crate::analyser::types::ShapeFact::open(vec![]));
+        ($crate::analyser::types::ShapeFact::open(tvec![]));
     ($($arg:tt),+; ..) =>
-        ($crate::analyser::types::ShapeFact::open(vec![$(dimfact!($arg)),+]));
+        ($crate::analyser::types::ShapeFact::open(tvec![$(dimfact!($arg)),+]));
     ($($arg:tt),+) =>
-        ($crate::analyser::types::ShapeFact::closed(vec![$(dimfact!($arg)),+]));
+        ($crate::analyser::types::ShapeFact::closed(tvec![$(dimfact!($arg)),+]));
 }
 
 /// Constructs a dimension fact.
@@ -68,12 +68,12 @@ macro_rules! unwrap_or_none {
 mod tests {
     #[test]
     fn shape_macro_closed_1() {
-        assert_eq!(shapefact![], ShapeFact::closed(vec![]));
+        assert_eq!(shapefact![], ShapeFact::closed(tvec![]));
     }
 
     #[test]
     fn shape_macro_closed_2() {
-        assert_eq!(shapefact![1], ShapeFact::closed(vec![GenericFact::Only(1)]));
+        assert_eq!(shapefact![1], ShapeFact::closed(tvec![GenericFact::Only(1)]));
     }
 
     #[test]
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn shape_macro_open_1() {
-        assert_eq!(shapefact![..], ShapeFact::open(vec![]));
+        assert_eq!(shapefact![..], ShapeFact::open(tvec![]));
     }
 
     #[test]
@@ -137,7 +137,7 @@ mod tests {
     fn shape_macro_open_5() {
         assert_eq!(
             shapefact![(1 + 1), _, 2; ..],
-            ShapeFact::open(vec![
+            ShapeFact::open(tvec![
                 GenericFact::Only(2),
                 GenericFact::Any,
                 GenericFact::Only(2),

@@ -13,7 +13,7 @@ extern crate prettytable;
 extern crate atty;
 extern crate libc;
 extern crate pbr;
-extern crate pretty_env_logger;
+extern crate env_logger;
 extern crate rand;
 extern crate terminal_size;
 extern crate textwrap;
@@ -165,7 +165,12 @@ fn main() {
         ::std::env::set_var("RUST_LOG", level);
     }
 
-    pretty_env_logger::init();
+    let env = env_logger::Env::default()
+        .filter_or(env_logger::DEFAULT_FILTER_ENV, "warn");
+
+    env_logger::Builder::from_env(env)
+        .default_format_timestamp_nanos(true)
+        .init();
 
     if let Err(e) = handle(matches) {
         error!("{}", e.to_string());

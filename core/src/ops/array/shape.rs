@@ -52,16 +52,16 @@ impl InferenceRulesOp for Shape {
             }
             Ok(())
         })?;
-        s.given(&inputs[0].shape, move |s, shape: Vec<TDim>| {
+        s.given(&inputs[0].shape, move |s, shape| {
             if shape.iter().any(|&d| d.to_integer().is_err()) {
                 s.equals(&outputs[0].datum_type, DatumType::TDim)?;
-                let array1: Array1<TDim> = Array1::from_vec(shape);
+                let array1: Array1<TDim> = Array1::from_iter(shape);
                 let tensor: Tensor = Tensor::from(array1);
                 s.equals(&outputs[0].value, tensor)
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
                 let array1: Array1<i64> =
-                    Array1::from_vec(shape.iter().map(|&i| i.to_integer().unwrap()).collect());
+                    Array1::from_vec(shape.iter().map(|&i| i.to_integer().unwrap() as i64).collect());
                 let tensor: Tensor = Tensor::from(array1);
                 s.equals(&outputs[0].value, tensor)
             } else {

@@ -17,7 +17,7 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
         .iter()
         .map(|s| match *s {
             "S" => Ok(TDim::stream()),         // Streaming dimension.
-            _ => Ok(s.parse::<i64>()?.into()), // Regular dimension.
+            _ => Ok(s.parse::<i32>()?.into()), // Regular dimension.
         }).collect::<TractResult<Vec<TDim>>>()?;
 
     if shape.iter().filter(|o| o.is_stream()).count() > 1 {
@@ -64,7 +64,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
             array.into_shape(
                 shape
                     .iter()
-                    .map(|i| i.to_integer().unwrap_or(missing as i64) as usize)
+                    .map(|i| i.to_integer().unwrap_or(missing as i32) as usize)
                     .collect::<Vec<_>>(),
             )?
         }};
