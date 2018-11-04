@@ -7,7 +7,7 @@ pub struct Cast {
 
 impl Cast {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(input: Value) -> TractResult<Value> {
+    fn eval_t<T: Datum>(input: Tensor) -> TractResult<Tensor> {
         Ok(input.cast_to::<T>()?.into())
     }
 }
@@ -20,7 +20,7 @@ impl Op for Cast {
 
 impl StatelessOp for Cast {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let output = dispatch_datum!(Self::eval_t(self.to)(input))?;
         Ok(tvec!(output))

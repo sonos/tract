@@ -4,7 +4,7 @@ use ops::prelude::*;
 pub struct MultiBroadcastTo;
 
 impl MultiBroadcastTo {
-    fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Value>> {
+    fn eval_t<T: Datum>(input: &DtArray, shape: &[usize]) -> TractResult<TVec<Tensor>> {
         let input = input.to_array_view::<T>()?;
         let output = input.broadcast(&*shape).ok_or("incompatible shapes")?;
         Ok(tvec![output.to_owned().into()])
@@ -19,7 +19,7 @@ impl Op for MultiBroadcastTo {
 
 impl StatelessOp for MultiBroadcastTo {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, dims) = args_2!(inputs);
         let dims: Vec<usize> = dims
             .to_array_view::<i64>()?

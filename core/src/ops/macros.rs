@@ -10,7 +10,7 @@ macro_rules! element_map {
         pub struct $Name(TypeFact);
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Value>,) -> TractResult<TVec<Value>> {
+            fn eval(&self, mut inputs: TVec<Tensor>,) -> TractResult<TVec<Tensor>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
@@ -64,7 +64,7 @@ macro_rules! element_map_with_params {
         }
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Value>,) -> TractResult<TVec<Value>> {
+            fn eval(&self, mut inputs: TVec<Tensor>,) -> TractResult<TVec<Tensor>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $expr;
@@ -122,7 +122,7 @@ macro_rules! element_bin {
                 Bin::default()
             }
 
-            fn eval_bin(a: Value, b: &Value) -> TractResult<Value> {
+            fn eval_bin(a: Tensor, b: &Tensor) -> TractResult<Tensor> {
                 let shape:TVec<usize> = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
                     .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
                                            a.shape(), b.shape()))?;
@@ -146,7 +146,7 @@ macro_rules! element_bin {
             pub struct Bin(TypeFact);
 
             impl StatelessOp for Bin {
-                fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+                fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
                     let (a, b) = args_2!(inputs);
                     Ok(tvec!(eval_bin(a, &b)?))
                 }
@@ -215,11 +215,11 @@ macro_rules! element_bin {
             #[derive(Debug, Clone, new)]
             pub struct UnaryA {
                 dt: TypeFact,
-                b: Value,
+                b: Tensor,
             }
 
             impl StatelessOp for UnaryA {
-                fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+                fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
                     let a = args_1!(inputs);
                     Ok(tvec!(eval_bin(a, &self.b)?))
                 }
@@ -307,7 +307,7 @@ macro_rules! element_nary {
 
         impl StatelessOp for $Name {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+            fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
                 use $crate::ndarray::{ ArrayD, ArrayViewD };
                 if let Some(n) = self.n {
                     if inputs.len() != n {

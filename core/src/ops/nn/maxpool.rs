@@ -41,7 +41,7 @@ impl Op for MaxPool {
 }
 
 impl StatelessOp for MaxPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
 
@@ -71,7 +71,7 @@ impl StatelessOp for MaxPool {
             }
         });
         if let Some(dt) = self.with_index_outputs {
-            Ok(tvec!(values.into(), Tensor::from(indices.unwrap()).cast_to_dt(dt)?.into()))
+            Ok(tvec!(values.into(), DtArray::from(indices.unwrap()).cast_to_dt(dt)?.into()))
         } else {
             Ok(tvec!(values.into()))
         }

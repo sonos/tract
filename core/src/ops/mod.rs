@@ -22,7 +22,7 @@ pub mod nn;
 pub mod source;
 pub mod unimpl;
 
-mod types;
+pub mod types;
 
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct StreamInfo {
@@ -41,23 +41,22 @@ pub mod prelude {
     pub use dim::{DimLike, TDim, ToDim};
     pub use f16::f16;
     pub use model::TVec;
-    pub use ops::types::Value;
+    pub use ops::types::Tensor;
     pub use pulse::{PulsedTensorFact, PulsifiedOp};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use tensor::arr4;
-    pub use tensor::{Datum, DatumType, Tensor};
+    pub use datum::{arr4, Datum, DatumType, DtArray};
     pub use TractResult;
 }
 
 use self::prelude::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
-    fn eval(&mut self, op: &Op, inputs: TVec<Value>) -> TractResult<TVec<Value>>;
+    fn eval(&mut self, op: &Op, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>;
 }
 
 pub trait StatelessOp {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>>;
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>;
 }
 
 pub trait StatefullOp {
@@ -128,7 +127,7 @@ pub trait Op:
         bail!("Operator {} do not support pulsification", self.name())
     }
 
-    fn const_value(&self) -> Option<Value> {
+    fn const_value(&self) -> Option<Tensor> {
         None
     }
 

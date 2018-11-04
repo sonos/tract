@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 
 use super::{Input, Op};
-use {Result, Tensor};
+use {Result, DtArray};
 
 #[derive(Debug)]
 pub struct DecodeJpeg {}
@@ -24,7 +24,7 @@ impl Op for DecodeJpeg {
         let m_input = args_1!(inputs);
         let input = m_input.as_u8s().ok_or("Expected a string")?;
         let image = decode_one(input.as_slice().unwrap())?;
-        Ok(vec![Tensor::U8(image.into_dyn()).into()])
+        Ok(vec![DtArray::U8(image.into_dyn()).into()])
     }
 }
 
@@ -72,6 +72,6 @@ impl Op for ResizeBilinear {
             let dy = proj_y - old_y as f32;
             (1.0 - dy) * ((1.0 - dx) * q11 + dx * q21) + dy * ((1.0 - dx) * q12 + dx * q22)
         });
-        Ok(vec![Tensor::F32(result.into_dyn()).into()])
+        Ok(vec![DtArray::F32(result.into_dyn()).into()])
     }
 }

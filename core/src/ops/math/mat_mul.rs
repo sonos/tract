@@ -17,7 +17,7 @@ fn make_slicer(
     Ok(SliceInfo::new(slice)?)
 }
 
-fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
+fn eval_t<T: Datum + LinalgScalar>(a: &DtArray, b: &DtArray) -> TractResult<DtArray> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
     let (ashape, bshape, cshape) = infer_shapes(
@@ -81,7 +81,7 @@ impl Op for MatMul {
 }
 
 impl StatelessOp for MatMul {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (a, b) = args_2!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), b.as_tensor()))?;
         Ok(tvec!(c.into()))
@@ -113,7 +113,7 @@ impl InferenceRulesOp for MatMul {
 
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnaryA {
-    b: Tensor,
+    b: DtArray,
 }
 
 impl Op for MatMulUnaryA {
@@ -139,7 +139,7 @@ impl Op for MatMulUnaryA {
 }
 
 impl StatelessOp for MatMulUnaryA {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let a = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), &self.b))?;
         Ok(tvec!(c.into()))
@@ -167,7 +167,7 @@ impl InferenceRulesOp for MatMulUnaryA {
 
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnaryB {
-    a: Tensor,
+    a: DtArray,
 }
 
 impl Op for MatMulUnaryB {
@@ -177,7 +177,7 @@ impl Op for MatMulUnaryB {
 }
 
 impl StatelessOp for MatMulUnaryB {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let b = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, b.as_tensor()))?;
         Ok(tvec!(c.into()))

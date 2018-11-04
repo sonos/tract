@@ -60,7 +60,7 @@ impl Op for SpaceToBatch {
 }
 
 impl StatelessOp for SpaceToBatch {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape
             .cast_to_array()?
@@ -155,7 +155,7 @@ impl Op for BatchToSpace {
 
 impl StatelessOp for BatchToSpace {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape
             .cast_to_array()?

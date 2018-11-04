@@ -319,9 +319,9 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
     match value.concretize() {
         None => Ok(IntFact::default().wrap()),
         Some(tensor) => match tensor.as_tensor() {
-            Tensor::I32(array) => inner!(array),
-            Tensor::I8(array) => inner!(array),
-            Tensor::U8(array) => inner!(array),
+            DtArray::I32(array) => inner!(array),
+            DtArray::I8(array) => inner!(array),
+            DtArray::U8(array) => inner!(array),
             _ => bail!(
                 "Found value {:?}, but the solver only supports \
                  integer values.",

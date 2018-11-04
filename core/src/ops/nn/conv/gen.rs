@@ -112,7 +112,7 @@ impl Op for Conv {
 }
 
 impl StatelessOp for Conv {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, kernel, bias) = if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
             (input, kernel, None)
@@ -276,16 +276,16 @@ mod test {
             )).unwrap();
         assert_eq!(
             res,
-            tvec!(Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
+            tvec!(DtArray::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
         );
     }
 
     #[test]
     fn test_eval_nhwc_2() {
         let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
-        let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
-        let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
-        let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
+        let i: DtArray = DtArray::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+        let k: DtArray = DtArray::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
+        let e: DtArray = DtArray::from(arr4(&[[[[1.0f32], [0.0]]]]));
         let res = op.eval(tvec!(i.into(), k.into())).unwrap();
         assert_eq!(res, tvec!(e.into()));
     }

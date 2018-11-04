@@ -17,7 +17,7 @@ use tract_tensorflow::conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::Tensor as TractTensor;
+use tract_core::DtArray as TractTensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 use utils::*;

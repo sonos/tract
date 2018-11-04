@@ -108,7 +108,7 @@ impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
 
 impl<T: Datum + LinalgScalar> StatelessOp for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = m_data.to_array()?;
         let filter = m_filter.to_array_view()?;
@@ -161,9 +161,9 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_core::ops::nn::{Conv, DataFormat, PaddingSpec};
-    use tract_core::Tensor;
+    use tract_core::DtArray;
 
-    fn mk(sizes: &[usize]) -> Tensor {
+    fn mk(sizes: &[usize]) -> DtArray {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
             .into_shape(sizes)
             .unwrap()
@@ -206,7 +206,7 @@ mod tests {
         ))
     }
 
-    fn verify(input: Tensor, filter: Tensor, stride: usize, padding: Padding, expect: &[f32]) {
+    fn verify(input: DtArray, filter: DtArray, stride: usize, padding: Padding, expect: &[f32]) {
         let result = make_conv(stride, stride, padding)
             .as_stateless()
             .unwrap()
@@ -311,10 +311,10 @@ mod tests {
     fn test_conv_1() {
         let conv = make_conv(1, 1, Padding::Same);
         // NHWC
-        let data: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1f32]).unwrap();
+        let data: DtArray = DtArray::f32s(&[1, 1, 1, 1], &[1f32]).unwrap();
         // HWIO
-        let filter = Tensor::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
-        let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
+        let filter = DtArray::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
+        let exp: DtArray = DtArray::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
 
         let result = conv
             .as_stateless()
@@ -329,13 +329,13 @@ mod tests {
     fn test_conv_2() {
         let conv = make_conv(1, 1, Padding::Same);
         let data =
-            Tensor::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994]).unwrap();
-        let filter: Tensor = Tensor::f32s(
+            DtArray::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994]).unwrap();
+        let filter: DtArray = DtArray::f32s(
             &[2, 2, 1, 1],
             &[160.72833, 107.84076, 247.50552, -38.738464],
         ).unwrap();
-        let exp: Tensor =
-            Tensor::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
+        let exp: DtArray =
+            DtArray::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
 
         assert!(
             exp.close_enough(

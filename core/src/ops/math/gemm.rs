@@ -13,7 +13,7 @@ pub struct Gemm {
 }
 
 impl Gemm {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -45,7 +45,7 @@ impl Op for Gemm {
 }
 
 impl StatelessOp for Gemm {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -80,12 +80,12 @@ pub struct GemmUnaryA {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    b: Tensor,
-    c: Tensor,
+    b: DtArray,
+    c: DtArray,
 }
 
 impl GemmUnaryA {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -111,7 +111,7 @@ impl Op for GemmUnaryA {
 }
 
 impl StatelessOp for GemmUnaryA {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -145,12 +145,12 @@ pub struct GemmUnaryB {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    a: Tensor,
-    c: Tensor,
+    a: DtArray,
+    c: DtArray,
 }
 
 impl GemmUnaryB {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -176,7 +176,7 @@ impl Op for GemmUnaryB {
 }
 
 impl StatelessOp for GemmUnaryB {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }

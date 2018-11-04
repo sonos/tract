@@ -37,7 +37,7 @@ impl<T: Datum> Op for Reshape<T> {
 }
 
 impl<T: Datum> StatelessOp for Reshape<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, dims) = args_2!(inputs);
 
         let input = input.to_array::<T>()?;

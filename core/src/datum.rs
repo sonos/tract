@@ -1,4 +1,4 @@
-//! `Tensor` is the equivalent of Tensorflow Tensor.
+//! `DtArray` is the equivalent of Tensorflow DtArray.
 use dim::TDim;
 use ndarray::prelude::*;
 use std::fmt;
@@ -120,15 +120,15 @@ pub trait Datum: Copy + Clone + Send + Sync + fmt::Debug + Default + 'static {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
 
-    fn tensor_into_array(m: Tensor) -> TractResult<ArrayD<Self>>;
-    fn tensor_cast_to_array(m: &Tensor) -> TractResult<MaybeOwnedArray<Self>>;
-    fn tensor_to_view(m: &Tensor) -> TractResult<ArrayViewD<Self>>;
-    fn tensor_to_view_mut(m: &mut Tensor) -> TractResult<ArrayViewMutD<Self>>;
-    fn array_into_tensor(m: ArrayD<Self>) -> Tensor;
+    fn tensor_into_array(m: DtArray) -> TractResult<ArrayD<Self>>;
+    fn tensor_cast_to_array(m: &DtArray) -> TractResult<MaybeOwnedArray<Self>>;
+    fn tensor_to_view(m: &DtArray) -> TractResult<ArrayViewD<Self>>;
+    fn tensor_to_view_mut(m: &mut DtArray) -> TractResult<ArrayViewMutD<Self>>;
+    fn array_into_tensor(m: ArrayD<Self>) -> DtArray;
 }
 
 #[derive(Clone, PartialEq)]
-pub enum Tensor {
+pub enum DtArray {
     Bool(ArrayD<bool>),
     F16(ArrayD<f16>),
     F32(ArrayD<f32>),
@@ -143,8 +143,8 @@ pub enum Tensor {
     String(ArrayD<i8>),
 }
 
-impl Tensor {
-    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
+impl DtArray {
+    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<DtArray> {
         let value: Vec<T> = ::std::slice::from_raw_parts(
             content.as_ptr() as _,
             content.len() / ::std::mem::size_of::<T>(),
@@ -154,74 +154,74 @@ impl Tensor {
 
     pub fn shape(&self) -> &[usize] {
         match self {
-            &Tensor::Bool(ref it) => it.shape(),
-            &Tensor::U8(ref it) => it.shape(),
-            &Tensor::U16(ref it) => it.shape(),
-            &Tensor::I8(ref it) => it.shape(),
-            &Tensor::I16(ref it) => it.shape(),
-            &Tensor::I32(ref it) => it.shape(),
-            &Tensor::I64(ref it) => it.shape(),
-            &Tensor::F16(ref it) => it.shape(),
-            &Tensor::F32(ref it) => it.shape(),
-            &Tensor::F64(ref it) => it.shape(),
-            &Tensor::TDim(ref it) => it.shape(),
-            &Tensor::String(ref it) => it.shape(),
+            &DtArray::Bool(ref it) => it.shape(),
+            &DtArray::U8(ref it) => it.shape(),
+            &DtArray::U16(ref it) => it.shape(),
+            &DtArray::I8(ref it) => it.shape(),
+            &DtArray::I16(ref it) => it.shape(),
+            &DtArray::I32(ref it) => it.shape(),
+            &DtArray::I64(ref it) => it.shape(),
+            &DtArray::F16(ref it) => it.shape(),
+            &DtArray::F32(ref it) => it.shape(),
+            &DtArray::F64(ref it) => it.shape(),
+            &DtArray::TDim(ref it) => it.shape(),
+            &DtArray::String(ref it) => it.shape(),
         }
     }
 
-    pub fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
+    pub fn into_shape(self, shape: &[usize]) -> TractResult<DtArray> {
         let shaped = match self {
-            Tensor::Bool(it) => it.into_shape(shape)?.into(),
-            Tensor::U8(it) => it.into_shape(shape)?.into(),
-            Tensor::U16(it) => it.into_shape(shape)?.into(),
-            Tensor::I8(it) => it.into_shape(shape)?.into(),
-            Tensor::I16(it) => it.into_shape(shape)?.into(),
-            Tensor::I32(it) => it.into_shape(shape)?.into(),
-            Tensor::I64(it) => it.into_shape(shape)?.into(),
-            Tensor::F16(it) => it.into_shape(shape)?.into(),
-            Tensor::F32(it) => it.into_shape(shape)?.into(),
-            Tensor::F64(it) => it.into_shape(shape)?.into(),
-            Tensor::TDim(it) => it.into_shape(shape)?.into(),
-            Tensor::String(it) => it.into_shape(shape)?.into(),
+            DtArray::Bool(it) => it.into_shape(shape)?.into(),
+            DtArray::U8(it) => it.into_shape(shape)?.into(),
+            DtArray::U16(it) => it.into_shape(shape)?.into(),
+            DtArray::I8(it) => it.into_shape(shape)?.into(),
+            DtArray::I16(it) => it.into_shape(shape)?.into(),
+            DtArray::I32(it) => it.into_shape(shape)?.into(),
+            DtArray::I64(it) => it.into_shape(shape)?.into(),
+            DtArray::F16(it) => it.into_shape(shape)?.into(),
+            DtArray::F32(it) => it.into_shape(shape)?.into(),
+            DtArray::F64(it) => it.into_shape(shape)?.into(),
+            DtArray::TDim(it) => it.into_shape(shape)?.into(),
+            DtArray::String(it) => it.into_shape(shape)?.into(),
         };
         Ok(shaped)
     }
 
     pub fn datum_type(&self) -> DatumType {
         match self {
-            &Tensor::Bool(_) => DatumType::Bool,
-            &Tensor::U8(_) => DatumType::U8,
-            &Tensor::U16(_) => DatumType::U16,
-            &Tensor::I8(_) => DatumType::I8,
-            &Tensor::I16(_) => DatumType::I16,
-            &Tensor::I32(_) => DatumType::I32,
-            &Tensor::I64(_) => DatumType::I64,
-            &Tensor::F16(_) => DatumType::F16,
-            &Tensor::F32(_) => DatumType::F32,
-            &Tensor::F64(_) => DatumType::F64,
-            &Tensor::TDim(_) => DatumType::TDim,
-            &Tensor::String(_) => DatumType::String,
+            &DtArray::Bool(_) => DatumType::Bool,
+            &DtArray::U8(_) => DatumType::U8,
+            &DtArray::U16(_) => DatumType::U16,
+            &DtArray::I8(_) => DatumType::I8,
+            &DtArray::I16(_) => DatumType::I16,
+            &DtArray::I32(_) => DatumType::I32,
+            &DtArray::I64(_) => DatumType::I64,
+            &DtArray::F16(_) => DatumType::F16,
+            &DtArray::F32(_) => DatumType::F32,
+            &DtArray::F64(_) => DatumType::F64,
+            &DtArray::TDim(_) => DatumType::TDim,
+            &DtArray::String(_) => DatumType::String,
         }
     }
 
-    pub fn axis_chunks(&self, axis: usize, size: usize) -> TractResult<Vec<Tensor>> {
+    pub fn axis_chunks(&self, axis: usize, size: usize) -> TractResult<Vec<DtArray>> {
         match self {
-            &Tensor::Bool(_) => self.axis_chunks_t::<bool>(axis, size),
-            &Tensor::U8(_) => self.axis_chunks_t::<u8>(axis, size),
-            &Tensor::U16(_) => self.axis_chunks_t::<u16>(axis, size),
-            &Tensor::I8(_) => self.axis_chunks_t::<i8>(axis, size),
-            &Tensor::I16(_) => self.axis_chunks_t::<i16>(axis, size),
-            &Tensor::I32(_) => self.axis_chunks_t::<i32>(axis, size),
-            &Tensor::I64(_) => self.axis_chunks_t::<i64>(axis, size),
-            &Tensor::F16(_) => self.axis_chunks_t::<f16>(axis, size),
-            &Tensor::F32(_) => self.axis_chunks_t::<f32>(axis, size),
-            &Tensor::F64(_) => self.axis_chunks_t::<f64>(axis, size),
-            &Tensor::TDim(_) => self.axis_chunks_t::<TDim>(axis, size),
-            &Tensor::String(_) => bail!("String is not a datum"),
+            &DtArray::Bool(_) => self.axis_chunks_t::<bool>(axis, size),
+            &DtArray::U8(_) => self.axis_chunks_t::<u8>(axis, size),
+            &DtArray::U16(_) => self.axis_chunks_t::<u16>(axis, size),
+            &DtArray::I8(_) => self.axis_chunks_t::<i8>(axis, size),
+            &DtArray::I16(_) => self.axis_chunks_t::<i16>(axis, size),
+            &DtArray::I32(_) => self.axis_chunks_t::<i32>(axis, size),
+            &DtArray::I64(_) => self.axis_chunks_t::<i64>(axis, size),
+            &DtArray::F16(_) => self.axis_chunks_t::<f16>(axis, size),
+            &DtArray::F32(_) => self.axis_chunks_t::<f32>(axis, size),
+            &DtArray::F64(_) => self.axis_chunks_t::<f64>(axis, size),
+            &DtArray::TDim(_) => self.axis_chunks_t::<TDim>(axis, size),
+            &DtArray::String(_) => bail!("String is not a datum"),
         }
     }
 
-    pub fn axis_chunks_t<T: Datum>(&self, axis: usize, size: usize) -> TractResult<Vec<Tensor>> {
+    pub fn axis_chunks_t<T: Datum>(&self, axis: usize, size: usize) -> TractResult<Vec<DtArray>> {
         let array = T::tensor_to_view(self)?;
         Ok(array
             .axis_chunks_iter(Axis(axis), size)
@@ -260,67 +260,67 @@ impl Tensor {
         }
         if self.shape().len() == 0 {
             Ok(match self {
-                &Tensor::Bool(ref a) => fmt_scalar!(a),
-                &Tensor::U8(ref a) => fmt_scalar!(a),
-                &Tensor::U16(ref a) => fmt_scalar!(a),
-                &Tensor::I8(ref a) => fmt_scalar!(a),
-                &Tensor::I16(ref a) => fmt_scalar!(a),
-                &Tensor::I32(ref a) => fmt_scalar!(a),
-                &Tensor::I64(ref a) => fmt_scalar!(a),
-                &Tensor::F16(ref a) => fmt_scalar!(a),
-                &Tensor::F32(ref a) => fmt_scalar!(a),
-                &Tensor::F64(ref a) => fmt_scalar!(a),
-                &Tensor::String(ref a) => fmt_scalar!(a),
-                &Tensor::TDim(ref a) => fmt_scalar!(a),
+                &DtArray::Bool(ref a) => fmt_scalar!(a),
+                &DtArray::U8(ref a) => fmt_scalar!(a),
+                &DtArray::U16(ref a) => fmt_scalar!(a),
+                &DtArray::I8(ref a) => fmt_scalar!(a),
+                &DtArray::I16(ref a) => fmt_scalar!(a),
+                &DtArray::I32(ref a) => fmt_scalar!(a),
+                &DtArray::I64(ref a) => fmt_scalar!(a),
+                &DtArray::F16(ref a) => fmt_scalar!(a),
+                &DtArray::F32(ref a) => fmt_scalar!(a),
+                &DtArray::F64(ref a) => fmt_scalar!(a),
+                &DtArray::String(ref a) => fmt_scalar!(a),
+                &DtArray::TDim(ref a) => fmt_scalar!(a),
             })
         } else if self.shape().iter().product::<usize>() > 8 {
             use itertools::Itertools;
             Ok(match self {
-                &Tensor::Bool(ref a) => fmt_big!(a),
-                &Tensor::U8(ref a) => fmt_big!(a),
-                &Tensor::U16(ref a) => fmt_big!(a),
-                &Tensor::I8(ref a) => fmt_big!(a),
-                &Tensor::I16(ref a) => fmt_big!(a),
-                &Tensor::I32(ref a) => fmt_big!(a),
-                &Tensor::I64(ref a) => fmt_big!(a),
-                &Tensor::F16(ref a) => fmt_big!(a),
-                &Tensor::F32(ref a) => fmt_big!(a),
-                &Tensor::F64(ref a) => fmt_big!(a),
-                &Tensor::String(ref a) => fmt_big!(a),
-                &Tensor::TDim(ref a) => fmt_big!(a),
+                &DtArray::Bool(ref a) => fmt_big!(a),
+                &DtArray::U8(ref a) => fmt_big!(a),
+                &DtArray::U16(ref a) => fmt_big!(a),
+                &DtArray::I8(ref a) => fmt_big!(a),
+                &DtArray::I16(ref a) => fmt_big!(a),
+                &DtArray::I32(ref a) => fmt_big!(a),
+                &DtArray::I64(ref a) => fmt_big!(a),
+                &DtArray::F16(ref a) => fmt_big!(a),
+                &DtArray::F32(ref a) => fmt_big!(a),
+                &DtArray::F64(ref a) => fmt_big!(a),
+                &DtArray::String(ref a) => fmt_big!(a),
+                &DtArray::TDim(ref a) => fmt_big!(a),
             })
         } else {
             Ok(match self {
-                &Tensor::Bool(ref a) => fmt_small!(a),
-                &Tensor::U8(ref a) => fmt_small!(a),
-                &Tensor::U16(ref a) => fmt_small!(a),
-                &Tensor::I8(ref a) => fmt_small!(a),
-                &Tensor::I16(ref a) => fmt_small!(a),
-                &Tensor::I32(ref a) => fmt_small!(a),
-                &Tensor::I64(ref a) => fmt_small!(a),
-                &Tensor::F16(ref a) => fmt_small!(a),
-                &Tensor::F32(ref a) => fmt_small!(a),
-                &Tensor::F64(ref a) => fmt_small!(a),
-                &Tensor::String(ref a) => fmt_small!(a),
-                &Tensor::TDim(ref a) => fmt_small!(a),
+                &DtArray::Bool(ref a) => fmt_small!(a),
+                &DtArray::U8(ref a) => fmt_small!(a),
+                &DtArray::U16(ref a) => fmt_small!(a),
+                &DtArray::I8(ref a) => fmt_small!(a),
+                &DtArray::I16(ref a) => fmt_small!(a),
+                &DtArray::I32(ref a) => fmt_small!(a),
+                &DtArray::I64(ref a) => fmt_small!(a),
+                &DtArray::F16(ref a) => fmt_small!(a),
+                &DtArray::F32(ref a) => fmt_small!(a),
+                &DtArray::F64(ref a) => fmt_small!(a),
+                &DtArray::String(ref a) => fmt_small!(a),
+                &DtArray::TDim(ref a) => fmt_small!(a),
             })
         }
     }
 
     fn approx(&self) -> ArrayD<f32> {
         match self {
-            &Tensor::Bool(ref data) => data.map(|&a| a as u32 as f32),
-            &Tensor::U8(ref data) => data.map(|&a| a as f32),
-            &Tensor::U16(ref data) => data.map(|&a| a as f32),
-            &Tensor::I8(ref data) => data.map(|&a| a as f32),
-            &Tensor::I16(ref data) => data.map(|&a| a as f32),
-            &Tensor::I32(ref data) => data.map(|&a| a as f32),
-            &Tensor::I64(ref data) => data.map(|&a| a as f32),
-            &Tensor::F16(ref data) => data.map(|&a| f32::from(a.0)),
-            &Tensor::F32(ref data) => data.to_owned(),
-            &Tensor::F64(ref data) => data.map(|&a| a as f32),
-            &Tensor::TDim(ref data) => data.map(|&a| a.to_integer().unwrap() as f32),
-            &Tensor::String(_) => unimplemented!("not supported for string"),
+            &DtArray::Bool(ref data) => data.map(|&a| a as u32 as f32),
+            &DtArray::U8(ref data) => data.map(|&a| a as f32),
+            &DtArray::U16(ref data) => data.map(|&a| a as f32),
+            &DtArray::I8(ref data) => data.map(|&a| a as f32),
+            &DtArray::I16(ref data) => data.map(|&a| a as f32),
+            &DtArray::I32(ref data) => data.map(|&a| a as f32),
+            &DtArray::I64(ref data) => data.map(|&a| a as f32),
+            &DtArray::F16(ref data) => data.map(|&a| f32::from(a.0)),
+            &DtArray::F32(ref data) => data.to_owned(),
+            &DtArray::F64(ref data) => data.map(|&a| a as f32),
+            &DtArray::TDim(ref data) => data.map(|&a| a.to_integer().unwrap() as f32),
+            &DtArray::String(_) => unimplemented!("not supported for string"),
         }
     }
 
@@ -375,26 +375,26 @@ impl Tensor {
         <D as Datum>::tensor_cast_to_array(self)
     }
 
-    pub fn cast_to<D: Datum>(&self) -> TractResult<Tensor> {
+    pub fn cast_to<D: Datum>(&self) -> TractResult<DtArray> {
         Ok(<D as Datum>::tensor_cast_to_array(&self)?
             .into_owned()
             .into())
     }
 
-    pub fn cast_to_dt(&self, dt:DatumType) -> TractResult<Tensor> {
+    pub fn cast_to_dt(&self, dt:DatumType) -> TractResult<DtArray> {
         dispatch_datum!(Self::cast_to(dt)(self))
     }
 }
 
-impl fmt::Debug for Tensor {
+impl fmt::Debug for DtArray {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let content = self.dump(false).unwrap_or("Error".to_string());
-        write!(formatter, "Tensor {}", content)
+        write!(formatter, "DtArray {}", content)
     }
 }
 
 #[cfg(feature = "serialize")]
-impl Serialize for Tensor {
+impl Serialize for DtArray {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -410,7 +410,7 @@ impl Serialize for Tensor {
             }};
         };
 
-        use Tensor::*;
+        use DtArray::*;
         match self {
             Bool(m) => serialize_inner!(bool, m),
             U8(m) => serialize_inner!(u8, m),
@@ -428,8 +428,8 @@ impl Serialize for Tensor {
     }
 }
 
-impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
-    fn from(it: Array<T, D>) -> Tensor {
+impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for DtArray {
+    fn from(it: Array<T, D>) -> DtArray {
         T::array_into_tensor(it.into_dyn())
     }
 }
@@ -437,15 +437,15 @@ impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
 macro_rules! tensor {
     ($t:ident, $v:ident, $as_one:ident, $as:ident, $as_mut:ident, $take:ident, $make:ident,
         [$(($cast:ident, $as_cast:ident)),*]) => {
-        impl From<$t> for Tensor {
-            fn from(it: $t) -> Tensor {
-                Tensor::$v(arr0(it).into_dyn())
+        impl From<$t> for DtArray {
+            fn from(it: $t) -> DtArray {
+                DtArray::$v(arr0(it).into_dyn())
             }
         }
 
-        impl Tensor {
+        impl DtArray {
             pub fn $as_one(&self) -> Option<$t> {
-                if let &Tensor::$v(ref it) = self {
+                if let &DtArray::$v(ref it) = self {
                     if it.shape().len() == 0 {
                         Some(*it.iter().next().unwrap())
                     } else {
@@ -457,7 +457,7 @@ macro_rules! tensor {
             }
 
             pub fn $as(&self) -> Option<&ArrayD<$t>> {
-                if let &Tensor::$v(ref it) = self {
+                if let &DtArray::$v(ref it) = self {
                     Some(it)
                 } else {
                     None
@@ -465,7 +465,7 @@ macro_rules! tensor {
             }
 
             pub fn $as_mut(&mut self) -> Option<&mut ArrayD<$t>> {
-                if let &mut Tensor::$v(ref mut it) = self {
+                if let &mut DtArray::$v(ref mut it) = self {
                     Some(it)
                 } else {
                     None
@@ -473,14 +473,14 @@ macro_rules! tensor {
             }
 
             pub fn $take(self) -> Option<ArrayD<$t>> {
-                if let Tensor::$v(it) = self {
+                if let DtArray::$v(it) = self {
                     Some(it)
                 } else {
                     None
                 }
             }
 
-            pub fn $make(shape: &[usize], values: &[$t]) -> TractResult<Tensor> {
+            pub fn $make(shape: &[usize], values: &[$t]) -> TractResult<DtArray> {
                 Ok(Array::from_shape_vec(shape, values.to_vec())?.into())
             }
         }
@@ -494,28 +494,28 @@ macro_rules! tensor {
                 DatumType::$v
             }
 
-            fn tensor_into_array(m: Tensor) -> TractResult<ArrayD<Self>> {
+            fn tensor_into_array(m: DtArray) -> TractResult<ArrayD<Self>> {
                 let _ = Self::tensor_to_view(&m)?;
                 Ok(m.$take().unwrap())
             }
 
-            fn tensor_to_view(m: &Tensor) -> TractResult<ArrayViewD<Self>> {
+            fn tensor_to_view(m: &DtArray) -> TractResult<ArrayViewD<Self>> {
                 m.$as()
                     .map(|m| m.view())
                     .ok_or_else(|| format!("Type mismatch unwrapping to {}: {:?}", Self::name(), &m).into())
             }
 
-            fn tensor_to_view_mut(m: &mut Tensor) -> TractResult<ArrayViewMutD<Self>> {
+            fn tensor_to_view_mut(m: &mut DtArray) -> TractResult<ArrayViewMutD<Self>> {
                 m.$as_mut()
                     .map(|m| m.view_mut())
                     .ok_or_else(|| format!("Type mismatch unwrapping to {}", Self::name()).into())
             }
 
-            fn array_into_tensor(m: ArrayD<Self>) -> Tensor {
-                Tensor::$v(m)
+            fn array_into_tensor(m: ArrayD<Self>) -> DtArray {
+                DtArray::$v(m)
             }
 
-            fn tensor_cast_to_array(m: &Tensor) -> TractResult<MaybeOwnedArray<$t>> {
+            fn tensor_cast_to_array(m: &DtArray) -> TractResult<MaybeOwnedArray<$t>> {
                 match m.datum_type() {
                     DatumType::$v => Ok(MaybeOwnedArray::View($t::tensor_to_view(m)?)),
                     $(DatumType::$cast => {
@@ -653,17 +653,17 @@ tensor!(
 #[cfg(test)]
 mod tests {
     use dim::ToDim;
-    use tensor::*;
+    use datum::*;
 
     #[test]
     fn test_cast_dim_to_dim() {
-        let t_dim: Tensor = arr1(&[0isize.to_dim(), 0isize.to_dim()]).into();
+        let t_dim: DtArray = arr1(&[0isize.to_dim(), 0isize.to_dim()]).into();
         let _dims: MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_dim).unwrap();
     }
 
     #[test]
     fn test_cast_i32_to_dim() {
-        let t_i32: Tensor = arr1(&[0i32, 0]).into();
+        let t_i32: DtArray = arr1(&[0i32, 0]).into();
         let _dims: MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_i32).unwrap();
     }
 }

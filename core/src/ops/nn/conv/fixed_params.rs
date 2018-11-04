@@ -176,7 +176,7 @@ impl<D> StatelessOp for FixedParamsConv<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let output = self.convolve(&inputs[0].to_array_view::<D>()?)?;
         Ok(tvec!(output.into()))
     }

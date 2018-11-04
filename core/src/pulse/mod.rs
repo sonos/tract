@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(model.nodes().len(), 3);
 
         let input = [1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
-        let t_input = Tensor::from(arr3(&[[input]]));
+        let t_input = DtArray::from(arr3(&[[input]]));
 
         let model = model.into_optimized().unwrap();
         assert_eq!(model.nodes().len(), 2);
@@ -239,7 +239,7 @@ mod tests {
         for p in 0..(input.len() / pulse) {
             let chunk = &input[(p * pulse)..((p + 1) * pulse)];
             let mut outputs = state
-                .run(tvec!(Tensor::f32s(&[1, 1, 4], chunk).unwrap()))
+                .run(tvec!(DtArray::f32s(&[1, 1, 4], chunk).unwrap()))
                 .unwrap();
             got.extend(outputs.remove(0).as_f32s().unwrap().iter());
         }

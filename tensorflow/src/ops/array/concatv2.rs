@@ -16,7 +16,7 @@ pub struct ConcatV2<T: Datum> {
 }
 
 impl<T: Datum> StatelessOp for ConcatV2<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let axis: i32 = inputs
             .pop()
             .and_then(|t| t.as_i32())

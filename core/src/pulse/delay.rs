@@ -3,11 +3,11 @@ use ops::prelude::*;
 
 #[derive(Debug, new, Clone)]
 struct DelayState {
-    buffer: Tensor,
+    buffer: DtArray,
 }
 
 impl DelayState {
-    pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Value) -> TractResult<Value> {
+    pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Tensor) -> TractResult<Tensor> {
         let axis = Axis(op.input_fact.axis);
         let input = input.to_array_view::<T>()?;
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
@@ -49,7 +49,7 @@ impl DelayState {
 }
 
 impl OpState for DelayState {
-    fn eval(&mut self, op: &Op, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&mut self, op: &Op, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
         Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
@@ -71,7 +71,7 @@ impl Op for Delay {
     }
 }
 
-fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
+fn make_buffer<T: Datum>(shape: &[usize]) -> DtArray {
     ::ndarray::ArrayD::<T>::default(shape).into()
 }
 
@@ -126,7 +126,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1) + overlap))
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
-            let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
+            let output = state.run(tvec!(DtArray::from(arr1(&input)))).unwrap();
             assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
         }
     }
@@ -187,7 +187,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1)))
                 .map(|i| i.saturating_sub(4) as u8)
                 .collect();
-            let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
+            let output = state.run(tvec!(DtArray::from(arr1(&input)))).unwrap();
             assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
         }
     }

@@ -236,7 +236,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     tf_model: (),
 
-    inputs: Option<Vec<Option<tract_core::ops::prelude::Value>>>,
+    inputs: Option<Vec<Option<tract_core::ops::prelude::Tensor>>>,
 }
 
 impl Parameters {

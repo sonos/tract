@@ -3,48 +3,48 @@ use std::sync::Arc;
 use ops::prelude::*;
 
 #[derive(Debug, Clone)]
-pub struct Value(Arc<Tensor>);
+pub struct Tensor(Arc<DtArray>);
 
-impl Value {
-    /// Returns a reference to the Tensor wrapped inside a Value.
-    pub fn as_tensor(&self) -> &Tensor {
+impl Tensor {
+    /// Returns a reference to the DtArray wrapped inside a Tensor.
+    pub fn as_tensor(&self) -> &DtArray {
         self.0.as_ref()
     }
 
-    pub fn to_tensor(self) -> Tensor {
+    pub fn to_tensor(self) -> DtArray {
         Arc::try_unwrap(self.0).unwrap_or_else(|arc| arc.as_ref().clone())
     }
 
-    pub fn to_array<'a, D: ::tensor::Datum>(self) -> TractResult<::ndarray::ArrayD<D>> {
+    pub fn to_array<'a, D: ::datum::Datum>(self) -> TractResult<::ndarray::ArrayD<D>> {
         self.to_tensor().into_array()
 
     }
 }
 
-impl<M> From<M> for Value
+impl<M> From<M> for Tensor
 where
-    Tensor: From<M>,
+    DtArray: From<M>,
 {
-    fn from(m: M) -> Value {
-        Value::from(Arc::new(m.into()))
+    fn from(m: M) -> Tensor {
+        Tensor::from(Arc::new(m.into()))
     }
 }
 
-impl From<Arc<Tensor>> for Value {
-    fn from(m: Arc<Tensor>) -> Value {
-        Value(m)
+impl From<Arc<DtArray>> for Tensor {
+    fn from(m: Arc<DtArray>) -> Tensor {
+        Tensor(m)
     }
 }
 
-impl ::std::ops::Deref for Value {
-    type Target = Tensor;
-    fn deref(&self) -> &Tensor {
+impl ::std::ops::Deref for Tensor {
+    type Target = DtArray;
+    fn deref(&self) -> &DtArray {
         self.0.as_ref()
     }
 }
 
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
+impl PartialEq for Tensor {
+    fn eq(&self, other: &Tensor) -> bool {
         self.as_tensor() == other.as_tensor()
     }
 }

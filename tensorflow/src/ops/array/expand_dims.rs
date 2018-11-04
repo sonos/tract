@@ -33,7 +33,7 @@ impl Op for ExpandDims {
 }
 
 impl StatelessOp for ExpandDims {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (data, dims) = args_2!(inputs);
         let data = data.to_array::<f32>()?;
         let dims = dims.to_array_view::<i32>()?;
@@ -45,7 +45,7 @@ impl StatelessOp for ExpandDims {
                 Err(format!("unimplemented ExpandDims with negative parameter"))?
             }
         }
-        Ok(tvec![Tensor::from(data.into_shape(shape)?).into()])
+        Ok(tvec![DtArray::from(data.into_shape(shape)?).into()])
     }
 }
 

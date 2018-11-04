@@ -21,10 +21,10 @@ pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> Cl
     Ok(())
 }
 
-fn run_regular(params: Parameters) -> CliResult<TVec<Value>> {
+fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
     let tract = params.tract_model;
     let plan = SimplePlan::new(&tract)?;
-    let mut inputs: TVec<Tensor> = tvec!();
+    let mut inputs: TVec<DtArray> = tvec!();
     for (ix, input) in tract.inputs()?.iter().enumerate() {
         if let Some(input) = params
             .inputs
@@ -42,12 +42,12 @@ fn run_regular(params: Parameters) -> CliResult<TVec<Value>> {
     Ok(plan.run(inputs)?)
 }
 
-fn run_pulse(params: Parameters) -> CliResult<TVec<Value>> {
+fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     let (input_fact, output_fact) = params.pulse_facts.unwrap();
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
-    let input: &Tensor = &params.inputs.as_ref().unwrap()[0].as_ref().unwrap();
+    let input: &DtArray = &params.inputs.as_ref().unwrap()[0].as_ref().unwrap();
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);

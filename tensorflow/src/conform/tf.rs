@@ -9,8 +9,7 @@ use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 use tensorflow::Tensor;
 
-use tract_core::Tensor as TractTensor;
-
+use tract_core::DtArray;
 use ndarray::ArrayD;
 
 use std::collections::HashMap;
@@ -60,20 +59,20 @@ impl TensorHolder {
     }
 }
 
-impl From<TractTensor> for TensorHolder {
-    fn from(m: TractTensor) -> TensorHolder {
+impl From<DtArray> for TensorHolder {
+    fn from(m: DtArray) -> TensorHolder {
         match m {
-            TractTensor::Bool(a) => TensorHolder::Bool(Self::to_tensor(a)),
-            TractTensor::F16(_) => unimplemented!(),
-            TractTensor::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
-            TractTensor::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
-            TractTensor::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
-            TractTensor::I16(a) => TensorHolder::I16(Self::to_tensor(a)),
-            TractTensor::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
-            TractTensor::I64(a) => TensorHolder::I64(Self::to_tensor(a)),
-            TractTensor::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
-            TractTensor::U16(a) => TensorHolder::U16(Self::to_tensor(a)),
-            TractTensor::TDim(dims) => {
+            DtArray::Bool(a) => TensorHolder::Bool(Self::to_tensor(a)),
+            DtArray::F16(_) => unimplemented!(),
+            DtArray::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
+            DtArray::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
+            DtArray::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
+            DtArray::I16(a) => TensorHolder::I16(Self::to_tensor(a)),
+            DtArray::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
+            DtArray::I64(a) => TensorHolder::I64(Self::to_tensor(a)),
+            DtArray::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
+            DtArray::U16(a) => TensorHolder::U16(Self::to_tensor(a)),
+            DtArray::TDim(dims) => {
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
                     let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
                     TensorHolder::I32(Self::to_tensor(dims))
@@ -81,7 +80,7 @@ impl From<TractTensor> for TensorHolder {
                     panic!("Streaming used in tensorflow settings")
                 }
             }
-            TractTensor::String(a) => TensorHolder::String(Self::to_tensor(a)),
+            DtArray::String(a) => TensorHolder::String(Self::to_tensor(a)),
         }
     }
 }
@@ -95,9 +94,9 @@ impl Tensorflow {
     /// Executes the graph in one batch.
     pub fn run(
         &mut self,
-        inputs: Vec<(&str, TractTensor)>,
+        inputs: Vec<(&str, DtArray)>,
         output_name: &str,
-    ) -> Result<Vec<TractTensor>> {
+    ) -> Result<Vec<DtArray>> {
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()
             .map(|(name, mat)| (name, mat.into()))
@@ -134,8 +133,8 @@ impl Tensorflow {
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
     pub fn run_get_all(
         &mut self,
-        inputs: Vec<(&str, TractTensor)>,
-    ) -> Result<HashMap<String, Vec<TractTensor>>> {
+        inputs: Vec<(&str, DtArray)>,
+    ) -> Result<HashMap<String, Vec<DtArray>>> {
         let mut tensors: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
@@ -188,15 +187,15 @@ impl Tensorflow {
     }
 }
 
-/// Converts the output of a Tensorflow node into a Vec<TractTensor>.
+/// Converts the output of a Tensorflow node into a Vec<DtArray>.
 fn convert_output(
     step: &mut SessionRunArgs,
     output_type: &DataType,
     output: FetchToken,
-) -> Result<Vec<TractTensor>> {
+) -> Result<Vec<DtArray>> {
     macro_rules! convert {
         ($dt:ident) => {
-            TractTensor::$dt(tensor_to_array(&step.fetch(output)?)?)
+            DtArray::$dt(tensor_to_array(&step.fetch(output)?)?)
         };
     };
 
@@ -206,7 +205,7 @@ fn convert_output(
         DataType::Int8 => convert!(I8),
         DataType::String => convert!(String),
         DataType::Int32 => convert!(I32),
-        t => bail!("Missing Tensor to TractTensor for type {:?}", t),
+        t => bail!("Missing Tensor to DtArray for type {:?}", t),
     };
 
     Ok(vec![tract_tensor])

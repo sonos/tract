@@ -86,20 +86,20 @@ extern crate downcast_rs;
 
 #[macro_use]
 pub mod macros;
-
 #[macro_use]
 pub mod analyser;
+#[macro_use]
+pub mod ops;
+
 mod broadcast;
+pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod f16;
 pub mod model;
-#[macro_use]
-pub mod ops;
 pub mod optim;
 pub mod plan;
 pub mod pulse;
-pub mod tensor;
 
 pub use errors::*;
 
@@ -107,7 +107,8 @@ pub use analyser::types::TensorFact;
 pub use dim::TDim;
 pub use model::{Model, Node, TVec};
 pub use plan::SimplePlan;
-pub use tensor::{DatumType, Tensor};
+pub use datum::{DatumType, DtArray};
+pub use ops::types::Tensor;
 
 #[cfg(test)]
 #[allow(dead_code)]

@@ -22,7 +22,7 @@ use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use utils::*;
 
-use tract_core::Tensor as TractTensor;
+use tract_core::DtArray as TractTensor;
 
 fn img_and_pool(
     ih: usize,

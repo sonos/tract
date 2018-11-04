@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 use tract_core::plan::{SimplePlan, SimpleState};
-use tract_core::{Tensor, TensorFact};
+use tract_core::{DtArray, TensorFact};
 use log::Level::Info;
 
 use display_graph::DisplayOptions;
@@ -71,7 +71,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
             }
 
             _ => {
-                let tract_output: Vec<Tensor> = state.values[n]
+                let tract_output: Vec<DtArray> = state.values[n]
                     .as_ref()
                     .unwrap()
                     .iter()

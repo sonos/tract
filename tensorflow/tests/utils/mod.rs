@@ -1,8 +1,8 @@
-use tract_core::{ Tensor, TensorFact, TVec };
+use tract_core::{ DtArray, TensorFact, TVec };
 
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
-    inputs: Vec<(S, Tensor)>,
+    inputs: Vec<(S, DtArray)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
@@ -25,7 +25,7 @@ pub fn compare<S: AsRef<str>>(
     let found = &state.values[output.id].as_ref().unwrap();
 
     // Run Tensorflow
-    let tf_inputs: Vec<(&str, Tensor)> = inputs
+    let tf_inputs: Vec<(&str, DtArray)> = inputs
         .iter()
         .map(|(s, m)| (s.as_ref(), m.clone()))
         .collect();
@@ -43,7 +43,7 @@ pub fn compare<S: AsRef<str>>(
 #[allow(dead_code)]
 pub fn infer<S: AsRef<str>>(
     graph: &[u8],
-    inputs: Vec<(S, Tensor)>,
+    inputs: Vec<(S, DtArray)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD

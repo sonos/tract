@@ -16,10 +16,10 @@ pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>>
 }
 
 fn space_to_batch<T: Datum + Zero>(
-    input: Value,
+    input: Tensor,
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
-) -> TractResult<Value> {
+) -> TractResult<Tensor> {
     let mut data = input.to_array::<T>()?;
 
     for (ix, pad) in paddings.view().outer_iter().enumerate() {
@@ -66,10 +66,10 @@ fn space_to_batch<T: Datum + Zero>(
 }
 
 fn batch_to_space<T: Datum + Zero>(
-    input: Value,
+    input: Tensor,
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,
-) -> TractResult<Value> {
+) -> TractResult<Tensor> {
     let data = input.to_array()?;
     let input_shape = data.shape().to_vec();
     let crops: ArrayView2<i32> = crops.view().into_dimensionality()?;
@@ -115,7 +115,7 @@ mod tests {
     use super::raw::{BatchToSpace, SpaceToBatch};
     use super::*;
     use tract_core::ops::InferenceOp;
-    use tract_core::tensor::arr4;
+    use tract_core::datum::arr4;
 
     // https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd
     #[test]
@@ -207,8 +207,8 @@ mod tests {
     fn space_to_batch_nd_infer_1() {
         let op = SpaceToBatch::new(f32::datum_type());
         let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 4, 16));
-        let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
-        let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
+        let block_shape = TensorFact::from(DtArray::from(arr1(&[2])));
+        let paddings = TensorFact::from(DtArray::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
         let any = TensorFact::default();
 
         let (_, outputs) = op
@@ -225,8 +225,8 @@ mod tests {
     fn space_to_batch_nd_infer_2() {
         let op = SpaceToBatch::new(f32::datum_type());
         let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::s() - 4), 16));
-        let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
-        let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
+        let block_shape = TensorFact::from(DtArray::from(arr1(&[2])));
+        let paddings = TensorFact::from(DtArray::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
         let any = TensorFact::default();
 
         let (_, outputs) = op

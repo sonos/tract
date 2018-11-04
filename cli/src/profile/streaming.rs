@@ -11,10 +11,10 @@ use ndarray::Axis;
 use profile::ProfileData;
 use rusage::{Duration, Instant};
 use tract_core::prelude::op::*;
-use tract_core::{Model, Tensor};
+use tract_core::{Model, DtArray};
 use {Parameters, ProfilingMode};
 
-fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>, Tensor)> {
+fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>, DtArray)> {
     let start = Instant::now();
     let model = &params.tract_model;
     let input = model.inputs()?[0];
@@ -45,7 +45,7 @@ fn build_streaming_plan(params: &Parameters) -> CliResult<(StreamingPlan<&Model>
 // feed the network until it outputs something
 fn bufferize<P: Borrow<StreamingPlan<M>>, M: Borrow<Model>>(
     state: &mut StreamingModelState<M, P>,
-    chunk: &Tensor,
+    chunk: &DtArray,
 ) -> CliResult<()> {
     let buffering = Instant::now();
     info!("Buffering...");
@@ -176,17 +176,17 @@ pub fn handle_buffering(params: Parameters, display_options: DisplayOptions) -> 
     }
 
     let chunks = match data {
-        Tensor::Bool(m) => split_inner!(Tensor::Bool, m),
-        Tensor::F32(m) => split_inner!(Tensor::F32, m),
-        Tensor::F64(m) => split_inner!(Tensor::F64, m),
-        Tensor::I8(m) => split_inner!(Tensor::I8, m),
-        Tensor::I16(m) => split_inner!(Tensor::I16, m),
-        Tensor::I32(m) => split_inner!(Tensor::I32, m),
-        Tensor::I64(m) => split_inner!(Tensor::I64, m),
-        Tensor::U8(m) => split_inner!(Tensor::U8, m),
-        Tensor::U16(m) => split_inner!(Tensor::U16, m),
-        Tensor::TDim(m) => split_inner!(Tensor::TDim, m),
-        Tensor::String(m) => split_inner!(Tensor::String, m),
+        DtArray::Bool(m) => split_inner!(DtArray::Bool, m),
+        DtArray::F32(m) => split_inner!(DtArray::F32, m),
+        DtArray::F64(m) => split_inner!(DtArray::F64, m),
+        DtArray::I8(m) => split_inner!(DtArray::I8, m),
+        DtArray::I16(m) => split_inner!(DtArray::I16, m),
+        DtArray::I32(m) => split_inner!(DtArray::I32, m),
+        DtArray::I64(m) => split_inner!(DtArray::I64, m),
+        DtArray::U8(m) => split_inner!(DtArray::U8, m),
+        DtArray::U16(m) => split_inner!(DtArray::U16, m),
+        DtArray::TDim(m) => split_inner!(DtArray::TDim, m),
+        DtArray::String(m) => split_inner!(DtArray::String, m),
     };
 
     let mut profile = ProfileData::new(&plan.model());

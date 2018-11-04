@@ -9,12 +9,12 @@ pub struct Size {
 }
 
 impl Size {
-    pub fn coerce_to<T>(size: usize) -> TractResult<Value>
+    pub fn coerce_to<T>(size: usize) -> TractResult<Tensor>
     where
         T: Datum,
         usize: AsPrimitive<T>,
     {
-        Ok(Tensor::from(arr0(size.as_())).into())
+        Ok(DtArray::from(arr0(size.as_())).into())
     }
 }
 
@@ -26,7 +26,7 @@ impl Op for Size {
 
 impl StatelessOp for Size {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let size = inputs[0].shape().iter().product();
         Ok(tvec![dispatch_numbers!(Self::coerce_to(self.dt)(size))?])
     }

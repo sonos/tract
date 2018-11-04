@@ -4332,7 +4332,7 @@ impl TypeProto {
         ::std::default::Default::default()
     }
 
-    // optional .onnx.TypeProto.Tensor tensor_type = 1;
+    // optional .onnx.TypeProto.DtArray tensor_type = 1;
 
     pub fn clear_tensor_type(&mut self) {
         self.value = ::std::option::Option::None;

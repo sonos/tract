@@ -2,7 +2,7 @@ use tract_core::ops::prelude::*;
 use CliResult;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[Value], expected: &[TensorFact]) -> CliResult<()> {
+pub fn check_outputs(got: &[Tensor], expected: &[TensorFact]) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!(
             "Number of output differ: got:{}, expected:{}",

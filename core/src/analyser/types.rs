@@ -98,7 +98,7 @@ impl TensorFact {
 }
 
 impl Fact for TensorFact {
-    type Concrete = Value;
+    type Concrete = Tensor;
 
     /// Tries to transform the fact into a concrete value.
     fn concretize(&self) -> Option<Self::Concrete> {
@@ -119,9 +119,9 @@ impl Fact for TensorFact {
     }
 }
 
-impl<V: Into<Value>> From<V> for TensorFact {
+impl<V: Into<Tensor>> From<V> for TensorFact {
     fn from(v: V) -> TensorFact {
-        let v: Value = v.into();
+        let v: Tensor = v.into();
         TensorFact {
             datum_type: GenericFact::Only(v.datum_type()),
             shape: ShapeFact::from(v.shape()),
@@ -135,7 +135,7 @@ impl fmt::Debug for TensorFact {
         if let Some(t) = self.value.concretize() {
             write!(formatter, "Fully determined tensor: {:?}", t)
         } else {
-            write!(formatter, "Tensor")?;
+            write!(formatter, "DtArray")?;
             if let Some(t) = self.datum_type.concretize() {
                 write!(formatter, ", {:?}", t)?;
             }
@@ -447,7 +447,7 @@ impl fmt::Debug for ShapeFact {
 pub type DimFact = GenericFact<TDim>;
 
 /// Partial information about a value.
-pub type ValueFact = GenericFact<Value>;
+pub type ValueFact = GenericFact<Tensor>;
 
 pub type IntFact = GenericFact<i32>;
 

@@ -9,7 +9,7 @@ pub struct Shape {
 }
 
 impl Shape {
-    pub fn coerce_to<T>(shape: &[usize]) -> TractResult<Value>
+    pub fn coerce_to<T>(shape: &[usize]) -> TractResult<Tensor>
     where
         T: Datum,
         usize: AsPrimitive<T>,
@@ -27,7 +27,7 @@ impl Op for Shape {
 
 impl StatelessOp for Shape {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let shape = inputs[0].shape();
         Ok(tvec![dispatch_numbers!(Self::coerce_to(self.dt)(&shape))?])
     }
@@ -56,13 +56,13 @@ impl InferenceRulesOp for Shape {
             if shape.iter().any(|&d| d.to_integer().is_err()) {
                 s.equals(&outputs[0].datum_type, DatumType::TDim)?;
                 let array1: Array1<TDim> = Array1::from_iter(shape);
-                let tensor: Value = array1.into();
+                let tensor: Tensor = array1.into();
                 s.equals(&outputs[0].value, tensor)
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
                 let array1: Array1<i64> =
                     Array1::from_vec(shape.iter().map(|&i| i.to_integer().unwrap() as i64).collect());
-                let tensor: Value = array1.into();
+                let tensor: Tensor = array1.into();
                 s.equals(&outputs[0].value, tensor)
             } else {
                 s.equals(&outputs[0].datum_type, DatumType::I32)?;
@@ -72,7 +72,7 @@ impl InferenceRulesOp for Shape {
                         .map(|&i| i.to_integer().unwrap() as i32)
                         .collect(),
                 );
-                let tensor: Value = array1.into();
+                let tensor: Tensor = array1.into();
                 s.equals(&outputs[0].value, tensor)
             }
         })
@@ -129,7 +129,7 @@ mod tests {
         let output = TensorFact {
             datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
-            value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
+            value: valuefact!(DtArray::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };
 
         assert_forward!(Shape::new(DatumType::I32), input, output);
@@ -146,7 +146,7 @@ mod tests {
         let output = TensorFact {
             datum_type: typefact!(DatumType::TDim),
             shape: shapefact![3],
-            value: valuefact!(Tensor::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
+            value: valuefact!(DtArray::dims(&[3], &[1.to_dim(), 2.to_dim(), 3.to_dim()]).unwrap()),
         };
 
         assert_backward!(Shape::new(DatumType::I32), input, output);
