@@ -17,7 +17,6 @@ impl Tensor {
 
     pub fn to_array<'a, D: ::datum::Datum>(self) -> TractResult<::ndarray::ArrayD<D>> {
         self.to_tensor().into_array()
-
     }
 }
 

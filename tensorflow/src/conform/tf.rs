@@ -9,8 +9,8 @@ use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 use tensorflow::Tensor;
 
-use tract_core::DtArray;
 use ndarray::ArrayD;
+use tract_core::DtArray;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -92,11 +92,7 @@ fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<Ar
 
 impl Tensorflow {
     /// Executes the graph in one batch.
-    pub fn run(
-        &mut self,
-        inputs: Vec<(&str, DtArray)>,
-        output_name: &str,
-    ) -> Result<Vec<DtArray>> {
+    pub fn run(&mut self, inputs: Vec<(&str, DtArray)>, output_name: &str) -> Result<Vec<DtArray>> {
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()
             .map(|(name, mat)| (name, mat.into()))

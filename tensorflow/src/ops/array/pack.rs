@@ -160,7 +160,8 @@ mod tests {
         let b = TensorFact::from(DtArray::from(TDim::zero()));
         let any = TensorFact::default();
         let (_, output_facts) = pack.infer(tvec![&a, &b], tvec![&any]).unwrap();
-        let exp: TVec<TensorFact> = tvec!(DtArray::from(arr1(&[TDim::zero(), TDim::zero()])).into());
+        let exp: TVec<TensorFact> =
+            tvec!(DtArray::from(arr1(&[TDim::zero(), TDim::zero()])).into());
         assert_eq!(output_facts, exp);
     }
 

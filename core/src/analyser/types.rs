@@ -265,7 +265,7 @@ impl ShapeFact {
     pub fn closed(dims: TVec<DimFact>) -> ShapeFact {
         ShapeFact {
             open: false,
-            .. Self::open(dims)
+            ..Self::open(dims)
         }
     }
 

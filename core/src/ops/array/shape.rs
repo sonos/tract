@@ -60,8 +60,12 @@ impl InferenceRulesOp for Shape {
                 s.equals(&outputs[0].value, tensor)
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
-                let array1: Array1<i64> =
-                    Array1::from_vec(shape.iter().map(|&i| i.to_integer().unwrap() as i64).collect());
+                let array1: Array1<i64> = Array1::from_vec(
+                    shape
+                        .iter()
+                        .map(|&i| i.to_integer().unwrap() as i64)
+                        .collect(),
+                );
                 let tensor: Tensor = array1.into();
                 s.equals(&outputs[0].value, tensor)
             } else {

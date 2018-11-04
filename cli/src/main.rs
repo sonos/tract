@@ -302,7 +302,7 @@ impl Parameters {
                                 } else {
                                     d
                                 }
-                            }).collect()
+                            }).collect(),
                     );
                     fact.shape = shape;
                 }

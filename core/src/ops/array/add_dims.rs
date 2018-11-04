@@ -7,7 +7,7 @@ pub struct AddDims {
 
 impl AddDims {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
-        let mut shape:TVec<D> = input.iter().cloned().collect();
+        let mut shape: TVec<D> = input.iter().cloned().collect();
         for &axis in &self.axes {
             shape.insert(axis, D::one())
         }

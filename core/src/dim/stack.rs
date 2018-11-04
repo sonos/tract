@@ -197,7 +197,7 @@ where
         let rhs = rhs.into();
         if let (Some(lhs), Some(rhs)) = (self.mut_val(), rhs.val()) {
             *lhs += *rhs;
-            return
+            return;
         }
         *self = ExpNode::Add(vec![self.to_tree(), rhs.to_tree()])
             .reduce()
@@ -391,26 +391,17 @@ mod tests {
     #[test]
     fn reduce_neg_mul_() {
         let e: Stack = Stack::from(1) - Stack::from(2) * Stack::sym('S');
-        assert_eq!(
-            e,
-            Stack::from(1) + -Stack::from(2) * Stack::sym('S')
-        );
+        assert_eq!(e, Stack::from(1) + -Stack::from(2) * Stack::sym('S'));
     }
 
     #[test]
     fn reduce_add_rem_1() {
-        assert_eq!(
-            ((Stack::sym('S') + 4) % 2),
-            (Stack::sym('S') % 2)
-        );
+        assert_eq!(((Stack::sym('S') + 4) % 2), (Stack::sym('S') % 2));
     }
 
     #[test]
     fn reduce_add_rem_2() {
-        assert_eq!(
-            ((Stack::sym('S') - 4) % 2),
-            (Stack::sym('S') % 2)
-        );
+        assert_eq!(((Stack::sym('S') - 4) % 2), (Stack::sym('S') % 2));
     }
 
     #[test]

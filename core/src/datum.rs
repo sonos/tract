@@ -381,7 +381,7 @@ impl DtArray {
             .into())
     }
 
-    pub fn cast_to_dt(&self, dt:DatumType) -> TractResult<DtArray> {
+    pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<DtArray> {
         dispatch_datum!(Self::cast_to(dt)(self))
     }
 }
@@ -652,8 +652,8 @@ tensor!(
 
 #[cfg(test)]
 mod tests {
-    use dim::ToDim;
     use datum::*;
+    use dim::ToDim;
 
     #[test]
     fn test_cast_dim_to_dim() {

@@ -21,7 +21,7 @@ impl AvgPool {
             self.kernel_shape.clone(),
             &self.padding,
             self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
-            input_full_shape.into()
+            input_full_shape.into(),
         )
     }
 }

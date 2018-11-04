@@ -20,8 +20,7 @@ fn make_slicer(
 fn eval_t<T: Datum + LinalgScalar>(a: &DtArray, b: &DtArray) -> TractResult<DtArray> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
-    let (ashape, bshape, cshape) = infer_shapes(
-        a.shape().into(), b.shape().into())?;
+    let (ashape, bshape, cshape) = infer_shapes(a.shape().into(), b.shape().into())?;
     let a = a.into_shape(&*ashape)?;
     let b = b.into_shape(&*bshape)?;
     let mut c = unsafe { Array::uninitialized(&*cshape) };

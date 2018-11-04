@@ -334,8 +334,10 @@ impl<'rules> Solver<'rules> {
         self,
         facts: (TVec<&TensorFact>, TVec<&TensorFact>),
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let mut context = Context::new( facts.0.into_iter().cloned().collect(), 
-                                        facts.1.into_iter().cloned().collect());
+        let mut context = Context::new(
+            facts.0.into_iter().cloned().collect(),
+            facts.1.into_iter().cloned().collect(),
+        );
 
         // Apply the rules until reaching a fixed point.
         let mut changed = true;

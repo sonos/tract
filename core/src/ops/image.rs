@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 
 use super::{Input, Op};
-use {Result, DtArray};
+use {DtArray, Result};
 
 #[derive(Debug)]
 pub struct DecodeJpeg {}

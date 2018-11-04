@@ -71,7 +71,10 @@ impl StatelessOp for MaxPool {
             }
         });
         if let Some(dt) = self.with_index_outputs {
-            Ok(tvec!(values.into(), DtArray::from(indices.unwrap()).cast_to_dt(dt)?.into()))
+            Ok(tvec!(
+                values.into(),
+                DtArray::from(indices.unwrap()).cast_to_dt(dt)?.into()
+            ))
         } else {
             Ok(tvec!(values.into()))
         }

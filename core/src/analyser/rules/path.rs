@@ -199,7 +199,9 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
                 if k >= 0 {
                     let k = k.to_usize().unwrap();
-                    fact.shape = fact.shape.unify(&ShapeFact::closed(tvec![dimfact!(_); k]))?;
+                    fact.shape = fact
+                        .shape
+                        .unify(&ShapeFact::closed(tvec![dimfact!(_); k]))?;
                 } else {
                     bail!("Infered a negative rank ({})", k)
                 }
@@ -281,11 +283,7 @@ fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> TractResult<Wrapped> {
             } else if shape.is_open() {
                 Ok(dimfact!(_).wrap())
             } else {
-                bail!(
-                    "{:?} has no {:?}-th dimension.",
-                    shape,
-                    k
-                );
+                bail!("{:?} has no {:?}-th dimension.", shape, k);
             }
         }
 

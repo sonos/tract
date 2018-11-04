@@ -14,7 +14,7 @@ impl PermuteAxes {
             }
             new_shape
         } else {
-            let mut new_shape:TVec<D> = input.iter().cloned().collect();
+            let mut new_shape: TVec<D> = input.iter().cloned().collect();
             new_shape.reverse();
             new_shape
         }
@@ -23,9 +23,7 @@ impl PermuteAxes {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: Tensor) -> TractResult<TVec<Tensor>> {
         if let Some(ref axes) = self.axes {
-            Ok(tvec![
-                input.to_array::<T>()?.permuted_axes(&**axes).into()
-            ])
+            Ok(tvec![input.to_array::<T>()?.permuted_axes(&**axes).into()])
         } else {
             Ok(tvec![input.to_array::<T>()?.reversed_axes().into()])
         }

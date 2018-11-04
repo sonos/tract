@@ -73,7 +73,10 @@ mod tests {
 
     #[test]
     fn shape_macro_closed_2() {
-        assert_eq!(shapefact![1], ShapeFact::closed(tvec![GenericFact::Only(1)]));
+        assert_eq!(
+            shapefact![1],
+            ShapeFact::closed(tvec![GenericFact::Only(1)])
+        );
     }
 
     #[test]

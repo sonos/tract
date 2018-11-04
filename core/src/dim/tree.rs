@@ -427,8 +427,7 @@ mod tests {
     fn reduce_cplx_ex_5() {
         assert_eq!(
             mul(-1, &add(&Sym('S'), &Val(-182))).reduce(),
-            add(&Mul(1, vec![Val(-1), Sym('S')]), &Val(182))
-                .reduce(),
+            add(&Mul(1, vec![Val(-1), Sym('S')]), &Val(182)).reduce(),
         )
     }
 

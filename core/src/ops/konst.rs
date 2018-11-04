@@ -8,7 +8,7 @@ pub struct Const {
 impl Const {
     pub fn for_tensor(tensor: DtArray) -> Const {
         Const {
-            value: tensor.into()
+            value: tensor.into(),
         }
     }
 }

@@ -40,7 +40,7 @@ impl Conv {
     }
 
     fn output_shape<D: DimLike, ID: Into<D> + Copy>(&self, ishape: &[D], kshape: &[ID]) -> TVec<D> {
-        let mut result:TVec<D> = ishape.into();
+        let mut result: TVec<D> = ishape.into();
         let ishape = self.data_fmt.shape(ishape);
         let spatial_rank = ishape.hw_rank();
         let ones = tvec![1; spatial_rank];

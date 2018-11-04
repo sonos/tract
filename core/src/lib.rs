@@ -104,11 +104,11 @@ pub mod pulse;
 pub use errors::*;
 
 pub use analyser::types::TensorFact;
+pub use datum::{DatumType, DtArray};
 pub use dim::TDim;
 pub use model::{Model, Node, TVec};
-pub use plan::SimplePlan;
-pub use datum::{DatumType, DtArray};
 pub use ops::types::Tensor;
+pub use plan::SimplePlan;
 
 #[cfg(test)]
 #[allow(dead_code)]

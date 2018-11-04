@@ -10,7 +10,7 @@ pub struct Squeeze {
 impl Squeeze {
     fn compute_shape<D: DimLike>(&self, input: &[D]) -> TractResult<TVec<D>> {
         if let Some(ref axes) = self.axes {
-            let mut shape:TVec<D> = input.iter().cloned().collect();
+            let mut shape: TVec<D> = input.iter().cloned().collect();
             for &axis in axes.iter().rev() {
                 if shape.remove(axis) != D::one() {
                     bail!("Attempt to squeeze an axis which dimension in not one");

@@ -1,4 +1,4 @@
-#![cfg(feature="conform")]
+#![cfg(feature = "conform")]
 #![allow(non_snake_case)]
 #[macro_use]
 extern crate log;
@@ -13,14 +13,14 @@ extern crate tract_tensorflow;
 
 mod utils;
 
-use tract_tensorflow::conform::*;
-use utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
 use tract_core::DtArray;
+use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
+use utils::*;
 
 fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
     let conv = tfpb::node()

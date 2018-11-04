@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
+use log::Level::Info;
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::{DtArray, TensorFact};
-use log::Level::Info;
 
 use display_graph::DisplayOptions;
 use errors::*;
@@ -28,7 +28,8 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
-    let pairs = tract.inputs()
+    let pairs = tract
+        .inputs()
         .iter()
         .map(|s| &*tract.node(s[0].node).name)
         .zip(generated.iter().cloned())
@@ -100,8 +101,10 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                                     "Other error"
                                 };
 
-                                Row::Double(format!("{} {}", header, reason).red().to_string(),
-                                            format!("{:?}", data))
+                                Row::Double(
+                                    format!("{} {}", header, reason).red().to_string(),
+                                    format!("{:?}", data),
+                                )
                             }).collect::<Vec<_>>();
                         display_graph.add_node_section(n, mismatches)?;
                         display_graph.add_node_label(n, "MISM.".red().to_string())?;

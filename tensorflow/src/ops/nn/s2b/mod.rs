@@ -114,8 +114,8 @@ mod tests {
     #![allow(non_snake_case)]
     use super::raw::{BatchToSpace, SpaceToBatch};
     use super::*;
-    use tract_core::ops::InferenceOp;
     use tract_core::datum::arr4;
+    use tract_core::ops::InferenceOp;
 
     // https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd
     #[test]

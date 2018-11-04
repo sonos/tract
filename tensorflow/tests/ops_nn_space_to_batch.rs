@@ -1,4 +1,4 @@
-#![cfg(feature="conform")]
+#![cfg(feature = "conform")]
 #![allow(non_snake_case)]
 #[macro_use]
 extern crate log;
@@ -14,14 +14,14 @@ extern crate tract_tensorflow;
 
 mod utils;
 
-use tract_tensorflow::conform::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::ops::StatefullOp;
 use tract_core::datum::arr4;
 use tract_core::datum::Datum;
+use tract_core::ops::StatefullOp;
 use tract_core::DtArray;
+use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;

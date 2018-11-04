@@ -38,6 +38,7 @@ pub mod prelude {
     pub use analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorsProxy};
     pub use analyser::types::TypeFact;
     pub use analyser::types::*;
+    pub use datum::{arr4, Datum, DatumType, DtArray};
     pub use dim::{DimLike, TDim, ToDim};
     pub use f16::f16;
     pub use model::TVec;
@@ -45,7 +46,6 @@ pub mod prelude {
     pub use pulse::{PulsedTensorFact, PulsifiedOp};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use datum::{arr4, Datum, DatumType, DtArray};
     pub use TractResult;
 }
 
@@ -104,11 +104,7 @@ pub trait Op:
                     .map(|i| i.value.concretize().unwrap().clone().into())
                     .collect(); // checked
                 let output_value = stateless.eval(input_values)?.pop().unwrap();
-                return Ok((
-                    infered_inputs,
-                    tvec![ output_value.into(),
-                    ],
-                ));
+                return Ok((infered_inputs, tvec![output_value.into(),]));
             }
         }
 

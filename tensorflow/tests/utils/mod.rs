@@ -1,4 +1,4 @@
-use tract_core::{ DtArray, TensorFact, TVec };
+use tract_core::{DtArray, TVec, TensorFact};
 
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
@@ -29,7 +29,8 @@ pub fn compare<S: AsRef<str>>(
         .iter()
         .map(|(s, m)| (s.as_ref(), m.clone()))
         .collect();
-    let expected = tract_tensorflow::conform::tf::for_slice(&graph)?.run(tf_inputs.clone(), &output.name)?;
+    let expected =
+        tract_tensorflow::conform::tf::for_slice(&graph)?.run(tf_inputs.clone(), &output.name)?;
 
     prop_assert!(
         expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true),
