@@ -124,6 +124,7 @@ pub trait Datum: Copy + Clone + Send + Sync + fmt::Debug + Default + 'static {
     fn tensor_cast_to_array(m: &DtArray) -> TractResult<MaybeOwnedArray<Self>>;
     fn tensor_to_view(m: &DtArray) -> TractResult<ArrayViewD<Self>>;
     fn tensor_to_view_mut(m: &mut DtArray) -> TractResult<ArrayViewMutD<Self>>;
+    fn tensor_to_scalar(m: &DtArray) -> TractResult<Self>;
     fn array_into_tensor(m: ArrayD<Self>) -> DtArray;
 }
 
@@ -202,31 +203,6 @@ impl DtArray {
             &DtArray::TDim(_) => DatumType::TDim,
             &DtArray::String(_) => DatumType::String,
         }
-    }
-
-    pub fn axis_chunks(&self, axis: usize, size: usize) -> TractResult<Vec<DtArray>> {
-        match self {
-            &DtArray::Bool(_) => self.axis_chunks_t::<bool>(axis, size),
-            &DtArray::U8(_) => self.axis_chunks_t::<u8>(axis, size),
-            &DtArray::U16(_) => self.axis_chunks_t::<u16>(axis, size),
-            &DtArray::I8(_) => self.axis_chunks_t::<i8>(axis, size),
-            &DtArray::I16(_) => self.axis_chunks_t::<i16>(axis, size),
-            &DtArray::I32(_) => self.axis_chunks_t::<i32>(axis, size),
-            &DtArray::I64(_) => self.axis_chunks_t::<i64>(axis, size),
-            &DtArray::F16(_) => self.axis_chunks_t::<f16>(axis, size),
-            &DtArray::F32(_) => self.axis_chunks_t::<f32>(axis, size),
-            &DtArray::F64(_) => self.axis_chunks_t::<f64>(axis, size),
-            &DtArray::TDim(_) => self.axis_chunks_t::<TDim>(axis, size),
-            &DtArray::String(_) => bail!("String is not a datum"),
-        }
-    }
-
-    pub fn axis_chunks_t<T: Datum>(&self, axis: usize, size: usize) -> TractResult<Vec<DtArray>> {
-        let array = T::tensor_to_view(self)?;
-        Ok(array
-            .axis_chunks_iter(Axis(axis), size)
-            .map(|v| T::array_into_tensor(v.to_owned()))
-            .collect())
     }
 
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
@@ -371,6 +347,10 @@ impl DtArray {
         <D as Datum>::tensor_to_view_mut(self)
     }
 
+    pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<D> {
+        <D as Datum>::tensor_to_scalar(self)
+    }
+
     pub fn cast_to_array<D: Datum>(&self) -> TractResult<MaybeOwnedArray<D>> {
         <D as Datum>::tensor_cast_to_array(self)
     }
@@ -444,7 +424,8 @@ macro_rules! tensor {
         }
 
         impl DtArray {
-            pub fn $as_one(&self) -> Option<$t> {
+            #[allow(dead_code)]
+            fn $as_one(&self) -> Option<$t> {
                 if let &DtArray::$v(ref it) = self {
                     if it.shape().len() == 0 {
                         Some(*it.iter().next().unwrap())
@@ -456,7 +437,8 @@ macro_rules! tensor {
                 }
             }
 
-            pub fn $as(&self) -> Option<&ArrayD<$t>> {
+            #[allow(dead_code)]
+            fn $as(&self) -> Option<&ArrayD<$t>> {
                 if let &DtArray::$v(ref it) = self {
                     Some(it)
                 } else {
@@ -464,7 +446,8 @@ macro_rules! tensor {
                 }
             }
 
-            pub fn $as_mut(&mut self) -> Option<&mut ArrayD<$t>> {
+            #[allow(dead_code)]
+            fn $as_mut(&mut self) -> Option<&mut ArrayD<$t>> {
                 if let &mut DtArray::$v(ref mut it) = self {
                     Some(it)
                 } else {
@@ -472,7 +455,8 @@ macro_rules! tensor {
                 }
             }
 
-            pub fn $take(self) -> Option<ArrayD<$t>> {
+            #[allow(dead_code)]
+            fn $take(self) -> Option<ArrayD<$t>> {
                 if let DtArray::$v(it) = self {
                     Some(it)
                 } else {
@@ -480,7 +464,8 @@ macro_rules! tensor {
                 }
             }
 
-            pub fn $make(shape: &[usize], values: &[$t]) -> TractResult<DtArray> {
+            #[allow(dead_code)]
+            fn $make(shape: &[usize], values: &[$t]) -> TractResult<DtArray> {
                 Ok(Array::from_shape_vec(shape, values.to_vec())?.into())
             }
         }
@@ -497,6 +482,15 @@ macro_rules! tensor {
             fn tensor_into_array(m: DtArray) -> TractResult<ArrayD<Self>> {
                 let _ = Self::tensor_to_view(&m)?;
                 Ok(m.$take().unwrap())
+            }
+
+            fn tensor_to_scalar(m: &DtArray) -> TractResult<Self> {
+                let view = Self::tensor_to_view(m)?;
+                if view.ndim() == 0 {
+                    Ok(*view.iter().next().unwrap())
+                } else {
+                    bail!("Tensor is not a scalar")
+                }
             }
 
             fn tensor_to_view(m: &DtArray) -> TractResult<ArrayViewD<Self>> {

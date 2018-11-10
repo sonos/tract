@@ -80,21 +80,43 @@ impl Tractify<TensorProto> for DtArray {
                 }
             }
         } else {
-            match dt {
-                DatumType::Bool => Ok(DtArray::i32s(&*shape, t.get_int32_data())?
-                    .into_array::<i32>()?
-                    .mapv(|x| x != 0)
-                    .into()),
-                DatumType::U8 => DtArray::i32s(&*shape, t.get_int32_data())?.cast_to::<u8>(),
-                DatumType::U16 => DtArray::i32s(&*shape, t.get_int32_data())?.cast_to::<u16>(),
-                DatumType::I8 => DtArray::i32s(&*shape, t.get_int32_data())?.cast_to::<i8>(),
-                DatumType::I16 => DtArray::i32s(&*shape, t.get_int32_data())?.cast_to::<i16>(),
-                DatumType::I32 => DtArray::i32s(&*shape, t.get_int32_data()),
-                DatumType::I64 => DtArray::i64s(&*shape, t.get_int64_data()),
-                DatumType::F32 => DtArray::f32s(&*shape, t.get_float_data()),
-                DatumType::F64 => DtArray::f64s(&*shape, t.get_double_data()),
+            use ndarray::Array;
+            let it = match dt {
+                DatumType::Bool => Array::from_shape_vec(
+                    &*shape,
+                    t.get_int32_data().iter().map(|&x| x != 0).collect(),
+                )?.into(),
+                DatumType::U8 => Array::from_shape_vec(
+                    &*shape,
+                    t.get_int32_data().iter().map(|&x| x as u8).collect(),
+                )?.into(),
+                DatumType::U16 => Array::from_shape_vec(
+                    &*shape,
+                    t.get_int32_data().iter().map(|&x| x as u16).collect(),
+                )?.into(),
+                DatumType::I8 => Array::from_shape_vec(
+                    &*shape,
+                    t.get_int32_data().iter().map(|&x| x as i8).collect(),
+                )?.into(),
+                DatumType::I16 => Array::from_shape_vec(
+                    &*shape,
+                    t.get_int32_data().iter().map(|&x| x as i16).collect(),
+                )?.into(),
+                DatumType::I32 => {
+                    Array::from_shape_vec(&*shape, t.get_int32_data().to_vec())?.into()
+                }
+                DatumType::I64 => {
+                    Array::from_shape_vec(&*shape, t.get_int64_data().to_vec())?.into()
+                }
+                DatumType::F32 => {
+                    Array::from_shape_vec(&*shape, t.get_float_data().to_vec())?.into()
+                }
+                DatumType::F64 => {
+                    Array::from_shape_vec(&*shape, t.get_double_data().to_vec())?.into()
+                }
                 _ => unimplemented!("FIXME, tensor loading"),
-            }
+            };
+            Ok(it)
         }
     }
 }

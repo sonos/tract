@@ -105,9 +105,9 @@ mod tests {
     #[test]
     fn pack_0() {
         let inputs = tvec![
-            DtArray::i32s(&[2], &[1, 4]).unwrap().into(),
-            DtArray::i32s(&[2], &[2, 5]).unwrap().into(),
-            DtArray::i32s(&[2], &[3, 6]).unwrap().into(),
+            arr1(&[1, 4]).into(),
+            arr1(&[2, 5]).into(),
+            arr1(&[3, 6]).into(),
         ];
         assert_eq!(
             Pack::new(DatumType::I32, 3, 0)
@@ -130,9 +130,9 @@ mod tests {
     #[test]
     fn pack_1() {
         let pack = Pack::new(DatumType::I32, 3, 0);
-        let input = DtArray::i32s(&[0], &[]).unwrap();
-        let exp: DtArray = DtArray::i32s(&[1, 0], &[]).unwrap();
-        let found = pack.eval(tvec![input.into()]).unwrap();
+        let input = arr1::<i32>(&[]).into();
+        let exp:Tensor = arr2::<i32, _>(&[[]]).into();
+        let found = pack.eval(tvec![input]).unwrap();
 
         assert!(
             exp.close_enough(&found[0], false),

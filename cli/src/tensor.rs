@@ -133,21 +133,20 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
 pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> DtArray {
     use rand;
     use std::iter::repeat_with;
-    let len = sizes.iter().product();
-    macro_rules! r {
-        ($t:ty) => {
-            repeat_with(|| rand::random::<$t>())
-                .take(len)
-                .collect::<Vec<_>>()
-        };
+    fn make<D>(shape: Vec<usize>) -> DtArray where
+        D: Datum,
+        rand::distributions::Standard: rand::distributions::Distribution<D>
+    {
+        let len = shape.iter().product();
+        ndarray::ArrayD::from_shape_vec(shape, repeat_with(|| rand::random::<D>()).take(len).collect()).unwrap().into()
     }
 
     match datum_type {
-        DatumType::F64 => DtArray::f64s(&*sizes, &*r!(f64)),
-        DatumType::F32 => DtArray::f32s(&*sizes, &*r!(f32)),
-        DatumType::I32 => DtArray::i32s(&*sizes, &*r!(i32)),
-        DatumType::I8 => DtArray::i8s(&*sizes, &*r!(i8)),
-        DatumType::U8 => DtArray::u8s(&*sizes, &*r!(u8)),
+        DatumType::F64 => make::<f64>(sizes),
+        DatumType::F32 => make::<f32>(sizes),
+        DatumType::I32 => make::<i32>(sizes),
+        DatumType::I8 => make::<i8>(sizes),
+        DatumType::U8 => make::<u8>(sizes),
         _ => unimplemented!("missing type"),
-    }.unwrap()
+    }
 }

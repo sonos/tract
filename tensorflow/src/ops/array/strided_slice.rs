@@ -146,11 +146,7 @@ impl BaseStridedSlice {
         let begin = casted_begin.view().into_dimensionality()?;
         let casted_end = TDim::tensor_cast_to_array(&end)?;
         let end = casted_end.view().into_dimensionality()?;
-        let strides = strides
-            .as_i32s()
-            .ok_or("Strides expected as I32")?
-            .view()
-            .into_dimensionality()?;
+        let strides = strides.to_array_view::<i32>()?.into_dimensionality()?;
         trace!(
             "StridedSlice {:?} computing shapes: input_shape:{:?} begin:{:?} end:{:?} strides:{:?}",
             self,
@@ -217,16 +213,11 @@ impl BaseStridedSlice {
             &inputs[2].value,
             &inputs[3].value,
             move |s, input_shape, begin, end, stride| {
-                let casted_begin = TDim::tensor_cast_to_array(&begin).unwrap();
-                let begin = casted_begin.view().into_dimensionality().unwrap();
-                let casted_end = TDim::tensor_cast_to_array(&end).unwrap();
-                let end = casted_end.view().into_dimensionality().unwrap();
-                let stride = stride
-                    .as_i32s()
-                    .unwrap()
-                    .view()
-                    .into_dimensionality()
-                    .unwrap();
+                let casted_begin = TDim::tensor_cast_to_array(&begin)?;
+                let begin = casted_begin.view().into_dimensionality()?;
+                let casted_end = TDim::tensor_cast_to_array(&end)?;
+                let end = casted_end.view().into_dimensionality()?;
+                let stride = stride.to_array_view::<i32>()?.into_dimensionality()?;
                 let mut current_out_dim = 0;
                 for (ix, d) in input_shape.iter().enumerate() {
                     if !self.must_shrink(ix) {

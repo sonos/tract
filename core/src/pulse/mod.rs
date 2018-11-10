@@ -239,11 +239,11 @@ mod tests {
         for p in 0..(input.len() / pulse) {
             let chunk = &input[(p * pulse)..((p + 1) * pulse)];
             let mut outputs = state
-                .run(tvec!(DtArray::f32s(&[1, 1, 4], chunk).unwrap()))
+                .run(tvec!(ndarray::Array::from_shape_vec((1usize, 1, 4), chunk.to_vec()).unwrap().into()))
                 .unwrap();
-            got.extend(outputs.remove(0).as_f32s().unwrap().iter());
+            got.extend(outputs.remove(0).to_array_view::<f32>().unwrap().iter());
         }
 
-        assert_eq!(&got[2..], outputs[0].as_f32s().unwrap().as_slice().unwrap());
+        assert_eq!(&got[2..], outputs[0].to_array_view::<f32>().unwrap().as_slice().unwrap());
     }
 }

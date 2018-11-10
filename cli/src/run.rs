@@ -60,7 +60,9 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     //    println!("output_shape: {:?}", output_shape);
     let pulse = input_fact.pulse();
     let mut result = ::ndarray::ArrayD::<f32>::default(output_shape);
-    for (ix, chunk) in input.axis_chunks(axis, pulse)?.into_iter().enumerate() {
+    let input = input.to_array_view::<f32>()?;
+    for ix in 0..input_dim.div_ceil(pulse) {
+        let chunk = input.slice_axis(ndarray::Axis(axis), (ix*pulse..(ix+1)*pulse).into());
         let input = if chunk.shape()[input_fact.axis] < pulse {
             let mut chunk_shape = chunk.shape().to_vec();
             chunk_shape[input_fact.axis] = pulse;
@@ -69,12 +71,12 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
                 .slice_axis_mut(
                     ::ndarray::Axis(input_fact.axis),
                     (..chunk.shape()[input_fact.axis]).into(),
-                ).assign(&chunk.to_array_view::<f32>()?);
-            padded_chunk.into()
+                ).assign(&chunk);
+            padded_chunk
         } else {
-            chunk
+            chunk.to_owned()
         };
-        let mut outputs = state.run(tvec!(input))?;
+        let mut outputs = state.run(tvec!(input.into()))?;
         let result_chunk = outputs[0].to_array_view::<f32>()?;
         result
             .slice_axis_mut(
