@@ -13,6 +13,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Expand", |_| {
         Ok(Box::new(tractops::array::MultiBroadcastTo::default()))
     });
+    reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Pad", pad);
     reg.insert("Reshape", |_| {
@@ -65,6 +66,19 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
     } else {
         Ok(Box::new(tractops::array::ConstantLike::new(value)))
     }
+}
+
+pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
+    use protobuf::ProtobufEnum;
+    let dt = match node.get_attr_opt_int("dtype")? {
+        Some(dt) => Some(::pb::TensorProto_DataType::from_i32(dt as i32)
+            .ok_or_else(|| {
+                format!("Can not convert integer {} into a TensorProto_DataType", dt)
+            })?.tractify()?),
+        None => None,
+    };
+    let k = node.get_attr_opt_int("k")?.unwrap_or(0);
+    Ok(Box::new(tractops::array::EyeLike::new(dt, k as isize)))
 }
 
 pub fn flatten(node: &NodeProto) -> TractResult<Box<Op>> {

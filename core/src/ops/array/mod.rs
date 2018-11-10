@@ -60,6 +60,7 @@ pub use self::add_dims::AddDims;
 pub use self::broadcast::MultiBroadcastTo;
 pub use self::constant_like::ConstantLike;
 pub use self::concat::Concat;
+pub use self::constant_like::EyeLike;
 pub use self::flatten::Flatten;
 pub use self::pad::{Pad, PadMode};
 pub use self::permute_axes::PermuteAxes;
