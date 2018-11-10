@@ -45,6 +45,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("LRN", lrn);
     reg.insert("MaxPool", max_pool);
     reg.insert("ParametricSoftplus", parametric_softplus);
+    reg.insert("PRelu", |_| Ok(Box::new(Prelu::default())));
     reg.insert("ReduceL1", reduce!(L1));
     reg.insert("ReduceL2", reduce!(L2));
     reg.insert("ReduceLogSum", reduce!(LogSum));
@@ -234,6 +235,15 @@ pub fn parametric_softplus(node: &NodeProto) -> TractResult<Box<Op>> {
     let beta = node.get_attr_float("beta")?;
     Ok(Box::new(tractops::nn::ParametricSoftplus::new(alpha, beta)))
 }
+
+element_bin!(Prelu, match
+    f16 => f16 { |a:f16, b:f16| {
+        use num::Zero;
+        if a < f16::zero() { a*b } else { b }
+    } },
+    f32 => f32 { |a, b| if a < 0.0 { a*b } else { a } },
+    f64 => f64 { |a, b| if a < 0.0 { a*b } else { a } }
+);
 
 pub fn scaled_tanh(node: &NodeProto) -> TractResult<Box<Op>> {
     let alpha = node.get_attr_float("alpha")?;

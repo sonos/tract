@@ -103,6 +103,7 @@ macro_rules! element_map_with_params {
     };
 }
 
+#[macro_export]
 macro_rules! element_bin {
     ($name:ident, [$($type:ty),*] => $to:ty { $expr:expr }) => {
         element_bin!($name, match $($type => $to { $expr } ),*);
