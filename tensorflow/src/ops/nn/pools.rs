@@ -127,13 +127,12 @@ impl Pooler for AvgPooler {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_core::DtArray;
 
     #[test]
     fn test_maxpool_1() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(1, 1), (2, 1), PhantomData);
-        let data = DtArray::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
-        let exp: DtArray = DtArray::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
+        let data: Tensor = arr4(&[[[[-1.0f32]]]]).into();
+        let exp: Tensor = arr4(&[[[[-1.0f32]]]]).into();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
@@ -147,8 +146,9 @@ mod tests {
     #[test]
     fn test_maxpool_2() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(3, 3), (3, 3), PhantomData);
-        let data = DtArray::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
-        let exp: DtArray = DtArray::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
+        let data: Tensor =
+            arr4(&[[[[1.0f32], [0.0], [0.0], [0.0]], [[0.0], [0.0], [0.0], [0.0]]]]).into();
+        let exp: Tensor = arr4(&[[[[1.0f32], [0.0]]]]).into();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
@@ -162,8 +162,8 @@ mod tests {
     #[test]
     fn test_avgpool_1() {
         let pool = Pool::<AvgPooler>(LocalPatch::same(1, 1), (1, 2), PhantomData);
-        let data = DtArray::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
-        let exp: DtArray = DtArray::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
+        let data: Tensor = arr4(&[[[[0.0f32], [0.0]]]]).into();
+        let exp: Tensor = arr4(&[[[[0.0f32], [0.0]]]]).into();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(

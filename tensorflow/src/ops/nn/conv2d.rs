@@ -311,42 +311,34 @@ mod tests {
     fn test_conv_1() {
         let conv = make_conv(1, 1, Padding::Same);
         // NHWC
-        let data: DtArray = DtArray::f32s(&[1, 1, 1, 1], &[1f32]).unwrap();
+        let data: Tensor = arr4(&[[[[1f32]]]]).into();
         // HWIO
-        let filter = DtArray::f32s(&[3, 1, 1, 1], &[0.0, 1.0, 0.0]).unwrap();
-        let exp: DtArray = DtArray::f32s(&[1, 1, 1, 1], &[1.0]).unwrap();
+        let filter: Tensor = arr4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]).into();
+        let exp: Tensor = arr4(&[[[[1f32]]]]).into();
 
         let result = conv
             .as_stateless()
             .unwrap()
-            .eval(tvec![data.into(), filter.into()])
+            .eval(tvec![data, filter])
             .unwrap()
             .remove(0);
-        assert_eq!(exp, result.to_tensor());
+        assert_eq!(exp, result);
     }
 
     #[test]
     fn test_conv_2() {
         let conv = make_conv(1, 1, Padding::Same);
-        let data =
-            DtArray::f32s(&[1, 2, 2, 1], &[142.3088, 48.891083, 208.3187, -11.274994]).unwrap();
-        let filter: DtArray = DtArray::f32s(
-            &[2, 2, 1, 1],
-            &[160.72833, 107.84076, 247.50552, -38.738464],
-        ).unwrap();
-        let exp: DtArray =
-            DtArray::f32s(&[1, 2, 2, 1], &[80142.31, 5067.5586, 32266.81, -1812.2109]).unwrap();
-
-        assert!(
-            exp.close_enough(
-                &conv
-                    .as_stateless()
-                    .unwrap()
-                    .eval(tvec![data.into(), filter.into()])
-                    .unwrap()[0],
-                true
-            )
-        )
+        let data: Tensor =
+            arr4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]).into();
+        let filter: Tensor = arr4(&[
+            [[[160.72833f32]], [[107.84076]]],
+            [[[247.50552]], [[-38.738464]]],
+        ]).into();
+        let exp: Tensor = arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
+        let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
+        println!("{:?}", got);
+        println!("{:?}", exp);
+        assert!(exp.close_enough(&got, true));
     }
 
     #[test]

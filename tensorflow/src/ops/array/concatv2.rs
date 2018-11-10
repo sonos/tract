@@ -19,8 +19,8 @@ impl<T: Datum> StatelessOp for ConcatV2<T> {
     fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let axis: i32 = inputs
             .pop()
-            .and_then(|t| t.as_i32())
-            .ok_or("Expected a i32 scalar")?;
+            .unwrap()
+            .to_scalar::<i32>()?;
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
@@ -51,7 +51,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         s.equals(&inputs[n].rank, 0)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[n].value, move |s, axis| {
-            let axis = axis.as_i32().unwrap() as usize; // checked
+            let axis = axis.to_scalar::<i32>()? as usize; // checked
             trace!("axis for Concatv2: {}", axis);
             for d in 0..axis {
                 s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;

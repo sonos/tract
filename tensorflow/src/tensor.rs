@@ -62,9 +62,14 @@ impl Tractify<TensorProto> for DtArray {
                 }
             }
         } else {
+            use ndarray::Array;
             match dtype {
-                DataType::DT_INT32 => DtArray::i32s(&dims, t.get_int_val())?.into(),
-                DataType::DT_FLOAT => DtArray::f32s(&dims, t.get_float_val())?.into(),
+                DataType::DT_INT32 => {
+                    Array::from_shape_vec(&*dims, t.get_int_val().to_vec())?.into()
+                }
+                DataType::DT_FLOAT => {
+                    Array::from_shape_vec(&*dims, t.get_float_val().to_vec())?.into()
+                }
                 _ => unimplemented!("missing type"),
             }
         };

@@ -127,7 +127,7 @@ mod test {
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
             let output = state.run(tvec!(DtArray::from(arr1(&input)))).unwrap();
-            assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
+            assert_eq!(output[0].to_array_view::<u8>().unwrap().as_slice().unwrap(), &*expect);
         }
     }
 
@@ -188,7 +188,7 @@ mod test {
                 .map(|i| i.saturating_sub(4) as u8)
                 .collect();
             let output = state.run(tvec!(DtArray::from(arr1(&input)))).unwrap();
-            assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
+            assert_eq!(output[0].to_array_view::<u8>().unwrap().as_slice().unwrap(), &*expect);
         }
     }
 }
