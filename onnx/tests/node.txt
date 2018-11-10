@@ -2,6 +2,8 @@
 test_abs
 test_acos
 test_acos_example
+test_acosh
+test_acosh_example
 test_add
 test_add_bcast
 test_and2d
@@ -26,8 +28,12 @@ test_argmin_no_keepdims_example
 test_argmin_no_keepdims_random
 test_asin
 test_asin_example
+test_asinh
+test_asinh_example
 test_atan
 test_atan_example
+test_atanh
+test_atanh_example
 test_averagepool_1d_default
 test_averagepool_2d_default
 test_averagepool_2d_pads
@@ -82,6 +88,8 @@ test_conv_with_strides_no_padding
 test_conv_with_strides_padding
 test_cos
 test_cos_example
+test_cosh
+test_cosh_example
 test_div
 test_div_bcast
 test_div_example
@@ -264,6 +272,8 @@ test_sigmoid
 test_sigmoid_example
 test_sin
 test_sin_example
+test_sinh
+test_sinh_example
 test_size
 test_size_example
 test_slice

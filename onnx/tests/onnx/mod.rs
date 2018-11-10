@@ -10,7 +10,7 @@ fn setup_test_logger() {
     use std::sync::Once;
 
     static START: Once = Once::new();
-    START.call_once(|| TermLogger::init(LevelFilter::Debug, Config::default()).unwrap());
+    START.call_once(|| TermLogger::init(LevelFilter::Info, Config::default()).unwrap());
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<DtArray> {
@@ -51,13 +51,14 @@ struct DataJson {
 }
 
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
-    //    setup_test_logger();
+    // setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
         let f = fs::File::open(test_path.join("data.json")).unwrap();
         let _lock = f.lock_exclusive();
-        let data: DataJson = ::serde_json::from_reader(f).unwrap();
+        info!("Locked {:?}", f);
+        let data: DataJson = ::serde_json::from_reader(&f).unwrap();
         if !test_path.join(&data.model_name).exists() {
             let (_, body) = ::mio_httpc::CallBuilder::get()
                 .url(&data.url)
@@ -75,6 +76,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
             fs::rename(tmp.join(&data.model_name), test_path.join(&data.model_name)).unwrap();
             let _ = fs::remove_dir_all(&tmp);
         }
+        info!("Done with {:?}", f);
         test_path.join(&data.model_name)
     } else {
         test_path
