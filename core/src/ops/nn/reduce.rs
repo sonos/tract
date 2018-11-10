@@ -44,7 +44,7 @@ pub enum Reducer {
 }
 
 impl Reducer {
-    fn reduce(&self, reduce: &Reduce, input: Value) -> TractResult<Value> {
+    fn reduce(&self, reduce: &Reduce, input: Tensor) -> TractResult<Tensor> {
         let dt = input.datum_type();
         match self {
             Reducer::L1 => match dt {
@@ -76,13 +76,13 @@ impl Reducer {
         }
     }
 
-    fn reduce_t<T, F>(&self, reduce: &Reduce, input: Value, f: F) -> TractResult<Value>
+    fn reduce_t<T, F>(&self, reduce: &Reduce, input: Tensor, f: F) -> TractResult<Tensor>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Datum,
     {
         use ndarray::*;
-        let input = input.into_array::<T>()?;
+        let input = input.to_array::<T>()?;
         let full_output_shape: Vec<usize> = input
             .shape()
             .iter()
@@ -222,7 +222,7 @@ impl Op for Reduce {
 }
 
 impl StatelessOp for Reduce {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         Ok(tvec!(self.reducer.reduce(&self, args_1!(inputs))?))
     }
 }
@@ -240,14 +240,14 @@ impl InferenceRulesOp for Reduce {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
         } else if let Some(axes) = self.axes.as_ref() {
             s.equals(
-                (&inputs[0].rank).bex() - axes.len() as i64,
+                (&inputs[0].rank).bex() - axes.len() as i32,
                 &outputs[0].rank,
             )?;
         } else {
             s.equals(&outputs[0].rank, 0)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
-            let out_shape: Vec<TDim> = shape
+            let out_shape: TVec<TDim> = shape
                 .iter()
                 .enumerate()
                 .filter_map(|(ix, &d)| {

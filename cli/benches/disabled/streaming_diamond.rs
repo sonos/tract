@@ -26,7 +26,7 @@ fn streaming_diamond(c: &mut Criterion) {
 
         let chunks = data.as_f32s().unwrap()
             .axis_iter(Axis(0))
-            .map(|v| Tensor::F32(v.insert_axis(Axis(0)).to_owned()))
+            .map(|v| DtArray::F32(v.insert_axis(Axis(0)).to_owned()))
             .enumerate();
 
         for (i, chunk) in chunks.take(10) {

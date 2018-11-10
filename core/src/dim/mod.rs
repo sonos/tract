@@ -34,16 +34,18 @@ pub trait DimLike:
         (*self + other - 1) / other
     }
 
-    fn to_integer(&self) -> TractResult<i64>;
+    fn to_integer(&self) -> TractResult<i32>;
 }
+
 impl DimLike for TDim {
-    fn to_integer(&self) -> TractResult<i64> {
+    fn to_integer(&self) -> TractResult<i32> {
         TDim::to_integer(self)
     }
 }
+
 impl DimLike for usize {
-    fn to_integer(&self) -> TractResult<i64> {
-        Ok(*self as i64)
+    fn to_integer(&self) -> TractResult<i32> {
+        Ok(*self as i32)
     }
 }
 
@@ -76,15 +78,11 @@ impl TDim {
         Self::s()
     }
 
-    pub fn as_const(&self) -> Option<i64> {
+    pub fn as_const(&self) -> Option<i32> {
         self.to_integer().ok()
     }
 
-    pub fn reduce(&mut self) {
-        self.0.reduce()
-    }
-
-    pub fn eval(&self, s: i64) -> Option<i64> {
+    pub fn eval(&self, s: i32) -> Option<i32> {
         self.0.eval(&hashmap!('S' => s)).ok()
     }
 
@@ -92,7 +90,7 @@ impl TDim {
         self.as_const().is_none()
     }
 
-    pub fn to_integer(&self) -> TractResult<i64> {
+    pub fn to_integer(&self) -> TractResult<i32> {
         self.0.eval(&hashmap!())
     }
 
@@ -203,43 +201,67 @@ impl<I: Into<TDim>> ToDim for I {
     }
 }
 
-impl<I: AsPrimitive<i64>> ops::Add<I> for TDim {
+impl<I: AsPrimitive<i32>> ops::Add<I> for TDim {
     type Output = Self;
     fn add(self, rhs: I) -> Self {
         self + Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<i64>> ops::Sub<I> for TDim {
+impl<I: AsPrimitive<i32>> ops::Sub<I> for TDim {
     type Output = Self;
     fn sub(self, rhs: I) -> Self {
         self - Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<i64>> ops::Mul<I> for TDim {
+impl<I: AsPrimitive<i32>> ops::Mul<I> for TDim {
     type Output = Self;
     fn mul(self, rhs: I) -> Self {
         self * Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<i64>> ops::Div<I> for TDim {
+impl<I: AsPrimitive<i32>> ops::Div<I> for TDim {
     type Output = Self;
     fn div(self, rhs: I) -> Self {
         self / Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<i64>> ops::Rem<I> for TDim {
+impl<I: AsPrimitive<i32>> ops::Rem<I> for TDim {
     type Output = Self;
     fn rem(self, rhs: I) -> Self {
         self % Self::from(rhs.as_())
     }
 }
 
-impl<I: AsPrimitive<i64>> From<I> for TDim {
-    fn from(it: I) -> TDim {
-        TDim(it.as_().into())
+impl From<i64> for TDim {
+    fn from(it: i64) -> TDim {
+        TDim((it as i32).into())
+    }
+}
+
+impl From<i32> for TDim {
+    fn from(it: i32) -> TDim {
+        TDim(it.into())
+    }
+}
+
+impl From<isize> for TDim {
+    fn from(it: isize) -> TDim {
+        TDim((it as i32).into())
+    }
+}
+
+impl From<usize> for TDim {
+    fn from(it: usize) -> TDim {
+        TDim((it as i32).into())
+    }
+}
+
+impl<'a> From<&'a usize> for TDim {
+    fn from(it: &'a usize) -> TDim {
+        TDim((*it as i32).into())
     }
 }

@@ -17,7 +17,7 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
         .iter()
         .map(|s| match *s {
             "S" => Ok(TDim::stream()),         // Streaming dimension.
-            _ => Ok(s.parse::<i64>()?.into()), // Regular dimension.
+            _ => Ok(s.parse::<i32>()?.into()), // Regular dimension.
         }).collect::<TractResult<Vec<TDim>>>()?;
 
     if shape.iter().filter(|o| o.is_stream()).count() > 1 {
@@ -36,7 +36,7 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
     Ok(TensorFact::dt_shape(datum_type, shape))
 }
 
-fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
+fn tensor_for_text_data(filename: &str) -> CliResult<DtArray> {
     let mut file = fs::File::open(filename)
         .map_err(|e| format!("Reading tensor from {}, {:?}", filename, e))?;
     let mut data = String::new();
@@ -64,7 +64,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
             array.into_shape(
                 shape
                     .iter()
-                    .map(|i| i.to_integer().unwrap_or(missing as i64) as usize)
+                    .map(|i| i.to_integer().unwrap_or(missing as i32) as usize)
                     .collect::<Vec<_>>(),
             )?
         }};
@@ -101,13 +101,13 @@ pub fn for_string(value: &str) -> CliResult<TensorFact> {
     }
 }
 
-pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<Tensor>> {
+pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<DtArray>> {
     values.iter().map(|v| tensor_for_fact(v, None)).collect()
 }
 
-pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
+pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<DtArray> {
     if let Some(value) = fact.concretize() {
-        Ok(value.clone())
+        Ok(value.as_tensor().to_owned())
     } else {
         if fact.stream_info()?.is_some() && streaming_dim.is_none() {
             Err("random tensor requires a streaming dim")?
@@ -130,7 +130,7 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
 }
 
 /// Generates a random tensor of a given size and type.
-pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
+pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> DtArray {
     use rand;
     use std::iter::repeat_with;
     let len = sizes.iter().product();
@@ -143,11 +143,11 @@ pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
     }
 
     match datum_type {
-        DatumType::F64 => Tensor::f64s(&*sizes, &*r!(f64)),
-        DatumType::F32 => Tensor::f32s(&*sizes, &*r!(f32)),
-        DatumType::I32 => Tensor::i32s(&*sizes, &*r!(i32)),
-        DatumType::I8 => Tensor::i8s(&*sizes, &*r!(i8)),
-        DatumType::U8 => Tensor::u8s(&*sizes, &*r!(u8)),
+        DatumType::F64 => DtArray::f64s(&*sizes, &*r!(f64)),
+        DatumType::F32 => DtArray::f32s(&*sizes, &*r!(f32)),
+        DatumType::I32 => DtArray::i32s(&*sizes, &*r!(i32)),
+        DatumType::I8 => DtArray::i8s(&*sizes, &*r!(i8)),
+        DatumType::U8 => DtArray::u8s(&*sizes, &*r!(u8)),
         _ => unimplemented!("missing type"),
     }.unwrap()
 }

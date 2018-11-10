@@ -1,15 +1,5 @@
 use super::*;
 use model::TVec;
-use tensor::Tensor;
-
-/// Build a TensorFact from a Tensor.
-pub fn tensor_to_fact(tensor: Tensor) -> TensorFact {
-    TensorFact {
-        datum_type: typefact!(tensor.datum_type()),
-        shape: tensor.shape().into(),
-        value: valuefact!(tensor),
-    }
-}
 
 /// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(
@@ -30,7 +20,7 @@ pub fn infer_forward_concrete(
     // If we know the value of all the inputs, we can deduce everything.
     if let Some(stateless) = op.as_stateless() {
         let output_value = stateless.eval(input_values)?.pop().unwrap();
-        return Ok(Some(tvec![tensor_to_fact(output_value.into_tensor())]));
+        return Ok(Some(tvec![output_value.into()]));
     }
 
     Ok(None)
@@ -38,27 +28,31 @@ pub fn infer_forward_concrete(
 
 /// Infers basic shape facts in the case of broadcasting operators.
 pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<ShapeFact>> {
-    if shapes.iter().any(|s| s.open) {
+    if shapes.iter().any(|s| s.is_open()) {
         debug!("Can't infer shape for broadcasting operators when some inputs have an open shape.");
         return Ok(None);
     }
 
-    let dims: Vec<_> = shapes.iter().map(|s| &s.dims).collect();
-    let bound = dims.iter().map(|s| s.len()).max().unwrap();
+    let bound = shapes
+        .iter()
+        .map(|s| s.rank().concretize().unwrap())
+        .max()
+        .unwrap() as usize;
 
-    let mut output_shape: Vec<DimFact> = vec![];
+    let mut output_shape: TVec<DimFact> = tvec![];
 
-    // FIXME(liautaud): Rewrite more clearly and test.
-    for i in 1..(bound + 1) {
+    for i in 0..bound {
         let mut previous = None;
         let mut unknown = 0;
 
-        for shape in &dims {
-            if shape.len() < i {
+        for shape in shapes.iter() {
+            let rank = shape.rank().concretize().unwrap() as usize;
+            let shape: TVec<DimFact> = shape.dims().collect();
+            if i >= rank {
                 continue;
             }
 
-            match &shape[shape.len() - i] {
+            match shape[rank - i - 1] {
                 GenericFact::Any => unknown += 1,
                 GenericFact::Only(d) if d.is_one() => (),
                 GenericFact::Only(d) => {
@@ -84,7 +78,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
         } else if unknown == 1 && previous == None {
             output_shape.push(GenericFact::Any);
         } else if let Some(previous) = previous {
-            output_shape.push(GenericFact::Only(*previous));
+            output_shape.push(GenericFact::Only(previous));
         } else {
             output_shape.push(GenericFact::Only(1.into()));
         }
@@ -132,16 +126,14 @@ pub fn most_specific_shape<'a, I: IntoIterator<Item = &'a ShapeFact>>(
     let mut best = None;
 
     for shape in iter {
-        if !shape.open {
-            let rank = shape.dims.len();
-
+        if let Some(rank) = shape.rank().concretize() {
             if prev_rank.is_some() && rank != prev_rank.unwrap() {
                 bail!("Rank mismatch between different shapes.");
             } else {
                 prev_rank = Some(rank);
             }
 
-            let concrete = shape.dims.iter().filter(|d| d.is_concrete()).count();
+            let concrete = shape.dims().filter(|d| d.is_concrete()).count();
 
             if prev_concrete.is_none() || concrete > prev_concrete.unwrap() {
                 prev_concrete = Some(concrete);

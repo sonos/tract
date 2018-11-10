@@ -6,10 +6,10 @@ use super::{DataFormat, PaddingSpec, Patch};
 #[derive(Debug, Clone, new, Default)]
 pub struct MaxPool {
     data_fmt: DataFormat,
-    kernel_shape: Vec<usize>,
+    kernel_shape: TVec<usize>,
     padding: PaddingSpec,
-    strides: Option<Vec<usize>>,
-    with_index_outputs: bool,
+    strides: Option<TVec<usize>>,
+    with_index_outputs: Option<DatumType>,
 }
 
 impl MaxPool {
@@ -17,11 +17,11 @@ impl MaxPool {
         let hw_rank = self.data_fmt.shape(input_full_shape).hw_rank();
         Patch::new(
             self.data_fmt,
-            vec![1; hw_rank],
+            tvec![1; hw_rank],
             self.kernel_shape.clone(),
             &self.padding,
-            self.strides.clone().unwrap_or_else(|| vec![1; hw_rank]),
-            input_full_shape.to_vec(),
+            self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
+            input_full_shape.into(),
         )
     }
 }
@@ -32,7 +32,7 @@ impl Op for MaxPool {
     }
 
     fn noutputs(&self) -> usize {
-        if self.with_index_outputs {
+        if self.with_index_outputs.is_some() {
             2
         } else {
             1
@@ -41,21 +41,21 @@ impl Op for MaxPool {
 }
 
 impl StatelessOp for MaxPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
 
         let patch = self.patch(input.shape());
-        let shape: Vec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
+        let shape: TVec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
         let visitor = patch.wrap(&input);
 
-        let mut values = unsafe { ArrayD::uninitialized(shape.clone()) };
-        let mut indices = if self.with_index_outputs {
-            Some(unsafe { ArrayD::uninitialized(shape.clone()) })
+        let mut values = unsafe { ArrayD::uninitialized(&*shape) };
+        let mut indices = if self.with_index_outputs.is_some() {
+            Some(unsafe { ArrayD::uninitialized(&*shape) })
         } else {
             None
         };
-        ::ndarray::indices(shape).into_iter().for_each(|coords| {
+        ::ndarray::indices(&*shape).into_iter().for_each(|coords| {
             let max = visitor
                 .at(&coords.slice())
                 .enumerate()
@@ -65,13 +65,16 @@ impl StatelessOp for MaxPool {
                     |acc, v| if acc.1 < v.1 { v } else { acc },
                 );
             values[&coords] = max.1;
-            if self.with_index_outputs {
+            if self.with_index_outputs.is_some() {
                 indices.as_mut().unwrap()[coords] =
-                    visitor.global_offset_for(&coords.slice(), max.0) as i64;
+                    visitor.global_offset_for(&coords.slice(), max.0) as i32;
             }
         });
-        if self.with_index_outputs {
-            Ok(tvec!(values.into(), indices.unwrap().into()))
+        if let Some(dt) = self.with_index_outputs {
+            Ok(tvec!(
+                values.into(),
+                DtArray::from(indices.unwrap()).cast_to_dt(dt)?.into()
+            ))
         } else {
             Ok(tvec!(values.into()))
         }
@@ -85,16 +88,16 @@ impl InferenceRulesOp for MaxPool {
         inputs: &'p TensorsProxy,
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
-        s.equals(&outputs.len, self.noutputs() as i64)?;
+        s.equals(&outputs.len, self.noutputs() as i32)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        if self.with_index_outputs {
-            s.equals(&outputs[1].datum_type, i64::datum_type())?;
+        if let Some(idt) = self.with_index_outputs {
+            s.equals(&outputs[1].datum_type, idt)?;
             s.equals(&outputs[1].rank, &inputs[0].rank)?;
         }
         s.given(&inputs[0].shape, move |s, ishape| {
             let ishape = self.data_fmt.shape(ishape);
-            let ones = vec![1; ishape.hw_rank()];
+            let ones = tvec![1; ishape.hw_rank()];
             let computed = self.padding.compute(
                 ishape.hw_dims(),
                 &*self.kernel_shape,

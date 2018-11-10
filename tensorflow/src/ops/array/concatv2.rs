@@ -16,7 +16,7 @@ pub struct ConcatV2<T: Datum> {
 }
 
 impl<T: Datum> StatelessOp for ConcatV2<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let axis: i32 = inputs
             .pop()
             .and_then(|t| t.as_i32())
@@ -42,7 +42,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         let n = self.n;
-        s.equals(&inputs.len, n as i64 + 1)?;
+        s.equals(&inputs.len, n as i32 + 1)?;
         s.equals(&outputs.len, 1)?;
         s.equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
@@ -50,7 +50,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         s.equals_all((0..self.n).map(|i| (&inputs[i].rank).bex()).collect())?;
         s.equals(&inputs[n].rank, 0)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        s.given(&inputs[n].value, move |s, axis: Tensor| {
+        s.given(&inputs[n].value, move |s, axis| {
             let axis = axis.as_i32().unwrap() as usize; // checked
             trace!("axis for Concatv2: {}", axis);
             for d in 0..axis {

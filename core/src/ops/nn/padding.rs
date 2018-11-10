@@ -1,8 +1,8 @@
-use dim::DimLike;
+use ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub enum PaddingSpec {
-    Explicit(Vec<usize>, Vec<usize>),
+    Explicit(TVec<usize>, TVec<usize>),
     Valid,
     SameUpper,
     SameLower,
@@ -16,9 +16,9 @@ impl Default for PaddingSpec {
 
 #[derive(Debug, Clone)]
 pub struct ComputedPaddedDim<D: DimLike> {
-    pub pad_before: Vec<D>,
-    pub pad_after: Vec<D>,
-    pub output: Vec<D>,
+    pub pad_before: TVec<D>,
+    pub pad_after: TVec<D>,
+    pub output: TVec<D>,
 }
 
 impl PaddingSpec {
@@ -124,9 +124,9 @@ impl PaddingSpec {
         upper: bool,
     ) -> ComputedPaddedDim<D> {
         let spatial_rank = data_spatial_shape.len();
-        let mut dims = vec![];
-        let mut pad_before = vec![];
-        let mut pad_after = vec![];
+        let mut dims = tvec![];
+        let mut pad_before = tvec![];
+        let mut pad_after = tvec![];
         for ax in 0..spatial_rank {
             let dim = data_spatial_shape[ax].div_ceil(strides[ax]);
             let kernel_field = (kernel_spatial_shape[ax].into() - 1) * dilations[ax] + 1;

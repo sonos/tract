@@ -171,11 +171,7 @@ fn get_tensorfact_path(fact: &TensorFact, path: &[isize]) -> TractResult<Wrapped
         [0] => Ok(fact.datum_type.clone().wrap()),
 
         // Get the rank of the TensorFact.
-        [1] => if fact.shape.open {
-            Ok(IntFact::default().wrap())
-        } else {
-            Ok(fact.shape.dims.len().wrap())
-        },
+        [1] => Ok(fact.shape.rank().wrap()),
 
         slice if slice[0] == 2 => get_shape_path(&fact.shape, &slice[1..]),
         slice if slice[0] == 3 => get_value_path(&fact.value, &slice[1..]),
@@ -203,7 +199,9 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
                 if k >= 0 {
                     let k = k.to_usize().unwrap();
-                    fact.shape = fact.shape.unify(&ShapeFact::closed(vec![dimfact!(_); k]))?;
+                    fact.shape = fact
+                        .shape
+                        .unify(&ShapeFact::closed(tvec![dimfact!(_); k]))?;
                 } else {
                     bail!("Infered a negative rank ({})", k)
                 }
@@ -225,7 +223,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             let k = k.to_usize().unwrap();
             let dim = DimFact::from_wrapped(value)?;
 
-            let mut dims = vec![dimfact!(_); k];
+            let mut dims = tvec![dimfact!(_); k];
             dims.push(dim);
 
             fact.shape = fact.shape.unify(&ShapeFact::open(dims))?;
@@ -280,17 +278,12 @@ fn get_shape_path(shape: &ShapeFact, path: &[isize]) -> TractResult<Wrapped> {
         // Get a precise dimension.
         [k] => {
             let k = k.to_usize().unwrap();
-
-            if k < shape.dims.len() {
-                Ok(shape.dims[k].wrap())
-            } else if shape.open {
+            if let Some(d) = shape.dims().nth(k) {
+                Ok(d.wrap())
+            } else if shape.is_open() {
                 Ok(dimfact!(_).wrap())
             } else {
-                bail!(
-                    "The closed shape {:?} has no {:?}-th dimension.",
-                    shape.dims,
-                    k
-                );
+                bail!("{:?} has no {:?}-th dimension.", shape, k);
             }
         }
 
@@ -315,7 +308,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
     macro_rules! inner {
         ($array:expr) => {{
             match $array.get(path.as_slice()) {
-                Some(&v) => Ok((v as i64).wrap()),
+                Some(&v) => Ok((v as i32).wrap()),
                 None => bail!("There is no index {:?} in value {:?}.", path, $array),
             }
         }};
@@ -323,10 +316,10 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
 
     match value.concretize() {
         None => Ok(IntFact::default().wrap()),
-        Some(tensor) => match tensor {
-            Tensor::I32(array) => inner!(array),
-            Tensor::I8(array) => inner!(array),
-            Tensor::U8(array) => inner!(array),
+        Some(tensor) => match tensor.as_tensor() {
+            DtArray::I32(array) => inner!(array),
+            DtArray::I8(array) => inner!(array),
+            DtArray::U8(array) => inner!(array),
             _ => bail!(
                 "Found value {:?}, but the solver only supports \
                  integer values.",

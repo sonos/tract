@@ -13,7 +13,7 @@ pub struct Gemm {
 }
 
 impl Gemm {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -24,9 +24,7 @@ impl Gemm {
         let bt = if self.trans_b { b.t() } else { b };
         let c_shape = (at.rows(), bt.cols());
         let mut c = if c.shape() == &[c_shape.0, c_shape.1] {
-            c.into_array::<T>()?
-                .into_dimensionality::<Ix2>()?
-                .to_owned()
+            c.to_array::<T>()?.into_dimensionality::<Ix2>()?.to_owned()
         } else {
             c.to_array_view::<T>()?
                 .broadcast(c_shape)
@@ -45,7 +43,7 @@ impl Op for Gemm {
 }
 
 impl StatelessOp for Gemm {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -80,12 +78,12 @@ pub struct GemmUnaryA {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    b: Tensor,
-    c: Tensor,
+    b: DtArray,
+    c: DtArray,
 }
 
 impl GemmUnaryA {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -111,7 +109,7 @@ impl Op for GemmUnaryA {
 }
 
 impl StatelessOp for GemmUnaryA {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -145,12 +143,12 @@ pub struct GemmUnaryB {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    a: Tensor,
-    c: Tensor,
+    a: DtArray,
+    c: DtArray,
 }
 
 impl GemmUnaryB {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -176,7 +174,7 @@ impl Op for GemmUnaryB {
 }
 
 impl StatelessOp for GemmUnaryB {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }

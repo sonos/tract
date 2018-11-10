@@ -23,10 +23,10 @@ pub mod tf;
 
 pub use protobuf::Message;
 
+use tfpb;
 use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
 use tract_core::ops::prelude::*;
-use tfpb;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
@@ -61,4 +61,3 @@ pub fn placeholder_f32(name: &str) -> tfpb::node_def::NodeDef {
 pub fn placeholder_i32(name: &str) -> tfpb::node_def::NodeDef {
     placeholder(name, DataType::DT_INT32, None)
 }
-

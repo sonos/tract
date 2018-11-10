@@ -16,7 +16,7 @@ impl Split {
             Ok(tvec!(input/self.outputs;self. outputs))
         }
     }
-    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Tensor) -> TractResult<TVec<Tensor>> {
         let mut current = 0;
         let input = input.to_array_view::<T>()?;
         Ok(self
@@ -40,7 +40,7 @@ impl Op for Split {
 
 impl StatelessOp for Split {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -54,7 +54,7 @@ impl InferenceRulesOp for Split {
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, self.outputs as i64)?;
+        s.equals(&outputs.len, self.outputs as i32)?;
         (0..self.outputs).try_for_each(|i| {
             s.equals(&inputs[0].datum_type, &outputs[i].datum_type)?;
             s.equals(&inputs[0].rank, &outputs[i].rank)

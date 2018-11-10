@@ -3,23 +3,23 @@ use ops::prelude::*;
 
 #[derive(Debug, new, Clone)]
 struct DelayState {
-    buffer: Tensor,
+    buffer: DtArray,
 }
 
 impl DelayState {
-    pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Value) -> TractResult<Value> {
+    pub fn eval_t<T: Datum>(&mut self, op: &Delay, input: Tensor) -> TractResult<Tensor> {
         let axis = Axis(op.input_fact.axis);
         let input = input.to_array_view::<T>()?;
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
 
         let buffered = op.delay + op.overlap;
-        let mut output_shape: Vec<_> = op.input_fact.shape.clone();
+        let mut output_shape: TVec<_> = op.input_fact.shape.clone();
         let input_pulse = op.input_fact.pulse();
         let output_pulse = input_pulse + op.overlap;
         output_shape[op.input_fact.axis] = output_pulse;
         // build output
         let output = if op.delay < input_pulse {
-            let mut output = unsafe { ArrayD::<T>::uninitialized(output_shape) };
+            let mut output = unsafe { ArrayD::<T>::uninitialized(&*output_shape) };
             let from_input = input_pulse - op.delay;
             let from_buffer = output_pulse - from_input;
             output
@@ -49,7 +49,7 @@ impl DelayState {
 }
 
 impl OpState for DelayState {
-    fn eval(&mut self, op: &Op, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&mut self, op: &Op, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
         Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
@@ -71,13 +71,13 @@ impl Op for Delay {
     }
 }
 
-fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
+fn make_buffer<T: Datum>(shape: &[usize]) -> DtArray {
     ::ndarray::ArrayD::<T>::default(shape).into()
 }
 
 impl StatefullOp for Delay {
     fn state(&self) -> TractResult<Option<Box<OpState>>> {
-        let mut buffer_shape: Vec<_> = self.input_fact.shape.clone();
+        let mut buffer_shape: TVec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
         let buffer = dispatch_datum!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
         Ok(Some(Box::new(DelayState { buffer })))
@@ -106,7 +106,7 @@ mod test {
         let mut model = Model::default();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec![pulse],
+            shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
@@ -126,7 +126,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1) + overlap))
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
-            let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
+            let output = state.run(tvec!(DtArray::from(arr1(&input)))).unwrap();
             assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
         }
     }
@@ -157,7 +157,7 @@ mod test {
         let mut model = Model::default();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec![pulse],
+            shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
@@ -170,7 +170,7 @@ mod test {
             .unwrap();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
-            shape: vec![pulse],
+            shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 2,
@@ -187,7 +187,7 @@ mod test {
             let expect: Vec<u8> = (pulse * i..(pulse * (i + 1)))
                 .map(|i| i.saturating_sub(4) as u8)
                 .collect();
-            let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
+            let output = state.run(tvec!(DtArray::from(arr1(&input)))).unwrap();
             assert_eq!(output[0].as_u8s().unwrap().as_slice().unwrap(), &*expect);
         }
     }

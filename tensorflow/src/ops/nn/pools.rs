@@ -28,12 +28,9 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 }
 
 impl<P: Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let m_input = args_1!(inputs);
-        let data = m_input
-            .into_tensor()
-            .take_f32s()
-            .ok_or("Expected a f32 matrix")?;
+        let data = m_input.to_array::<f32>()?;
         let data = into_4d(data)?;
         let images = BatchImageWrapper(data.view());
 
@@ -65,7 +62,7 @@ impl<P: Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
             P::digest(&mut state)
         });
 
-        Ok(tvec![Tensor::from(transformed.into_dyn()).into()])
+        Ok(tvec![DtArray::from(transformed.into_dyn()).into()])
     }
 }
 
@@ -130,13 +127,13 @@ impl Pooler for AvgPooler {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_core::Tensor;
+    use tract_core::DtArray;
 
     #[test]
     fn test_maxpool_1() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(1, 1), (2, 1), PhantomData);
-        let data = Tensor::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
-        let exp: Tensor = Tensor::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
+        let data = DtArray::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
+        let exp: DtArray = DtArray::f32s(&[1, 1, 1, 1], &[-1.0]).unwrap();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
@@ -150,8 +147,8 @@ mod tests {
     #[test]
     fn test_maxpool_2() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(3, 3), (3, 3), PhantomData);
-        let data = Tensor::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
-        let exp: Tensor = Tensor::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
+        let data = DtArray::f32s(&[1, 2, 4, 1], &[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).unwrap();
+        let exp: DtArray = DtArray::f32s(&[1, 1, 2, 1], &[1.0, 0.0]).unwrap();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
@@ -165,8 +162,8 @@ mod tests {
     #[test]
     fn test_avgpool_1() {
         let pool = Pool::<AvgPooler>(LocalPatch::same(1, 1), (1, 2), PhantomData);
-        let data = Tensor::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
-        let exp: Tensor = Tensor::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
+        let data = DtArray::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
+        let exp: DtArray = DtArray::f32s(&[1, 1, 2, 1], &[0.0, 0.0]).unwrap();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(

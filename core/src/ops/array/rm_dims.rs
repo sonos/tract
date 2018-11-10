@@ -6,7 +6,7 @@ pub struct RmDims {
 }
 
 impl RmDims {
-    fn compute_shape<D: DimLike>(&self, input: &[D]) -> Vec<D> {
+    fn compute_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         input
             .iter()
             .enumerate()
@@ -16,9 +16,9 @@ impl RmDims {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<TVec<Value>> {
+    fn eval_t<T: Datum>(&self, input: Tensor) -> TractResult<TVec<Tensor>> {
         let shape = self.compute_shape(input.shape());
-        Ok(tvec![input.into_array::<T>()?.into_shape(shape)?.into()])
+        Ok(tvec![input.to_array::<T>()?.into_shape(&*shape)?.into()])
     }
 }
 
@@ -38,7 +38,7 @@ impl Op for RmDims {
 
 impl StatelessOp for RmDims {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -55,7 +55,7 @@ impl InferenceRulesOp for RmDims {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(
             &outputs[0].rank,
-            (&inputs[0].rank).bex() - self.axes.len() as i64,
+            (&inputs[0].rank).bex() - self.axes.len() as i32,
         )?;
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape);

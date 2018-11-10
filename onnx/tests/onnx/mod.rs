@@ -13,7 +13,7 @@ fn setup_test_logger() {
     START.call_once(|| TermLogger::init(LevelFilter::Debug, Config::default()).unwrap());
 }
 
-pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
+pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<DtArray> {
     let mut vec = tvec!();
     let len = fs::read_dir(path)
         .map_err(|e| format!("accessing {:?}, {:?}", path, e))
@@ -37,7 +37,7 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     vec
 }
 
-pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
+pub fn load_dataset(path: &path::Path) -> (TVec<DtArray>, TVec<DtArray>) {
     (
         load_half_dataset("input", path),
         load_half_dataset("output", path),

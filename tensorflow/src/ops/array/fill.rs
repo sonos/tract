@@ -22,7 +22,7 @@ where
 }
 
 impl<T: Datum> StatelessOp for Fill<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_array_view()?;
         let value: T = value[[]];

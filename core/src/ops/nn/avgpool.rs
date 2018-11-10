@@ -6,9 +6,9 @@ use super::{DataFormat, PaddingSpec, Patch};
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
     data_fmt: DataFormat,
-    kernel_shape: Vec<usize>,
+    kernel_shape: TVec<usize>,
     padding: PaddingSpec,
-    strides: Option<Vec<usize>>,
+    strides: Option<TVec<usize>>,
     count_include_pad: bool,
 }
 
@@ -17,11 +17,11 @@ impl AvgPool {
         let hw_rank = self.data_fmt.shape(input_full_shape).hw_rank();
         Patch::new(
             self.data_fmt,
-            vec![1; hw_rank],
+            tvec![1; hw_rank],
             self.kernel_shape.clone(),
             &self.padding,
-            self.strides.clone().unwrap_or_else(|| vec![1; hw_rank]),
-            input_full_shape.to_vec(),
+            self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
+            input_full_shape.into(),
         )
     }
 }
@@ -33,15 +33,15 @@ impl Op for AvgPool {
 }
 
 impl StatelessOp for AvgPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
 
         let patch = self.patch(input.shape());
-        let shape: Vec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
+        let shape: TVec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
         let visitor = patch.wrap(&input);
 
-        let output = ArrayD::from_shape_fn(shape, |coords| -> f32 {
+        let output = ArrayD::from_shape_fn(&*shape, |coords| -> f32 {
             let pair = visitor
                 .at(&coords.slice())
                 .map(|ov| ov.map(|v| (v, true)).unwrap_or((0.0, false)))
@@ -66,7 +66,7 @@ impl InferenceRulesOp for AvgPool {
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[0].shape, move |s, ishape| {
             let ishape = self.data_fmt.shape(ishape);
-            let ones = vec![1; ishape.hw_rank()];
+            let ones = tvec![1; ishape.hw_rank()];
             let computed = self.padding.compute(
                 ishape.hw_dims(),
                 &*self.kernel_shape,

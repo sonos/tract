@@ -30,7 +30,7 @@ impl Op for SpaceToBatch {
                 .cast_to_array::<TDim>()?
                 .into_owned()
                 .into_dimensionality::<Ix2>()?;
-            let mut paddings = vec![];
+            let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
                 let pad = match (p[0].to_integer(), p[1].to_integer()) {
                     (Ok(bef), Ok(aft)) => {
@@ -49,7 +49,7 @@ impl Op for SpaceToBatch {
                 self.datum_type,
                 input_shape,
                 output_shape,
-                block_shape.into_array::<i32>()?.into_dimensionality()?,
+                block_shape.to_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
@@ -60,7 +60,7 @@ impl Op for SpaceToBatch {
 }
 
 impl StatelessOp for SpaceToBatch {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape
             .cast_to_array()?
@@ -143,7 +143,7 @@ impl Op for BatchToSpace {
                 self.datum_type,
                 input_shape,
                 output_shape,
-                block_shape.into_array::<i32>()?.into_dimensionality()?,
+                block_shape.to_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
@@ -155,7 +155,7 @@ impl Op for BatchToSpace {
 
 impl StatelessOp for BatchToSpace {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape
             .cast_to_array()?
@@ -207,28 +207,28 @@ fn rules<'r, 'p: 'r>(
     s.equals(&block_shape.rank, 1)?;
     s.equals(&paddings.rank, 2)?;
     s.equals(&block_shape.shape[0], &paddings.shape[0])?;
-    s.given(&block_shape.value, move |s, block_shape: Tensor| {
-        let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
+    s.given(&block_shape.value, move |s, block_shape| {
+        let block_shape = block_shape.to_array::<i32>()?;
         let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
         s.equals(
             &batch.shape[0],
-            (block_shape_prod as i64) * space.shape[0].bex(),
+            (block_shape_prod as i32) * space.shape[0].bex(),
         )?;
-        s.given(&paddings.value, move |s, paddings: Tensor| {
+        s.given(&paddings.value, move |s, paddings| {
             let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
             let paddings = paddings.view().into_dimensionality().unwrap();
             for d in 0..block_shape.len() {
                 s.equals(
                     space.shape[1 + d].bex() + paddings[(d, 0)] + paddings[(d, 1)],
-                    (block_shape[d] as i64) * batch.shape[1 + d].bex(),
+                    (block_shape[d] as i32) * batch.shape[1 + d].bex(),
                 )?;
             }
             Ok(())
         })
     })?;
-    s.given(&block_shape.value, move |s, block_shape: Tensor| {
-        let block_shape: ArrayD<i32> = block_shape.take_i32s().unwrap();
-        s.given(&space.rank, move |s, rank: i64| {
+    s.given(&block_shape.value, move |s, block_shape| {
+        let block_shape = block_shape.to_array::<i32>()?;
+        s.given(&space.rank, move |s, rank: i32| {
             for d in block_shape.len() + 1..(rank as usize) {
                 s.equals(&space.shape[d], &batch.shape[d])?
             }

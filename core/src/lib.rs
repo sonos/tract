@@ -35,7 +35,7 @@
 //! let mut tensor = outputs.pop().unwrap();
 //!
 //! // unwrap it as array of f32
-//! let tensor = tensor.take_f32s().unwrap();
+//! let tensor = tensor.to_array_view::<f32>().unwrap();
 //! assert_eq!(tensor, ndarray::arr1(&[4.0, 5.5, 8.0]).into_dyn());
 //! # }
 //! ```
@@ -86,28 +86,29 @@ extern crate downcast_rs;
 
 #[macro_use]
 pub mod macros;
-
 #[macro_use]
 pub mod analyser;
+#[macro_use]
+pub mod ops;
+
 mod broadcast;
+pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod f16;
 pub mod model;
-#[macro_use]
-pub mod ops;
 pub mod optim;
 pub mod plan;
 pub mod pulse;
-pub mod tensor;
 
 pub use errors::*;
 
 pub use analyser::types::TensorFact;
+pub use datum::{DatumType, DtArray};
 pub use dim::TDim;
 pub use model::{Model, Node, TVec};
+pub use ops::types::Tensor;
 pub use plan::SimplePlan;
-pub use tensor::{DatumType, Tensor};
 
 #[cfg(test)]
 #[allow(dead_code)]

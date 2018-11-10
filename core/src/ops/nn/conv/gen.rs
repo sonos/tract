@@ -9,10 +9,10 @@ use ops::nn::PaddingSpec;
 pub struct Conv {
     pub(super) data_fmt: DataFormat,
     pub(super) kernel_is_hwio: bool, // default is oihw (onnx)
-    pub(super) dilations: Option<Vec<usize>>,
-    kernel_shape: Option<Vec<usize>>,
+    pub(super) dilations: Option<TVec<usize>>,
+    kernel_shape: Option<TVec<usize>>,
     pub(super) padding: PaddingSpec,
-    pub(super) strides: Option<Vec<usize>>,
+    pub(super) strides: Option<TVec<usize>>,
     pub(super) group: usize,
 }
 
@@ -39,11 +39,11 @@ impl Conv {
         }
     }
 
-    fn output_shape<D: DimLike, ID: Into<D> + Copy>(&self, ishape: &[D], kshape: &[ID]) -> Vec<D> {
-        let mut result = ishape.to_vec();
+    fn output_shape<D: DimLike, ID: Into<D> + Copy>(&self, ishape: &[D], kshape: &[ID]) -> TVec<D> {
+        let mut result: TVec<D> = ishape.into();
         let ishape = self.data_fmt.shape(ishape);
         let spatial_rank = ishape.hw_rank();
-        let ones = vec![1; spatial_rank];
+        let ones = tvec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
         let computed = self.padding.compute(
             ishape.hw_dims(),
@@ -77,7 +77,7 @@ impl Op for Conv {
                     &self,
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue,
+                    kvalue.to_tensor(),
                     None,
                     self.group,
                 )?;
@@ -97,8 +97,8 @@ impl Op for Conv {
                     &self,
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue,
-                    Some(bias),
+                    kvalue.to_tensor(),
+                    Some(bias.to_tensor()),
                     self.group,
                 )?;
                 return Ok(Some(ReducedOpRewire {
@@ -112,21 +112,21 @@ impl Op for Conv {
 }
 
 impl StatelessOp for Conv {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, kernel, bias) = if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
             (input, kernel, None)
         } else {
             let (input, kernel, bias) = args_3!(inputs);
-            (input, kernel, Some(bias.into_tensor()))
+            (input, kernel, Some(bias.to_tensor()))
         };
-        let ishape: Vec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
-        let kshape: Vec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
+        let ishape: TVec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
+        let kshape: TVec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
         let reduced = ConvUnary::new(
             &self,
             &ishape,
             &self.output_shape(&ishape, &kshape),
-            kernel.into_tensor(),
+            kernel.to_tensor(),
             bias,
             self.group,
         )?;
@@ -142,11 +142,11 @@ impl InferenceRulesOp for Conv {
         outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         if let Some(kshape) = &self.kernel_shape {
-            s.equals(&inputs[1].rank, kshape.len() as i64 + 2)?;
+            s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;
             for (ix, dim) in kshape.iter().enumerate() {
                 s.equals(
                     &inputs[1].shape[ix + self.axis_kernel_spatial()],
-                    TDim::from(*dim as i64),
+                    TDim::from(*dim as i32),
                 )?;
             }
         }
@@ -184,7 +184,7 @@ impl InferenceRulesOp for Conv {
             } else {
                 &inputs[1].shape[1]
             };
-            s.equals(input_c.bex(), self.group as i64 * filter_i.bex())
+            s.equals(input_c.bex(), self.group as i32 * filter_i.bex())
         })?;
         s.given_2(
             &inputs[0].shape,
@@ -206,8 +206,8 @@ mod test {
     #[test]
     fn test_infer_with_known_kshape() {
         let mut op = Conv::default();
-        op.strides = Some(vec![2, 2]);
-        op.kernel_shape = Some(vec![3, 3]);
+        op.strides = Some(tvec![2, 2]);
+        op.kernel_shape = Some(tvec![3, 3]);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();
@@ -238,7 +238,7 @@ mod test {
     #[test]
     fn test_infer_onxx_strides_no_padding() {
         let mut op = Conv::default();
-        op.strides = Some(vec![2, 2]);
+        op.strides = Some(tvec![2, 2]);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();
@@ -276,16 +276,16 @@ mod test {
             )).unwrap();
         assert_eq!(
             res,
-            tvec!(Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
+            tvec!(DtArray::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
         );
     }
 
     #[test]
     fn test_eval_nhwc_2() {
         let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
-        let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
-        let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
-        let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
+        let i: DtArray = DtArray::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+        let k: DtArray = DtArray::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
+        let e: DtArray = DtArray::from(arr4(&[[[[1.0f32], [0.0]]]]));
         let res = op.eval(tvec!(i.into(), k.into())).unwrap();
         assert_eq!(res, tvec!(e.into()));
     }

@@ -1,6 +1,7 @@
 extern crate ndarray;
 extern crate tract_core;
 extern crate tract_tensorflow;
+use tract_core::Tensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use tract_tensorflow::ToTensorflow;
@@ -18,9 +19,7 @@ fn main() {
         .attr("dtype", DT_FLOAT)
         .attr(
             "value",
-            tract_core::tensor::Tensor::from(::ndarray::arr1(&[3.0f32]))
-                .to_tf()
-                .unwrap(),
+            Tensor::from(::ndarray::arr1(&[3.0f32])).to_tf().unwrap(),
         );
     let input = tfpb::node()
         .op("Placeholder")

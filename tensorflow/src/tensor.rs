@@ -1,7 +1,7 @@
 use tfpb::tensor::TensorProto;
 use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use tfpb::types::DataType;
-use tract_core::{DatumType, Tensor, TractResult, Tractify};
+use tract_core::{DatumType, DtArray, TractResult, Tractify};
 use ToTensorflow;
 
 impl Tractify<DataType> for DatumType {
@@ -42,8 +42,8 @@ impl ToTensorflow<DataType> for DatumType {
     }
 }
 
-impl Tractify<TensorProto> for Tensor {
-    fn tractify(t: &TensorProto) -> TractResult<Tensor> {
+impl Tractify<TensorProto> for DtArray {
+    fn tractify(t: &TensorProto) -> TractResult<DtArray> {
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
         let dims = shape
@@ -53,7 +53,7 @@ impl Tractify<TensorProto> for Tensor {
             .collect::<Vec<_>>();
         let rank = dims.len();
         let content = t.get_tensor_content();
-        let mat: Tensor = if content.len() != 0 {
+        let mat: DtArray = if content.len() != 0 {
             unsafe {
                 match dtype {
                     DataType::DT_FLOAT => Self::from_raw::<f32>(&dims, content)?,
@@ -63,8 +63,8 @@ impl Tractify<TensorProto> for Tensor {
             }
         } else {
             match dtype {
-                DataType::DT_INT32 => Tensor::i32s(&dims, t.get_int_val())?.into(),
-                DataType::DT_FLOAT => Tensor::f32s(&dims, t.get_float_val())?.into(),
+                DataType::DT_INT32 => DtArray::i32s(&dims, t.get_int_val())?.into(),
+                DataType::DT_FLOAT => DtArray::f32s(&dims, t.get_float_val())?.into(),
                 _ => unimplemented!("missing type"),
             }
         };
@@ -73,7 +73,7 @@ impl Tractify<TensorProto> for Tensor {
     }
 }
 
-impl ToTensorflow<TensorProto> for Tensor {
+impl ToTensorflow<TensorProto> for DtArray {
     fn to_tf(&self) -> TractResult<TensorProto> {
         let mut shape = TensorShapeProto::new();
         let dims = self
@@ -88,15 +88,15 @@ impl ToTensorflow<TensorProto> for Tensor {
         let mut tensor = TensorProto::new();
         tensor.set_tensor_shape(shape);
         match self {
-            &Tensor::F32(ref it) => {
+            &DtArray::F32(ref it) => {
                 tensor.set_dtype(DatumType::F32.to_tf()?);
                 tensor.set_float_val(it.iter().cloned().collect());
             }
-            &Tensor::F64(ref it) => {
+            &DtArray::F64(ref it) => {
                 tensor.set_dtype(DatumType::F64.to_tf()?);
                 tensor.set_double_val(it.iter().cloned().collect());
             }
-            &Tensor::I32(ref it) => {
+            &DtArray::I32(ref it) => {
                 tensor.set_dtype(DatumType::I32.to_tf()?);
                 tensor.set_int_val(it.iter().cloned().collect());
             }

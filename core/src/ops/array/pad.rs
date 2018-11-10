@@ -21,7 +21,7 @@ pub struct Pad {
 }
 
 impl Pad {
-    fn eval_t<T>(&self, input: Value) -> TractResult<Value>
+    fn eval_t<T>(&self, input: Tensor) -> TractResult<Tensor>
     where
         T: Datum,
         f32: AsPrimitive<T>,
@@ -94,7 +94,7 @@ impl Op for Pad {
 
 impl StatelessOp for Pad {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(
             self, input

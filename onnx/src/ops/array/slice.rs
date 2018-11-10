@@ -9,7 +9,7 @@ pub struct Slice {
 }
 
 impl Slice {
-    fn eval_t<T: Datum>(&self, input: Value) -> TractResult<Value> {
+    fn eval_t<T: Datum>(&self, input: Tensor) -> TractResult<Tensor> {
         let mut input = input.to_array_view::<T>()?;
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
@@ -28,7 +28,7 @@ impl Slice {
                 ::ndarray::Slice::from((b as isize)..(e as isize)),
             );
         }
-        Ok(Tensor::from(input.to_owned()).into())
+        Ok(DtArray::from(input.to_owned()).into())
     }
 }
 
@@ -40,7 +40,7 @@ impl Op for Slice {
 
 impl StatelessOp for Slice {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
             self, input
@@ -58,8 +58,8 @@ impl InferenceRulesOp for Slice {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
         if self.axes.is_none() {
-            s.equals(&inputs[0].rank, self.starts.len() as i64)?;
-            s.equals(&inputs[0].rank, self.ends.len() as i64)?;
+            s.equals(&inputs[0].rank, self.starts.len() as i32)?;
+            s.equals(&inputs[0].rank, self.ends.len() as i32)?;
         }
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -77,10 +77,10 @@ impl InferenceRulesOp for Slice {
                 };
                 if let Some((mut b, mut e)) = spec {
                     if let Ok(d) = d.to_integer() {
-                        if b as i64 > d {
+                        if b as i32 > d {
                             b = (d as isize).into();
                         }
-                        if e as i64 > d {
+                        if e as i32 > d {
                             e = (d as isize).into();
                         }
                     }

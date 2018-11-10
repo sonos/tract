@@ -21,7 +21,7 @@ impl Op for Source {
 
 impl StatelessOp for Source {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, _inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         panic!("Source should not get evaluated")
     }
 }

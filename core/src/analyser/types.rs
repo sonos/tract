@@ -95,18 +95,6 @@ impl TensorFact {
     pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
         self.shape.stream_info()
     }
-
-    pub fn reduce(&mut self) {
-        self.shape.reduce();
-        if let GenericFact::Only(ref mut tensor) = self.value {
-            tensor.reduce()
-        }
-    }
-
-    pub fn reduced(mut self) -> Self {
-        self.reduce();
-        self
-    }
 }
 
 impl Fact for TensorFact {
@@ -131,13 +119,13 @@ impl Fact for TensorFact {
     }
 }
 
-impl<T: Into<Tensor>> From<T> for TensorFact {
-    fn from(t: T) -> TensorFact {
-        let t: Tensor = t.into();
+impl<V: Into<Tensor>> From<V> for TensorFact {
+    fn from(v: V) -> TensorFact {
+        let v: Tensor = v.into();
         TensorFact {
-            datum_type: GenericFact::Only(t.datum_type()),
-            shape: ShapeFact::from(t.shape()),
-            value: GenericFact::Only(t),
+            datum_type: GenericFact::Only(v.datum_type()),
+            shape: ShapeFact::from(v.shape()),
+            value: GenericFact::Only(v),
         }
     }
 }
@@ -147,7 +135,7 @@ impl fmt::Debug for TensorFact {
         if let Some(t) = self.value.concretize() {
             write!(formatter, "Fully determined tensor: {:?}", t)
         } else {
-            write!(formatter, "Tensor")?;
+            write!(formatter, "DtArray")?;
             if let Some(t) = self.datum_type.concretize() {
                 write!(formatter, ", {:?}", t)?;
             }
@@ -227,19 +215,78 @@ pub type TypeFact = GenericFact<DatumType>;
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 #[derive(Clone, PartialEq)]
 pub struct ShapeFact {
-    pub open: bool,
-    pub dims: Vec<DimFact>,
+    open: bool,
+    dims: TVec<GenericFact<i32>>,
+    stream: Option<StreamInfo>,
 }
 
 impl ShapeFact {
     /// Constructs an open shape fact.
-    pub fn open(dims: Vec<DimFact>) -> ShapeFact {
-        ShapeFact { open: true, dims }
+    pub fn open(dims: TVec<DimFact>) -> ShapeFact {
+        if let Some((ix, &d)) = dims
+            .iter()
+            .enumerate()
+            .find(|(_ix, d)| d.concretize().map(|d| d.is_stream()).unwrap_or(false))
+        {
+            let stream = Some(StreamInfo {
+                axis: ix,
+                len: d.concretize().unwrap(),
+            });
+            ShapeFact {
+                open: true,
+                dims: dims
+                    .iter()
+                    .map(|d| match d {
+                        GenericFact::Only(d) if d.is_stream() => GenericFact::Only(-1),
+                        GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
+                        GenericFact::Any => GenericFact::Any,
+                    }).collect(),
+                stream,
+            }
+        } else {
+            ShapeFact {
+                open: true,
+                dims: dims
+                    .iter()
+                    .map(|d| match d {
+                        GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
+                        GenericFact::Any => GenericFact::Any,
+                    }).collect(),
+                stream: None,
+            }
+        }
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.open
     }
 
     /// Constructs a closed shape fact.
-    pub fn closed(dims: Vec<DimFact>) -> ShapeFact {
-        ShapeFact { open: false, dims }
+    pub fn closed(dims: TVec<DimFact>) -> ShapeFact {
+        ShapeFact {
+            open: false,
+            ..Self::open(dims)
+        }
+    }
+
+    pub fn rank(&self) -> IntFact {
+        if self.open {
+            GenericFact::Any
+        } else {
+            GenericFact::Only(self.dims.len() as i32)
+        }.into()
+    }
+
+    pub fn dims(&self) -> impl Iterator<Item = DimFact> {
+        let stream = self.stream.clone();
+        self.dims.clone().into_iter().map(move |d| match d {
+            GenericFact::Only(-1) => {
+                assert!(stream.is_some());
+                GenericFact::Only(stream.unwrap().len)
+            }
+            GenericFact::Only(d) => GenericFact::Only(d.to_dim()),
+            GenericFact::Any => GenericFact::Any,
+        })
     }
 
     pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
@@ -256,28 +303,19 @@ impl ShapeFact {
             .find(|(_, d)| d.is_stream())
             .map(|(axis, len)| StreamInfo { axis, len }))
     }
-
-    pub fn reduce(&mut self) {
-        for dim in &mut self.dims {
-            match dim {
-                GenericFact::Only(ref mut it) => it.reduce(),
-                _ => (),
-            }
-        }
-    }
 }
 
 impl Fact for ShapeFact {
-    type Concrete = Vec<TDim>;
+    type Concrete = TVec<TDim>;
 
     /// Tries to transform the fact into a `Vec<usize>`, or returns `None`.
-    fn concretize(self: &ShapeFact) -> Option<Vec<TDim>> {
+    fn concretize(self: &ShapeFact) -> Option<TVec<TDim>> {
         if self.open {
             debug!("Impossible to concretize an open shape.");
             return None;
         }
 
-        let dims: Vec<_> = self.dims.iter().filter_map(|d| d.concretize()).collect();
+        let dims: TVec<_> = self.dims().filter_map(|d| d.concretize()).collect();
 
         if dims.len() < self.dims.len() {
             debug!("Impossible to concretize a shape with unknown dimensions.");
@@ -294,15 +332,15 @@ impl Fact for ShapeFact {
         use itertools::EitherOrBoth::{Both, Left, Right};
         use itertools::Itertools;
 
-        let xi = x.dims.iter();
-        let yi = y.dims.iter();
+        let xi = x.dims();
+        let yi = y.dims();
 
-        let dimensions: Vec<_> = xi
+        let dimensions: TVec<_> = xi
             .zip_longest(yi)
             .map(|r| match r {
-                Both(a, b) => a.unify(b),
-                Left(d) if y.open => Ok(*d),
-                Right(d) if x.open => Ok(*d),
+                Both(a, b) => a.unify(&b),
+                Left(d) if y.open => Ok(d),
+                Right(d) if x.open => Ok(d),
 
                 Left(_) | Right(_) => bail!(
                     "Impossible to unify closed shapes of different rank (found {:?} and {:?}).",
@@ -323,7 +361,7 @@ impl Fact for ShapeFact {
 impl Default for ShapeFact {
     /// Returns the most general shape fact possible.
     fn default() -> ShapeFact {
-        ShapeFact::open(vec![])
+        ShapeFact::open(tvec![])
     }
 }
 
@@ -334,6 +372,28 @@ impl FromIterator<TDim> for ShapeFact {
     }
 }
 
+impl FromIterator<usize> for ShapeFact {
+    /// Converts an iterator over usize into a closed shape.
+    fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFact {
+        ShapeFact::closed(
+            iter.into_iter()
+                .map(|d| GenericFact::Only(d.to_dim()))
+                .collect(),
+        )
+    }
+}
+
+impl<D: ToDim, I: IntoIterator<Item = D>> From<I> for ShapeFact {
+    fn from(it: I) -> ShapeFact {
+        ShapeFact::closed(
+            it.into_iter()
+                .map(|d| GenericFact::Only(d.to_dim()))
+                .collect(),
+        )
+    }
+}
+
+/*
 impl<'a> From<&'a [usize]> for ShapeFact {
     /// Converts an usize slice into a closed shape.
     fn from(slice: &'a [usize]) -> ShapeFact {
@@ -349,7 +409,9 @@ impl From<Option<Vec<usize>>> for ShapeFact {
             .unwrap_or(ShapeFact::default())
     }
 }
+*/
 
+/*
 impl From<Vec<usize>> for ShapeFact {
     /// Converts an vector of usize into a closed shape.
     fn from(shape: Vec<usize>) -> ShapeFact {
@@ -363,6 +425,7 @@ impl From<Vec<TDim>> for ShapeFact {
         shape.into_iter().collect()
     }
 }
+*/
 
 impl fmt::Debug for ShapeFact {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -386,7 +449,7 @@ pub type DimFact = GenericFact<TDim>;
 /// Partial information about a value.
 pub type ValueFact = GenericFact<Tensor>;
 
-pub type IntFact = GenericFact<i64>;
+pub type IntFact = GenericFact<i32>;
 
 impl<T> Zero for GenericFact<T>
 where

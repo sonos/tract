@@ -47,13 +47,13 @@ macro_rules! impl_output {
 impl_output!(IntFact, Int);
 impl_output!(TypeFact, Type);
 impl_output!(ShapeFact, Shape);
-impl_output!(ValueFact, Value);
+impl_output!(ValueFact, Tensor);
 impl_output!(DimFact, Dim);
 
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {
     fn into_wrapped(source: usize) -> Wrapped {
-        IntFact::into_wrapped((source as i64).into())
+        IntFact::into_wrapped((source as i32).into())
     }
 
     fn from_wrapped(wrapped: Wrapped) -> TractResult<usize> {
@@ -66,14 +66,14 @@ impl Output for usize {
     }
 }
 
-// Converts back and forth between Wrapped and i64.
-impl Output for i64 {
-    fn into_wrapped(source: i64) -> Wrapped {
+// Converts back and forth between Wrapped and i32.
+impl Output for i32 {
+    fn into_wrapped(source: i32) -> Wrapped {
         IntFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TractResult<i64> {
-        let message = format!("Tried to convert {:?} to a i64.", wrapped);
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<i32> {
+        let message = format!("Tried to convert {:?} to a i32.", wrapped);
 
         IntFact::from_wrapped(wrapped)?
             .concretize()
@@ -81,7 +81,7 @@ impl Output for i64 {
     }
 }
 
-// Converts back and forth between Wrapped and Tensor.
+// Converts back and forth between Wrapped and DtArray.
 impl Output for Tensor {
     fn into_wrapped(source: Tensor) -> Wrapped {
         ValueFact::into_wrapped(source.into())
@@ -117,7 +117,7 @@ pub enum Wrapped {
     Int(IntFact),
     Type(TypeFact),
     Shape(ShapeFact),
-    Value(ValueFact),
+    Tensor(ValueFact),
     Dim(DimFact),
 }
 
@@ -310,13 +310,13 @@ where
 }
 
 /// A scalar product between a constant and another expression.
-pub struct ScaledExp<T>(i64, Exp<T>)
+pub struct ScaledExp<T>(i32, Exp<T>)
 where
-    T: Fact + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone;
+    T: Fact + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone;
 
 impl<T> TExp<T> for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone,
+    T: Fact + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
@@ -360,7 +360,7 @@ where
 
 impl<T> fmt::Debug for ScaledExp<T>
 where
-    T: Fact + Output + Zero + Mul<i64, Output = T> + Div<i64, Output = T> + Clone,
+    T: Fact + Output + Zero + Mul<i32, Output = T> + Div<i32, Output = T> + Clone,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "{}*{{{:?}}}", self.0, self.1)
@@ -451,7 +451,7 @@ impl<'a> IntoExp<IntFact> for &'a ElementProxy {
     }
 }
 
-impl IntoExp<IntFact> for i64 {
+impl IntoExp<IntFact> for i32 {
     fn bex(self) -> Exp<IntFact> {
         ConstantExp(self.into()).bex()
     }
@@ -471,7 +471,7 @@ impl<IE: IntoExp<IntFact>> Sub<IE> for Exp<IntFact> {
     }
 }
 
-impl Mul<Exp<IntFact>> for i64 {
+impl Mul<Exp<IntFact>> for i32 {
     type Output = Exp<IntFact>;
     fn mul(self, other: Exp<IntFact>) -> Exp<IntFact> {
         ScaledExp(self, other).bex()
@@ -506,7 +506,7 @@ impl<IE: IntoExp<DimFact>> Sub<IE> for Exp<DimFact> {
     }
 }
 
-impl Mul<Exp<DimFact>> for i64 {
+impl Mul<Exp<DimFact>> for i32 {
     type Output = Exp<DimFact>;
     fn mul(self, other: Exp<DimFact>) -> Exp<DimFact> {
         ScaledExp(self, other).bex()
@@ -545,13 +545,13 @@ impl<'a> IntoExp<ShapeFact> for &'a ShapeProxy {
     }
 }
 
-impl IntoExp<ShapeFact> for Vec<TDim> {
+impl IntoExp<ShapeFact> for TVec<TDim> {
     fn bex(self) -> Exp<ShapeFact> {
         ConstantExp(self.into_iter().collect()).bex()
     }
 }
 
-// Value
+// Tensor
 
 impl IntoExp<ValueFact> for ValueProxy {
     fn bex(self) -> Exp<ValueFact> {

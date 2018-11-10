@@ -124,12 +124,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::DtArray> {
         Ok(self.get_attr_opt_tensor(name)?
             .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::DtArray>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
             Ok(Some(t.tractify()?))
         } else {

@@ -3,7 +3,7 @@ use TractResult;
 use model::OutletId;
 use std::collections::HashMap;
 use std::borrow::Borrow;
-use {Model, Node, Tensor};
+use {Model, Node, DtArray};
 
 /// All constant tensors with an area lower than COPY_THRESHOLD will be
 /// replaced with a constant node containing a copy of that tensor.
@@ -107,8 +107,8 @@ pub fn connected_components<M: Borrow<Model>>(analyser: &Analyser<M>) -> TractRe
     Ok(components)
 }
 
-/// Creates a new Const node with the given Tensor value.
-fn build_const_node(id: usize, name: String, tensor: Tensor) -> Node {
+/// Creates a new Const node with the given DtArray value.
+fn build_const_node(id: usize, name: String, tensor: DtArray) -> Node {
     Node {
         id,
         name,

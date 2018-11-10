@@ -10,7 +10,7 @@ pub struct FixedParamsConv<D: Datum> {
     kernel_is_hwio: bool,
     patch: Patch,
     kernel: Array2<D>,
-    full_output_shape: Vec<usize>,
+    full_output_shape: TVec<usize>,
     k: usize,
     m: usize,
     n: usize,
@@ -22,8 +22,8 @@ impl<D: Datum> FixedParamsConv<D> {
     pub fn new(
         data_fmt: DataFormat,
         kernel_is_hwio: bool,
-        dilations: Vec<usize>,
-        strides: Vec<usize>,
+        dilations: TVec<usize>,
+        strides: TVec<usize>,
         padding: PaddingSpec,
         input_full_shape: &[usize],
         kernel: ArrayViewD<D>,
@@ -45,13 +45,13 @@ impl<D: Datum> FixedParamsConv<D> {
         let patch = Patch::new(
             data_fmt,
             dilations,
-            kernel_spatial_shape.to_vec(),
+            kernel_spatial_shape.into(),
             &padding,
             strides,
-            input_full_shape.to_vec(),
+            input_full_shape.into(),
         );
 
-        let shape: Vec<usize> = patch.output_full_shape(output_channels);
+        let shape: TVec<usize> = patch.output_full_shape(output_channels);
 
         let k = kernel.len() / output_channels;
         let m = output_channels;
@@ -176,7 +176,7 @@ impl<D> StatelessOp for FixedParamsConv<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let output = self.convolve(&inputs[0].to_array_view::<D>()?)?;
         Ok(tvec!(output.into()))
     }

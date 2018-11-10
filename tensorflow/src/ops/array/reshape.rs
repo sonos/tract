@@ -37,10 +37,10 @@ impl<T: Datum> Op for Reshape<T> {
 }
 
 impl<T: Datum> StatelessOp for Reshape<T> {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, dims) = args_2!(inputs);
 
-        let input = input.into_array::<T>()?;
+        let input = input.to_array::<T>()?;
         let dims = dims.to_array_view::<i32>()?;
         let dims = Self::true_dims(dims, input.len());
         let output = input.into_shape(&*dims)?.into_dyn();
@@ -64,7 +64,7 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
         s.given_2(
             &inputs[0].shape,
             &inputs[1].value,
-            move |solver, shape, dims: Tensor| {
+            move |solver, shape, dims| {
                 let dims = dims.to_array_view::<i32>().unwrap(); // checked
                 if shape.iter().all(|d| !d.is_stream()) {
                     let len = shape

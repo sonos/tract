@@ -10,11 +10,11 @@ macro_rules! element_map {
         pub struct $Name(TypeFact);
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Value>,) -> TractResult<TVec<Value>> {
+            fn eval(&self, mut inputs: TVec<Tensor>,) -> TractResult<TVec<Tensor>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
-                    let mut a = a.into_array::<$type>()?;
+                    let mut a = a.to_array::<$type>()?;
                     a.mapv_inplace($expr);
                     return Ok(tvec![a.into()])
                 })*
@@ -64,12 +64,12 @@ macro_rules! element_map_with_params {
         }
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Value>,) -> TractResult<TVec<Value>> {
+            fn eval(&self, mut inputs: TVec<Tensor>,) -> TractResult<TVec<Tensor>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $expr;
                 $(if dt == <$type>::datum_type() {
-                    let mut a = a.into_array::<$type>()?;
+                    let mut a = a.to_array::<$type>()?;
                     a.mapv_inplace(|x| eval_one(self,x));
                     return Ok(tvec![a.into()])
                 })*
@@ -122,8 +122,8 @@ macro_rules! element_bin {
                 Bin::default()
             }
 
-            fn eval_bin(a: Value, b: &Value) -> TractResult<Value> {
-                let shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
+            fn eval_bin(a: Tensor, b: &Tensor) -> TractResult<Tensor> {
+                let shape:TVec<usize> = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
                     .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
                                            a.shape(), b.shape()))?;
                 let dt = a.datum_type().common_super_type(b.datum_type())
@@ -132,7 +132,7 @@ macro_rules! element_bin {
                 $(if dt == <$type>::datum_type() {
                     let a = a.cast_to_array::<$type>()?.into_owned();
                     let b = b.cast_to_array::<$type>()?;
-                    let mut c = $crate::ndarray::ArrayD::<$to>::default(shape);
+                    let mut c = $crate::ndarray::ArrayD::<$to>::default(&*shape);
                     $crate::ndarray::Zip::from(&mut c)
                         .and_broadcast(&a)
                         .and_broadcast(&b.view())
@@ -146,7 +146,7 @@ macro_rules! element_bin {
             pub struct Bin(TypeFact);
 
             impl StatelessOp for Bin {
-                fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+                fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
                     let (a, b) = args_2!(inputs);
                     Ok(tvec!(eval_bin(a, &b)?))
                 }
@@ -215,11 +215,11 @@ macro_rules! element_bin {
             #[derive(Debug, Clone, new)]
             pub struct UnaryA {
                 dt: TypeFact,
-                b: Value,
+                b: Tensor,
             }
 
             impl StatelessOp for UnaryA {
-                fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+                fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
                     let a = args_1!(inputs);
                     Ok(tvec!(eval_bin(a, &self.b)?))
                 }
@@ -307,7 +307,7 @@ macro_rules! element_nary {
 
         impl StatelessOp for $Name {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+            fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
                 use $crate::ndarray::{ ArrayD, ArrayViewD };
                 if let Some(n) = self.n {
                     if inputs.len() != n {
@@ -316,8 +316,8 @@ macro_rules! element_nary {
                 }
                 let dt = DatumType::super_type_for(inputs.iter().map(|i| i.datum_type()))
                     .ok_or("Could not find a supertype")?;
-                let shapes:Vec<&[usize]> = inputs.iter().map(|i| i.shape()).collect();
-                let shape = $crate::broadcast::multi_broadcast(&shapes)
+                let shapes:TVec<&[usize]> = inputs.iter().map(|i| i.shape()).collect();
+                let shape:TVec<usize> = $crate::broadcast::multi_broadcast(&shapes)
                     .ok_or("Could not find a shape")?;
                 $(if dt == <$type>::datum_type() {
                     let casts:Vec<_> = inputs.iter()
@@ -329,7 +329,7 @@ macro_rules! element_nary {
                     let broadcasted:Vec<_> = views.iter()
                         .map(|a| a.broadcast(&*shape).unwrap())
                         .collect();
-                    let c = ArrayD::<$to>::from_shape_fn(shape, |dims| {
+                    let c = ArrayD::<$to>::from_shape_fn(&*shape, |dims| {
                         let values:Vec<$type> = broadcasted.iter().map(|i| i[&dims]).collect();
                         $expr(&values)
                     });
@@ -347,7 +347,7 @@ macro_rules! element_nary {
                 outputs: &'p TensorsProxy,
             ) -> InferenceResult {
                 if let Some(n) = self.n {
-                    s.equals(&inputs.len, n as i64)?;
+                    s.equals(&inputs.len, n as i32)?;
                 }
                 s.equals(&outputs.len, 1)?;
                 s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
@@ -356,7 +356,7 @@ macro_rules! element_nary {
                     let n = n as usize;
                     s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
                     s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
-                    s.given(&inputs[0].rank, move |s, rank: i64| {
+                    s.given(&inputs[0].rank, move |s, rank: i32| {
                         for dim in 0..(rank as usize) {
                             s.equals(&inputs[0].shape[dim], &outputs[0].shape[dim])?;
                             s.equals_all(

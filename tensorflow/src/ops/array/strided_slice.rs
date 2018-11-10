@@ -138,9 +138,9 @@ impl BaseStridedSlice {
     fn prepare(
         &self,
         input_shape: &[usize],
-        begin: Value,
-        end: Value,
-        strides: Value,
+        begin: Tensor,
+        end: Tensor,
+        strides: Tensor,
     ) -> TractResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
         let casted_begin = TDim::tensor_cast_to_array(&begin)?;
         let begin = casted_begin.view().into_dimensionality()?;
@@ -175,7 +175,7 @@ impl BaseStridedSlice {
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Datum>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval<T: Datum>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -235,7 +235,7 @@ impl BaseStridedSlice {
                         current_out_dim += 1;
                     }
                 }
-                s.equals(&outputs[0].rank, current_out_dim as i64)
+                s.equals(&outputs[0].rank, current_out_dim as i32)
             },
         )
     }
@@ -248,7 +248,7 @@ pub struct StridedSlice<T: Datum> {
 }
 
 impl<T: Datum> StatelessOp for StridedSlice<T> {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         self.base.eval::<T>(inputs)
     }
 }
@@ -325,7 +325,7 @@ pub struct StridedSliceD {
 }
 
 impl StatelessOp for StridedSliceD {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let dt = inputs[0].datum_type();
         match dt {
             DatumType::TDim => self.base.eval::<TDim>(inputs),
@@ -358,14 +358,14 @@ mod tests {
     use super::*;
     use ndarray::*;
     use tract_core::ops::InferenceOp;
-    use tract_core::Tensor;
+    use tract_core::DtArray;
 
-    fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
+    fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> DtArray
     where
-        I: Into<Tensor>,
-        B: Into<Tensor>,
-        E: Into<Tensor>,
-        S: Into<Tensor>,
+        I: Into<DtArray>,
+        B: Into<DtArray>,
+        E: Into<DtArray>,
+        S: Into<DtArray>,
     {
         op.eval(tvec![
             input.into().into(),
@@ -375,7 +375,7 @@ mod tests {
         ]).unwrap()
         .pop()
         .unwrap()
-        .into_tensor()
+        .to_tensor()
     }
 
     // https://www.tensorflow.org/api_docs/python/tf/strided_slice
@@ -393,7 +393,7 @@ mod tests {
                 arr1(&[2, 1, 3]),
                 arr1(&[1, 1, 1])
             ),
-            Tensor::from(arr3(&[[[3, 3, 3]]])),
+            DtArray::from(arr3(&[[[3, 3, 3]]])),
         );
     }
 
@@ -411,7 +411,7 @@ mod tests {
                 arr1(&[2, 2, 3]),
                 arr1(&[1, 1, 1])
             ),
-            Tensor::from(arr3(&[[[3, 3, 3], [4, 4, 4]]])),
+            DtArray::from(arr3(&[[[3, 3, 3], [4, 4, 4]]])),
         );
     }
 
@@ -429,7 +429,7 @@ mod tests {
                 arr1(&[2, -3, 3]),
                 arr1(&[1, -1, 1])
             ),
-            Tensor::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
+            DtArray::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
         );
     }
 
@@ -447,7 +447,7 @@ mod tests {
                 arr1(&[2, 2, 4]),
                 arr1(&[1, 1, 2])
             ),
-            Tensor::from(arr3(&[[[3, 3], [4, 4]]])),
+            DtArray::from(arr3(&[[[3, 3], [4, 4]]])),
         );
     }
 
@@ -461,7 +461,7 @@ mod tests {
                 arr1(&[-1]),
                 arr1(&[1])
             ),
-            Tensor::from(arr1(&[0]))
+            DtArray::from(arr1(&[0]))
         )
     }
 
@@ -475,7 +475,7 @@ mod tests {
                 arr1(&[-1, -1]),
                 arr1(&[1, 2])
             ),
-            Tensor::from(arr2(&[[1, 0], [3, 0]]))
+            DtArray::from(arr2(&[[1, 0], [3, 0]]))
         )
     }
 
@@ -489,7 +489,7 @@ mod tests {
                 arr1(&[2]),
                 arr1(&[1])
             ),
-            Tensor::from(arr2(&[[0, 6], [0, 0]]))
+            DtArray::from(arr2(&[[0, 6], [0, 0]]))
         )
     }
 
@@ -499,7 +499,7 @@ mod tests {
         op.base.begin_mask = 1;
         assert_eq!(
             eval(op, arr1(&[0, 1]), arr1(&[1]), arr1(&[1]), arr1(&[1])),
-            Tensor::from(arr1(&[0]))
+            DtArray::from(arr1(&[0]))
         )
     }
 
@@ -515,7 +515,7 @@ mod tests {
                 arr1(&[0, 0]),
                 arr1(&[1, 1])
             ),
-            Tensor::I32(arr1(&[]).into_dyn())
+            DtArray::I32(arr1(&[]).into_dyn())
         )
     }
 
@@ -525,7 +525,7 @@ mod tests {
         op.base.shrink_axis_mask = 1;
         assert_eq!(
             eval(op, arr1(&[0]), arr1(&[0]), arr1(&[0]), arr1(&[1])),
-            Tensor::I32(arr0(0).into_dyn())
+            DtArray::I32(arr0(0).into_dyn())
         )
     }
 

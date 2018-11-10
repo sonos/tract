@@ -14,11 +14,11 @@ use tract_tensorflow::ops::nn::local_patch::*;
 
 use tract_core::ops::Op;
 
-fn mk(sizes: &[usize]) -> Value {
+fn mk(sizes: &[usize]) -> Tensor {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
         .into_shape(sizes)
         .unwrap();
-    Value::from(Tensor::F32(data)).into_shared()
+    Tensor::from(DtArray::from(data))
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -56,14 +56,14 @@ impl Algo {
                 1,
             )),
             &Algo::Fixed => {
-                let input: TVec<Value> = tvec![mk(&[1, 82, 1, 40]).into()];
+                let input: TVec<Tensor> = tvec![mk(&[1, 82, 1, 40]).into()];
                 let kernel = mk(&[41, 1, 40, 128]);
                 Box::new(
                     FixedParamsConv::new(
                         DataFormat::NHWC,
                         true,
-                        vec![1, 1],
-                        vec![1, 1],
+                        tvec![1, 1],
+                        tvec![1, 1],
                         if padding == Padding::Valid {
                             PaddingSpec::Valid
                         } else {

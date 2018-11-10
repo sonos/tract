@@ -23,7 +23,7 @@ log = "0.4"
 ndarray = "0.12"
 prettytable-rs = "0.8"
 rand = "0.5"
-pretty_env_logger = "0.2"
+env_logger = "0.5"
 terminal_size = "0.1.7"
 textwrap = "0.10"
 tract-core = { path = "../core" }

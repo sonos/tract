@@ -9,7 +9,7 @@ pub struct ArgMaxMin {
 }
 
 impl ArgMaxMin {
-    fn eval_t<T: Datum + PartialOrd>(&self, input: Value) -> TractResult<Value> {
+    fn eval_t<T: Datum + PartialOrd>(&self, input: Tensor) -> TractResult<Tensor> {
         use std::cmp::Ordering;
         let array = input.to_array_view::<T>()?;
         let f: fn(&(usize, &T), &(usize, &T)) -> Ordering = if self.max {
@@ -23,7 +23,7 @@ impl ArgMaxMin {
         if self.keepdims {
             values = values.insert_axis(Axis(self.axis));
         }
-        Ok(Tensor::from(values).into())
+        Ok(DtArray::from(values).into())
     }
 }
 
@@ -34,7 +34,7 @@ impl Op for ArgMaxMin {
 }
 
 impl StatelessOp for ArgMaxMin {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(
             self, input

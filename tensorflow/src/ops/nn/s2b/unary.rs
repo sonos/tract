@@ -11,10 +11,10 @@ pub enum PaddingStrat {
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatchUnary {
     pub datum_type: DatumType,
-    pub space_shape: Vec<TDim>,
-    pub batch_shape: Vec<TDim>,
+    pub space_shape: TVec<TDim>,
+    pub batch_shape: TVec<TDim>,
     pub block_shape: Array1<i32>,
-    pub pad: Vec<PaddingStrat>,
+    pub pad: TVec<PaddingStrat>,
 }
 
 impl Op for SpaceToBatchUnary {
@@ -24,7 +24,7 @@ impl Op for SpaceToBatchUnary {
 }
 
 impl StatelessOp for SpaceToBatchUnary {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
@@ -61,8 +61,8 @@ impl InferenceRulesOp for SpaceToBatchUnary {
         s.equals(&inputs[0].datum_type, self.datum_type)?;
         s.equals(&outputs[0].datum_type, self.datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        s.equals(&outputs[0].shape, self.batch_shape.to_vec())?;
-        s.equals(&inputs[0].shape, self.space_shape.to_vec())?;
+        s.equals(&outputs[0].shape, self.batch_shape.clone())?;
+        s.equals(&inputs[0].shape, self.space_shape.clone())?;
         Ok(())
     }
 }
@@ -70,8 +70,8 @@ impl InferenceRulesOp for SpaceToBatchUnary {
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpaceUnary {
     datum_type: DatumType,
-    batch_shape: Vec<TDim>,
-    space_shape: Vec<TDim>,
+    batch_shape: TVec<TDim>,
+    space_shape: TVec<TDim>,
     block_shape: Array1<i32>,
     pad: Vec<PaddingStrat>,
 }
@@ -83,7 +83,7 @@ impl Op for BatchToSpaceUnary {
 }
 
 impl StatelessOp for BatchToSpaceUnary {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
@@ -120,8 +120,8 @@ impl InferenceRulesOp for BatchToSpaceUnary {
         s.equals(&inputs[0].datum_type, self.datum_type)?;
         s.equals(&outputs[0].datum_type, self.datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        s.equals(&inputs[0].shape, self.batch_shape.to_vec())?;
-        s.equals(&outputs[0].shape, self.space_shape.to_vec())?;
+        s.equals(&inputs[0].shape, self.batch_shape.clone())?;
+        s.equals(&outputs[0].shape, self.space_shape.clone())?;
         Ok(())
     }
 }

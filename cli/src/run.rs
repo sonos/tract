@@ -24,7 +24,7 @@ pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> Cl
 fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
     let tract = params.tract_model;
     let plan = SimplePlan::new(&tract)?;
-    let mut inputs: TVec<Tensor> = tvec!();
+    let mut inputs: TVec<DtArray> = tvec!();
     for (ix, input) in tract.inputs()?.iter().enumerate() {
         if let Some(input) = params
             .inputs
@@ -32,7 +32,7 @@ fn run_regular(params: Parameters) -> CliResult<TVec<Tensor>> {
             .and_then(|v| v.get(ix))
             .and_then(|t| t.as_ref())
         {
-            inputs.push(input.to_owned());
+            inputs.push(input.as_tensor().to_owned());
         } else {
             let fact = tract.fact(*input)?;
             inputs.push(::tensor::tensor_for_fact(fact, None)?);
@@ -47,11 +47,11 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
-    let input: &Tensor = &params.inputs.as_ref().unwrap()[0].as_ref().unwrap();
+    let input: &DtArray = &params.inputs.as_ref().unwrap()[0].as_ref().unwrap();
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);
-    let output_dim = output_fact.dim.eval(input_dim as i64).unwrap() as i64;
+    let output_dim = output_fact.dim.eval(input_dim as i32).unwrap() as i32;
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =
         output_dim as usize + output_fact.delay + 4 * output_fact.pulse();
@@ -75,7 +75,7 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<Tensor>> {
             chunk
         };
         let mut outputs = state.run(tvec!(input))?;
-        let result_chunk = outputs.remove(0).into_array::<f32>()?;
+        let result_chunk = outputs[0].to_array_view::<f32>()?;
         result
             .slice_axis_mut(
                 ::ndarray::Axis(output_fact.axis),

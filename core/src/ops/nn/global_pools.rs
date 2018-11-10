@@ -9,8 +9,8 @@ pub struct GlobalAvgPool {
 impl GlobalAvgPool {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive>(
         &self,
-        input: Value,
-    ) -> TractResult<TVec<Value>> {
+        input: Tensor,
+    ) -> TractResult<TVec<Tensor>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -19,7 +19,7 @@ impl GlobalAvgPool {
             *dim = 1;
         }
         let divisor = array.len() / (n * c);
-        let result: Tensor = array
+        let result: DtArray = array
             .into_shape(((n * c), divisor))?
             .sum_axis(Axis(1))
             .map(|x| *x / D::from_usize(divisor).unwrap())
@@ -36,7 +36,7 @@ impl Op for GlobalAvgPool {
 }
 
 impl StatelessOp for GlobalAvgPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -59,7 +59,7 @@ pub struct GlobalLpPool {
 }
 
 impl GlobalLpPool {
-    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TractResult<TVec<Value>> {
+    fn eval_t<D: Datum + ::num::Float>(&self, input: Tensor) -> TractResult<TVec<Tensor>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -94,7 +94,7 @@ impl Op for GlobalLpPool {
 }
 
 impl StatelessOp for GlobalLpPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -117,7 +117,7 @@ pub struct GlobalMaxPool {
 }
 
 impl GlobalMaxPool {
-    fn eval_t<D: Datum + ::num::Float>(&self, input: Value) -> TractResult<TVec<Value>> {
+    fn eval_t<D: Datum + ::num::Float>(&self, input: Tensor) -> TractResult<TVec<Tensor>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -126,7 +126,7 @@ impl GlobalMaxPool {
             *dim = 1;
         }
         let divisor = array.len() / (n * c);
-        let result: Tensor = array
+        let result: DtArray = array
             .into_shape(((n * c), divisor))?
             .fold_axis(Axis(1), D::min_value(), |a, b| a.max(*b))
             .into_shape(final_shape)?
@@ -142,7 +142,7 @@ impl Op for GlobalMaxPool {
 }
 
 impl StatelessOp for GlobalMaxPool {
-    fn eval(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

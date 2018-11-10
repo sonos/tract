@@ -1,18 +1,17 @@
-use ndarray::prelude::*;
-
 use super::{DataFormat, DataShape, PaddingSpec};
-use tensor::Datum;
+use ndarray::prelude::*;
+use ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct Patch {
-    pub dilations: Vec<usize>,
-    pub kernel_spatial_shape: Vec<usize>,
-    pub pad_before: Vec<usize>,
-    pub pad_after: Vec<usize>,
+    pub dilations: TVec<usize>,
+    pub kernel_spatial_shape: TVec<usize>,
+    pub pad_before: TVec<usize>,
+    pub pad_after: TVec<usize>,
     pub padded: bool,
-    pub kernel_strides: Vec<usize>,
-    pub input_shape: DataShape<usize, Vec<usize>>,
-    pub output_spatial_shape: Vec<usize>,
+    pub kernel_strides: TVec<usize>,
+    pub input_shape: DataShape<usize, TVec<usize>>,
+    pub output_spatial_shape: TVec<usize>,
     pub data_field: Array2<usize>,
     pub standard_layout_data_field: Vec<isize>,
 }
@@ -20,11 +19,11 @@ pub struct Patch {
 impl Patch {
     pub fn new(
         data_fmt: DataFormat,
-        dilations: Vec<usize>,
-        kernel_spatial_shape: Vec<usize>,
+        dilations: TVec<usize>,
+        kernel_spatial_shape: TVec<usize>,
         padding: &PaddingSpec,
-        kernel_strides: Vec<usize>,
-        input_full_shape: Vec<usize>,
+        kernel_strides: TVec<usize>,
+        input_full_shape: TVec<usize>,
     ) -> Patch {
         use ops::nn::padding::ComputedPaddedDim;
         let input_shape = data_fmt.shape(input_full_shape);
@@ -87,7 +86,7 @@ impl Patch {
         }
     }
 
-    pub fn output_full_shape(&self, channels: usize) -> Vec<usize> {
+    pub fn output_full_shape(&self, channels: usize) -> TVec<usize> {
         let mut v = self.input_shape.shape.clone();
         v[self.input_shape.c_axis()] = channels;
         v[self.input_shape.hw_axes()].copy_from_slice(&self.output_spatial_shape);
@@ -245,11 +244,11 @@ mod test {
     ) -> usize {
         let patch = Patch::new(
             DataFormat::NCHW,
-            vec![dilation],
-            vec![kdim],
-            &PaddingSpec::Explicit(vec![pad_before], vec![bad_after]),
-            vec![stride],
-            vec![1, 1, input],
+            tvec![dilation],
+            tvec![kdim],
+            &PaddingSpec::Explicit(tvec![pad_before], tvec![bad_after]),
+            tvec![stride],
+            tvec![1, 1, input],
         );
         patch.output_spatial_shape[0]
     }
@@ -277,11 +276,11 @@ mod test {
     fn field(kdim: &[usize], dilations: &[usize]) -> Array2<usize> {
         let patch = Patch::new(
             NCHW,
-            dilations.to_vec(),
-            kdim.to_vec(),
-            &PaddingSpec::Explicit(vec![0; kdim.len()], vec![0; kdim.len()]),
-            vec![1; kdim.len()],
-            vec![10; kdim.len() + 2],
+            dilations.into(),
+            kdim.into(),
+            &PaddingSpec::Explicit(tvec![0; kdim.len()], tvec![0; kdim.len()]),
+            tvec![1; kdim.len()],
+            tvec![10; kdim.len() + 2],
         );
         patch.data_field
     }

@@ -9,13 +9,13 @@ pub struct ConvUnary {
     pub data_fmt: DataFormat,
     pub kernel_is_hwio: bool, // default is oihw (onnx)
     pub padding: PaddingSpec,
-    pub dilations: Vec<usize>,
-    pub strides: Vec<usize>,
-    pub kernel: Tensor,
+    pub dilations: TVec<usize>,
+    pub strides: TVec<usize>,
+    pub kernel: DtArray,
 
-    pub bias: Option<Tensor>,
-    pub full_input_shape: Vec<TDim>,
-    pub full_output_shape: Vec<TDim>,
+    pub bias: Option<DtArray>,
+    pub full_input_shape: TVec<TDim>,
+    pub full_output_shape: TVec<TDim>,
     pub group: usize,
 }
 
@@ -24,13 +24,21 @@ impl ConvUnary {
         conv: &Conv,
         full_input_shape: &[TDim],
         full_output_shape: &[TDim],
-        kernel: Tensor,
-        bias: Option<Tensor>,
+        kernel: DtArray,
+        bias: Option<DtArray>,
         group: usize,
     ) -> TractResult<ConvUnary> {
         let spatial_rank = full_input_shape.len() - 2;
-        let dilations = conv.dilations.clone().unwrap_or(vec![1; spatial_rank]);
-        let strides = conv.strides.clone().unwrap_or(vec![1; spatial_rank]);
+        let dilations = conv
+            .dilations
+            .as_ref()
+            .map(|a| TVec::from(&**a))
+            .unwrap_or(tvec!(1; spatial_rank));
+        let strides = conv
+            .strides
+            .as_ref()
+            .map(|a| TVec::from(&**a))
+            .unwrap_or(tvec!(1; spatial_rank));
 
         Ok(ConvUnary {
             data_fmt: conv.data_fmt,
@@ -40,8 +48,8 @@ impl ConvUnary {
             strides,
             kernel,
             bias,
-            full_input_shape: full_input_shape.to_vec(),
-            full_output_shape: full_output_shape.to_vec(),
+            full_input_shape: full_input_shape.into(),
+            full_output_shape: full_output_shape.into(),
             group,
         })
     }
@@ -73,7 +81,7 @@ impl ConvUnary {
         Ok(Box::new(self.to_fixed_params::<T>(shape)?))
     }
 
-    fn eval_t<T>(&self, mut inputs: TVec<Value>) -> TractResult<TVec<Value>>
+    fn eval_t<T>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
@@ -103,7 +111,7 @@ impl ConvUnary {
         if kernel_spatial_shape[geo_axis] != 1 {
             return Ok(None);
         }
-        fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> Vec<D> {
+        fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
             input
                 .iter()
                 .enumerate()
@@ -111,7 +119,7 @@ impl ConvUnary {
                 .map(|(_, &d)| d)
                 .collect()
         }
-        let kernel_shape: Vec<usize> = copy_rm_nth(
+        let kernel_shape: TVec<usize> = copy_rm_nth(
             self.kernel.shape().clone(),
             geo_axis + 2 * (!self.kernel_is_hwio as usize),
         );
@@ -244,7 +252,7 @@ impl Op for ConvUnary {
 }
 
 impl StatelessOp for ConvUnary {
-    fn eval(&self, inputs: TVec<Value>) -> TractResult<TVec<Value>> {
+    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
