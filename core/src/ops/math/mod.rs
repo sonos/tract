@@ -32,6 +32,13 @@ element_map!(Acos, [f16, f32, f64], |x| x.acos());
 element_map!(Asin, [f16, f32, f64], |x| x.asin());
 element_map!(Atan, [f16, f32, f64], |x| x.atan());
 
+element_map!(Cosh, [f16, f32, f64], |x| x.cosh());
+element_map!(Sinh, [f16, f32, f64], |x| x.sinh());
+element_map!(Tanh, [f16, f32, f64], |x| x.tanh());
+element_map!(Acosh, [f16, f32, f64], |x| x.acosh());
+element_map!(Asinh, [f16, f32, f64], |x| x.asinh());
+element_map!(Atanh, [f16, f32, f64], |x| x.atanh());
+
 element_map!(Neg, [i8, i16, i32, i64, f16, f32, f64, TDim], |x| -x);
 element_bin!(Add, [u8, u16, i8, i16, i32, i64, f16, f32, f64, TDim] { |a, b| a + b });
 element_bin!(Sub, [u8, u16, i8, i16, i32, i64, f16, f32, f64, TDim] { |a, b| a - b });
@@ -43,8 +50,6 @@ element_bin!(Pow, match
      f32 => f32 { |a:f32, b| a.powf(b) },
      f64 => f64 { |a:f64, b| a.powf(b) }
 );
-
-element_map!(Tanh, [f32, f64], |x| x.tanh());
 
 fn fcmp<F: ::num::Float>(a: &F, b: &F) -> ::std::cmp::Ordering {
     a.partial_cmp(b).unwrap()
