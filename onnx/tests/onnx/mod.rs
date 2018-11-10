@@ -82,6 +82,8 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     let model_file = path.join("model.onnx");
     debug!("Loading {:?}", model_file);
     let mut model = for_path(&model_file).unwrap();
+    // println!("Model: {:#?}", tract_onnx::model::model_proto_for_path(&model_file));
+    // println!("Model: {:#?}", model);
     model.analyse().unwrap();
     debug!("Loaded {:?}", model_file);
     if optim {
@@ -90,7 +92,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
-    //    println!("Model: {:#?}", model);
+    // println!("Model: {:#?}", model);
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
