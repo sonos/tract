@@ -66,7 +66,7 @@ extern crate half;
 extern crate log;
 #[allow(unused_imports)]
 #[macro_use]
-extern crate ndarray;
+pub extern crate ndarray;
 extern crate num;
 #[macro_use]
 extern crate maplit;
@@ -91,7 +91,7 @@ pub mod analyser;
 #[macro_use]
 pub mod ops;
 
-mod broadcast;
+pub mod broadcast;
 pub mod datum;
 pub mod dim;
 pub mod errors;
