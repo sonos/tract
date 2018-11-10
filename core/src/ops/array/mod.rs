@@ -44,6 +44,7 @@
 mod add_dims;
 mod broadcast;
 mod concat;
+mod constant_like;
 mod flatten;
 mod pad;
 mod permute_axes;
@@ -57,6 +58,7 @@ mod squeeze;
 
 pub use self::add_dims::AddDims;
 pub use self::broadcast::MultiBroadcastTo;
+pub use self::constant_like::ConstantLike;
 pub use self::concat::Concat;
 pub use self::flatten::Flatten;
 pub use self::pad::{Pad, PadMode};

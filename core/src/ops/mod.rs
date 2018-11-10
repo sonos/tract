@@ -47,6 +47,7 @@ pub mod prelude {
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use TractResult;
+    pub use ToTract;
 }
 
 use self::prelude::*;

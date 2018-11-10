@@ -3,11 +3,13 @@ mod slice;
 use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
+use num::cast::AsPrimitive;
 use ops::OpRegister;
 use pb::NodeProto;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Concat", concat);
+    reg.insert("ConstantLike", constant_like);
     reg.insert("Expand", |_| {
         Ok(Box::new(tractops::array::MultiBroadcastTo::default()))
     });
@@ -32,6 +34,37 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 pub fn concat(node: &NodeProto) -> TractResult<Box<Op>> {
     let axis = node.get_attr_int("axis")?;
     Ok(Box::new(tractops::array::Concat::new(axis as usize)))
+}
+
+pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<Tensor>
+where
+    T: Datum,
+    f32: AsPrimitive<T>,
+{
+    Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into())
+}
+
+pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
+    let value = node.get_attr_opt_float("value")?.unwrap_or(0.0);
+    if node.get_input().len() == 0 {
+        use protobuf::ProtobufEnum;
+        let dt = match node.get_attr_opt_int("dtype")? {
+            Some(dt) => ::pb::TensorProto_DataType::from_i32(dt as i32)
+                .ok_or_else(|| {
+                    format!("Can not convert integer {} into a TensorProto_DataType", dt)
+                })?.tractify()?,
+            None => f32::datum_type(),
+        };
+        let shape: Vec<usize> = node
+            .get_attr_ints("shape")?
+            .iter()
+            .map(|&d| d as usize)
+            .collect();
+        let tensor = dispatch_numbers!(self::make_const(dt)(&shape, value))?;
+        Ok(Box::new(tractops::konst::Const::new(tensor)))
+    } else {
+        Ok(Box::new(tractops::array::ConstantLike::new(value)))
+    }
 }
 
 pub fn flatten(node: &NodeProto) -> TractResult<Box<Op>> {
