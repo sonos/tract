@@ -245,11 +245,6 @@ impl DtArray {
     }
 
     fn cast<Source: Datum + TryInto<Target>, Target: Datum>(&self) -> TractResult<DtArray> {
-        println!(
-            "casting {:?} to {:?}",
-            Source::datum_type(),
-            Target::datum_type()
-        );
         let data = self.cast_data::<Source, Target>()?;
         Ok(DtArray {
             dt: Target::datum_type(),
@@ -298,7 +293,6 @@ impl DtArray {
             (I64, F32) => self.cast::<i64, f32>()?,
             _ => bail!("Unsupported cast from {:?} to {:?}", self.dt, dt),
         };
-        println!("target: {:?}", target);
         Ok(Cow::Owned(target))
     }
 
