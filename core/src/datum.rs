@@ -1,10 +1,10 @@
 //! `DtArray` is the equivalent of Tensorflow DtArray.
 use dim::TDim;
+use model::TVec;
 use ndarray::prelude::*;
 use std::borrow::Cow;
 use std::fmt;
 use TractResult;
-use model::TVec;
 
 use f16::f16;
 
@@ -204,7 +204,7 @@ impl DtArray {
 
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
         let casted = unsafe { vec_to_datum::<D>(self.data) };
-        Ok(ArrayD::from_shape_vec(&*self.shape, casted)?)
+        unsafe { Ok(ArrayD::from_shape_vec_unchecked(&*self.shape, casted)) }
     }
 
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
@@ -218,7 +218,12 @@ impl DtArray {
     }
 
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
-        Ok(ArrayViewD::from_shape(&*self.shape, self.as_slice()?)?)
+        unsafe {
+            Ok(ArrayViewD::from_shape_ptr(
+                &*self.shape,
+                self.data.as_ptr() as _,
+            ))
+        }
     }
 
     pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
@@ -233,7 +238,12 @@ impl DtArray {
 
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
         let shape = self.shape.clone();
-        Ok(ArrayViewMutD::from_shape(&*shape, self.as_slice_mut()?)?)
+        unsafe {
+            Ok(ArrayViewMutD::from_shape_ptr(
+                &*shape,
+                self.data.as_mut_ptr() as _,
+            ))
+        }
     }
 
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<D> {
@@ -388,9 +398,12 @@ unsafe fn vec_to_datum<T: Datum>(mut data: Vec<u8>) -> Vec<T> {
 
 impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for DtArray {
     fn from(it: Array<T, D>) -> DtArray {
-//        let data: Vec<T> = it.view().into_iter().cloned().collect();
         let shape = it.shape().into();
-        let data: Vec<T> = it.into_raw_vec();
+        let data = if it.is_standard_layout() {
+            it.into_raw_vec()
+        } else {
+            it.view().into_iter().cloned().collect()
+        };
         let raw_data = vec_to_u8(data);
         DtArray {
             dt: T::datum_type(),
