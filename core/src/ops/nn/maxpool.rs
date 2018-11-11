@@ -73,7 +73,7 @@ impl StatelessOp for MaxPool {
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(
                 values.into(),
-                DtArray::from(indices.unwrap()).cast_to_dt(dt)?.into()
+                DtArray::from(indices.unwrap()).cast_to_dt(dt)?.into_owned().into_tensor()
             ))
         } else {
             Ok(tvec!(values.into()))

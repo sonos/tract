@@ -19,10 +19,10 @@ impl Op for ExpandDims {
     ) -> TractResult<Option<ReducedOpRewire>> {
         let (_, dims) = args_2!(inputs);
         if let Some(dims) = dims.concretize() {
-            let dims = dims.cast_to_array::<i64>()?;
+            let dims = dims.cast_to::<i64>()?;
             Ok(Some(ReducedOpRewire {
                 new_op: Box::new(::tract_core::ops::array::AddDims::new(
-                    dims.view().iter().map(|&i| i as usize).collect(),
+                    dims.to_array_view::<i64>()?.iter().map(|&i| i as usize).collect(),
                 )),
                 rewired: tvec!(0),
             }))

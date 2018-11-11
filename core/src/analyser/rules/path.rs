@@ -303,29 +303,9 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
         return Ok(value.clone().wrap());
     }
 
-    let path: Vec<_> = path.iter().map(|i| i.to_usize().unwrap()).collect();
-
-    macro_rules! inner {
-        ($array:expr) => {{
-            match $array.get(path.as_slice()) {
-                Some(&v) => Ok((v as i32).wrap()),
-                None => bail!("There is no index {:?} in value {:?}.", path, $array),
-            }
-        }};
-    };
-
     match value.concretize() {
         None => Ok(IntFact::default().wrap()),
-        Some(tensor) => match tensor.as_tensor() {
-            DtArray::I32(array) => inner!(array),
-            DtArray::I8(array) => inner!(array),
-            DtArray::U8(array) => inner!(array),
-            _ => bail!(
-                "Found value {:?}, but the solver only supports \
-                 integer values.",
-                tensor
-            ),
-        },
+        Some(tensor) => Ok(tensor.cast_to::<i32>()?.into_owned().into_tensor().wrap())
     }
 }
 

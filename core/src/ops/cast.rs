@@ -8,7 +8,7 @@ pub struct Cast {
 impl Cast {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(input: Tensor) -> TractResult<Tensor> {
-        Ok(input.cast_to::<T>()?.into())
+        Ok(input.cast_to::<T>()?.into_owned().into_tensor())
     }
 }
 

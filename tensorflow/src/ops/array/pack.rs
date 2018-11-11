@@ -22,11 +22,11 @@ impl Pack {
         use ndarray::Axis;
         let arrays = inputs
             .iter()
-            .map(|m| Ok(m.cast_to_array::<T>()?))
+            .map(|m| Ok(m.cast_to::<T>()?))
             .collect::<TractResult<Vec<_>>>()?;
         let views: Vec<_> = arrays
             .iter()
-            .map(|v| v.view().insert_axis(Axis(self.axis)))
+            .map(|v| v.to_array_view::<T>().unwrap().insert_axis(Axis(self.axis)))
             .collect();
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
         Ok(tvec![array.into()])

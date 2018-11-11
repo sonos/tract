@@ -1,6 +1,7 @@
 //! `DtArray` is the equivalent of Tensorflow DtArray.
 use dim::TDim;
 use ndarray::prelude::*;
+use std::borrow::Cow;
 use std::fmt;
 use TractResult;
 
@@ -93,216 +94,81 @@ impl DatumType {
     }
 }
 
-pub enum MaybeOwnedArray<'a, T: 'a> {
-    Owned(ArrayD<T>),
-    View(ArrayViewD<'a, T>),
-}
-
-impl<'a, T: 'a> MaybeOwnedArray<'a, T> {
-    pub fn view(&self) -> ArrayViewD<T> {
-        match self {
-            MaybeOwnedArray::Owned(it) => it.view(),
-            MaybeOwnedArray::View(it) => it.view(),
-        }
-    }
-}
-
-impl<'a, T: Clone + 'a> MaybeOwnedArray<'a, T> {
-    pub fn into_owned(self) -> ArrayD<T> {
-        match self {
-            MaybeOwnedArray::Owned(it) => it,
-            MaybeOwnedArray::View(it) => it.view().to_owned(),
-        }
-    }
-}
-
-pub trait Datum: Copy + Clone + Send + Sync + fmt::Debug + Default + 'static {
+pub trait Datum:
+    Copy + Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
+{
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
-
-    fn tensor_into_array(m: DtArray) -> TractResult<ArrayD<Self>>;
-    fn tensor_cast_to_array(m: &DtArray) -> TractResult<MaybeOwnedArray<Self>>;
-    fn tensor_to_view(m: &DtArray) -> TractResult<ArrayViewD<Self>>;
-    fn tensor_to_view_mut(m: &mut DtArray) -> TractResult<ArrayViewMutD<Self>>;
-    fn tensor_to_scalar(m: &DtArray) -> TractResult<Self>;
-    fn array_into_tensor(m: ArrayD<Self>) -> DtArray;
 }
 
-#[derive(Clone, PartialEq)]
-pub enum DtArray {
-    Bool(ArrayD<bool>),
-    F16(ArrayD<f16>),
-    F32(ArrayD<f32>),
-    F64(ArrayD<f64>),
-    I8(ArrayD<i8>),
-    I16(ArrayD<i16>),
-    I32(ArrayD<i32>),
-    I64(ArrayD<i64>),
-    U8(ArrayD<u8>),
-    U16(ArrayD<u16>),
-    TDim(ArrayD<TDim>),
-    String(ArrayD<i8>),
+#[derive(Clone)]
+pub struct DtArray {
+    dt: DatumType,
+    shape: Vec<usize>,
+    data: Vec<u8>,
 }
 
 impl DtArray {
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<DtArray> {
-        let value: Vec<T> = ::std::slice::from_raw_parts(
-            content.as_ptr() as _,
-            content.len() / ::std::mem::size_of::<T>(),
-        ).to_vec();
-        Ok(ArrayD::from_shape_vec(shape, value)?.into())
+        Ok(DtArray {
+            dt: T::datum_type(),
+            shape: shape.to_vec(),
+            data: content.to_vec(),
+        })
+    }
+
+    pub fn into_tensor(self) -> ::Tensor {
+        ::Tensor::from(self)
     }
 
     pub fn shape(&self) -> &[usize] {
-        match self {
-            &DtArray::Bool(ref it) => it.shape(),
-            &DtArray::U8(ref it) => it.shape(),
-            &DtArray::U16(ref it) => it.shape(),
-            &DtArray::I8(ref it) => it.shape(),
-            &DtArray::I16(ref it) => it.shape(),
-            &DtArray::I32(ref it) => it.shape(),
-            &DtArray::I64(ref it) => it.shape(),
-            &DtArray::F16(ref it) => it.shape(),
-            &DtArray::F32(ref it) => it.shape(),
-            &DtArray::F64(ref it) => it.shape(),
-            &DtArray::TDim(ref it) => it.shape(),
-            &DtArray::String(ref it) => it.shape(),
-        }
+        &self.shape
     }
 
     pub fn into_shape(self, shape: &[usize]) -> TractResult<DtArray> {
-        let shaped = match self {
-            DtArray::Bool(it) => it.into_shape(shape)?.into(),
-            DtArray::U8(it) => it.into_shape(shape)?.into(),
-            DtArray::U16(it) => it.into_shape(shape)?.into(),
-            DtArray::I8(it) => it.into_shape(shape)?.into(),
-            DtArray::I16(it) => it.into_shape(shape)?.into(),
-            DtArray::I32(it) => it.into_shape(shape)?.into(),
-            DtArray::I64(it) => it.into_shape(shape)?.into(),
-            DtArray::F16(it) => it.into_shape(shape)?.into(),
-            DtArray::F32(it) => it.into_shape(shape)?.into(),
-            DtArray::F64(it) => it.into_shape(shape)?.into(),
-            DtArray::TDim(it) => it.into_shape(shape)?.into(),
-            DtArray::String(it) => it.into_shape(shape)?.into(),
-        };
-        Ok(shaped)
+        Ok(DtArray {
+            shape: shape.to_vec(),
+            ..self
+        })
     }
 
     pub fn datum_type(&self) -> DatumType {
-        match self {
-            &DtArray::Bool(_) => DatumType::Bool,
-            &DtArray::U8(_) => DatumType::U8,
-            &DtArray::U16(_) => DatumType::U16,
-            &DtArray::I8(_) => DatumType::I8,
-            &DtArray::I16(_) => DatumType::I16,
-            &DtArray::I32(_) => DatumType::I32,
-            &DtArray::I64(_) => DatumType::I64,
-            &DtArray::F16(_) => DatumType::F16,
-            &DtArray::F32(_) => DatumType::F32,
-            &DtArray::F64(_) => DatumType::F64,
-            &DtArray::TDim(_) => DatumType::TDim,
-            &DtArray::String(_) => DatumType::String,
-        }
+        self.dt
+    }
+
+    pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
+        use itertools::Itertools;
+        let s = if self.shape.len() == 0 {
+            let data = self.to_scalar::<D>()?;
+            format!("Scalar: {} ({})", data, D::name())
+        } else if self.shape().iter().product::<usize>() > 8 {
+            let data = self.to_array_view::<D>()?;
+            if force_full {
+                format!("shape:{:?} ({}) {:?}", self.shape, D::name(), data)
+            } else {
+                format!(
+                    "shape:{:?} ({}) {}...",
+                    self.shape(),
+                    D::name(),
+                    data.iter().take(4).map(|v| format!("{:?}", v)).join(", ")
+                )
+            }
+        } else {
+            let data = self.to_array_view::<D>()?;
+            format!("shape:{:?} ({}) {:?}", self.shape, D::name(), data)
+        };
+        Ok(s)
     }
 
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
-        macro_rules! fmt_scalar {
-            ($a:ident) => {
-                format!(
-                    "Scalar {:?} {:?}",
-                    self.datum_type(),
-                    $a.as_slice().unwrap()[0]
-                )
-            };
-        }
-        macro_rules! fmt_big {
-            ($a:ident) => {
-                if force_full {
-                    format!("shape:{:?} {:?} {:?}", self.shape(), self.datum_type(), $a)
-                } else {
-                    format!(
-                        "shape:{:?} {:?} {}...",
-                        self.shape(),
-                        self.datum_type(),
-                        $a.iter().take(4).map(|v| format!("{:?}", v)).join(", ")
-                    )
-                }
-            };
-        }
-        macro_rules! fmt_small {
-            ($a:ident) => {
-                format!("{:?} {:?}", self.datum_type(), $a).replace("\n", " ")
-            };
-        }
-        if self.shape().len() == 0 {
-            Ok(match self {
-                &DtArray::Bool(ref a) => fmt_scalar!(a),
-                &DtArray::U8(ref a) => fmt_scalar!(a),
-                &DtArray::U16(ref a) => fmt_scalar!(a),
-                &DtArray::I8(ref a) => fmt_scalar!(a),
-                &DtArray::I16(ref a) => fmt_scalar!(a),
-                &DtArray::I32(ref a) => fmt_scalar!(a),
-                &DtArray::I64(ref a) => fmt_scalar!(a),
-                &DtArray::F16(ref a) => fmt_scalar!(a),
-                &DtArray::F32(ref a) => fmt_scalar!(a),
-                &DtArray::F64(ref a) => fmt_scalar!(a),
-                &DtArray::String(ref a) => fmt_scalar!(a),
-                &DtArray::TDim(ref a) => fmt_scalar!(a),
-            })
-        } else if self.shape().iter().product::<usize>() > 8 {
-            use itertools::Itertools;
-            Ok(match self {
-                &DtArray::Bool(ref a) => fmt_big!(a),
-                &DtArray::U8(ref a) => fmt_big!(a),
-                &DtArray::U16(ref a) => fmt_big!(a),
-                &DtArray::I8(ref a) => fmt_big!(a),
-                &DtArray::I16(ref a) => fmt_big!(a),
-                &DtArray::I32(ref a) => fmt_big!(a),
-                &DtArray::I64(ref a) => fmt_big!(a),
-                &DtArray::F16(ref a) => fmt_big!(a),
-                &DtArray::F32(ref a) => fmt_big!(a),
-                &DtArray::F64(ref a) => fmt_big!(a),
-                &DtArray::String(ref a) => fmt_big!(a),
-                &DtArray::TDim(ref a) => fmt_big!(a),
-            })
-        } else {
-            Ok(match self {
-                &DtArray::Bool(ref a) => fmt_small!(a),
-                &DtArray::U8(ref a) => fmt_small!(a),
-                &DtArray::U16(ref a) => fmt_small!(a),
-                &DtArray::I8(ref a) => fmt_small!(a),
-                &DtArray::I16(ref a) => fmt_small!(a),
-                &DtArray::I32(ref a) => fmt_small!(a),
-                &DtArray::I64(ref a) => fmt_small!(a),
-                &DtArray::F16(ref a) => fmt_small!(a),
-                &DtArray::F32(ref a) => fmt_small!(a),
-                &DtArray::F64(ref a) => fmt_small!(a),
-                &DtArray::String(ref a) => fmt_small!(a),
-                &DtArray::TDim(ref a) => fmt_small!(a),
-            })
-        }
-    }
-
-    fn approx(&self) -> ArrayD<f32> {
-        match self {
-            &DtArray::Bool(ref data) => data.map(|&a| a as u32 as f32),
-            &DtArray::U8(ref data) => data.map(|&a| a as f32),
-            &DtArray::U16(ref data) => data.map(|&a| a as f32),
-            &DtArray::I8(ref data) => data.map(|&a| a as f32),
-            &DtArray::I16(ref data) => data.map(|&a| a as f32),
-            &DtArray::I32(ref data) => data.map(|&a| a as f32),
-            &DtArray::I64(ref data) => data.map(|&a| a as f32),
-            &DtArray::F16(ref data) => data.map(|&a| f32::from(a.0)),
-            &DtArray::F32(ref data) => data.to_owned(),
-            &DtArray::F64(ref data) => data.map(|&a| a as f32),
-            &DtArray::TDim(ref data) => data.map(|&a| a.to_integer().unwrap() as f32),
-            &DtArray::String(_) => unimplemented!("not supported for string"),
-        }
+        dispatch_datum!(Self::dump_t(self.dt)(self, force_full))
     }
 
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
-        let ma = self.approx();
-        let mb = other.approx();
+        let ma = self.cast_to::<f32>().unwrap();
+        let ma = ma.to_array_view::<f32>().unwrap();
+        let mb = other.cast_to::<f32>().unwrap();
+        let mb = mb.to_array_view::<f32>().unwrap();
         let avg = ma
             .iter()
             .filter(|a| a.is_finite())
@@ -336,33 +202,124 @@ impl DtArray {
     }
 
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
-        <D as Datum>::tensor_into_array(self)
+        let casted = unsafe { vec_to_datum::<D>(self.data) };
+        Ok(ArrayD::from_shape_vec(self.shape, casted)?)
+    }
+
+    pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
+        let datum_size = ::std::mem::size_of::<D>();
+        unsafe {
+            Ok(std::slice::from_raw_parts::<D>(
+                self.data.as_ptr() as *const D,
+                self.data.len() / datum_size,
+            ))
+        }
     }
 
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
-        <D as Datum>::tensor_to_view(self)
+        Ok(ArrayViewD::from_shape(&*self.shape, self.as_slice()?)?)
     }
 
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
-        <D as Datum>::tensor_to_view_mut(self)
+        let datum_size = ::std::mem::size_of::<D>();
+        let casted = unsafe {
+            std::slice::from_raw_parts_mut::<D>(
+                self.data.as_mut_ptr() as *mut D,
+                self.data.len() / datum_size,
+            )
+        };
+        Ok(ArrayViewMutD::from_shape(&*self.shape, casted)?)
     }
 
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<D> {
-        <D as Datum>::tensor_to_scalar(self)
+        unsafe { Ok(*(self.data.as_ptr() as *const D)) }
     }
 
-    pub fn cast_to_array<D: Datum>(&self) -> TractResult<MaybeOwnedArray<D>> {
-        <D as Datum>::tensor_cast_to_array(self)
+    fn cast_data<Source: Datum + TryInto<Target>, Target: Datum>(
+        &self,
+    ) -> TractResult<Vec<Target>> {
+        self.as_slice::<Source>()?
+            .iter()
+            .map(|s| s.try_into())
+            .collect()
     }
 
-    pub fn cast_to<D: Datum>(&self) -> TractResult<DtArray> {
-        Ok(<D as Datum>::tensor_cast_to_array(&self)?
-            .into_owned()
-            .into())
+    fn cast<Source: Datum + TryInto<Target>, Target: Datum>(&self) -> TractResult<DtArray> {
+        println!(
+            "casting {:?} to {:?}",
+            Source::datum_type(),
+            Target::datum_type()
+        );
+        let data = self.cast_data::<Source, Target>()?;
+        Ok(DtArray {
+            dt: Target::datum_type(),
+            shape: self.shape.clone(),
+            data: vec_to_u8(data),
+        })
     }
 
-    pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<DtArray> {
-        dispatch_datum!(Self::cast_to(dt)(self))
+    pub fn cast_to<D: Datum>(&self) -> TractResult<Cow<DtArray>> {
+        self.cast_to_dt(D::datum_type())
+    }
+
+    pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<DtArray>> {
+        use DatumType::*;
+        if self.dt == dt {
+            return Ok(Cow::Borrowed(self));
+        }
+        let target = match (self.dt, dt) {
+            (TDim, I32) => self.cast::<::dim::TDim, i32>()?,
+            (I32, TDim) => self.cast::<i32, ::dim::TDim>()?,
+
+            (F16, F32) => self.cast::<f16, f32>()?,
+            (F32, F16) => self.cast::<f32, f16>()?,
+            (F16, F64) => self.cast::<f16, f64>()?,
+            (F64, F16) => self.cast::<f64, f16>()?,
+            (F32, F64) => self.cast::<f32, f64>()?,
+            (F64, F32) => self.cast::<f64, f32>()?,
+
+            (I8, I16) => self.cast::<i8, i16>()?,
+            (I16, I8) => self.cast::<i16, i8>()?,
+            (I8, I32) => self.cast::<i8, i32>()?,
+            (I32, I8) => self.cast::<i32, i8>()?,
+            (I8, I64) => self.cast::<i8, i64>()?,
+            (I64, I8) => self.cast::<i64, i8>()?,
+            (I16, I32) => self.cast::<i16, i32>()?,
+            (I32, I16) => self.cast::<i32, i16>()?,
+            (I16, I64) => self.cast::<i16, i64>()?,
+            (I64, I16) => self.cast::<i64, i16>()?,
+            (I32, I64) => self.cast::<i32, i64>()?,
+            (I64, I32) => self.cast::<i64, i32>()?,
+
+            (Bool, F32) => self.cast::<bool, f32>()?,
+            (I8, F32) => self.cast::<i8, f32>()?,
+            (I16, F32) => self.cast::<i16, f32>()?,
+            (I32, F32) => self.cast::<i32, f32>()?,
+            (I64, F32) => self.cast::<i64, f32>()?,
+            _ => bail!("Unsupported cast from {:?} to {:?}", self.dt, dt),
+        };
+        println!("target: {:?}", target);
+        Ok(Cow::Owned(target))
+    }
+
+    fn eq_t<D: Datum>(&self, other: &DtArray) -> TractResult<bool> {
+        Ok(self.to_array_view::<D>()? == other.to_array_view::<D>()?)
+    }
+
+    fn eq_dt(&self, other: &DtArray) -> TractResult<bool> {
+        dispatch_datum!(Self::eq_t(self.dt)(self, other))
+    }
+}
+
+impl PartialEq for DtArray {
+    fn eq(&self, other: &DtArray) -> bool {
+        if self.dt != other.dt || self.shape != other.shape {
+            return false;
+        }
+        if &*self.data == &*other.data {
+            return true;
+        }
+        self.eq_dt(other).unwrap_or(false)
     }
 }
 
@@ -408,65 +365,45 @@ impl Serialize for DtArray {
     }
 }
 
+fn vec_to_u8<T: Datum>(mut data: Vec<T>) -> Vec<u8> {
+    let v = unsafe {
+        Vec::from_raw_parts(
+            data.as_mut_ptr() as *mut u8,
+            data.len() * ::std::mem::size_of::<T>(),
+            data.capacity() * ::std::mem::size_of::<T>(),
+        )
+    };
+    ::std::mem::forget(data);
+    v
+}
+
+unsafe fn vec_to_datum<T: Datum>(mut data: Vec<u8>) -> Vec<T> {
+    let v = Vec::from_raw_parts(
+        data.as_mut_ptr() as *mut T,
+        data.len() / ::std::mem::size_of::<T>(),
+        data.capacity() / ::std::mem::size_of::<T>(),
+    );
+    ::std::mem::forget(data);
+    v
+}
+
 impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for DtArray {
     fn from(it: Array<T, D>) -> DtArray {
-        T::array_into_tensor(it.into_dyn())
+        let data: Vec<T> = it.view().into_iter().cloned().collect();
+        let raw_data = vec_to_u8(data);
+        DtArray {
+            dt: T::datum_type(),
+            shape: it.shape().to_vec(),
+            data: raw_data,
+        }
     }
 }
 
-macro_rules! tensor {
-    ($t:ident, $v:ident, $as_one:ident, $as:ident, $as_mut:ident, $take:ident, $make:ident,
-        [$(($cast:ident, $as_cast:ident)),*]) => {
+macro_rules! datum {
+    ($t:ident, $v:ident) => {
         impl From<$t> for DtArray {
             fn from(it: $t) -> DtArray {
-                DtArray::$v(arr0(it).into_dyn())
-            }
-        }
-
-        impl DtArray {
-            #[allow(dead_code)]
-            fn $as_one(&self) -> Option<$t> {
-                if let &DtArray::$v(ref it) = self {
-                    if it.shape().len() == 0 {
-                        Some(*it.iter().next().unwrap())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-
-            #[allow(dead_code)]
-            fn $as(&self) -> Option<&ArrayD<$t>> {
-                if let &DtArray::$v(ref it) = self {
-                    Some(it)
-                } else {
-                    None
-                }
-            }
-
-            #[allow(dead_code)]
-            fn $as_mut(&mut self) -> Option<&mut ArrayD<$t>> {
-                if let &mut DtArray::$v(ref mut it) = self {
-                    Some(it)
-                } else {
-                    None
-                }
-            }
-
-            #[allow(dead_code)]
-            fn $take(self) -> Option<ArrayD<$t>> {
-                if let DtArray::$v(it) = self {
-                    Some(it)
-                } else {
-                    None
-                }
-            }
-
-            #[allow(dead_code)]
-            fn $make(shape: &[usize], values: &[$t]) -> TractResult<DtArray> {
-                Ok(Array::from_shape_vec(shape, values.to_vec())?.into())
+                arr0(it).into()
             }
         }
 
@@ -478,51 +415,6 @@ macro_rules! tensor {
             fn datum_type() -> DatumType {
                 DatumType::$v
             }
-
-            fn tensor_into_array(m: DtArray) -> TractResult<ArrayD<Self>> {
-                let _ = Self::tensor_to_view(&m)?;
-                Ok(m.$take().unwrap())
-            }
-
-            fn tensor_to_scalar(m: &DtArray) -> TractResult<Self> {
-                let view = Self::tensor_to_view(m)?;
-                if view.ndim() == 0 {
-                    Ok(*view.iter().next().unwrap())
-                } else {
-                    bail!("Tensor is not a scalar")
-                }
-            }
-
-            fn tensor_to_view(m: &DtArray) -> TractResult<ArrayViewD<Self>> {
-                m.$as()
-                    .map(|m| m.view())
-                    .ok_or_else(|| format!("Type mismatch unwrapping to {}: {:?}", Self::name(), &m).into())
-            }
-
-            fn tensor_to_view_mut(m: &mut DtArray) -> TractResult<ArrayViewMutD<Self>> {
-                m.$as_mut()
-                    .map(|m| m.view_mut())
-                    .ok_or_else(|| format!("Type mismatch unwrapping to {}", Self::name()).into())
-            }
-
-            fn array_into_tensor(m: ArrayD<Self>) -> DtArray {
-                DtArray::$v(m)
-            }
-
-            fn tensor_cast_to_array(m: &DtArray) -> TractResult<MaybeOwnedArray<$t>> {
-                match m.datum_type() {
-                    DatumType::$v => Ok(MaybeOwnedArray::View($t::tensor_to_view(m)?)),
-                    $(DatumType::$cast => {
-                        let src = m.$as_cast().ok_or("Wrong type")?;
-                        let vec:Vec<$t> = src.iter()
-                            .map(|x| TryInto::<$t>::try_into(*x))
-                            .collect::<TractResult<Vec<_>>>()?;
-                        let dst:ArrayD<$t> = ArrayD::from_shape_vec(src.shape(), vec)?;
-                        Ok(MaybeOwnedArray::Owned(dst))
-                    })*
-                    _ => bail!("Can not cast tensor from {:?} to {:?}", m.datum_type(), $t::datum_type())
-                }
-            }
         }
     };
 }
@@ -531,11 +423,37 @@ trait TryInto<D: Datum> {
     fn try_into(self) -> TractResult<D>;
 }
 
-impl<F: ::num::cast::AsPrimitive<D>, D: Datum> TryInto<D> for F {
-    fn try_into(self) -> TractResult<D> {
-        Ok(self.as_())
-    }
+macro_rules! try_into {
+    ($f:ty, $t:ty) => {
+        impl TryInto<$t> for $f {
+            fn try_into(self) -> TractResult<$t> {
+                Ok(self as $t)
+            }
+        }
+    };
 }
+
+try_into!(i8, i16);
+try_into!(i8, i32);
+try_into!(i8, i64);
+try_into!(i16, i32);
+try_into!(i16, i64);
+try_into!(i32, i64);
+
+try_into!(i16, i8);
+try_into!(i32, i8);
+try_into!(i64, i8);
+try_into!(i32, i16);
+try_into!(i64, i16);
+try_into!(i64, i32);
+
+try_into!(f64, f32);
+try_into!(f32, f64);
+
+try_into!(i8, f32);
+try_into!(i16, f32);
+try_into!(i32, f32);
+try_into!(i64, f32);
 
 impl TryInto<TDim> for i32 {
     fn try_into(self) -> TractResult<TDim> {
@@ -555,112 +473,51 @@ impl TryInto<i64> for TDim {
     }
 }
 
-tensor!(
-    bool,
-    Bool,
-    as_bool,
-    as_bools,
-    as_bools_mut,
-    take_bools,
-    bools,
-    []
-);
-tensor!(
-    f16,
-    F16,
-    as_f16,
-    as_f16s,
-    as_f16s_mut,
-    take_f16s,
-    f16s,
-    [(F32, as_f32s), (F64, as_f64s)]
-);
-tensor!(
-    f32,
-    F32,
-    as_f32,
-    as_f32s,
-    as_f32s_mut,
-    take_f32s,
-    f32s,
-    [(F16, as_f16s), (F64, as_f64s)]
-);
-tensor!(
-    f64,
-    F64,
-    as_f64,
-    as_f64s,
-    as_f64s_mut,
-    take_f64s,
-    f64s,
-    [(F16, as_f16s), (F32, as_f32s)]
-);
-tensor!(i8, I8, as_i8, as_i8s, as_i8s_mut, take_i8s, i8s, []);
-tensor!(
-    i16,
-    I16,
-    as_i16,
-    as_i16s,
-    as_i16_mut,
-    take_i16s,
-    i16s,
-    [(I8, as_i8s)]
-);
-tensor!(
-    i32,
-    I32,
-    as_i32,
-    as_i32s,
-    as_i32_mut,
-    take_i32s,
-    i32s,
-    [(TDim, as_dims), (I8, as_i8s), (I16, as_i16s)]
-);
-tensor!(
-    i64,
-    I64,
-    as_i64,
-    as_i64s,
-    as_i64s_mut,
-    take_i64s,
-    i64s,
-    [
-        (TDim, as_dims),
-        (I8, as_i8s),
-        (I16, as_i16s),
-        (I32, as_i32s)
-    ]
-);
-tensor!(u8, U8, as_u8, as_u8s, as_u8s_mut, take_u8s, u8s, []);
-tensor!(u16, U16, as_u16, as_u16s, as_u16s_mut, take_u16s, u16s, []);
-tensor!(
-    TDim,
-    TDim,
-    as_dim,
-    as_dims,
-    as_dims_mut,
-    take_dims,
-    dims,
-    [(I32, as_i32s)]
-);
-
-#[cfg(test)]
-mod tests {
-    use datum::*;
-    use dim::ToDim;
-
-    #[test]
-    fn test_cast_dim_to_dim() {
-        let t_dim: DtArray = arr1(&[0isize.to_dim(), 0isize.to_dim()]).into();
-        let _dims: MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_dim).unwrap();
-    }
-
-    #[test]
-    fn test_cast_i32_to_dim() {
-        let t_i32: DtArray = arr1(&[0i32, 0]).into();
-        let _dims: MaybeOwnedArray<TDim> = TDim::tensor_cast_to_array(&t_i32).unwrap();
+impl TryInto<f32> for bool {
+    fn try_into(self) -> TractResult<f32> {
+        if self {
+            Ok(1.0)
+        } else {
+            Ok(0.0)
+        }
     }
 }
+
+impl TryInto<f32> for f16 {
+    fn try_into(self) -> TractResult<f32> {
+        Ok(self.0.to_f32())
+    }
+}
+
+impl TryInto<f64> for f16 {
+    fn try_into(self) -> TractResult<f64> {
+        Ok(self.0.to_f64())
+    }
+}
+
+impl TryInto<f16> for f32 {
+    fn try_into(self) -> TractResult<f16> {
+        Ok(f16(half::f16::from_f32(self)))
+    }
+}
+
+impl TryInto<f16> for f64 {
+    fn try_into(self) -> TractResult<f16> {
+        Ok(f16(half::f16::from_f64(self)))
+    }
+}
+
+datum!(bool, Bool);
+datum!(f16, F16);
+datum!(f32, F32);
+datum!(f64, F64);
+datum!(i8, I8);
+datum!(i16, I16);
+datum!(i32, I32);
+datum!(i64, I64);
+datum!(u8, U8);
+datum!(u16, U16);
+datum!(TDim, TDim);
 
 pub fn arr4<A, V, U, T>(xs: &[V]) -> ::ndarray::Array4<A>
 where
@@ -687,5 +544,33 @@ where
             Vec::from_raw_parts(ptr as *mut A, expand_len, expand_cap)
         };
         ArrayBase::from_shape_vec_unchecked(dim, v)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use datum::*;
+    use dim::ToDim;
+
+    #[test]
+    fn test_array_to_tensor_to_array() {
+        let array = arr1(&[12i32, 42]);
+        let dt_array = DtArray::from(array.clone());
+        let view = dt_array.to_array_view::<i32>().unwrap();
+        assert_eq!(array, view.into_dimensionality().unwrap());
+    }
+
+    #[test]
+    fn test_cast_dim_to_dim() {
+        let t_dim: DtArray = arr1(&[12isize.to_dim(), 42isize.to_dim()]).into();
+        let t_i32 = t_dim.cast_to::<i32>().unwrap();
+        let t_dim_2 = t_i32.cast_to::<TDim>().unwrap().into_owned();
+        assert_eq!(t_dim, t_dim_2);
+    }
+
+    #[test]
+    fn test_cast_i32_to_dim() {
+        let t_i32: DtArray = arr1(&[0i32, 0]).into();
+        t_i32.cast_to::<TDim>().unwrap();
     }
 }
