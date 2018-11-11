@@ -92,18 +92,18 @@ impl ToTensorflow<TensorProto> for DtArray {
         shape.set_dim(::protobuf::RepeatedField::from_vec(dims));
         let mut tensor = TensorProto::new();
         tensor.set_tensor_shape(shape);
-        match self {
-            &DtArray::F32(ref it) => {
+        match self.datum_type() {
+            DatumType::F32 => {
                 tensor.set_dtype(DatumType::F32.to_tf()?);
-                tensor.set_float_val(it.iter().cloned().collect());
+                tensor.set_float_val(self.to_array_view::<f32>()?.iter().cloned().collect());
             }
-            &DtArray::F64(ref it) => {
+            DatumType::F64 => {
                 tensor.set_dtype(DatumType::F64.to_tf()?);
-                tensor.set_double_val(it.iter().cloned().collect());
+                tensor.set_double_val(self.to_array_view::<f64>()?.iter().cloned().collect());
             }
-            &DtArray::I32(ref it) => {
+            DatumType::I32 => {
                 tensor.set_dtype(DatumType::I32.to_tf()?);
-                tensor.set_int_val(it.iter().cloned().collect());
+                tensor.set_int_val(self.to_array_view::<i32>()?.iter().cloned().collect());
             }
             _ => unimplemented!("missing type"),
         }

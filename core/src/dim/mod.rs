@@ -20,6 +20,7 @@ pub trait DimLike:
     + ::num::One
     + ::num::Zero
     + fmt::Debug
+    + fmt::Display
     + ops::Add<Self, Output = Self>
     + ops::Add<usize, Output = Self>
     + ops::Sub<Self, Output = Self>
@@ -60,6 +61,12 @@ impl Default for TDim {
 }
 
 impl fmt::Debug for TDim {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", self.0)
+    }
+}
+
+impl fmt::Display for TDim {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{:?}", self.0)
     }

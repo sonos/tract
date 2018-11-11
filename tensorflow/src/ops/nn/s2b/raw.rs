@@ -26,10 +26,8 @@ impl Op for SpaceToBatch {
             paddings.value.concretize(),
             output.shape.concretize(),
         ) {
-            let paddings_view = paddings
-                .cast_to_array::<TDim>()?
-                .into_owned()
-                .into_dimensionality::<Ix2>()?;
+            let paddings = paddings.cast_to::<TDim>()?;
+            let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
                 let pad = match (p[0].to_integer(), p[1].to_integer()) {
@@ -62,14 +60,10 @@ impl Op for SpaceToBatch {
 impl StatelessOp for SpaceToBatch {
     fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, paddings) = args_3!(inputs);
-        let block_shape = block_shape
-            .cast_to_array()?
-            .into_owned()
-            .into_dimensionality()?;
-        let paddings = paddings
-            .cast_to_array()?
-            .into_owned()
-            .into_dimensionality()?;
+        let block_shape = block_shape.cast_to::<i32>()?;
+        let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
+        let paddings = paddings.cast_to::<i32>()?;
+        let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
         let r = dispatch_numbers!(super::space_to_batch(input.datum_type())(
             input,
             &block_shape.view(),
@@ -123,10 +117,8 @@ impl Op for BatchToSpace {
             paddings.value.concretize(),
             output.shape.concretize(),
         ) {
-            let paddings = paddings
-                .cast_to_array::<TDim>()?
-                .into_owned()
-                .into_dimensionality::<Ix2>()?;
+            let paddings = paddings.cast_to::<TDim>()?;
+            let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let paddings = paddings
                 .outer_iter()
                 .map(|p| {
@@ -157,11 +149,10 @@ impl StatelessOp for BatchToSpace {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, block_shape, crops) = args_3!(inputs);
-        let block_shape = block_shape
-            .cast_to_array()?
-            .into_owned()
-            .into_dimensionality()?;
-        let crops = crops.cast_to_array()?.into_owned().into_dimensionality()?;
+        let block_shape = block_shape.cast_to::<i32>()?;
+        let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
+        let crops = crops.cast_to::<i32>()?;
+        let crops = crops.to_array_view::<i32>()?.into_dimensionality()?;
         let r = dispatch_numbers!(super::batch_to_space(input.datum_type())(
             input,
             &block_shape.view(),
@@ -215,8 +206,8 @@ fn rules<'r, 'p: 'r>(
             (block_shape_prod as i32) * space.shape[0].bex(),
         )?;
         s.given(&paddings.value, move |s, paddings| {
-            let paddings = TDim::tensor_cast_to_array(&paddings).unwrap(); // FIXMEa
-            let paddings = paddings.view().into_dimensionality().unwrap();
+            let paddings = paddings.cast_to::<TDim>()?;
+            let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality()?;
             for d in 0..block_shape.len() {
                 s.equals(
                     space.shape[1 + d].bex() + paddings[(d, 0)] + paddings[(d, 1)],

@@ -131,12 +131,12 @@ macro_rules! element_bin {
                     .ok_or_else(|| format!("Incompatible types {:?} and{:?}",
                                            a.datum_type(), b.datum_type()))?;
                 $(if dt == <$type>::datum_type() {
-                    let a = a.cast_to_array::<$type>()?.into_owned();
-                    let b = b.cast_to_array::<$type>()?;
+                    let a = a.cast_to::<$type>()?.into_owned().into_array::<$type>()?;
+                    let b = b.cast_to::<$type>()?;
                     let mut c = $crate::ndarray::ArrayD::<$to>::default(&*shape);
                     $crate::ndarray::Zip::from(&mut c)
                         .and_broadcast(&a)
-                        .and_broadcast(&b.view())
+                        .and_broadcast(&b.to_array_view::<$type>()?)
                         .apply(|c,&a:&$type,&b:&$type| *c = $expr(a,b));
                     return Ok(c.into())
                 })*
@@ -322,11 +322,11 @@ macro_rules! element_nary {
                     .ok_or("Could not find a shape")?;
                 $(if dt == <$type>::datum_type() {
                     let casts:Vec<_> = inputs.iter()
-                        .map(|a| a.as_tensor().cast_to_array::<$type>().unwrap())
+                        .map(|a| a.cast_to::<$type>().unwrap())
                         .collect();
                     let views:Vec<ArrayViewD<$type>> = casts.iter()
-                        .map(|a| a.view())
-                        .collect();
+                        .map(|a| a.to_array_view::<$type>())
+                        .collect::<TractResult<_>>()?;
                     let broadcasted:Vec<_> = views.iter()
                         .map(|a| a.broadcast(&*shape).unwrap())
                         .collect();

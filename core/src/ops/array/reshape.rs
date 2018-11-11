@@ -50,8 +50,8 @@ impl StatelessOp for Reshape {
     fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
         let (input, shape) = args_2!(inputs);
         let shape: Vec<isize> = shape
-            .cast_to_array::<i64>()?
-            .view()
+            .cast_to::<i64>()?
+            .to_array_view::<i64>()?
             .iter()
             .map(|&i| i as isize)
             .collect();
@@ -73,8 +73,8 @@ impl InferenceRulesOp for Reshape {
             &inputs[1].value,
             move |s, ishape, shape| {
                 let shape: Vec<isize> = shape
-                    .cast_to_array::<i64>()?
-                    .view()
+                    .cast_to::<i64>()?
+                    .to_array_view::<i64>()?
                     .iter()
                     .map(|&i| i as isize)
                     .collect();

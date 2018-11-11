@@ -142,10 +142,10 @@ impl BaseStridedSlice {
         end: Tensor,
         strides: Tensor,
     ) -> TractResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
-        let casted_begin = TDim::tensor_cast_to_array(&begin)?;
-        let begin = casted_begin.view().into_dimensionality()?;
-        let casted_end = TDim::tensor_cast_to_array(&end)?;
-        let end = casted_end.view().into_dimensionality()?;
+        let casted_begin = begin.cast_to::<TDim>()?;
+        let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
+        let casted_end = end.cast_to::<TDim>()?;
+        let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
         let strides = strides.to_array_view::<i32>()?.into_dimensionality()?;
         trace!(
             "StridedSlice {:?} computing shapes: input_shape:{:?} begin:{:?} end:{:?} strides:{:?}",
@@ -213,10 +213,10 @@ impl BaseStridedSlice {
             &inputs[2].value,
             &inputs[3].value,
             move |s, input_shape, begin, end, stride| {
-                let casted_begin = TDim::tensor_cast_to_array(&begin)?;
-                let begin = casted_begin.view().into_dimensionality()?;
-                let casted_end = TDim::tensor_cast_to_array(&end)?;
-                let end = casted_end.view().into_dimensionality()?;
+                let casted_begin = begin.cast_to::<TDim>()?;
+                let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
+                let casted_end = end.cast_to::<TDim>()?;
+                let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
                 let stride = stride.to_array_view::<i32>()?.into_dimensionality()?;
                 let mut current_out_dim = 0;
                 for (ix, d) in input_shape.iter().enumerate() {
@@ -265,18 +265,12 @@ impl<T: Datum> Op for StridedSlice<T> {
                 info!("Failed to unarize StridedSlices because of strides");
                 return Ok(None);
             }
-            let begin_view = begin
-                .cast_to_array::<TDim>()?
-                .into_owned()
-                .into_dimensionality()?;
-            let end_view = end
-                .cast_to_array::<TDim>()?
-                .into_owned()
-                .into_dimensionality()?;
-            let strides_view = strides
-                .cast_to_array::<i32>()?
-                .into_owned()
-                .into_dimensionality()?;
+            let begin = begin.cast_to::<TDim>()?;
+            let begin_view = begin.to_array_view::<TDim>()?.into_dimensionality()?;
+            let end = end.cast_to::<TDim>()?;
+            let end_view = end.to_array_view::<TDim>()?.into_dimensionality()?;
+            let strides = strides.cast_to::<i32>()?;
+            let strides_view = strides.to_array_view::<i32>()?.into_dimensionality()?;
             let mut prunes = vec![];
             for ix in 0..input_shape.len() {
                 let dim = self.base.prepare_one_dim(
@@ -506,7 +500,7 @@ mod tests {
                 arr1(&[0, 0]),
                 arr1(&[1, 1])
             ),
-            DtArray::I32(arr1(&[]).into_dyn())
+            arr1::<i32>(&[]).into()
         )
     }
 
@@ -516,7 +510,7 @@ mod tests {
         op.base.shrink_axis_mask = 1;
         assert_eq!(
             eval(op, arr1(&[0]), arr1(&[0]), arr1(&[0]), arr1(&[1])),
-            DtArray::I32(arr0(0).into_dyn())
+            arr0::<i32>(0).into()
         )
     }
 

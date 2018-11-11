@@ -61,18 +61,21 @@ impl TensorHolder {
 
 impl From<DtArray> for TensorHolder {
     fn from(m: DtArray) -> TensorHolder {
-        match m {
-            DtArray::Bool(a) => TensorHolder::Bool(Self::to_tensor(a)),
-            DtArray::F16(_) => unimplemented!(),
-            DtArray::F32(a) => TensorHolder::F32(Self::to_tensor(a)),
-            DtArray::F64(a) => TensorHolder::F64(Self::to_tensor(a)),
-            DtArray::I8(a) => TensorHolder::I8(Self::to_tensor(a)),
-            DtArray::I16(a) => TensorHolder::I16(Self::to_tensor(a)),
-            DtArray::I32(a) => TensorHolder::I32(Self::to_tensor(a)),
-            DtArray::I64(a) => TensorHolder::I64(Self::to_tensor(a)),
-            DtArray::U8(a) => TensorHolder::U8(Self::to_tensor(a)),
-            DtArray::U16(a) => TensorHolder::U16(Self::to_tensor(a)),
-            DtArray::TDim(dims) => {
+        use tract_core::DatumType::*;
+        use tract_core::TDim;
+        match m.datum_type() {
+            Bool => TensorHolder::Bool(Self::to_tensor(m.into_array().unwrap())),
+            F16 => unimplemented!(),
+            F32 => TensorHolder::F32(Self::to_tensor(m.into_array().unwrap())),
+            F64 => TensorHolder::F64(Self::to_tensor(m.into_array().unwrap())),
+            I8 => TensorHolder::I8(Self::to_tensor(m.into_array().unwrap())),
+            I16 => TensorHolder::I16(Self::to_tensor(m.into_array().unwrap())),
+            I32 => TensorHolder::I32(Self::to_tensor(m.into_array().unwrap())),
+            I64 => TensorHolder::I64(Self::to_tensor(m.into_array().unwrap())),
+            U8 => TensorHolder::U8(Self::to_tensor(m.into_array().unwrap())),
+            U16 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
+            TDim => {
+                let dims = m.to_array_view::<TDim>().unwrap();
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
                     let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
                     TensorHolder::I32(Self::to_tensor(dims))
@@ -80,7 +83,7 @@ impl From<DtArray> for TensorHolder {
                     panic!("Streaming used in tensorflow settings")
                 }
             }
-            DtArray::String(a) => TensorHolder::String(Self::to_tensor(a)),
+            tract_core::DatumType::String => TensorHolder::String(Self::to_tensor(m.into_array().unwrap())),
         }
     }
 }
@@ -191,16 +194,15 @@ fn convert_output(
 ) -> Result<Vec<DtArray>> {
     macro_rules! convert {
         ($dt:ident) => {
-            DtArray::$dt(tensor_to_array(&step.fetch(output)?)?)
+            tensor_to_array::<$dt>(&step.fetch(output)?)?.into()
         };
     };
 
     let tract_tensor = match output_type {
-        DataType::Float => convert!(F32),
-        DataType::UInt8 => convert!(U8),
-        DataType::Int8 => convert!(I8),
-        DataType::String => convert!(String),
-        DataType::Int32 => convert!(I32),
+        DataType::Float => convert!(f32),
+        DataType::UInt8 => convert!(u8),
+        DataType::Int8 => convert!(i8),
+        DataType::Int32 => convert!(i32),
         t => bail!("Missing Tensor to DtArray for type {:?}", t),
     };
 
