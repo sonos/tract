@@ -1,6 +1,6 @@
 use ops::prelude::*;
 
-element_map!(Not, [bool], |a| !a);
+element_map!(Not, [bool], |a:bool| !a);
 
 element_bin!(And, [bool] { |a, b| a & b});
 element_bin!(Or, [bool] { |a, b| a | b});

@@ -4,6 +4,7 @@ use ndarray::prelude::*;
 use std::borrow::Cow;
 use std::fmt;
 use TractResult;
+use model::TVec;
 
 use f16::f16;
 
@@ -104,7 +105,7 @@ pub trait Datum:
 #[derive(Clone)]
 pub struct DtArray {
     dt: DatumType,
-    shape: Vec<usize>,
+    shape: TVec<usize>,
     data: Vec<u8>,
 }
 
@@ -112,7 +113,7 @@ impl DtArray {
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<DtArray> {
         Ok(DtArray {
             dt: T::datum_type(),
-            shape: shape.to_vec(),
+            shape: shape.into(),
             data: content.to_vec(),
         })
     }
@@ -127,7 +128,7 @@ impl DtArray {
 
     pub fn into_shape(self, shape: &[usize]) -> TractResult<DtArray> {
         Ok(DtArray {
-            shape: shape.to_vec(),
+            shape: shape.into(),
             ..self
         })
     }
@@ -203,7 +204,7 @@ impl DtArray {
 
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
         let casted = unsafe { vec_to_datum::<D>(self.data) };
-        Ok(ArrayD::from_shape_vec(self.shape, casted)?)
+        Ok(ArrayD::from_shape_vec(&*self.shape, casted)?)
     }
 
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
@@ -220,15 +221,19 @@ impl DtArray {
         Ok(ArrayViewD::from_shape(&*self.shape, self.as_slice()?)?)
     }
 
-    pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
+    pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
         let datum_size = ::std::mem::size_of::<D>();
-        let casted = unsafe {
-            std::slice::from_raw_parts_mut::<D>(
+        unsafe {
+            Ok(std::slice::from_raw_parts_mut::<D>(
                 self.data.as_mut_ptr() as *mut D,
                 self.data.len() / datum_size,
-            )
-        };
-        Ok(ArrayViewMutD::from_shape(&*self.shape, casted)?)
+            ))
+        }
+    }
+
+    pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
+        let shape = self.shape.clone();
+        Ok(ArrayViewMutD::from_shape(&*shape, self.as_slice_mut()?)?)
     }
 
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<D> {
@@ -383,11 +388,13 @@ unsafe fn vec_to_datum<T: Datum>(mut data: Vec<u8>) -> Vec<T> {
 
 impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for DtArray {
     fn from(it: Array<T, D>) -> DtArray {
-        let data: Vec<T> = it.view().into_iter().cloned().collect();
+//        let data: Vec<T> = it.view().into_iter().cloned().collect();
+        let shape = it.shape().into();
+        let data: Vec<T> = it.into_raw_vec();
         let raw_data = vec_to_u8(data);
         DtArray {
             dt: T::datum_type(),
-            shape: it.shape().to_vec(),
+            shape,
             data: raw_data,
         }
     }
