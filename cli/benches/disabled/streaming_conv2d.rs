@@ -29,7 +29,7 @@ fn streaming_conv2d(c: &mut Criterion) {
             .as_f32s()
             .unwrap()
             .axis_iter(Axis(0))
-            .map(|v| DtArray::F32(v.insert_axis(Axis(0)).to_owned()))
+            .map(|v| Tensor::F32(v.insert_axis(Axis(0)).to_owned()))
             .enumerate();
 
         for (i, chunk) in chunks.take(10) {

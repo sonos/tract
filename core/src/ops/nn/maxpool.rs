@@ -41,7 +41,7 @@ impl Op for MaxPool {
 }
 
 impl StatelessOp for MaxPool {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
 
@@ -73,7 +73,7 @@ impl StatelessOp for MaxPool {
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(
                 values.into(),
-                DtArray::from(indices.unwrap()).cast_to_dt(dt)?.into_owned().into_tensor()
+                Tensor::from(indices.unwrap()).cast_to_dt(dt)?.into_owned().into_tensor()
             ))
         } else {
             Ok(tvec!(values.into()))
@@ -85,8 +85,8 @@ impl InferenceRulesOp for MaxPool {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&outputs.len, self.noutputs() as i32)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;

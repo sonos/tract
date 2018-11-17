@@ -11,11 +11,11 @@ use tract_core::ops::prelude::*;
 
 use tract_core::ops::Op;
 
-fn mk(sizes: &[usize]) -> Tensor {
+fn mk(sizes: &[usize]) -> SharedTensor {
     let data = ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
         .into_shape(sizes)
         .unwrap();
-    Tensor::from(DtArray::from(data))
+    SharedTensor::from(Tensor::from(data))
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -47,7 +47,7 @@ impl Algo {
                 1,
             )),
             &Algo::Fixed => {
-                let input: TVec<Tensor> = tvec![mk(&[1, 82, 1, 40]).into()]; // nhwc
+                let input: TVec<SharedTensor> = tvec![mk(&[1, 82, 1, 40]).into()]; // nhwc
                 let kernel = mk(&[41, 1, 40, 128]); // hwio
                 Box::new(
                     FixedParamsConv::new(

@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(model.nodes().len(), 3);
 
         let input = [1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
-        let t_input = DtArray::from(arr3(&[[input]]));
+        let t_input = Tensor::from(arr3(&[[input]]));
 
         let model = model.into_optimized().unwrap();
         assert_eq!(model.nodes().len(), 2);

@@ -37,7 +37,7 @@ pub fn concat(node: &NodeProto) -> TractResult<Box<Op>> {
     Ok(Box::new(tractops::array::Concat::new(axis as usize)))
 }
 
-pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<Tensor>
+pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<SharedTensor>
 where
     T: Datum,
     f32: AsPrimitive<T>,

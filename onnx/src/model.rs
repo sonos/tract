@@ -31,7 +31,7 @@ impl Tractify<pb::ModelProto> for Model {
         let mut model = Model::default();
         let op_builder = super::ops::OpBuilder::new();
         let graph = proto.get_graph();
-        let mut initializers: HashMap<&str, DtArray> = graph
+        let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
             .iter()
             .map(|init| Ok((init.get_name(), init.tractify()?)))

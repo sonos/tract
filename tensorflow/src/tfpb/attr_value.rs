@@ -24,7 +24,7 @@ pub enum AttrValue_oneof_value {
     f(f32),
     b(bool),
     field_type(super::types::DataType),
-    shape(super::tensor_shape::TensorShapeProto),
+    shape(super::tensor_shape::SharedTensorShapeProto),
     tensor(super::tensor::TensorProto),
     list(AttrValue_ListValue),
     func(NameAttrList),
@@ -185,7 +185,7 @@ impl AttrValue {
         }
     }
 
-    // .tensorflow.TensorShapeProto shape = 7;
+    // .tensorflow.SharedTensorShapeProto shape = 7;
 
     pub fn clear_shape(&mut self) {
         self.value = ::std::option::Option::None;
@@ -199,15 +199,15 @@ impl AttrValue {
     }
 
     // Param is passed by value, moved
-    pub fn set_shape(&mut self, v: super::tensor_shape::TensorShapeProto) {
+    pub fn set_shape(&mut self, v: super::tensor_shape::SharedTensorShapeProto) {
         self.value = ::std::option::Option::Some(AttrValue_oneof_value::shape(v))
     }
 
     // Mutable pointer to the field.
-    pub fn mut_shape(&mut self) -> &mut super::tensor_shape::TensorShapeProto {
+    pub fn mut_shape(&mut self) -> &mut super::tensor_shape::SharedTensorShapeProto {
         if let ::std::option::Option::Some(AttrValue_oneof_value::shape(_)) = self.value {
         } else {
-            self.value = ::std::option::Option::Some(AttrValue_oneof_value::shape(super::tensor_shape::TensorShapeProto::new()));
+            self.value = ::std::option::Option::Some(AttrValue_oneof_value::shape(super::tensor_shape::SharedTensorShapeProto::new()));
         }
         match self.value {
             ::std::option::Option::Some(AttrValue_oneof_value::shape(ref mut v)) => v,
@@ -216,21 +216,21 @@ impl AttrValue {
     }
 
     // Take field
-    pub fn take_shape(&mut self) -> super::tensor_shape::TensorShapeProto {
+    pub fn take_shape(&mut self) -> super::tensor_shape::SharedTensorShapeProto {
         if self.has_shape() {
             match self.value.take() {
                 ::std::option::Option::Some(AttrValue_oneof_value::shape(v)) => v,
                 _ => panic!(),
             }
         } else {
-            super::tensor_shape::TensorShapeProto::new()
+            super::tensor_shape::SharedTensorShapeProto::new()
         }
     }
 
-    pub fn get_shape(&self) -> &super::tensor_shape::TensorShapeProto {
+    pub fn get_shape(&self) -> &super::tensor_shape::SharedTensorShapeProto {
         match self.value {
             ::std::option::Option::Some(AttrValue_oneof_value::shape(ref v)) => v,
-            _ => super::tensor_shape::TensorShapeProto::default_instance(),
+            _ => super::tensor_shape::SharedTensorShapeProto::default_instance(),
         }
     }
 
@@ -685,7 +685,7 @@ impl ::protobuf::Message for AttrValue {
                     AttrValue::has_field_type,
                     AttrValue::get_field_type,
                 ));
-                fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, super::tensor_shape::TensorShapeProto>(
+                fields.push(::protobuf::reflect::accessor::make_singular_message_accessor::<_, super::tensor_shape::SharedTensorShapeProto>(
                     "shape",
                     AttrValue::has_shape,
                     AttrValue::get_shape,
@@ -766,7 +766,7 @@ pub struct AttrValue_ListValue {
     pub f: ::std::vec::Vec<f32>,
     pub b: ::std::vec::Vec<bool>,
     pub field_type: ::std::vec::Vec<super::types::DataType>,
-    pub shape: ::protobuf::RepeatedField<super::tensor_shape::TensorShapeProto>,
+    pub shape: ::protobuf::RepeatedField<super::tensor_shape::SharedTensorShapeProto>,
     pub tensor: ::protobuf::RepeatedField<super::tensor::TensorProto>,
     pub func: ::protobuf::RepeatedField<NameAttrList>,
     // special fields
@@ -904,28 +904,28 @@ impl AttrValue_ListValue {
         &self.field_type
     }
 
-    // repeated .tensorflow.TensorShapeProto shape = 7;
+    // repeated .tensorflow.SharedTensorShapeProto shape = 7;
 
     pub fn clear_shape(&mut self) {
         self.shape.clear();
     }
 
     // Param is passed by value, moved
-    pub fn set_shape(&mut self, v: ::protobuf::RepeatedField<super::tensor_shape::TensorShapeProto>) {
+    pub fn set_shape(&mut self, v: ::protobuf::RepeatedField<super::tensor_shape::SharedTensorShapeProto>) {
         self.shape = v;
     }
 
     // Mutable pointer to the field.
-    pub fn mut_shape(&mut self) -> &mut ::protobuf::RepeatedField<super::tensor_shape::TensorShapeProto> {
+    pub fn mut_shape(&mut self) -> &mut ::protobuf::RepeatedField<super::tensor_shape::SharedTensorShapeProto> {
         &mut self.shape
     }
 
     // Take field
-    pub fn take_shape(&mut self) -> ::protobuf::RepeatedField<super::tensor_shape::TensorShapeProto> {
+    pub fn take_shape(&mut self) -> ::protobuf::RepeatedField<super::tensor_shape::SharedTensorShapeProto> {
         ::std::mem::replace(&mut self.shape, ::protobuf::RepeatedField::new())
     }
 
-    pub fn get_shape(&self) -> &[super::tensor_shape::TensorShapeProto] {
+    pub fn get_shape(&self) -> &[super::tensor_shape::SharedTensorShapeProto] {
         &self.shape
     }
 
@@ -1190,7 +1190,7 @@ impl ::protobuf::Message for AttrValue_ListValue {
                     |m: &AttrValue_ListValue| { &m.field_type },
                     |m: &mut AttrValue_ListValue| { &mut m.field_type },
                 ));
-                fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<super::tensor_shape::TensorShapeProto>>(
+                fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<super::tensor_shape::SharedTensorShapeProto>>(
                     "shape",
                     |m: &AttrValue_ListValue| { &m.shape },
                     |m: &mut AttrValue_ListValue| { &mut m.shape },
@@ -1459,7 +1459,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x20\x01(\x03H\0R\x01i\x12\x0e\n\x01f\x18\x04\x20\x01(\x02H\0R\x01f\x12\
     \x0e\n\x01b\x18\x05\x20\x01(\x08H\0R\x01b\x12*\n\x04type\x18\x06\x20\x01\
     (\x0e2\x14.tensorflow.DataTypeH\0R\x04type\x124\n\x05shape\x18\x07\x20\
-    \x01(\x0b2\x1c.tensorflow.TensorShapeProtoH\0R\x05shape\x121\n\x06tensor\
+    \x01(\x0b2\x1c.tensorflow.SharedTensorShapeProtoH\0R\x05shape\x121\n\x06tensor\
     \x18\x08\x20\x01(\x0b2\x17.tensorflow.TensorProtoH\0R\x06tensor\x125\n\
     \x04list\x18\x01\x20\x01(\x0b2\x1f.tensorflow.AttrValue.ListValueH\0R\
     \x04list\x12.\n\x04func\x18\n\x20\x01(\x0b2\x18.tensorflow.NameAttrListH\
@@ -1469,7 +1469,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x04\x20\x03(\x02R\x01fB\x02\x10\x01\x12\x10\n\x01b\x18\x05\x20\x03(\x08\
     R\x01bB\x02\x10\x01\x12,\n\x04type\x18\x06\x20\x03(\x0e2\x14.tensorflow.\
     DataTypeR\x04typeB\x02\x10\x01\x122\n\x05shape\x18\x07\x20\x03(\x0b2\x1c\
-    .tensorflow.TensorShapeProtoR\x05shape\x12/\n\x06tensor\x18\x08\x20\x03(\
+    .tensorflow.SharedTensorShapeProtoR\x05shape\x12/\n\x06tensor\x18\x08\x20\x03(\
     \x0b2\x17.tensorflow.TensorProtoR\x06tensor\x12,\n\x04func\x18\t\x20\x03\
     (\x0b2\x18.tensorflow.NameAttrListR\x04funcB\x07\n\x05value\"\xaa\x01\n\
     \x0cNameAttrList\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x126\n\

@@ -1,4 +1,4 @@
-//! `DtArray` is the equivalent of Tensorflow DtArray.
+//! `Tensor` is the equivalent of SharedTensorflow Tensor.
 use dim::TDim;
 use model::TVec;
 use ndarray::prelude::*;
@@ -16,15 +16,15 @@ use ops::prelude::*;
 use datum::TryInto;
 
 #[derive(Debug, Clone)]
-pub struct Tensor(Arc<DtArray>);
+pub struct SharedTensor(Arc<Tensor>);
 
-impl Tensor {
-    /// Returns a reference to the DtArray wrapped inside a Tensor.
-    pub fn as_tensor(&self) -> &DtArray {
+impl SharedTensor {
+    /// Returns a reference to the Tensor wrapped inside a SharedTensor.
+    pub fn as_tensor(&self) -> &Tensor {
         self.0.as_ref()
     }
 
-    pub fn to_tensor(self) -> DtArray {
+    pub fn to_tensor(self) -> Tensor {
         Arc::try_unwrap(self.0).unwrap_or_else(|arc| arc.as_ref().clone())
     }
 
@@ -33,60 +33,60 @@ impl Tensor {
     }
 }
 
-impl<M> From<M> for Tensor
+impl<M> From<M> for SharedTensor
 where
-    DtArray: From<M>,
+    Tensor: From<M>,
 {
-    fn from(m: M) -> Tensor {
-        Tensor::from(Arc::new(m.into()))
+    fn from(m: M) -> SharedTensor {
+        SharedTensor::from(Arc::new(m.into()))
     }
 }
 
-impl From<Arc<DtArray>> for Tensor {
-    fn from(m: Arc<DtArray>) -> Tensor {
-        Tensor(m)
+impl From<Arc<Tensor>> for SharedTensor {
+    fn from(m: Arc<Tensor>) -> SharedTensor {
+        SharedTensor(m)
     }
 }
 
-impl ::std::ops::Deref for Tensor {
-    type Target = DtArray;
-    fn deref(&self) -> &DtArray {
+impl ::std::ops::Deref for SharedTensor {
+    type Target = Tensor;
+    fn deref(&self) -> &Tensor {
         self.0.as_ref()
     }
 }
 
-impl PartialEq for Tensor {
-    fn eq(&self, other: &Tensor) -> bool {
+impl PartialEq for SharedTensor {
+    fn eq(&self, other: &SharedTensor) -> bool {
         self.as_tensor() == other.as_tensor()
     }
 }
 
 #[derive(Clone)]
-pub struct DtArray {
+pub struct Tensor {
     dt: DatumType,
     shape: TVec<usize>,
     data: Vec<u8>,
 }
 
-impl DtArray {
-    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<DtArray> {
-        Ok(DtArray {
+impl Tensor {
+    pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
+        Ok(Tensor {
             dt: T::datum_type(),
             shape: shape.into(),
             data: content.to_vec(),
         })
     }
 
-    pub fn into_tensor(self) -> ::Tensor {
-        ::Tensor::from(self)
+    pub fn into_tensor(self) -> ::SharedTensor {
+        ::SharedTensor::from(self)
     }
 
     pub fn shape(&self) -> &[usize] {
         &self.shape
     }
 
-    pub fn into_shape(self, shape: &[usize]) -> TractResult<DtArray> {
-        Ok(DtArray {
+    pub fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
+        Ok(Tensor {
             shape: shape.into(),
             ..self
         })
@@ -218,20 +218,20 @@ impl DtArray {
             .collect()
     }
 
-    fn cast<Source: Datum + TryInto<Target>, Target: Datum>(&self) -> TractResult<DtArray> {
+    fn cast<Source: Datum + TryInto<Target>, Target: Datum>(&self) -> TractResult<Tensor> {
         let data = self.cast_data::<Source, Target>()?;
-        Ok(DtArray {
+        Ok(Tensor {
             dt: Target::datum_type(),
             shape: self.shape.clone(),
             data: vec_to_u8(data),
         })
     }
 
-    pub fn cast_to<D: Datum>(&self) -> TractResult<Cow<DtArray>> {
+    pub fn cast_to<D: Datum>(&self) -> TractResult<Cow<Tensor>> {
         self.cast_to_dt(D::datum_type())
     }
 
-    pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<DtArray>> {
+    pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<Tensor>> {
         use DatumType::*;
         if self.dt == dt {
             return Ok(Cow::Borrowed(self));
@@ -270,17 +270,17 @@ impl DtArray {
         Ok(Cow::Owned(target))
     }
 
-    fn eq_t<D: Datum>(&self, other: &DtArray) -> TractResult<bool> {
+    fn eq_t<D: Datum>(&self, other: &Tensor) -> TractResult<bool> {
         Ok(self.to_array_view::<D>()? == other.to_array_view::<D>()?)
     }
 
-    fn eq_dt(&self, other: &DtArray) -> TractResult<bool> {
+    fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
         dispatch_datum!(Self::eq_t(self.dt)(self, other))
     }
 }
 
-impl PartialEq for DtArray {
-    fn eq(&self, other: &DtArray) -> bool {
+impl PartialEq for Tensor {
+    fn eq(&self, other: &Tensor) -> bool {
         if self.dt != other.dt || self.shape != other.shape {
             return false;
         }
@@ -291,15 +291,15 @@ impl PartialEq for DtArray {
     }
 }
 
-impl fmt::Debug for DtArray {
+impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let content = self.dump(false).unwrap_or("Error".to_string());
-        write!(formatter, "DtArray {}", content)
+        write!(formatter, "Tensor {}", content)
     }
 }
 
 #[cfg(feature = "serialize")]
-impl Serialize for DtArray {
+impl Serialize for Tensor {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -315,7 +315,7 @@ impl Serialize for DtArray {
             }};
         };
 
-        use DtArray::*;
+        use Tensor::*;
         match self {
             Bool(m) => serialize_inner!(bool, m),
             U8(m) => serialize_inner!(u8, m),
@@ -355,8 +355,8 @@ unsafe fn vec_to_datum<T: Datum>(mut data: Vec<u8>) -> Vec<T> {
     v
 }
 
-impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for DtArray {
-    fn from(it: Array<T, D>) -> DtArray {
+impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
+    fn from(it: Array<T, D>) -> Tensor {
         let shape = it.shape().into();
         let data = if it.is_standard_layout() {
             it.into_raw_vec()
@@ -364,7 +364,7 @@ impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for DtArray {
             it.view().into_iter().cloned().collect()
         };
         let raw_data = vec_to_u8(data);
-        DtArray {
+        Tensor {
             dt: T::datum_type(),
             shape,
             data: raw_data,

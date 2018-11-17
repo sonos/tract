@@ -12,8 +12,8 @@ pub struct BatchNorm {
 impl BatchNorm {
     fn eval_t<T: Datum + ::num::Float + ::num::FromPrimitive>(
         &self,
-        mut inputs: TVec<Tensor>,
-    ) -> TractResult<TVec<Tensor>>
+        mut inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -43,7 +43,7 @@ impl Op for BatchNorm {
 }
 
 impl StatelessOp for BatchNorm {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -52,8 +52,8 @@ impl InferenceRulesOp for BatchNorm {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 5)?;
         s.equals(&outputs.len, 1)?;

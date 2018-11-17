@@ -18,7 +18,7 @@ pub struct Pack {
 
 impl Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval_t<T: Datum>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         use ndarray::Axis;
         let arrays = inputs
             .iter()
@@ -41,7 +41,7 @@ impl Op for Pack {
 
 impl StatelessOp for Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let dt = DatumType::super_type_for(inputs.iter().map(|dt| dt.datum_type()))
             .ok_or("Could not find a supertype")?;
         match dt {
@@ -57,8 +57,8 @@ impl InferenceRulesOp for Pack {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         let n = self.n;
         let axis = self.axis;
@@ -100,7 +100,7 @@ mod tests {
     use ndarray::prelude::*;
     use num::Zero;
     use tract_core::ops::InferenceOp;
-    use tract_core::DtArray;
+    use tract_core::Tensor;
 
     #[test]
     fn pack_0() {
@@ -115,7 +115,7 @@ mod tests {
                 .unwrap()
                 .remove(0)
                 .to_tensor(),
-            DtArray::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
+            Tensor::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
         );
         assert_eq!(
             Pack::new(DatumType::I32, 3, 1)
@@ -123,7 +123,7 @@ mod tests {
                 .unwrap()
                 .remove(0)
                 .to_tensor(),
-            DtArray::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
+            Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
         );
     }
 
@@ -131,7 +131,7 @@ mod tests {
     fn pack_1() {
         let pack = Pack::new(DatumType::I32, 3, 0);
         let input = arr1::<i32>(&[]).into();
-        let exp:Tensor = arr2::<i32, _>(&[[]]).into();
+        let exp:SharedTensor = arr2::<i32, _>(&[[]]).into();
         let found = pack.eval(tvec![input]).unwrap();
 
         assert!(
@@ -145,8 +145,8 @@ mod tests {
     #[test]
     fn inference_1() {
         let pack = Pack::new(DatumType::I32, 2, 0);
-        let a = TensorFact::from(DtArray::from(0i32));
-        let b = TensorFact::from(DtArray::from(TDim::zero()));
+        let a = TensorFact::from(Tensor::from(0i32));
+        let b = TensorFact::from(Tensor::from(TDim::zero()));
         let any = TensorFact::default();
         let (_, output_facts) = pack.infer_facts(tvec![&a, &b], tvec![&any]).unwrap();
         let exp: TVec<TensorFact> = tvec!(TensorFact::dt_shape(DatumType::TDim, vec![2usize]));
@@ -156,12 +156,12 @@ mod tests {
     #[test]
     fn inference_2() {
         let pack = Pack::new(DatumType::I32, 2, 0);
-        let a = TensorFact::from(DtArray::from(0i32));
-        let b = TensorFact::from(DtArray::from(TDim::zero()));
+        let a = TensorFact::from(Tensor::from(0i32));
+        let b = TensorFact::from(Tensor::from(TDim::zero()));
         let any = TensorFact::default();
         let (_, output_facts) = pack.infer(tvec![&a, &b], tvec![&any]).unwrap();
         let exp: TVec<TensorFact> =
-            tvec!(DtArray::from(arr1(&[TDim::zero(), TDim::zero()])).into());
+            tvec!(Tensor::from(arr1(&[TDim::zero(), TDim::zero()])).into());
         assert_eq!(output_facts, exp);
     }
 

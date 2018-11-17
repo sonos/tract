@@ -108,7 +108,7 @@ impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
 
 impl<T: Datum + LinalgScalar> StatelessOp for Conv2D<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (m_data, m_filter) = args_2!(inputs);
         let data = m_data.to_array()?;
         let filter = m_filter.to_array_view()?;
@@ -125,8 +125,8 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 2)?;
         s.equals(&outputs.len, 1)?;
@@ -161,9 +161,9 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use tract_core::ops::nn::{Conv, DataFormat, PaddingSpec};
-    use tract_core::DtArray;
+    use tract_core::Tensor;
 
-    fn mk(sizes: &[usize]) -> DtArray {
+    fn mk(sizes: &[usize]) -> Tensor {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
             .into_shape(sizes)
             .unwrap()
@@ -206,7 +206,7 @@ mod tests {
         ))
     }
 
-    fn verify(input: DtArray, filter: DtArray, stride: usize, padding: Padding, expect: &[f32]) {
+    fn verify(input: Tensor, filter: Tensor, stride: usize, padding: Padding, expect: &[f32]) {
         let result = make_conv(stride, stride, padding)
             .as_stateless()
             .unwrap()
@@ -311,10 +311,10 @@ mod tests {
     fn test_conv_1() {
         let conv = make_conv(1, 1, Padding::Same);
         // NHWC
-        let data: Tensor = arr4(&[[[[1f32]]]]).into();
+        let data: SharedTensor = arr4(&[[[[1f32]]]]).into();
         // HWIO
-        let filter: Tensor = arr4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]).into();
-        let exp: Tensor = arr4(&[[[[1f32]]]]).into();
+        let filter: SharedTensor = arr4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]).into();
+        let exp: SharedTensor = arr4(&[[[[1f32]]]]).into();
 
         let result = conv
             .as_stateless()
@@ -328,13 +328,13 @@ mod tests {
     #[test]
     fn test_conv_2() {
         let conv = make_conv(1, 1, Padding::Same);
-        let data: Tensor =
+        let data: SharedTensor =
             arr4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]).into();
-        let filter: Tensor = arr4(&[
+        let filter: SharedTensor = arr4(&[
             [[[160.72833f32]], [[107.84076]]],
             [[[247.50552]], [[-38.738464]]],
         ]).into();
-        let exp: Tensor = arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
+        let exp: SharedTensor = arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
         let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
         println!("{:?}", got);
         println!("{:?}", exp);

@@ -8,8 +8,8 @@ pub struct LayerHardmax {
 impl LayerHardmax {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive>(
         &self,
-        input: Tensor,
-    ) -> TractResult<TVec<Tensor>> {
+        input: SharedTensor,
+    ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 {
@@ -44,7 +44,7 @@ impl Op for LayerHardmax {
 }
 
 impl StatelessOp for LayerHardmax {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -54,8 +54,8 @@ impl InferenceRulesOp for LayerHardmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
@@ -69,8 +69,8 @@ pub struct LayerLogSoftmax {
 impl LayerLogSoftmax {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive + ::std::iter::Sum>(
         &self,
-        input: Tensor,
-    ) -> TractResult<TVec<Tensor>> {
+        input: SharedTensor,
+    ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 {
@@ -102,7 +102,7 @@ impl Op for LayerLogSoftmax {
 }
 
 impl StatelessOp for LayerLogSoftmax {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -112,8 +112,8 @@ impl InferenceRulesOp for LayerLogSoftmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
@@ -127,8 +127,8 @@ pub struct LayerSoftmax {
 impl LayerSoftmax {
     fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive + ::std::iter::Sum>(
         &self,
-        input: Tensor,
-    ) -> TractResult<TVec<Tensor>> {
+        input: SharedTensor,
+    ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis = if self.axis < 0 {
@@ -160,7 +160,7 @@ impl Op for LayerSoftmax {
 }
 
 impl StatelessOp for LayerSoftmax {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -170,8 +170,8 @@ impl InferenceRulesOp for LayerSoftmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
@@ -179,8 +179,8 @@ impl InferenceRulesOp for LayerSoftmax {
 
 fn rules<'r, 'p: 'r, 's: 'r>(
     s: &mut Solver<'r>,
-    inputs: &'p TensorsProxy,
-    outputs: &'p TensorsProxy,
+    inputs: &'p SharedTensorsProxy,
+    outputs: &'p SharedTensorsProxy,
 ) -> InferenceResult {
     s.equals(&outputs.len, 1)?;
     s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;

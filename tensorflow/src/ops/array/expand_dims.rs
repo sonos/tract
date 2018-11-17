@@ -33,7 +33,7 @@ impl Op for ExpandDims {
 }
 
 impl StatelessOp for ExpandDims {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (data, dims) = args_2!(inputs);
         let data = data.to_array::<f32>()?;
         let dims = dims.to_array_view::<i32>()?;
@@ -45,7 +45,7 @@ impl StatelessOp for ExpandDims {
                 Err(format!("unimplemented ExpandDims with negative parameter"))?
             }
         }
-        Ok(tvec![DtArray::from(data.into_shape(shape)?).into()])
+        Ok(tvec![Tensor::from(data.into_shape(shape)?).into()])
     }
 }
 
@@ -53,8 +53,8 @@ impl InferenceRulesOp for ExpandDims {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         let data = &inputs[0];
         let dims = &inputs[1];

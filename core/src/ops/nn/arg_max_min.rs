@@ -9,7 +9,7 @@ pub struct ArgMaxMin {
 }
 
 impl ArgMaxMin {
-    fn eval_t<T: Datum + PartialOrd>(&self, input: Tensor) -> TractResult<Tensor> {
+    fn eval_t<T: Datum + PartialOrd>(&self, input: SharedTensor) -> TractResult<SharedTensor> {
         use std::cmp::Ordering;
         let array = input.to_array_view::<T>()?;
         let f: fn(&(usize, &T), &(usize, &T)) -> Ordering = if self.max {
@@ -23,7 +23,7 @@ impl ArgMaxMin {
         if self.keepdims {
             values = values.insert_axis(Axis(self.axis));
         }
-        Ok(DtArray::from(values).into())
+        Ok(Tensor::from(values).into())
     }
 }
 
@@ -34,7 +34,7 @@ impl Op for ArgMaxMin {
 }
 
 impl StatelessOp for ArgMaxMin {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(
             self, input
@@ -46,8 +46,8 @@ impl InferenceRulesOp for ArgMaxMin {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;

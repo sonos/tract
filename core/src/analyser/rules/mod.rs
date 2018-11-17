@@ -40,8 +40,8 @@ pub trait InferenceRulesOp {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult;
 }
 
@@ -51,8 +51,8 @@ impl<O: InferenceRulesOp> ::ops::InferenceOp for O {
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let inputs_proxy = TensorsProxy::new(vec![0].into());
-        let outputs_proxy = TensorsProxy::new(vec![1].into());
+        let inputs_proxy = SharedTensorsProxy::new(vec![0].into());
+        let outputs_proxy = SharedTensorsProxy::new(vec![1].into());
 
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;

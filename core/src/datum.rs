@@ -1,9 +1,9 @@
-//! `DtArray` is the equivalent of Tensorflow DtArray.
+//! `Tensor` is the equivalent of SharedTensorflow Tensor.
 use dim::TDim;
 use ndarray::prelude::*;
 use std::fmt;
 use TractResult;
-use tensor::DtArray;
+use tensor::Tensor;
 
 use f16::f16;
 
@@ -107,8 +107,8 @@ pub (crate) trait TryInto<D: Datum> {
 
 macro_rules! datum {
     ($t:ident, $v:ident) => {
-        impl From<$t> for DtArray {
-            fn from(it: $t) -> DtArray {
+        impl From<$t> for Tensor {
+            fn from(it: $t) -> Tensor {
                 arr0(it).into()
             }
         }
@@ -230,14 +230,14 @@ mod tests {
     #[test]
     fn test_array_to_tensor_to_array() {
         let array = arr1(&[12i32, 42]);
-        let dt_array = DtArray::from(array.clone());
+        let dt_array = Tensor::from(array.clone());
         let view = dt_array.to_array_view::<i32>().unwrap();
         assert_eq!(array, view.into_dimensionality().unwrap());
     }
 
     #[test]
     fn test_cast_dim_to_dim() {
-        let t_dim: DtArray = arr1(&[12isize.to_dim(), 42isize.to_dim()]).into();
+        let t_dim: Tensor = arr1(&[12isize.to_dim(), 42isize.to_dim()]).into();
         let t_i32 = t_dim.cast_to::<i32>().unwrap();
         let t_dim_2 = t_i32.cast_to::<TDim>().unwrap().into_owned();
         assert_eq!(t_dim, t_dim_2);
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_cast_i32_to_dim() {
-        let t_i32: DtArray = arr1(&[0i32, 0]).into();
+        let t_i32: Tensor = arr1(&[0i32, 0]).into();
         t_i32.cast_to::<TDim>().unwrap();
     }
 }

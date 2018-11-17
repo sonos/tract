@@ -642,11 +642,11 @@ mod tests {
     use super::*;
     use DatumType;
 
-    fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
+    fn bootstrap<'s>() -> (Solver<'s>, SharedTensorsProxy, SharedTensorsProxy) {
         (
             Solver::default(),
-            TensorsProxy::new(tvec![0].into()),
-            TensorsProxy::new(tvec![1].into()),
+            SharedTensorsProxy::new(tvec![0].into()),
+            SharedTensorsProxy::new(tvec![1].into()),
         )
     }
 

@@ -16,7 +16,7 @@ mod utils;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::DtArray;
+use tract_core::Tensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
@@ -40,7 +40,7 @@ fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec
     Ok(graph.write_to_bytes()?)
 }
 
-fn img_and_ker() -> BoxedStrategy<(DtArray, DtArray, (usize, usize))> {
+fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
     (1usize..8, 1usize..8, 1usize..8, 1usize..8)
         .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic, kh, kw, kc))))
         .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, kc))| {
@@ -99,8 +99,8 @@ proptest! {
 #[test]
 fn conv_infer_facts_1() {
     //   ::conform::setup_test_logger();
-    let i: DtArray = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
-    let k: DtArray = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
+    let i: Tensor = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
+    let k: Tensor = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
     let model = convolution_pb(1, 1, false).unwrap();
     infer(
         &model,
@@ -113,8 +113,8 @@ fn conv_infer_facts_1() {
 fn conv_eval_1() {
     use tract_core::tensor::arr4;
     //   ::conform::setup_test_logger();
-    let i: DtArray = DtArray::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
-    let k: DtArray = DtArray::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
     let model = convolution_pb(1, 1, false).unwrap();
     compare(
         &model,

@@ -15,7 +15,7 @@ error_chain! {
 
 impl ::std::convert::From<::tensorflow::Status> for Error {
     fn from(tfs: ::tensorflow::Status) -> Error {
-        format!("Tensorflow error: {:?}", tfs).into()
+        format!("SharedTensorflow error: {:?}", tfs).into()
     }
 }
 
@@ -24,11 +24,11 @@ pub mod tf;
 pub use protobuf::Message;
 
 use tfpb;
-use tfpb::tensor_shape::TensorShapeProto;
+use tfpb::tensor_shape::SharedTensorShapeProto;
 use tfpb::types::DataType;
 use tract_core::ops::prelude::*;
 
-pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
+pub fn placeholder<Shape: Into<Option<SharedTensorShapeProto>>>(
     name: &str,
     t: DataType,
     shape: Shape,
@@ -40,13 +40,13 @@ pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     node
 }
 
-pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
+pub fn tensor_shape(dims: &[usize]) -> SharedTensorShapeProto {
     use tfpb::tensor_shape::*;
-    let mut shape = TensorShapeProto::new();
+    let mut shape = SharedTensorShapeProto::new();
     shape.set_dim(
         dims.iter()
             .map(|&d| {
-                let mut dim = TensorShapeProto_Dim::new();
+                let mut dim = SharedTensorShapeProto_Dim::new();
                 dim.set_size(d as i64);
                 dim
             }).collect(),

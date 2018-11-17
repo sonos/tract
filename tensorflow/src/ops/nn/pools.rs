@@ -28,7 +28,7 @@ impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
 }
 
 impl<P: Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let m_input = args_1!(inputs);
         let data = m_input.to_array::<f32>()?;
         let data = into_4d(data)?;
@@ -62,7 +62,7 @@ impl<P: Pooler + ::std::fmt::Debug> StatelessOp for Pool<P> {
             P::digest(&mut state)
         });
 
-        Ok(tvec![DtArray::from(transformed.into_dyn()).into()])
+        Ok(tvec![Tensor::from(transformed.into_dyn()).into()])
     }
 }
 
@@ -71,8 +71,8 @@ impl<P: Pooler + ::std::fmt::Debug> InferenceRulesOp for Pool<P> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
@@ -131,8 +131,8 @@ mod tests {
     #[test]
     fn test_maxpool_1() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(1, 1), (2, 1), PhantomData);
-        let data: Tensor = arr4(&[[[[-1.0f32]]]]).into();
-        let exp: Tensor = arr4(&[[[[-1.0f32]]]]).into();
+        let data: SharedTensor = arr4(&[[[[-1.0f32]]]]).into();
+        let exp: SharedTensor = arr4(&[[[[-1.0f32]]]]).into();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
@@ -146,9 +146,9 @@ mod tests {
     #[test]
     fn test_maxpool_2() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(3, 3), (3, 3), PhantomData);
-        let data: Tensor =
+        let data: SharedTensor =
             arr4(&[[[[1.0f32], [0.0], [0.0], [0.0]], [[0.0], [0.0], [0.0], [0.0]]]]).into();
-        let exp: Tensor = arr4(&[[[[1.0f32], [0.0]]]]).into();
+        let exp: SharedTensor = arr4(&[[[[1.0f32], [0.0]]]]).into();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(
@@ -162,8 +162,8 @@ mod tests {
     #[test]
     fn test_avgpool_1() {
         let pool = Pool::<AvgPooler>(LocalPatch::same(1, 1), (1, 2), PhantomData);
-        let data: Tensor = arr4(&[[[[0.0f32], [0.0]]]]).into();
-        let exp: Tensor = arr4(&[[[[0.0f32], [0.0]]]]).into();
+        let data: SharedTensor = arr4(&[[[[0.0f32], [0.0]]]]).into();
+        let exp: SharedTensor = arr4(&[[[[0.0f32], [0.0]]]]).into();
         let found = pool.eval(tvec![data.into()]).unwrap();
 
         assert!(

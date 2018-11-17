@@ -20,14 +20,14 @@ use protobuf::Message;
 use tract_core::tensor::arr4;
 use tract_core::datum::Datum;
 use tract_core::ops::StatefullOp;
-use tract_core::DtArray;
+use tract_core::Tensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 use utils::*;
 
-fn space_to_batch_strat() -> BoxedStrategy<(DtArray, DtArray, DtArray)> {
+fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
     use proptest::collection::vec;
     (
         1usize..4,
@@ -92,10 +92,10 @@ proptest! {
     }
 }
 
-fn batch_to_space_strat() -> BoxedStrategy<(DtArray, DtArray, DtArray)> {
+fn batch_to_space_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
     space_to_batch_strat()
         .prop_map(|(i, bs, p)| {
-            let batches: DtArray =
+            let batches: Tensor =
                 tract_tensorflow::ops::nn::s2b::raw::SpaceToBatch::new(f32::datum_type())
                     .as_stateless()
                     .unwrap()

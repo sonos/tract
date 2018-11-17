@@ -17,22 +17,22 @@ use ndarray::prelude::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::DtArray as TractTensor;
+use tract_core::Tensor as TractSharedTensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 use utils::*;
 
-fn strat() -> BoxedStrategy<(usize, Vec<TractTensor>)> {
+fn strat() -> BoxedStrategy<(usize, Vec<TractSharedTensor>)> {
     // input rank
     (1usize..8)
         // rank, dimensions, number of inputs
         .prop_flat_map(|r| (0usize..r, vec(1usize..5, r..r + 1), 1..5))
         .prop_map(|(ax, dims, n)| {
             let size = dims.iter().map(|a| *a).product::<usize>();
-            let mats: Vec<TractTensor> = (0..n)
+            let mats: Vec<TractSharedTensor> = (0..n)
                 .map(|ix| {
-                    TractTensor::from(
+                    TractSharedTensor::from(
                         Array::from_shape_vec(dims.clone(), ((ix * 1000)..).take(size).collect())
                             .unwrap(),
                     )

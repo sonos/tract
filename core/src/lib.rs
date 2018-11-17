@@ -1,6 +1,6 @@
 //! # Tract
 //!
-//! Tiny, no-nonsense, self contained, portable Tensorflow and ONNX inference.
+//! Tiny, no-nonsense, self contained, portable SharedTensorflow and ONNX inference.
 //!
 //! ## Example
 //!
@@ -41,7 +41,7 @@
 //! ```
 //!
 //! While creating a model from Rust code is usefull for testing the library,
-//! real-life use-cases will usually load a Tensorflow or ONNX model using
+//! real-life use-cases will usually load a SharedTensorflow or ONNX model using
 //! tract-tf or tract-onnx crates.
 //!
 
@@ -108,7 +108,7 @@ pub use analyser::types::TensorFact;
 pub use datum::DatumType;
 pub use dim::TDim;
 pub use model::{Model, Node, TVec};
-pub use tensor::{DtArray, Tensor};
+pub use tensor::{Tensor, SharedTensor};
 pub use plan::SimplePlan;
 
 #[cfg(test)]

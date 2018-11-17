@@ -16,7 +16,7 @@ impl RmDims {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Tensor) -> TractResult<TVec<Tensor>> {
+    fn eval_t<T: Datum>(&self, input: SharedTensor) -> TractResult<TVec<SharedTensor>> {
         let shape = self.compute_shape(input.shape());
         Ok(tvec![input.to_array::<T>()?.into_shape(&*shape)?.into()])
     }
@@ -38,7 +38,7 @@ impl Op for RmDims {
 
 impl StatelessOp for RmDims {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -48,8 +48,8 @@ impl InferenceRulesOp for RmDims {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;

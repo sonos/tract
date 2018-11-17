@@ -10,7 +10,7 @@ macro_rules! element_map {
         pub struct $Name(TypeFact);
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Tensor>,) -> TractResult<TVec<Tensor>> {
+            fn eval(&self, mut inputs: TVec<SharedTensor>,) -> TractResult<TVec<SharedTensor>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
@@ -38,8 +38,8 @@ macro_rules! element_map {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p TensorsProxy,
-                outputs: &'p TensorsProxy,
+                inputs: &'p SharedTensorsProxy,
+                outputs: &'p SharedTensorsProxy,
             ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
@@ -64,7 +64,7 @@ macro_rules! element_map_with_params {
         }
 
         impl StatelessOp for $Name {
-            fn eval(&self, mut inputs: TVec<Tensor>,) -> TractResult<TVec<Tensor>> {
+            fn eval(&self, mut inputs: TVec<SharedTensor>,) -> TractResult<TVec<SharedTensor>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $expr;
@@ -88,8 +88,8 @@ macro_rules! element_map_with_params {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p TensorsProxy,
-                outputs: &'p TensorsProxy,
+                inputs: &'p SharedTensorsProxy,
+                outputs: &'p SharedTensorsProxy,
             ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
@@ -123,7 +123,7 @@ macro_rules! element_bin {
                 Bin::default()
             }
 
-            fn eval_bin(a: Tensor, b: &Tensor) -> TractResult<Tensor> {
+            fn eval_bin(a: SharedTensor, b: &SharedTensor) -> TractResult<SharedTensor> {
                 let shape:TVec<usize> = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
                     .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
                                            a.shape(), b.shape()))?;
@@ -147,7 +147,7 @@ macro_rules! element_bin {
             pub struct Bin(TypeFact);
 
             impl StatelessOp for Bin {
-                fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+                fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
                     let (a, b) = args_2!(inputs);
                     Ok(tvec!(eval_bin(a, &b)?))
                 }
@@ -187,8 +187,8 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p TensorsProxy,
-                    outputs: &'p TensorsProxy,
+                    inputs: &'p SharedTensorsProxy,
+                    outputs: &'p SharedTensorsProxy,
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let b = &inputs[1];
@@ -216,11 +216,11 @@ macro_rules! element_bin {
             #[derive(Debug, Clone, new)]
             pub struct UnaryA {
                 dt: TypeFact,
-                b: Tensor,
+                b: SharedTensor,
             }
 
             impl StatelessOp for UnaryA {
-                fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+                fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
                     let a = args_1!(inputs);
                     Ok(tvec!(eval_bin(a, &self.b)?))
                 }
@@ -245,8 +245,8 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p TensorsProxy,
-                    outputs: &'p TensorsProxy,
+                    inputs: &'p SharedTensorsProxy,
+                    outputs: &'p SharedTensorsProxy,
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let c = &outputs[0];
@@ -308,7 +308,7 @@ macro_rules! element_nary {
 
         impl StatelessOp for $Name {
             /// Evaluates the operation given the input tensors.
-            fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+            fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
                 use $crate::ndarray::{ ArrayD, ArrayViewD };
                 if let Some(n) = self.n {
                     if inputs.len() != n {
@@ -344,8 +344,8 @@ macro_rules! element_nary {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p TensorsProxy,
-                outputs: &'p TensorsProxy,
+                inputs: &'p SharedTensorsProxy,
+                outputs: &'p SharedTensorsProxy,
             ) -> InferenceResult {
                 if let Some(n) = self.n {
                     s.equals(&inputs.len, n as i32)?;

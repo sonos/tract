@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use tract_core::ops::prelude::*;
 
-use tract_core::analyser::rules::TensorProxy;
+use tract_core::analyser::rules::SharedTensorProxy;
 
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatch {
@@ -58,7 +58,7 @@ impl Op for SpaceToBatch {
 }
 
 impl StatelessOp for SpaceToBatch {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, block_shape, paddings) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
         let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
@@ -78,8 +78,8 @@ impl InferenceRulesOp for SpaceToBatch {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 3)?;
         s.equals(&outputs.len, 1)?;
@@ -147,7 +147,7 @@ impl Op for BatchToSpace {
 
 impl StatelessOp for BatchToSpace {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, block_shape, crops) = args_3!(inputs);
         let block_shape = block_shape.cast_to::<i32>()?;
         let block_shape = block_shape.to_array_view::<i32>()?.into_dimensionality()?;
@@ -167,8 +167,8 @@ impl InferenceRulesOp for BatchToSpace {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 3)?;
         s.equals(&outputs.len, 1)?;
@@ -186,10 +186,10 @@ impl InferenceRulesOp for BatchToSpace {
 fn rules<'r, 'p: 'r>(
     s: &mut Solver<'r>,
     datum_type: DatumType,
-    batch: &'p TensorProxy,
-    space: &'p TensorProxy,
-    block_shape: &'p TensorProxy,
-    paddings: &'p TensorProxy,
+    batch: &'p SharedTensorProxy,
+    space: &'p SharedTensorProxy,
+    block_shape: &'p SharedTensorProxy,
+    paddings: &'p SharedTensorProxy,
 ) -> InferenceResult {
     s.equals(&batch.datum_type, datum_type)?;
     s.equals(&batch.datum_type, &space.datum_type)?;

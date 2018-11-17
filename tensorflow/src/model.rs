@@ -4,7 +4,7 @@ use tfpb::graph::GraphDef;
 use tract_core::model::{InletId, Model, OutletId};
 use tract_core::{ToTract, TractResult, Tractify};
 
-/// Load a Tensorflow protobul model from a file.
+/// Load a SharedTensorflow protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {
     for_reader(fs::File::open(p)?)
 }
@@ -14,12 +14,12 @@ pub fn for_reader<R: ::std::io::Read>(r: R) -> TractResult<Model> {
     graphdef_for_reader(r)?.tractify()
 }
 
-/// Load a Tensorflow protobuf graph def from a reader.
+/// Load a SharedTensorflow protobuf graph def from a reader.
 pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<GraphDef> {
     Ok(::protobuf::parse_from_reader::<GraphDef>(&mut r).map_err(|e| format!("{:?}", e))?)
 }
 
-/// Load a Tensorflow protobuf graph def from a path
+/// Load a SharedTensorflow protobuf graph def from a path
 pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TractResult<GraphDef> {
     graphdef_for_reader(fs::File::open(p)?)
 }

@@ -13,7 +13,7 @@ pub struct Gemm {
 }
 
 impl Gemm {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -43,7 +43,7 @@ impl Op for Gemm {
 }
 
 impl StatelessOp for Gemm {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -52,8 +52,8 @@ impl InferenceRulesOp for Gemm {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 3)?;
         s.equals(&inputs[0].rank, 2)?;
@@ -78,12 +78,12 @@ pub struct GemmUnaryA {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    b: DtArray,
-    c: DtArray,
+    b: Tensor,
+    c: Tensor,
 }
 
 impl GemmUnaryA {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -109,7 +109,7 @@ impl Op for GemmUnaryA {
 }
 
 impl StatelessOp for GemmUnaryA {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -118,8 +118,8 @@ impl InferenceRulesOp for GemmUnaryA {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&inputs[0].rank, 2)?;
@@ -143,12 +143,12 @@ pub struct GemmUnaryB {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    a: DtArray,
-    c: DtArray,
+    a: Tensor,
+    c: Tensor,
 }
 
 impl GemmUnaryB {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
+    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -174,7 +174,7 @@ impl Op for GemmUnaryB {
 }
 
 impl StatelessOp for GemmUnaryB {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -183,8 +183,8 @@ impl InferenceRulesOp for GemmUnaryB {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&inputs[0].rank, 2)?;

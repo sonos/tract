@@ -44,7 +44,7 @@ pub enum Reducer {
 }
 
 impl Reducer {
-    fn reduce(&self, reduce: &Reduce, input: Tensor) -> TractResult<Tensor> {
+    fn reduce(&self, reduce: &Reduce, input: SharedTensor) -> TractResult<SharedTensor> {
         let dt = input.datum_type();
         match self {
             Reducer::L1 => match dt {
@@ -76,7 +76,7 @@ impl Reducer {
         }
     }
 
-    fn reduce_t<T, F>(&self, reduce: &Reduce, input: Tensor, f: F) -> TractResult<Tensor>
+    fn reduce_t<T, F>(&self, reduce: &Reduce, input: SharedTensor, f: F) -> TractResult<SharedTensor>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Datum,
@@ -222,7 +222,7 @@ impl Op for Reduce {
 }
 
 impl StatelessOp for Reduce {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         Ok(tvec!(self.reducer.reduce(&self, args_1!(inputs))?))
     }
 }
@@ -231,8 +231,8 @@ impl InferenceRulesOp for Reduce {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;

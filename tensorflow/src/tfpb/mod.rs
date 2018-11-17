@@ -1,4 +1,4 @@
-//! Generated protobuf codec for Tensorflow models, plus a handful of helper for
+//! Generated protobuf codec for SharedTensorflow models, plus a handful of helper for
 //! writting tests.
 
 #![allow(unknown_lints)]
@@ -44,9 +44,9 @@ pub fn node() -> NodeDef {
 pub fn tensor_f32(dim:Vec<usize>, values:Vec<f32>) -> tensor::TensorProto {
     let mut tensor = tensor::TensorProto::new();
     tensor.set_dtype(types::DataType::DT_FLOAT);
-    let mut shape = tensor_shape::TensorShapeProto::new();
+    let mut shape = tensor_shape::SharedTensorShapeProto::new();
     shape.set_dim(dim.into_iter().map(|i| {
-        let mut d = tensor_shape::TensorShapeProto_Dim::new();
+        let mut d = tensor_shape::SharedTensorShapeProto_Dim::new();
         d.set_size(i as _);
         d
     }).collect());
@@ -124,12 +124,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::DtArray> {
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?
             .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::DtArray>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
             Ok(Some(t.tractify()?))
         } else {
@@ -216,8 +216,8 @@ impl<'a> From<tensor::TensorProto> for AttrValue {
     }
 }
 
-impl<'a> From<tensor_shape::TensorShapeProto> for AttrValue {
-    fn from(t: tensor_shape::TensorShapeProto) -> AttrValue {
+impl<'a> From<tensor_shape::SharedTensorShapeProto> for AttrValue {
+    fn from(t: tensor_shape::SharedTensorShapeProto) -> AttrValue {
         let mut value = attr_value::AttrValue::new();
         value.set_shape(t);
         value

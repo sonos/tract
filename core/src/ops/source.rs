@@ -21,7 +21,7 @@ impl Op for Source {
 
 impl StatelessOp for Source {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, _inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         panic!("Source should not get evaluated")
     }
 }
@@ -31,8 +31,8 @@ impl InferenceRulesOp for Source {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 0)?;
         s.equals(&outputs.len, 1)?;

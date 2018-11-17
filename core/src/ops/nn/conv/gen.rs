@@ -112,7 +112,7 @@ impl Op for Conv {
 }
 
 impl StatelessOp for Conv {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, kernel, bias) = if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
             (input, kernel, None)
@@ -138,8 +138,8 @@ impl InferenceRulesOp for Conv {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         if let Some(kshape) = &self.kernel_shape {
             s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;
@@ -276,16 +276,16 @@ mod test {
             )).unwrap();
         assert_eq!(
             res,
-            tvec!(DtArray::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
+            tvec!(Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
         );
     }
 
     #[test]
     fn test_eval_nhwc_2() {
         let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
-        let i: DtArray = DtArray::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
-        let k: DtArray = DtArray::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
-        let e: DtArray = DtArray::from(arr4(&[[[[1.0f32], [0.0]]]]));
+        let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+        let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
+        let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
         let res = op.eval(tvec!(i.into(), k.into())).unwrap();
         assert_eq!(res, tvec!(e.into()));
     }

@@ -21,7 +21,7 @@ pub struct Pad {
 }
 
 impl Pad {
-    fn eval_t<T>(&self, input: Tensor) -> TractResult<Tensor>
+    fn eval_t<T>(&self, input: SharedTensor) -> TractResult<SharedTensor>
     where
         T: Datum,
         f32: AsPrimitive<T>,
@@ -94,7 +94,7 @@ impl Op for Pad {
 
 impl StatelessOp for Pad {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(
             self, input
@@ -106,8 +106,8 @@ impl InferenceRulesOp for Pad {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
