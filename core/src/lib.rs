@@ -100,14 +100,15 @@ pub mod model;
 pub mod optim;
 pub mod plan;
 pub mod pulse;
+pub mod tensor;
 
 pub use errors::*;
 
 pub use analyser::types::TensorFact;
-pub use datum::{DatumType, DtArray};
+pub use datum::DatumType;
 pub use dim::TDim;
 pub use model::{Model, Node, TVec};
-pub use ops::types::Tensor;
+pub use tensor::{DtArray, Tensor};
 pub use plan::SimplePlan;
 
 #[cfg(test)]

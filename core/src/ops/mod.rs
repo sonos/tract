@@ -22,8 +22,6 @@ pub mod nn;
 pub mod source;
 pub mod unimpl;
 
-pub mod types;
-
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct StreamInfo {
     pub axis: usize,
@@ -38,11 +36,11 @@ pub mod prelude {
     pub use analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorsProxy};
     pub use analyser::types::TypeFact;
     pub use analyser::types::*;
-    pub use datum::{arr4, Datum, DatumType, DtArray};
+    pub use datum::{Datum, DatumType };
     pub use dim::{DimLike, TDim, ToDim};
     pub use f16::f16;
     pub use model::TVec;
-    pub use ops::types::Tensor;
+    pub use tensor::{ arr4, DtArray, Tensor };
     pub use pulse::{PulsedTensorFact, PulsifiedOp};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
