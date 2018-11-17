@@ -10,7 +10,7 @@ pub trait ModelDsl {
 
     fn add_source<S: AsRef<str>>(&mut self, name: S) -> TractResult<usize>;
     fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TractResult<usize>;
-    fn add_const<S: AsRef<str>>(&mut self, name: S, v: Tensor) -> TractResult<usize>;
+    fn add_const<S: AsRef<str>>(&mut self, name: S, v: SharedTensor) -> TractResult<usize>;
     fn chain<S: AsRef<str>>(&mut self, name: S, op: Box<Op>) -> TractResult<usize>;
 
     fn tap_and_chain<S: AsRef<str>>(
@@ -43,7 +43,7 @@ impl ModelDsl for ::model::Model {
         Ok(id)
     }
 
-    fn add_const<S: AsRef<str>>(&mut self, name: S, v: Tensor) -> TractResult<usize> {
+    fn add_const<S: AsRef<str>>(&mut self, name: S, v: SharedTensor) -> TractResult<usize> {
         self.add_node(
             name.as_ref().to_owned(),
             Box::new(::ops::konst::Const::new(v)),

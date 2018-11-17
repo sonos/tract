@@ -8,7 +8,7 @@ error_chain! {
     }
     links {
         Tract(tract_core::TractError, tract_core::TractErrorKind);
-        TractTensorflowConform(tract_tensorflow::conform::Error, tract_tensorflow::conform::ErrorKind) #[cfg(feature="conform")];
+        TractSharedTensorflowConform(tract_tensorflow::conform::Error, tract_tensorflow::conform::ErrorKind) #[cfg(feature="conform")];
     }
 
     foreign_links {

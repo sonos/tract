@@ -37,7 +37,7 @@ impl<T: Datum> Op for Reshape<T> {
 }
 
 impl<T: Datum> StatelessOp for Reshape<T> {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, dims) = args_2!(inputs);
 
         let input = input.to_array::<T>()?;
@@ -52,8 +52,8 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 2)?;
         s.equals(&outputs.len, 1)?;

@@ -12,8 +12,8 @@ pub struct Lrn {
 impl Lrn {
     fn eval_t<T: Datum + ::num::Float + ::num::FromPrimitive + ::std::iter::Sum>(
         &self,
-        input: Tensor,
-    ) -> TractResult<TVec<Tensor>> {
+        input: SharedTensor,
+    ) -> TractResult<TVec<SharedTensor>> {
         let input = input.to_array_view::<T>()?;
         let channels = input.shape()[1];
         let output = Array::from_shape_fn(input.shape(), |mut coords| {
@@ -41,7 +41,7 @@ impl Op for Lrn {
 }
 
 impl StatelessOp for Lrn {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -51,8 +51,8 @@ impl InferenceRulesOp for Lrn {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;

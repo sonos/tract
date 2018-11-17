@@ -16,17 +16,17 @@ mod utils;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::DtArray as TractTensor;
+use tract_core::Tensor as TractSharedTensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 use utils::*;
 
 fn strided_slice_strat() -> BoxedStrategy<(
-    TractTensor,
-    TractTensor,
-    TractTensor,
-    TractTensor,
+    TractSharedTensor,
+    TractSharedTensor,
+    TractSharedTensor,
+    TractSharedTensor,
     (i32, i32, i32, i32, i32),
 )> {
     ::proptest::collection::vec(
@@ -58,7 +58,7 @@ fn strided_slice_strat() -> BoxedStrategy<(
         let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
         let size: i32 = shape.iter().map(|d| *d as i32).product();
         (
-            TractTensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
+            TractSharedTensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
             Array::from_vec(
                 dims.iter()
                     .map(|d| if d.4 { d.1 - d.0 } else { d.1 })

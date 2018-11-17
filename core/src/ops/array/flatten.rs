@@ -7,7 +7,7 @@ pub struct Flatten {
 
 impl Flatten {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Tensor, shape: (usize, usize)) -> TractResult<TVec<Tensor>> {
+    fn eval_t<T: Datum>(&self, input: SharedTensor, shape: (usize, usize)) -> TractResult<TVec<SharedTensor>> {
         Ok(tvec![input.to_array::<T>()?.into_shape(shape)?.into()])
     }
 }
@@ -19,7 +19,7 @@ impl Op for Flatten {
 }
 
 impl StatelessOp for Flatten {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let shape_0 = input.shape()[..self.axis].iter().product::<usize>();
         let shape_1 = input.shape()[self.axis..].iter().product::<usize>();
@@ -35,8 +35,8 @@ impl InferenceRulesOp for Flatten {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, shape| {

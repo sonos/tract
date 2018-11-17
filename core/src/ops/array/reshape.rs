@@ -35,7 +35,7 @@ impl Reshape {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: Tensor, shape: &[usize]) -> TractResult<TVec<Tensor>> {
+    fn eval_t<T: Datum>(&self, input: SharedTensor, shape: &[usize]) -> TractResult<TVec<SharedTensor>> {
         Ok(tvec![input.to_array::<T>()?.into_shape(shape)?.into()])
     }
 }
@@ -47,7 +47,7 @@ impl Op for Reshape {
 }
 
 impl StatelessOp for Reshape {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, shape) = args_2!(inputs);
         let shape: Vec<isize> = shape
             .cast_to::<i64>()?
@@ -64,8 +64,8 @@ impl InferenceRulesOp for Reshape {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given_2(

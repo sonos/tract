@@ -19,11 +19,11 @@ mod tests {
     use ndarray::*;
     use tract_core::dim::TDim;
     use tract_core::ops::InferenceOp;
-    use tract_core::DtArray;
+    use tract_core::Tensor;
 
-    fn run<I>(op: Squeeze, input: I) -> DtArray
+    fn run<I>(op: Squeeze, input: I) -> Tensor
     where
-        I: Into<DtArray>,
+        I: Into<Tensor>,
     {
         op.eval(tvec![input.into().into()])
             .unwrap()

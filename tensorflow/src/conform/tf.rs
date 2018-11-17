@@ -7,10 +7,10 @@ use tensorflow::FetchToken;
 use tensorflow::Graph;
 use tensorflow::Session;
 use tensorflow::SessionRunArgs;
-use tensorflow::Tensor;
+use tensorflow as tf;
 
 use ndarray::ArrayD;
-use tract_core::DtArray;
+use tract_core::Tensor;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -37,30 +37,30 @@ pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
 }
 
 enum TensorHolder {
-    Bool(Tensor<bool>),
-    F16(Tensor<::tensorflow::BFloat16>),
-    F32(Tensor<f32>),
-    F64(Tensor<f64>),
-    U8(Tensor<u8>),
-    U16(Tensor<u16>),
-    I8(Tensor<i8>),
-    I16(Tensor<i16>),
-    I32(Tensor<i32>),
-    I64(Tensor<i64>),
-    String(Tensor<i8>),
+    Bool(tf::Tensor<bool>),
+    F16(tf::Tensor<::tensorflow::BFloat16>),
+    F32(tf::Tensor<f32>),
+    F64(tf::Tensor<f64>),
+    U8(tf::Tensor<u8>),
+    U16(tf::Tensor<u16>),
+    I8(tf::Tensor<i8>),
+    I16(tf::Tensor<i16>),
+    I32(tf::Tensor<i32>),
+    I64(tf::Tensor<i64>),
+    String(tf::Tensor<i8>),
 }
 
 impl TensorHolder {
-    fn to_tensor<T: ::tensorflow::TensorType + Copy>(m: ArrayD<T>) -> Tensor<T> {
+    fn to_tensor<T: ::tensorflow::TensorType + Copy>(m: ArrayD<T>) -> tf::Tensor<T> {
         let dims: Vec<u64> = m.shape().iter().map(|d| *d as _).collect();
-        let mut tensor = Tensor::<T>::new(&*dims);
+        let mut tensor = tf::Tensor::<T>::new(&*dims);
         tensor.copy_from_slice(m.as_slice().unwrap());
         tensor
     }
 }
 
-impl From<DtArray> for TensorHolder {
-    fn from(m: DtArray) -> TensorHolder {
+impl From<Tensor> for TensorHolder {
+    fn from(m: Tensor) -> TensorHolder {
         use tract_core::DatumType::*;
         use tract_core::TDim;
         match m.datum_type() {
@@ -88,14 +88,14 @@ impl From<DtArray> for TensorHolder {
     }
 }
 
-fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &Tensor<T>) -> Result<ArrayD<T>> {
+fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &tf::Tensor<T>) -> Result<ArrayD<T>> {
     let shape: Vec<usize> = tensor.dims().iter().map(|d| *d as _).collect();
     Ok(::ndarray::Array::from_iter(tensor.iter().cloned()).into_shape(shape)?)
 }
 
 impl Tensorflow {
     /// Executes the graph in one batch.
-    pub fn run(&mut self, inputs: Vec<(&str, DtArray)>, output_name: &str) -> Result<Vec<DtArray>> {
+    pub fn run(&mut self, inputs: Vec<(&str, Tensor)>, output_name: &str) -> Result<Vec<Tensor>> {
         let tensors: Vec<(&str, TensorHolder)> = inputs
             .into_iter()
             .map(|(name, mat)| (name, mat.into()))
@@ -132,8 +132,8 @@ impl Tensorflow {
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
     pub fn run_get_all(
         &mut self,
-        inputs: Vec<(&str, DtArray)>,
-    ) -> Result<HashMap<String, Vec<DtArray>>> {
+        inputs: Vec<(&str, Tensor)>,
+    ) -> Result<HashMap<String, Vec<Tensor>>> {
         let mut tensors: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
@@ -186,12 +186,12 @@ impl Tensorflow {
     }
 }
 
-/// Converts the output of a Tensorflow node into a Vec<DtArray>.
+/// Converts the output of a Tensorflow node into a Vec<Tensor>.
 fn convert_output(
     step: &mut SessionRunArgs,
     output_type: &DataType,
     output: FetchToken,
-) -> Result<Vec<DtArray>> {
+) -> Result<Vec<Tensor>> {
     macro_rules! convert {
         ($dt:ident) => {
             tensor_to_array::<$dt>(&step.fetch(output)?)?.into()
@@ -203,7 +203,7 @@ fn convert_output(
         DataType::UInt8 => convert!(u8),
         DataType::Int8 => convert!(i8),
         DataType::Int32 => convert!(i32),
-        t => bail!("Missing Tensor to DtArray for type {:?}", t),
+        t => bail!("Missing Tensor to Tensor for type {:?}", t),
     };
 
     Ok(vec![tract_tensor])

@@ -4,7 +4,7 @@ use ndarray::Axis;
 use simplelog::Level::Info;
 use tract_core::analyser::TensorFact;
 use tract_core::streaming::prelude::*;
-use tract_core::{SimplePlan, DtArray};
+use tract_core::{SimplePlan, Tensor};
 use tract_core::plan::SimpleState;
 use {OutputParameters, Parameters};
 
@@ -144,13 +144,13 @@ pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<
             } else {
                 continue;
             };
-            let found: &DtArray = &output[0];
+            let found: &Tensor = &output[0];
             let found = found.as_f32s().unwrap();
             for found in found.axis_chunks_iter(Axis(out_stream_axis), 1) {
-                let found: DtArray = found.to_owned().into();
+                let found: Tensor = found.to_owned().into();
                 lines.push(format!("found: {:?}", found));
                 if let Some(expected) = batch_expected.next() {
-                    lines.push(format!("expected: {:?}", DtArray::from(expected.to_owned())));
+                    lines.push(format!("expected: {:?}", Tensor::from(expected.to_owned())));
                     lines.push("".into());
                     let expected = expected.to_owned().into();
                     if found.close_enough(&expected, node.op.rounding_errors()) {

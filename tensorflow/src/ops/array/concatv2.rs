@@ -16,7 +16,7 @@ pub struct ConcatV2<T: Datum> {
 }
 
 impl<T: Datum> StatelessOp for ConcatV2<T> {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let axis: i32 = inputs
             .pop()
             .unwrap()
@@ -38,8 +38,8 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         let n = self.n;
         s.equals(&inputs.len, n as i32 + 1)?;

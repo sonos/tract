@@ -60,7 +60,7 @@ where
 }
 
 impl<T: Datum + Zero> StatelessOp for Pad<T> {
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
@@ -72,8 +72,8 @@ impl<T: Datum + Zero> InferenceRulesOp for Pad<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         let input = &inputs[0];
         let padding = &inputs[1];
@@ -104,17 +104,17 @@ impl<T: Datum + Zero> InferenceRulesOp for Pad<T> {
 mod tests {
     use super::*;
     use ndarray::arr2;
-    use tract_core::DtArray;
+    use tract_core::Tensor;
 
     #[test]
     fn pad_0() {
         let inputs = tvec![
-            DtArray::from(arr2(&[[1, 2, 3], [4, 5, 6]])).into(),
-            DtArray::from(arr2(&[[1, 1], [2, 2]])).into(),
+            Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]])).into(),
+            Tensor::from(arr2(&[[1, 1], [2, 2]])).into(),
         ];
 
         let expected: TVec<_> = tvec!(
-            DtArray::from(arr2(&[
+            Tensor::from(arr2(&[
                 [0, 0, 0, 0, 0, 0, 0],
                 [0, 0, 1, 2, 3, 0, 0],
                 [0, 0, 4, 5, 6, 0, 0],

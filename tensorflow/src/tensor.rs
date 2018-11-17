@@ -1,8 +1,8 @@
 use tfpb::tensor::TensorProto;
-use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
+use tfpb::tensor_shape::{SharedTensorShapeProto, SharedTensorShapeProto_Dim};
 use tfpb::types::DataType;
-use tract_core::{DatumType, DtArray, TractResult, Tractify};
-use ToTensorflow;
+use tract_core::{DatumType, Tensor, TractResult, Tractify};
+use ToSharedTensorflow;
 
 impl Tractify<DataType> for DatumType {
     fn tractify(t: &DataType) -> TractResult<DatumType> {
@@ -23,7 +23,7 @@ impl Tractify<DataType> for DatumType {
     }
 }
 
-impl ToTensorflow<DataType> for DatumType {
+impl ToSharedTensorflow<DataType> for DatumType {
     fn to_tf(&self) -> TractResult<DataType> {
         match self {
             DatumType::Bool => Ok(DataType::DT_BOOL),
@@ -42,8 +42,8 @@ impl ToTensorflow<DataType> for DatumType {
     }
 }
 
-impl Tractify<TensorProto> for DtArray {
-    fn tractify(t: &TensorProto) -> TractResult<DtArray> {
+impl Tractify<TensorProto> for Tensor {
+    fn tractify(t: &TensorProto) -> TractResult<Tensor> {
         let dtype = t.get_dtype();
         let shape = t.get_tensor_shape();
         let dims = shape
@@ -53,7 +53,7 @@ impl Tractify<TensorProto> for DtArray {
             .collect::<Vec<_>>();
         let rank = dims.len();
         let content = t.get_tensor_content();
-        let mat: DtArray = if content.len() != 0 {
+        let mat: Tensor = if content.len() != 0 {
             unsafe {
                 match dtype {
                     DataType::DT_FLOAT => Self::from_raw::<f32>(&dims, content)?,
@@ -78,14 +78,14 @@ impl Tractify<TensorProto> for DtArray {
     }
 }
 
-impl ToTensorflow<TensorProto> for DtArray {
+impl ToSharedTensorflow<TensorProto> for Tensor {
     fn to_tf(&self) -> TractResult<TensorProto> {
-        let mut shape = TensorShapeProto::new();
+        let mut shape = SharedTensorShapeProto::new();
         let dims = self
             .shape()
             .iter()
             .map(|d| {
-                let mut dim = TensorShapeProto_Dim::new();
+                let mut dim = SharedTensorShapeProto_Dim::new();
                 dim.size = *d as _;
                 dim
             }).collect();

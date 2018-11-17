@@ -1,4 +1,4 @@
-//! TensorFlow Ops
+//! SharedTensorFlow Ops
 use std::fmt::Debug;
 
 use downcast_rs::Downcast;
@@ -33,14 +33,14 @@ pub mod prelude {
         InferenceOp, Op, OpState, ReducedOpRewire, StatefullOp, StatelessOp, StreamInfo,
     };
     pub use analyser::rules::expr::{IntoExp, ToDimExp};
-    pub use analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorsProxy};
+    pub use analyser::rules::{InferenceResult, InferenceRulesOp, Solver, SharedTensorsProxy};
     pub use analyser::types::TypeFact;
     pub use analyser::types::*;
     pub use datum::{Datum, DatumType };
     pub use dim::{DimLike, TDim, ToDim};
     pub use f16::f16;
     pub use model::TVec;
-    pub use tensor::{ arr4, DtArray, Tensor };
+    pub use tensor::{ arr4, Tensor, SharedTensor };
     pub use pulse::{PulsedTensorFact, PulsifiedOp};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
@@ -51,11 +51,11 @@ pub mod prelude {
 use self::prelude::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
-    fn eval(&mut self, op: &Op, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>;
+    fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
 }
 
 pub trait StatelessOp {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>;
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
 }
 
 pub trait StatefullOp {
@@ -75,7 +75,7 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
     }
 }
 
-/// A Tensorflow operation.
+/// A SharedTensorflow operation.
 impl_downcast!(Op);
 pub trait Op:
     Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp
@@ -122,7 +122,7 @@ pub trait Op:
         bail!("Operator {} do not support pulsification", self.name())
     }
 
-    fn const_value(&self) -> Option<Tensor> {
+    fn const_value(&self) -> Option<SharedTensor> {
         None
     }
 

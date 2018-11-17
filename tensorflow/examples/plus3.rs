@@ -1,10 +1,10 @@
 extern crate ndarray;
 extern crate tract_core;
 extern crate tract_tensorflow;
-use tract_core::Tensor;
+use tract_core::SharedTensor;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use tract_tensorflow::ToTensorflow;
+use tract_tensorflow::ToSharedTensorflow;
 
 fn main() {
     let plus3 = tfpb::node()
@@ -19,7 +19,7 @@ fn main() {
         .attr("dtype", DT_FLOAT)
         .attr(
             "value",
-            Tensor::from(::ndarray::arr1(&[3.0f32])).to_tf().unwrap(),
+            SharedTensor::from(::ndarray::arr1(&[3.0f32])).to_tf().unwrap(),
         );
     let input = tfpb::node()
         .op("Placeholder")

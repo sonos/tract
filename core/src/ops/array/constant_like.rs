@@ -8,7 +8,7 @@ pub struct ConstantLike {
 }
 
 impl ConstantLike {
-    pub fn make<T>(&self, shape: &[usize]) -> TractResult<Tensor>
+    pub fn make<T>(&self, shape: &[usize]) -> TractResult<SharedTensor>
     where
         T: Datum,
         f32: AsPrimitive<T>,
@@ -25,7 +25,7 @@ impl Op for ConstantLike {
 
 impl StatelessOp for ConstantLike {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(
             self, input.shape()
@@ -37,8 +37,8 @@ impl InferenceRulesOp for ConstantLike {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
@@ -66,7 +66,7 @@ pub struct EyeLike {
 }
 
 impl EyeLike {
-    pub fn make<T>(&self, (r,c) : (usize, usize)) -> TractResult<Tensor>
+    pub fn make<T>(&self, (r,c) : (usize, usize)) -> TractResult<SharedTensor>
     where
         T: Datum + num::One + num::Zero,
         f32: AsPrimitive<T>,
@@ -90,7 +90,7 @@ impl Op for EyeLike {
 
 impl StatelessOp for EyeLike {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(
             self, (input.shape()[0], input.shape()[1])
@@ -102,8 +102,8 @@ impl InferenceRulesOp for EyeLike {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;

@@ -138,9 +138,9 @@ impl BaseStridedSlice {
     fn prepare(
         &self,
         input_shape: &[usize],
-        begin: Tensor,
-        end: Tensor,
-        strides: Tensor,
+        begin: SharedTensor,
+        end: SharedTensor,
+        strides: SharedTensor,
     ) -> TractResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
         let casted_begin = begin.cast_to::<TDim>()?;
         let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
@@ -171,7 +171,7 @@ impl BaseStridedSlice {
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Datum>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval<T: Datum>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -193,8 +193,8 @@ impl BaseStridedSlice {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 4)?;
         s.equals(&outputs.len, 1)?;
@@ -239,7 +239,7 @@ pub struct StridedSlice<T: Datum> {
 }
 
 impl<T: Datum> StatelessOp for StridedSlice<T> {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         self.base.eval::<T>(inputs)
     }
 }
@@ -297,8 +297,8 @@ impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
@@ -310,7 +310,7 @@ pub struct StridedSliceD {
 }
 
 impl StatelessOp for StridedSliceD {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let dt = inputs[0].datum_type();
         match dt {
             DatumType::TDim => self.base.eval::<TDim>(inputs),
@@ -330,8 +330,8 @@ impl InferenceRulesOp for StridedSliceD {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
@@ -343,14 +343,14 @@ mod tests {
     use super::*;
     use ndarray::*;
     use tract_core::ops::InferenceOp;
-    use tract_core::DtArray;
+    use tract_core::Tensor;
 
-    fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> DtArray
+    fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
     where
-        I: Into<DtArray>,
-        B: Into<DtArray>,
-        E: Into<DtArray>,
-        S: Into<DtArray>,
+        I: Into<Tensor>,
+        B: Into<Tensor>,
+        E: Into<Tensor>,
+        S: Into<Tensor>,
     {
         op.eval(tvec![
             input.into().into(),
@@ -378,7 +378,7 @@ mod tests {
                 arr1(&[2, 1, 3]),
                 arr1(&[1, 1, 1])
             ),
-            DtArray::from(arr3(&[[[3, 3, 3]]])),
+            Tensor::from(arr3(&[[[3, 3, 3]]])),
         );
     }
 
@@ -396,7 +396,7 @@ mod tests {
                 arr1(&[2, 2, 3]),
                 arr1(&[1, 1, 1])
             ),
-            DtArray::from(arr3(&[[[3, 3, 3], [4, 4, 4]]])),
+            Tensor::from(arr3(&[[[3, 3, 3], [4, 4, 4]]])),
         );
     }
 
@@ -414,7 +414,7 @@ mod tests {
                 arr1(&[2, -3, 3]),
                 arr1(&[1, -1, 1])
             ),
-            DtArray::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
+            Tensor::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
         );
     }
 
@@ -432,7 +432,7 @@ mod tests {
                 arr1(&[2, 2, 4]),
                 arr1(&[1, 1, 2])
             ),
-            DtArray::from(arr3(&[[[3, 3], [4, 4]]])),
+            Tensor::from(arr3(&[[[3, 3], [4, 4]]])),
         );
     }
 
@@ -446,7 +446,7 @@ mod tests {
                 arr1(&[-1]),
                 arr1(&[1])
             ),
-            DtArray::from(arr1(&[0]))
+            Tensor::from(arr1(&[0]))
         )
     }
 
@@ -460,7 +460,7 @@ mod tests {
                 arr1(&[-1, -1]),
                 arr1(&[1, 2])
             ),
-            DtArray::from(arr2(&[[1, 0], [3, 0]]))
+            Tensor::from(arr2(&[[1, 0], [3, 0]]))
         )
     }
 
@@ -474,7 +474,7 @@ mod tests {
                 arr1(&[2]),
                 arr1(&[1])
             ),
-            DtArray::from(arr2(&[[0, 6], [0, 0]]))
+            Tensor::from(arr2(&[[0, 6], [0, 0]]))
         )
     }
 
@@ -484,7 +484,7 @@ mod tests {
         op.base.begin_mask = 1;
         assert_eq!(
             eval(op, arr1(&[0, 1]), arr1(&[1]), arr1(&[1]), arr1(&[1])),
-            DtArray::from(arr1(&[0]))
+            Tensor::from(arr1(&[0]))
         )
     }
 

@@ -9,7 +9,7 @@ pub struct Concat {
 
 impl Concat {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval_t<T: Datum>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(self.axis as usize), &*mats?)?;
@@ -25,7 +25,7 @@ impl Op for Concat {
 
 impl StatelessOp for Concat {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -34,8 +34,8 @@ impl InferenceRulesOp for Concat {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;

@@ -98,7 +98,7 @@ impl TensorFact {
 }
 
 impl Fact for TensorFact {
-    type Concrete = Tensor;
+    type Concrete = SharedTensor;
 
     /// Tries to transform the fact into a concrete value.
     fn concretize(&self) -> Option<Self::Concrete> {
@@ -119,9 +119,9 @@ impl Fact for TensorFact {
     }
 }
 
-impl<V: Into<Tensor>> From<V> for TensorFact {
+impl<V: Into<SharedTensor>> From<V> for TensorFact {
     fn from(v: V) -> TensorFact {
-        let v: Tensor = v.into();
+        let v: SharedTensor = v.into();
         TensorFact {
             datum_type: GenericFact::Only(v.datum_type()),
             shape: ShapeFact::from(v.shape()),
@@ -135,7 +135,7 @@ impl fmt::Debug for TensorFact {
         if let Some(t) = self.value.concretize() {
             write!(formatter, "Fully determined tensor: {:?}", t)
         } else {
-            write!(formatter, "DtArray")?;
+            write!(formatter, "Tensor")?;
             if let Some(t) = self.datum_type.concretize() {
                 write!(formatter, ", {:?}", t)?;
             }
@@ -206,7 +206,7 @@ pub type TypeFact = GenericFact<DatumType>;
 /// Partial information about a shape.
 ///
 /// A basic example of a shape fact is `shapefact![1, 2]`, which corresponds to
-/// the shape `[1, 2]` in Tensorflow. We can use `_` in facts to denote unknown
+/// the shape `[1, 2]` in SharedTensorflow. We can use `_` in facts to denote unknown
 /// dimensions (e.g. `shapefact![1, 2, _]` corresponds to any shape `[1, 2, k]`
 /// with `k` a non-negative integer). We can also use `..` at the end of a fact
 /// to only specify its first dimensions, so `shapefact![1, 2; ..]` matches any
@@ -447,7 +447,7 @@ impl fmt::Debug for ShapeFact {
 pub type DimFact = GenericFact<TDim>;
 
 /// Partial information about a value.
-pub type ValueFact = GenericFact<Tensor>;
+pub type ValueFact = GenericFact<SharedTensor>;
 
 pub type IntFact = GenericFact<i32>;
 

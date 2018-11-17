@@ -22,7 +22,7 @@ use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use utils::*;
 
-use tract_core::DtArray as TractTensor;
+use tract_core::Tensor as TractSharedTensor;
 
 fn img_and_pool(
     ih: usize,
@@ -30,7 +30,7 @@ fn img_and_pool(
     ic: usize,
     kh: usize,
     kw: usize,
-) -> BoxedStrategy<(TractTensor, (usize, usize), String, usize)> {
+) -> BoxedStrategy<(TractSharedTensor, (usize, usize), String, usize)> {
     (1..ih, 1..iw, 1..ic)
         .prop_flat_map(move |(ih, iw, ic)| {
             (

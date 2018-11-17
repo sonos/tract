@@ -12,7 +12,7 @@ use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
 pub struct TensorProto {
     // message fields
     pub dtype: super::types::DataType,
-    pub tensor_shape: ::protobuf::SingularPtrField<super::tensor_shape::TensorShapeProto>,
+    pub tensor_shape: ::protobuf::SingularPtrField<super::tensor_shape::SharedTensorShapeProto>,
     pub version_number: i32,
     pub tensor_content: ::std::vec::Vec<u8>,
     pub half_val: ::std::vec::Vec<i32>,
@@ -50,7 +50,7 @@ impl TensorProto {
         self.dtype
     }
 
-    // .tensorflow.TensorShapeProto tensor_shape = 2;
+    // .tensorflow.SharedTensorShapeProto tensor_shape = 2;
 
     pub fn clear_tensor_shape(&mut self) {
         self.tensor_shape.clear();
@@ -61,13 +61,13 @@ impl TensorProto {
     }
 
     // Param is passed by value, moved
-    pub fn set_tensor_shape(&mut self, v: super::tensor_shape::TensorShapeProto) {
+    pub fn set_tensor_shape(&mut self, v: super::tensor_shape::SharedTensorShapeProto) {
         self.tensor_shape = ::protobuf::SingularPtrField::some(v);
     }
 
     // Mutable pointer to the field.
     // If field is not initialized, it is initialized with default value first.
-    pub fn mut_tensor_shape(&mut self) -> &mut super::tensor_shape::TensorShapeProto {
+    pub fn mut_tensor_shape(&mut self) -> &mut super::tensor_shape::SharedTensorShapeProto {
         if self.tensor_shape.is_none() {
             self.tensor_shape.set_default();
         }
@@ -75,12 +75,12 @@ impl TensorProto {
     }
 
     // Take field
-    pub fn take_tensor_shape(&mut self) -> super::tensor_shape::TensorShapeProto {
-        self.tensor_shape.take().unwrap_or_else(|| super::tensor_shape::TensorShapeProto::new())
+    pub fn take_tensor_shape(&mut self) -> super::tensor_shape::SharedTensorShapeProto {
+        self.tensor_shape.take().unwrap_or_else(|| super::tensor_shape::SharedTensorShapeProto::new())
     }
 
-    pub fn get_tensor_shape(&self) -> &super::tensor_shape::TensorShapeProto {
-        self.tensor_shape.as_ref().unwrap_or_else(|| super::tensor_shape::TensorShapeProto::default_instance())
+    pub fn get_tensor_shape(&self) -> &super::tensor_shape::SharedTensorShapeProto {
+        self.tensor_shape.as_ref().unwrap_or_else(|| super::tensor_shape::SharedTensorShapeProto::default_instance())
     }
 
     // int32 version_number = 3;
@@ -635,7 +635,7 @@ impl ::protobuf::Message for TensorProto {
                     |m: &TensorProto| { &m.dtype },
                     |m: &mut TensorProto| { &mut m.dtype },
                 ));
-                fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<super::tensor_shape::TensorShapeProto>>(
+                fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<super::tensor_shape::SharedTensorShapeProto>>(
                     "tensor_shape",
                     |m: &TensorProto| { &m.tensor_shape },
                     |m: &mut TensorProto| { &mut m.tensor_shape },
@@ -758,7 +758,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     or_shape.proto\x1a%tensorflow/core/framework/types.proto\"\xc1\x04\n\x0b\
     TensorProto\x12*\n\x05dtype\x18\x01\x20\x01(\x0e2\x14.tensorflow.DataTyp\
     eR\x05dtype\x12?\n\x0ctensor_shape\x18\x02\x20\x01(\x0b2\x1c.tensorflow.\
-    TensorShapeProtoR\x0btensorShape\x12%\n\x0eversion_number\x18\x03\x20\
+    SharedTensorShapeProtoR\x0btensorShape\x12%\n\x0eversion_number\x18\x03\x20\
     \x01(\x05R\rversionNumber\x12%\n\x0etensor_content\x18\x04\x20\x01(\x0cR\
     \rtensorContent\x12\x1d\n\x08half_val\x18\r\x20\x03(\x05R\x07halfValB\
     \x02\x10\x01\x12\x1f\n\tfloat_val\x18\x05\x20\x03(\x02R\x08floatValB\x02\

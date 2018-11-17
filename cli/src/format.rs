@@ -189,7 +189,7 @@ where
                     if attr.1.has_tensor() {
                         let tensor = attr.1.get_tensor();
                         format!(
-                            "DtArray: {:?} {:?}",
+                            "Tensor: {:?} {:?}",
                             tensor.get_dtype(),
                             tensor.get_tensor_shape().get_dim()
                         )

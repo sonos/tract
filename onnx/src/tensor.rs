@@ -56,23 +56,23 @@ impl Tractify<TypeProto_Tensor> for TensorFact {
     }
 }
 
-impl Tractify<TensorProto> for DtArray {
-    fn tractify(t: &TensorProto) -> TractResult<DtArray> {
+impl Tractify<TensorProto> for Tensor {
+    fn tractify(t: &TensorProto) -> TractResult<Tensor> {
         let dt = t.get_data_type().tractify()?;
         let shape: Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
         if t.has_raw_data() {
             unsafe {
                 match dt {
-                    DatumType::U8 => DtArray::from_raw::<u8>(&*shape, t.get_raw_data()),
-                    DatumType::U16 => DtArray::from_raw::<u16>(&*shape, t.get_raw_data()),
-                    DatumType::I8 => DtArray::from_raw::<i8>(&*shape, t.get_raw_data()),
-                    DatumType::I16 => DtArray::from_raw::<i16>(&*shape, t.get_raw_data()),
-                    DatumType::I32 => DtArray::from_raw::<i32>(&*shape, t.get_raw_data()),
-                    DatumType::I64 => DtArray::from_raw::<i64>(&*shape, t.get_raw_data()),
-                    DatumType::F16 => DtArray::from_raw::<f16>(&*shape, t.get_raw_data()),
-                    DatumType::F32 => DtArray::from_raw::<f32>(&*shape, t.get_raw_data()),
-                    DatumType::F64 => DtArray::from_raw::<f64>(&*shape, t.get_raw_data()),
-                    DatumType::Bool => Ok(DtArray::from_raw::<u8>(&*shape, t.get_raw_data())?
+                    DatumType::U8 => Tensor::from_raw::<u8>(&*shape, t.get_raw_data()),
+                    DatumType::U16 => Tensor::from_raw::<u16>(&*shape, t.get_raw_data()),
+                    DatumType::I8 => Tensor::from_raw::<i8>(&*shape, t.get_raw_data()),
+                    DatumType::I16 => Tensor::from_raw::<i16>(&*shape, t.get_raw_data()),
+                    DatumType::I32 => Tensor::from_raw::<i32>(&*shape, t.get_raw_data()),
+                    DatumType::I64 => Tensor::from_raw::<i64>(&*shape, t.get_raw_data()),
+                    DatumType::F16 => Tensor::from_raw::<f16>(&*shape, t.get_raw_data()),
+                    DatumType::F32 => Tensor::from_raw::<f32>(&*shape, t.get_raw_data()),
+                    DatumType::F64 => Tensor::from_raw::<f64>(&*shape, t.get_raw_data()),
+                    DatumType::Bool => Ok(Tensor::from_raw::<u8>(&*shape, t.get_raw_data())?
                         .into_array::<u8>()?
                         .mapv(|x| x != 0)
                         .into()),
@@ -121,7 +121,7 @@ impl Tractify<TensorProto> for DtArray {
     }
 }
 
-pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<DtArray> {
+pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<Tensor> {
     let tensor: TensorProto = ::protobuf::parse_from_reader(&mut r).unwrap();
     tensor.tractify()
 }

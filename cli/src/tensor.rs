@@ -36,7 +36,7 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
     Ok(TensorFact::dt_shape(datum_type, shape))
 }
 
-fn tensor_for_text_data(filename: &str) -> CliResult<DtArray> {
+fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
     let mut file = fs::File::open(filename)
         .map_err(|e| format!("Reading tensor from {}, {:?}", filename, e))?;
     let mut data = String::new();
@@ -101,11 +101,11 @@ pub fn for_string(value: &str) -> CliResult<TensorFact> {
     }
 }
 
-pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<DtArray>> {
+pub fn make_inputs(values: &[TensorFact]) -> CliResult<TVec<Tensor>> {
     values.iter().map(|v| tensor_for_fact(v, None)).collect()
 }
 
-pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<DtArray> {
+pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliResult<Tensor> {
     if let Some(value) = fact.concretize() {
         Ok(value.as_tensor().to_owned())
     } else {
@@ -130,10 +130,10 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
 }
 
 /// Generates a random tensor of a given size and type.
-pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> DtArray {
+pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
     use rand;
     use std::iter::repeat_with;
-    fn make<D>(shape: Vec<usize>) -> DtArray where
+    fn make<D>(shape: Vec<usize>) -> Tensor where
         D: Datum,
         rand::distributions::Standard: rand::distributions::Distribution<D>
     {

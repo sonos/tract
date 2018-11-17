@@ -28,14 +28,14 @@ impl NodeProto {
         Ok(Some(attr))
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<DtArray>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)? {
             Some(attr) => Ok(Some(attr.get_t().tractify()?)),
             None => Ok(None),
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<DtArray> {
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<Tensor> {
         Ok(self.get_attr_opt_tensor(name)?.ok_or_else(|| {
             format!(
                 "Node {} ({}) expected tensor attribute '{}'",

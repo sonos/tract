@@ -11,9 +11,9 @@ pub struct ConvUnary {
     pub padding: PaddingSpec,
     pub dilations: TVec<usize>,
     pub strides: TVec<usize>,
-    pub kernel: DtArray,
+    pub kernel: Tensor,
 
-    pub bias: Option<DtArray>,
+    pub bias: Option<Tensor>,
     pub full_input_shape: TVec<TDim>,
     pub full_output_shape: TVec<TDim>,
     pub group: usize,
@@ -24,8 +24,8 @@ impl ConvUnary {
         conv: &Conv,
         full_input_shape: &[TDim],
         full_output_shape: &[TDim],
-        kernel: DtArray,
-        bias: Option<DtArray>,
+        kernel: Tensor,
+        bias: Option<Tensor>,
         group: usize,
     ) -> TractResult<ConvUnary> {
         let spatial_rank = full_input_shape.len() - 2;
@@ -81,7 +81,7 @@ impl ConvUnary {
         Ok(Box::new(self.to_fixed_params::<T>(shape)?))
     }
 
-    fn eval_t<T>(&self, mut inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>>
+    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
@@ -252,7 +252,7 @@ impl Op for ConvUnary {
 }
 
 impl StatelessOp for ConvUnary {
-    fn eval(&self, inputs: TVec<Tensor>) -> TractResult<TVec<Tensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -261,8 +261,8 @@ impl InferenceRulesOp for ConvUnary {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;

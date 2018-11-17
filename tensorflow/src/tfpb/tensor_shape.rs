@@ -9,42 +9,42 @@ use protobuf::Message as Message_imported_for_functions;
 use protobuf::ProtobufEnum as ProtobufEnum_imported_for_functions;
 
 #[derive(PartialEq,Clone,Default)]
-pub struct TensorShapeProto {
+pub struct SharedTensorShapeProto {
     // message fields
-    pub dim: ::protobuf::RepeatedField<TensorShapeProto_Dim>,
+    pub dim: ::protobuf::RepeatedField<SharedTensorShapeProto_Dim>,
     pub unknown_rank: bool,
     // special fields
     unknown_fields: ::protobuf::UnknownFields,
     cached_size: ::protobuf::CachedSize,
 }
 
-impl TensorShapeProto {
-    pub fn new() -> TensorShapeProto {
+impl SharedTensorShapeProto {
+    pub fn new() -> SharedTensorShapeProto {
         ::std::default::Default::default()
     }
 
-    // repeated .tensorflow.TensorShapeProto.Dim dim = 2;
+    // repeated .tensorflow.SharedTensorShapeProto.Dim dim = 2;
 
     pub fn clear_dim(&mut self) {
         self.dim.clear();
     }
 
     // Param is passed by value, moved
-    pub fn set_dim(&mut self, v: ::protobuf::RepeatedField<TensorShapeProto_Dim>) {
+    pub fn set_dim(&mut self, v: ::protobuf::RepeatedField<SharedTensorShapeProto_Dim>) {
         self.dim = v;
     }
 
     // Mutable pointer to the field.
-    pub fn mut_dim(&mut self) -> &mut ::protobuf::RepeatedField<TensorShapeProto_Dim> {
+    pub fn mut_dim(&mut self) -> &mut ::protobuf::RepeatedField<SharedTensorShapeProto_Dim> {
         &mut self.dim
     }
 
     // Take field
-    pub fn take_dim(&mut self) -> ::protobuf::RepeatedField<TensorShapeProto_Dim> {
+    pub fn take_dim(&mut self) -> ::protobuf::RepeatedField<SharedTensorShapeProto_Dim> {
         ::std::mem::replace(&mut self.dim, ::protobuf::RepeatedField::new())
     }
 
-    pub fn get_dim(&self) -> &[TensorShapeProto_Dim] {
+    pub fn get_dim(&self) -> &[SharedTensorShapeProto_Dim] {
         &self.dim
     }
 
@@ -64,7 +64,7 @@ impl TensorShapeProto {
     }
 }
 
-impl ::protobuf::Message for TensorShapeProto {
+impl ::protobuf::Message for SharedTensorShapeProto {
     fn is_initialized(&self) -> bool {
         for v in &self.dim {
             if !v.is_initialized() {
@@ -151,8 +151,8 @@ impl ::protobuf::Message for TensorShapeProto {
         Self::descriptor_static()
     }
 
-    fn new() -> TensorShapeProto {
-        TensorShapeProto::new()
+    fn new() -> SharedTensorShapeProto {
+        SharedTensorShapeProto::new()
     }
 
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
@@ -163,18 +163,18 @@ impl ::protobuf::Message for TensorShapeProto {
         unsafe {
             descriptor.get(|| {
                 let mut fields = ::std::vec::Vec::new();
-                fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<TensorShapeProto_Dim>>(
+                fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<SharedTensorShapeProto_Dim>>(
                     "dim",
-                    |m: &TensorShapeProto| { &m.dim },
-                    |m: &mut TensorShapeProto| { &mut m.dim },
+                    |m: &SharedTensorShapeProto| { &m.dim },
+                    |m: &mut SharedTensorShapeProto| { &mut m.dim },
                 ));
                 fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
                     "unknown_rank",
-                    |m: &TensorShapeProto| { &m.unknown_rank },
-                    |m: &mut TensorShapeProto| { &mut m.unknown_rank },
+                    |m: &SharedTensorShapeProto| { &m.unknown_rank },
+                    |m: &mut SharedTensorShapeProto| { &mut m.unknown_rank },
                 ));
-                ::protobuf::reflect::MessageDescriptor::new::<TensorShapeProto>(
-                    "TensorShapeProto",
+                ::protobuf::reflect::MessageDescriptor::new::<SharedTensorShapeProto>(
+                    "SharedTensorShapeProto",
                     fields,
                     file_descriptor_proto()
                 )
@@ -182,18 +182,18 @@ impl ::protobuf::Message for TensorShapeProto {
         }
     }
 
-    fn default_instance() -> &'static TensorShapeProto {
-        static mut instance: ::protobuf::lazy::Lazy<TensorShapeProto> = ::protobuf::lazy::Lazy {
+    fn default_instance() -> &'static SharedTensorShapeProto {
+        static mut instance: ::protobuf::lazy::Lazy<SharedTensorShapeProto> = ::protobuf::lazy::Lazy {
             lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const TensorShapeProto,
+            ptr: 0 as *const SharedTensorShapeProto,
         };
         unsafe {
-            instance.get(TensorShapeProto::new)
+            instance.get(SharedTensorShapeProto::new)
         }
     }
 }
 
-impl ::protobuf::Clear for TensorShapeProto {
+impl ::protobuf::Clear for SharedTensorShapeProto {
     fn clear(&mut self) {
         self.clear_dim();
         self.clear_unknown_rank();
@@ -201,20 +201,20 @@ impl ::protobuf::Clear for TensorShapeProto {
     }
 }
 
-impl ::std::fmt::Debug for TensorShapeProto {
+impl ::std::fmt::Debug for SharedTensorShapeProto {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for TensorShapeProto {
+impl ::protobuf::reflect::ProtobufValue for SharedTensorShapeProto {
     fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
         ::protobuf::reflect::ProtobufValueRef::Message(self)
     }
 }
 
 #[derive(PartialEq,Clone,Default)]
-pub struct TensorShapeProto_Dim {
+pub struct SharedTensorShapeProto_Dim {
     // message fields
     pub size: i64,
     pub name: ::std::string::String,
@@ -223,8 +223,8 @@ pub struct TensorShapeProto_Dim {
     cached_size: ::protobuf::CachedSize,
 }
 
-impl TensorShapeProto_Dim {
-    pub fn new() -> TensorShapeProto_Dim {
+impl SharedTensorShapeProto_Dim {
+    pub fn new() -> SharedTensorShapeProto_Dim {
         ::std::default::Default::default()
     }
 
@@ -270,7 +270,7 @@ impl TensorShapeProto_Dim {
     }
 }
 
-impl ::protobuf::Message for TensorShapeProto_Dim {
+impl ::protobuf::Message for SharedTensorShapeProto_Dim {
     fn is_initialized(&self) -> bool {
         true
     }
@@ -349,8 +349,8 @@ impl ::protobuf::Message for TensorShapeProto_Dim {
         Self::descriptor_static()
     }
 
-    fn new() -> TensorShapeProto_Dim {
-        TensorShapeProto_Dim::new()
+    fn new() -> SharedTensorShapeProto_Dim {
+        SharedTensorShapeProto_Dim::new()
     }
 
     fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
@@ -363,16 +363,16 @@ impl ::protobuf::Message for TensorShapeProto_Dim {
                 let mut fields = ::std::vec::Vec::new();
                 fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeInt64>(
                     "size",
-                    |m: &TensorShapeProto_Dim| { &m.size },
-                    |m: &mut TensorShapeProto_Dim| { &mut m.size },
+                    |m: &SharedTensorShapeProto_Dim| { &m.size },
+                    |m: &mut SharedTensorShapeProto_Dim| { &mut m.size },
                 ));
                 fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeString>(
                     "name",
-                    |m: &TensorShapeProto_Dim| { &m.name },
-                    |m: &mut TensorShapeProto_Dim| { &mut m.name },
+                    |m: &SharedTensorShapeProto_Dim| { &m.name },
+                    |m: &mut SharedTensorShapeProto_Dim| { &mut m.name },
                 ));
-                ::protobuf::reflect::MessageDescriptor::new::<TensorShapeProto_Dim>(
-                    "TensorShapeProto_Dim",
+                ::protobuf::reflect::MessageDescriptor::new::<SharedTensorShapeProto_Dim>(
+                    "SharedTensorShapeProto_Dim",
                     fields,
                     file_descriptor_proto()
                 )
@@ -380,18 +380,18 @@ impl ::protobuf::Message for TensorShapeProto_Dim {
         }
     }
 
-    fn default_instance() -> &'static TensorShapeProto_Dim {
-        static mut instance: ::protobuf::lazy::Lazy<TensorShapeProto_Dim> = ::protobuf::lazy::Lazy {
+    fn default_instance() -> &'static SharedTensorShapeProto_Dim {
+        static mut instance: ::protobuf::lazy::Lazy<SharedTensorShapeProto_Dim> = ::protobuf::lazy::Lazy {
             lock: ::protobuf::lazy::ONCE_INIT,
-            ptr: 0 as *const TensorShapeProto_Dim,
+            ptr: 0 as *const SharedTensorShapeProto_Dim,
         };
         unsafe {
-            instance.get(TensorShapeProto_Dim::new)
+            instance.get(SharedTensorShapeProto_Dim::new)
         }
     }
 }
 
-impl ::protobuf::Clear for TensorShapeProto_Dim {
+impl ::protobuf::Clear for SharedTensorShapeProto_Dim {
     fn clear(&mut self) {
         self.clear_size();
         self.clear_name();
@@ -399,13 +399,13 @@ impl ::protobuf::Clear for TensorShapeProto_Dim {
     }
 }
 
-impl ::std::fmt::Debug for TensorShapeProto_Dim {
+impl ::std::fmt::Debug for SharedTensorShapeProto_Dim {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for TensorShapeProto_Dim {
+impl ::protobuf::reflect::ProtobufValue for SharedTensorShapeProto_Dim {
     fn as_ref(&self) -> ::protobuf::reflect::ProtobufValueRef {
         ::protobuf::reflect::ProtobufValueRef::Message(self)
     }
@@ -413,11 +413,11 @@ impl ::protobuf::reflect::ProtobufValue for TensorShapeProto_Dim {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n,tensorflow/core/framework/tensor_shape.proto\x12\ntensorflow\"\x98\
-    \x01\n\x10TensorShapeProto\x122\n\x03dim\x18\x02\x20\x03(\x0b2\x20.tenso\
-    rflow.TensorShapeProto.DimR\x03dim\x12!\n\x0cunknown_rank\x18\x03\x20\
+    \x01\n\x10SharedTensorShapeProto\x122\n\x03dim\x18\x02\x20\x03(\x0b2\x20.tenso\
+    rflow.SharedTensorShapeProto.DimR\x03dim\x12!\n\x0cunknown_rank\x18\x03\x20\
     \x01(\x08R\x0bunknownRank\x1a-\n\x03Dim\x12\x12\n\x04size\x18\x01\x20\
     \x01(\x03R\x04size\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04nameB2\n\x18\
-    org.tensorflow.frameworkB\x11TensorShapeProtosP\x01\xf8\x01\x01b\x06prot\
+    org.tensorflow.frameworkB\x11SharedTensorShapeProtosP\x01\xf8\x01\x01b\x06prot\
     o3\
 ";
 
