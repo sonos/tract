@@ -17,7 +17,7 @@ mod utils;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::datum::arr4;
+use tract_core::tensor::arr4;
 use tract_core::datum::Datum;
 use tract_core::ops::StatefullOp;
 use tract_core::DtArray;

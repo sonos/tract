@@ -111,7 +111,7 @@ fn conv_infer_facts_1() {
 
 #[test]
 fn conv_eval_1() {
-    use tract_core::datum::arr4;
+    use tract_core::tensor::arr4;
     //   ::conform::setup_test_logger();
     let i: DtArray = DtArray::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: DtArray = DtArray::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));

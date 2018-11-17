@@ -175,7 +175,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                     let value = if a.1.has_tensor() {
                         format!(
                             "{:?}",
-                            ::tract_core::datum::DtArray::tractify(a.1.get_tensor())?
+                            ::tract_core::DtArray::tractify(a.1.get_tensor())?
                         )
                     } else {
                         format!("{:?}", a.1)
@@ -198,7 +198,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 let mut v = vec![];
                 for a in gnode.get_attribute().iter() {
                     let value = if a.has_t() {
-                        format!("{:?}", ::tract_core::datum::DtArray::tractify(a.get_t())?)
+                        format!("{:?}", ::tract_core::DtArray::tractify(a.get_t())?)
                     } else {
                         format!("{:?}", a)
                     };
