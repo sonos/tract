@@ -53,25 +53,25 @@ pub fn make_test_file(tests_set: &str) {
         .map(|de| de.unwrap().file_name().to_str().unwrap().to_owned())
         .collect();
     tests.sort();
-    writeln!(rs, "mod {} {{", tests_set.replace("-", "_"));
+    writeln!(rs, "mod {} {{", tests_set.replace("-", "_")).unwrap();
     for (s, optim) in &[("plain", false), ("optim", true)] {
-        writeln!(rs, "mod {} {{", s);
+        writeln!(rs, "mod {} {{", s).unwrap();
         for t in &tests {
-            writeln!(rs, "#[test]");
+            writeln!(rs, "#[test]").unwrap();
             if !working_list.contains(&t) {
-                writeln!(rs, "#[ignore]");
+                writeln!(rs, "#[ignore]").unwrap();
             }
-            writeln!(rs, "fn {}() {{", t);
+            writeln!(rs, "fn {}() {{", t).unwrap();
             writeln!(
                 rs,
                 "::onnx::run_one({:?}, {:?}, {:?})",
                 node_tests, t, optim
-            );
-            writeln!(rs, "}}");
+            ).unwrap();
+            writeln!(rs, "}}").unwrap();
         }
-        writeln!(rs, "}}");
+        writeln!(rs, "}}").unwrap();
     }
-    writeln!(rs, "}}");
+    writeln!(rs, "}}").unwrap();
 }
 
 fn main() {
