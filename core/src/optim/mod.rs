@@ -5,9 +5,9 @@ mod prop_const;
 mod reduce;
 
 pub use self::compact::compact;
-pub use self::prop_const::prop_const;
+pub use self::prop_const::PropConst;
 pub use self::reduce::Reduce;
 
 pub trait OptimizerPass {
-    fn pass(model: &mut Model) -> TractResult<bool>;
+    fn pass(&self, model: &mut Model) -> TractResult<bool>;
 }

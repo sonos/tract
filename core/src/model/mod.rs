@@ -6,6 +6,7 @@ pub mod dsl;
 mod order;
 pub use self::order::eval_order;
 pub use analyser::types::TensorFact;
+use context::Context;
 
 pub use self::dsl::ModelDsl;
 use {ops, TractResult};
@@ -70,15 +71,34 @@ impl InletId {
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
 /// Model is Tract workhouse.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Model {
+    ctx: Arc<::context::Context>,
     nodes: Vec<Node>,
     nodes_by_name: HashMap<String, usize>,
     pub(crate) inputs: Vec<OutletId>,
     pub(crate) outputs: Vec<OutletId>,
 }
 
+impl Default for Model {
+    fn default() -> Model {
+        Model {
+            ctx: Arc::new(::context::DefaultContext),
+            nodes: vec!(),
+            nodes_by_name: HashMap::new(),
+            inputs: vec!(),
+            outputs: vec!(),
+        }
+    }
+}
+
 impl Model {
+    pub fn with_context(self, ctx: Arc<Context>) -> Model {
+        Model {
+            ctx, ..self
+        }
+    }
+
     pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TractResult<usize> {
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
@@ -219,9 +239,9 @@ impl Model {
     }
 
     pub fn into_optimized(mut self) -> TractResult<Model> {
-        use optim::OptimizerPass;
-        ::optim::Reduce::pass(&mut self)?;
-        ::optim::prop_const(&mut self)?;
+        for pass in self.ctx.optimizer_passes() {
+            pass.pass(&mut self)?;
+        }
         let mut model = ::optim::compact(&self)?;
         model.analyse()?;
         Ok(model)
