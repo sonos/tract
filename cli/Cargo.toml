@@ -37,6 +37,7 @@ libc = "0.2"
 [features]
 default = []
 conform = [ "tract-tensorflow/conform"  ]
+blis = ["tract-core/blis"]
 
 [dev-dependencies]
 criterion = "0.2"
