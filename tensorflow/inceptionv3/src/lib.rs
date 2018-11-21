@@ -25,7 +25,7 @@ fn do_download() -> TractResult<()> {
     let dir = inception_v3_2016_08_28();
     let dir_partial = dir.clone().with_extension("partial");
     if fs::metadata(&dir).is_ok() {
-        println!("Found inception_v3 model to {:?}", dir);
+        println!("Found inception_v3 model: {:?}", dir);
         return Ok(());
     }
     println!("Downloading inception_v3 model in {:?}", dir);
@@ -57,7 +57,7 @@ fn inception_v3_2016_08_28() -> path::PathBuf {
         Ok(t) => path::Path::new(&t)
             .join("cached")
             .join("inception-v3-2016_08_28"),
-        _ => ".inception-v3-2016_08_28".into()
+        _ => ".inception-v3-2016_08_28".into(),
     }
 }
 
@@ -74,10 +74,10 @@ pub fn imagenet_slim_labels() -> path::PathBuf {
 pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tract::Tensor {
     let image = ::image::open(&p).unwrap().to_rgb();
     let resized = ::image::imageops::resize(&image, 299, 299, ::image::FilterType::Triangle);
-    let image: ::tract::Tensor = ::ndarray::Array4::from_shape_fn(
-        (1, 299, 299, 3),
-        |(_, y, x, c)| resized[(x as _, y as _)][c] as f32 / 255.0,
-    ).into_dyn()
+    let image: ::tract::Tensor =
+        ::ndarray::Array4::from_shape_fn((1, 299, 299, 3), |(_, y, x, c)| {
+            resized[(x as _, y as _)][c] as f32 / 255.0
+        }).into_dyn()
         .into();
     image
 }
@@ -102,7 +102,9 @@ mod tests {
         let input = load_image(hopper());
         let outputs = plan.run(tvec![input]).unwrap();
         let labels = load_labels();
-        let label_id = outputs[0].to_array_view::<f32>().unwrap()
+        let label_id = outputs[0]
+            .to_array_view::<f32>()
+            .unwrap()
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(0u32.cmp(&1)))
