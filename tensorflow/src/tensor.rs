@@ -1,5 +1,5 @@
 use tfpb::tensor::TensorProto;
-use tfpb::tensor_shape::{SharedTensorShapeProto, SharedTensorShapeProto_Dim};
+use tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use tfpb::types::DataType;
 use tract_core::{DatumType, Tensor, TractResult, Tractify};
 use ToSharedTensorflow;
@@ -80,12 +80,12 @@ impl Tractify<TensorProto> for Tensor {
 
 impl ToSharedTensorflow<TensorProto> for Tensor {
     fn to_tf(&self) -> TractResult<TensorProto> {
-        let mut shape = SharedTensorShapeProto::new();
+        let mut shape = TensorShapeProto::new();
         let dims = self
             .shape()
             .iter()
             .map(|d| {
-                let mut dim = SharedTensorShapeProto_Dim::new();
+                let mut dim = TensorShapeProto_Dim::new();
                 dim.size = *d as _;
                 dim
             }).collect();
