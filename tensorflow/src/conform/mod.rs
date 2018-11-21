@@ -24,11 +24,11 @@ pub mod tf;
 pub use protobuf::Message;
 
 use tfpb;
-use tfpb::tensor_shape::SharedTensorShapeProto;
+use tfpb::tensor_shape::TensorShapeProto;
 use tfpb::types::DataType;
 use tract_core::ops::prelude::*;
 
-pub fn placeholder<Shape: Into<Option<SharedTensorShapeProto>>>(
+pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
     t: DataType,
     shape: Shape,
@@ -40,13 +40,13 @@ pub fn placeholder<Shape: Into<Option<SharedTensorShapeProto>>>(
     node
 }
 
-pub fn tensor_shape(dims: &[usize]) -> SharedTensorShapeProto {
+pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
     use tfpb::tensor_shape::*;
-    let mut shape = SharedTensorShapeProto::new();
+    let mut shape = TensorShapeProto::new();
     shape.set_dim(
         dims.iter()
             .map(|&d| {
-                let mut dim = SharedTensorShapeProto_Dim::new();
+                let mut dim = TensorShapeProto_Dim::new();
                 dim.set_size(d as i64);
                 dim
             }).collect(),

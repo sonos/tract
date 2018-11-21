@@ -44,9 +44,9 @@ pub fn node() -> NodeDef {
 pub fn tensor_f32(dim:Vec<usize>, values:Vec<f32>) -> tensor::TensorProto {
     let mut tensor = tensor::TensorProto::new();
     tensor.set_dtype(types::DataType::DT_FLOAT);
-    let mut shape = tensor_shape::SharedTensorShapeProto::new();
+    let mut shape = tensor_shape::TensorShapeProto::new();
     shape.set_dim(dim.into_iter().map(|i| {
-        let mut d = tensor_shape::SharedTensorShapeProto_Dim::new();
+        let mut d = tensor_shape::TensorShapeProto_Dim::new();
         d.set_size(i as _);
         d
     }).collect());
@@ -216,8 +216,8 @@ impl<'a> From<tensor::TensorProto> for AttrValue {
     }
 }
 
-impl<'a> From<tensor_shape::SharedTensorShapeProto> for AttrValue {
-    fn from(t: tensor_shape::SharedTensorShapeProto) -> AttrValue {
+impl<'a> From<tensor_shape::TensorShapeProto> for AttrValue {
+    fn from(t: tensor_shape::TensorShapeProto) -> AttrValue {
         let mut value = attr_value::AttrValue::new();
         value.set_shape(t);
         value
