@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "core",
-    "tensorflow", # "tensorflow/exs/inceptionv3",
+    "tensorflow",
+    "tensorflow/inceptionv3",
     "onnx",
     "cli"
 ]
