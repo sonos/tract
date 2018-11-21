@@ -4,7 +4,7 @@ use Model;
 pub struct Reduce;
 
 impl super::OptimizerPass for Reduce {
-    fn pass(model: &mut Model) -> TractResult<bool> {
+    fn pass(&self, model: &mut Model) -> TractResult<bool> {
         let mut done_something = false;
         for id in model.eval_order()? {
             let reduced = {

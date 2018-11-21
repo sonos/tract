@@ -27,6 +27,8 @@ pub trait ModelDsl {
         after: usize,
         nodes: Vec<(String, Box<Op>)>,
     ) -> TractResult<()>;
+
+    fn unlink_node(&mut self, node: usize) -> TractResult<()>;
 }
 
 impl ModelDsl for ::model::Model {
@@ -143,6 +145,7 @@ impl ModelDsl for ::model::Model {
             let id = self.tap_and_chain(tap, name, op)?;
             tap = OutletId::new(id, 0);
         }
+        self.unlink_node(first_replaced)?;
         let successors: Vec<InletId> = self
             .single_succ_at(node, after)?
             .ok_or("Failed to replace, geometry is not right")?
@@ -151,6 +154,16 @@ impl ModelDsl for ::model::Model {
             .clone();
         for &succ in &successors {
             self.add_edge(tap, succ)?;
+        }
+        Ok(())
+    }
+
+    fn unlink_node(&mut self, node: usize) -> TractResult<()> {
+        let inputs = self.nodes[node].inputs.clone();
+        for (ix, &input) in inputs.iter().enumerate() {
+            self.nodes[input.node].outputs[input.slot]
+                .successors
+                .retain(|&wire| wire != InletId::new(node, ix));
         }
         Ok(())
     }

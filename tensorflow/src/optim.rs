@@ -1,13 +1,30 @@
 use tract_core::model::ModelDsl;
 use tract_core::ops::nn::ConvUnary;
 use tract_core::ops::prelude::*;
+use tract_core::context::Context;
+use tract_core::optim::OptimizerPass;
 use tract_core::*;
 
-pub fn untf_convos(mut model: Model) -> TractResult<Model> {
-    undo_all_conv1d_as_conv2d(&mut model)?;
-    let mut model = ::tract_core::optim::compact(&model)?;
-    undo_all_space_to_batch(&mut model)?;
-    ::tract_core::optim::compact(&model)
+#[derive(Debug)]
+pub struct TensorflowContext;
+
+impl Context for TensorflowContext {
+    fn optimizer_passes(&self) -> Vec<Box<OptimizerPass>> {
+        let dflt = tract_core::context::DefaultContext;
+        let mut passes = dflt.optimizer_passes();
+        passes.push(Box::new(UntensorflowConv));
+        passes
+    }
+}
+
+struct UntensorflowConv;
+impl OptimizerPass for UntensorflowConv {
+    fn pass(&self, model: &mut Model) -> TractResult<bool> {
+        let mut done_something = false;
+        done_something = done_something || undo_all_conv1d_as_conv2d(model)?;
+        done_something = done_something || undo_all_space_to_batch(model)?;
+        Ok(done_something)
+    }
 }
 
 macro_rules! some_or_ok_false {

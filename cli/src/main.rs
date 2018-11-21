@@ -326,9 +326,6 @@ impl Parameters {
 
         if matches.is_present("optimize") || pulse.is_some() {
             info!("Optimize");
-            if format == "tf" {
-                tract_model = ::tract_tensorflow::model::optimize(tract_model)?;
-            }
             tract_model = tract_model.into_optimized()?;
         }
 

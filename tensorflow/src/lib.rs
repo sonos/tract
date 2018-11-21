@@ -52,7 +52,7 @@ pub mod conform;
 
 pub mod model;
 pub mod ops;
-pub mod optim;
+mod optim;
 pub mod tensor;
 pub mod tfpb;
 
