@@ -98,6 +98,11 @@ fn main() {
                 .takes_value(true)
                 .long("assert-output")
                 .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+        ).arg(
+            Arg::with_name("assert-output-fact")
+                .takes_value(true)
+                .long("assert-output-fact")
+                .help("Infered shape and datum type must match exactly this")
         );
     app = app.subcommand(output_options(dump));
 
@@ -134,7 +139,12 @@ fn main() {
             Arg::with_name("assert-output")
                 .takes_value(true)
                 .long("assert-output")
-                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)")
+        ).arg(
+            Arg::with_name("assert-output-fact")
+                .takes_value(true)
+                .long("assert-output-fact")
+                .help("Infered shape and datum type must match exactly this")
         );
     app = app.subcommand(output_options(run));
 
@@ -237,6 +247,8 @@ pub struct Parameters {
     tf_model: (),
 
     inputs: Option<Vec<Option<tract_core::ops::prelude::SharedTensor>>>,
+
+    assertions: Option<Assertions>,
 }
 
 impl Parameters {
@@ -350,6 +362,7 @@ impl Parameters {
             tf_model,
             pulse_facts,
             inputs,
+            assertions: None,
         })
     }
 }
@@ -400,18 +413,33 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
     })
 }
 
+pub struct Assertions {
+    assert_outputs: Option<Vec<TensorFact>>,
+    assert_output_facts: Option<Vec<TensorFact>>,
+}
+
+impl Assertions {
+    fn from_clap(sub_matches: &clap::ArgMatches) -> CliResult<Assertions> {
+        let assert_outputs: Option<Vec<TensorFact>> = sub_matches
+            .values_of("assert-output")
+            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
+        let assert_output_facts: Option<Vec<TensorFact>> = sub_matches
+            .values_of("assert-output-fact")
+            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
+        Ok(Assertions { assert_outputs, assert_output_facts })
+    }
+}
+
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> CliResult<()> {
-    let params = Parameters::from_clap(&matches)?;
+    let mut params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
         ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
 
         ("run", Some(m)) => {
-            let assert_outputs: Option<Vec<TensorFact>> = m
-                .values_of("assert-output")
-                .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
-            run::handle(params, assert_outputs)
+            params.assertions = Some(Assertions::from_clap(m)?);
+            run::handle(params)
         }
 
         /*
@@ -424,10 +452,8 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("draw", _) => ::draw::render(&params.tract_model),
 
         ("dump", Some(m)) => {
-            let assert_outputs: Option<Vec<TensorFact>> = m
-                .values_of("assert-output")
-                .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
-            dump::handle(params, assert_outputs, display_options_from_clap(m)?)
+            params.assertions = Some(Assertions::from_clap(m)?);
+            dump::handle(params, display_options_from_clap(m)?)
         }
 
         ("profile", Some(m)) => profile::handle(

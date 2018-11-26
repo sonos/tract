@@ -3,27 +3,36 @@ use tract_core::ops::prelude::*;
 use tract_core::SimplePlan;
 use Parameters;
 
-pub fn handle(params: Parameters, assert_outputs: Option<Vec<TensorFact>>) -> CliResult<()> {
+pub fn handle(params: Parameters) -> CliResult<()> {
     let outputs = if params.pulse_facts.is_some() {
-        run_pulse(params)?
+        run_pulse(&params)?
     } else {
-        run_regular(params)?
+        run_regular(&params)?
     };
 
     for (ix, output) in outputs.iter().enumerate() {
         println!("output #{}\n{}\n", ix, output.dump(true)?);
     }
 
-    if let Some(asserts) = assert_outputs {
-        ::utils::check_outputs(&*outputs, &asserts)?;
+    if let Some(asserts) = &params.assertions {
+        if let Some(asserts) = &asserts.assert_outputs {
+            ::utils::check_outputs(&*outputs, &asserts)?;
+        }
+        if let Some(facts) = &asserts.assert_output_facts {
+            let outputs: Vec<TensorFact> = outputs
+                .iter()
+                .map(|t| TensorFact::dt_shape(t.datum_type(), t.shape()))
+                .collect();
+            ::utils::check_inferred(&*outputs, &*facts)?;
+        }
     }
 
     Ok(())
 }
 
-fn run_regular(params: Parameters) -> CliResult<TVec<SharedTensor>> {
-    let tract = params.tract_model;
-    let plan = SimplePlan::new(&tract)?;
+fn run_regular(params: &Parameters) -> CliResult<TVec<SharedTensor>> {
+    let tract = &params.tract_model;
+    let plan = SimplePlan::new(tract)?;
     let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.inputs()?.iter().enumerate() {
         if let Some(input) = params
@@ -42,8 +51,8 @@ fn run_regular(params: Parameters) -> CliResult<TVec<SharedTensor>> {
     Ok(plan.run(inputs)?)
 }
 
-fn run_pulse(params: Parameters) -> CliResult<TVec<SharedTensor>> {
-    let (input_fact, output_fact) = params.pulse_facts.unwrap();
+fn run_pulse(params: &Parameters) -> CliResult<TVec<SharedTensor>> {
+    let (input_fact, output_fact) = params.pulse_facts.clone().unwrap();
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
@@ -62,7 +71,7 @@ fn run_pulse(params: Parameters) -> CliResult<TVec<SharedTensor>> {
     let mut result = ::ndarray::ArrayD::<f32>::default(output_shape);
     let input = input.to_array_view::<f32>()?;
     for ix in 0..input_dim.div_ceil(pulse) {
-        let chunk = input.slice_axis(ndarray::Axis(axis), (ix*pulse..(ix+1)*pulse).into());
+        let chunk = input.slice_axis(ndarray::Axis(axis), (ix * pulse..(ix + 1) * pulse).into());
         let input = if chunk.shape()[input_fact.axis] < pulse {
             let mut chunk_shape = chunk.shape().to_vec();
             chunk_shape[input_fact.axis] = pulse;

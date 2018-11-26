@@ -10,7 +10,7 @@ fn setup_test_logger() {
     use std::sync::Once;
 
     static START: Once = Once::new();
-    START.call_once(|| TermLogger::init(LevelFilter::Info, Config::default()).unwrap());
+    START.call_once(|| TermLogger::init(LevelFilter::Trace, Config::default()).unwrap());
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
@@ -84,8 +84,8 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     let model_file = path.join("model.onnx");
     debug!("Loading {:?}", model_file);
     let mut model = for_path(&model_file).unwrap();
-    // println!("Model: {:#?}", tract_onnx::model::model_proto_for_path(&model_file));
-    // println!("Model: {:#?}", model);
+    trace!("Model: {:#?}", tract_onnx::model::model_proto_for_path(&model_file));
+    trace!("Model: {:#?}", model);
     model.analyse().unwrap();
     debug!("Loaded {:?}", model_file);
     if optim {

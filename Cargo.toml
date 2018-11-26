@@ -7,3 +7,5 @@ members = [
     "cli"
 ]
 
+[profile.bench]
+debug = true
