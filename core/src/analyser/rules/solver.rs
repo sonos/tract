@@ -69,22 +69,15 @@ impl<T: Output + Fact> EqualsRule<T> {
 impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
-        let mut value = None;
+        let value = self
+            .items
+            .iter()
+            .try_fold(T::default(), |acc, f| acc.unify(&f.get(context)?))?;
+        let mut changed = false;
         for item in &self.items {
-            let v = item.get(context)?;
-            if v.is_concrete() {
-                value = Some(v);
-                break;
-            }
+            changed |= item.set(context, value.clone())?;
         }
-        if let Some(value) = value {
-            let mut changed = false;
-            for item in &self.items {
-                changed |= item.set(context, value.clone())?;
-            }
-            return Ok((changed, vec![]));
-        }
-        Ok((false, vec![]))
+        return Ok((changed, vec![]));
     }
 
     /// Returns the paths that the rule depends on.
@@ -790,8 +783,10 @@ mod tests {
 
         let any = TensorFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![&any])).unwrap();
-        let expected = (tvec![TensorFact::new()], tvec![TensorFact::new()]);
-
+        let expected = (
+            tvec![TensorFact::shape(shapefact![_,_;..])],
+            tvec![TensorFact::shape(shapefact![_,_;..])],
+        );
         assert_eq!(facts, expected);
     }
 

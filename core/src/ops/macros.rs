@@ -153,7 +153,7 @@ macro_rules! element_bin {
 
             impl Op for Bin {
                 fn name(&self) -> &str {
-                    stringify!($name)
+                    concat!(stringify!($name), "::Bin")
                 }
 
                 fn reduce(&self, inputs: TVec<&TensorFact>, _outputs: TVec<&TensorFact>,
@@ -198,16 +198,12 @@ macro_rules! element_bin {
                         s.given_all((0..n).map(|i| &inputs[i as usize].datum_type), move |s, dts| {
                             let dt:DatumType = DatumType::super_type_for(dts.iter().cloned())
                                 .ok_or_else(|| format!("No supertype for {:?}", dts))?;
-                            s.equals(&outputs[0].datum_type, dt)
+                            $(if dt == <$type>::datum_type() {
+                                return s.equals(&outputs[0].datum_type, <$to>::datum_type());
+                            })*
+                            bail!("{} not covering {:?}", stringify!($name), dt)
                         })
                     )?;
-                    /*
-                        $(if dt == <$type>::datum_type() {
-                            return s.equals(&outputs[0].datum_type, <$to>::datum_type());
-                        })*
-                        bail!("{} not covering {:?}", stringify!($name), dt)
-                    })?;
-                    */
                     s.equals(&inputs.len, 2)?;
                     s.equals(&outputs.len, 1)?;
                     s.with(&a.shape, move |s, a_shape| {
@@ -236,7 +232,7 @@ macro_rules! element_bin {
 
             impl Op for UnaryA {
                 fn name(&self) -> &str {
-                    stringify!($name)
+                    concat!(stringify!($name), "::UnaryA")
                 }
 
                 fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {

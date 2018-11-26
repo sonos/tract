@@ -154,7 +154,7 @@ mod test {
 
     #[test]
     fn conv2d_unarization() {
-        ::setup_test_logger();
+//        ::setup_test_logger();
         let mut model = Model::default().with_context(Arc::new(TensorflowContext));
         model.add_source_fact(
             "source",
