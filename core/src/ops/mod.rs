@@ -28,24 +28,27 @@ pub struct StreamInfo {
     pub len: TDim,
 }
 
+#[derive(Debug,PartialEq, Copy, Clone )]
+pub enum ReductionPhase { Normalize, Codegen }
+
 pub mod prelude {
     pub use super::{
-        InferenceOp, Op, OpState, ReducedOpRewire, StatefullOp, StatelessOp, StreamInfo,
+        InferenceOp, Op, OpState, ReductionPhase, ReducedOpRewire, StatefullOp, StatelessOp, StreamInfo,
     };
     pub use analyser::rules::expr::{IntoExp, ToDimExp};
-    pub use analyser::rules::{InferenceResult, InferenceRulesOp, Solver, SharedTensorsProxy};
+    pub use analyser::rules::{InferenceResult, InferenceRulesOp, SharedTensorsProxy, Solver};
     pub use analyser::types::TypeFact;
     pub use analyser::types::*;
-    pub use datum::{Datum, DatumType };
+    pub use datum::{Datum, DatumType};
     pub use dim::{DimLike, TDim, ToDim};
     pub use f16::f16;
     pub use model::TVec;
-    pub use tensor::{ arr4, Tensor, SharedTensor };
     pub use pulse::{PulsedTensorFact, PulsifiedOp};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use TractResult;
+    pub use tensor::{arr4, SharedTensor, Tensor};
     pub use ToTract;
+    pub use TractResult;
 }
 
 use self::prelude::*;
@@ -114,6 +117,7 @@ pub trait Op:
         &self,
         _inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
+        _phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
         Ok(None)
     }

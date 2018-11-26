@@ -239,7 +239,9 @@ impl Model {
     }
 
     pub fn into_optimized(mut self) -> TractResult<Model> {
+        self.analyse()?;
         for pass in self.ctx.optimizer_passes() {
+            info!("Optization pass: {:?}", pass);
             pass.pass(&mut self)?;
         }
         let mut model = ::optim::compact(&self)?;

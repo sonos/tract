@@ -1,23 +1,28 @@
+use tract_core::context::Context;
 use tract_core::model::ModelDsl;
 use tract_core::ops::nn::ConvUnary;
 use tract_core::ops::prelude::*;
-use tract_core::context::Context;
 use tract_core::optim::OptimizerPass;
 use tract_core::*;
 
 #[derive(Debug)]
 pub struct TensorflowContext;
 
+impl TensorflowContext {
+}
+
 impl Context for TensorflowContext {
     fn optimizer_passes(&self) -> Vec<Box<OptimizerPass>> {
-        let dflt = tract_core::context::DefaultContext;
-        let mut passes = dflt.optimizer_passes();
+        let mut passes = optim::normalization();
         passes.push(Box::new(UntensorflowConv));
+        passes.extend(optim::codegen().into_iter());
         passes
     }
 }
 
+#[derive(Debug)]
 struct UntensorflowConv;
+
 impl OptimizerPass for UntensorflowConv {
     fn pass(&self, model: &mut Model) -> TractResult<bool> {
         let mut done_something = false;
@@ -115,4 +120,56 @@ fn undo_space_to_batch(model: &mut Model, node_id: usize) -> TractResult<bool> {
         model.replace_nodes(node_id, 1, 1, vec![(name, Box::new(new_op))])?;
     }
     Ok(false)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::sync::Arc;
+    use tract_core::model::*;
+
+    fn mk(sizes: &[usize]) -> Tensor {
+        ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)
+            .into_shape(sizes)
+            .unwrap()
+            .into()
+    }
+
+    fn make_conv(strides: TVec<usize>, valid: bool) -> Box<Op> {
+        use tract_core::ops::nn::*;
+        Box::new(Conv::new(
+            DataFormat::NHWC,
+            true,
+            None,
+            None,
+            if valid {
+                PaddingSpec::Valid
+            } else {
+                PaddingSpec::SameUpper
+            },
+            Some(strides),
+            1,
+        ))
+    }
+
+    #[test]
+    fn conv2d_unarization() {
+        ::setup_test_logger();
+        let mut model = Model::default().with_context(Arc::new(TensorflowContext));
+        model.add_source_fact(
+            "source",
+            TensorFact::dt_shape(DatumType::F32, &[1, 10, 10, 3]),
+        ).unwrap();
+        let conv = model.chain("conv2d", make_conv(tvec!(1, 1), true)).unwrap();
+        let kernel = model.add_const("kernel", mk(&[1, 1, 3, 3]).into()).unwrap();
+        model.add_edge(OutletId::new(kernel, 0), InletId::new(conv, 1)).unwrap();
+
+        assert_eq!(model.eval_order().unwrap().len(), 3);
+
+        model.analyse().unwrap();
+        let optimized = model.into_optimized().unwrap();
+        println!("{:#?}", optimized);
+        assert_eq!(optimized.eval_order().unwrap().len(), 2);
+    }
+
 }

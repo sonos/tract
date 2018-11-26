@@ -38,15 +38,17 @@ impl Op for Squeeze {
         &self,
         _inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
+        phase: ReductionPhase
     ) -> TractResult<Option<ReducedOpRewire>> {
-        if let Some(dims) = &self.axes {
-            Ok(Some(ReducedOpRewire {
-                new_op: Box::new(RmDims::new(dims.clone())),
-                rewired: tvec!(0),
-            }))
-        } else {
-            Ok(None)
+        if phase == ReductionPhase::Normalize {
+            if let Some(dims) = &self.axes {
+                return Ok(Some(ReducedOpRewire {
+                    new_op: Box::new(RmDims::new(dims.clone())),
+                    rewired: tvec!(0),
+                }))
+            }
         }
+        Ok(None)
     }
 }
 

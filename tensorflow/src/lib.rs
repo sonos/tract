@@ -42,6 +42,8 @@ extern crate log;
 extern crate ndarray;
 extern crate num;
 extern crate protobuf;
+#[cfg(test)]
+extern crate simplelog;
 #[macro_use]
 extern crate tract_core;
 #[cfg(feature = "conform")]
@@ -61,4 +63,11 @@ pub use self::model::for_reader;
 
 pub trait ToSharedTensorflow<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn setup_test_logger() {
+    use simplelog::{Config, LevelFilter, TermLogger};
+    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
 }

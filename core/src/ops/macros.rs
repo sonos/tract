@@ -43,10 +43,7 @@ macro_rules! element_map {
             ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
-                s.equals_all(wrap![
-                    &inputs[0].datum_type,
-                    &outputs[0].datum_type,
-                ])?;
+                s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
                 s.equals(&inputs[0].shape, &outputs[0].shape)
             }
         }
@@ -160,15 +157,18 @@ macro_rules! element_bin {
                 }
 
                 fn reduce(&self, inputs: TVec<&TensorFact>, _outputs: TVec<&TensorFact>,
+                          phase: ReductionPhase
                 ) -> TractResult<Option<ReducedOpRewire>> {
-                    if let Some(b) = inputs[1].value.concretize() {
-                        return Ok(Some(ReducedOpRewire {
-                            new_op: Box::new(UnaryA {
-                                dt: self.0,
-                                b: b.into(),
-                            }),
-                            rewired: tvec!(0)
-                        }))
+                    if phase == ReductionPhase::Normalize {
+                        if let Some(b) = inputs[1].value.concretize() {
+                            return Ok(Some(ReducedOpRewire {
+                                new_op: Box::new(UnaryA {
+                                    dt: self.0,
+                                    b: b.into(),
+                                }),
+                                rewired: tvec!(0)
+                            }))
+                        }
                     }
                     Ok(None)
                 }
@@ -194,12 +194,20 @@ macro_rules! element_bin {
                     let b = &inputs[1];
                     let c = &outputs[0];
 
-                    s.given(&inputs[0].datum_type, move |s, dt| {
+                    s.given(&inputs.len, move |s, n|
+                        s.given_all((0..n).map(|i| &inputs[i as usize].datum_type), move |s, dts| {
+                            let dt:DatumType = DatumType::super_type_for(dts.iter().cloned())
+                                .ok_or_else(|| format!("No supertype for {:?}", dts))?;
+                            s.equals(&outputs[0].datum_type, dt)
+                        })
+                    )?;
+                    /*
                         $(if dt == <$type>::datum_type() {
                             return s.equals(&outputs[0].datum_type, <$to>::datum_type());
                         })*
                         bail!("{} not covering {:?}", stringify!($name), dt)
                     })?;
+                    */
                     s.equals(&inputs.len, 2)?;
                     s.equals(&outputs.len, 1)?;
                     s.with(&a.shape, move |s, a_shape| {

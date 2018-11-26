@@ -29,6 +29,7 @@ conform = [ "tensorflow" ]
 criterion = "0.2"
 proptest = "0.8"
 pretty_env_logger = "0.2"
+simplelog = "0.5"
 
 [[bench]]
 name = "conv"
