@@ -149,7 +149,11 @@ impl Op for ConvUnary {
         &self,
         inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
+        phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
+        if phase == ReductionPhase::Normalize {
+            return Ok(None)
+        }
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape =
             &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];

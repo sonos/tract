@@ -67,44 +67,47 @@ impl Op for Conv {
         &self,
         mut inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
+        phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
-        if inputs.len() == 2 {
-            let (input, kernel) = args_2!(inputs);
-            if let (Some(ishape), Some(kvalue)) =
-                (input.shape.concretize(), kernel.value.concretize())
-            {
-                let reduced = ConvUnary::new(
-                    &self,
-                    &ishape,
-                    &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue.to_tensor(),
-                    None,
-                    self.group,
-                )?;
-                return Ok(Some(ReducedOpRewire {
-                    new_op: Box::new(reduced),
-                    rewired: tvec!(0),
-                }));
-            }
-        } else {
-            let (input, kernel, bias) = args_3!(inputs);
-            if let (Some(ishape), Some(kvalue), Some(bias)) = (
-                input.shape.concretize(),
-                kernel.value.concretize(),
-                bias.value.concretize(),
-            ) {
-                let reduced = ConvUnary::new(
-                    &self,
-                    &ishape,
-                    &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue.to_tensor(),
-                    Some(bias.to_tensor()),
-                    self.group,
-                )?;
-                return Ok(Some(ReducedOpRewire {
-                    new_op: Box::new(reduced),
-                    rewired: tvec!(0),
-                }));
+        if phase == ReductionPhase::Normalize {
+            if inputs.len() == 2 {
+                let (input, kernel) = args_2!(inputs);
+                if let (Some(ishape), Some(kvalue)) =
+                    (input.shape.concretize(), kernel.value.concretize())
+                {
+                    let reduced = ConvUnary::new(
+                        &self,
+                        &ishape,
+                        &self.output_shape(&ishape, kvalue.shape()),
+                        kvalue.to_tensor(),
+                        None,
+                        self.group,
+                    )?;
+                    return Ok(Some(ReducedOpRewire {
+                        new_op: Box::new(reduced),
+                        rewired: tvec!(0),
+                    }));
+                }
+            } else {
+                let (input, kernel, bias) = args_3!(inputs);
+                if let (Some(ishape), Some(kvalue), Some(bias)) = (
+                    input.shape.concretize(),
+                    kernel.value.concretize(),
+                    bias.value.concretize(),
+                ) {
+                    let reduced = ConvUnary::new(
+                        &self,
+                        &ishape,
+                        &self.output_shape(&ishape, kvalue.shape()),
+                        kvalue.to_tensor(),
+                        Some(bias.to_tensor()),
+                        self.group,
+                    )?;
+                    return Ok(Some(ReducedOpRewire {
+                        new_op: Box::new(reduced),
+                        rewired: tvec!(0),
+                    }));
+                }
             }
         }
         Ok(None)

@@ -16,19 +16,21 @@ impl Op for ExpandDims {
         &self,
         mut inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
+        phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
-        let (_, dims) = args_2!(inputs);
-        if let Some(dims) = dims.concretize() {
-            let dims = dims.cast_to::<i64>()?;
-            Ok(Some(ReducedOpRewire {
-                new_op: Box::new(::tract_core::ops::array::AddDims::new(
-                    dims.to_array_view::<i64>()?.iter().map(|&i| i as usize).collect(),
-                )),
-                rewired: tvec!(0),
-            }))
-        } else {
-            Ok(None)
+        if phase == ReductionPhase::Normalize {
+            let (_, dims) = args_2!(inputs);
+            if let Some(dims) = dims.concretize() {
+                let dims = dims.cast_to::<i64>()?;
+                return Ok(Some(ReducedOpRewire {
+                    new_op: Box::new(::tract_core::ops::array::AddDims::new(
+                        dims.to_array_view::<i64>()?.iter().map(|&i| i as usize).collect(),
+                    )),
+                    rewired: tvec!(0),
+                }))
+            }
         }
+        Ok(None)
     }
 }
 

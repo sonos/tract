@@ -9,6 +9,8 @@ pub struct DefaultContext;
 
 impl Context for DefaultContext {
     fn optimizer_passes(&self) -> Vec<Box<optim::OptimizerPass>> {
-        vec![Box::new(optim::PropConst), Box::new(optim::Reduce)]
+        let mut passes = optim::normalization();
+        passes.extend(optim::codegen().into_iter());
+        passes
     }
 }

@@ -1,7 +1,8 @@
 use ops::prelude::*;
 use Model;
 
-pub struct Reduce;
+#[derive(Debug)]
+pub struct Reduce(pub ReductionPhase);
 
 impl super::OptimizerPass for Reduce {
     fn pass(&self, model: &mut Model) -> TractResult<bool> {
@@ -10,7 +11,8 @@ impl super::OptimizerPass for Reduce {
             let reduced = {
                 let node = &model.nodes()[id];
                 debug!(
-                    "Consider unarize {:?} #{} ({})",
+                    "Consider {:?} {} #{} ({})",
+                    self,
                     node.name,
                     node.id,
                     node.op().name()
@@ -24,8 +26,8 @@ impl super::OptimizerPass for Reduce {
                 let output_facts: TVec<&TensorFact> =
                     node.outputs.iter().map(|o| &o.fact).collect();
                 node.op
-                    .reduce(input_facts, output_facts)
-                    .map_err(|e| format!("Unarizing node {:?}, {:?}", node, e))?
+                    .reduce(input_facts, output_facts, self.0)
+                    .map_err(|e| format!("Reduce {:?} node {:?}, {:?}", self.0, node, e))?
             };
             if let Some(red) = reduced {
                 debug!("  Unarize to {:?}", red.new_op.name());
@@ -40,3 +42,4 @@ impl super::OptimizerPass for Reduce {
         Ok(done_something)
     }
 }
+

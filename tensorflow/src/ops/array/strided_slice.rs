@@ -253,43 +253,45 @@ impl<T: Datum> Op for StridedSlice<T> {
         &self,
         mut inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
+        phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
-        let (input, begin, end, strides) = args_4!(inputs);
-        if let (Some(input_shape), Some(begin), Some(end), Some(strides)) = (
-            input.shape.concretize(),
-            begin.value.concretize(),
-            end.value.concretize(),
-            strides.value.concretize(),
-        ) {
-            if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
-                info!("Failed to unarize StridedSlices because of strides");
-                return Ok(None);
+        if phase == ReductionPhase::Normalize {
+            let (input, begin, end, strides) = args_4!(inputs);
+            if let (Some(input_shape), Some(begin), Some(end), Some(strides)) = (
+                input.shape.concretize(),
+                begin.value.concretize(),
+                end.value.concretize(),
+                strides.value.concretize(),
+            ) {
+                if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
+                    info!("Failed to unarize StridedSlices because of strides");
+                    return Ok(None);
+                }
+                let begin = begin.cast_to::<TDim>()?;
+                let begin_view = begin.to_array_view::<TDim>()?.into_dimensionality()?;
+                let end = end.cast_to::<TDim>()?;
+                let end_view = end.to_array_view::<TDim>()?.into_dimensionality()?;
+                let strides = strides.cast_to::<i32>()?;
+                let strides_view = strides.to_array_view::<i32>()?.into_dimensionality()?;
+                let mut prunes = vec![];
+                for ix in 0..input_shape.len() {
+                    let dim = self.base.prepare_one_dim(
+                        ix,
+                        input_shape[ix],
+                        &begin_view.view(),
+                        &end_view.view(),
+                        &strides_view.view(),
+                    );
+                    prunes.push((
+                        dim.begin.to_integer()? as usize,
+                        (input_shape[ix] - dim.end).to_integer()? as usize,
+                    ));
+                }
+                let op = ::tract_core::ops::array::Slice::new(prunes);
+                return Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
             }
-            let begin = begin.cast_to::<TDim>()?;
-            let begin_view = begin.to_array_view::<TDim>()?.into_dimensionality()?;
-            let end = end.cast_to::<TDim>()?;
-            let end_view = end.to_array_view::<TDim>()?.into_dimensionality()?;
-            let strides = strides.cast_to::<i32>()?;
-            let strides_view = strides.to_array_view::<i32>()?.into_dimensionality()?;
-            let mut prunes = vec![];
-            for ix in 0..input_shape.len() {
-                let dim = self.base.prepare_one_dim(
-                    ix,
-                    input_shape[ix],
-                    &begin_view.view(),
-                    &end_view.view(),
-                    &strides_view.view(),
-                );
-                prunes.push((
-                    dim.begin.to_integer()? as usize,
-                    (input_shape[ix] - dim.end).to_integer()? as usize,
-                ));
-            }
-            let op = ::tract_core::ops::array::Slice::new(prunes);
-            Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
-        } else {
-            Ok(None)
         }
+        Ok(None)
     }
 }
 
