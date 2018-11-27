@@ -28,8 +28,8 @@ impl ArgMaxMin {
 }
 
 impl Op for ArgMaxMin {
-    fn name(&self) -> &str {
-        "ArgMaxMin"
+    fn name(&self) -> Cow<str> {
+        "ArgMaxMin".into()
     }
 }
 

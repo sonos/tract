@@ -30,8 +30,8 @@ impl GlobalAvgPool {
 }
 
 impl Op for GlobalAvgPool {
-    fn name(&self) -> &str {
-        "GlobalAvgPool"
+    fn name(&self) -> Cow<str> {
+        "GlobalAvgPool".into()
     }
 }
 
@@ -88,8 +88,8 @@ impl GlobalLpPool {
 }
 
 impl Op for GlobalLpPool {
-    fn name(&self) -> &str {
-        "GlobalLpPool"
+    fn name(&self) -> Cow<str> {
+        "GlobalLpPool".into()
     }
 }
 
@@ -136,8 +136,8 @@ impl GlobalMaxPool {
 }
 
 impl Op for GlobalMaxPool {
-    fn name(&self) -> &str {
-        "GlobalMaxPool"
+    fn name(&self) -> Cow<str> {
+        "GlobalMaxPool".into()
     }
 }
 

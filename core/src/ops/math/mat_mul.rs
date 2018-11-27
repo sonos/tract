@@ -74,8 +74,8 @@ fn infer_shapes<D: DimLike>(
 pub struct MatMul {}
 
 impl Op for MatMul {
-    fn name(&self) -> &str {
-        "MatMul"
+    fn name(&self) -> Cow<str> {
+        "MatMul".into()
     }
 }
 
@@ -116,8 +116,8 @@ pub struct MatMulUnaryA {
 }
 
 impl Op for MatMulUnaryA {
-    fn name(&self) -> &str {
-        "MatMulUnaryA"
+    fn name(&self) -> Cow<str> {
+        "MatMulUnaryA".into()
     }
 
     fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
@@ -170,8 +170,8 @@ pub struct MatMulUnaryB {
 }
 
 impl Op for MatMulUnaryB {
-    fn name(&self) -> &str {
-        "MatMulUnaryB"
+    fn name(&self) -> Cow<str> {
+        "MatMulUnaryB".into()
     }
 }
 

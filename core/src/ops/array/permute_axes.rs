@@ -31,8 +31,8 @@ impl PermuteAxes {
 }
 
 impl Op for PermuteAxes {
-    fn name(&self) -> &str {
-        "PermuteAxes"
+    fn name(&self) -> Cow<str> {
+        "PermuteAxes".into()
     }
 }
 

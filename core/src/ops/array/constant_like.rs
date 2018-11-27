@@ -18,8 +18,8 @@ impl ConstantLike {
 }
 
 impl Op for ConstantLike {
-    fn name(&self) -> &str {
-        "ConstantLike"
+    fn name(&self) -> Cow<str> {
+        "ConstantLike".into()
     }
 }
 
@@ -83,8 +83,8 @@ impl EyeLike {
 }
 
 impl Op for EyeLike {
-    fn name(&self) -> &str {
-        "EyeLike"
+    fn name(&self) -> Cow<str> {
+        "EyeLike".into()
     }
 }
 

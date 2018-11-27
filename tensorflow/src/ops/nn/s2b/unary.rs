@@ -18,8 +18,8 @@ pub struct SpaceToBatchUnary {
 }
 
 impl Op for SpaceToBatchUnary {
-    fn name(&self) -> &str {
-        "SpaceToBatchUnary"
+    fn name(&self) -> Cow<str> {
+        "SpaceToBatchUnary".into()
     }
 }
 
@@ -77,8 +77,8 @@ pub struct BatchToSpaceUnary {
 }
 
 impl Op for BatchToSpaceUnary {
-    fn name(&self) -> &str {
-        "BatchToSpaceUnary"
+    fn name(&self) -> Cow<str> {
+        "BatchToSpaceUnary".into()
     }
 }
 

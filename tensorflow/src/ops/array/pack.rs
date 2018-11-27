@@ -34,8 +34,8 @@ impl Pack {
 }
 
 impl Op for Pack {
-    fn name(&self) -> &str {
-        "tf.Pack"
+    fn name(&self) -> Cow<str> {
+        "tf.Pack".into()
     }
 }
 

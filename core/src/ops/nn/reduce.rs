@@ -216,8 +216,8 @@ impl Reduce {
 }
 
 impl Op for Reduce {
-    fn name(&self) -> &str {
-        "Reduce"
+    fn name(&self) -> Cow<str> {
+        format!("Reduce<{:?}>", self.reducer).into()
     }
 }
 

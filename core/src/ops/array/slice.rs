@@ -24,8 +24,8 @@ impl Slice {
 }
 
 impl Op for Slice {
-    fn name(&self) -> &str {
-        "Slice"
+    fn name(&self) -> Cow<str> {
+        "Slice".into()
     }
 
     fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {

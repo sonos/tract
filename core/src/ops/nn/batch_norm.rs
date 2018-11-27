@@ -37,8 +37,8 @@ impl BatchNorm {
 }
 
 impl Op for BatchNorm {
-    fn name(&self) -> &str {
-        "BatchNorm"
+    fn name(&self) -> Cow<str> {
+        "BatchNorm".into()
     }
 }
 

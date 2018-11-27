@@ -23,8 +23,8 @@ impl RmDims {
 }
 
 impl Op for RmDims {
-    fn name(&self) -> &str {
-        "RmDims"
+    fn name(&self) -> Cow<str> {
+        "RmDims".into()
     }
 
     fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {

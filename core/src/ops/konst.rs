@@ -14,8 +14,8 @@ impl Const {
 }
 
 impl Op for Const {
-    fn name(&self) -> &str {
-        "Const"
+    fn name(&self) -> Cow<str> {
+        "Const".into()
     }
 
     fn const_value(&self) -> Option<SharedTensor> {

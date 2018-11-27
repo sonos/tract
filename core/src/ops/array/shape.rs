@@ -20,8 +20,8 @@ impl Shape {
 }
 
 impl Op for Shape {
-    fn name(&self) -> &str {
-        "Shape"
+    fn name(&self) -> Cow<str> {
+        "Shape".into()
     }
 }
 

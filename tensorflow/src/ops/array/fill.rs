@@ -16,8 +16,8 @@ impl<T> Op for Fill<T>
 where
     T: Datum,
 {
-    fn name(&self) -> &str {
-        "tf.Fill"
+    fn name(&self) -> Cow<str> {
+        "tf.Fill".into()
     }
 }
 

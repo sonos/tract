@@ -6,8 +6,8 @@ pub struct Source {
 }
 
 impl Op for Source {
-    fn name(&self) -> &str {
-        "Source"
+    fn name(&self) -> Cow<str> {
+        "Source".into()
     }
 
     fn infer(

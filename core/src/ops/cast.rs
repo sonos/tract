@@ -13,8 +13,8 @@ impl Cast {
 }
 
 impl Op for Cast {
-    fn name(&self) -> &str {
-        "Cast"
+    fn name(&self) -> Cow<str> {
+        "Cast".into()
     }
 }
 

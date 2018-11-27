@@ -35,8 +35,8 @@ impl Lrn {
 }
 
 impl Op for Lrn {
-    fn name(&self) -> &str {
-        "Lrn"
+    fn name(&self) -> Cow<str> {
+        "Lrn".into()
     }
 }
 

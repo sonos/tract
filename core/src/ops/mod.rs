@@ -46,6 +46,7 @@ pub mod prelude {
     pub use pulse::{PulsedTensorFact, PulsifiedOp};
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
+    pub use std::borrow::Cow;
     pub use tensor::{arr4, SharedTensor, Tensor};
     pub use ToTract;
     pub use TractResult;
@@ -83,7 +84,7 @@ impl_downcast!(Op);
 pub trait Op:
     Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp
 {
-    fn name(&self) -> &str;
+    fn name(&self) -> Cow<str>;
 
     /// Infers properties about the input and output tensors.
     ///

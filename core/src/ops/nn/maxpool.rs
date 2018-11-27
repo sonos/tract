@@ -27,8 +27,8 @@ impl MaxPool {
 }
 
 impl Op for MaxPool {
-    fn name(&self) -> &str {
-        "MaxPool"
+    fn name(&self) -> Cow<str> {
+        "MaxPool".into()
     }
 
     fn noutputs(&self) -> usize {

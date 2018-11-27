@@ -141,8 +141,8 @@ impl ConvUnary {
 }
 
 impl Op for ConvUnary {
-    fn name(&self) -> &str {
-        "ConvUnary"
+    fn name(&self) -> Cow<str> {
+        "ConvUnary".into()
     }
 
     fn reduce(

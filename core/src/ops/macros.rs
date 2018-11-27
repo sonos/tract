@@ -23,8 +23,8 @@ macro_rules! element_map {
         }
 
         impl Op for $Name {
-            fn name(&self) -> &str {
-                stringify!($Name)
+            fn name(&self) -> Cow<str> {
+                stringify!($Name).into()
             }
 
             fn pulsify( &self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
@@ -75,8 +75,8 @@ macro_rules! element_map_with_params {
         }
 
         impl Op for $Name {
-            fn name(&self) -> &str {
-                stringify!($Name)
+            fn name(&self) -> Cow<str> {
+                stringify!($Name).into()
             }
         }
 
@@ -152,8 +152,8 @@ macro_rules! element_bin {
             }
 
             impl Op for Bin {
-                fn name(&self) -> &str {
-                    concat!(stringify!($name), "::Bin")
+                fn name(&self) -> Cow<str> {
+                    concat!(stringify!($name), "::Binary").into()
                 }
 
                 fn reduce(&self, inputs: TVec<&TensorFact>, _outputs: TVec<&TensorFact>,
@@ -231,8 +231,8 @@ macro_rules! element_bin {
             }
 
             impl Op for UnaryA {
-                fn name(&self) -> &str {
-                    concat!(stringify!($name), "::UnaryA")
+                fn name(&self) -> Cow<str> {
+                    concat!(stringify!($name), "::UnaryA").into()
                 }
 
                 fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
@@ -294,8 +294,8 @@ macro_rules! element_nary {
         }
 
         impl Op for $Name {
-            fn name(&self) -> &str {
-                stringify!($Name)
+            fn name(&self) -> Cow<str> {
+                stringify!($Name).into()
             }
 
             fn pulsify(

@@ -27,8 +27,8 @@ impl AvgPool {
 }
 
 impl Op for AvgPool {
-    fn name(&self) -> &str {
-        "AvgPool"
+    fn name(&self) -> Cow<str> {
+        "AvgPool".into()
     }
 }
 

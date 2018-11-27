@@ -41,8 +41,8 @@ impl Reshape {
 }
 
 impl Op for Reshape {
-    fn name(&self) -> &str {
-        "Reshape"
+    fn name(&self) -> Cow<str> {
+        "Reshape".into()
     }
 }
 
