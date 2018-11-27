@@ -59,8 +59,8 @@ impl Conv {
 }
 
 impl Op for Conv {
-    fn name(&self) -> &str {
-        "Conv"
+    fn name(&self) -> Cow<str> {
+        "Conv".into()
     }
 
     fn reduce(

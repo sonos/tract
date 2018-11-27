@@ -18,8 +18,8 @@ impl Concat {
 }
 
 impl Op for Concat {
-    fn name(&self) -> &str {
-        "Concat"
+    fn name(&self) -> Cow<str> {
+        "Concat".into()
     }
 }
 

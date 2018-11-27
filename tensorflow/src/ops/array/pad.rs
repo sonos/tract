@@ -54,8 +54,8 @@ impl<T> Op for Pad<T>
 where
     T: Datum + Zero,
 {
-    fn name(&self) -> &str {
-        "tf.Pad"
+    fn name(&self) -> Cow<str> {
+        "tf.Pad".into()
     }
 }
 

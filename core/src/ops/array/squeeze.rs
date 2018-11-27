@@ -30,8 +30,8 @@ impl Squeeze {
 }
 
 impl Op for Squeeze {
-    fn name(&self) -> &str {
-        "Squeeze"
+    fn name(&self) -> Cow<str> {
+        "Squeeze".into()
     }
 
     fn reduce(

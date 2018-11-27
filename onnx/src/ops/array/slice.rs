@@ -33,8 +33,8 @@ impl Slice {
 }
 
 impl Op for Slice {
-    fn name(&self) -> &str {
-        "onnx.Slice"
+    fn name(&self) -> Cow<str> {
+        "onnx.Slice".into()
     }
 }
 

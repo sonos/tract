@@ -4,8 +4,8 @@ use ops::prelude::*;
 pub struct Identity;
 
 impl Op for Identity {
-    fn name(&self) -> &str {
-        "Identity"
+    fn name(&self) -> Cow<str> {
+        "Identity".into()
     }
 }
 

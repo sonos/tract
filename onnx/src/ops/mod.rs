@@ -28,8 +28,8 @@ impl OpBuilder {
     pub fn build(&self, pb: &NodeProto) -> TractResult<Box<Op>> {
         match self.0.get(pb.get_op_type()) {
             Some(builder) => builder(pb),
-            None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp(
-                pb.get_op_type().to_string(),
+            None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp::new(
+                pb.get_op_type(),
                 format!("{:?}", pb),
             ))),
         }

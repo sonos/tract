@@ -87,8 +87,8 @@ impl Pad {
 }
 
 impl Op for Pad {
-    fn name(&self) -> &str {
-        "Pad"
+    fn name(&self) -> Cow<str> {
+        "Pad".into()
     }
 }
 

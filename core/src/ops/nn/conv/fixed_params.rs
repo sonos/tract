@@ -167,8 +167,8 @@ impl<D> Op for FixedParamsConv<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    fn name(&self) -> &str {
-        "FixedParamsConv"
+    fn name(&self) -> Cow<str> {
+        "FixedParamsConv".into()
     }
 }
 

@@ -33,8 +33,8 @@ impl Split {
 }
 
 impl Op for Split {
-    fn name(&self) -> &str {
-        "Split"
+    fn name(&self) -> Cow<str> {
+        "Split".into()
     }
 }
 

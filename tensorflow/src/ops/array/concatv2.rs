@@ -29,8 +29,8 @@ impl<T: Datum> StatelessOp for ConcatV2<T> {
 }
 
 impl<T: Datum> Op for ConcatV2<T> {
-    fn name(&self) -> &str {
-        "tf.ConvatV2"
+    fn name(&self) -> Cow<str> {
+        "tf.ConvatV2".into()
     }
 }
 

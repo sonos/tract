@@ -9,8 +9,8 @@ pub struct SpaceToBatch {
 }
 
 impl Op for SpaceToBatch {
-    fn name(&self) -> &str {
-        "SpaceToBatch"
+    fn name(&self) -> Cow<str> {
+        "SpaceToBatch".into()
     }
 
     fn reduce(
@@ -102,8 +102,8 @@ pub struct BatchToSpace {
 }
 
 impl Op for BatchToSpace {
-    fn name(&self) -> &str {
-        "BatchToSpace"
+    fn name(&self) -> Cow<str> {
+        "BatchToSpace".into()
     }
 
     fn reduce(

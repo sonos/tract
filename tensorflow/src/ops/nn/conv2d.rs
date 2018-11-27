@@ -101,8 +101,8 @@ impl<T: Datum + LinalgScalar> Conv2D<T> {
 }
 
 impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
-    fn name(&self) -> &str {
-        "tf.Conv2D"
+    fn name(&self) -> Cow<str> {
+        "tf.Conv2D".into()
     }
 }
 

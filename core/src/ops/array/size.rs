@@ -19,8 +19,8 @@ impl Size {
 }
 
 impl Op for Size {
-    fn name(&self) -> &str {
-        "Size"
+    fn name(&self) -> Cow<str> {
+        "Size".into()
     }
 }
 

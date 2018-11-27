@@ -38,8 +38,8 @@ impl LayerHardmax {
 }
 
 impl Op for LayerHardmax {
-    fn name(&self) -> &str {
-        "LayerHardmax"
+    fn name(&self) -> Cow<str> {
+        "LayerHardmax".into()
     }
 }
 
@@ -96,8 +96,8 @@ impl LayerLogSoftmax {
 }
 
 impl Op for LayerLogSoftmax {
-    fn name(&self) -> &str {
-        "LayerLogSoftmax"
+    fn name(&self) -> Cow<str> {
+        "LayerLogSoftmax".into()
     }
 }
 
@@ -154,8 +154,8 @@ impl LayerSoftmax {
 }
 
 impl Op for LayerSoftmax {
-    fn name(&self) -> &str {
-        "LayerSoftmax"
+    fn name(&self) -> Cow<str> {
+        "LayerSoftmax".into()
     }
 }
 

@@ -31,8 +31,8 @@ impl<T: Datum> Reshape<T> {
 }
 
 impl<T: Datum> Op for Reshape<T> {
-    fn name(&self) -> &str {
-        "tf.Reshape"
+    fn name(&self) -> Cow<str> {
+        "tf.Reshape".into()
     }
 }
 

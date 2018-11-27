@@ -13,8 +13,8 @@ impl Flatten {
 }
 
 impl Op for Flatten {
-    fn name(&self) -> &str {
-        "Flatten"
+    fn name(&self) -> Cow<str> {
+        "Flatten".into()
     }
 }
 

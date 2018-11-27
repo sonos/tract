@@ -37,8 +37,8 @@ impl Gemm {
 }
 
 impl Op for Gemm {
-    fn name(&self) -> &str {
-        "Gemm"
+    fn name(&self) -> Cow<str> {
+        "Gemm".into()
     }
 }
 
@@ -103,8 +103,8 @@ impl GemmUnaryA {
 }
 
 impl Op for GemmUnaryA {
-    fn name(&self) -> &str {
-        "GemmUnaryA"
+    fn name(&self) -> Cow<str> {
+        "GemmUnaryA".into()
     }
 }
 
@@ -168,8 +168,8 @@ impl GemmUnaryB {
 }
 
 impl Op for GemmUnaryB {
-    fn name(&self) -> &str {
-        "GemmUnaryB"
+    fn name(&self) -> Cow<str> {
+        "GemmUnaryB".into()
     }
 }
 

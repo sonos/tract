@@ -66,8 +66,8 @@ pub struct Delay {
 }
 
 impl Op for Delay {
-    fn name(&self) -> &str {
-        "Delay"
+    fn name(&self) -> Cow<str> {
+        "Delay".into()
     }
 }
 

@@ -14,13 +14,11 @@ fi
 
 ONNX_TEST_DATA=$ONNX_CHECKOUT/onnx/backend/test/data
 
-# cargo test --release --all --features serialize
-# cargo check --benches --all --features serialize # running benches on travis is useless
-# 
-# cargo check -p tract --features conform
-(cd tensorflow; cargo test --features conform)
+cargo test --release --all --features serialize
+cargo check --benches --all --features serialize # running benches on travis is useless
 
-find cached
+cargo check -p tract --features conform
+(cd tensorflow; cargo test --features conform)
 
 cargo run --release -p tract -- \
     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \

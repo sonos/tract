@@ -245,8 +245,8 @@ impl<T: Datum> StatelessOp for StridedSlice<T> {
 }
 
 impl<T: Datum> Op for StridedSlice<T> {
-    fn name(&self) -> &str {
-        "tf.StridedSlice"
+    fn name(&self) -> Cow<str> {
+        "tf.StridedSlice".into()
     }
 
     fn reduce(
@@ -323,8 +323,8 @@ impl StatelessOp for StridedSliceD {
 }
 
 impl Op for StridedSliceD {
-    fn name(&self) -> &str {
-        "tf.StridedSliceD"
+    fn name(&self) -> Cow<str> {
+        "tf.StridedSliceD".into()
     }
 }
 

@@ -8,8 +8,8 @@ pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 pub struct ExpandDims;
 
 impl Op for ExpandDims {
-    fn name(&self) -> &str {
-        "tf.ExpandDims"
+    fn name(&self) -> Cow<str> {
+        "tf.ExpandDims".into()
     }
 
     fn reduce(

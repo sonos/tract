@@ -30,8 +30,8 @@ impl OpBuilder {
     pub fn build(&self, pb: &NodeDef) -> TractResult<Box<Op>> {
         match self.0.get(pb.get_op()) {
             Some(builder) => builder(pb),
-            None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp(
-                pb.get_op().to_string(),
+            None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp::new(
+                pb.get_op(),
                 format!("{:?}", pb),
             ))),
         }

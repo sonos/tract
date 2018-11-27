@@ -12,8 +12,8 @@ impl MultiBroadcastTo {
 }
 
 impl Op for MultiBroadcastTo {
-    fn name(&self) -> &str {
-        "MultiBroadcastTo"
+    fn name(&self) -> Cow<str> {
+        "MultiBroadcastTo".into()
     }
 }
 

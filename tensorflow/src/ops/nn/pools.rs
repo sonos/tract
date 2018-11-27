@@ -22,8 +22,8 @@ pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 }
 
 impl<P: Pooler + ::std::fmt::Debug> Op for Pool<P> {
-    fn name(&self) -> &str {
-        "Pool"
+    fn name(&self) -> Cow<str> {
+        "Pool".into()
     }
 }
 

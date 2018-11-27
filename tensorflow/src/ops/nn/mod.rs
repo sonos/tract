@@ -29,8 +29,8 @@ impl Softmax {
 }
 
 impl Op for Softmax {
-    fn name(&self) -> &str {
-        "Softmax"
+    fn name(&self) -> Cow<str> {
+        "Softmax".into()
     }
 }
 
