@@ -9,15 +9,18 @@ TF_INCEPTIONV3=`pwd`/tensorflow/inceptionv3/.inception-v3-2016_08_28
 if [ -n "$TRAVIS" ]
 then
     ONNX_CHECKOUT=$TRAVIS_BUILD_DIR/cached/onnx-checkout
+    TF_INCEPTIONV3=$TRAVIS_BUILD_DIR/cached/inception-v3-2016_08_28
 fi
 
 ONNX_TEST_DATA=$ONNX_CHECKOUT/onnx/backend/test/data
 
-cargo test --release --all --features serialize
-cargo check --benches --all --features serialize # running benches on travis is useless
+# cargo test --release --all --features serialize
+# cargo check --benches --all --features serialize # running benches on travis is useless
+# 
+# cargo check -p tract --features conform
+(cd tensorflow; cargo test --features conform)
 
-cargo check -p tract --features conform
-(cd tensorflow;  cargo test --features conform)
+find cached
 
 cargo run --release -p tract -- \
     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
