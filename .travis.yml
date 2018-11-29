@@ -1,16 +1,27 @@
 language: rust
 cache:
-  - cargo
-  - directories:
-    - cached
+- cargo
+- directories:
+  - cached
+addons:
+  apt:
+    packages:
+    - awscli
 
-rust:
-- stable
-- beta
-- nightly
 env:
-- RUST_BACKTRACE=1
-script: ./.travis.sh
+  global:
+  - RUST_BACKTRACE=1
+  - secure: DdQqS4fFDevY/JknS0M6CwW+ooj6ZhKmBk4lFliG3WQgjYietbPMCkiHPEC8Df8U07l54+8G4j+sZJJ4VYQY8WQcuKGWt9/ALjoYHYZ1Dlw0KW0rRJ1BZWLUh8MwpJ5pxHSWfl1a8QqTy/0mI3eJ8iVIDxiZR6b1fGwPYDkNXyqnfOvz31X1aMyoGslNkP7LitObCdBJyzobPlvWafGCQLf7oLbK4a5Ysyc9T607n1B0okco3Te2ztahEOwNoxmHlEFRojM6ZmAmo8LzwkCdFQNjHw+mQ3vScC8gpngi61G9U35luAfweMt30m1UmecVGADeEmwSnJLeAHo5HYKT5n6Q1begxlMGMxezinstTHUX6G8EhEumO/ii3PAscFJ6C+VfciGA7JDS2ICghygKSIqQvVeugNR0glW97lhszLnoXCNY45siknAZVTVqwhgn1ctTQiPWqGVuQp+m9NYIoQAYUpOFNo1mEtEjurHOk96Q0XjRJMfUSLOB5KfPakk/ghEY1ZYDDB9wi134f3Z5hLw1FGj/Uiw9LcnEIcORV2o8fbFrb2IgGsKQbRtdPEJ92q5bdeA00TbSrzoDDRFGbwBg+8ibFMF8O2J3Q54sUu6LmkP7qjtMIT2vB09M7LWQYtW3Vd6ovHwI6v+tNJK2D4cJA0KOSwzpOgIBhEubrZI=
+  - secure: su5wLbN7lr59HSKGM8M9pW9VSFMtdTBbQ1oBZFTvw+RNoNew3BBMh8XymbjEv6R+yyGmDAa8Dw6E7HPiBtI5O4q89rHxl7MO5keZINjpXDzTydZ5MQ2juZPIRQpLfpl6AN1meG8I3SoOrTMDgGqfPh2rqEjIS6cBZbo8Re/0KSBuJB781qdT6x80Qfpy87sDu9GTRM8ueXsV+jRw0Yek709m29MSB8pkFAP9OitKHxzF5OFnxVPV2becj53racOe7q9ZE5QWmWnzPZUxflVyrtzDsN0J/C4g0SoEbxLFg1OLbffO1GVJ/Iv6ZeaggzYRvCYwSSANyfqorqSUDT5NPwQlUXjgBPHlOXbCfY2s5hFzQQ3z4R86fyzfdfBQ56uXTXkB4CWpn/JieUoviuDO0/YNaI0KU6hOrOn68BZrBSqwHcxwhtcP3cw/EXfR1aiok7OoDPAWnR4f3Lu/+fmkW+VUEg5Ufh/GgjZt7XwsNBfo+pmvO3mO/5okxa2/HbOwcoTpELAzPMKyh1xn5gjrk5bWcZofeGtFMoXN4+G8+1qlQ/sLp3144QHyRf00n4qlhA6xZwplpBWN12haXyKRx67lPTzE5QuT1BRoyCdRvbjQiOdo61xGvoOK9J8PL9C06xtnKQ+6iDnjFaWielASoENvcNL+DCKqiecpUb5hoR4=
+script: "./.travis.sh"
+
 matrix:
+  include:
+  - rust: stable
+    env:
+      TRACK_PERF=1
+      ARCH=x86_64-unknown-linux-gnu
+  - rust: beta
+  - rust: nightly
   allow_failures:
   - rust: nightly
