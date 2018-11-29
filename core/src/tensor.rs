@@ -63,6 +63,7 @@ impl PartialEq for SharedTensor {
 
 #[derive(Clone)]
 pub struct Tensor {
+    null: bool,
     dt: DatumType,
     shape: TVec<usize>,
     data: Vec<u8>,
@@ -71,6 +72,7 @@ pub struct Tensor {
 impl Tensor {
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
         Ok(Tensor {
+            null: false,
             dt: T::datum_type(),
             shape: shape.into(),
             data: content.to_vec(),
@@ -83,6 +85,7 @@ impl Tensor {
 
     pub unsafe fn null_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
         Ok(Tensor {
+            null: true,
             dt,
             shape: shape.into(),
             data: vec!()
@@ -90,7 +93,7 @@ impl Tensor {
     }
 
     pub fn is_null(&self) -> bool {
-        self.data.len() == 0
+        self.null
     }
 
     pub fn into_tensor(self) -> ::SharedTensor {
@@ -182,7 +185,7 @@ impl Tensor {
     }
 
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
-        if self.data.len() == 0 {
+        if self.is_null() {
             bail!("Null tensor")
         }
         let casted = unsafe { vec_to_datum::<D>(self.data) };
@@ -190,7 +193,7 @@ impl Tensor {
     }
 
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
-        if self.data.len() == 0 {
+        if self.is_null() {
             bail!("Null tensor")
         }
         let datum_size = ::std::mem::size_of::<D>();
@@ -203,7 +206,7 @@ impl Tensor {
     }
 
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
-        if self.data.len() == 0 {
+        if self.is_null() {
             bail!("Null tensor")
         }
         unsafe {
@@ -215,7 +218,7 @@ impl Tensor {
     }
 
     pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
-        if self.data.len() == 0 {
+        if self.is_null() {
             bail!("Null tensor")
         }
         let datum_size = ::std::mem::size_of::<D>();
@@ -228,7 +231,7 @@ impl Tensor {
     }
 
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
-        if self.data.len() == 0 {
+        if self.is_null() {
             bail!("Null tensor")
         }
         let shape = self.shape.clone();
@@ -241,7 +244,7 @@ impl Tensor {
     }
 
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<D> {
-        if self.data.len() == 0 {
+        if self.is_null() {
             bail!("Null tensor")
         }
         unsafe { Ok(*(self.data.as_ptr() as *const D)) }
@@ -259,6 +262,7 @@ impl Tensor {
     fn cast<Source: Datum + TryInto<Target>, Target: Datum>(&self) -> TractResult<Tensor> {
         let data = self.cast_data::<Source, Target>()?;
         Ok(Tensor {
+            null: self.null,
             dt: Target::datum_type(),
             shape: self.shape.clone(),
             data: vec_to_u8(data),
@@ -331,8 +335,8 @@ impl PartialEq for Tensor {
 
 impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let content = self.dump(false).unwrap_or("Error".to_string());
-        write!(formatter, "Tensor {}", content)
+        let content = self.dump(false).unwrap_or_else(|e| format!("Error : {:?}", e));
+        write!(formatter, "{}", content)
     }
 }
 
@@ -403,6 +407,7 @@ impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
         };
         let raw_data = vec_to_u8(data);
         Tensor {
+            null: false,
             dt: T::datum_type(),
             shape,
             data: raw_data,
