@@ -24,7 +24,7 @@ pub fn compare<S: AsRef<str>>(
     state.compute_one(output.id)?;
     let found = &state.values[output.id].as_ref().unwrap();
 
-    // Run SharedTensorflow
+    // Run SharedTensor
     let tf_inputs: Vec<(&str, Tensor)> = inputs
         .iter()
         .map(|(s, m)| (s.as_ref(), m.clone()))

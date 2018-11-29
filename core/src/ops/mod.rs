@@ -79,7 +79,7 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
     }
 }
 
-/// A SharedTensorflow operation.
+/// A SharedTensor operation.
 impl_downcast!(Op);
 pub trait Op:
     Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp

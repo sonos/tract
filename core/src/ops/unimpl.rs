@@ -17,7 +17,7 @@ impl UnimplementedOp {
 
 impl Op for UnimplementedOp {
     fn name(&self) -> Cow<str> {
-        "Unimplemented".into()
+        format!("Unimplemented({})", self.name).into()
     }
 }
 

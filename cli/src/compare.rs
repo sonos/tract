@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use log::Level::Info;
 use tract_core::plan::{SimplePlan, SimpleState};
-use tract_core::{Tensor, TensorFact};
+use tract_core::{SharedTensor, Tensor, TensorFact};
 
 use display_graph::DisplayOptions;
 use errors::*;
@@ -28,12 +28,14 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
+    trace!("Inject inputs in tensorflow graph.");
     let pairs = tract
         .inputs()
         .iter()
         .map(|s| &*tract.node(s[0].node).name)
         .zip(generated.iter().cloned())
         .collect();
+    trace!("Execute the model on tensorflow.");
     let mut tf_outputs = tf.unwrap().run_get_all(pairs)?;
 
     // Execute the model step-by-step on tract.
@@ -46,17 +48,27 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     debug!("Using execution plan: {:?}", plan);
 
     let mut display_graph =
-        ::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?;
+        ::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?
+            .with_graph_def(&params.graph)?;
 
     let mut failures = 0;
 
     for n in plan {
         let node = &tract.nodes()[n];
 
-        if node.op_is::<::tract_core::ops::source::Source>() {
+        if node.op_is::<tract_core::ops::source::Source>() {
             continue;
         }
 
+        if node.op_is::<tract_tensorflow::ops::logic::Switch>() {
+            // observing Switch is not allowed in TF. so we'll just use tract
+            // value
+            state.compute_one(n)?;
+            display_graph.add_node_label(n, "Unchecked".to_string())?;
+            continue;
+        }
+
+        debug!("Computing {} in tensorflow", node.name);
         let tf_output = tf_outputs.remove(&node.name.to_string()).expect(
             format!(
                 "No node with name {} was computed by tensorflow.",
@@ -64,6 +76,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
             ).as_str(),
         );
 
+        debug!("Computing {} in tract", node.name);
         match state.compute_one(n) {
             Err(e) => {
                 failures += 1;
@@ -72,40 +85,47 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
             }
 
             _ => {
-                let tract_output: Vec<Tensor> = state.values[n]
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .map(|v| v.as_tensor().to_owned())
-                    .collect();
                 let expected: Vec<TensorFact> =
                     tf_output.iter().map(|m| m.clone().into()).collect();
+                let tract_output: &[SharedTensor] = &*state.values[n].as_ref().unwrap();
                 match check_outputs(&tract_output, &expected) {
-                    Err(_) => {
+                    Err(e) => {
                         failures += 1;
+                        let header = format!("Output {}", n).yellow().bold();
                         let mismatches = tract_output
                             .iter()
                             .enumerate()
                             .map(|(n, data)| {
-                                let header = format!("Output {} TFD", n).yellow().bold();
-
                                 let reason = if n >= tf_output.len() {
-                                    "Too many outputs"
+                                    "Too many outputs".into()
                                 } else if tf_output[n].shape() != data.shape() {
-                                    "Wrong shape"
+                                    "Wrong shape".into()
                                 } else if !tf_output[n]
                                     .close_enough(data, node.op.rounding_errors())
                                 {
-                                    "Too far away"
+                                    "Too far away".into()
                                 } else {
-                                    "Other error"
+                                    format!("Other error: {:?}", e)
                                 };
 
                                 Row::Double(
                                     format!("{} {}", header, reason).red().to_string(),
-                                    format!("{:?}", data),
+                                    format!(
+                                        "TF    {:?}\ntract {:?}",
+                                        tf_output[n],
+                                        data.as_tensor()
+                                    ),
                                 )
                             }).collect::<Vec<_>>();
+                        let inputs = tract.nodes()[n]
+                            .inputs
+                            .iter()
+                            .enumerate()
+                            .map(|(ix, o)| {
+                                let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
+                                Row::Double(format!("Input #{}", ix), format!("{:?}", tensor))
+                            }).collect::<Vec<_>>();
+                        display_graph.add_node_section(n, inputs)?;
                         display_graph.add_node_section(n, mismatches)?;
                         display_graph.add_node_label(n, "MISM.".red().to_string())?;
                     }
@@ -118,6 +138,11 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         };
 
         // Use the output from tensorflow to keep tract from drifting.
+        trace!(
+            "copy tensorflow output in state: for node {}, {:?}",
+            node.id,
+            tf_output
+        );
         state.set_values(node.id, tf_output.into())?;
     }
 
