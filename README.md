@@ -18,7 +18,7 @@ it.
 ### ONNX
 
 As of today (nov 2018), Tract passes successfully about 85% of ONNX backends
-tests. sqeezenet, densenet121 resnet50, inception_v2, vgg19 tests are passing.
+tests. `sqeezenet`, `densenet121`, `resnet50`, `inception_v2` and `vgg19` tests are passing.
 
 ### Tensorflow
 
