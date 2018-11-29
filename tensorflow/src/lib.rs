@@ -1,6 +1,6 @@
-//! # SharedTensorflow Deploy, SharedTensorflow module
+//! # SharedTensor Deploy, SharedTensor module
 //!
-//! Tiny, no-nonsense, self contained, portable SharedTensorflow inference.
+//! Tiny, no-nonsense, self contained, portable SharedTensor inference.
 //!
 //! ## Example
 //!
@@ -61,7 +61,7 @@ pub mod tfpb;
 pub use self::model::for_path;
 pub use self::model::for_reader;
 
-pub trait ToSharedTensorflow<Tf>: Sized {
+pub trait ToSharedTensor<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
 }
 

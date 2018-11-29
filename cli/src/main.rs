@@ -92,7 +92,7 @@ fn main() {
     app = app.subcommand(output_options(compare));
 
     let dump = clap::SubCommand::with_name("dump")
-        .help("Dumps the SharedTensorflow graph in human readable form.")
+        .help("Dumps the Tensorflow graph in human readable form.")
         .arg(
             Arg::with_name("assert-output")
                 .takes_value(true)
@@ -240,7 +240,7 @@ pub struct Parameters {
     pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
     #[cfg(feature = "conform")]
-    tf_model: Option<tract_tensorflow::conform::tf::SharedTensorflow>,
+    tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
 
     #[cfg(not(feature = "conform"))]
     #[allow(dead_code)]

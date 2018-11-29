@@ -9,8 +9,10 @@ use tfpb::node_def::NodeDef;
 mod macros;
 
 pub mod array;
+pub mod logic;
 pub mod math;
 pub mod nn;
+pub mod quant;
 
 pub type OpRegister = HashMap<&'static str, fn(&NodeDef) -> TractResult<Box<Op>>>;
 
@@ -20,8 +22,10 @@ impl OpBuilder {
     pub fn new() -> OpBuilder {
         let mut reg = OpRegister::new();
         array::register_all_ops(&mut reg);
+        logic::register_all_ops(&mut reg);
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
+        quant::register_all_ops(&mut reg);
         reg.insert("Const", konst);
         reg.insert("Placeholder", placeholder);
         OpBuilder(reg)

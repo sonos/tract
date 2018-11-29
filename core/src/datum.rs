@@ -1,4 +1,4 @@
-//! `Tensor` is the equivalent of SharedTensorflow Tensor.
+//! `Tensor` is the equivalent of SharedTensor Tensor.
 use dim::TDim;
 use ndarray::prelude::*;
 use std::fmt;

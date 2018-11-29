@@ -206,7 +206,7 @@ pub type TypeFact = GenericFact<DatumType>;
 /// Partial information about a shape.
 ///
 /// A basic example of a shape fact is `shapefact![1, 2]`, which corresponds to
-/// the shape `[1, 2]` in SharedTensorflow. We can use `_` in facts to denote unknown
+/// the shape `[1, 2]` in SharedTensor. We can use `_` in facts to denote unknown
 /// dimensions (e.g. `shapefact![1, 2, _]` corresponds to any shape `[1, 2, k]`
 /// with `k` a non-negative integer). We can also use `..` at the end of a fact
 /// to only specify its first dimensions, so `shapefact![1, 2; ..]` matches any

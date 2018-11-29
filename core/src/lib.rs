@@ -1,6 +1,6 @@
 //! # Tract
 //!
-//! Tiny, no-nonsense, self contained, portable SharedTensorflow and ONNX inference.
+//! Tiny, no-nonsense, self contained, portable SharedTensor and ONNX inference.
 //!
 //! ## Example
 //!
@@ -41,7 +41,7 @@
 //! ```
 //!
 //! While creating a model from Rust code is usefull for testing the library,
-//! real-life use-cases will usually load a SharedTensorflow or ONNX model using
+//! real-life use-cases will usually load a SharedTensor or ONNX model using
 //! tract-tf or tract-onnx crates.
 //!
 

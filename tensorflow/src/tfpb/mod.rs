@@ -1,4 +1,4 @@
-//! Generated protobuf codec for SharedTensorflow models, plus a handful of helper for
+//! Generated protobuf codec for SharedTensor models, plus a handful of helper for
 //! writting tests.
 
 #![allow(unknown_lints)]
@@ -106,6 +106,19 @@ impl node_def::NodeDef {
         if let Some(s) = self.get_attr_opt_raw_str(name)? {
             Ok(Some(String::from_utf8(s.to_vec())
                 .map_err(|_| format!("Node {} ({}) expected an UTF-8 string for attribute '{}'", self.get_name(), self.get_op(), name))?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_attr_bool(&self, name: &str) -> TractResult<bool> {
+        Ok(self.get_attr_opt_bool(name)?
+            .ok_or_else(|| format!("Node {} ({}) expected bool attribute '{}'", self.get_name(), self.get_op(), name))?)
+    }
+
+    pub fn get_attr_opt_bool(&self, name: &str) -> TractResult<Option<bool>> {
+        if let Some(t) = self.get_attr().get(name) {
+            Ok(Some(t.get_b()))
         } else {
             Ok(None)
         }

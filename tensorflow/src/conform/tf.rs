@@ -2,12 +2,12 @@
 
 use std::{fs, path};
 
+use tensorflow as tf;
 use tensorflow::DataType;
 use tensorflow::FetchToken;
 use tensorflow::Graph;
 use tensorflow::Session;
 use tensorflow::SessionRunArgs;
-use tensorflow as tf;
 
 use ndarray::ArrayD;
 use tract_core::Tensor;
@@ -83,7 +83,9 @@ impl From<Tensor> for TensorHolder {
                     panic!("Streaming used in tensorflow settings")
                 }
             }
-            tract_core::DatumType::String => TensorHolder::String(Self::to_tensor(m.into_array().unwrap())),
+            tract_core::DatumType::String => {
+                TensorHolder::String(Self::to_tensor(m.into_array().unwrap()))
+            }
         }
     }
 }
@@ -119,14 +121,21 @@ impl Tensorflow {
             }
         }
 
-        let token = step.request_fetch(&self.graph.operation_by_name_required(output_name)?, 0);
+        let op = &self.graph.operation_by_name_required(output_name)?;
+        let tokens = (0..op.num_outputs())
+            .map(|ix| step.request_fetch(&op, ix as i32))
+            .collect::<Vec<_>>();
+
         self.session.run(&mut step)?;
 
-        let output_type = &self
-            .graph
-            .operation_by_name_required(&output_name)?
-            .output_type(0);
-        convert_output(&mut step, output_type, token)
+        tokens.into_iter().enumerate().map(|(ix, tok)| {
+            let output_type = &self
+                .graph
+                .operation_by_name_required(&output_name)?
+                .output_type(ix);
+            convert_output(&mut step, output_type, tok)
+        }).collect()
+
     }
 
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
@@ -134,16 +143,16 @@ impl Tensorflow {
         &mut self,
         inputs: Vec<(&str, Tensor)>,
     ) -> Result<HashMap<String, Vec<Tensor>>> {
-        let mut tensors: Vec<(&str, TensorHolder)> = Vec::new();
+        let mut input_pairs: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
         for (name, mat) in inputs {
-            tensors.push((name, mat.into()));
+            input_pairs.push((name, mat.into()));
             excluded.insert(name.to_string());
         }
 
         let mut step = SessionRunArgs::new();
-        for t in &tensors {
+        for t in &input_pairs {
             let op = self.graph.operation_by_name_required(t.0)?;
             match t.1 {
                 TensorHolder::Bool(ref it) => step.add_feed(&op, 0, &it),
@@ -169,42 +178,68 @@ impl Tensorflow {
                 continue;
             }
 
-            tokens.insert(name, step.request_fetch(&operation, 0));
+            // switch only computes one of its outputs. tf explodes during
+            // the call to run() if we registers them
+            if operation.op_type()? == "Switch" {
+                continue;
+            }
+
+            let outputs = (0..operation.num_outputs())
+                .map(|ix| step.request_fetch(&operation, ix as i32))
+                .collect::<Vec<_>>();
+
+            tokens.insert(name, outputs);
         }
+        trace!("Generated all output tokens");
 
         // Execute the graph using tensorflow.
         self.session.run(&mut step)?;
+        trace!("Tensorflow ran succesfully");
 
         // Return the output for every node.
         let mut outputs = HashMap::new();
-        for (name, token) in tokens {
-            let output_type = &self.graph.operation_by_name_required(&name)?.output_type(0);
-            outputs.insert(name, convert_output(&mut step, output_type, token)?);
+        for (name, tokens) in tokens {
+            let tensors = tokens.iter().enumerate().map(|(ix, tok)| {
+                let output_type = &self.graph.operation_by_name_required(&name)?.output_type(ix);
+                convert_output(&mut step, output_type, *tok)
+            }).collect::<Result<Vec<_>>>()?;
+            outputs.insert(name, tensors);
         }
 
         Ok(outputs)
     }
 }
 
-/// Converts the output of a Tensorflow node into a Vec<Tensor>.
+/// Converts the output of a Tensorflow node into a Tensor.
 fn convert_output(
     step: &mut SessionRunArgs,
     output_type: &DataType,
     output: FetchToken,
-) -> Result<Vec<Tensor>> {
+) -> Result<Tensor> {
     macro_rules! convert {
         ($dt:ident) => {
-            tensor_to_array::<$dt>(&step.fetch(output)?)?.into()
+            match step.fetch(output) {
+                Err(r) => {
+                    if r.code() == tensorflow::Code::InvalidArgument {
+                        unsafe { Tensor::null::<$dt>(&[]).unwrap().into() }
+                    } else {
+                        Err(r)?
+                    }
+                },
+                Ok(output) => tensor_to_array::<$dt>(&output)?.into(),
+            }
         };
     };
 
     let tract_tensor = match output_type {
+        DataType::Bool => convert!(bool),
         DataType::Float => convert!(f32),
         DataType::UInt8 => convert!(u8),
         DataType::Int8 => convert!(i8),
         DataType::Int32 => convert!(i32),
-        t => bail!("Missing Tensor to Tensor for type {:?}", t),
+        DataType::Int64 => convert!(i64),
+        t => bail!("Missing conversion for tensorflow type {:?}", t),
     };
 
-    Ok(vec![tract_tensor])
+    Ok(tract_tensor)
 }

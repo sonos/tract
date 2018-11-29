@@ -1,4 +1,4 @@
-//! `Tensor` is the equivalent of SharedTensorflow Tensor.
+//! `Tensor` is the equivalent of SharedTensor Tensor.
 use dim::TDim;
 use model::TVec;
 use ndarray::prelude::*;
@@ -77,6 +77,22 @@ impl Tensor {
         })
     }
 
+    pub unsafe fn null<T:Datum>(shape: &[usize]) -> TractResult<Tensor> {
+        Self::null_dt(T::datum_type(), shape)
+    }
+
+    pub unsafe fn null_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
+        Ok(Tensor {
+            dt,
+            shape: shape.into(),
+            data: vec!()
+        })
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.data.len() == 0
+    }
+
     pub fn into_tensor(self) -> ::SharedTensor {
         ::SharedTensor::from(self)
     }
@@ -125,6 +141,9 @@ impl Tensor {
     }
 
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
+        if self.is_null() != other.is_null() {
+            return false
+        }
         let ma = self.cast_to::<f32>().unwrap();
         let ma = ma.to_array_view::<f32>().unwrap();
         let mb = other.cast_to::<f32>().unwrap();
@@ -147,6 +166,7 @@ impl Tensor {
         } else {
             0.0
         };
+        trace!("close_enough 4");
         ma.shape() == mb.shape() && mb
             .iter()
             .zip(ma.iter())
@@ -162,11 +182,17 @@ impl Tensor {
     }
 
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
+        if self.data.len() == 0 {
+            bail!("Null tensor")
+        }
         let casted = unsafe { vec_to_datum::<D>(self.data) };
         unsafe { Ok(ArrayD::from_shape_vec_unchecked(&*self.shape, casted)) }
     }
 
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
+        if self.data.len() == 0 {
+            bail!("Null tensor")
+        }
         let datum_size = ::std::mem::size_of::<D>();
         unsafe {
             Ok(std::slice::from_raw_parts::<D>(
@@ -177,6 +203,9 @@ impl Tensor {
     }
 
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
+        if self.data.len() == 0 {
+            bail!("Null tensor")
+        }
         unsafe {
             Ok(ArrayViewD::from_shape_ptr(
                 &*self.shape,
@@ -186,6 +215,9 @@ impl Tensor {
     }
 
     pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
+        if self.data.len() == 0 {
+            bail!("Null tensor")
+        }
         let datum_size = ::std::mem::size_of::<D>();
         unsafe {
             Ok(std::slice::from_raw_parts_mut::<D>(
@@ -196,6 +228,9 @@ impl Tensor {
     }
 
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
+        if self.data.len() == 0 {
+            bail!("Null tensor")
+        }
         let shape = self.shape.clone();
         unsafe {
             Ok(ArrayViewMutD::from_shape_ptr(
@@ -206,6 +241,9 @@ impl Tensor {
     }
 
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<D> {
+        if self.data.len() == 0 {
+            bail!("Null tensor")
+        }
         unsafe { Ok(*(self.data.as_ptr() as *const D)) }
     }
 
