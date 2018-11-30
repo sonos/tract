@@ -27,4 +27,4 @@ echo "Hey! I'm the entrypoint!"
 
 tract_size=`stat -c "%s" tract`
 
-echo binary_size.cli.$PLATFORM.$TRAVIS_BRANCH_SANE $tract_size $TIMESTAMP > metrics
+echo binary_size.cli $tract_size > metrics
