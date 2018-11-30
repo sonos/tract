@@ -19,9 +19,9 @@ do
     cd $WORKDIR/current
     aws s3 cp s3://$S3PATH_TASKS/$PLATFORM/$task .
     tar zxf $task
+    . $task_name/vars
     cd $task_name
     (
-        . ./vars
         ./entrypoint.sh 2> stderr.log > stdout.log || true
     )
     gzip stderr.log
@@ -29,5 +29,5 @@ do
     aws s3 cp stderr.log.gz s3://$S3PATH_RESULTS/$MINION_ID/$task_name/stderr.log.gz
     aws s3 cp stdout.log.gz s3://$S3PATH_RESULTS/$MINION_ID/$task_name/stdout.log.gz
     touch $WORKDIR/taskdone/$task_name
-    cat metrics | sed "s/^/$GRAPHITE_PREFIX./" | tr '-' '_' | nc $GRAPHITE_HOST $GRAPHITE_PORT
+    cat metrics | sed "s/^/$GRAPHITE_PREFIX.$PLATFORM.$MINION_ID.$TRAVIS_BRANCH_SANE./;s/$/ $TIMESTAMP/" | tr '-' '_' | nc -q 5 $GRAPHITE_HOST $GRAPHITE_PORT
 done
