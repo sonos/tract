@@ -37,7 +37,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
     }
     let dur = Duration::since(&start, iters);
 
-    println!("Bench ran {} times in {}", iters, dur_avg_oneline(dur));
+    println!("Bench ran {} times.\n{}", iters, dur_avg_multiline(dur));
     Ok(())
 }
 

@@ -263,6 +263,22 @@ pub fn dur_avg_oneline(measure: Duration) -> String {
     )
 }
 
+/// Format a rusage::Duration showing avgtime in ms.
+pub fn dur_avg_multiline(measure: Duration) -> String {
+    format!(
+        "Real: {}\nUser: {}\nSys: {}",
+        format!("{:.3} ms/i", measure.avg_real() * 1e3)
+            .white()
+            .bold(),
+        format!("{:.3} ms/i", measure.avg_user() * 1e3)
+            .white()
+            .bold(),
+        format!("{:.3} ms/i", measure.avg_sys() * 1e3)
+            .white()
+            .bold()
+    )
+}
+
 /// Format a rusage::Duration showing avgtime in ms, with percentage to a global
 /// one.
 pub fn dur_avg_oneline_ratio(measure: Duration, global: Duration) -> String {
