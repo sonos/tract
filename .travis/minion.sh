@@ -1,8 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 
 set -ex
-
 . $HOME/.minionrc
+
+exec 200>$LOCKFILE || exit 1
+flock -n 200 || { echo "WARN: flock() failed." >&2; exit 0; }
+
 
 mkdir -p $WORKDIR/taskdone/
 for task in `aws s3 ls $S3PATH_TASKS/$PLATFORM/ | awk '{ print $4; }'`
@@ -31,3 +34,7 @@ do
     touch $WORKDIR/taskdone/$task_name
     cat metrics | sed "s/^/$GRAPHITE_PREFIX.$PLATFORM.$MINION_ID.$TRAVIS_BRANCH_SANE./;s/$/ $TIMESTAMP/" | tr '-' '_' | nc -q 5 $GRAPHITE_HOST $GRAPHITE_PORT
 done
+
+sleep 1
+
+echo "DONE"
