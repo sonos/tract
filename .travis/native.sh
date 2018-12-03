@@ -18,6 +18,8 @@ cargo check --benches --all --features serialize # running benches on travis is 
 (cd tensorflow; cargo test --features conform)
 (cd cli; cargo build --features conform)
 
+tree $ONNX_TEST_DATA
+
 cargo run --release -p tract -- \
     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
     dump -q --assert-output 1x1000x1x1xf32
