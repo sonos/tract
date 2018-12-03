@@ -110,7 +110,7 @@ pub use datum::DatumType;
 pub use dim::TDim;
 pub use model::{Model, Node, TVec};
 pub use tensor::{Tensor, SharedTensor};
-pub use plan::SimplePlan;
+pub use plan::{ SimplePlan, SimpleState };
 
 #[cfg(test)]
 #[allow(dead_code)]
