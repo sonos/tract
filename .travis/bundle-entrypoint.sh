@@ -23,8 +23,9 @@ echo "Hey! I'm the entrypoint!"
     fi
 )
 
-./tract $CACHEDIR/inception_v3_2016_08_28_frozen.pb -O -i 1x299x299x3xf32 profile --bench
+binary_size_cli=`stat -c "%s" tract`
+inceptionv3=`./tract $CACHEDIR/inception_v3_2016_08_28_frozen.pb -O -i 1x299x299x3xf32 profile --bench | grep Real | perl -pe 's/\x1b\[[0-9;]*m//g' | cut -f 2 -d " "`
 
-tract_size=`stat -c "%s" tract`
 
-echo binary_size.cli $tract_size > metrics
+echo binary_size.cli $binary_size_cli > metrics
+echo net.inceptionv3.evaltime.full $inceptionv3 > metrics
