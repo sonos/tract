@@ -54,10 +54,11 @@ const DEFAULT_MAX_TIME: u64 = 5000;
 /// Entrypoint for the command-line interface.
 fn main() {
     use clap::*;
-    let mut app = clap_app!(("tract-cli") =>
+    let mut app = clap_app!(("tract") =>
         (version: "1.0")
         (author: "Romain Liautaud <romain.liautaud@snips.ai>")
-        (about: "A set of tools to compare tract with tensorflow.")
+        (author: "Mathieu Poumeyrol <mathieu.poumeyrol@snips.ai>")
+        (about: "Tract command line interface")
 
         (@setting UnifiedHelpMessage)
         (@setting SubcommandRequired)
@@ -85,6 +86,8 @@ fn main() {
         (@arg pulse: --pulse +takes_value "Translate to pulse network")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
+
+        (@arg machine_friendly: --("machine-friendly") "Machine friendly output")
     );
 
     let compare = clap::SubCommand::with_name("compare")
@@ -125,7 +128,7 @@ fn main() {
             Arg::with_name("max-time")
                 .takes_value(true)
                 .long("max-time")
-                .help("Sets the maximum execution time for each node (in ms) [default: 5000]."),
+                .help("Sets the maximum execution time for each node (in ms) [default: 5000].")
         ).arg(
             Arg::with_name("buffering")
                 .short("b")
@@ -249,6 +252,8 @@ pub struct Parameters {
     inputs: Option<Vec<Option<tract_core::ops::prelude::SharedTensor>>>,
 
     assertions: Option<Assertions>,
+
+    machine_friendly: bool,
 }
 
 impl Parameters {
@@ -291,6 +296,8 @@ impl Parameters {
         if let Some(outputs) = matches.values_of("output_node") {
             tract_model.set_outputs(outputs)?;
         };
+
+        let machine_friendly = matches.is_present("machine_friendly");
 
         let inputs = if let Some(inputs) = matches.values_of("input") {
             let mut vs = vec![];
@@ -363,6 +370,7 @@ impl Parameters {
             pulse_facts,
             inputs,
             assertions: None,
+            machine_friendly,
         })
     }
 }
