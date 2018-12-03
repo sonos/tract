@@ -17,9 +17,9 @@ env:
   - secure: vH8bS7RVgaHLGZUeqtViCQYDJfhubMiCMETLPD959pv9sODmSfjOhYtFgZtbn0wZ2fhCQFgKhYKUJdti5Vo9OUlyBiUsfLPilAAaeZu0Y2SQIKpbuNU9kJibuzyj6KZoRhjvsifhO5/mB03W7CpzjSGvJntK62BM0b6CrDtUlHlOgjwd3U1c5brZS9VWfnkh8pohgneB/XYtefTJXHuGjJgf75uw2TO/ZKQmmaKJWPoMVN76cgarRmXS/SoGMLr0+7ArnvIMNW9QRMABrSzUgP0RBvNfndwjiIQDZpIefIz/UVTa5e/pS79CLoQKM9FSWZANf3ZJgz0SzYgMprSe9f3RZGu5i0BLQA0SzdxCjCra5/3/pz+p86/iWGHnBfV6pvH9c2W1OUCCTiohNk7bgUfXxVrxk2RHxhc375MFiCxu6KtPRW8kJoRTSZP+k2itaBPUSevV0cdWrVlRjnTwoCskxMIFQH+vStxQjUXV0/g9SZzwdIR/j1aKIjb6VdQS2WOh0+BKgHy0jy2w4GJHtuObIg0aTcQAtt44aK0T/VeHJ0f1FxfjzPxrcqcgSxvi2E4HgedSCvtOHPWs5YYYGt76yH0G5ZOMOF8xP2CRStlcNB0TtLdpcUvQT2ejK7t4sCOj8Kz81s2cbLCZnJdkFaaBsffV7JtbjexXRwohGxI=
 matrix:
   include:
-    #  - rust: stable
-    #  - rust: beta
-    #  - rust: nightly
+  - rust: stable
+  - rust: beta
+  - rust: nightly
   - rust: stable
     env: PLATFORM=raspbian
   allow_failures:
