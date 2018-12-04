@@ -3,15 +3,20 @@ use model::Node;
 use TractResult;
 
 pub fn eval_order(model: &super::Model) -> TractResult<Vec<usize>> {
+    let inputs = model
+        .inputs()?
+        .iter()
+        .map(|n| n.node)
+        .collect::<Vec<usize>>();
     let targets = model
         .outputs()?
         .iter()
         .map(|n| n.node)
         .collect::<Vec<usize>>();
-    eval_order_for_nodes(model.nodes(), &targets)
+    eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 
-pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> TractResult<Vec<usize>> {
+pub fn eval_order_for_nodes(nodes: &[Node], inputs: &[usize], targets: &[usize]) -> TractResult<Vec<usize>> {
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut needed: Vec<usize> = vec![];
     let mut order: Vec<usize> = vec![];
@@ -23,7 +28,7 @@ pub fn eval_order_for_nodes(nodes: &[Node], targets: &[usize]) -> TractResult<Ve
             needed.pop();
             continue;
         }
-        if nodes[node].inputs.iter().all(|i| done.contains(i.node)) {
+        if inputs.contains(&node) || nodes[node].inputs.iter().all(|i| done.contains(i.node)) {
             order.push(node);
             needed.pop();
             done.insert(node);

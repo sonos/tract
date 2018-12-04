@@ -47,7 +47,9 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 return Ok(());
             }
         }
-        for node in model.nodes().iter() {
+        let node_ids = ::tract_core::model::eval_order(&model)?;
+        for node in node_ids {
+            let node = &model.nodes()[node];
             if node.op().name() == "Const" && !self.options.konst {
                 continue;
             }
@@ -75,8 +77,11 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
     }
 
     pub fn render_node(&self, node: &Node) -> CliResult<()> {
-        // node output are not ordered by slot number
-        let mut sections: Vec<Vec<Row>> = vec![
+        let mut sections: Vec<Vec<Row>> = vec!();
+        if let Some(id) = self.model.borrow().inputs()?.iter().position(|n| n.node == node.id) {
+            sections.push(vec!(Row::Simple(format!("MODEL INPUT {}", id).yellow().bold().to_string())));
+        }
+        sections.push(
             node.inputs
                 .iter()
                 .enumerate()
@@ -90,7 +95,8 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                         ),
                         format!("{:?}", self.model.borrow().fact(*a)?),
                     ))
-                }).collect::<CliResult<_>>()?,
+                }).collect::<CliResult<_>>()?);
+        sections.push(
             node.outputs
                 .iter()
                 .enumerate()
@@ -113,8 +119,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                             format!("{:?}", outlet.fact),
                         )
                     }
-                }).collect(),
-        ];
+                }).collect());
         if self.options.debug_op {
             sections.push(vec![Row::Simple(format!("{:?}", node.op))]);
         }
