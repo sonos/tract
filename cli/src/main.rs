@@ -362,6 +362,8 @@ impl Parameters {
             None
         };
 
+        info!("Model ready");
+
         Ok(Parameters {
             name: name.to_string(),
             graph,

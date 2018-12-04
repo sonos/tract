@@ -25,7 +25,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
 
     /// Runs the entire analysis at once.
     pub fn analyse(&mut self) -> TractResult<()> {
-        let mut nodes_to_visit: BTreeSet<usize> = (0..self.model.borrow().nodes().len()).collect();
+        let mut nodes_to_visit: BTreeSet<usize> = self.model.borrow().eval_order()?.iter().cloned().collect();
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
             let node = match nodes_to_visit.iter().next() {

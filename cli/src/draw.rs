@@ -27,8 +27,13 @@ pub fn render(model: &Model) -> CliResult<()> {
     let mut wires: Vec<(OutletId, Color)> = vec![];
     for node in model.eval_order()? {
         let node = &model.nodes()[node];
-        let first_input_wire = wires.len() - node.inputs.len();
-        for (ix, &input) in node.inputs.iter().enumerate().rev() {
+        let inputs = if model.inputs()?.contains(&OutletId::new(node.id,0)) {
+            &[]
+        } else {
+            &*node.inputs
+        };
+        let first_input_wire = wires.len() - inputs.len();
+        for (ix, &input) in inputs.iter().enumerate().rev() {
             let wire = wires.iter().rposition(|o| o.0 == input).unwrap();
             let wanted = first_input_wire + ix;
             if wire != wanted {
@@ -55,14 +60,14 @@ pub fn render(model: &Model) -> CliResult<()> {
         for wire in &wires[0..first_input_wire] {
             print!("{}", VERTICAL.color(wire.1));
         }
-        let node_color = if node.inputs.len() == 1 && node.outputs.len() == 1 {
+        let node_color = if inputs.len() == 1 && node.outputs.len() == 1 {
             wires[first_input_wire].1
         } else {
             let col = COLORS[next_color % COLORS.len()];
             next_color += 1;
             col
         };
-        match (node.inputs.len(), node.outputs.len()) {
+        match (inputs.len(), node.outputs.len()) {
             (0, 1) => print!("{}", DOWN_RIGHT.color(node_color)),
             (1, 0) => print!("{}", "╵".color(node_color)),
             (u, d) => {

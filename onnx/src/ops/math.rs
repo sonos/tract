@@ -70,6 +70,6 @@ pub fn gemm(node: &NodeProto) -> TractResult<Box<Op>> {
         .map(|a| a != 0)
         .unwrap_or(false);
     Ok(Box::new(tractops::math::Gemm::new(
-        alpha, beta, trans_a, trans_b,
+        alpha, beta, trans_a, trans_b, true
     )))
 }

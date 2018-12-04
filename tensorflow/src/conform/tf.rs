@@ -139,10 +139,11 @@ impl Tensorflow {
     }
 
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
-    pub fn run_get_all(
+    pub fn run_get_many<'a>(
         &mut self,
-        inputs: Vec<(&str, Tensor)>,
-    ) -> Result<HashMap<String, Vec<Tensor>>> {
+        inputs: Vec<(&'a str, Tensor)>,
+        targets: Vec<&'a str>,
+    ) -> Result<HashMap<&'a str, Vec<Tensor>>> {
         let mut input_pairs: Vec<(&str, TensorHolder)> = Vec::new();
         let mut excluded = HashSet::new();
 
@@ -169,14 +170,14 @@ impl Tensorflow {
             }
         }
 
-        // Request the output of every node that's not an input.
         let mut tokens = HashMap::new();
-        for operation in self.graph.operation_iter() {
-            let name = operation.name()?;
-
-            if excluded.contains(&name) {
+        trace!("Targets: {:?}", targets);
+        for name in targets {
+            if excluded.contains(name) {
                 continue;
             }
+
+            let operation = self.graph.operation_by_name_required(name)?;
 
             // switch only computes one of its outputs. tf explodes during
             // the call to run() if we registers them
