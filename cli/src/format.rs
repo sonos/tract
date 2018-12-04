@@ -62,7 +62,14 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
 
         name_table.set_format(format_none());
         table!([
-            format!("Operation: {:15}", op.bold().blue()),
+            format!(
+                "Op: {:15}",
+                if op.starts_with("Unimplemented(") {
+                    op.bold().red()
+                } else {
+                    op.bold().blue()
+                }
+            ),
             name_table,
             format!(" {:^33}", status.as_ref().bold()),
         ])
@@ -90,7 +97,17 @@ fn build_header_wide(cols: usize, op: &str, name: &str, status: &[impl AsRef<str
 
     name_table.set_format(format_none());
 
-    let mut header = table!([format!("Operation: {:15}", op.bold().blue()), name_table,]);
+    let mut header = table!([
+        format!(
+            "Operation: {:15}",
+            if op.starts_with("Unimplemented(") {
+                op.bold().red()
+            } else {
+                op.bold().blue()
+            },
+        ),
+        name_table,
+    ]);
     header.set_format(format_only_columns());
 
     let mut t = table![[header]];
