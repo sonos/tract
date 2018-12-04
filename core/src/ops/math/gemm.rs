@@ -10,10 +10,11 @@ pub struct Gemm {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
+    have_c: bool,
 }
 
 impl Gemm {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t_3<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -34,6 +35,21 @@ impl Gemm {
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
         Ok(tvec!(c.into()))
     }
+
+    fn eval_t_2<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    where
+        f32: AsPrimitive<T>,
+    {
+        let (a, b) = args_2!(inputs);
+        let a = a.to_array_view::<T>()?.into_dimensionality()?;
+        let at = if self.trans_a { a.t() } else { a };
+        let b = b.to_array_view::<T>()?.into_dimensionality()?;
+        let bt = if self.trans_b { b.t() } else { b };
+        let c_shape = (at.rows(), bt.cols());
+        let mut c = unsafe { Array::uninitialized((c_shape.0, c_shape.1)) };
+        ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, T::zero(), &mut c);
+        Ok(tvec!(c.into()))
+    }
 }
 
 impl Op for Gemm {
@@ -44,7 +60,11 @@ impl Op for Gemm {
 
 impl StatelessOp for Gemm {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+        if self.have_c {
+            dispatch_floatlike!(Self::eval_t_3(inputs[0].datum_type())(self, inputs))
+        } else {
+            dispatch_floatlike!(Self::eval_t_2(inputs[0].datum_type())(self, inputs))
+        }
     }
 }
 
@@ -55,14 +75,18 @@ impl InferenceRulesOp for Gemm {
         inputs: &'p SharedTensorsProxy,
         outputs: &'p SharedTensorsProxy,
     ) -> InferenceResult {
-        s.equals(&inputs.len, 3)?;
+        if self.have_c {
+            s.equals(&inputs.len, 3)?;
+            s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
+        } else {
+            s.equals(&inputs.len, 2)?;
+        };
         s.equals(&inputs[0].rank, 2)?;
         s.equals(&inputs[1].rank, 2)?;
         s.equals(&outputs.len, 1)?;
         s.equals(&outputs[0].rank, 2)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
         let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
         let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
         s.equals(&inputs[0].shape[ra], &outputs[0].shape[0])?;

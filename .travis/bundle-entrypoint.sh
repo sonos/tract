@@ -28,6 +28,7 @@ mkdir -p $CACHEDIR
         tar zxf inception_v3_2016_08_28_frozen.pb.tar.gz
     fi
     for m in \
+        ARM-ML-KWS-CNN-M.pb \
         snips-voice-commands-cnn-float.pb \
         snips-voice-commands-cnn-fake-quant.pb \
         hey_snips_v3.1.pb \
@@ -51,6 +52,10 @@ voicecom_fake_quant=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cn
     -O -i 200x10xf32 profile --bench \
     | grep real | cut -f 2 -d ' '`
 
+arm_ml_kws_cnn_m=`$TRACT --machine-friendly $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
+    -O -i 49x10xf32 --input-node Mfcc profile --bench \
+    | grep real | cut -f 2 -d ' '`
+
 hey_snips_v31_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v3.1.pb \
     -O -i 40x40xf32 profile --bench \
     | grep real | cut -f 2 -d ' '`
@@ -66,6 +71,7 @@ hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_mo
 
 echo binary_size.cli $binary_size_cli > metrics
 echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
+echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
 echo net.voicecom_float.evaltime.2sec $voicecom_float >> metrics
 echo net.voicecom_fake_quant.evaltime.2sec $voicecom_fake_quant >> metrics
 echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms >> metrics

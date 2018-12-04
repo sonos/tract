@@ -12,6 +12,9 @@ pub fn compact(old: &Model) -> TractResult<Model> {
         for (ix, output) in old_node.outputs.iter().enumerate() {
             model.set_fact(OutletId::new(new_id, ix), output.fact.clone())?;
         }
+        if old.inputs()?.contains(&OutletId::new(old_node.id, 0)) {
+            continue
+        }
         for (ix, input) in old_node.inputs.iter().enumerate() {
             model.add_edge(
                 OutletId::new(map[&input.node], input.slot),

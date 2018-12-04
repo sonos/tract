@@ -145,6 +145,7 @@ impl Model {
         &mut self,
         inputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
+        use ops::source::Source;
         let ids: Vec<OutletId> = inputs
             .into_iter()
             .map(|s| {
@@ -152,6 +153,10 @@ impl Model {
                     .map(|n| OutletId::new(n.id, 0))
             }).collect::<TractResult<_>>()?;
         self.inputs = ids;
+        for &i in &self.inputs {
+            self.nodes[i.node].inputs.clear();
+            self.nodes[i.node].op = Box::new(Source::default());
+        }
         Ok(())
     }
 

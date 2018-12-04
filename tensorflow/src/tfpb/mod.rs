@@ -154,9 +154,24 @@ impl node_def::NodeDef {
         Ok(self.get_attr_opt_int(name)?
             .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
+
     pub fn get_attr_opt_int<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
         if let Some(i) = self.get_attr().get(name) {
             Ok(Some(T::from_i64(i.get_i())
+                .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_attr_float<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<T> {
+        Ok(self.get_attr_opt_float(name)?
+            .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
+    }
+
+    pub fn get_attr_opt_float<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
+        if let Some(i) = self.get_attr().get(name) {
+            Ok(Some(T::from_f32(i.get_f())
                 .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
         } else {
             Ok(None)

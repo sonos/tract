@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 use log::Level::Info;
+use tract_core::model::OutletId;
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::{SharedTensor, Tensor, TensorFact};
 
@@ -35,8 +36,16 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         .map(|s| &*tract.node(s[0].node).name)
         .zip(generated.iter().cloned())
         .collect();
+
     trace!("Execute the model on tensorflow.");
-    let mut tf_outputs = tf.unwrap().run_get_all(pairs)?;
+    let eval_order = ::tract_core::model::eval_order(&tract)?;
+    let nodes = tract.nodes();
+    let wanted_outputs: Vec<&str> = eval_order
+        .iter()
+        .filter(|&n| !tract.inputs().unwrap().contains(&OutletId::new(*n, 0)))
+        .map(|&n| &*nodes[n].name)
+        .collect();
+    let mut tf_outputs = tf.unwrap().run_get_many(pairs, wanted_outputs)?;
 
     // Execute the model step-by-step on tract.
     let plan = SimplePlan::new(&tract)?;
@@ -44,16 +53,14 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     for (ix, input) in generated.clone().into_iter().enumerate() {
         state.set_input(ix, input)?;
     }
-    let plan = ::tract_core::model::eval_order(&tract)?;
-    debug!("Using execution plan: {:?}", plan);
 
     let mut display_graph =
         ::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?
             .with_graph_def(&params.graph)?;
 
-    let mut failures = 0;
+    let mut failing = vec![];
 
-    for n in plan {
+    for n in eval_order {
         let node = &tract.nodes()[n];
 
         if node.op_is::<tract_core::ops::source::Source>() {
@@ -69,28 +76,40 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         }
 
         debug!("Computing {} in tensorflow", node.name);
-        let tf_output = tf_outputs.remove(&node.name.to_string()).expect(
-            format!(
-                "No node with name {} was computed by tensorflow.",
-                node.name
-            ).as_str(),
-        );
+        let tf_output = match tf_outputs.remove(&*node.name) {
+            Some(it) => it,
+            None => continue,
+        };
 
         debug!("Computing {} in tract", node.name);
         match state.compute_one(n) {
             Err(e) => {
-                failures += 1;
-                display_graph.add_node_label(n, "ERROR".red().to_string())?;
-                display_graph.add_node_label(n, format!("Error message: {:?}", e))?;
+                failing.push(n);
+                display_graph.add_node_label(n, format!("{}: {}", "ERROR".red(), e))?;
             }
 
             _ => {
-                let expected: Vec<TensorFact> =
-                    tf_output.iter().map(|m| m.clone().into()).collect();
+                // how many outputs are actually required ? ignore ancilliary
+                // training wires from tensorflow op (fused batch norm)
+                let wanted = node
+                    .outputs
+                    .iter()
+                    .enumerate()
+                    .position(|(ix, o)| {
+                        o.successors.len() == 0 && !tract
+                            .outputs()
+                            .unwrap()
+                            .contains(&OutletId::new(node.id, ix))
+                    }).unwrap_or(node.outputs.len());
+                let expected: Vec<TensorFact> = tf_output
+                    .iter()
+                    .take(wanted)
+                    .map(|m| m.clone().into())
+                    .collect();
                 let tract_output: &[SharedTensor] = &*state.values[n].as_ref().unwrap();
                 match check_outputs(&tract_output, &expected) {
                     Err(e) => {
-                        failures += 1;
+                        failing.push(n);
                         let header = format!("Output {}", n).yellow().bold();
                         let mismatches = tract_output
                             .iter()
@@ -105,7 +124,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                                 {
                                     "Too far away".into()
                                 } else {
-                                    format!("Other error: {:?}", e)
+                                    format!("Other error: {}", e)
                                 };
 
                                 Row::Double(
@@ -146,14 +165,15 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         state.set_values(node.id, tf_output.into())?;
     }
 
-    if failures > 0 {
-        print_header(format!("There were {} errors:", failures), "red");
-        display_graph.render()?;
+    if failing.len() > 0 {
+        for f in &failing {
+            display_graph.render_node(&tract.nodes()[*f])?;
+        }
+        bail!("{} error(s).", failing.len())
     } else if log_enabled!(Info) {
         display_graph.render()?;
     } else {
         println!("{}", "Each node passed the comparison.".bold().green());
     }
-
     Ok(())
 }
