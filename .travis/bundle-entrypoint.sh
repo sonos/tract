@@ -65,9 +65,9 @@ hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_mo
 
 
 echo binary_size.cli $binary_size_cli > metrics
-echo net.inceptionv3.evaltime.pass $inceptionv3 > metrics
-echo net.voicecom_float.evaltime.2sec $voicecom_float > metrics
-echo net.voicecom_fake_quant.evaltime.2sec $voicecom_fake_quant > metrics
-echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms > metrics
-echo net.hey_snips_v4_model17.evaltime.2sec $hey_snips_v4_model17_2sec > metrics
-echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 > metrics
+echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
+echo net.voicecom_float.evaltime.2sec $voicecom_float >> metrics
+echo net.voicecom_fake_quant.evaltime.2sec $voicecom_fake_quant >> metrics
+echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms >> metrics
+echo net.hey_snips_v4_model17.evaltime.2sec $hey_snips_v4_model17_2sec >> metrics
+echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 >> metrics
