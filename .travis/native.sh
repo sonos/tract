@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -ex
+
 export CI=true
 
 ONNX_CHECKOUT=`pwd`/onnx/.onnx
@@ -18,22 +20,22 @@ cargo check --benches --all --features serialize # running benches on travis is 
 (cd tensorflow; cargo test --features conform)
 (cd cli; cargo build --features conform)
 
-tree $ONNX_TEST_DATA
+find $ONNX_TEST_DATA
 
-cargo run --release -p tract -- \
+./target/release/tract \
     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
     dump -q --assert-output 1x1000x1x1xf32
 
-cargo run --release -p tract -- -O \
+./target/release/tract \
     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
     dump -q --assert-output 1x1000x1x1xf32
 
-cargo run --release -p tract -- \
+./target/release/tract \
     $TF_INCEPTIONV3/inception_v3_2016_08_28_frozen.pb \
     -i 1x299x299x3xf32 \
     dump -q --assert-output-fact 1x1001xf32
 
-cargo run --release -p tract -- \
+./target/release/tract \
     $TF_INCEPTIONV3/inception_v3_2016_08_28_frozen.pb \
     -i 1x299x299x3xf32 -O \
     dump -q --assert-output-fact 1x1001xf32
