@@ -7,7 +7,7 @@ PATH=$HOME/cached/bin:$PATH
 
 which cargo-dinghy || cargo install --debug --root $HOME/cached cargo-dinghy
 
-sudo apt install git
+sudo apt-get install git
 
 case "$PLATFORM" in
     "raspbian")

@@ -11,34 +11,14 @@ else
     TRACT=./target/release/tract
 fi
 
-mkdir -p $CACHEDIR
-
-./tract --help
-
 . ./vars
 
-(
-    cd $CACHEDIR
-    if [ ! -e inception_v3_2016_08_28_frozen.pb.tar.gz ]
-    then
-        wget http://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz
-    fi
-    if [ !  -e inception_v3_2016_08_28_frozen.pb ]
-    then
-        tar zxf inception_v3_2016_08_28_frozen.pb.tar.gz
-    fi
-    for m in \
-        ARM-ML-KWS-CNN-M.pb \
-        snips-voice-commands-cnn-float.pb \
-        snips-voice-commands-cnn-fake-quant.pb \
-        hey_snips_v3.1.pb \
-        hey_snips_v4_model17.pb
-    do
-        [ -e "$m" ] || aws s3 cp s3://tract-ci-builds/model/$m .
-    done
-)
+(cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR/.cache)
+
+chmod +x $CACHEDIR/tflite*
 
 binary_size_cli=`stat -c "%s" tract`
+echo binary_size.cli $binary_size_cli > metrics
 
 inceptionv3=`$TRACT --machine-friendly $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
     -O -i 1x299x299x3xf32 profile --bench \
@@ -68,8 +48,6 @@ hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_mo
     -O -i Sx20xf32 --pulse 8 profile --bench \
     | grep real | cut -f 2 -d ' '`
 
-
-echo binary_size.cli $binary_size_cli > metrics
 echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
 echo net.voicecom_float.evaltime.2sec $voicecom_float >> metrics
@@ -77,3 +55,31 @@ echo net.voicecom_fake_quant.evaltime.2sec $voicecom_fake_quant >> metrics
 echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms >> metrics
 echo net.hey_snips_v4_model17.evaltime.2sec $hey_snips_v4_model17_2sec >> metrics
 echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 >> metrics
+
+if ( cat /etc/issue | grep Raspbian )
+then
+    cpu=`awk '/^Revision/ {sub("^1000", "", $3); print $3}' /proc/cpuinfo`
+    # raspi 3 can run official tflite builds
+    if [ "$cpu" == "a22082" ]
+    then
+        tflites="rpitools official_rpi"
+    else
+        tflites=official_rpi
+    fi
+    for tflite in $tflites
+    do
+        raw=`$CACHEDIR/tflite_benchmark_model_$tflite \
+            --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
+            --num_runs=1
+        2>&1 | tail -3 | head -1 | sed "s/*.=//"`
+        sec=`echo "scale=6; $raw / 1000000" | bc -l`
+        echo net.inceptionv3.tflite_$tflite.pass $inceptionv3 >> metrics
+
+        raw=`$CACHEDIR/tflite_benchmark_model_$tflite \
+            --graph=$CACHEDIR/hey_snips_v3.1.tflite \
+        2>&1 | tail -3 | head -1 | sed "s/*.=//"`
+        sec=`echo "scale=6; $raw / 1000000" | bc -l`
+        echo net.hey_snips_v31.tflite_$tflite.400ms $hey_snips_v31_400ms >> metrics
+    done
+fi
+
