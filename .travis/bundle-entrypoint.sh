@@ -64,22 +64,24 @@ then
     then
         tflites="rpitools official_rpi"
     else
-        tflites=official_rpi
+        tflites=rpitools
     fi
     for tflite in $tflites
     do
-        raw=`$CACHEDIR/tflite_benchmark_model_$tflite \
+        $CACHEDIR/tflite_benchmark_model_$tflite \
             --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
-            --num_runs=1
-        2>&1 | tail -3 | head -1 | sed "s/*.=//"`
-        sec=`echo "scale=6; $raw / 1000000" | bc -l`
-        echo net.inceptionv3.tflite_$tflite.pass $inceptionv3 >> metrics
+            --num_runs=1 \
+        > bench
+        usec=`cat bench | grep 'curr=' | tail -1 | sed "s/.*=//"`
+        sec=`echo "scale=6; $usec / 1000000" | bc -l`
+        echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
 
         raw=`$CACHEDIR/tflite_benchmark_model_$tflite \
             --graph=$CACHEDIR/hey_snips_v3.1.tflite \
-        2>&1 | tail -3 | head -1 | sed "s/*.=//"`
-        sec=`echo "scale=6; $raw / 1000000" | bc -l`
-        echo net.hey_snips_v31.tflite_$tflite.400ms $hey_snips_v31_400ms >> metrics
+        > bench
+        usec=`cat bench | grep 'curr=' | tail -1 | sed "s/.*=//"`
+        sec=`echo "scale=6; $usec / 1000000" | bc -l`
+        echo net.hey_snips_v31.tflite_$tflite.400ms $sec >> metrics
     done
 fi
 
