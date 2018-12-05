@@ -60,7 +60,7 @@ if ( cat /etc/issue | grep Raspbian )
 then
     cpu=`awk '/^Revision/ {sub("^1000", "", $3); print $3}' /proc/cpuinfo`
     # raspi 3 can run official tflite builds
-    if [ "$cpu" == "a22082" ]
+    if [ "$cpu" = "a22082" ]
     then
         tflites="rpitools official_rpi"
     else
