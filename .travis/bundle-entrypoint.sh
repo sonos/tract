@@ -13,7 +13,7 @@ fi
 
 . ./vars
 
-(cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR/.cache)
+(cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR)
 
 chmod +x $CACHEDIR/tflite*
 
