@@ -20,8 +20,6 @@ cargo test --release --all --features serialize
 (cd tensorflow; cargo test --release --features conform)
 (cd cli; cargo build --release)
 
-find .
-
 ./target/release/tract \
     $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
     dump -q --assert-output 1x1000x1x1xf32
