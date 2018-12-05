@@ -18,7 +18,7 @@ cargo check --benches --all --features serialize # running benches on travis is 
 cargo test --release --all --features serialize
 
 (cd tensorflow; cargo test --release --features conform)
-(cd cli; cargo build --release --features conform)
+(cd cli; cargo build --release)
 
 find .
 
