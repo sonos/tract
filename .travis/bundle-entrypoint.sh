@@ -76,7 +76,7 @@ then
         sec=`echo "scale=6; $usec / 1000000" | bc -l`
         echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
 
-        raw=`$CACHEDIR/tflite_benchmark_model_$tflite \
+        $CACHEDIR/tflite_benchmark_model_$tflite \
             --graph=$CACHEDIR/hey_snips_v3.1.tflite \
         > bench
         usec=`cat bench | grep 'curr=' | tail -1 | sed "s/.*=//"`
