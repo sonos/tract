@@ -19,7 +19,7 @@ case "$PLATFORM" in
         cargo dinghy --platform $PLATFORM build --release -p tract
     ;;
     "aarch64")
-        apt-get -y install binutils-aarch64-linux-gnu gcc-4.8-aarch64-linux-gnu
+        sudo apt-get -y install binutils-aarch64-linux-gnu gcc-4.8-aarch64-linux-gnu
         export RUSTC_TRIPLE=aarch64-unknown-linux-gnu
         rustup target add $RUSTC_TRIPLE
         export TARGET_CC=aarch64-linux-gnu-gcc-4.8
