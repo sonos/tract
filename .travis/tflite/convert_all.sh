@@ -29,3 +29,13 @@ run_in_tf_docker "cd /models ; tflite_convert \
     --output_arrays logits \
     --output_format tflite \
     --output_file hey_snips_v3.1.tflite"
+
+# # hey_snips v4 model17, 2seconds
+# (tflite does not support AddN)
+# run_in_tf_docker "cd /models ; tflite_convert \
+#     --graph_def_file hey_snips_v4_model17.pb \
+#     --input_arrays input_node \
+#     --input_shapes 200,20 \
+#     --output_arrays output_node \
+#     --output_format tflite \
+#     --output_file hey_snips_v4_model17.tflite"
