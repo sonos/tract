@@ -35,8 +35,45 @@ apt install wget curl perl awscli screen vim
 On device: `.minioncrc` set a MINION_ID. At this point, running `./minion.sh`
 should work.
 
+## crontab
+
 `crontab -e`
 
 ```
 */10 * * * * $HOME/minion.sh
+```
+
+## systemd timers
+
+in /etc/systemd/system/minion.service
+
+```
+[Unit]
+Description=Travis ci bench minion
+
+[Service]
+User=root
+Type=oneshot
+ExecStart=/home/root/minion.sh
+```
+
+in /etc/systemd/system/minion.timer
+
+```
+[Unit]
+Description=Run minion.service every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+
+[Install]
+WantedBy=timers.target
+
+```
+
+then
+
+```
+systemctl enable minion.timer
+systemctl start minion.timer
 ```
