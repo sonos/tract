@@ -67,6 +67,7 @@ then
         tflites=rpitools
     fi
 elif ( cat /etc/issue | grep i.MX )
+then
     if [ `uname -m` = "aarch64" ]
     then
         tflites=aarch64
