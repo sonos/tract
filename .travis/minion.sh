@@ -6,6 +6,14 @@ set -ex
 exec 200>$LOCKFILE || exit 1
 flock -n 200 || { echo "WARN: flock() failed." >&2; exit 0; }
 
+if nc --version
+then
+    # GNU
+    NC="nc -c -w 5"
+else
+    # BSD
+    NC="nc -q 5"
+fi
 
 mkdir -p $WORKDIR/taskdone/
 for task in `aws s3 ls $S3PATH_TASKS/$PLATFORM/ | awk '{ print $4; }'`
@@ -32,7 +40,8 @@ do
     aws s3 cp stderr.log.gz s3://$S3PATH_RESULTS/$MINION_ID/$task_name/stderr.log.gz
     aws s3 cp stdout.log.gz s3://$S3PATH_RESULTS/$MINION_ID/$task_name/stdout.log.gz
     touch $WORKDIR/taskdone/$task_name
-    cat metrics | sed "s/^/$GRAPHITE_PREFIX.$PLATFORM.$MINION_ID.$TRAVIS_BRANCH_SANE./;s/$/ $TIMESTAMP/" | tr '-' '_' | nc -q 5 $GRAPHITE_HOST $GRAPHITE_PORT
+    cat metrics | sed "s/^/$GRAPHITE_PREFIX.$PLATFORM.$MINION_ID.$TRAVIS_BRANCH_SANE./;s/$/ $TIMESTAMP/" \
+        | tr '-' '_' | $NC $GRAPHITE_HOST $GRAPHITE_PORT
 done
 
 sleep 1

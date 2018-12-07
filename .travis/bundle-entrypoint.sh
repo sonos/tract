@@ -66,22 +66,28 @@ then
     else
         tflites=rpitools
     fi
-    for tflite in $tflites
-    do
-        $CACHEDIR/tflite_benchmark_model_$tflite \
-            --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
-            --num_runs=1 \
-        2> bench
-        usec=`cat bench | grep 'curr=' | tail -1 | sed "s/.*=//"`
-        sec=`echo "scale=6; $usec / 1000000" | bc -l`
-        echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
-
-        $CACHEDIR/tflite_benchmark_model_$tflite \
-            --graph=$CACHEDIR/hey_snips_v3.1.tflite \
-        2> bench
-        usec=`cat bench | grep 'curr=' | tail -1 | sed "s/.*=//"`
-        sec=`echo "scale=6; $usec / 1000000" | bc -l`
-        echo net.hey_snips_v31.tflite_$tflite.400ms $sec >> metrics
-    done
+elif ( cat /etc/issue | grep i.MX )
+    if [ `uname -m` = "aarch64" ]
+    then
+        tflites=aarch64
+    fi
 fi
+
+for tflite in $tflites
+do
+    $CACHEDIR/tflite_benchmark_model_$tflite \
+        --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
+        --num_runs=1 \
+    2> bench
+    usec=`cat bench | grep 'curr=' | tail -1 | sed "s/.*=//"`
+    sec=`echo "scale=6; $usec / 1000000" | bc -l`
+    echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
+
+    $CACHEDIR/tflite_benchmark_model_$tflite \
+        --graph=$CACHEDIR/hey_snips_v3.1.tflite \
+    2> bench
+    usec=`cat bench | grep 'curr=' | tail -1 | sed "s/.*=//"`
+    sec=`echo "scale=6; $usec / 1000000" | bc -l`
+    echo net.hey_snips_v31.tflite_$tflite.400ms $sec >> metrics
+done
 
