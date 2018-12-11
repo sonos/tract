@@ -150,8 +150,23 @@ pub trait InferenceOp {
 
 clone_trait_object!(Op);
 
+impl<O:Op> From<O> for Box<Op> {
+    fn from(it: O) -> Box<Op> {
+        Box::new(it)
+    }
+}
+
 #[derive(Clone, Debug, new)]
 pub struct ReducedOpRewire {
-    pub new_op: Box<Op>,
-    pub rewired: TVec<usize>,
+    pub(crate) new_op: Vec<Box<Op>>,
+    pub(crate) rewired: TVec<usize>,
+}
+
+impl ReducedOpRewire {
+    pub fn unary<O: Into<Box<Op>>>(op: O) -> ReducedOpRewire {
+        ReducedOpRewire {
+            new_op: vec!(op.into()),
+            rewired: tvec!(0),
+        }
+    }
 }

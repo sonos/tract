@@ -42,10 +42,7 @@ impl Op for Squeeze {
     ) -> TractResult<Option<ReducedOpRewire>> {
         if phase == ReductionPhase::Normalize {
             if let Some(dims) = &self.axes {
-                return Ok(Some(ReducedOpRewire {
-                    new_op: Box::new(RmDims::new(dims.clone())),
-                    rewired: tvec!(0),
-                }))
+                return Ok(Some(ReducedOpRewire::unary(RmDims::new(dims.clone()))));
             }
         }
         Ok(None)

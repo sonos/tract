@@ -30,10 +30,11 @@ impl super::OptimizerPass for Reduce {
                     .map_err(|e| format!("Reduce {:?} node {:?}, {:?}", self.0, node, e))?
             };
             if let Some(red) = reduced {
-                debug!("  Unarize to {:?}", red.new_op.name());
+                debug!("  Unarize to {:?}", red);
                 let mut node = &mut model.mut_nodes()[id];
-                let ::ops::ReducedOpRewire { new_op, rewired } = red;
-                node.op = new_op;
+                let ::ops::ReducedOpRewire { mut new_op, rewired } = red;
+                assert_eq!(new_op.len(), 1);
+                node.op = new_op.remove(0);
                 let new_inputs = rewired.into_iter().map(|ix| node.inputs[ix]).collect();
                 node.inputs = new_inputs;
                 done_something = true

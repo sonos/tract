@@ -83,10 +83,7 @@ impl Op for Conv {
                         None,
                         self.group,
                     )?;
-                    return Ok(Some(ReducedOpRewire {
-                        new_op: Box::new(reduced),
-                        rewired: tvec!(0),
-                    }));
+                    return Ok(Some(ReducedOpRewire::unary(reduced)));
                 }
             } else {
                 let (input, kernel, bias) = args_3!(inputs);
@@ -103,10 +100,7 @@ impl Op for Conv {
                         Some(bias.to_tensor()),
                         self.group,
                     )?;
-                    return Ok(Some(ReducedOpRewire {
-                        new_op: Box::new(reduced),
-                        rewired: tvec!(0),
-                    }));
+                    return Ok(Some(ReducedOpRewire::unary(reduced)));
                 }
             }
         }

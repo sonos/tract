@@ -52,7 +52,7 @@ impl Op for SpaceToBatch {
                     block_shape.to_array::<i32>()?.into_dimensionality()?,
                     paddings,
                 );
-                return Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
+                return Ok(Some(ReducedOpRewire::unary(op)))
             }
         }
         Ok(None)
@@ -142,7 +142,7 @@ impl Op for BatchToSpace {
                     block_shape.to_array::<i32>()?.into_dimensionality()?,
                     paddings,
                 );
-                return Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
+                return Ok(Some(ReducedOpRewire::unary(op)))
             }
         }
         Ok(None)

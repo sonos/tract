@@ -108,7 +108,7 @@ impl Reducer {
         if !reduce.keep_dims {
             for ax in (0..full_output_shape.len()).rev() {
                 if reduce.must_reduce(ax) {
-                    result = result.remove_axis(Axis(ax));
+                    result = result.index_axis_move(Axis(ax), 0);
                 }
             }
         }
