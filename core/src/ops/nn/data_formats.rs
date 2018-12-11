@@ -44,6 +44,10 @@ where
     D: DimLike,
     S: AsRef<[D]> + fmt::Debug,
 {
+    pub fn rank(&self) -> usize {
+        self.shape.as_ref().len()
+    }
+
     pub fn hw_rank(&self) -> usize {
         self.shape.as_ref().len() - 2
     }
