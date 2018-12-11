@@ -161,13 +161,12 @@ macro_rules! element_bin {
                 ) -> TractResult<Option<ReducedOpRewire>> {
                     if phase == ReductionPhase::Normalize {
                         if let Some(b) = inputs[1].value.concretize() {
-                            return Ok(Some(ReducedOpRewire {
-                                new_op: Box::new(UnaryA {
+                            return Ok(Some(ReducedOpRewire::unary(
+                                UnaryA {
                                     dt: self.0,
                                     b: b.into(),
-                                }),
-                                rewired: tvec!(0)
-                            }))
+                                },
+                            )))
                         }
                     }
                     Ok(None)

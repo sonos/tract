@@ -288,7 +288,7 @@ impl<T: Datum> Op for StridedSlice<T> {
                     ));
                 }
                 let op = ::tract_core::ops::array::Slice::new(prunes);
-                return Ok(Some(ReducedOpRewire::new(Box::new(op), tvec!(0))))
+                return Ok(Some(ReducedOpRewire::unary(op)));
             }
         }
         Ok(None)

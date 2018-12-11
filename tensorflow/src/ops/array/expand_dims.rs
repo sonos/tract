@@ -22,12 +22,10 @@ impl Op for ExpandDims {
             let (_, dims) = args_2!(inputs);
             if let Some(dims) = dims.concretize() {
                 let dims = dims.cast_to::<i64>()?;
-                return Ok(Some(ReducedOpRewire {
-                    new_op: Box::new(::tract_core::ops::array::AddDims::new(
+                let op = ::tract_core::ops::array::AddDims::new(
                         dims.to_array_view::<i64>()?.iter().map(|&i| i as usize).collect(),
-                    )),
-                    rewired: tvec!(0),
-                }))
+                    );
+                return Ok(Some(ReducedOpRewire::unary(op)));
             }
         }
         Ok(None)

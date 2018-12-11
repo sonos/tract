@@ -168,10 +168,7 @@ impl Op for ConvUnary {
                 use ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
-                return Ok(Some(ReducedOpRewire::new(
-                    Box::new(MatMulUnaryA::new(kernel)),
-                    tvec!(0),
-                )));
+                return Ok(Some(ReducedOpRewire::unary(MatMulUnaryA::new(kernel))));
             }
         } else if let (Some(shape), Some(dt)) = (
             inputs[0].shape.concretize(),
@@ -183,7 +180,7 @@ impl Op for ConvUnary {
                     .map(|d| d.to_integer().unwrap() as usize)
                     .collect();
                 let op = dispatch_floatlike!(Self::to_boxed_fixed_params_op(dt)(self, &shape))?;
-                return Ok(Some(ReducedOpRewire::new(op, tvec!(0))));
+                return Ok(Some(ReducedOpRewire::unary(op)));
             }
         }
         Ok(None)
