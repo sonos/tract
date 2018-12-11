@@ -14,7 +14,7 @@ case "$PLATFORM" in
         [ -e $HOME/cached/raspitools ] || git clone https://github.com/raspberrypi/tools $HOME/cached/raspitools
         TOOLCHAIN=$HOME/cached/raspitools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
-        rustup target add RUSTC_TRIPLE
+        rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
         cargo dinghy --platform $PLATFORM build --release -p tract
     ;;
