@@ -31,12 +31,27 @@ impl super::OptimizerPass for Reduce {
             };
             if let Some(red) = reduced {
                 debug!("  Unarize to {:?}", red);
-                let mut node = &mut model.mut_nodes()[id];
-                let ::ops::ReducedOpRewire { mut new_op, rewired } = red;
-                assert_eq!(new_op.len(), 1);
-                node.op = new_op.remove(0);
-                let new_inputs = rewired.into_iter().map(|ix| node.inputs[ix]).collect();
-                node.inputs = new_inputs;
+                use model::dsl::ModelDsl;
+                use model::{ InletId, OutletId };
+
+                let ::ops::ReducedOpRewire { mut ops, rewired } = red;
+                let inputs = rewired.into_iter().map(|ix| model.node(id).inputs[ix]).collect();
+                if ops.len() == 1 {
+                    let mut node = &mut model.mut_nodes()[id];
+                    node.op = ops.remove(0);
+                    node.inputs = inputs;
+                } else {
+                    model.mut_nodes()[id].op = ops.pop().unwrap();
+                    let name = format!("{}-{}", model.node(id).name, ops.len());
+                    let mut created_node_id = model.add_node(name, ops.remove(0))?;
+                    model.mut_nodes()[created_node_id].inputs = inputs;
+                    while ops.len() > 0 {
+                        let name = format!("{}-{}", model.node(id).name, ops.len());
+                        created_node_id = model.chain(name, ops.remove(0))?;
+                    }
+                    model.mut_nodes()[id].inputs.clear();
+                    model.add_edge(OutletId::new(created_node_id, 0), InletId::new(id, 0))?;
+                }
                 done_something = true
             }
         }

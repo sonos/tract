@@ -158,14 +158,14 @@ impl<O:Op> From<O> for Box<Op> {
 
 #[derive(Clone, Debug, new)]
 pub struct ReducedOpRewire {
-    pub(crate) new_op: Vec<Box<Op>>,
+    pub(crate) ops: Vec<Box<Op>>,
     pub(crate) rewired: TVec<usize>,
 }
 
 impl ReducedOpRewire {
     pub fn unary<O: Into<Box<Op>>>(op: O) -> ReducedOpRewire {
         ReducedOpRewire {
-            new_op: vec!(op.into()),
+            ops: vec!(op.into()),
             rewired: tvec!(0),
         }
     }
