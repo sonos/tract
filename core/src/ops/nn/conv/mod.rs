@@ -1,5 +1,6 @@
 mod fixed_params;
 mod gen;
+mod im2col;
 mod unary;
 
 pub use self::fixed_params::FixedParamsConv;
