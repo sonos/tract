@@ -1,4 +1,5 @@
 mod fixed_params;
+mod gemm;
 mod gen;
 mod im2col;
 mod unary;
