@@ -3,14 +3,14 @@ use ops::prelude::*;
 
 use ops::nn::Patch;
 
-#[derive(Debug,Clone,new)]
-pub(super) struct Im2Col<D:Datum> {
-    patch: Patch,
-    m: usize,
-    k: usize,
-    n: usize,
-    group: usize,
-    _phantom: PhantomData<D>
+#[derive(Debug, Clone, new)]
+pub(super) struct Im2Col<D: Datum> {
+    pub patch: Patch,
+    pub m: usize,
+    pub k: usize,
+    pub n: usize,
+    pub group: usize,
+    pub _phantom: PhantomData<D>,
 }
 
 impl<D: Datum> Im2Col<D> {
@@ -24,7 +24,7 @@ impl<D: Datum> Im2Col<D> {
         for i in 0..input_shape.n_dim() {
             for g in 0..self.group {
                 let mm_offset = self.n * (g + (i * self.group));
-                let mut coords = vec!(0; input_shape.rank());
+                let mut coords = vec![0; input_shape.rank()];
                 coords[input_shape.n_axis()] = i;
                 for (mut spatial, mut col) in ndarray::indices(&*self.patch.output_spatial_shape)
                     .into_iter()
@@ -35,11 +35,13 @@ impl<D: Datum> Im2Col<D> {
                     )
                 {
                     let mut col = col.iter_mut();
-                    coords[input_shape.h_axis()..][..input_shape.hw_rank()].copy_from_slice(spatial.slice());
+                    coords[input_shape.h_axis()..][..input_shape.hw_rank()]
+                        .copy_from_slice(spatial.slice());
                     for ci in 0..ci_per_group {
                         coords[input_shape.c_axis()] = ci + g * ci_per_group;
                         for v in visitor.at(&*coords) {
-                            *col.next().expect("geometry error in conv") = v.unwrap_or(D::default());
+                            *col.next().expect("geometry error in conv") =
+                                v.unwrap_or(D::default());
                         }
                     }
                 }

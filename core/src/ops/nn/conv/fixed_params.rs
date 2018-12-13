@@ -3,24 +3,23 @@ use ops::prelude::*;
 
 use ops::nn::{DataFormat, PaddingSpec, Patch};
 use super::im2col::Im2Col;
+use super::gemm::ConvGemm;
 
 use insideout::InsideOut;
 
 #[derive(Debug, Clone)]
-pub struct FixedParamsConv<D: Datum> {
+pub struct FixedParamsConv<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+{
     im2col: Im2Col<D>,
-    kernel_is_hwio: bool,
-    patch: Patch,
-    kernel: Array2<D>,
-    full_output_shape: TVec<usize>,
-    k: usize,
-    m: usize,
-    n: usize,
-    bias: Option<ArrayD<D>>,
-    group: usize,
+    conv_gemm: ConvGemm<D>,
 }
 
-impl<D: Datum> FixedParamsConv<D> {
+impl<D: Datum> FixedParamsConv<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+{
     pub fn new(
         data_fmt: DataFormat,
         kernel_is_hwio: bool,
@@ -78,18 +77,11 @@ impl<D: Datum> FixedParamsConv<D> {
             .inside_out()?;
 
         let im2col = Im2Col::new(patch.clone(), m, k, n, group);
+        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, kernel_is_hwio, kernel, bias, group);
 
         Ok(FixedParamsConv {
             im2col,
-            kernel_is_hwio,
-            patch,
-            kernel,
-            full_output_shape: shape,
-            k,
-            m,
-            n,
-            bias,
-            group,
+            conv_gemm
         })
     }
 }
@@ -100,58 +92,10 @@ where
 {
     pub(super) fn convolve<'i>(&'i self, input: &'i ArrayViewD<'i, D>) -> TractResult<ArrayD<D>> {
         let mega_matrix = self.im2col.im2col(input)?;
-        let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
-        let input_shape = &self.patch.input_shape;
-        let co_per_group = self.full_output_shape[input_shape.c_axis()] / self.group;
-        for i in 0..input_shape.n_dim() {
-            for g in 0..self.group {
-                let mm_offset = self.n * (g + (i * self.group));
-                let mut output_subview = output.view_mut();
-                output_subview.slice_axis_inplace(Axis(input_shape.n_axis()), (i..(i + 1)).into());
-                output_subview.slice_axis_inplace(
-                    Axis(input_shape.c_axis()),
-                    (g * co_per_group..(g + 1) * co_per_group).into(),
-                );
-                match self.patch.input_shape.fmt {
-                    DataFormat::NHWC => {
-                        let mut output_panel = output_subview.into_shape((self.n, self.m))?;
-                        ::ndarray::linalg::general_mat_mul(
-                            D::one(),
-                            &self.kernel.slice_axis(
-                                Axis(0),
-                                (co_per_group * g..co_per_group * (g + 1)).into(),
-                            ),
-                            &mega_matrix
-                                .slice_axis(Axis(1), (mm_offset..(mm_offset + self.n)).into()),
-                            D::zero(),
-                            &mut output_panel.reversed_axes(),
-                        );
-                    }
-                    DataFormat::NCHW => {
-                        let mut output_panel =
-                            output_subview.into_shape((self.m / self.group, self.n))?;
-                        ::ndarray::linalg::general_mat_mul(
-                            D::one(),
-                            &self.kernel.slice_axis(
-                                Axis(0),
-                                (co_per_group * g..co_per_group * (g + 1)).into(),
-                            ),
-                            &mega_matrix
-                                .slice_axis(Axis(1), (mm_offset..(mm_offset + self.n)).into()),
-                            D::zero(),
-                            &mut output_panel,
-                        );
-                    }
-                }
-            }
-        }
-
-        if let Some(ref bias) = self.bias {
-            output += &bias;
-        }
-
-        Ok(output)
+        self.conv_gemm.conv_gemm(&mega_matrix.view())
     }
+
+
 }
 
 impl<D> Op for FixedParamsConv<D>
@@ -189,9 +133,9 @@ where
         s.equals(&outputs[0].datum_type, D::datum_type())?;
         s.equals(
             &inputs[0].shape,
-            ShapeFact::from(&*self.patch.input_shape.shape),
+            ShapeFact::from(&*self.im2col.patch.input_shape.shape),
         )?;
-        s.equals(&outputs[0].shape, ShapeFact::from(&*self.full_output_shape))?;
+        s.equals(&outputs[0].shape, ShapeFact::from(&*self.conv_gemm.full_output_shape))?;
         Ok(())
     }
 }
