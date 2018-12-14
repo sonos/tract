@@ -1,8 +1,12 @@
+use ndarray::*;
+
 use insideout::InsideOut;
 use ops::prelude::*;
 
-use super::{Conv, FixedParamsConv};
-use ops::nn::{DataFormat, PaddingSpec};
+use super::Conv;
+use super::im2col::Im2Col;
+use super::conv_gemm::ConvGemm;
+use ops::nn::{DataFormat, PaddingSpec, Patch};
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
@@ -54,31 +58,68 @@ impl ConvUnary {
         })
     }
 
-    fn to_fixed_params<T>(&self, input_shape: &[usize]) -> TractResult<FixedParamsConv<T>>
+    fn to_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col<T>, ConvGemm<T>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        FixedParamsConv::new(
+        let output_channels:usize = if self.kernel_is_hwio {
+            *self.kernel.shape().last().unwrap()
+        } else {
+            self.kernel.shape()[0]
+        };
+
+        let kernel_spatial_shape = if self.kernel_is_hwio {
+            &self.kernel.shape()[..(input_full_shape.len() - 2)]
+        } else {
+            &self.kernel.shape()[2..]
+        };
+
+        let patch = Patch::new(
             self.data_fmt,
-            self.kernel_is_hwio,
             self.dilations.clone(),
+            kernel_spatial_shape.into(),
+            &self.padding,
             self.strides.clone(),
-            self.padding.clone(),
-            input_shape,
-            self.kernel.to_array_view::<T>()?,
-            self.bias
-                .as_ref()
-                .map(|b| b.to_array_view::<T>())
-                .inside_out()?,
-            self.group,
-        )
+            input_full_shape.into(),
+        );
+
+        let shape: TVec<usize> = patch.output_full_shape(output_channels);
+
+        let kernel = self.kernel.to_array_view::<T>()?;
+
+        let k = kernel.len() / output_channels;
+        let m = output_channels;
+        let n = patch.output_spatial_shape.iter().product();
+
+        let kernel: Array2<T> = if self.kernel_is_hwio {
+            let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
+            permutation.extend(0..(kernel.ndim() - 2));
+            let permuted = kernel.permuted_axes(permutation);
+            Array2::<T>::from_shape_vec((m, k), permuted.iter().cloned().collect::<Vec<_>>())?
+        } else {
+            kernel.into_shape((m, k))?.to_owned()
+        };
+
+        let bias = self.bias.as_ref()
+            .map(|bias| -> TractResult<_> {
+                let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
+                bias_shape[1] = output_channels;
+                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
+            })
+            .inside_out()?;
+
+        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group);
+        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_is_hwio, kernel, bias, self.group);
+
+        Ok((im2col, conv_gemm))
     }
 
-    fn to_boxed_fixed_params_op<T>(&self, shape: &[usize]) -> TractResult<Box<Op>>
+    fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Box<Op>, Box<Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        Ok(Box::new(self.to_fixed_params::<T>(shape)?))
+        let (op1, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
+        Ok((Box::new(op1), Box::new(op2)))
     }
 
     fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
@@ -86,8 +127,9 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
         let input = args_1!(inputs);
-        let conv = self.to_fixed_params::<T>(&input.shape())?;
-        let output = conv.convolve(&input.to_array_view::<T>()?)?;
+        let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
+        let mm = im2col.im2col(&input.to_array_view()?)?;
+        let output = conv_gemm.conv_gemm(&mm.view())?;
         Ok(tvec!(output.into()))
     }
 
@@ -179,8 +221,11 @@ impl Op for ConvUnary {
                     .iter()
                     .map(|d| d.to_integer().unwrap() as usize)
                     .collect();
-                let op = dispatch_floatlike!(Self::to_boxed_fixed_params_op(dt)(self, &shape))?;
-                return Ok(Some(ReducedOpRewire::unary(op)));
+                let (op1, op2) = dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
+                return Ok(Some(ReducedOpRewire {
+                    ops: vec!(op1, op2),
+                    rewired: tvec!(0)
+                }));
             }
         }
         Ok(None)

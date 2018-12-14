@@ -3,7 +3,7 @@ use ops::prelude::*;
 
 use ops::nn::{DataFormat, PaddingSpec, Patch};
 use super::im2col::Im2Col;
-use super::gemm::ConvGemm;
+use super::conv_gemm::ConvGemm;
 
 use insideout::InsideOut;
 
