@@ -548,3 +548,17 @@ macro_rules! dispatch_floatlike {
         }
     }
 }
+
+#[macro_export]
+macro_rules! impl_op_same_as {
+    () => {
+        fn same_as(&self, other: &Op) -> bool {
+            if let Some(other) = other.downcast_ref::<Self>() {
+                self == other
+            } else {
+                false
+            }
+        }
+    }
+}
+

@@ -30,8 +30,13 @@ impl Node {
     pub fn op_as<O: ops::Op>(&self) -> Option<&O> {
         self.op().downcast_ref::<O>()
     }
+
     pub fn op_is<O: ops::Op>(&self) -> bool {
         self.op_as::<O>().is_some()
+    }
+
+    pub fn same_as(&self, other: &Node) -> bool {
+        self.inputs == other.inputs && self.op.same_as(other.op.as_ref())
     }
 }
 
@@ -84,19 +89,17 @@ impl Default for Model {
     fn default() -> Model {
         Model {
             ctx: Arc::new(::context::DefaultContext),
-            nodes: vec!(),
+            nodes: vec![],
             nodes_by_name: HashMap::new(),
-            inputs: vec!(),
-            outputs: vec!(),
+            inputs: vec![],
+            outputs: vec![],
         }
     }
 }
 
 impl Model {
     pub fn with_context(self, ctx: Arc<Context>) -> Model {
-        Model {
-            ctx, ..self
-        }
+        Model { ctx, ..self }
     }
 
     pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TractResult<usize> {
@@ -121,7 +124,19 @@ impl Model {
         Ok(id)
     }
 
+    pub fn clear_inputs(&mut self, node: usize) -> TractResult<()> {
+        for ix in 0..self.nodes[node].inputs.len() {
+            let previous = self.nodes[node].inputs[ix];
+            self.nodes[previous.node].outputs[previous.slot].successors.retain(|&succ| succ.node != node);
+        }
+        self.nodes[node].inputs.clear();
+        Ok(())
+    }
+
     pub fn add_edge(&mut self, outlet: OutletId, inlet: InletId) -> TractResult<()> {
+        if let Some(previous) = self.nodes[inlet.node].inputs.get(inlet.slot).cloned() {
+            self.nodes[previous.node].outputs[previous.slot].successors.retain(|&succ| succ != inlet);
+        }
         {
             let prec = &mut self.nodes[outlet.node];
             while prec.outputs.len() <= outlet.slot {
@@ -151,7 +166,8 @@ impl Model {
             .map(|s| {
                 self.node_by_name(s.as_ref())
                     .map(|n| OutletId::new(n.id, 0))
-            }).collect::<TractResult<_>>()?;
+            })
+            .collect::<TractResult<_>>()?;
         self.inputs = ids;
         for &i in &self.inputs {
             self.nodes[i.node].inputs.clear();
@@ -169,7 +185,8 @@ impl Model {
             .map(|s| {
                 self.node_by_name(s.as_ref())
                     .map(|n| OutletId::new(n.id, 0))
-            }).collect::<TractResult<_>>()?;
+            })
+            .collect::<TractResult<_>>()?;
         self.outputs = ids;
         Ok(())
     }
@@ -203,7 +220,8 @@ impl Model {
             .map(|(ix, outlet)| (ix, outlet, self.fact(*outlet).unwrap()))
             .inspect(|(ix, outlet, fact)| {
                 trace!("Input {} from {:?}: {:?}", ix, outlet, fact);
-            }).map(|(_, _, fact)| fact)
+            })
+            .map(|(_, _, fact)| fact)
             .collect();
 
         let outputs = node
@@ -238,7 +256,8 @@ impl Model {
                     .iter()
                     .enumerate()
                     .map(move |(ix, outlet)| (OutletId::new(node, ix), outlet))
-            }).filter(|(_, o)| !o.fact.datum_type.is_concrete() || !o.fact.shape.is_concrete())
+            })
+            .filter(|(_, o)| !o.fact.datum_type.is_concrete() || !o.fact.shape.is_concrete())
             .map(|(id, _)| id)
             .collect())
     }
@@ -248,8 +267,14 @@ impl Model {
         for pass in self.ctx.optimizer_passes() {
             info!("Optization pass: {:?}", pass);
             pass.pass(&mut self)?;
+            if cfg!(debug_assertions) {
+                self.check_edges()?;
+            }
         }
         let mut model = ::optim::compact(&self)?;
+        if cfg!(debug_assertions) {
+            model.check_edges()?;
+        }
         model.analyse()?;
         Ok(model)
     }
@@ -272,6 +297,10 @@ impl Model {
 
     pub fn node(&self, id: usize) -> &Node {
         &self.nodes[id]
+    }
+
+    pub fn node_mut(&mut self, id: usize) -> &mut Node {
+        &mut self.nodes[id]
     }
 
     pub fn nodes(&self) -> &[Node] {
@@ -315,5 +344,38 @@ impl Model {
 
     pub fn into_arc(self) -> Arc<Model> {
         Arc::new(self)
+    }
+
+    pub fn check_edges(&self) -> TractResult<()> {
+        for node in self.eval_order()? {
+            let node = &self.nodes[node];
+            for (ix, input) in node.inputs.iter().enumerate() {
+                let prec = &self.nodes[input.node];
+                if !prec.outputs[input.slot]
+                    .successors
+                    .contains(&InletId::new(node.id, ix))
+                {
+                    bail!(
+                        "Mismatched oncoming edge, node:{} input:{} to {:?} not reciprocated",
+                        node.id,
+                        ix,
+                        prec
+                    )
+                }
+            }
+            for (ix, output) in node.outputs.iter().enumerate() {
+                for succ in &output.successors {
+                    if self.nodes[succ.node].inputs[succ.slot] != OutletId::new(node.id, ix) {
+                        bail!(
+                            "Mismatched outgoing edge, node:{} output:{} to {:?} not reciprocated",
+                            node.id,
+                            ix,
+                            succ
+                        )
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }

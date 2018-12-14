@@ -36,9 +36,15 @@ impl super::OptimizerPass for PropConst {
                         use model::ModelDsl;
                         let konst = model.fact(source)?.concretize().unwrap();
                         let id = model.nodes().len();
-                        trace!("   Replacing node {} input {} by a constant instead of {:?}", node, ix, source);
+                        trace!(
+                            "   Replacing node {} input {} by a constant instead of {:?}",
+                            node,
+                            ix,
+                            source
+                        );
                         let id = model.add_const(format!("Const-{}", id), konst.clone())?;
                         model.add_edge(OutletId::new(id, 0), InletId::new(node, ix))?;
+                        model.check_edges()?;
                         model.set_fact(OutletId::new(id, 0), konst.into())?;
                         replaced += 1;
                     } else {

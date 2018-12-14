@@ -58,7 +58,7 @@ impl OpState for DelayState {
     }
 }
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, PartialEq)]
 pub struct Delay {
     input_fact: PulsedTensorFact,
     delay: usize,
@@ -69,6 +69,8 @@ impl Op for Delay {
     fn name(&self) -> Cow<str> {
         "Delay".into()
     }
+
+    impl_op_same_as!();
 }
 
 fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
