@@ -77,3 +77,49 @@ where
         Ok(output)
     }
 }
+
+impl<D> Op for ConvGemm<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+{
+    fn name(&self) -> Cow<str> {
+        "ConvGemm".into()
+    }
+}
+
+impl<D> StatelessOp for ConvGemm<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+{
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let input = args_1!(inputs);
+        let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
+        Ok(tvec!(output.into()))
+    }
+}
+
+impl<D> InferenceRulesOp for ConvGemm<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
+{
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, D::datum_type())?;
+        s.equals(&outputs[0].datum_type, D::datum_type())?;
+        s.equals(
+            &inputs[0].shape,
+            ShapeFact::from(&[
+                self.k,
+                self.n * self.patch.input_shape.n_dim() * self.group
+            ]),
+        )?;
+        s.equals(&outputs[0].shape, ShapeFact::from(&*self.full_output_shape))?;
+        Ok(())
+    }
+}

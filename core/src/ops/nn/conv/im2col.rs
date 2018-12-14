@@ -50,3 +50,42 @@ impl<D: Datum> Im2Col<D> {
         Ok(mega_matrix)
     }
 }
+
+impl<D: Datum> Op for Im2Col<D> {
+    fn name(&self) -> Cow<str> {
+        "Im2col".into()
+    }
+}
+
+impl<D: Datum> StatelessOp for Im2Col<D> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let output = self.im2col(&inputs[0].to_array_view::<D>()?)?;
+        Ok(tvec!(output.into()))
+    }
+}
+
+impl<D: Datum> InferenceRulesOp for Im2Col<D> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, D::datum_type())?;
+        s.equals(&outputs[0].datum_type, D::datum_type())?;
+        s.equals(
+            &inputs[0].shape,
+            ShapeFact::from(&*self.patch.input_shape.shape),
+        )?;
+        s.equals(
+            &outputs[0].shape,
+            ShapeFact::from(&[
+                self.k,
+                self.n * self.patch.input_shape.n_dim() * self.group
+            ]),
+        )?;
+        Ok(())
+    }
+}
