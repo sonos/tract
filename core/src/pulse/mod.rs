@@ -6,7 +6,7 @@ use ops::prelude::*;
 
 pub mod delay;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PulsedTensorFact {
     pub dt: DatumType,
     pub shape: TVec<usize>,

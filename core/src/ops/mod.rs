@@ -138,6 +138,10 @@ pub trait Op:
     fn noutputs(&self) -> usize {
         1
     }
+
+    fn same_as(&self, _other: &Op) -> bool {
+        false
+    }
 }
 
 pub trait InferenceOp {

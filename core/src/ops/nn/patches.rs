@@ -2,7 +2,7 @@ use super::{DataFormat, DataShape, PaddingSpec};
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Patch {
     pub dilations: TVec<usize>,
     pub kernel_spatial_shape: TVec<usize>,

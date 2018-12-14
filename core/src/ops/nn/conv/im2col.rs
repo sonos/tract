@@ -3,7 +3,7 @@ use ops::prelude::*;
 
 use ops::nn::Patch;
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, Clone, new, PartialEq)]
 pub(super) struct Im2Col<D: Datum> {
     pub patch: Patch,
     pub m: usize,
@@ -55,6 +55,8 @@ impl<D: Datum> Op for Im2Col<D> {
     fn name(&self) -> Cow<str> {
         "Im2col".into()
     }
+
+    impl_op_same_as!();
 }
 
 impl<D: Datum> StatelessOp for Im2Col<D> {
