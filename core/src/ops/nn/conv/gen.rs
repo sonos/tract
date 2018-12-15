@@ -2,8 +2,8 @@ use ops::prelude::*;
 
 use super::ConvUnary;
 use dim::DimLike;
-use ops::nn::DataFormat;
 use ops::nn::conv::KernelFormat;
+use ops::nn::DataFormat;
 use ops::nn::PaddingSpec;
 
 #[derive(Debug, Clone, new)]
@@ -32,7 +32,11 @@ impl ::std::default::Default for Conv {
 }
 
 impl Conv {
-    fn output_shape<D: DimLike, ID: Into<D> + Copy + std::fmt::Debug>(&self, ishape: &[D], kshape: &[ID]) -> TVec<D> {
+    fn output_shape<D: DimLike, ID: Into<D> + Copy + std::fmt::Debug>(
+        &self,
+        ishape: &[D],
+        kshape: &[ID],
+    ) -> TVec<D> {
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_fmt.shape(ishape);
         let spatial_rank = ishape.hw_rank();
@@ -46,7 +50,7 @@ impl Conv {
         );
         let channels_out = match self.kernel_fmt {
             KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len()-1],
+            KernelFormat::HWIO => kshape[kshape.len() - 1],
         };
         result[ishape.c_axis()] = channels_out.into();
         result[ishape.hw_axes()].copy_from_slice(&computed.output);
@@ -158,7 +162,7 @@ impl InferenceRulesOp for Conv {
                 s.given(&inputs[1].rank, move |s, krank| {
                     let filter_o = match self.kernel_fmt {
                         KernelFormat::OIHW => &inputs[1].shape[0],
-                        KernelFormat::HWIO => &inputs[1].shape[krank as usize-1],
+                        KernelFormat::HWIO => &inputs[1].shape[krank as usize - 1],
                     };
                     s.equals(&inputs[2].shape[0], filter_o)
                 })?
@@ -173,7 +177,7 @@ impl InferenceRulesOp for Conv {
             };
             let filter_i = match self.kernel_fmt {
                 KernelFormat::OIHW => &inputs[1].shape[1],
-                KernelFormat::HWIO => &inputs[1].shape[krank as usize-2],
+                KernelFormat::HWIO => &inputs[1].shape[krank as usize - 2],
             };
             s.equals(input_c.bex(), self.group as i32 * filter_i.bex())
         })?;
@@ -192,8 +196,8 @@ impl InferenceRulesOp for Conv {
 mod test {
     use super::*;
     use ndarray::*;
-    use ops::nn::DataFormat::NHWC;
     use ops::nn::conv::KernelFormat::HWIO;
+    use ops::nn::DataFormat::NHWC;
 
     #[test]
     fn test_infer_with_known_kshape() {
@@ -265,7 +269,8 @@ mod test {
             .eval(tvec!(
                 ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into(),
                 ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into()
-            )).unwrap();
+            ))
+            .unwrap();
         assert_eq!(
             res,
             tvec!(Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
@@ -298,13 +303,30 @@ mod test {
     }
 
     #[test]
+    fn test_eval_nhwc_3() {
+        ::setup_test_logger();
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::Valid, None, 1);
+        let i: Tensor = Tensor::from(arr4(&[[
+            [[0.0f32, 1.0], [2.0, 3.0]],
+            [[10.0, 11.0], [12.0, 13.0]],
+        ]]));
+        let k: Tensor = Tensor::from(arr4(&[[[
+            [1.0f32, 0.0],
+            [0.0, 1.0],
+        ]]]));
+        let res = op.eval(tvec!(i.clone().into(), k.into())).unwrap();
+        assert_eq!(res, tvec!(i.into()));
+    }
+
+    #[test]
     fn test_eval_nhwc_batch() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
             .eval(tvec!(
                 arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),
                 arr4(&[[[[1.0f32]]]]).into()
-            )).unwrap();
+            ))
+            .unwrap();
         assert_eq!(result, tvec!(arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into()));
     }
 
@@ -330,7 +352,8 @@ mod test {
             .eval(tvec!(
                 arr3(&[[[2.0f32], [0.0f32]]]).into(),
                 arr3(&[[[1.0f32]]]).into()
-            )).unwrap();
+            ))
+            .unwrap();
         assert_eq!(result, tvec!(arr3(&[[[2.0f32], [0.0f32]]]).into()));
     }
 
@@ -356,7 +379,8 @@ mod test {
             .eval(tvec!(
                 arr3(&[[[2.0f32]], [[0.0f32]]]).into(),
                 arr3(&[[[1.0f32]]]).into()
-            )).unwrap();
+            ))
+            .unwrap();
         assert_eq!(result, tvec!(arr3(&[[[2.0f32]], [[0.0f32]]]).into()));
     }
 
@@ -381,8 +405,9 @@ mod test {
         let result = op
             .eval(tvec!(
                 arr3(&[[[2.0f32, 0.0f32]]]).into(),
-                arr3(&[[[1.0f32], [0.0f32]] ]).into()
-            )).unwrap();
+                arr3(&[[[1.0f32], [0.0f32]]]).into()
+            ))
+            .unwrap();
         assert_eq!(result, tvec!(arr3(&[[[2.0f32]]]).into()));
     }
 }

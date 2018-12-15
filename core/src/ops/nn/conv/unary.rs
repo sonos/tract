@@ -63,7 +63,8 @@ impl ConvUnary {
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        trace!("input {:#?}", input_full_shape);
+        trace!("input {:?} {:?}", self.data_fmt, input_full_shape);
+        trace!("kernl {:?} {:?}", self.kernel_fmt, self.kernel.shape());
         let output_channels:usize = match self.kernel_fmt {
             KernelFormat::OIHW => self.kernel.shape()[0],
             KernelFormat::HWIO => *self.kernel.shape().last().unwrap(),
@@ -71,7 +72,7 @@ impl ConvUnary {
 
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..(input_full_shape.len()-2)];
 
-        trace!("kernel spatial shape {:#?}", kernel_spatial_shape);
+        trace!("kernel spatial shape {:?}", kernel_spatial_shape);
 
         let patch = Patch::new(
             self.data_fmt,
@@ -87,17 +88,23 @@ impl ConvUnary {
         let kernel = self.kernel.to_array_view::<T>()?;
 
         let m = output_channels / self.group;
-        let k = kernel.len() / output_channels / self.group;
-        let n = patch.output_spatial_shape.iter().cloned().product::<usize>() / self.group;
+        let k = kernel.len() / output_channels;
+        let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
+
+        trace!("Gemm iters={} m={} k={} n={}",
+               patch.input_shape.n_dim() * self.group,
+               m, k, n);
+
+        let kernel_reshaped = (output_channels, k);
 
         let kernel: Array2<T> = match self.kernel_fmt {
             KernelFormat::HWIO => {
             let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
             permutation.extend(0..(kernel.ndim() - 2));
             let permuted = kernel.permuted_axes(permutation);
-            Array2::<T>::from_shape_vec((m, k), permuted.iter().cloned().collect::<Vec<_>>())?
+            Array2::<T>::from_shape_vec(kernel_reshaped, permuted.iter().cloned().collect::<Vec<_>>())?
         }
-            KernelFormat::OIHW => kernel.into_shape((m, k))?.to_owned(),
+            KernelFormat::OIHW => kernel.into_shape(kernel_reshaped)?.to_owned(),
         };
 
         let bias = self.bias.as_ref()
@@ -109,7 +116,9 @@ impl ConvUnary {
             .inside_out()?;
 
         let im2col = Im2Col::new(patch.clone(), m, k, n, self.group);
+        trace!("im2col: {:?}", im2col);
         let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, kernel, bias, self.group);
+        trace!("cvgemm: {:?}", conv_gemm);
 
         Ok((im2col, conv_gemm))
     }

@@ -47,6 +47,7 @@ impl<D: Datum> Im2Col<D> {
                 }
             }
         }
+        trace!("im2col: {:?}", mega_matrix);
         Ok(mega_matrix)
     }
 }
@@ -83,10 +84,7 @@ impl<D: Datum> InferenceRulesOp for Im2Col<D> {
         )?;
         s.equals(
             &outputs[0].shape,
-            ShapeFact::from(&[
-                self.k,
-                self.n * self.patch.input_shape.n_dim() * self.group
-            ]),
+            ShapeFact::from(&[self.k, self.n * self.patch.input_shape.n_dim() * self.group]),
         )?;
         Ok(())
     }
