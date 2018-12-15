@@ -11,7 +11,7 @@ use ops::nn::{DataFormat, Patch};
  *  * O rows            * O rows        * O rows
  *  * I*h*w cols        * I*w*h         * I/g*w*h
  * B: data
- *                      * N blocks      
+ *                      * N blocks
  *  * I*w*h rows        * I*w*h         * I*w*h
  *  * H*W cols          * H*W           * H*W
  * Gemm
@@ -19,7 +19,7 @@ use ops::nn::{DataFormat, Patch};
  *  * m=O               * m=O           * m=O/g
  *  * k=I*h*w           * k=I*h*w       * k=I/g*h*w
  *  * n=H*W             * n=H*W         * n=H*W
- *                   
+ *
  *                                +------------+
  *                                | B input    |
  *                                +------------+
@@ -83,7 +83,10 @@ where
                 trace!("C: {:?}", c_panel);
                 trace!("Ct: {:?}", c_panel.t().into_shape(&*shape));
                 match self.patch.input_shape.fmt {
-                    DataFormat::NHWC => output_subview.iter_mut().zip(c_panel.t().iter()).for_each(|(o,c)| *o = *c),
+                    DataFormat::NHWC => output_subview
+                        .iter_mut()
+                        .zip(c_panel.t().iter())
+                        .for_each(|(o, c)| *o = *c),
                     DataFormat::NCHW => output_subview.assign(&c_panel.view().into_shape(shape)?),
                 };
             }
