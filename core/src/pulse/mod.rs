@@ -223,6 +223,7 @@ mod tests {
         let t_input = Tensor::from(arr3(&[[input]]));
 
         let model = model.into_optimized().unwrap();
+
         assert_eq!(model.nodes().len(), 2);
         let plan = ::plan::SimplePlan::new(&model).unwrap();
         let outputs = plan.run(tvec!(t_input.clone())).unwrap();

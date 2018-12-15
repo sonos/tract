@@ -3,12 +3,13 @@ use ops::prelude::*;
 use super::ConvUnary;
 use dim::DimLike;
 use ops::nn::DataFormat;
+use ops::nn::conv::KernelFormat;
 use ops::nn::PaddingSpec;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv {
     pub(super) data_fmt: DataFormat,
-    pub(super) kernel_is_hwio: bool, // default is oihw (onnx)
+    pub(super) kernel_fmt: KernelFormat,
     pub(super) dilations: Option<TVec<usize>>,
     kernel_shape: Option<TVec<usize>>,
     pub(super) padding: PaddingSpec,
@@ -20,7 +21,7 @@ impl ::std::default::Default for Conv {
     fn default() -> Conv {
         Conv {
             data_fmt: DataFormat::default(),
-            kernel_is_hwio: false,
+            kernel_fmt: KernelFormat::default(),
             dilations: None,
             kernel_shape: None,
             padding: PaddingSpec::default(),
@@ -31,28 +32,23 @@ impl ::std::default::Default for Conv {
 }
 
 impl Conv {
-    pub(super) fn axis_kernel_spatial(&self) -> usize {
-        if self.kernel_is_hwio {
-            0
-        } else {
-            2
-        }
-    }
-
-    fn output_shape<D: DimLike, ID: Into<D> + Copy>(&self, ishape: &[D], kshape: &[ID]) -> TVec<D> {
+    fn output_shape<D: DimLike, ID: Into<D> + Copy + std::fmt::Debug>(&self, ishape: &[D], kshape: &[ID]) -> TVec<D> {
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_fmt.shape(ishape);
         let spatial_rank = ishape.hw_rank();
         let ones = tvec![1; spatial_rank];
-        let kernel_spatial_shape = &kshape[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
+        let kernel_spatial_shape = &kshape[self.kernel_fmt.h_axis()..][..spatial_rank];
         let computed = self.padding.compute(
             ishape.hw_dims(),
             kernel_spatial_shape,
             self.dilations.as_ref().unwrap_or(&ones),
             self.strides.as_ref().unwrap_or(&ones),
         );
-        let channels_out = kshape[(self.kernel_is_hwio as usize) * (kshape.len() - 1)].into();
-        result[ishape.c_axis()] = channels_out;
+        let channels_out = match self.kernel_fmt {
+            KernelFormat::OIHW => kshape[0],
+            KernelFormat::HWIO => kshape[kshape.len()-1],
+        };
+        result[ishape.c_axis()] = channels_out.into();
         result[ishape.hw_axes()].copy_from_slice(&computed.output);
         result
     }
@@ -142,7 +138,7 @@ impl InferenceRulesOp for Conv {
             s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;
             for (ix, dim) in kshape.iter().enumerate() {
                 s.equals(
-                    &inputs[1].shape[ix + self.axis_kernel_spatial()],
+                    &inputs[1].shape[ix + self.kernel_fmt.h_axis()],
                     TDim::from(*dim as i32),
                 )?;
             }
@@ -160,10 +156,9 @@ impl InferenceRulesOp for Conv {
                 s.equals(&inputs[2].rank, 1)?;
                 s.equals(&outputs[0].datum_type, &inputs[2].datum_type)?;
                 s.given(&inputs[1].rank, move |s, krank| {
-                    let filter_o = if self.kernel_is_hwio {
-                        &inputs[1].shape[krank as usize - 1]
-                    } else {
-                        &inputs[1].shape[0] // oihw
+                    let filter_o = match self.kernel_fmt {
+                        KernelFormat::OIHW => &inputs[1].shape[0],
+                        KernelFormat::HWIO => &inputs[1].shape[krank as usize-1],
                     };
                     s.equals(&inputs[2].shape[0], filter_o)
                 })?
@@ -176,10 +171,9 @@ impl InferenceRulesOp for Conv {
             } else {
                 &inputs[0].shape[1]
             };
-            let filter_i = if self.kernel_is_hwio {
-                &inputs[1].shape[krank as usize - 2]
-            } else {
-                &inputs[1].shape[1]
+            let filter_i = match self.kernel_fmt {
+                KernelFormat::OIHW => &inputs[1].shape[1],
+                KernelFormat::HWIO => &inputs[1].shape[krank as usize-2],
             };
             s.equals(input_c.bex(), self.group as i32 * filter_i.bex())
         })?;
@@ -197,8 +191,9 @@ impl InferenceRulesOp for Conv {
 #[cfg(test)]
 mod test {
     use super::*;
-    use ndarray::prelude::*;
+    use ndarray::*;
     use ops::nn::DataFormat::NHWC;
+    use ops::nn::conv::KernelFormat::HWIO;
 
     #[test]
     fn test_infer_with_known_kshape() {
@@ -219,7 +214,7 @@ mod test {
 
     #[test]
     fn test_infer_channels() {
-        let op = Conv::default();
+        let op = Conv::default(); // NCHW - OIHW
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(3, 2, 1, 1));
         let ofact = TensorFact::default();
@@ -249,8 +244,8 @@ mod test {
     }
 
     #[test]
-    fn test_infer_nhwc() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
+    fn test_infer_nhwc_1() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 2, 1));
         let ofact = TensorFact::default();
@@ -265,7 +260,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_1() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let res = op
             .eval(tvec!(
                 ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into(),
@@ -278,8 +273,23 @@ mod test {
     }
 
     #[test]
+    fn test_infer_nhwc_2() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 2));
+        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 2, 1));
+        let ofact = TensorFact::default();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
+        assert_eq!(
+            facts.1,
+            tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 1)))
+        );
+    }
+
+    #[test]
     fn test_eval_nhwc_2() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
         let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
         let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
@@ -288,13 +298,91 @@ mod test {
     }
 
     #[test]
-    fn test_eval_nhwc() {
-        let op = Conv::new(NHWC, true, None, None, PaddingSpec::SameUpper, None, 1);
+    fn test_eval_nhwc_batch() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
             .eval(tvec!(
                 arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),
                 arr4(&[[[[1.0f32]]]]).into()
             )).unwrap();
         assert_eq!(result, tvec!(arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into()));
+    }
+
+    #[test]
+    fn test_infer_ntc_simple() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
+        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
+        let ofact = TensorFact::default();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
+        assert_eq!(
+            facts.1,
+            tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1)))
+        );
+    }
+
+    #[test]
+    fn test_eval_ntc_simple() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let result = op
+            .eval(tvec!(
+                arr3(&[[[2.0f32], [0.0f32]]]).into(),
+                arr3(&[[[1.0f32]]]).into()
+            )).unwrap();
+        assert_eq!(result, tvec!(arr3(&[[[2.0f32], [0.0f32]]]).into()));
+    }
+
+    #[test]
+    fn test_infer_ntc_batch() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1));
+        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
+        let ofact = TensorFact::default();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
+        assert_eq!(
+            facts.1,
+            tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1)))
+        );
+    }
+
+    #[test]
+    fn test_eval_ntc_batch() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let result = op
+            .eval(tvec!(
+                arr3(&[[[2.0f32]], [[0.0f32]]]).into(),
+                arr3(&[[[1.0f32]]]).into()
+            )).unwrap();
+        assert_eq!(result, tvec!(arr3(&[[[2.0f32]], [[0.0f32]]]).into()));
+    }
+
+    #[test]
+    fn test_infer_ntc_channel() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2));
+        let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
+        let ofact = TensorFact::default();
+        let facts = op
+            .infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact))
+            .unwrap();
+        assert_eq!(
+            facts.1,
+            tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1)))
+        );
+    }
+
+    #[test]
+    fn test_eval_ntc_channel() {
+        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let result = op
+            .eval(tvec!(
+                arr3(&[[[2.0f32, 0.0f32]]]).into(),
+                arr3(&[[[1.0f32], [0.0f32]] ]).into()
+            )).unwrap();
+        assert_eq!(result, tvec!(arr3(&[[[2.0f32]]]).into()));
     }
 }

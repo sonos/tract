@@ -95,7 +95,7 @@ fn undo_space_to_batch(model: &mut Model, node_id: usize) -> TractResult<bool> {
         let conv_op = some_or_ok_false!(model.node(node_id).op_as::<ConvUnary>());
         let new_op = ConvUnary {
             data_fmt: conv_op.data_fmt,
-            kernel_is_hwio: conv_op.kernel_is_hwio,
+            kernel_fmt: conv_op.kernel_fmt,
             padding: conv_op.padding.clone(), // FIXME
             dilations: s2b_op.block_shape.iter().map(|&i| i as usize).collect(),
             strides: conv_op.strides.clone(),
@@ -139,7 +139,7 @@ mod test {
         use tract_core::ops::nn::*;
         Box::new(Conv::new(
             DataFormat::NHWC,
-            true,
+            tract_core::ops::nn::KernelFormat::HWIO,
             None,
             None,
             if valid {

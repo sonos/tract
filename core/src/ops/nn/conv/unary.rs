@@ -7,11 +7,12 @@ use super::Conv;
 use super::im2col::Im2Col;
 use super::conv_gemm::ConvGemm;
 use ops::nn::{DataFormat, PaddingSpec, Patch};
+use ops::nn::conv::KernelFormat;
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
     pub data_fmt: DataFormat,
-    pub kernel_is_hwio: bool, // default is oihw (onnx)
+    pub kernel_fmt: KernelFormat,
     pub padding: PaddingSpec,
     pub dilations: TVec<usize>,
     pub strides: TVec<usize>,
@@ -46,7 +47,7 @@ impl ConvUnary {
 
         Ok(ConvUnary {
             data_fmt: conv.data_fmt,
-            kernel_is_hwio: conv.kernel_is_hwio,
+            kernel_fmt: conv.kernel_fmt,
             padding: conv.padding.clone(),
             dilations,
             strides,
@@ -62,17 +63,15 @@ impl ConvUnary {
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        let output_channels:usize = if self.kernel_is_hwio {
-            *self.kernel.shape().last().unwrap()
-        } else {
-            self.kernel.shape()[0]
+        trace!("input {:#?}", input_full_shape);
+        let output_channels:usize = match self.kernel_fmt {
+            KernelFormat::OIHW => self.kernel.shape()[0],
+            KernelFormat::HWIO => *self.kernel.shape().last().unwrap(),
         };
 
-        let kernel_spatial_shape = if self.kernel_is_hwio {
-            &self.kernel.shape()[..(input_full_shape.len() - 2)]
-        } else {
-            &self.kernel.shape()[2..]
-        };
+        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..(input_full_shape.len()-2)];
+
+        trace!("kernel spatial shape {:#?}", kernel_spatial_shape);
 
         let patch = Patch::new(
             self.data_fmt,
@@ -87,17 +86,18 @@ impl ConvUnary {
 
         let kernel = self.kernel.to_array_view::<T>()?;
 
-        let k = kernel.len() / output_channels;
-        let m = output_channels;
-        let n = patch.output_spatial_shape.iter().product();
+        let m = output_channels / self.group;
+        let k = kernel.len() / output_channels / self.group;
+        let n = patch.output_spatial_shape.iter().cloned().product::<usize>() / self.group;
 
-        let kernel: Array2<T> = if self.kernel_is_hwio {
+        let kernel: Array2<T> = match self.kernel_fmt {
+            KernelFormat::HWIO => {
             let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
             permutation.extend(0..(kernel.ndim() - 2));
             let permuted = kernel.permuted_axes(permutation);
             Array2::<T>::from_shape_vec((m, k), permuted.iter().cloned().collect::<Vec<_>>())?
-        } else {
-            kernel.into_shape((m, k))?.to_owned()
+        }
+            KernelFormat::OIHW => kernel.into_shape((m, k))?.to_owned(),
         };
 
         let bias = self.bias.as_ref()
@@ -109,7 +109,7 @@ impl ConvUnary {
             .inside_out()?;
 
         let im2col = Im2Col::new(patch.clone(), m, k, n, self.group);
-        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_is_hwio, kernel, bias, self.group);
+        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, kernel, bias, self.group);
 
         Ok((im2col, conv_gemm))
     }
@@ -148,8 +148,7 @@ impl ConvUnary {
         {
             return Ok(None);
         }
-        let kernel_spatial_shape =
-            &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..shape.hw_rank()];
+        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         if kernel_spatial_shape[geo_axis] != 1 {
             return Ok(None);
         }
@@ -163,12 +162,12 @@ impl ConvUnary {
         }
         let kernel_shape: TVec<usize> = copy_rm_nth(
             self.kernel.shape().clone(),
-            geo_axis + 2 * (!self.kernel_is_hwio as usize),
+            geo_axis + self.kernel_fmt.h_axis()
         );
         let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
         let new_op = ConvUnary {
             data_fmt: self.data_fmt,
-            kernel_is_hwio: self.kernel_is_hwio,
+            kernel_fmt: self.kernel_fmt,
             padding: self.padding.rm_axis(geo_axis),
             dilations: copy_rm_nth(&self.dilations, geo_axis),
             strides: copy_rm_nth(&self.strides, geo_axis),
@@ -197,8 +196,7 @@ impl Op for ConvUnary {
             return Ok(None)
         }
         let spatial_rank = self.full_input_shape.len() - 2;
-        let kernel_spatial_shape =
-            &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
+        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if kernel_spatial_shape.iter().product::<usize>() == 1
             && self.dilations.iter().all(|&x| x == 1)
             && self.strides.iter().all(|&x| x == 1)
@@ -206,7 +204,7 @@ impl Op for ConvUnary {
             && self.bias.is_none()
             && (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
         {
-            if self.kernel_is_hwio && self.data_fmt == DataFormat::NHWC {
+            if self.kernel_fmt == KernelFormat::HWIO && self.data_fmt == DataFormat::NHWC {
                 use ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
@@ -259,7 +257,7 @@ impl Op for ConvUnary {
             let spatial_rank = self.full_input_shape.len() - 2;
             let geo_axis = input.axis - shape.h_axis();
             let kernel_spatial_shape =
-                &self.kernel.shape()[2 * (!self.kernel_is_hwio as usize)..][..spatial_rank];
+                &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
             let kernel_len = (kernel_spatial_shape[geo_axis] - 1)
                 * self.strides[geo_axis]
                 * self.dilations[geo_axis];

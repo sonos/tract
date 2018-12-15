@@ -2,6 +2,7 @@ use ndarray::prelude::*;
 use ops::prelude::*;
 
 use ops::nn::{DataFormat, PaddingSpec, Patch};
+use ops::nn::conv::KernelFormat;
 use super::im2col::Im2Col;
 use super::conv_gemm::ConvGemm;
 
@@ -22,7 +23,7 @@ where
 {
     pub fn new(
         data_fmt: DataFormat,
-        kernel_is_hwio: bool,
+        kernel_fmt: KernelFormat,
         dilations: TVec<usize>,
         strides: TVec<usize>,
         padding: PaddingSpec,
@@ -31,17 +32,12 @@ where
         bias: Option<ArrayViewD<D>>,
         group: usize,
     ) -> TractResult<FixedParamsConv<D>> {
-        let output_channels = if kernel_is_hwio {
-            *kernel.shape().last().unwrap()
-        } else {
-            kernel.shape()[0]
+        let output_channels = match kernel_fmt {
+            KernelFormat::HWIO => *kernel.shape().last().unwrap(),
+            KernelFormat::OIHW => kernel.shape()[0],
         };
 
-        let kernel_spatial_shape = if kernel_is_hwio {
-            &kernel.shape()[..(input_full_shape.len() - 2)]
-        } else {
-            &kernel.shape()[2..]
-        };
+        let kernel_spatial_shape = &kernel.shape()[kernel_fmt.h_axis()..][..(input_full_shape.len() - 2)];
 
         let patch = Patch::new(
             data_fmt,

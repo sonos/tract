@@ -51,7 +51,7 @@ struct DataJson {
 }
 
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
-    // setup_test_logger();
+    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -94,7 +94,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
-    println!("Model: {:#?}", model);
+    trace!("Optimized model: {:#?}", model);
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
