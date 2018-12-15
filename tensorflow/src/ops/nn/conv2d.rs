@@ -8,14 +8,6 @@ use tract_core::ops::prelude::*;
 #[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum + LinalgScalar>(LocalPatch, PhantomData<T>);
 
-/*
-pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
-    let dtype = pb.get_attr_datum_type("T")?;
-    let patch = LocalPatch::build(pb)?;
-    Ok(boxed_new!(Conv2D(dtype)(patch)))
-}
-*/
-
 pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     use tract_core::ops::nn::*;
     let data_format = if pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC") == b"NHWC" {
@@ -41,7 +33,7 @@ pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     };
     Ok(Box::new(Conv::new(
         data_format,
-        true,
+        KernelFormat::HWIO,
         None,
         None,
         padding,
@@ -160,7 +152,7 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_core::ops::nn::{Conv, DataFormat, PaddingSpec};
+    use tract_core::ops::nn::{Conv, DataFormat, PaddingSpec, KernelFormat};
     use tract_core::Tensor;
 
     fn mk(sizes: &[usize]) -> Tensor {
@@ -170,31 +162,10 @@ mod tests {
             .into()
     }
 
-    /*
-    fn verify(input: &[usize], filter: &[usize], stride: usize, padding: Padding, expect: &[f32]) {
-        let result = Conv2D::<f32>::new(LocalPatch {
-            padding: padding,
-            h_stride: stride,
-            v_stride: stride,
-            _data_format: DataFormat::NHWC,
-        }).eval(tvec![mk(input).into(), mk(filter).into()])
-            .unwrap()
-            .remove(0);
-        assert_eq!(expect.len(), result.shape().iter().product::<usize>());
-        let found = result
-            .into_tensor()
-            .take_f32s()
-            .unwrap()
-            .into_shape(expect.len())
-            .unwrap();
-        assert_eq!(expect, found.as_slice().unwrap());
-    }
-    */
-
     fn make_conv(h_stride: usize, v_stride: usize, padding: Padding) -> Box<Op> {
         Box::new(Conv::new(
             DataFormat::NHWC,
-            true,
+            KernelFormat::HWIO,
             None,
             None,
             match padding {

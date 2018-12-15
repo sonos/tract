@@ -14,7 +14,7 @@ mod reduce;
 pub use self::arg_max_min::ArgMaxMin;
 pub use self::avgpool::AvgPool;
 pub use self::batch_norm::BatchNorm;
-pub use self::conv::{Conv, ConvUnary, FixedParamsConv};
+pub use self::conv::{Conv, ConvUnary, KernelFormat};
 pub use self::data_formats::{DataFormat, DataShape};
 pub use self::global_pools::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
 pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};

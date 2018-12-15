@@ -1,5 +1,5 @@
 use tract_core::ops as tractops;
-use tract_core::ops::nn::{DataFormat, PaddingSpec};
+use tract_core::ops::nn::{DataFormat, PaddingSpec, KernelFormat};
 use tract_core::ops::prelude::*;
 
 use ops::OpRegister;
@@ -129,7 +129,7 @@ pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
     let group = node.get_attr_opt_int("group")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::Conv::new(
         DataFormat::NCHW,
-        false,
+        KernelFormat::OIHW,
         dilations(node)?,
         kernel_shape,
         pad(node)?,
