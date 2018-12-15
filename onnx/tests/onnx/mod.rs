@@ -51,7 +51,7 @@ struct DataJson {
 }
 
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
-    setup_test_logger();
+//    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
