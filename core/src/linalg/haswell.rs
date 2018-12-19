@@ -38,6 +38,36 @@ impl Kernel for KerFma8x8 {
 
 pub struct KerFma16x6;
 
+impl KerFma16x6 {
+    #[target_feature(enable = "fma")]
+    unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
+        use std::arch::x86_64::*;
+        let mut ab1 = [_mm256_setzero_ps(); 6];
+        let mut ab2 = [_mm256_setzero_ps(); 6];
+        for i in 0..k {
+            let ar1 = _mm256_load_ps(a.offset((i * 16) as isize));
+            let ar2 = _mm256_load_ps(a.offset((i * 16 + 8) as isize));
+            for j in 0usize..6 {
+                let br = _mm256_set1_ps(*b.offset((i * 6 + j) as isize));
+                if j == 0 {
+                }
+                ab1[j] = _mm256_fmadd_ps(ar1, br, ab1[j]);
+                if j == 0 {
+                }
+                ab2[j] = _mm256_fmadd_ps(ar2, br, ab2[j]);
+            }
+        }
+        for x in 0..6 {
+            let mut col = [0.0; 16];
+            _mm256_store_ps(col.as_mut_ptr(), ab1[x]);
+            _mm256_store_ps(col.as_mut_ptr().offset(8), ab2[x]);
+            for y in 0..16 {
+                *c.offset((y * rsc + x) as isize) = col[y];
+            }
+        }
+    }
+}
+
 impl Kernel for KerFma16x6 {
     #[inline(always)]
     fn mr() -> usize {
@@ -47,34 +77,9 @@ impl Kernel for KerFma16x6 {
     fn nr() -> usize {
         6
     }
-    #[inline(never)]
+    #[inline(always)]
     fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
-        unsafe {
-            use std::arch::x86_64::*;
-            let mut ab1 = [_mm256_setzero_ps(); 6];
-            let mut ab2 = [_mm256_setzero_ps(); 6];
-            for i in 0..k {
-                let ar1 = _mm256_loadu_ps(a.offset((i * 16) as isize));
-                let ar2 = _mm256_loadu_ps(a.offset((i * 16 + 8) as isize));
-                for j in 0usize..6 {
-                    let br = _mm256_set1_ps(*b.offset((i * 6 + j) as isize));
-                    if j == 0 {
-                    }
-                    ab1[j] = _mm256_fmadd_ps(ar1, br, ab1[j]);
-                    if j == 0 {
-                    }
-                    ab2[j] = _mm256_fmadd_ps(ar2, br, ab2[j]);
-                }
-            }
-            for x in 0..6 {
-                let mut col = [0.0; 16];
-                _mm256_storeu_ps(col.as_mut_ptr(), ab1[x]);
-                _mm256_storeu_ps(col.as_mut_ptr().offset(8), ab2[x]);
-                for y in 0..16 {
-                    *c.offset((y * rsc + x) as isize) = col[y];
-                }
-            }
-        }
+        unsafe { Self::fma(k, a, b, c, rsc) }
     }
 }
 
