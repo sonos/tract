@@ -49,11 +49,12 @@ pub fn mat_mul_f32(
     rsc: isize,
     csc: isize,
 ) {
-    if is_x86_feature_detected!("fma") {
-        two_loops::two_loops::<haswell::KerFma16x6>(m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc)
-    } else {
-        two_loops::two_loops::<fallback::Fallback>(m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc)
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+        if is_x86_feature_detected!("fma") {
+            return two_loops::two_loops::<haswell::KerFma16x6>(m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc)
+        }
     }
+    two_loops::two_loops::<fallback::Fallback>(m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc)
 }
 
 #[cfg(test)]
