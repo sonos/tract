@@ -45,6 +45,8 @@ accelerate = ["blas", "accelerate-src", "blas-src/accelerate" ]
 
 [dev-dependencies]
 criterion = "0.2"
+matrixmultiply = "0.2"
+proptest = "0.8"
 simplelog = "0.5"
 
 # [[bench]]

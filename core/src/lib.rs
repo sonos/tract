@@ -70,9 +70,13 @@ pub extern crate ndarray;
 extern crate num;
 #[macro_use]
 extern crate maplit;
+#[cfg(test)]
+extern crate matrixmultiply;
 #[macro_use]
 extern crate objekt;
-
+#[cfg(test)]
+#[macro_use]
+extern crate proptest;
 #[cfg(feature = "serialize")]
 extern crate serde;
 #[cfg(test)]
@@ -97,6 +101,7 @@ pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod f16;
+pub mod linalg;
 pub mod model;
 pub mod optim;
 pub mod plan;
