@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "linalg",
     "core",
     "tensorflow",
     "tensorflow/inceptionv3",

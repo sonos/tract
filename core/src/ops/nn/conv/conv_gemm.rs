@@ -74,7 +74,8 @@ where
                         .kernel
                         .slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
                 let b = &mega_matrix.slice_axis(Axis(1), (mm_offset..(mm_offset + self.n)).into());
-                ::linalg::mat_mul_f32(self.m, self.k, self.n,
+
+                tract_linalg::mat_mul_f32(self.m, self.k, self.n,
                     a.as_ptr() as *const f32, a.strides()[0], a.strides()[1],
                     b.as_ptr() as *const f32, b.strides()[0], b.strides()[1],
                     c_panel.as_mut_ptr() as *mut f32, c_panel.strides()[0], c_panel.strides()[1]);

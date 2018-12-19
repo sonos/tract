@@ -1,0 +1,13 @@
+[package]
+name = "tract-linalg"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+edition = "2018"
+
+[dependencies]
+log = "0.4"
+
+[dev-dependencies]
+criterion = "0.2"
+matrixmultiply = "0.2"
+proptest = "0.8"
