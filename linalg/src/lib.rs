@@ -1,11 +1,11 @@
+use log::warn;
+
 pub mod fallback;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod haswell;
 mod two_loops;
 
 pub use self::two_loops::two_loops;
-
-use ndarray::*;
 
 pub trait Kernel {
     #[inline(always)]
@@ -14,26 +14,6 @@ pub trait Kernel {
     fn mr() -> usize;
     #[inline(always)]
     fn nr() -> usize;
-}
-
-pub fn mat_mul_ndarray_f32(a: &ArrayView2<f32>, b: &ArrayView2<f32>, c: &mut ArrayViewMut2<f32>) {
-    assert_eq!(a.rows(), c.rows());
-    assert_eq!(b.rows(), a.cols());
-    assert_eq!(b.cols(), c.cols());
-    mat_mul_f32(
-        a.rows(),
-        a.cols(),
-        b.cols(),
-        a.as_ptr() as *const f32,
-        a.strides()[0],
-        a.strides()[1],
-        b.as_ptr() as *const f32,
-        b.strides()[0],
-        b.strides()[1],
-        c.as_mut_ptr() as *mut f32,
-        c.strides()[0],
-        c.strides()[1],
-    );
 }
 
 pub fn mat_mul_f32(
@@ -50,9 +30,30 @@ pub fn mat_mul_f32(
     rsc: isize,
     csc: isize,
 ) {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
         if is_x86_feature_detected!("fma") {
-            return two_loops::two_loops::<haswell::KerFma16x6>(m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc)
+            if a as usize % 32 != 0 {
+                warn!("FMA kernel not use because a is not 32-byte aligned");
+                return two_loops::two_loops::<fallback::Fallback>(
+                    m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc,
+                );
+            }
+            if b as usize % 32 != 0 {
+                warn!("FMA kernel not use because b is not 32-byte aligned");
+                return two_loops::two_loops::<fallback::Fallback>(
+                    m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc,
+                );
+            }
+            if c as usize % 32 != 0 {
+                warn!("FMA kernel not use because c is not 32-byte aligned");
+                return two_loops::two_loops::<fallback::Fallback>(
+                    m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc,
+                );
+            }
+            return two_loops::two_loops::<haswell::KerFma16x6>(
+                m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc,
+            );
         }
     }
     two_loops::two_loops::<fallback::Fallback>(m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc)
@@ -62,9 +63,10 @@ pub fn mat_mul_f32(
 mod test {
     use super::*;
     use proptest::prelude::*;
+    use proptest::*;
 
     fn strat(k_fact: usize) -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
-        (0usize..35, 0usize..35, 0usize..35)
+        (1usize..35, 1usize..35, 1usize..35)
             .prop_flat_map(move |(m, n, k)| {
                 (
                     Just(m),
@@ -83,14 +85,14 @@ mod test {
             let mut expect = vec!(0.0f32; m*n);
             let mut found = vec!(0.0f32; m*n);
             unsafe {
-                ::matrixmultiply::sgemm(  m, k, n,
-                                        1.0, a.as_ptr(), k as _, 1,
-                                        b.as_ptr(), n as _, 1,
-                                        0.0, expect.as_mut_ptr(), n as _, 1);
                 mat_mul_f32(m, k, n,
                             a.as_ptr(), k as isize, 1,
                             b.as_ptr(), n as isize, 1,
                             found.as_mut_ptr(), n as isize, 1);
+                ::matrixmultiply::sgemm(  m, k, n,
+                                        1.0, a.as_ptr(), k as _, 1,
+                                        b.as_ptr(), n as _, 1,
+                                        0.0, expect.as_mut_ptr(), n as _, 1);
             }
             prop_assert_eq!(expect, found);
         }

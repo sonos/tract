@@ -53,6 +53,8 @@ extern crate blis_src;
 #[macro_use]
 extern crate derive_new;
 #[macro_use]
+extern crate downcast_rs;
+#[macro_use]
 extern crate error_chain;
 #[cfg(feature = "image_ops")]
 extern crate image;
@@ -85,8 +87,8 @@ extern crate smallvec;
 #[cfg(feature = "serialize")]
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
-extern crate downcast_rs;
+
+extern crate tract_linalg;
 
 #[macro_use]
 pub mod macros;
@@ -101,7 +103,6 @@ pub mod datum;
 pub mod dim;
 pub mod errors;
 pub mod f16;
-pub mod linalg;
 pub mod model;
 pub mod optim;
 pub mod plan;
