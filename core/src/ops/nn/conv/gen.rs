@@ -304,7 +304,7 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_3() {
-        ::setup_test_logger();
+//        ::setup_test_logger();
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::Valid, None, 1);
         let i: Tensor = Tensor::from(arr4(&[[
             [[0.0f32, 1.0], [2.0, 3.0]],
