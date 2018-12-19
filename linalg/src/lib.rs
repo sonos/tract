@@ -1,4 +1,5 @@
-use log::warn;
+#[macro_use]
+extern crate log;
 
 pub mod fallback;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
