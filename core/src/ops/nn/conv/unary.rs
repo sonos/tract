@@ -58,11 +58,15 @@ impl ConvUnary {
             group,
         })
     }
-
-    fn to_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col<T>, ConvGemm<T>)>
+/*
+ * FIXME
+    fn to_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col<T>, ConvGemm<f32>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
+    */
+    fn to_im2col_pair(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col, ConvGemm<f32>)> {
+        type T = f32;
         trace!("input {:?} {:?}", self.data_fmt, input_full_shape);
         trace!("kernl {:?} {:?}", self.kernel_fmt, self.kernel.shape());
         let output_channels:usize = match self.kernel_fmt {
@@ -107,17 +111,28 @@ impl ConvUnary {
             KernelFormat::OIHW => kernel.into_shape(kernel_reshaped)?.to_owned(),
         };
 
-        let bias = self.bias.as_ref()
+        let mut packed_kernels = vec!();
+        let co_per_group = output_channels / self.group;
+        for g in 0..self.group {
+            use tract_linalg::Kernel;
+            use tract_linalg::fallback::Fallback as MM;
+            let subkernel = kernel.slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
+            let mut packed = unsafe { Array1::uninitialized(self.group * MM::packed_a_len(m, k)) };
+            MM::pack_a(m, k, packed.as_mut_ptr(), subkernel.as_ptr() as *const f32, subkernel.strides()[0], subkernel.strides()[1]);
+            packed_kernels.push(packed.to_vec());
+        }
+
+        let bias:Option<ArrayD<f32>> = self.bias.as_ref()
             .map(|bias| -> TractResult<_> {
                 let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
                 bias_shape[1] = output_channels;
-                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
+                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.map(|&f| f as f32).to_owned())
             })
             .inside_out()?;
 
         let im2col = Im2Col::new(patch.clone(), m, k, n, self.group);
         trace!("im2col: {:?}", im2col);
-        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, kernel, bias, self.group);
+        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, packed_kernels, bias, self.group);
         trace!("cvgemm: {:?}", conv_gemm);
 
         Ok((im2col, conv_gemm))
@@ -127,7 +142,7 @@ impl ConvUnary {
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        let (op1, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
+        let (op1, op2) = self.to_im2col_pair(input_full_shape)?;
         Ok((Box::new(op1), Box::new(op2)))
     }
 
@@ -136,7 +151,7 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
         let input = args_1!(inputs);
-        let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
+        let (im2col, conv_gemm) = self.to_im2col_pair(input.shape())?;
         let mm = im2col.im2col(&input.to_array_view()?)?;
         let output = conv_gemm.conv_gemm(&mm.view())?;
         Ok(tvec!(output.into()))
@@ -228,7 +243,9 @@ impl Op for ConvUnary {
                     .iter()
                     .map(|d| d.to_integer().unwrap() as usize)
                     .collect();
-                let (op1, op2) = dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
+                // FIXME
+//                let (op1, op2) = dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
+                let (op1, op2) = self.to_boxed_im2col_pair::<f32>(&shape)?;
                 return Ok(Some(ReducedOpRewire {
                     ops: vec!(op1, op2),
                     rewired: tvec!(0)

@@ -41,7 +41,7 @@ where
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,
-    pub kernel: Array2<D>,
+    pub packed_kernels: Vec<Vec<D>>,
     pub bias: Option<ArrayD<D>>,
     pub group: usize,
 }
@@ -52,7 +52,7 @@ where
 {
     pub(super) fn conv_gemm<'i>(
         &'i self,
-        mega_matrix: &'i ArrayView2<'i, D>,
+        packed_input: &'i ArrayView1<'i, D>,
     ) -> TractResult<ArrayD<D>> {
         let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
         let input_shape = &self.patch.input_shape;
@@ -63,23 +63,22 @@ where
         let co_per_group = self.full_output_shape[input_shape.c_axis()] / self.group;
         for i in 0..input_shape.n_dim() {
             for g in 0..self.group {
-                let mm_offset = self.n * (g + (i * self.group));
                 let mut output_subview = output.view_mut();
                 output_subview.slice_axis_inplace(Axis(input_shape.n_axis()), (i..(i + 1)).into());
                 output_subview.slice_axis_inplace(
                     Axis(input_shape.c_axis()),
                     (g * co_per_group..(g + 1) * co_per_group).into(),
                 );
-                let a = &self
-                        .kernel
-                        .slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
-                let b = &mega_matrix.slice_axis(Axis(1), (mm_offset..(mm_offset + self.n)).into());
+                let a = &self.packed_kernels[g];
 
-                tract_linalg::mat_mul_f32(self.m, self.k, self.n,
-                    a.as_ptr() as *const f32, a.strides()[0], a.strides()[1],
-                    b.as_ptr() as *const f32, b.strides()[0], b.strides()[1],
+                use tract_linalg::Kernel;
+                use tract_linalg::fallback::Fallback as MM;
+                unsafe {
+                MM::mat_mul_prepacked(self.m, self.k, self.n,
+                    a.as_ptr() as *const f32,
+                    packed_input.as_ptr().offset(((self.group*i+g) * MM::packed_b_len(self.k, self.n)) as isize) as *const f32,
                     c_panel.as_mut_ptr() as *mut f32, c_panel.strides()[0], c_panel.strides()[1]);
-
+                }
                 let shape = output_subview.shape().to_vec();
                 match self.patch.input_shape.fmt {
                     DataFormat::NHWC => output_subview
