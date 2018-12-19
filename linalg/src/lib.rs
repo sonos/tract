@@ -7,13 +7,59 @@ mod two_loops;
 
 pub use self::two_loops::two_loops;
 
-pub trait Kernel {
+pub trait Kernel: Sized {
     #[inline(always)]
     fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize);
     #[inline(always)]
     fn mr() -> usize;
     #[inline(always)]
     fn nr() -> usize;
+
+    fn packed_a_len(m: usize, k: usize) -> usize {
+        (m + Self::mr() - 1) / Self::mr() * Self::mr() * k
+    }
+
+    fn pack_a(m: usize, k: usize, pa: *mut f32, a: *const f32, rsa: isize, csa: isize) {
+        two_loops::pack_a(pa, a, rsa, csa, Self::mr(), m, k)
+    }
+
+    fn packed_b_len(k: usize, n: usize) -> usize {
+        (n + Self::nr() - 1) / Self::nr() * Self::nr() * k
+    }
+
+    fn pack_b(k: usize, n: usize, pb: *mut f32, b: *const f32, rsb: isize, csb: isize) {
+        two_loops::pack_b(pb, b, rsb, csb, Self::nr(), k, n)
+    }
+
+    fn mat_mul(
+        m: usize,
+        k: usize,
+        n: usize,
+        a: *const f32,
+        rsa: isize,
+        csa: isize,
+        b: *const f32,
+        rsb: isize,
+        csb: isize,
+        c: *mut f32,
+        rsc: isize,
+        csc: isize,
+    ) {
+        two_loops::two_loops::<Self>(m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc)
+    }
+
+    fn mat_mul_prepacked(
+        m: usize,
+        k: usize,
+        n: usize,
+        pa: *const f32,
+        pb: *const f32,
+        c: *mut f32,
+        rsc: isize,
+        csc: isize,
+    ) {
+        two_loops::two_loops_prepacked::<Self>(m, k, n, pa, pb, c, rsc, csc)
+    }
 }
 
 pub fn mat_mul_f32(
@@ -81,7 +127,7 @@ mod test {
 
     proptest! {
         #[test]
-        fn mat_mul((m, k, n, ref a, ref b) in strat(1)) {
+        fn mat_mul_e2e((m, k, n, ref a, ref b) in strat(1)) {
             let mut expect = vec!(0.0f32; m*n);
             let mut found = vec!(0.0f32; m*n);
             unsafe {
@@ -102,11 +148,12 @@ mod test {
         #[test]
         fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat(1)) {
             use super::fallback::Fallback as K;
-            let mut packed_a = vec!(0.0f32; two_loops::packed_a_panels(K::mr(), m) * K::mr() * k);
-            two_loops::pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1, K::mr(), m, k);
 
-            let mut packed_b = vec!(0.0f32; two_loops::packed_b_panels(K::nr(), n) * K::nr() * k);
-            two_loops::pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1, K::nr(), n, k);
+            let mut packed_a = vec!(0.0f32; K::packed_a_len(m,k));
+            K::pack_a(m, k, packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+
+            let mut packed_b = vec!(0.0f32; K::packed_b_len(k,n));
+            K::pack_b(k, n, packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
             let mut expect = vec!(0.0f32; m*n);
             let mut found = vec!(0.0f32; m*n);

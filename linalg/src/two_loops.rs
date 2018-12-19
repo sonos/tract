@@ -38,11 +38,7 @@ pub fn pack_panel_b(
     }
 }
 
-pub fn packed_b_panels(nr: usize, n: usize) -> usize {
-    (n + nr - 1) / nr
-}
-
-pub fn pack_b(pb: *mut f32, b: *const f32, rsb: isize, csb: isize, nr: usize, n: usize, k: usize) {
+pub fn pack_b(pb: *mut f32, b: *const f32, rsb: isize, csb: isize, nr: usize, k: usize, n: usize) {
     unsafe {
         for p in 0..(n / nr) {
             pack_panel_b(
@@ -67,10 +63,6 @@ pub fn pack_b(pb: *mut f32, b: *const f32, rsb: isize, csb: isize, nr: usize, n:
             )
         }
     }
-}
-
-pub fn packed_a_panels(mr: usize, m: usize) -> usize {
-    (m + mr - 1) / mr
 }
 
 pub fn pack_a(pa: *mut f32, a: *const f32, rsa: isize, csa: isize, mr: usize, m: usize, k: usize) {
@@ -117,8 +109,8 @@ pub fn two_loops<K: Kernel>(
     let mr = K::mr();
     let nr = K::nr();
     let mut pa = vec![0.0; mr * k];
-    let mut pb = vec![0.0; nr * k * packed_b_panels(nr, n)];
-    pack_b(pb.as_mut_ptr(), b, rsb, csb, nr, n, k);
+    let mut pb = vec![0.0; K::packed_b_len(k, n)];
+    pack_b(pb.as_mut_ptr(), b, rsb, csb, nr, k, n);
     let mut tmpc = vec![0.0; mr * nr];
     unsafe {
         for ia in 0..m / mr {
@@ -261,7 +253,6 @@ pub fn two_loops_prepacked<K: Kernel>(
                 }
             }
             if n % nr != 0 {
-                println!("kikou");
                 K::kernel(
                     k,
                     pa.offset((m / mr * mr * k) as isize),
@@ -269,11 +260,8 @@ pub fn two_loops_prepacked<K: Kernel>(
                     tmpc.as_mut_ptr(),
                     nr,
                 );
-                println!("tmpc: {:?}", tmpc);
                 for y in 0..(m % mr) {
                     for x in 0..(n % nr) {
-                        println!("x:{} y:{} = {}", x, y, tmpc[y*nr+x]);
-                        println!("rsc: {} csc: {}", rsc, csc);
                         *c.offset(
                             (y + m / mr * mr) as isize * rsc + (x + n / nr * nr) as isize * csc,
                         ) = tmpc[y * nr + x];
