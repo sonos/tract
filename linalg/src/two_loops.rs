@@ -69,6 +69,37 @@ pub fn pack_b(pb: *mut f32, b: *const f32, rsb: isize, csb: isize, nr: usize, n:
     }
 }
 
+pub fn packed_a_panels(mr: usize, m: usize) -> usize {
+    (m + mr - 1) / mr
+}
+
+pub fn pack_a(pa: *mut f32, a: *const f32, rsa: isize, csa: isize, mr: usize, m: usize, k: usize) {
+    unsafe {
+        for p in 0..(m / mr) {
+            pack_panel_a(
+                pa.offset((p * mr * k) as isize),
+                a.offset((p * mr) as isize * rsa),
+                rsa,
+                csa,
+                mr,
+                mr,
+                k,
+            )
+        }
+        if m % mr != 0 {
+            pack_panel_a(
+                pa.offset((m / mr * mr * k) as isize),
+                a.offset((m / mr * mr) as isize * rsa),
+                rsa,
+                csa,
+                mr,
+                m % mr,
+                k,
+            )
+        }
+    }
+}
+
 pub fn two_loops<K: Kernel>(
     m: usize,
     k: usize,
@@ -86,41 +117,11 @@ pub fn two_loops<K: Kernel>(
     let mr = K::mr();
     let nr = K::nr();
     let mut pa = vec![0.0; mr * k];
-    let mut pbs = (0..n / nr)
-        .map(|i| {
-            let mut pb = vec![0.0; nr * k];
-            unsafe {
-                pack_panel_b(
-                    pb.as_mut_ptr(),
-                    b.offset((nr * i) as isize * csb),
-                    rsb,
-                    csb,
-                    nr,
-                    nr,
-                    k,
-                );
-            }
-            pb
-        })
-        .collect::<Vec<_>>();
-    if n % nr != 0 {
-        let mut pb = vec![0.0; nr * k];
-        unsafe {
-            pack_panel_b(
-                pb.as_mut_ptr(),
-                b.offset((n / nr * nr) as isize * csb),
-                rsb,
-                csb,
-                nr,
-                n % nr,
-                k,
-            );
-        }
-        pbs.push(pb);
-    }
+    let mut pb = vec![0.0; nr * k * packed_b_panels(nr, n)];
+    pack_b(pb.as_mut_ptr(), b, rsb, csb, nr, n, k);
     let mut tmpc = vec![0.0; mr * nr];
-    for ia in 0..m / mr {
-        unsafe {
+    unsafe {
+        for ia in 0..m / mr {
             pack_panel_a(
                 pa.as_mut_ptr(),
                 a.offset((mr * ia) as isize * rsa),
@@ -130,29 +131,25 @@ pub fn two_loops<K: Kernel>(
                 mr,
                 k,
             );
-        }
-        for ib in 0..n / nr {
-            unsafe {
+            for ib in 0..n / nr {
                 K::kernel(
                     k,
                     pa.as_ptr(),
-                    pbs[ib].as_ptr(),
+                    pb.as_ptr().offset((ib * k * nr) as isize),
                     c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
                     rsc as usize, // FIXME
                 );
             }
-        }
-        if n % nr != 0 {
-            K::kernel(
-                k,
-                pa.as_ptr(),
-                pbs.last().unwrap().as_ptr(),
-                tmpc.as_mut_ptr(),
-                nr,
-            );
-            for y in 0..mr {
-                for x in 0..(n % nr) {
-                    unsafe {
+            if n % nr != 0 {
+                K::kernel(
+                    k,
+                    pa.as_ptr(),
+                    pb.as_ptr().offset((n / nr * k * nr) as isize),
+                    tmpc.as_mut_ptr(),
+                    nr,
+                );
+                for y in 0..mr {
+                    for x in 0..(n % nr) {
                         *c.offset(
                             (mr * ia + y) as isize * rsc + (x + n / nr * nr) as isize * csc,
                         ) = tmpc[y * nr + x];
@@ -160,10 +157,8 @@ pub fn two_loops<K: Kernel>(
                 }
             }
         }
-    }
-    if m % mr != 0 {
-        let row = m - m % mr;
-        unsafe {
+        if m % mr != 0 {
+            let row = m - m % mr;
             pack_panel_a(
                 pa.as_mut_ptr(),
                 a.offset(row as isize * rsa),
@@ -173,31 +168,115 @@ pub fn two_loops<K: Kernel>(
                 m % mr,
                 k,
             );
-        }
-        for ib in 0..n / nr {
-            K::kernel(k, pa.as_ptr(), pbs[ib].as_ptr(), tmpc.as_mut_ptr(), nr);
-            for y in 0..(m % mr) {
-                for x in 0..nr {
-                    unsafe {
+            for ib in 0..n / nr {
+                K::kernel(
+                    k,
+                    pa.as_ptr(),
+                    pb.as_ptr().offset((ib * nr * k) as isize),
+                    tmpc.as_mut_ptr(),
+                    nr,
+                );
+                for y in 0..(m % mr) {
+                    for x in 0..nr {
                         *c.offset((y + row) as isize * rsc + (x + ib * nr) as isize * csc) =
                             tmpc[y * nr + x];
                     }
                 }
             }
-        }
-        if n % nr != 0 {
-            K::kernel(
-                k,
-                pa.as_ptr(),
-                pbs.last().unwrap().as_ptr(),
-                tmpc.as_mut_ptr(),
-                nr,
-            );
-            for y in 0..(m % mr) {
-                for x in 0..(n % nr) {
-                    unsafe {
+            if n % nr != 0 {
+                K::kernel(
+                    k,
+                    pa.as_ptr(),
+                    pb.as_ptr().offset((n / nr * nr * k) as isize),
+                    tmpc.as_mut_ptr(),
+                    nr,
+                );
+                for y in 0..(m % mr) {
+                    for x in 0..(n % nr) {
                         *c.offset((y + row) as isize * rsc + (x + n / nr * nr) as isize * csc) =
                             tmpc[y * nr + x];
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn two_loops_prepacked<K: Kernel>(
+    m: usize,
+    k: usize,
+    n: usize,
+    pa: *const f32,
+    pb: *const f32,
+    c: *mut f32,
+    rsc: isize,
+    csc: isize,
+) {
+    let mr = K::mr();
+    let nr = K::nr();
+    let mut tmpc = vec![0.0; mr * nr];
+    unsafe {
+        for ia in 0..m / mr {
+            for ib in 0..n / nr {
+                K::kernel(
+                    k,
+                    pa.offset((ia * k * mr) as isize),
+                    pb.offset((ib * k * nr) as isize),
+                    c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
+                    rsc as usize, // FIXME
+                );
+            }
+            if n % nr != 0 {
+                K::kernel(
+                    k,
+                    pa.offset((ia * k * mr) as isize),
+                    pb.offset((n / nr * k * nr) as isize),
+                    tmpc.as_mut_ptr(),
+                    nr,
+                );
+                for y in 0..mr {
+                    for x in 0..(n % nr) {
+                        *c.offset(
+                            (mr * ia + y) as isize * rsc + (x + n / nr * nr) as isize * csc,
+                        ) = tmpc[y * nr + x];
+                    }
+                }
+            }
+        }
+        if m % mr != 0 {
+            for ib in 0..n / nr {
+                K::kernel(
+                    k,
+                    pa.offset((m / mr * mr * k) as isize),
+                    pb.offset((ib * nr * k) as isize),
+                    tmpc.as_mut_ptr(),
+                    nr,
+                );
+                for y in 0..(m % mr) {
+                    for x in 0..nr {
+                        *c.offset(
+                            (y + m / mr * mr) as isize * rsc + (x + ib * nr) as isize * csc,
+                        ) = tmpc[y * nr + x];
+                    }
+                }
+            }
+            if n % nr != 0 {
+                println!("kikou");
+                K::kernel(
+                    k,
+                    pa.offset((m / mr * mr * k) as isize),
+                    pb.offset((n / nr * nr * k) as isize),
+                    tmpc.as_mut_ptr(),
+                    nr,
+                );
+                println!("tmpc: {:?}", tmpc);
+                for y in 0..(m % mr) {
+                    for x in 0..(n % nr) {
+                        println!("x:{} y:{} = {}", x, y, tmpc[y*nr+x]);
+                        println!("rsc: {} csc: {}", rsc, csc);
+                        *c.offset(
+                            (y + m / mr * mr) as isize * rsc + (x + n / nr * nr) as isize * csc,
+                        ) = tmpc[y * nr + x];
                     }
                 }
             }

@@ -67,11 +67,11 @@ mod test {
 
     fn strat(k_fact: usize) -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
         (1usize..35, 1usize..35, 1usize..35)
-            .prop_flat_map(move |(m, n, k)| {
+            .prop_flat_map(move |(m, k, n)| {
                 (
                     Just(m),
-                    Just(n),
                     Just(k * k_fact),
+                    Just(n),
                     proptest::collection::vec((-10..10).prop_map(|a| a as f32), m * k * k_fact),
                     proptest::collection::vec((-10..10).prop_map(|a| a as f32), n * k * k_fact),
                 )
@@ -81,7 +81,7 @@ mod test {
 
     proptest! {
         #[test]
-        fn against_matrixmultiply((m,n,k, ref a, ref b) in strat(1)) {
+        fn mat_mul((m, k, n, ref a, ref b) in strat(1)) {
             let mut expect = vec!(0.0f32; m*n);
             let mut found = vec!(0.0f32; m*n);
             unsafe {
@@ -89,6 +89,29 @@ mod test {
                             a.as_ptr(), k as isize, 1,
                             b.as_ptr(), n as isize, 1,
                             found.as_mut_ptr(), n as isize, 1);
+                ::matrixmultiply::sgemm(  m, k, n,
+                                        1.0, a.as_ptr(), k as _, 1,
+                                        b.as_ptr(), n as _, 1,
+                                        0.0, expect.as_mut_ptr(), n as _, 1);
+            }
+            prop_assert_eq!(expect, found);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat(1)) {
+            use super::fallback::Fallback as K;
+            let mut packed_a = vec!(0.0f32; two_loops::packed_a_panels(K::mr(), m) * K::mr() * k);
+            two_loops::pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1, K::mr(), m, k);
+
+            let mut packed_b = vec!(0.0f32; two_loops::packed_b_panels(K::nr(), n) * K::nr() * k);
+            two_loops::pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1, K::nr(), n, k);
+
+            let mut expect = vec!(0.0f32; m*n);
+            let mut found = vec!(0.0f32; m*n);
+            unsafe {
+                two_loops::two_loops_prepacked::<K>(m, k, n, packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), n as isize, 1);
                 ::matrixmultiply::sgemm(  m, k, n,
                                         1.0, a.as_ptr(), k as _, 1,
                                         b.as_ptr(), n as _, 1,
