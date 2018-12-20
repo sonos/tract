@@ -1,8 +1,6 @@
-use super::Kernel;
+pub struct MatMul;
 
-pub struct Fallback;
-
-impl Kernel for Fallback {
+impl crate::frame::matmul::MatMul for MatMul {
     #[inline(always)]
     fn mr() -> usize {
         4

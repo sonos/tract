@@ -1,7 +1,3 @@
-#![allow(dead_code)]
-
-use super::Kernel;
-
 #[repr(align(32))]
 struct SixteenAlignedF32([f32; 16]);
 
@@ -31,7 +27,7 @@ unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
     }
 }
 
-impl Kernel for KerFma16x6 {
+impl crate::frame::matmul::MatMul for KerFma16x6 {
     #[inline(always)]
     fn mr() -> usize {
         16
