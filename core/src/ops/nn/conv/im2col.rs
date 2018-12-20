@@ -1,37 +1,35 @@
+use tract_linalg::MatMul;
+
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-use tract_linalg::fallback::Fallback as MM;
-use tract_linalg::Kernel;
-
 use ops::nn::Patch;
 
+use num::Zero;
+use std::ops::Mul;
+
 #[derive(Debug, Clone, new, PartialEq)]
-//pub(super) struct Im2Col<D: Datum> {
 pub(super) struct Im2Col {
     pub patch: Patch,
     pub m: usize,
     pub k: usize,
     pub n: usize,
     pub group: usize,
-    //    pub _phantom: PhantomData<D>,
+    pub packed_b_len: usize,
 }
 
-type D = f32;
-
 impl Im2Col {
-    pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, D>) -> TractResult<Array1<D>> {
-        use tract_linalg::fallback::Fallback as MM;
-        use tract_linalg::Kernel;
-
+    pub(super) fn im2col<'i, D: Datum + Mul + Zero>(
+        &'i self,
+        input: &'i ArrayViewD<'i, D>,
+        mm: &MatMul<D>,
+    ) -> TractResult<Array1<D>> {
         let input_shape = &self.patch.input_shape;
-        let mut mega_matrix = unsafe {
-            Array2::<D>::uninitialized((self.k, self.n))
-        };
+        let mut mega_matrix = unsafe { Array2::<D>::uninitialized((self.k, self.n)) };
 
-        let packed_b_len = MM::packed_b_len(self.k, self.n);
-        let mut packed =
-            unsafe { Array1::<D>::uninitialized(packed_b_len * self.group * input_shape.n_dim()) };
+        let mut packed = unsafe {
+            Array1::<D>::uninitialized(self.packed_b_len * self.group * input_shape.n_dim())
+        };
         let visitor = self.patch.wrap(input);
         let ci_per_group = input_shape.c_dim() / self.group;
         for i in 0..input_shape.n_dim() {
@@ -54,16 +52,16 @@ impl Im2Col {
                     }
                 }
                 unsafe {
-                    MM::pack_b(
+                    mm.pack_b(
                         self.k,
                         self.n,
                         packed
                             .as_mut_ptr()
-                            .offset(((i * self.group + g) * packed_b_len) as isize),
+                            .offset(((i * self.group + g) * self.packed_b_len) as isize),
                         mega_matrix.as_ptr(),
                         mega_matrix.strides()[0],
                         mega_matrix.strides()[1],
-                    )
+                    );
                 }
             }
         }
@@ -72,7 +70,6 @@ impl Im2Col {
     }
 }
 
-// impl<D: Datum> Op for Im2Col<D> {
 impl Op for Im2Col {
     fn name(&self) -> Cow<str> {
         "Im2col".into()
@@ -81,15 +78,17 @@ impl Op for Im2Col {
     impl_op_same_as!();
 }
 
-//impl<D: Datum> StatelessOp for Im2Col<D> {
 impl StatelessOp for Im2Col {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let output = self.im2col(&inputs[0].to_array_view::<D>()?)?;
-        Ok(tvec!(output.into()))
+        let tensor = match inputs[0].datum_type() {
+            DatumType::F32 => self
+                .im2col::<f32>(&inputs[0].to_array_view()?, tract_linalg::ops().smm.as_ref())?
+                .into(),
+        };
+        Ok(tvec!(tensor))
     }
 }
 
-//impl<D: Datum> InferenceRulesOp for Im2Col<D> {
 impl InferenceRulesOp for Im2Col {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
@@ -99,15 +98,14 @@ impl InferenceRulesOp for Im2Col {
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
-        s.equals(&inputs[0].datum_type, D::datum_type())?;
-        s.equals(&outputs[0].datum_type, D::datum_type())?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(
             &inputs[0].shape,
             ShapeFact::from(&*self.patch.input_shape.shape),
         )?;
         s.equals(
             &outputs[0].shape,
-            ShapeFact::from(&[MM::packed_b_len(self.k, self.n) * self.group]),
+            ShapeFact::from(&[self.packed_b_len * self.group]),
         )?;
         Ok(())
     }

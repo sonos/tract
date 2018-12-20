@@ -1,8 +1,13 @@
+use num::Zero;
+use std::ops::{Add, AddAssign, Mul};
+
 use ndarray::prelude::*;
 use ops::prelude::*;
 
 use ops::nn::conv::KernelFormat;
 use ops::nn::{DataFormat, Patch};
+
+use tract_linalg::MatMul;
 
 /*
  * group=1, N=1         N>1             g>1
@@ -33,7 +38,7 @@ use ops::nn::{DataFormat, Patch};
 #[derive(Debug, Clone, new)]
 pub struct ConvGemm<D>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+    D: Datum + Add + Mul + Zero + Copy,
 {
     pub patch: Patch,
     pub full_output_shape: TVec<usize>,
@@ -44,11 +49,12 @@ where
     pub packed_kernels: Vec<Vec<D>>,
     pub bias: Option<ArrayD<D>>,
     pub group: usize,
+    pub mm: &'static MatMul<D>,
 }
 
 impl<D> ConvGemm<D>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+    D: Datum + Add + Mul + Zero + Copy + AddAssign,
 {
     pub(super) fn conv_gemm<'i>(
         &'i self,
@@ -71,18 +77,16 @@ where
                 );
                 let a = &self.packed_kernels[g];
 
-                use tract_linalg::fallback::Fallback as MM;
-                use tract_linalg::Kernel;
                 unsafe {
-                    MM::mat_mul_prepacked(
+                    self.mm.mat_mul_prepacked(
                         self.m,
                         self.k,
                         self.n,
-                        a.as_ptr() as *const f32,
+                        a.as_ptr() as *const D,
                         packed_input.as_ptr().offset(
-                            ((self.group * i + g) * MM::packed_b_len(self.k, self.n)) as isize,
-                        ) as *const f32,
-                        c_panel.as_mut_ptr() as *mut f32,
+                            ((self.group * i + g) * self.mm.packed_b_len(self.k, self.n)) as isize,
+                        ),
+                        c_panel.as_mut_ptr(),
                         c_panel.strides()[0],
                         c_panel.strides()[1],
                     );

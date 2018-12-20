@@ -1,20 +1,28 @@
 #[macro_use]
 extern crate log;
+extern crate num;
 
-mod frame;
+pub mod f16;
+pub mod frame;
 mod generic;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86_64_fma;
 
-/*
-struct Ops {
-    smm: Box<frame::MatMul>,
+pub use self::frame::MatMul;
+
+pub struct Ops {
+    pub smm: Box<frame::MatMul<f32>>,
+    pub dmm: Box<frame::MatMul<f64>>,
 }
 
 pub fn generic() -> Ops {
     Ops {
-        smm: 
+        smm: Box::new(generic::SMatMul),
+        dmm: Box::new(generic::DMatMul),
     }
 }
-*/
+
+pub fn ops() -> Ops {
+    generic()
+}
