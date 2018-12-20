@@ -1,4 +1,4 @@
-use super::Kernel;
+use super::MatMul;
 
 #[inline(always)]
 pub fn pack_panel_a(
@@ -92,7 +92,7 @@ pub fn pack_a(pa: *mut f32, a: *const f32, rsa: isize, csa: isize, mr: usize, m:
     }
 }
 
-pub fn two_loops<K: Kernel>(
+pub fn two_loops<K: MatMul>(
     m: usize,
     k: usize,
     n: usize,
@@ -194,7 +194,7 @@ pub fn two_loops<K: Kernel>(
     }
 }
 
-pub fn two_loops_prepacked<K: Kernel>(
+pub fn two_loops_prepacked<K: MatMul>(
     m: usize,
     k: usize,
     n: usize,
