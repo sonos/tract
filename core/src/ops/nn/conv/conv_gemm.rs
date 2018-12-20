@@ -71,13 +71,21 @@ where
                 );
                 let a = &self.packed_kernels[g];
 
-                use tract_linalg::Kernel;
                 use tract_linalg::fallback::Fallback as MM;
+                use tract_linalg::Kernel;
                 unsafe {
-                MM::mat_mul_prepacked(self.m, self.k, self.n,
-                    a.as_ptr() as *const f32,
-                    packed_input.as_ptr().offset(((self.group*i+g) * MM::packed_b_len(self.k, self.n)) as isize) as *const f32,
-                    c_panel.as_mut_ptr() as *mut f32, c_panel.strides()[0], c_panel.strides()[1]);
+                    MM::mat_mul_prepacked(
+                        self.m,
+                        self.k,
+                        self.n,
+                        a.as_ptr() as *const f32,
+                        packed_input.as_ptr().offset(
+                            ((self.group * i + g) * MM::packed_b_len(self.k, self.n)) as isize,
+                        ) as *const f32,
+                        c_panel.as_mut_ptr() as *mut f32,
+                        c_panel.strides()[0],
+                        c_panel.strides()[1],
+                    );
                 }
                 let shape = output_subview.shape().to_vec();
                 match self.patch.input_shape.fmt {

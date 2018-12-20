@@ -127,7 +127,9 @@ impl Model {
     pub fn clear_inputs(&mut self, node: usize) -> TractResult<()> {
         for ix in 0..self.nodes[node].inputs.len() {
             let previous = self.nodes[node].inputs[ix];
-            self.nodes[previous.node].outputs[previous.slot].successors.retain(|&succ| succ.node != node);
+            self.nodes[previous.node].outputs[previous.slot]
+                .successors
+                .retain(|&succ| succ.node != node);
         }
         self.nodes[node].inputs.clear();
         Ok(())
@@ -135,7 +137,9 @@ impl Model {
 
     pub fn add_edge(&mut self, outlet: OutletId, inlet: InletId) -> TractResult<()> {
         if let Some(previous) = self.nodes[inlet.node].inputs.get(inlet.slot).cloned() {
-            self.nodes[previous.node].outputs[previous.slot].successors.retain(|&succ| succ != inlet);
+            self.nodes[previous.node].outputs[previous.slot]
+                .successors
+                .retain(|&succ| succ != inlet);
         }
         {
             let prec = &mut self.nodes[outlet.node];
@@ -264,7 +268,8 @@ impl Model {
 
     pub fn into_optimized(mut self) -> TractResult<Model> {
         self.analyse()?;
-        for pass in self.ctx.optimizer_passes() {
+        let passes = self.ctx.optimizer_passes();
+        for pass in passes {
             info!("Optization pass: {:?}", pass);
             pass.pass(&mut self)?;
             if cfg!(debug_assertions) {
@@ -377,5 +382,16 @@ impl Model {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test() {
+        fn is_sync<T: Sync>() {}
+        is_sync::<Model>();
     }
 }
