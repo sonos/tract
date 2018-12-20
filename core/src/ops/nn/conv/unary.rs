@@ -9,6 +9,8 @@ use super::conv_gemm::ConvGemm;
 use ops::nn::{DataFormat, PaddingSpec, Patch};
 use ops::nn::conv::KernelFormat;
 
+use tract_linalg::MatMul;
+
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
     pub data_fmt: DataFormat,
@@ -58,15 +60,10 @@ impl ConvUnary {
             group,
         })
     }
-/*
- * FIXME
-    fn to_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col<T>, ConvGemm<f32>)>
+    fn to_im2col_pair<T>(&self, input_full_shape: &[usize], mm: &'static MatMul<T>) -> TractResult<(Im2Col, ConvGemm<T>)>
     where
-        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq
     {
-    */
-    fn to_im2col_pair(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col, ConvGemm<f32>)> {
-        type T = f32;
         trace!("input {:?} {:?}", self.data_fmt, input_full_shape);
         trace!("kernl {:?} {:?}", self.kernel_fmt, self.kernel.shape());
         let output_channels:usize = match self.kernel_fmt {
@@ -95,6 +92,8 @@ impl ConvUnary {
         let k = kernel.len() / output_channels;
         let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
 
+        let packed_b_len = mm.packed_b_len(k, n);
+
         trace!("Gemm iters={} m={} k={} n={}",
                patch.input_shape.n_dim() * self.group,
                m, k, n);
@@ -114,46 +113,44 @@ impl ConvUnary {
         let mut packed_kernels = vec!();
         let co_per_group = output_channels / self.group;
         for g in 0..self.group {
-            use tract_linalg::Kernel;
-            use tract_linalg::fallback::Fallback as MM;
             let subkernel = kernel.slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
-            let mut packed = unsafe { Array1::uninitialized(self.group * MM::packed_a_len(m, k)) };
-            MM::pack_a(m, k, packed.as_mut_ptr(), subkernel.as_ptr() as *const f32, subkernel.strides()[0], subkernel.strides()[1]);
+            let mut packed = unsafe { Array1::uninitialized(self.group * mm.packed_a_len(m, k)) };
+            mm.pack_a(m, k, packed.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
             packed_kernels.push(packed.to_vec());
         }
 
-        let bias:Option<ArrayD<f32>> = self.bias.as_ref()
+        let bias:Option<ArrayD<T>> = self.bias.as_ref()
             .map(|bias| -> TractResult<_> {
                 let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
                 bias_shape[1] = output_channels;
-                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.map(|&f| f as f32).to_owned())
+                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
             })
             .inside_out()?;
 
-        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group);
+        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group, packed_b_len);
         trace!("im2col: {:?}", im2col);
-        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, packed_kernels, bias, self.group);
+        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, packed_kernels, bias, self.group, mm);
         trace!("cvgemm: {:?}", conv_gemm);
 
         Ok((im2col, conv_gemm))
     }
 
-    fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Box<Op>, Box<Op>)>
+    fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize], mm: &'static MatMul<T>) -> TractResult<(Box<Op>, Box<Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        let (op1, op2) = self.to_im2col_pair(input_full_shape)?;
+        let (op1, op2) = self.to_im2col_pair(input_full_shape, mm)?;
         Ok((Box::new(op1), Box::new(op2)))
     }
 
-    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>, mm: &'static MatMul<T>) -> TractResult<TVec<SharedTensor>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
         let input = args_1!(inputs);
-        let (im2col, conv_gemm) = self.to_im2col_pair(input.shape())?;
-        let mm = im2col.im2col(&input.to_array_view()?)?;
-        let output = conv_gemm.conv_gemm(&mm.view())?;
+        let (im2col, conv_gemm) = self.to_im2col_pair(input.shape(), mm)?;
+        let mega = im2col.im2col(&input.to_array_view()?, mm)?;
+        let output = conv_gemm.conv_gemm(&mega.view())?;
         Ok(tvec!(output.into()))
     }
 

@@ -5,7 +5,7 @@ use std::fmt;
 use TractResult;
 use tensor::Tensor;
 
-use f16::f16;
+use tract_linalg::f16::f16;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
