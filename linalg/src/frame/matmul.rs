@@ -344,10 +344,12 @@ mod test {
     proptest! {
         #[test]
         fn mat_mul_e2e((m, k, n, ref a, ref b) in strat(1)) {
+            use crate::generic::SMatMul as K;
+
             let mut expect = vec!(0.0; m*n);
             let mut found = vec!(0.0; m*n);
             unsafe {
-                mat_mul_f32(m, k, n,
+                K.mat_mul(m, k, n,
                             a.as_ptr(), k as isize, 1,
                             b.as_ptr(), n as isize, 1,
                             found.as_mut_ptr(), n as isize, 1);
@@ -363,18 +365,18 @@ mod test {
     proptest! {
         #[test]
         fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat(1)) {
-            use crate::generic::MatMul as K;
+            use crate::generic::SMatMul as K;
 
-            let mut packed_a = vec!(0.0f32; K::packed_a_len(m,k));
-            K::pack_a(m, k, packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+            let mut packed_a = vec!(0.0f32; K.packed_a_len(m,k));
+            K.pack_a(m, k, packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
-            let mut packed_b = vec!(0.0f32; K::packed_b_len(k,n));
-            K::pack_b(k, n, packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+            let mut packed_b = vec!(0.0f32; K.packed_b_len(k,n));
+            K.pack_b(k, n, packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
             let mut expect = vec!(0.0f32; m*n);
             let mut found = vec!(0.0f32; m*n);
             unsafe {
-                two_loops::two_loops_prepacked::<K, f32>(m, k, n, packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), n as isize, 1);
+                K.mat_mul_prepacked(m, k, n, packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), n as isize, 1);
                 ::matrixmultiply::sgemm(  m, k, n,
                                         1.0, a.as_ptr(), k as _, 1,
                                         b.as_ptr(), n as _, 1,
@@ -386,10 +388,11 @@ mod test {
 
     #[test]
     fn t_1x1x1() {
+        use crate::generic::SMatMul as K;
         let a = vec![2.0];
         let b = vec![-1.0];
         let mut c = vec![0.0];
-        mat_mul_f32(
+        K.mat_mul(
             1,
             1,
             1,

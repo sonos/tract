@@ -82,8 +82,9 @@ impl StatelessOp for Im2Col {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let tensor = match inputs[0].datum_type() {
             DatumType::F32 => self
-                .im2col::<f32>(&inputs[0].to_array_view()?, tract_linalg::ops().smm.as_ref())?
+                .im2col::<f32>(&inputs[0].to_array_view()?, &*tract_linalg::ops().smm)?
                 .into(),
+            _ => unimplemented!()
         };
         Ok(tvec!(tensor))
     }

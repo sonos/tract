@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate log;
 extern crate num;
 
@@ -23,6 +25,13 @@ pub fn generic() -> Ops {
     }
 }
 
-pub fn ops() -> Ops {
-    generic()
+
+lazy_static! {
+    static ref OPS: Ops = {
+        generic()
+    };
+}
+
+pub fn ops() -> &'static Ops {
+    &*OPS
 }
