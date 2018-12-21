@@ -29,17 +29,24 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
         let a_slice = make_slicer(&prefix.slice(), a.shape())?;
         let b_slice = make_slicer(&prefix.slice(), b.shape())?;
         let c_slice = make_slicer(&prefix.slice(), &*cshape)?;
-        let a1: ArrayViewD<T> = a.slice(&a_slice.as_ref());
-        let b1: ArrayViewD<T> = b.slice(&b_slice.as_ref());
-        let c1: ArrayViewMutD<T> = c.slice_mut(&c_slice.as_ref());
+        let a1: ArrayView2<T> = a.slice(&a_slice.as_ref()).into_dimensionality()?;
+        let b1: ArrayView2<T> = b.slice(&b_slice.as_ref()).into_dimensionality()?;
+        let mut c1: ArrayViewMut2<T> = c.slice_mut(&c_slice.as_ref()).into_dimensionality()?;
 
-        linalg::general_mat_mul(
-            T::one(),
-            &a1.into_dimensionality()?,
-            &b1.into_dimensionality()?,
-            T::zero(),
-            &mut c1.into_dimensionality()?,
-        );
+        if let Some(mm) = T::matmul() {
+            mm.mat_mul(a1.rows(), a1.cols(), b1.cols(),
+                a1.as_ptr(), a1.strides()[0], a1.strides()[1],
+                b1.as_ptr(), b1.strides()[0], b1.strides()[1],
+                c1.as_mut_ptr(), c1.strides()[0], c1.strides()[1])
+        } else {
+            linalg::general_mat_mul(
+                T::one(),
+                &a1,
+                &b1,
+                T::zero(),
+                &mut c1,
+            );
+        }
     }
     Ok(c.into())
 }

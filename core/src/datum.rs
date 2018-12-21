@@ -99,6 +99,8 @@ pub trait Datum:
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
+
+    fn matmul() -> Option<&'static tract_linalg::MatMul<Self>>;
 }
 
 pub (crate) trait TryInto<D: Datum> {
@@ -106,7 +108,8 @@ pub (crate) trait TryInto<D: Datum> {
 }
 
 macro_rules! datum {
-    ($t:ident, $v:ident) => {
+    ($t:ident, $v:ident) => { datum!($t, $v, None); };
+    ($t:ident, $v:ident, $matmul:expr) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
                 arr0(it).into()
@@ -120,6 +123,10 @@ macro_rules! datum {
 
             fn datum_type() -> DatumType {
                 DatumType::$v
+            }
+
+            fn matmul() -> Option<&'static tract_linalg::MatMul<Self>> {
+                $matmul
             }
         }
     };
@@ -212,8 +219,8 @@ impl TryInto<f16> for f64 {
 
 datum!(bool, Bool);
 datum!(f16, F16);
-datum!(f32, F32);
-datum!(f64, F64);
+datum!(f32, F32, Some(tract_linalg::ops().smm.as_ref()));
+datum!(f64, F64, Some(tract_linalg::ops().dmm.as_ref()));
 datum!(i8, I8);
 datum!(i16, I16);
 datum!(i32, I32);
