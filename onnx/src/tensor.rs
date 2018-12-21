@@ -1,5 +1,5 @@
 use pb::*;
-use tract_core::f16::f16;
+use tract_linalg::f16::f16;
 use tract_core::*;
 
 impl Tractify<TensorProto_DataType> for DatumType {

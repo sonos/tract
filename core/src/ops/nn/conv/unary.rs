@@ -240,9 +240,10 @@ impl Op for ConvUnary {
                     .iter()
                     .map(|d| d.to_integer().unwrap() as usize)
                     .collect();
-                // FIXME
-//                let (op1, op2) = dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
-                let (op1, op2) = self.to_boxed_im2col_pair::<f32>(&shape)?;
+                let (op1, op2) = match dt {
+                    DatumType::F32 => self.to_boxed_im2col_pair(&shape, tract_linalg::ops().smm.as_ref())?,
+                    _ => unimplemented!()
+                };
                 return Ok(Some(ReducedOpRewire {
                     ops: vec!(op1, op2),
                     rewired: tvec!(0)
@@ -320,7 +321,10 @@ impl Op for ConvUnary {
 
 impl StatelessOp for ConvUnary {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+        match inputs[0].datum_type() {
+            DatumType::F32 => self.eval_t(inputs, &*tract_linalg::ops().smm.as_ref()),
+            _ => unimplemented!()
+        }
     }
 }
 

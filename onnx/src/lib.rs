@@ -12,6 +12,7 @@ extern crate protobuf;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate tract_core;
+extern crate tract_linalg;
 
 pub mod model;
 pub mod ops;
