@@ -9,6 +9,8 @@ use super::conv_gemm::ConvGemm;
 use ops::nn::{DataFormat, PaddingSpec, Patch};
 use ops::nn::conv::KernelFormat;
 
+use std::sync::Arc;
+
 use tract_linalg::MatMul;
 
 #[derive(Debug, Clone)]
@@ -27,6 +29,7 @@ pub struct ConvUnary {
 }
 
 impl ConvUnary {
+
     pub fn new(
         conv: &Conv,
         full_input_shape: &[TDim],
@@ -60,7 +63,8 @@ impl ConvUnary {
             group,
         })
     }
-    fn to_im2col_pair<T>(&self, input_full_shape: &[usize], mm: &'static MatMul<T>) -> TractResult<(Im2Col, ConvGemm<T>)>
+
+    fn to_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col<T>, ConvGemm<T>)>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq
     {
@@ -92,8 +96,10 @@ impl ConvUnary {
         let k = kernel.len() / output_channels;
         let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
 
-        let packed_b_len = if let Some(mm) = mm.as_packed_mat_mul() {
-            mm.packed_b_len(k, n)
+        let mm:Option<Arc<MatMul<T>>> = T::packed_mat_mul(m, k, n).map(|mm| Arc::from(mm));
+
+        let packed_b_len = if let Some(ref mm) = mm {
+            mm.packed_b_len()
         } else {
             k*n
         };
@@ -118,9 +124,9 @@ impl ConvUnary {
         let co_per_group = output_channels / self.group;
         for g in 0..self.group {
             let subkernel = kernel.slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
-            if let Some(mm) = mm.as_packed_mat_mul() {
-                let mut packed = unsafe { Array1::uninitialized(self.group * mm.packed_a_len(m,k)) };
-                mm.pack_a(m, k, packed.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
+            if let Some(ref mm) = mm {
+                let mut packed = unsafe { Array1::uninitialized(self.group * mm.packed_a_len()) };
+                mm.pack_a(packed.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
                 packed_kernels.push(packed.to_vec());
             } else {
                 packed_kernels.push(subkernel.iter().cloned().collect());
@@ -135,29 +141,29 @@ impl ConvUnary {
             })
             .inside_out()?;
 
-        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group, packed_b_len);
+        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group, packed_b_len, mm.clone());
         trace!("im2col: {:?}", im2col);
-        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, packed_kernels, bias, self.group, mm);
+        let conv_gemm = ConvGemm::new(patch, shape, m, k, n, self.kernel_fmt, packed_kernels, bias, self.group, mm.clone());
         trace!("cvgemm: {:?}", conv_gemm);
 
         Ok((im2col, conv_gemm))
     }
 
-    fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize], mm: &'static MatMul<T>) -> TractResult<(Box<Op>, Box<Op>)>
+    fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Box<Op>, Box<Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        let (op1, op2) = self.to_im2col_pair(input_full_shape, mm)?;
+        let (op1, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
         Ok((Box::new(op1), Box::new(op2)))
     }
 
-    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>, mm: &'static MatMul<T>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
         let input = args_1!(inputs);
-        let (im2col, conv_gemm) = self.to_im2col_pair(input.shape(), mm)?;
-        let mega = im2col.im2col(&input.to_array_view()?, mm)?;
+        let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
+        let mega = im2col.im2col(&input.to_array_view()?)?;
         let output = conv_gemm.conv_gemm(&mega.view())?;
         Ok(tvec!(output.into()))
     }
@@ -248,10 +254,7 @@ impl Op for ConvUnary {
                     .iter()
                     .map(|d| d.to_integer().unwrap() as usize)
                     .collect();
-                let (op1, op2) = match dt {
-                    DatumType::F32 => self.to_boxed_im2col_pair(&shape, tract_linalg::ops().smm.as_ref())?,
-                    _ => unimplemented!()
-                };
+                let (op1, op2) = dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
                 return Ok(Some(ReducedOpRewire {
                     ops: vec!(op1, op2),
                     rewired: tvec!(0)
@@ -329,10 +332,7 @@ impl Op for ConvUnary {
 
 impl StatelessOp for ConvUnary {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        match inputs[0].datum_type() {
-            DatumType::F32 => self.eval_t(inputs, &*tract_linalg::ops().smm.as_ref()),
-            _ => unimplemented!()
-        }
+        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
 

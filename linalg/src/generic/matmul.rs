@@ -1,19 +1,19 @@
 use crate::frame;
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct SMatMul4x4;
 
-impl frame::matmul::PackedMatMul<f32> for SMatMul4x4 {
+impl frame::matmul::PackedMatMulKer<f32> for SMatMul4x4 {
     #[inline(always)]
-    fn mr(&self) -> usize {
+    fn mr() -> usize {
         4
     }
     #[inline(always)]
-    fn nr(&self) -> usize {
+    fn nr() -> usize {
         4
     }
     #[inline(never)]
-    fn kernel(&self, k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
+    fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
         unsafe {
             let mut ab = [[0.0f32; 4]; 4];
             for i in 0..k {
@@ -57,20 +57,20 @@ impl frame::matmul::PackedMatMul<f32> for SMatMul4x4 {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct DMatMul4x2;
 
-impl frame::matmul::PackedMatMul<f64> for DMatMul4x2 {
+impl frame::matmul::PackedMatMulKer<f64> for DMatMul4x2 {
     #[inline(always)]
-    fn mr(&self) -> usize {
+    fn mr() -> usize {
         4
     }
     #[inline(always)]
-    fn nr(&self) -> usize {
+    fn nr() -> usize {
         2
     }
     #[inline(never)]
-    fn kernel(&self, k: usize, a: *const f64, b: *const f64, c: *mut f64, rsc: usize) {
+    fn kernel(k: usize, a: *const f64, b: *const f64, c: *mut f64, rsc: usize) {
         unsafe {
             let mut ab = [[0.0f64; 2]; 4];
             for i in 0..k {

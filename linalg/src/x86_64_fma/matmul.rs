@@ -3,7 +3,7 @@ use crate::frame;
 #[repr(align(32))]
 struct SixteenAlignedF32([f32; 16]);
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct KerFma16x6;
 
 #[target_feature(enable = "fma")]
@@ -30,17 +30,17 @@ unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
     }
 }
 
-impl frame::matmul::PackedMatMul<f32> for KerFma16x6 {
+impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
     #[inline(always)]
-    fn mr(&self) -> usize {
+    fn mr() -> usize {
         16
     }
     #[inline(always)]
-    fn nr(&self) -> usize {
+    fn nr() -> usize {
         6
     }
     #[inline(always)]
-    fn kernel(&self, k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
+    fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
         unsafe { fma(k, a, b, c, rsc) }
     }
 }
