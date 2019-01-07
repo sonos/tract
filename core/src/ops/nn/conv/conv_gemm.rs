@@ -78,18 +78,37 @@ where
                 let a = &self.packed_kernels[g];
 
                 unsafe {
-                    self.mm.mat_mul_prepacked(
-                        self.m,
-                        self.k,
-                        self.n,
-                        a.as_ptr() as *const D,
-                        packed_input.as_ptr().offset(
-                            ((self.group * i + g) * self.mm.packed_b_len(self.k, self.n)) as isize,
-                        ),
-                        c_panel.as_mut_ptr(),
-                        c_panel.strides()[0],
-                        c_panel.strides()[1],
-                    );
+                    if let Some(mm) = self.mm.as_packed_mat_mul() {
+                        mm.mat_mul_prepacked(
+                            self.m,
+                            self.k,
+                            self.n,
+                            a.as_ptr() as *const D,
+                            packed_input.as_ptr().offset(
+                                ((self.group * i + g) * mm.packed_b_len(self.k, self.n)) as isize,
+                            ),
+                            c_panel.as_mut_ptr(),
+                            c_panel.strides()[0],
+                            c_panel.strides()[1],
+                        );
+                    } else {
+                        self.mm.mat_mul(
+                            self.m,
+                            self.k,
+                            self.n,
+                            a.as_ptr() as *const D,
+                            self.k as isize,
+                            1,
+                            packed_input.as_ptr().offset(
+                                ((self.group * i + g) * self.k * self.n) as isize,
+                            ),
+                            self.n as isize,
+                            1,
+                            c_panel.as_mut_ptr(),
+                            c_panel.strides()[0],
+                            c_panel.strides()[1],
+                        );
+                    }
                 }
                 let shape = output_subview.shape().to_vec();
                 match self.patch.input_shape.fmt {

@@ -1,5 +1,6 @@
 //! `Tensor` is the equivalent of SharedTensor Tensor.
 use dim::TDim;
+use ndarray::LinalgScalar;
 use ndarray::prelude::*;
 use std::fmt;
 use TractResult;
@@ -100,7 +101,7 @@ pub trait Datum:
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
 
-    fn matmul() -> Option<&'static tract_linalg::MatMul<Self>>;
+    fn mat_mul(m: usize, k: usize, n:usize) -> Box<tract_linalg::MatMul<Self>>;
 }
 
 pub (crate) trait TryInto<D: Datum> {
@@ -108,7 +109,7 @@ pub (crate) trait TryInto<D: Datum> {
 }
 
 macro_rules! datum {
-    ($t:ident, $v:ident) => { datum!($t, $v, None); };
+    ($t:ident, $v:ident) => { datum!($t, $v, |_,_,_| Box::new(NdArrayMatMul)); };
     ($t:ident, $v:ident, $matmul:expr) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
@@ -125,11 +126,15 @@ macro_rules! datum {
                 DatumType::$v
             }
 
-            fn matmul() -> Option<&'static tract_linalg::MatMul<Self>> {
-                $matmul
+            fn mat_mul(m: usize, k: usize, n:usize) -> Box<tract_linalg::MatMul<Self>> {
+                $matmul(m, k, n)
             }
         }
     };
+}
+
+struct NdArrayMatMul<T: LinalgScalar>;
+impl<T: LinalgScalar> tract_linalg::MatMul<T> for NdArrayMatMul<T> {
 }
 
 

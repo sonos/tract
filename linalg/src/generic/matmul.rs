@@ -3,7 +3,7 @@ use crate::frame;
 #[derive(Clone, Debug)]
 pub struct SMatMul4x4;
 
-impl frame::matmul::MatMul<f32> for SMatMul4x4 {
+impl frame::matmul::PackedMatMul<f32> for SMatMul4x4 {
     #[inline(always)]
     fn mr(&self) -> usize {
         4
@@ -60,7 +60,7 @@ impl frame::matmul::MatMul<f32> for SMatMul4x4 {
 #[derive(Clone, Debug)]
 pub struct DMatMul4x2;
 
-impl frame::matmul::MatMul<f64> for DMatMul4x2 {
+impl frame::matmul::PackedMatMul<f64> for DMatMul4x2 {
     #[inline(always)]
     fn mr(&self) -> usize {
         4

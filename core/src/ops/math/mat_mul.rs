@@ -33,7 +33,7 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
         let b1: ArrayView2<T> = b.slice(&b_slice.as_ref()).into_dimensionality()?;
         let mut c1: ArrayViewMut2<T> = c.slice_mut(&c_slice.as_ref()).into_dimensionality()?;
 
-        if let Some(mm) = T::matmul() {
+        if let Some(mm) = T::matmul(a1.rows(), a1.cols(), b1.cols()) {
             mm.mat_mul(a1.rows(), a1.cols(), b1.cols(),
                 a1.as_ptr(), a1.strides()[0], a1.strides()[1],
                 b1.as_ptr(), b1.strides()[0], b1.strides()[1],
