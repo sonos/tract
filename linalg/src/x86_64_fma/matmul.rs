@@ -30,7 +30,7 @@ unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
     }
 }
 
-impl frame::matmul::MatMul<f32> for KerFma16x6 {
+impl frame::matmul::PackedMatMul<f32> for KerFma16x6 {
     #[inline(always)]
     fn mr(&self) -> usize {
         16

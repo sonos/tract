@@ -3,6 +3,27 @@ use std::ops::{Add, Mul};
 use std::fmt::Debug;
 
 pub trait MatMul<T: Copy + Add + Mul + Zero> : Send + Sync + Debug {
+    fn mat_mul(
+        &self,
+        m: usize,
+        k: usize,
+        n: usize,
+        a: *const T,
+        rsa: isize,
+        csa: isize,
+        b: *const T,
+        rsb: isize,
+        csb: isize,
+        c: *mut T,
+        rsc: isize,
+        csc: isize,
+    );
+
+    fn as_packed_mat_mul(&self) -> Option<&PackedMatMul<T>> { None }
+}
+
+
+pub trait PackedMatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug  {
     #[inline(always)]
     fn kernel(&self, k: usize, a: *const T, b: *const T, c: *mut T, rsc: usize);
     #[inline(always)]
@@ -102,6 +123,87 @@ pub trait MatMul<T: Copy + Add + Mul + Zero> : Send + Sync + Debug {
         }
     }
 
+    fn mat_mul_prepacked(
+        &self,
+        m: usize,
+        k: usize,
+        n: usize,
+        pa: *const T,
+        pb: *const T,
+        c: *mut T,
+        rsc: isize,
+        csc: isize,
+    ) {
+        let mr = self.mr();
+        let nr = self.nr();
+        let mut tmpc = vec![T::zero(); mr * nr];
+        unsafe {
+            for ia in 0..m / mr {
+                for ib in 0..n / nr {
+                    self.kernel(
+                        k,
+                        pa.offset((ia * k * mr) as isize),
+                        pb.offset((ib * k * nr) as isize),
+                        c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
+                        rsc as usize, // FIXME
+                    );
+                }
+                if n % nr != 0 {
+                    self.kernel(
+                        k,
+                        pa.offset((ia * k * mr) as isize),
+                        pb.offset((n / nr * k * nr) as isize),
+                        tmpc.as_mut_ptr(),
+                        nr,
+                    );
+                    for y in 0..mr {
+                        for x in 0..(n % nr) {
+                            *c.offset(
+                                (mr * ia + y) as isize * rsc + (x + n / nr * nr) as isize * csc,
+                            ) = tmpc[y * nr + x];
+                        }
+                    }
+                }
+            }
+            if m % mr != 0 {
+                for ib in 0..n / nr {
+                    self.kernel(
+                        k,
+                        pa.offset((m / mr * mr * k) as isize),
+                        pb.offset((ib * nr * k) as isize),
+                        tmpc.as_mut_ptr(),
+                        nr,
+                    );
+                    for y in 0..(m % mr) {
+                        for x in 0..nr {
+                            *c.offset(
+                                (y + m / mr * mr) as isize * rsc + (x + ib * nr) as isize * csc,
+                            ) = tmpc[y * nr + x];
+                        }
+                    }
+                }
+                if n % nr != 0 {
+                    self.kernel(
+                        k,
+                        pa.offset((m / mr * mr * k) as isize),
+                        pb.offset((n / nr * nr * k) as isize),
+                        tmpc.as_mut_ptr(),
+                        nr,
+                    );
+                    for y in 0..(m % mr) {
+                        for x in 0..(n % nr) {
+                            *c.offset(
+                                (y + m / mr * mr) as isize * rsc + (x + n / nr * nr) as isize * csc,
+                            ) = tmpc[y * nr + x];
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<PMM: PackedMatMul<T>, T: Copy + Add + Mul + Zero> MatMul<T> for PMM {
     fn mat_mul(
         &self,
         m: usize,
@@ -204,83 +306,8 @@ pub trait MatMul<T: Copy + Add + Mul + Zero> : Send + Sync + Debug {
         }
     }
 
-    fn mat_mul_prepacked(
-        &self,
-        m: usize,
-        k: usize,
-        n: usize,
-        pa: *const T,
-        pb: *const T,
-        c: *mut T,
-        rsc: isize,
-        csc: isize,
-    ) {
-        let mr = self.mr();
-        let nr = self.nr();
-        let mut tmpc = vec![T::zero(); mr * nr];
-        unsafe {
-            for ia in 0..m / mr {
-                for ib in 0..n / nr {
-                    self.kernel(
-                        k,
-                        pa.offset((ia * k * mr) as isize),
-                        pb.offset((ib * k * nr) as isize),
-                        c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
-                        rsc as usize, // FIXME
-                    );
-                }
-                if n % nr != 0 {
-                    self.kernel(
-                        k,
-                        pa.offset((ia * k * mr) as isize),
-                        pb.offset((n / nr * k * nr) as isize),
-                        tmpc.as_mut_ptr(),
-                        nr,
-                    );
-                    for y in 0..mr {
-                        for x in 0..(n % nr) {
-                            *c.offset(
-                                (mr * ia + y) as isize * rsc + (x + n / nr * nr) as isize * csc,
-                            ) = tmpc[y * nr + x];
-                        }
-                    }
-                }
-            }
-            if m % mr != 0 {
-                for ib in 0..n / nr {
-                    self.kernel(
-                        k,
-                        pa.offset((m / mr * mr * k) as isize),
-                        pb.offset((ib * nr * k) as isize),
-                        tmpc.as_mut_ptr(),
-                        nr,
-                    );
-                    for y in 0..(m % mr) {
-                        for x in 0..nr {
-                            *c.offset(
-                                (y + m / mr * mr) as isize * rsc + (x + ib * nr) as isize * csc,
-                            ) = tmpc[y * nr + x];
-                        }
-                    }
-                }
-                if n % nr != 0 {
-                    self.kernel(
-                        k,
-                        pa.offset((m / mr * mr * k) as isize),
-                        pb.offset((n / nr * nr * k) as isize),
-                        tmpc.as_mut_ptr(),
-                        nr,
-                    );
-                    for y in 0..(m % mr) {
-                        for x in 0..(n % nr) {
-                            *c.offset(
-                                (y + m / mr * mr) as isize * rsc + (x + n / nr * nr) as isize * csc,
-                            ) = tmpc[y * nr + x];
-                        }
-                    }
-                }
-            }
-        }
+    fn as_packed_mat_mul(&self) -> Option<&PackedMatMul<T>> {
+        Some(self)
     }
 }
 

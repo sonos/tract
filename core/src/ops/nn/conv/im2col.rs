@@ -51,17 +51,21 @@ impl Im2Col {
                         }
                     }
                 }
-                unsafe {
-                    mm.pack_b(
-                        self.k,
-                        self.n,
-                        packed
-                            .as_mut_ptr()
-                            .offset(((i * self.group + g) * self.packed_b_len) as isize),
-                        mega_matrix.as_ptr(),
-                        mega_matrix.strides()[0],
-                        mega_matrix.strides()[1],
-                    );
+                if let Some(mm) = mm.as_packed_mat_mul() {
+                    unsafe {
+                        mm.pack_b(
+                            self.k,
+                            self.n,
+                            packed
+                                .as_mut_ptr()
+                                .offset(((i * self.group + g) * self.packed_b_len) as isize),
+                            mega_matrix.as_ptr(),
+                            mega_matrix.strides()[0],
+                            mega_matrix.strides()[1],
+                        );
+                    }
+                } else {
+                    packed.as_slice_mut().unwrap()[((i * self.group + g) * self.packed_b_len)..].copy_from_slice(&*mega_matrix.as_slice().unwrap());
                 }
             }
         }
