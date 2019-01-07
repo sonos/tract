@@ -1,6 +1,8 @@
 use num::Zero;
 use std::ops::{Add, AddAssign, Mul};
 
+use std::sync::Arc;
+
 use ndarray::prelude::*;
 use ops::prelude::*;
 
@@ -36,9 +38,9 @@ use tract_linalg::MatMul;
  */
 
 #[derive(Debug, Clone, new)]
-pub struct ConvGemm<D>
+pub struct ConvGemm<T>
 where
-    D: Datum + Add + Mul + Zero + Copy,
+    T: Datum + Add + Mul + Zero + Copy,
 {
     pub patch: Patch,
     pub full_output_shape: TVec<usize>,
@@ -46,21 +48,21 @@ where
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,
-    pub packed_kernels: Vec<Vec<D>>,
-    pub bias: Option<ArrayD<D>>,
+    pub packed_kernels: Vec<Vec<T>>,
+    pub bias: Option<ArrayD<T>>,
     pub group: usize,
-    pub mm: &'static MatMul<D>,
+    pub mm: Option<Arc<MatMul<T>>>,
 }
 
-impl<D> ConvGemm<D>
+impl<T> ConvGemm<T>
 where
-    D: Datum + Add + Mul + Zero + Copy + AddAssign,
+    T: Datum + Add + Mul + Zero + Copy + AddAssign + ndarray::LinalgScalar
 {
     pub(super) fn conv_gemm<'i>(
         &'i self,
-        packed_input: &'i ArrayView1<'i, D>,
-    ) -> TractResult<ArrayD<D>> {
-        let mut output = unsafe { ArrayD::<D>::uninitialized(&*self.full_output_shape) };
+        packed_input: &'i ArrayView1<'i, T>,
+    ) -> TractResult<ArrayD<T>> {
+        let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.full_output_shape) };
         let input_shape = &self.patch.input_shape;
 
         let c_panel_shape = (self.m, self.n);
@@ -78,36 +80,27 @@ where
                 let a = &self.packed_kernels[g];
 
                 unsafe {
-                    if let Some(mm) = self.mm.as_packed_mat_mul() {
+                    if let Some(mm) = self.mm.as_ref() {
                         mm.mat_mul_prepacked(
-                            self.m,
-                            self.k,
-                            self.n,
-                            a.as_ptr() as *const D,
+                            a.as_ptr() as *const T,
                             packed_input.as_ptr().offset(
-                                ((self.group * i + g) * mm.packed_b_len(self.k, self.n)) as isize,
+                                ((self.group * i + g) * mm.packed_b_len()) as isize,
                             ),
                             c_panel.as_mut_ptr(),
                             c_panel.strides()[0],
                             c_panel.strides()[1],
                         );
                     } else {
-                        self.mm.mat_mul(
-                            self.m,
-                            self.k,
-                            self.n,
-                            a.as_ptr() as *const D,
-                            self.k as isize,
-                            1,
-                            packed_input.as_ptr().offset(
-                                ((self.group * i + g) * self.k * self.n) as isize,
-                            ),
-                            self.n as isize,
-                            1,
-                            c_panel.as_mut_ptr(),
-                            c_panel.strides()[0],
-                            c_panel.strides()[1],
-                        );
+                        let filters = ArrayView2::<T>::from_shape_ptr((self.m, self.k), a.as_ptr());
+                        let input = packed_input.into_shape((input_shape.n_dim() * self.group, self.k, self.n))?;
+                        let input_group = self.group*i+g;
+                        let input = input.index_axis_move(Axis(0), input_group);
+                        ndarray::linalg::general_mat_mul(
+                            T::one(),
+                            &filters,
+                            &input,
+                            T::zero(),
+                            &mut c_panel);
                     }
                 }
                 let shape = output_subview.shape().to_vec();

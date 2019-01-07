@@ -1,5 +1,7 @@
 use tract_linalg::MatMul;
 
+use std::sync::Arc;
+
 use ndarray::prelude::*;
 use ops::prelude::*;
 
@@ -8,27 +10,33 @@ use ops::nn::Patch;
 use num::Zero;
 use std::ops::Mul;
 
-#[derive(Debug, Clone, new, PartialEq)]
-pub(super) struct Im2Col {
+#[derive(Debug, Clone, new)]
+pub(super) struct Im2Col<T: Datum + Mul + Zero> {
     pub patch: Patch,
     pub m: usize,
     pub k: usize,
     pub n: usize,
     pub group: usize,
     pub packed_b_len: usize,
+    pub mm: Option<Arc<MatMul<T>>>,
 }
 
-impl Im2Col {
-    pub(super) fn im2col<'i, D: Datum + Mul + Zero>(
+impl<T: Datum + Mul + Zero> PartialEq for Im2Col<T> {
+    fn eq(&self, other: &Im2Col<T>) -> bool {
+        self.patch == other.patch && self.m == other.m && self.n == other.n && self.k == other.k && self.group == other.group && self.packed_b_len == other.packed_b_len
+    }
+}
+
+impl<T: Datum + Mul + Zero> Im2Col<T> {
+    pub(super) fn im2col<'i>(
         &'i self,
-        input: &'i ArrayViewD<'i, D>,
-        mm: &MatMul<D>,
-    ) -> TractResult<Array1<D>> {
+        input: &'i ArrayViewD<'i, T>,
+    ) -> TractResult<Array1<T>> {
         let input_shape = &self.patch.input_shape;
-        let mut mega_matrix = unsafe { Array2::<D>::uninitialized((self.k, self.n)) };
+        let mut mega_matrix = unsafe { Array2::<T>::uninitialized((self.k, self.n)) };
 
         let mut packed = unsafe {
-            Array1::<D>::uninitialized(self.packed_b_len * self.group * input_shape.n_dim())
+            Array1::<T>::uninitialized(self.packed_b_len * self.group * input_shape.n_dim())
         };
         let visitor = self.patch.wrap(input);
         let ci_per_group = input_shape.c_dim() / self.group;
@@ -47,15 +55,13 @@ impl Im2Col {
                         coords[input_shape.c_axis()] = ci + g * ci_per_group;
                         for v in visitor.at(&*coords) {
                             *col.next().expect("geometry error in conv") =
-                                v.unwrap_or(D::default());
+                                v.unwrap_or(T::default());
                         }
                     }
                 }
-                if let Some(mm) = mm.as_packed_mat_mul() {
+                if let Some(mm) = self.mm.as_ref() {
                     unsafe {
                         mm.pack_b(
-                            self.k,
-                            self.n,
                             packed
                                 .as_mut_ptr()
                                 .offset(((i * self.group + g) * self.packed_b_len) as isize),
@@ -74,7 +80,7 @@ impl Im2Col {
     }
 }
 
-impl Op for Im2Col {
+impl<T: Datum + Mul + Zero> Op for Im2Col<T> {
     fn name(&self) -> Cow<str> {
         "Im2col".into()
     }
@@ -82,19 +88,14 @@ impl Op for Im2Col {
     impl_op_same_as!();
 }
 
-impl StatelessOp for Im2Col {
+impl<T: Datum+Mul+Zero> StatelessOp for Im2Col<T> {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let tensor = match inputs[0].datum_type() {
-            DatumType::F32 => self
-                .im2col::<f32>(&inputs[0].to_array_view()?, &*tract_linalg::ops().smm)?
-                .into(),
-            _ => unimplemented!()
-        };
+        let tensor = self.im2col(&inputs[0].to_array_view()?)?.into();
         Ok(tvec!(tensor))
     }
 }
 
-impl InferenceRulesOp for Im2Col {
+impl<T: Datum + Mul + Zero> InferenceRulesOp for Im2Col<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -103,6 +104,7 @@ impl InferenceRulesOp for Im2Col {
     ) -> InferenceResult {
         s.equals(&inputs.len, 1)?;
         s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(
             &inputs[0].shape,
