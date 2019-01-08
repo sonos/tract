@@ -1,6 +1,10 @@
 extern crate lazy_static;
 extern crate log;
 extern crate num;
+#[cfg(test)]
+extern crate matrixmultiply;
+#[cfg(test)]
+extern crate proptest;
 
 pub mod f16;
 pub mod frame;

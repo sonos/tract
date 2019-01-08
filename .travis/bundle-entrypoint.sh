@@ -20,6 +20,23 @@ chmod +x $CACHEDIR/tflite*
 binary_size_cli=`stat -c "%s" tract`
 echo binary_size.cli $binary_size_cli > metrics
 
+(
+    mkdir -p target/criterion
+    for bench in benches/*
+    do
+        $bench
+    done
+    tree
+    for bench in `find target/criterion -path "*/new/*" -name raw.csv`
+    do
+        group=`cat $bench | tail -1 | cut -d , -f 1`
+        nanos=`cat $bench | tail -1 | cut -d , -f 4`
+        iter=`cat $bench | tail -1 | cut -d , -f 5`
+        time=$((nanos/iter))
+        echo microbench.${group}.${func:-none}.${value:-none} $(($nanos/$iter)) >> metrics
+    done
+)
+
 inceptionv3=`$TRACT --machine-friendly $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
     -O -i 1x299x299x3xf32 profile --bench \
     | grep real | cut -f 2 -d ' '`
@@ -56,7 +73,7 @@ echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms >> metrics
 echo net.hey_snips_v4_model17.evaltime.2sec $hey_snips_v4_model17_2sec >> metrics
 echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 >> metrics
 
-if ( cat /etc/issue | grep Raspbian )
+if [ -e /etc/issue ] && ( cat /etc/issue | grep Raspbian )
 then
     cpu=`awk '/^Revision/ {sub("^1000", "", $3); print $3}' /proc/cpuinfo`
     # raspi 3 can run official tflite builds
@@ -66,7 +83,7 @@ then
     else
         tflites=rpitools
     fi
-elif ( cat /etc/issue | grep i.MX )
+elif [ -e /etc/issue ] && ( cat /etc/issue | grep i.MX )
 then
     if [ `uname -m` = "aarch64" ]
     then
