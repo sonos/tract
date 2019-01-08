@@ -54,8 +54,13 @@ where
     K: PackedMatMulKer<T>,
     T: Copy + Add + Mul + Zero + Debug + Send + Sync,
 {
-    pub fn new(m: usize, k:usize, n:usize) -> PackedMatMul<K, T> {
-        PackedMatMul { m, k, n, _kernel: PhantomData }
+    pub fn new(m: usize, k: usize, n: usize) -> PackedMatMul<K, T> {
+        PackedMatMul {
+            m,
+            k,
+            n,
+            _kernel: PhantomData,
+        }
     }
 }
 
@@ -64,7 +69,6 @@ where
     K: PackedMatMulKer<T>,
     T: Copy + Add + Mul + Zero + Debug + Send + Sync,
 {
-
     fn packed_a_len(&self) -> usize {
         let mr = K::mr();
         (self.m + mr - 1) / mr * mr * self.k
@@ -146,14 +150,7 @@ where
         }
     }
 
-    fn mat_mul_prepacked(
-        &self,
-        pa: *const T,
-        pb: *const T,
-        c: *mut T,
-        rsc: isize,
-        csc: isize,
-    ) {
+    fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -179,7 +176,7 @@ where
                         pb.offset((n / nr * k * nr) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
-                        1
+                        1,
                     );
                     for y in 0..mr {
                         for x in 0..(n % nr) {
@@ -198,7 +195,7 @@ where
                         pb.offset((ib * nr * k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
-                        1
+                        1,
                     );
                     for y in 0..(m % mr) {
                         for x in 0..nr {
@@ -215,7 +212,7 @@ where
                         pb.offset((n / nr * nr * k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
-                        1
+                        1,
                     );
                     for y in 0..(m % mr) {
                         for x in 0..(n % nr) {
@@ -273,7 +270,7 @@ where
                         pb.as_ptr().offset((self.n / nr * self.k * nr) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
-                        1
+                        1,
                     );
                     for y in 0..mr {
                         for x in 0..(self.n % nr) {
@@ -301,7 +298,7 @@ where
                         pb.as_ptr().offset((ib * nr * self.k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
-                        1
+                        1,
                     );
                     for y in 0..(self.m % mr) {
                         for x in 0..nr {
@@ -317,7 +314,7 @@ where
                         pb.as_ptr().offset((self.n / nr * nr * self.k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
-                        1
+                        1,
                     );
                     for y in 0..(self.m % mr) {
                         for x in 0..(self.n % nr) {
@@ -332,50 +329,13 @@ where
     }
 }
 
-/*
-pub fn mat_mul_f32(
-    m: usize,
-    k: usize,
-    n: usize,
-    a: *const f32,
-    rsa: isize,
-    csa: isize,
-    b: *const f32,
-    rsb: isize,
-    csb: isize,
-    c: *mut f32,
-    rsc: isize,
-    csc: isize,
-) {
-    /*
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        if is_x86_feature_detected!("fma") {
-            if a as usize % 32 != 0 {
-                warn!("FMA kernel not use because a is not 32-byte aligned");
-                return two_loops::two_loops::<crate::generic::MatMul>(
-                    m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc,
-                );
-            }
-            return two_loops::two_loops::<x86_64_fma::KerFma16x6>(
-                m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc,
-            );
-        }
-    }
-    */
-two_loops::two_loops::<crate::generic::SMatMul, f32>(
-m, k, n, a, rsa, csa, b, rsb, csb, c, rsc, csc,
-)
-}
-*/
-
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
     use proptest::prelude::*;
     use proptest::*;
 
-    fn strat(k_fact: usize) -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
+    pub fn strat(k_fact: usize) -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
         (1usize..35, 1usize..35, 1usize..35)
             .prop_flat_map(move |(m, k, n)| {
                 (
@@ -389,71 +349,92 @@ mod test {
             .boxed()
     }
 
-    proptest! {
-        #[test]
-        fn mat_mul_e2e((m, k, n, ref a, ref b) in strat(1)) {
-            use crate::generic::SMatMul;
-            let mm = PackedMatMul::<SMatMul, f32>::new(m, k, n);
-
-            let mut expect = vec!(0.0; m*n);
-            let mut found = vec!(0.0; m*n);
-            unsafe {
-                mm.mat_mul(
-                            a.as_ptr(), k as isize, 1,
-                            b.as_ptr(), n as isize, 1,
-                            found.as_mut_ptr(), n as isize, 1);
-                ::matrixmultiply::sgemm(  m, k, n,
-                                        1.0, a.as_ptr(), k as _, 1,
-                                        b.as_ptr(), n as _, 1,
-                                        0.0, expect.as_mut_ptr(), n as _, 1);
-            }
-            prop_assert_eq!(expect, found);
+    pub fn test_mat_mul_e2e_f32<MM: MatMul<f32>>(
+        mm: MM,
+        m: usize,
+        k: usize,
+        n: usize,
+        a: &[f32],
+        b: &[f32],
+    ) -> Result<(), proptest::test_runner::TestCaseError> {
+        let mut expect = vec![9999.0; m * n];
+        let mut found = vec![9999.0; m * n];
+        unsafe {
+            mm.mat_mul(
+                a.as_ptr(),
+                k as isize,
+                1,
+                b.as_ptr(),
+                n as isize,
+                1,
+                found.as_mut_ptr(),
+                n as isize,
+                1,
+            );
+            ::matrixmultiply::sgemm(
+                m,
+                k,
+                n,
+                1.0,
+                a.as_ptr(),
+                k as _,
+                1,
+                b.as_ptr(),
+                n as _,
+                1,
+                0.0,
+                expect.as_mut_ptr(),
+                n as _,
+                1,
+            );
         }
+        prop_assert_eq!(expect, found);
+        Ok(())
     }
 
-    proptest! {
-        #[test]
-        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat(1)) {
-            use crate::generic::SMatMul;
-            let mm = PackedMatMul::<SMatMul, f32>::new(m, k, n);
+    pub fn test_mat_mul_prep_f32<MM: MatMul<f32>>(
+        mm: MM,
+        m: usize,
+        k: usize,
+        n: usize,
+        a: &[f32],
+        b: &[f32],
+    ) -> Result<(), proptest::test_runner::TestCaseError> {
+        let mut packed_a = vec![0.0f32; mm.packed_a_len()];
+        mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
-            let mut packed_a = vec!(0.0f32; mm.packed_a_len());
-            mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+        let mut packed_b = vec![0.0f32; mm.packed_b_len()];
+        mm.pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
-            let mut packed_b = vec!(0.0f32; mm.packed_b_len());
-            mm.pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
-
-            let mut expect = vec!(0.0f32; m*n);
-            let mut found = vec!(0.0f32; m*n);
-            unsafe {
-                mm.mat_mul_prepacked(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), n as isize, 1);
-                ::matrixmultiply::sgemm(  m, k, n,
-                                        1.0, a.as_ptr(), k as _, 1,
-                                        b.as_ptr(), n as _, 1,
-                                        0.0, expect.as_mut_ptr(), n as _, 1);
-            }
-            prop_assert_eq!(expect, found);
+        let mut expect = vec![9999.0f32; m * n];
+        let mut found = vec![9999.0f32; m * n];
+        unsafe {
+            mm.mat_mul_prepacked(
+                packed_a.as_ptr(),
+                packed_b.as_ptr(),
+                found.as_mut_ptr(),
+                n as isize,
+                1,
+            );
+            ::matrixmultiply::sgemm(
+                m,
+                k,
+                n,
+                1.0,
+                a.as_ptr(),
+                k as _,
+                1,
+                b.as_ptr(),
+                n as _,
+                1,
+                0.0,
+                expect.as_mut_ptr(),
+                n as _,
+                1,
+            );
         }
+        prop_assert_eq!(expect, found);
+        Ok(())
     }
 
-    #[test]
-    fn t_1x1x1() {
-        use crate::generic::SMatMul;
-        let mm = PackedMatMul::<SMatMul, f32>::new(1, 1, 1);
-        let a = vec![2.0];
-        let b = vec![-1.0];
-        let mut c = vec![0.0];
-        mm.mat_mul(
-            a.as_ptr(),
-            1,
-            1,
-            b.as_ptr(),
-            1,
-            1,
-            c.as_mut_ptr(),
-            1,
-            1,
-        );
-        assert_eq!(c, &[-2.0]);
-    }
 }
