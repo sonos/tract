@@ -26,7 +26,7 @@ case "$PLATFORM" in
         export TARGET_CC=aarch64-linux-gnu-gcc-4.8
         export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc-4.8
         cargo build --target $RUSTC_TRIPLE --release -p tract
-        cargo build --target $RUSTC_TRIPLE --benches -p linalg
+        cargo build --target $RUSTC_TRIPLE --benches -p tract-linalg
     ;;
     *)
 esac
