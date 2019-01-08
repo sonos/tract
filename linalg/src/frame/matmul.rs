@@ -30,7 +30,7 @@ pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug {
 
 pub trait PackedMatMulKer<T: Copy + Add + Mul + Zero>: Copy + Clone + Debug + Send + Sync {
     #[inline(always)]
-    fn kernel(k: usize, a: *const T, b: *const T, c: *mut T, rsc: usize);
+    fn kernel(k: usize, a: *const T, b: *const T, c: *mut T, rsc: usize, csc: usize);
     #[inline(always)]
     fn mr() -> usize;
     #[inline(always)]
@@ -168,7 +168,8 @@ where
                         pa.offset((ia * k * mr) as isize),
                         pb.offset((ib * k * nr) as isize),
                         c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
-                        rsc as usize, // FIXME
+                        rsc as usize,
+                        csc as usize,
                     );
                 }
                 if n % nr != 0 {
@@ -178,6 +179,7 @@ where
                         pb.offset((n / nr * k * nr) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
+                        1
                     );
                     for y in 0..mr {
                         for x in 0..(n % nr) {
@@ -196,6 +198,7 @@ where
                         pb.offset((ib * nr * k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
+                        1
                     );
                     for y in 0..(m % mr) {
                         for x in 0..nr {
@@ -212,6 +215,7 @@ where
                         pb.offset((n / nr * nr * k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
+                        1
                     );
                     for y in 0..(m % mr) {
                         for x in 0..(n % nr) {
@@ -259,6 +263,7 @@ where
                         pb.as_ptr().offset((ib * self.k * nr) as isize),
                         c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
                         rsc as usize,
+                        csc as usize,
                     );
                 }
                 if self.n % nr != 0 {
@@ -268,6 +273,7 @@ where
                         pb.as_ptr().offset((self.n / nr * self.k * nr) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
+                        1
                     );
                     for y in 0..mr {
                         for x in 0..(self.n % nr) {
@@ -295,6 +301,7 @@ where
                         pb.as_ptr().offset((ib * nr * self.k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
+                        1
                     );
                     for y in 0..(self.m % mr) {
                         for x in 0..nr {
@@ -310,6 +317,7 @@ where
                         pb.as_ptr().offset((self.n / nr * nr * self.k) as isize),
                         tmpc.as_mut_ptr(),
                         nr,
+                        1
                     );
                     for y in 0..(self.m % mr) {
                         for x in 0..(self.n % nr) {

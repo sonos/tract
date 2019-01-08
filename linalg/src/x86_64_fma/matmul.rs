@@ -7,7 +7,7 @@ struct SixteenAlignedF32([f32; 16]);
 pub struct KerFma16x6;
 
 #[target_feature(enable = "fma")]
-unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
+unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
     use std::arch::x86_64::*;
     let mut ab1 = [_mm256_setzero_ps(); 6];
     let mut ab2 = [_mm256_setzero_ps(); 6];
@@ -25,7 +25,7 @@ unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
         _mm256_store_ps(col.0.as_mut_ptr(), ab1[x]);
         _mm256_store_ps(col.0.as_mut_ptr().offset(8), ab2[x]);
         for y in 0..16 {
-            *c.offset((y * rsc + x) as isize) = col.0[y];
+            *c.offset((y * rsc + x * csc) as isize) = col.0[y];
         }
     }
 }
@@ -40,8 +40,8 @@ impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
         6
     }
     #[inline(always)]
-    fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize) {
-        unsafe { fma(k, a, b, c, rsc) }
+    fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
+        unsafe { fma(k, a, b, c, rsc, csc) }
     }
 }
 
