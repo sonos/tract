@@ -26,7 +26,6 @@ echo binary_size.cli $binary_size_cli > metrics
     do
         $bench
     done
-    tree
     for bench in `find target/criterion -path "*/new/*" -name raw.csv`
     do
         group=`cat $bench | tail -1 | cut -d , -f 1`
