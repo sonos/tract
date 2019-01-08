@@ -14,3 +14,7 @@ num = "0.2"
 criterion = "0.2"
 matrixmultiply = "0.2"
 proptest = "0.8"
+
+[[bench]]
+name = "mm_for_wavenet_hw"
+harness = false

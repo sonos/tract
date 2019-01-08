@@ -17,6 +17,7 @@ case "$PLATFORM" in
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > $HOME/.dinghy.toml
         cargo dinghy --platform $PLATFORM build --release -p tract
+        cargo dinghy --platform $PLATFORM build --benches -p linalg
     ;;
     "aarch64")
         sudo apt-get -y install binutils-aarch64-linux-gnu gcc-4.8-aarch64-linux-gnu
@@ -25,6 +26,7 @@ case "$PLATFORM" in
         export TARGET_CC=aarch64-linux-gnu-gcc-4.8
         export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc-4.8
         cargo build --target $RUSTC_TRIPLE --release -p tract
+        cargo build --target $RUSTC_TRIPLE --benches -p linalg
     ;;
     *)
 esac

@@ -19,7 +19,9 @@ echo "export DATE_ISO=$date_iso" >> $TASK_NAME/vars
 echo "export TIMESTAMP=$timestamp" >> $TASK_NAME/vars
 echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
-cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME/
+mkdir $TASK_NAME/benches
+cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
+cp target/$RUSTC_TRIPLE/release/mm_for_wavenet_hw-???????????????? $TASK_NAME/benches/mm_for_wavenet_hw
 cp .travis/bundle-entrypoint.sh $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME/
 
