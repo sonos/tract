@@ -1,1 +1,1 @@
-mod matmul;
+pub mod matmul;
