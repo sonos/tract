@@ -35,16 +35,15 @@ pub fn generic() -> Ops {
 pub fn best() -> Ops {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
-        return Ops {
-            smm: Box::new(|m, k, n| {
+        let mut ops = generic();
+        if is_x86_feature_detected!("fma") {
+            ops.smm = Box::new(|m, k, n| {
                 Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(
                     m, k, n,
                 ))
-            }),
-            dmm: Box::new(|m, k, n| {
-                Box::new(PackedMatMul::<generic::DMatMul4x2, f64>::new(m, k, n))
-            }),
-        };
+            });
+        }
+        return ops;
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
     {
