@@ -37,6 +37,7 @@ pub fn best() -> Ops {
     {
         let mut ops = generic();
         if is_x86_feature_detected!("fma") {
+            log::info!("x86_64/fma activated for smm");
             ops.smm = Box::new(|m, k, n| {
                 Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(
                     m, k, n,
