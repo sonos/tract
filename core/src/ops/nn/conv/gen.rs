@@ -271,9 +271,9 @@ mod test {
                 ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into()
             ))
             .unwrap();
-        assert_eq!(
-            res,
-            tvec!(Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into())
+        assert_close!(
+            res[0],
+            Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into()
         );
     }
 
