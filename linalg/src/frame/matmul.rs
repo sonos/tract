@@ -7,26 +7,10 @@ use std::marker::PhantomData;
 pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug {
     fn packed_a_len(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
-    // fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize);
     fn packed_b_len(&self) -> usize;
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize);
-    // fn pack_panel_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize);
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
-/*
-    fn mat_mul(
-        &self,
-        a: *const T,
-        rsa: isize,
-        csa: isize,
-        b: *const T,
-        rsb: isize,
-        csb: isize,
-        c: *mut T,
-        rsc: isize,
-        csc: isize,
-    );
-    */
 }
 
 pub trait PackedMatMulKer<T: Copy + Add + Mul + Zero>: Copy + Clone + Debug + Send + Sync {
@@ -226,110 +210,6 @@ where
             }
         }
     }
-
-    /*
-    fn mat_mul(
-        &self,
-        a: *const T,
-        rsa: isize,
-        csa: isize,
-        b: *const T,
-        rsb: isize,
-        csb: isize,
-        c: *mut T,
-        rsc: isize,
-        csc: isize,
-    ) {
-        let mr = K::mr();
-        let nr = K::nr();
-        let mut pa = vec![T::zero(); mr * self.k];
-        let mut pb = vec![T::zero(); self.packed_b_len()];
-        self.pack_b(pb.as_mut_ptr(), b, rsb, csb);
-        let mut tmpc = vec![T::zero(); mr * nr];
-        unsafe {
-            for ia in 0..self.m / mr {
-                self.pack_panel_a(
-                    pa.as_mut_ptr(),
-                    a.offset((mr * ia) as isize * rsa),
-                    rsa,
-                    csa,
-                    mr,
-                );
-                for ib in 0..self.n / nr {
-                    K::kernel(
-                        self.k,
-                        pa.as_ptr(),
-                        pb.as_ptr().offset((ib * self.k * nr) as isize),
-                        c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
-                        rsc as usize,
-                        csc as usize,
-                    );
-                }
-                if self.n % nr != 0 {
-                    K::kernel(
-                        self.k,
-                        pa.as_ptr(),
-                        pb.as_ptr().offset((self.n / nr * self.k * nr) as isize),
-                        tmpc.as_mut_ptr(),
-                        nr,
-                        1,
-                    );
-                    for y in 0..mr {
-                        for x in 0..(self.n % nr) {
-                            *c.offset(
-                                (mr * ia + y) as isize * rsc
-                                    + (x + self.n / nr * nr) as isize * csc,
-                            ) = tmpc[y * nr + x];
-                        }
-                    }
-                }
-            }
-            if self.m % mr != 0 {
-                let row = self.m - self.m % mr;
-                self.pack_panel_a(
-                    pa.as_mut_ptr(),
-                    a.offset(row as isize * rsa),
-                    rsa,
-                    csa,
-                    self.m % mr,
-                );
-                for ib in 0..self.n / nr {
-                    K::kernel(
-                        self.k,
-                        pa.as_ptr(),
-                        pb.as_ptr().offset((ib * nr * self.k) as isize),
-                        tmpc.as_mut_ptr(),
-                        nr,
-                        1,
-                    );
-                    for y in 0..(self.m % mr) {
-                        for x in 0..nr {
-                            *c.offset((y + row) as isize * rsc + (x + ib * nr) as isize * csc) =
-                                tmpc[y * nr + x];
-                        }
-                    }
-                }
-                if self.n % nr != 0 {
-                    K::kernel(
-                        self.k,
-                        pa.as_ptr(),
-                        pb.as_ptr().offset((self.n / nr * nr * self.k) as isize),
-                        tmpc.as_mut_ptr(),
-                        nr,
-                        1,
-                    );
-                    for y in 0..(self.m % mr) {
-                        for x in 0..(self.n % nr) {
-                            *c.offset(
-                                (y + row) as isize * rsc + (x + self.n / nr * nr) as isize * csc,
-                            ) = tmpc[y * nr + x];
-                        }
-                    }
-                }
-            }
-        }
-    }
-    */
 }
 
 #[cfg(test)]
@@ -350,49 +230,6 @@ pub mod test {
                 )
             })
             .boxed()
-    }
-
-    pub fn test_mat_mul_e2e_f32<MM: MatMul<f32>>(
-        mm: MM,
-        m: usize,
-        k: usize,
-        n: usize,
-        a: &[f32],
-        b: &[f32],
-    ) -> Result<(), proptest::test_runner::TestCaseError> {
-        let mut expect = vec![9999.0; m * n];
-        let mut found = vec![9999.0; m * n];
-        unsafe {
-            mm.mat_mul(
-                a.as_ptr(),
-                k as isize,
-                1,
-                b.as_ptr(),
-                n as isize,
-                1,
-                found.as_mut_ptr(),
-                n as isize,
-                1,
-            );
-            ::matrixmultiply::sgemm(
-                m,
-                k,
-                n,
-                1.0,
-                a.as_ptr(),
-                k as _,
-                1,
-                b.as_ptr(),
-                n as _,
-                1,
-                0.0,
-                expect.as_mut_ptr(),
-                n as _,
-                1,
-            );
-        }
-        prop_assert_eq!(expect, found);
-        Ok(())
     }
 
     pub fn test_mat_mul_prep_f32<MM: MatMul<f32>>(
