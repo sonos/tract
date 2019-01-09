@@ -7,13 +7,13 @@ use std::marker::PhantomData;
 pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug {
     fn packed_a_len(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
-    fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize);
+    // fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize);
     fn packed_b_len(&self) -> usize;
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize);
-    fn pack_panel_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize);
+    // fn pack_panel_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize);
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
-
+/*
     fn mat_mul(
         &self,
         a: *const T,
@@ -26,6 +26,7 @@ pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug {
         rsc: isize,
         csc: isize,
     );
+    */
 }
 
 pub trait PackedMatMulKer<T: Copy + Add + Mul + Zero>: Copy + Clone + Debug + Send + Sync {
@@ -60,6 +61,30 @@ where
             k,
             n,
             _kernel: PhantomData,
+        }
+    }
+
+    fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
+        let mr = K::mr();
+        for i in 0..self.k {
+            for j in 0..rows {
+                unsafe {
+                    *pa.offset((i * mr + j) as isize) =
+                        *a.offset(i as isize * csa + j as isize * rsa)
+                }
+            }
+        }
+    }
+
+    fn pack_panel_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize) {
+        let nr = K::nr();
+        for i in 0..self.k {
+            for j in 0..cols {
+                unsafe {
+                    *pb.offset((i * nr + j) as isize) =
+                        *b.offset(j as isize * csb + i as isize * rsb)
+                }
+            }
         }
     }
 }
@@ -98,18 +123,6 @@ where
         }
     }
 
-    fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
-        let mr = K::mr();
-        for i in 0..self.k {
-            for j in 0..rows {
-                unsafe {
-                    *pa.offset((i * mr + j) as isize) =
-                        *a.offset(i as isize * csa + j as isize * rsa)
-                }
-            }
-        }
-    }
-
     fn packed_b_len(&self) -> usize {
         (self.n + K::nr() - 1) / K::nr() * K::nr() * self.k
     }
@@ -134,18 +147,6 @@ where
                     csb,
                     self.n % nr,
                 )
-            }
-        }
-    }
-
-    fn pack_panel_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize) {
-        let nr = K::nr();
-        for i in 0..self.k {
-            for j in 0..cols {
-                unsafe {
-                    *pb.offset((i * nr + j) as isize) =
-                        *b.offset(j as isize * csb + i as isize * rsb)
-                }
             }
         }
     }
@@ -226,6 +227,7 @@ where
         }
     }
 
+    /*
     fn mat_mul(
         &self,
         a: *const T,
@@ -327,6 +329,7 @@ where
             }
         }
     }
+    */
 }
 
 #[cfg(test)]

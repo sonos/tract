@@ -33,20 +33,14 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
         let b1: ArrayView2<T> = b.slice(&b_slice.as_ref()).into_dimensionality()?;
         let mut c1: ArrayViewMut2<T> = c.slice_mut(&c_slice.as_ref()).into_dimensionality()?;
 
-        if let Some(mm) = T::packed_mat_mul(a1.rows(), a1.cols(), b1.cols()) {
-            mm.mat_mul(
-                a1.as_ptr(), a1.strides()[0], a1.strides()[1],
-                b1.as_ptr(), b1.strides()[0], b1.strides()[1],
-                c1.as_mut_ptr(), c1.strides()[0], c1.strides()[1])
-        } else {
-            linalg::general_mat_mul(
-                T::one(),
-                &a1,
-                &b1,
-                T::zero(),
-                &mut c1,
-            );
-        }
+        let mm = T::packed_mat_mul(a1.rows(), a1.cols(), b1.cols())
+            .ok_or_else(|| format!("Can not perfom matmul on {:?} (not a linear algebra type)", T::datum_type()) )?;
+        let mut pa = Vec::with_capacity(mm.packed_a_len());
+        let mut pb = Vec::with_capacity(mm.packed_b_len());
+        mm.pack_a(pa.as_mut_ptr(), a1.as_ptr(), a1.strides()[0], a1.strides()[1]);
+        mm.pack_b(pb.as_mut_ptr(), b1.as_ptr(), b1.strides()[0], b1.strides()[1]);
+        mm.mat_mul_prepacked(pa.as_ptr(), pb.as_ptr(),
+            c1.as_mut_ptr(), c1.strides()[0], c1.strides()[1]);
     }
     Ok(c.into())
 }

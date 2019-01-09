@@ -6,6 +6,7 @@ use TractResult;
 use tensor::Tensor;
 
 use tract_linalg::f16::f16;
+use ndarray_dummy_packed_mm::NdArrayDummyPackedMatMul;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
@@ -108,7 +109,7 @@ pub (crate) trait TryInto<D: Datum> {
 }
 
 macro_rules! datum {
-    ($t:ident, $v:ident) => { datum!($t, $v, |_,_,_| None ); };
+    ($t:ident, $v:ident) => { datum!($t, $v, |_,_,_| None); };
     ($t:ident, $v:ident, $matmul:expr) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
@@ -217,7 +218,7 @@ impl TryInto<f16> for f64 {
 }
 
 datum!(bool, Bool);
-datum!(f16, F16);
+datum!(f16, F16, |m,k,n| Some(Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _));
 datum!(f32, F32, |m,k,n| Some((tract_linalg::ops().smm)(m,k,n)));
 datum!(f64, F64, |m,k,n| Some((tract_linalg::ops().dmm)(m,k,n)));
 datum!(i8, I8);
