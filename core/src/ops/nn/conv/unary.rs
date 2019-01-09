@@ -96,13 +96,11 @@ impl ConvUnary {
         let k = kernel.len() / output_channels;
         let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
 
-        let mm:Option<Arc<MatMul<T>>> = T::packed_mat_mul(m, k, n).map(|mm| Arc::from(mm));
+        let mm:Arc<MatMul<T>> = T::packed_mat_mul(m, k, n)
+            .ok_or_else(|| format!("Can not perfom convolution on {:?} (not a linear algebra type)", T::datum_type()) )?
+            .into();
 
-        let packed_b_len = if let Some(ref mm) = mm {
-            mm.packed_b_len()
-        } else {
-            k*n
-        };
+        let packed_b_len = mm.packed_b_len();
 
         trace!("Gemm iters={} m={} k={} n={}",
                patch.input_shape.n_dim() * self.group,
@@ -124,13 +122,9 @@ impl ConvUnary {
         let co_per_group = output_channels / self.group;
         for g in 0..self.group {
             let subkernel = kernel.slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
-            if let Some(ref mm) = mm {
-                let mut packed = unsafe { Array1::uninitialized(self.group * mm.packed_a_len()) };
-                mm.pack_a(packed.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
-                packed_kernels.push(packed.to_vec());
-            } else {
-                packed_kernels.push(subkernel.iter().cloned().collect());
-            }
+            let mut packed = unsafe { Array1::uninitialized(self.group * mm.packed_a_len()) };
+            mm.pack_a(packed.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
+            packed_kernels.push(packed.to_vec());
         }
 
         let bias:Option<ArrayD<T>> = self.bias.as_ref()

@@ -18,7 +18,7 @@ pub(super) struct Im2Col<T: Datum + Mul + Zero> {
     pub n: usize,
     pub group: usize,
     pub packed_b_len: usize,
-    pub mm: Option<Arc<MatMul<T>>>,
+    pub mm: Arc<MatMul<T>>,
 }
 
 impl<T: Datum + Mul + Zero> PartialEq for Im2Col<T> {
@@ -59,19 +59,15 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
                         }
                     }
                 }
-                if let Some(mm) = self.mm.as_ref() {
-                    unsafe {
-                        mm.pack_b(
-                            packed
-                                .as_mut_ptr()
-                                .offset(((i * self.group + g) * self.packed_b_len) as isize),
-                            mega_matrix.as_ptr(),
-                            mega_matrix.strides()[0],
-                            mega_matrix.strides()[1],
-                        );
-                    }
-                } else {
-                    packed.as_slice_mut().unwrap()[((i * self.group + g) * self.packed_b_len)..].copy_from_slice(&*mega_matrix.as_slice().unwrap());
+                unsafe {
+                    self.mm.pack_b(
+                        packed
+                            .as_mut_ptr()
+                            .offset(((i * self.group + g) * self.packed_b_len) as isize),
+                        mega_matrix.as_ptr(),
+                        mega_matrix.strides()[0],
+                        mega_matrix.strides()[1],
+                    );
                 }
             }
         }

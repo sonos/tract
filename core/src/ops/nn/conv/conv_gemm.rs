@@ -51,7 +51,7 @@ where
     pub packed_kernels: Vec<Vec<T>>,
     pub bias: Option<ArrayD<T>>,
     pub group: usize,
-    pub mm: Option<Arc<MatMul<T>>>,
+    pub mm: Arc<MatMul<T>>,
 }
 
 impl<T> ConvGemm<T>
@@ -74,45 +74,19 @@ where
                     let a = &self.packed_kernels[g];
                     let output_i_g = output_i.offset(output.strides()[input_shape.c_axis()] * co_per_group  as isize * g as isize);
 
-                    if let Some(mm) = self.mm.as_ref() {
-                        let (rsc, csc) = match self.patch.input_shape.fmt {
-                            DataFormat::NHWC => (1, self.m as isize),
-                            DataFormat::NCHW => (self.n as isize, 1),
-                        };
-                        mm.mat_mul_prepacked(
-                            a.as_ptr() as *const T,
-                            packed_input.as_ptr().offset(
-                                ((self.group * i + g) * mm.packed_b_len()) as isize,
-                            ),
-                            output_i_g,
-                            rsc,
-                            csc,
-                        );
-                    } else {
-                        /*
-                        let filters = ArrayView2::<T>::from_shape_ptr((self.m, self.k), a.as_ptr());
-                        let input = packed_input.into_shape((input_shape.n_dim() * self.group, self.k, self.n))?;
-                        let input_group = self.group*i+g;
-                        let input = input.index_axis_move(Axis(0), input_group);
-                        ndarray::linalg::general_mat_mul(
-                            T::one(),
-                            &filters,
-                            &input,
-                            T::zero(),
-                            &mut c_panel);
-                        */
-                        unimplemented!()
-                    }
-                    /*
-                    let shape = output_subview.shape().to_vec();
-                    match self.patch.input_shape.fmt {
-                        DataFormat::NHWC => output_subview
-                            .iter_mut()
-                            .zip(c_panel.t().iter())
-                            .for_each(|(o, c)| *o = *c),
-                        DataFormat::NCHW => output_subview.assign(&c_panel.view().into_shape(shape)?),
+                    let (rsc, csc) = match self.patch.input_shape.fmt {
+                        DataFormat::NHWC => (1, self.m as isize),
+                        DataFormat::NCHW => (self.n as isize, 1),
                     };
-                    */
+                    self.mm.mat_mul_prepacked(
+                        a.as_ptr() as *const T,
+                        packed_input.as_ptr().offset(
+                            ((self.group * i + g) * self.mm.packed_b_len()) as isize,
+                        ),
+                        output_i_g,
+                        rsc,
+                        csc,
+                    );
                 }
             }
         }
