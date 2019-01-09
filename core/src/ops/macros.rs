@@ -562,3 +562,32 @@ macro_rules! impl_op_same_as {
     }
 }
 
+#[macro_export]
+macro_rules! assert_close {
+    ($left:expr, $right:expr) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(left_val.close_enough(right_val, true)) {
+                    panic!(r#"assertion failed: `(left ~ right)`
+  left: `{:?}`,
+ right: `{:?}`"#, left_val, right_val)
+                }
+            }
+        }
+    });
+    ($left:expr, $right:expr,) => ({
+        assert_eq!($left, $right)
+    });
+    ($left:expr, $right:expr, $($arg:tt)+) => ({
+        match (&($left), &($right)) {
+            (left_val, right_val) => {
+                if !(left_val.close_enough(right_val, true)) {
+                    panic!(r#"assertion failed: `(left ~ right)`
+  left: `{:?}`,
+ right: `{:?}`: {}"#, left_val, right_val,
+                           format_args!($($arg)+))
+                }
+            }
+        }
+    });
+}
