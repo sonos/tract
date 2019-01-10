@@ -1,5 +1,5 @@
-use std::ops::{ Add, Mul };
 use num::Zero;
+use std::ops::{Add, Mul};
 
 use ndarray::*;
 use ops::prelude::*;
@@ -8,10 +8,9 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
     let geo = Geo::<T>::new(a.shape(), b.shape())?;
-    let (ashape, bshape, cshape) = infer_shapes(a.shape().into(), b.shape().into())?;
-    let a = a.into_shape(&*ashape)?;
-    let b = b.into_shape(&*bshape)?;
-    let mut c = unsafe { Array::uninitialized(&*cshape) };
+    let a = a.into_shape(&*geo.bc_a_shape)?;
+    let b = b.into_shape(&*geo.bc_b_shape)?;
+    let mut c = unsafe { Array::uninitialized(&*geo.c_shape) };
 
     let mut pa = Vec::with_capacity(geo.mm.packed_a_len());
     let mut pb = Vec::with_capacity(geo.mm.packed_b_len());
@@ -21,8 +20,10 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
         let mut b = b.view();
         let mut c = c.view_mut();
         for (axis, &dim) in prefix.slice().iter().enumerate() {
-            a.slice_axis_inplace(Axis(axis), (dim..=dim).into());
-            b.slice_axis_inplace(Axis(axis), (dim..=dim).into());
+            let d = dim.min(a.shape()[axis] - 1);
+            a.slice_axis_inplace(Axis(axis), (d..=d).into());
+            let d = dim.min(b.shape()[axis] - 1);
+            b.slice_axis_inplace(Axis(axis), (d..=d).into());
             c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
         }
 
@@ -84,6 +85,8 @@ struct Geo<T: Datum + Add + Mul + Zero> {
     mm: Box<tract_linalg::MatMul<T>>,
     a_shape: TVec<usize>,
     b_shape: TVec<usize>,
+    bc_a_shape: TVec<usize>,
+    bc_b_shape: TVec<usize>,
     c_shape: TVec<usize>,
     c_shape_prefix: TVec<usize>,
     a_stride_prefix: TVec<usize>,
@@ -139,6 +142,8 @@ impl<T: Datum + Add + Mul + Zero> Geo<T> {
             n,
             mm,
             c_shape_prefix: bc_c_shape[0..(bc_c_shape.len() - 2)].into(),
+            bc_a_shape,
+            bc_b_shape,
             a_shape: a_shape.into(),
             b_shape: b_shape.into(),
             c_shape: bc_c_shape.into(),
@@ -222,10 +227,16 @@ impl Op for MatMulUnaryA {
         phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
         if phase == ReductionPhase::Normalize {
-            return Ok(None)
+            return Ok(None);
         }
-        if let (Some(a_shape), Some(dt)) = (inputs[0].shape.as_concrete_finite()?, inputs[0].datum_type.concretize()) {
-            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<f32>::new(&*a_shape, &self.b.to_array_view()?)?)));
+        if let (Some(a_shape), Some(dt)) = (
+            inputs[0].shape.as_concrete_finite()?,
+            inputs[0].datum_type.concretize(),
+        ) {
+            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<f32>::new(
+                &*a_shape,
+                &self.b.to_array_view()?,
+            )?)));
         }
         Ok(None)
     }
@@ -264,7 +275,7 @@ pub struct MatMulUnaryImplA<T: Datum + Add + Mul + Zero> {
     packed_bs: ArrayD<T>,
 }
 
-impl<T: Datum + Add + Mul + Zero>  MatMulUnaryImplA<T> {
+impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
     pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplA<T>> {
         let geo = Geo::new(a_shape, b.shape())?;
         let packed_b_len = geo.mm.packed_b_len();
@@ -273,14 +284,17 @@ impl<T: Datum + Add + Mul + Zero>  MatMulUnaryImplA<T> {
         packed_bs_shape.pop();
         packed_bs_shape.push(packed_b_len);
         let mut packed_bs = unsafe { ArrayD::<T>::uninitialized(&*packed_bs_shape) };
-        for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len()-2]).into_iter().enumerate() {
+        for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2])
+            .into_iter()
+            .enumerate()
+        {
             let mut b = b.view();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
                 b.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
             unsafe {
                 geo.mm.pack_b(
-                    packed_bs.as_mut_ptr().offset((ix*packed_b_len) as isize),
+                    packed_bs.as_mut_ptr().offset((ix * packed_b_len) as isize),
                     b.as_ptr(),
                     b.strides()[prefix.ndim()],
                     b.strides()[prefix.ndim() + 1],
@@ -291,12 +305,17 @@ impl<T: Datum + Add + Mul + Zero>  MatMulUnaryImplA<T> {
     }
 }
 
-
 impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplA<T> {
     fn name(&self) -> Cow<str> {
-        format!("MatMulUnaryImplA({:?},{}x{}x{})", T::datum_type(), self.geo.m, self.geo.k, self.geo.n).into()
+        format!(
+            "MatMulUnaryImplA({:?},{}x{}x{})",
+            T::datum_type(),
+            self.geo.m,
+            self.geo.k,
+            self.geo.n
+        )
+        .into()
     }
-
 }
 
 impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
