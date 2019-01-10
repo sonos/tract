@@ -17,6 +17,8 @@ clone_trait_object!(<T> MatMul<T> where T: Copy + Add + Mul + Zero);
 
 pub trait PackedMatMulKer<T: Copy + Add + Mul + Zero>: Copy + Clone + Debug + Send + Sync {
     #[inline(always)]
+    fn name() -> &'static str;
+    #[inline(always)]
     fn kernel(k: usize, a: *const T, b: *const T, c: *mut T, rsc: usize, csc: usize);
     #[inline(always)]
     fn mr() -> usize;
@@ -24,7 +26,7 @@ pub trait PackedMatMulKer<T: Copy + Add + Mul + Zero>: Copy + Clone + Debug + Se
     fn nr() -> usize;
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct PackedMatMul<K, T>
 where
     K: PackedMatMulKer<T> + Debug,
@@ -34,6 +36,15 @@ where
     k: usize,
     n: usize,
     _kernel: PhantomData<(K, T)>,
+}
+
+impl<K, T> std::fmt::Debug for PackedMatMul<K, T>
+where
+    K: PackedMatMulKer<T>,
+    T: Copy + Add + Mul + Zero + Debug + Send + Sync {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "MM m:{} k:{} n:{} {}({}x{})", self.m, self.k, self.n, K::name(), K::mr(), K::nr())
+    }
 }
 
 impl<K, T> PackedMatMul<K, T>

@@ -5,6 +5,10 @@ pub struct SMatMul4x4;
 
 impl frame::matmul::PackedMatMulKer<f32> for SMatMul4x4 {
     #[inline(always)]
+    fn name() -> &'static str {
+        "generic"
+    }
+    #[inline(always)]
     fn mr() -> usize {
         4
     }
@@ -61,6 +65,10 @@ impl frame::matmul::PackedMatMulKer<f32> for SMatMul4x4 {
 pub struct DMatMul4x2;
 
 impl frame::matmul::PackedMatMulKer<f64> for DMatMul4x2 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "generic"
+    }
     #[inline(always)]
     fn mr() -> usize {
         4

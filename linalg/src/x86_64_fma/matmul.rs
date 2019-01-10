@@ -32,6 +32,10 @@ unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, c
 
 impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
     #[inline(always)]
+    fn name() -> &'static str {
+        "fma"
+    }
+    #[inline(always)]
     fn mr() -> usize {
         16
     }

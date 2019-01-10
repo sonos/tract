@@ -107,6 +107,10 @@ where
     fn name(&self) -> Cow<str> {
         "ConvGemm".into()
     }
+
+    fn info(&self) -> TractResult<Option<String>> {
+        Ok(Some(format!("{:?}", self.mm)))
+    }
 }
 
 impl<D> StatelessOp for ConvGemm<D>
