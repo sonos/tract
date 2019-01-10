@@ -1,46 +1,47 @@
 use ndarray::*;
 use ops::prelude::*;
 
-fn make_slicer(
-    coords: &[usize],
-    shape: &[usize],
-) -> TractResult<SliceInfo<Vec<SliceOrIndex>, IxDyn>> {
-    let mut slice: Vec<SliceOrIndex> = coords
-        .iter()
-        .zip(shape.iter())
-        .map(|(&c, &d)| {
-            let a = if c < d { c } else { 0 };
-            SliceOrIndex::Index(a as _)
-        }).collect();
-    slice.push(SliceOrIndex::from(..));
-    slice.push(SliceOrIndex::from(..));
-    Ok(SliceInfo::new(slice)?)
-}
-
 fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
+    let geo = Geo::<T>::new(a.shape(), b.shape())?;
     let (ashape, bshape, cshape) = infer_shapes(a.shape().into(), b.shape().into())?;
     let a = a.into_shape(&*ashape)?;
     let b = b.into_shape(&*bshape)?;
     let mut c = unsafe { Array::uninitialized(&*cshape) };
 
-    for prefix in indices(&cshape[..(cshape.len() - 2)]).into_iter() {
-        let a_slice = make_slicer(&prefix.slice(), a.shape())?;
-        let b_slice = make_slicer(&prefix.slice(), b.shape())?;
-        let c_slice = make_slicer(&prefix.slice(), &*cshape)?;
-        let a1: ArrayView2<T> = a.slice(&a_slice.as_ref()).into_dimensionality()?;
-        let b1: ArrayView2<T> = b.slice(&b_slice.as_ref()).into_dimensionality()?;
-        let mut c1: ArrayViewMut2<T> = c.slice_mut(&c_slice.as_ref()).into_dimensionality()?;
+    let mut pa = Vec::with_capacity(geo.mm.packed_a_len());
+    let mut pb = Vec::with_capacity(geo.mm.packed_b_len());
 
-        let mm = T::packed_mat_mul(a1.rows(), a1.cols(), b1.cols())
-            .ok_or_else(|| format!("Can not perfom matmul on {:?} (not a linear algebra type)", T::datum_type()) )?;
-        let mut pa = Vec::with_capacity(mm.packed_a_len());
-        let mut pb = Vec::with_capacity(mm.packed_b_len());
-        mm.pack_a(pa.as_mut_ptr(), a1.as_ptr(), a1.strides()[0], a1.strides()[1]);
-        mm.pack_b(pb.as_mut_ptr(), b1.as_ptr(), b1.strides()[0], b1.strides()[1]);
-        mm.mat_mul_prepacked(pa.as_ptr(), pb.as_ptr(),
-            c1.as_mut_ptr(), c1.strides()[0], c1.strides()[1]);
+    for prefix in indices(&*geo.c_shape_prefix).into_iter() {
+        let mut a = a.view();
+        let mut b = b.view();
+        let mut c = c.view_mut();
+        for (axis, &dim) in prefix.slice().iter().enumerate() {
+            a.slice_axis_inplace(Axis(axis), (dim..=dim).into());
+            b.slice_axis_inplace(Axis(axis), (dim..=dim).into());
+            c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
+        }
+
+        geo.mm.pack_a(
+            pa.as_mut_ptr(),
+            a.as_ptr(),
+            a.strides()[prefix.ndim()],
+            a.strides()[prefix.ndim() + 1],
+        );
+        geo.mm.pack_b(
+            pb.as_mut_ptr(),
+            b.as_ptr(),
+            b.strides()[prefix.ndim()],
+            b.strides()[prefix.ndim() + 1],
+        );
+        geo.mm.mat_mul_prepacked(
+            pa.as_ptr(),
+            pb.as_ptr(),
+            c.as_mut_ptr(),
+            c.strides()[prefix.ndim()],
+            c.strides()[prefix.ndim() + 1],
+        );
     }
     Ok(c.into())
 }
@@ -64,11 +65,79 @@ fn infer_shapes<D: DimLike>(
     let cshape_prefix = ::broadcast::multi_broadcast(&[
         &ashape[..(ashape.len() - 2)],
         &bshape[..(bshape.len() - 2)],
-    ]).ok_or("Could not broadcast")?;
+    ])
+    .ok_or("Could not broadcast")?;
     let mut cshape: TVec<D> = cshape_prefix.clone();
     cshape.push(ashape[ashape.len() - 2]);
     cshape.push(bshape[bshape.len() - 1]);
     Ok((ashape, bshape, cshape))
+}
+
+#[derive(Debug)]
+struct Geo<T> {
+    m: usize,
+    k: usize,
+    n: usize,
+    mm: Box<tract_linalg::MatMul<T>>,
+    c_shape_prefix: TVec<usize>,
+    a_stride_prefix: TVec<usize>,
+    b_stride_prefix: TVec<usize>,
+    c_stride_prefix: TVec<usize>,
+}
+
+impl<T: Datum> Geo<T> {
+    pub fn new(a_shape: &[usize], b_shape: &[usize]) -> TractResult<Geo<T>> {
+        let (bc_a_shape, bc_b_shape, bc_c_shape) = infer_shapes(a_shape.into(), b_shape.into())?;
+        let m = bc_a_shape[bc_a_shape.len() - 2];
+        let k = bc_a_shape[bc_a_shape.len() - 1];
+        let n = bc_b_shape[bc_b_shape.len() - 1];
+        let mm = T::packed_mat_mul(m, k, n).ok_or_else(|| {
+            format!(
+                "Can not perfom matmul on {:?} (not a linear algebra type)",
+                T::datum_type()
+            )
+        })?;
+        let a_stride_prefix = bc_a_shape
+            .iter()
+            .rev()
+            .scan(1, |stride, dim| {
+                let s = Some(*stride);
+                *stride *= dim;
+                s
+            })
+            .skip(2)
+            .collect();
+        let b_stride_prefix = bc_b_shape
+            .iter()
+            .rev()
+            .scan(1, |stride, dim| {
+                let s = Some(*stride);
+                *stride *= dim;
+                s
+            })
+            .skip(2)
+            .collect();
+        let c_stride_prefix = bc_c_shape
+            .iter()
+            .rev()
+            .scan(1, |stride, dim| {
+                let s = Some(*stride);
+                *stride *= dim;
+                s
+            })
+            .skip(2)
+            .collect();
+        Ok(Geo {
+            m,
+            k,
+            n,
+            mm,
+            c_shape_prefix: bc_c_shape[0..(bc_c_shape.len() - 2)].into(),
+            a_stride_prefix,
+            b_stride_prefix,
+            c_stride_prefix,
+        })
+    }
 }
 
 #[derive(Debug, Clone, new, Default)]
