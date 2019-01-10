@@ -51,6 +51,8 @@ extern crate bit_set;
 #[cfg(feature = "blis")]
 extern crate blis_src;
 #[macro_use]
+extern crate custom_debug_derive;
+#[macro_use]
 extern crate derive_new;
 #[macro_use]
 extern crate downcast_rs;

@@ -37,7 +37,7 @@ use tract_linalg::MatMul;
  *              +--------------+  +----------------+
  */
 
-#[derive(Debug, Clone, new)]
+#[derive(CustomDebug, Clone, new)]
 pub struct ConvGemm<T>
 where
     T: Datum + Add + Mul + Zero + Copy,
@@ -48,6 +48,7 @@ where
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,
+    #[debug(skip)]
     pub packed_kernels: Vec<Vec<T>>,
     pub bias: Option<ArrayD<T>>,
     pub group: usize,
