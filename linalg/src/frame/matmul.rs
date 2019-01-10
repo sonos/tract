@@ -4,7 +4,7 @@ use std::ops::{Add, Mul};
 
 use std::marker::PhantomData;
 
-pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug {
+pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug + objekt::Clone {
     fn packed_a_len(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
     fn packed_b_len(&self) -> usize;
@@ -12,6 +12,8 @@ pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug {
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
 }
+
+clone_trait_object!(<T> MatMul<T> where T: Copy + Add + Mul + Zero);
 
 pub trait PackedMatMulKer<T: Copy + Add + Mul + Zero>: Copy + Clone + Debug + Send + Sync {
     #[inline(always)]

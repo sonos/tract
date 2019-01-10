@@ -1,6 +1,8 @@
 extern crate lazy_static;
 extern crate libc;
 extern crate log;
+#[macro_use]
+extern crate objekt;
 #[cfg(test)]
 extern crate matrixmultiply;
 extern crate num;
