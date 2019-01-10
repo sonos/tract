@@ -279,7 +279,7 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
     pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplA<T>> {
         let geo = Geo::new(a_shape, b.shape())?;
         let packed_b_len = geo.mm.packed_b_len();
-        let mut packed_bs_shape = geo.b_shape.clone();
+        let mut packed_bs_shape = geo.bc_b_shape.clone();
         packed_bs_shape.pop();
         packed_bs_shape.pop();
         packed_bs_shape.push(packed_b_len);
@@ -321,7 +321,7 @@ impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplA<T> {
 impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let a = args_1!(inputs);
-        let a = a.to_array_view::<T>()?;
+        let a = a.to_array_view::<T>()?.into_shape(&*self.geo.bc_a_shape)?;
 
         let mut c = unsafe { Array::uninitialized(&*self.geo.c_shape) };
 
@@ -332,8 +332,10 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
             let mut b = self.packed_bs.view();
             let mut c = c.view_mut();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
-                a.slice_axis_inplace(Axis(axis), (dim..=dim).into());
-                b.slice_axis_inplace(Axis(axis), (dim..=dim).into());
+                let d = dim.min(a.shape()[axis] - 1);
+                a.slice_axis_inplace(Axis(axis), (d..=d).into());
+                let d = dim.min(b.shape()[axis] - 1);
+                b.slice_axis_inplace(Axis(axis), (d..=d).into());
                 c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
 
