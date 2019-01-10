@@ -11,6 +11,10 @@ pub struct SMatMul4x4;
 
 impl frame::matmul::PackedMatMulKer<f32> for SMatMul4x4 {
     #[inline(always)]
+    fn name() -> &'static str {
+        "vfpv2"
+    }
+    #[inline(always)]
     fn mr() -> usize {
         4
     }

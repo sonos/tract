@@ -307,14 +307,11 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
 
 impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplA<T> {
     fn name(&self) -> Cow<str> {
-        format!(
-            "MatMulUnaryImplA({:?},{}x{}x{})",
-            T::datum_type(),
-            self.geo.m,
-            self.geo.k,
-            self.geo.n
-        )
-        .into()
+        "MatMulUnaryImplA".into()
+    }
+
+    fn info(&self) -> TractResult<Option<String>> {
+        Ok(Some(format!("{:?}", self.geo.mm)))
     }
 }
 

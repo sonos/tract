@@ -142,6 +142,11 @@ pub trait Op:
     fn same_as(&self, _other: &Op) -> bool {
         false
     }
+
+    fn info(&self) -> TractResult<Option<String>> {
+        Ok(None)
+    }
+
 }
 
 pub trait InferenceOp {

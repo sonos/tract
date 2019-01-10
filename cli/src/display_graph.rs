@@ -120,6 +120,9 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                         )
                     }
                 }).collect());
+        if let Some(info) = node.op().info()? {
+            sections.push(vec!(Row::Simple(info)))
+        }
         if self.options.debug_op {
             sections.push(vec![Row::Simple(format!("{:?}", node.op))]);
         }
