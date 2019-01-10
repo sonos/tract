@@ -105,10 +105,10 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
             .starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
-            println!("inputs: {:?}", inputs);
+//            println!("inputs: {:?}", inputs);
             let computed = plan.run(inputs).unwrap();
-            println!("computed: {:?}", computed);
-            println!("expected: {:?}", expected);
+//            println!("computed: {:?}", computed);
+//            println!("expected: {:?}", expected);
             if computed.len() != expected.len() {
                 panic!(
                     "Different number of results: got:{} expected:{}",
