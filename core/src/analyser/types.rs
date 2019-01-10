@@ -303,6 +303,13 @@ impl ShapeFact {
             .find(|(_, d)| d.is_stream())
             .map(|(axis, len)| StreamInfo { axis, len }))
     }
+
+    pub fn as_concrete_finite(&self) -> TractResult<Option<TVec<usize>>> {
+        if !self.is_concrete() || self.stream_info()?.is_some() {
+            return Ok(None)
+        }
+        Ok(Some(self.dims.iter().map(|i| i.concretize().unwrap() as usize).collect()))
+    }
 }
 
 impl Fact for ShapeFact {
