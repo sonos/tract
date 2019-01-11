@@ -233,10 +233,17 @@ impl Op for MatMulUnaryA {
             inputs[0].shape.as_concrete_finite()?,
             inputs[0].datum_type.concretize(),
         ) {
-            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<f32>::new(
-                &*a_shape,
-                &self.b.to_array_view()?,
-            )?)));
+            if self.b.shape().len() == 2 {
+                return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplASimpleB::<f32>::new(
+                    &*a_shape,
+                    &self.b.to_array_view()?,
+                )?)));
+            } else {
+                return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<f32>::new(
+                    &*a_shape,
+                    &self.b.to_array_view()?,
+                )?)));
+            }
         }
         Ok(None)
     }
@@ -265,6 +272,90 @@ impl InferenceRulesOp for MatMulUnaryA {
             let (_, _, cshape) = infer_shapes(ashape, bshape)?;
             s.equals(&outputs[0].shape, cshape)
         })?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MatMulUnaryImplASimpleB<T: Datum + Add + Mul + Zero> {
+    geo: Geo<T>,
+    packed_b: Vec<T>,
+    a_shape: TVec<usize>,
+    c_shape: TVec<usize>,
+}
+
+impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
+    pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplASimpleB<T>> {
+        assert_eq!(b.ndim(), 2);
+        let geo_ext = Geo::<T>::new(a_shape, b.shape())?;
+        let c_shape = geo_ext.c_shape.into();
+
+        let a_len = a_shape.iter().cloned().product::<usize>();
+        let shape_a_internal = [a_len / geo_ext.k, geo_ext.k];
+        let geo = Geo::new(&shape_a_internal, b.shape())?;
+        let packed_b_len = geo.mm.packed_b_len();
+        let mut packed_b = Vec::with_capacity(packed_b_len);
+        unsafe { packed_b.set_len(packed_b_len) };
+        geo.mm.pack_b(
+            packed_b.as_mut_ptr(),
+            b.as_ptr(),
+            b.strides()[0],
+            b.strides()[1],
+        );
+        Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
+    }
+}
+
+impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplASimpleB<T> {
+    fn name(&self) -> Cow<str> {
+        "MatMulUnaryImplASimpleB".into()
+    }
+
+    fn info(&self) -> TractResult<Option<String>> {
+        Ok(Some(format!("{:?}", self.geo.mm)))
+    }
+}
+
+impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB<T> {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let a = args_1!(inputs);
+        let a = a.to_array_view::<T>()?;
+
+        let mut c = unsafe { Array::uninitialized(&*self.c_shape) };
+
+        let mut pa = Vec::with_capacity(self.geo.mm.packed_a_len());
+
+        self.geo.mm.pack_a(
+            pa.as_mut_ptr(),
+            a.as_ptr(),
+            self.geo.k as isize,
+            1
+        );
+        self.geo.mm.mat_mul_prepacked(
+            pa.as_ptr(),
+            self.packed_b.as_ptr(),
+            c.as_mut_ptr(),
+            self.geo.n as isize,
+            1,
+        );
+
+        Ok(tvec!(c.into()))
+    }
+}
+
+impl<T: Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplASimpleB<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p SharedTensorsProxy,
+        outputs: &'p SharedTensorsProxy,
+    ) -> InferenceResult {
+        s.equals(&inputs.len, 1)?;
+        s.equals(&outputs.len, 1)?;
+        s.equals(&inputs[0].datum_type, T::datum_type())?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].shape, ShapeFact::from(&*self.a_shape))?;
+        s.equals(&outputs[0].shape, ShapeFact::from(&*self.c_shape))?;
         Ok(())
     }
 }
