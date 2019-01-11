@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn grace_hopper_is_a_military_uniform() {
         download();
-        TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+        // TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
         let tfd = ::tract_tensorflow::for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan = ::tract::SimplePlan::new(&tfd).unwrap();
         let input = load_image(hopper());
