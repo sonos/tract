@@ -12,13 +12,13 @@ tar = "0.4"
 tract-core = { path = "../../core" }
 tract-tensorflow = { path = ".." }
 
-
 [features]
 conform = [ "tract-tensorflow/conform" ]
 
 [dev-dependencies]
 dinghy-test = "0.3"
 criterion = "0.2"
+simplelog = "0.5"
 
 [[bench]]
 harness = false
