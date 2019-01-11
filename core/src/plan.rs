@@ -8,12 +8,25 @@ use ops::prelude::*;
 pub struct SimplePlan<M: Borrow<Model>> {
     pub model: M,
     pub order: Vec<usize>,
+    pub flush_lists:Vec<TVec<usize>>,
 }
 
 impl<M: Borrow<Model>> SimplePlan<M> {
     pub fn new(model: M) -> TractResult<SimplePlan<M>> {
         let order = eval_order(model.borrow())?;
-        Ok(SimplePlan { model, order })
+        let mut values_needed_until_step = vec!(0; model.borrow().nodes().len());
+        for step in 0..order.len() {
+            for i in &model.borrow().node(order[step]).inputs {
+                values_needed_until_step[i.node] = step;
+            }
+        }
+        let mut flush_lists:Vec<TVec<usize>> = vec!(tvec!(); order.len());
+        for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
+            if flush_at != 0 {
+                flush_lists[flush_at].push(node)
+            }
+        }
+        Ok(SimplePlan { model, order, flush_lists })
     }
 
     pub fn run(&self, inputs: TVec<Tensor>) -> TractResult<TVec<SharedTensor>> {
@@ -102,11 +115,14 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             for (input, v) in model.inputs()?.iter().zip(inputs.into_iter()) {
                 values[input.node] = Some(tvec!(v.into()));
             }
-            for n in plan.borrow().order.iter() {
+            let plan = plan.borrow();
+            for (step, n) in plan.order.iter().enumerate() {
                 let node: &Node = model.node(*n);
+                trace!("Running step {}, node {} ({})", step, n, node.name);
                 if node.op_as::<Source>().is_none() {
                     let mut inputs: TVec<SharedTensor> = tvec![];
                     for i in &node.inputs {
+                        trace!("  use input {:?}", i);
                         let prec_node = model.node(i.node);
                         let prec = values[i.node].as_ref().ok_or_else(|| {
                             format!(
@@ -122,6 +138,10 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     }.map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
 
                     values[node.id] = Some(vs);
+                }
+                for flush in &plan.flush_lists[step] {
+                    trace!("Flushing node {} {}", flush, model.node(*flush).name);
+                    values[*flush] = None;
                 }
             }
             for output in model.outputs()? {

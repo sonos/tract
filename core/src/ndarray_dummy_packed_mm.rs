@@ -83,7 +83,7 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
         }
     }
 
-    fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, rsc: isize, csc: isize) {
+    fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, _rsc: isize, _csc: isize) {
         unsafe {
             let a = ndarray::ArrayView::from_shape_ptr(self.k, pa);
             let b = ndarray::ArrayView::from_shape_ptr((self.k, self.n), pb);

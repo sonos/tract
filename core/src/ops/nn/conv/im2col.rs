@@ -71,7 +71,6 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
                 }
             }
         }
-        trace!("im2col: {:?}", packed);
         Ok(packed)
     }
 }
