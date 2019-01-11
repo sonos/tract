@@ -22,6 +22,12 @@ impl frame::matmul::PackedMatMulKer<f32> for SMatMul4x4 {
     fn nr() -> usize {
         4
     }
+    fn alignment_bytes_a() -> usize {
+        4
+    }
+    fn alignment_bytes_b() -> usize {
+        4
+    }
     #[inline(never)]
     fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
         unsafe { arm_vfpv2_mm_s4x4(k, a, b, c, rsc, csc) }

@@ -43,6 +43,12 @@ impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
     fn nr() -> usize {
         6
     }
+    fn alignment_bytes_a() -> usize {
+        32
+    }
+    fn alignment_bytes_b() -> usize {
+        32
+    }
     #[inline(always)]
     fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
         unsafe { fma(k, a, b, c, rsc, csc) }

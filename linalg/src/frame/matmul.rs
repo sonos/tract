@@ -4,6 +4,8 @@ use std::ops::{Add, Mul};
 
 use std::marker::PhantomData;
 
+use std::mem::size_of;
+
 pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug + objekt::Clone {
     fn packed_a_len(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
@@ -24,6 +26,10 @@ pub trait PackedMatMulKer<T: Copy + Add + Mul + Zero>: Copy + Clone + Debug + Se
     fn mr() -> usize;
     #[inline(always)]
     fn nr() -> usize;
+    #[inline(always)]
+    fn alignment_bytes_a() -> usize;
+    #[inline(always)]
+    fn alignment_bytes_b() -> usize;
 }
 
 #[derive(Copy, Clone)]
@@ -86,6 +92,16 @@ where
     }
 }
 
+fn align_offset<T>(orig: *const T, align_bytes: usize) -> *const T {
+    assert!(orig as usize % size_of::<T>() == 0);
+    ((orig as usize + align_bytes - 1) / align_bytes * align_bytes) as _
+}
+
+fn align_offset_mut<T>(orig: *mut T, align_bytes: usize) -> *mut T {
+    assert!(orig as usize % size_of::<T>() == 0);
+    ((orig as usize + align_bytes - 1) / align_bytes * align_bytes) as _
+}
+
 impl<K, T> MatMul<T> for PackedMatMul<K, T>
 where
     K: PackedMatMulKer<T>,
@@ -93,11 +109,12 @@ where
 {
     fn packed_a_len(&self) -> usize {
         let mr = K::mr();
-        (self.m + mr - 1) / mr * mr * self.k
+        (self.m + mr - 1) / mr * mr * self.k + K::alignment_bytes_a() / size_of::<T>()
     }
 
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize) {
         let mr = K::mr();
+        let pa = align_offset_mut(pa, K::alignment_bytes_a());
         unsafe {
             for p in 0..(self.m / mr) {
                 self.pack_panel_a(
@@ -121,11 +138,12 @@ where
     }
 
     fn packed_b_len(&self) -> usize {
-        (self.n + K::nr() - 1) / K::nr() * K::nr() * self.k
+        (self.n + K::nr() - 1) / K::nr() * K::nr() * self.k + K::alignment_bytes_b() / size_of::<T>()
     }
 
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
         let nr = K::nr();
+        let pb = align_offset_mut(pb, K::alignment_bytes_b());
         unsafe {
             for p in 0..(self.n / nr) {
                 self.pack_panel_b(
@@ -154,6 +172,8 @@ where
         let m = self.m;
         let k = self.k;
         let n = self.n;
+        let pa = align_offset(pa, K::alignment_bytes_a());
+        let pb = align_offset(pb, K::alignment_bytes_b());
         let mut tmpc = vec![T::zero(); mr * nr];
         unsafe {
             for ia in 0..m / mr {
