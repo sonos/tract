@@ -177,19 +177,20 @@ impl Tensorflow {
                 continue;
             }
 
-            let operation = self.graph.operation_by_name_required(name)?;
+            if let Some(operation) = self.graph.operation_by_name(name)
+                .map_err(|e| format!("TfError: {:?}", e))? {
+                // switch only computes one of its outputs. tf explodes during
+                // the call to run() if we registers them
+                if operation.op_type()? == "Switch" {
+                    continue;
+                }
 
-            // switch only computes one of its outputs. tf explodes during
-            // the call to run() if we registers them
-            if operation.op_type()? == "Switch" {
-                continue;
+                let outputs = (0..operation.num_outputs())
+                    .map(|ix| step.request_fetch(&operation, ix as i32))
+                    .collect::<Vec<_>>();
+
+                tokens.insert(name, outputs);
             }
-
-            let outputs = (0..operation.num_outputs())
-                .map(|ix| step.request_fetch(&operation, ix as i32))
-                .collect::<Vec<_>>();
-
-            tokens.insert(name, outputs);
         }
         trace!("Generated all output tokens");
 
