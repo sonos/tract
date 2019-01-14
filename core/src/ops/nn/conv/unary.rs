@@ -50,7 +50,7 @@ impl ConvUnary {
             .map(|a| TVec::from(&**a))
             .unwrap_or(tvec!(1; spatial_rank));
 
-        Ok(ConvUnary {
+        let unary = ConvUnary {
             data_fmt: conv.data_fmt,
             kernel_fmt: conv.kernel_fmt,
             padding: conv.padding.clone(),
@@ -61,7 +61,8 @@ impl ConvUnary {
             full_input_shape: full_input_shape.into(),
             full_output_shape: full_output_shape.into(),
             group,
-        })
+        };
+        Ok(unary)
     }
 
     fn to_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col<T>, ConvGemm<T>)>
@@ -118,13 +119,14 @@ impl ConvUnary {
             KernelFormat::OIHW => kernel.into_shape(kernel_reshaped)?.to_owned(),
         };
 
-        let mut packed_kernels = vec!();
+        let mut packed_kernels:Vec<Vec<T>> = vec!();
         let co_per_group = output_channels / self.group;
         for g in 0..self.group {
             let subkernel = kernel.slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
-            let mut packed = unsafe { Array1::uninitialized(self.group * mm.packed_a_len()) };
+            let mut packed = Vec::with_capacity(mm.packed_a_len());
+            unsafe { packed.set_len(mm.packed_a_len()); }
             mm.pack_a(packed.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
-            packed_kernels.push(packed.to_vec());
+            packed_kernels.push(packed);
         }
 
         let bias:Option<ArrayD<T>> = self.bias.as_ref()
