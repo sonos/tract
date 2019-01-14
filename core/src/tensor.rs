@@ -71,12 +71,31 @@ pub struct Tensor {
 
 impl Tensor {
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
-        Ok(Tensor {
-            null: false,
-            dt: T::datum_type(),
-            shape: shape.into(),
-            data: content.to_vec(),
-        })
+        use std::alloc;
+        use std::mem::size_of;
+        if content.len() != 0 {
+            let aligned_buffer = alloc::alloc(
+                alloc::Layout::from_size_align(content.len(), size_of::<T>())
+                .map_err(|e| format!("Memory layout error: {:?}", e))?
+            );
+            assert!(content.len() == 0 || aligned_buffer as usize != 0);
+            assert!(aligned_buffer as usize % size_of::<T>() == 0);
+            let mut data:Vec<u8> = Vec::from_raw_parts(aligned_buffer as _, content.len(), content.len());
+            data.copy_from_slice(content);
+            Ok(Tensor {
+                null: false,
+                dt: T::datum_type(),
+                shape: shape.into(),
+                data,
+            })
+        } else {
+            Ok(Tensor {
+                null: false,
+                dt: T::datum_type(),
+                shape: shape.into(),
+                data: vec!()
+            })
+        }
     }
 
     pub unsafe fn null<T:Datum>(shape: &[usize]) -> TractResult<Tensor> {
@@ -206,14 +225,22 @@ impl Tensor {
     }
 
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
+        assert_eq!(D::datum_type(), self.datum_type());
         if self.is_null() {
             bail!("Null tensor")
         }
-        unsafe {
-            Ok(ArrayViewD::from_shape_ptr(
+        if self.data.len() != 0 {
+            unsafe {
+                return Ok(ArrayViewD::from_shape_ptr(
+                    &*self.shape,
+                    self.data.as_ptr() as _,
+                ));
+            }
+        } else {
+            return Ok(ArrayViewD::from_shape(
                 &*self.shape,
-                self.data.as_ptr() as _,
-            ))
+                &[],
+            )?);
         }
     }
 
@@ -231,15 +258,23 @@ impl Tensor {
     }
 
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
+        assert_eq!(D::datum_type(), self.datum_type());
         if self.is_null() {
             bail!("Null tensor")
         }
         let shape = self.shape.clone();
-        unsafe {
-            Ok(ArrayViewMutD::from_shape_ptr(
-                &*shape,
-                self.data.as_mut_ptr() as _,
-            ))
+        if self.data.len() != 0 {
+            unsafe {
+                Ok(ArrayViewMutD::from_shape_ptr(
+                    &*shape,
+                    self.data.as_mut_ptr() as _,
+                ))
+            }
+        } else {
+            return Ok(ArrayViewMutD::from_shape(
+                &*self.shape,
+                &mut [],
+            )?);
         }
     }
 
@@ -388,6 +423,7 @@ fn vec_to_u8<T: Datum>(mut data: Vec<T>) -> Vec<u8> {
 }
 
 unsafe fn vec_to_datum<T: Datum>(mut data: Vec<u8>) -> Vec<T> {
+    assert!(data.as_ptr() as usize % std::mem::size_of::<T>() == 0);
     let v = Vec::from_raw_parts(
         data.as_mut_ptr() as *mut T,
         data.len() / ::std::mem::size_of::<T>(),
