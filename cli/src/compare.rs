@@ -82,7 +82,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         };
 
         debug!("Computing {} in tract", node.name);
-        match state.compute_one(n) {
+        match state.compute_recursively(n) {
             Err(e) => {
                 failing.push(n);
                 display_graph.add_node_label(n, format!("{}: {}", "ERROR".red(), e))?;
