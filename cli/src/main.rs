@@ -1,6 +1,6 @@
+extern crate ansi_term;
 extern crate box_drawing;
 extern crate clap;
-extern crate colored;
 #[macro_use]
 extern crate error_chain;
 extern crate insideout;

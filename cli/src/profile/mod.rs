@@ -1,6 +1,6 @@
-use colored::Colorize;
 use rusage::Duration;
 use std::collections::HashMap;
+use ansi_term::Color::*;
 
 use errors::*;
 use format::*;
@@ -90,7 +90,7 @@ impl ProfileData {
         for (operation, measure) in operations.iter().take(5) {
             println!(
                 "{:20} {:3} calls: {}",
-                operation.blue().bold(),
+                Blue.bold().paint(*operation),
                 counters[&**operation],
                 dur_avg_oneline_ratio(*measure, sum)
             );

@@ -15,7 +15,7 @@ travis-ci = { repository = "kali/tract" }
 [dependencies]
 box_drawing = "0.1"
 clap = "2.31"
-colored = "1.6"
+ansi_term = "0.11.0"
 error-chain = "0.12"
 insideout = "0.1.0"
 lazy_static = "1.0"
