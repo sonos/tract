@@ -199,6 +199,22 @@ pub struct MatMulUnaryA {
     b: Tensor,
 }
 
+impl MatMulUnaryA {
+    pub fn codegen<T: Datum + Add + Mul + Zero>(&self, a_shape: &[usize]) -> TractResult<Option<ReducedOpRewire>> {
+        if self.b.shape().len() == 2 {
+            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplASimpleB::<T>::new(
+                a_shape,
+                &self.b.to_array_view()?,
+            )?)));
+        } else {
+            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<T>::new(
+                a_shape,
+                &self.b.to_array_view()?,
+            )?)));
+        }
+    }
+}
+
 impl Op for MatMulUnaryA {
     fn name(&self) -> Cow<str> {
         "MatMulUnaryA".into()
@@ -233,17 +249,7 @@ impl Op for MatMulUnaryA {
             inputs[0].shape.as_concrete_finite()?,
             inputs[0].datum_type.concretize(),
         ) {
-            if self.b.shape().len() == 2 {
-                return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplASimpleB::<f32>::new(
-                    &*a_shape,
-                    &self.b.to_array_view()?,
-                )?)));
-            } else {
-                return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<f32>::new(
-                    &*a_shape,
-                    &self.b.to_array_view()?,
-                )?)));
-            }
+            return dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape))
         }
         Ok(None)
     }
