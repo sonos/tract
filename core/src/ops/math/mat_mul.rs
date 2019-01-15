@@ -12,8 +12,8 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
     let b = b.into_shape(&*geo.bc_b_shape)?;
     let mut c = unsafe { Array::uninitialized(&*geo.c_shape) };
 
-    let mut pa = Vec::with_capacity(geo.mm.packed_a_len());
-    let mut pb = Vec::with_capacity(geo.mm.packed_b_len());
+    let mut pa = unsafe { Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_a_len()], geo.mm.packed_a_alignment())? };
+    let mut pb = unsafe { Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_b_len()], geo.mm.packed_b_alignment())? };
 
     for prefix in indices(&*geo.c_shape_prefix).into_iter() {
         let mut a = a.view();
@@ -28,20 +28,20 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
         }
 
         geo.mm.pack_a(
-            pa.as_mut_ptr(),
+            pa.as_ptr_mut()?,
             a.as_ptr(),
             a.strides()[prefix.ndim()],
             a.strides()[prefix.ndim() + 1],
         );
         geo.mm.pack_b(
-            pb.as_mut_ptr(),
+            pb.as_ptr_mut()?,
             b.as_ptr(),
             b.strides()[prefix.ndim()],
             b.strides()[prefix.ndim() + 1],
         );
         geo.mm.mat_mul_prepacked(
-            pa.as_ptr(),
-            pb.as_ptr(),
+            pa.as_ptr()?,
+            pb.as_ptr()?,
             c.as_mut_ptr(),
             c.strides()[prefix.ndim()],
             c.strides()[prefix.ndim() + 1],
@@ -412,7 +412,7 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
 
         let mut c = unsafe { Array::uninitialized(&*self.geo.c_shape) };
 
-        let mut pa = Vec::with_capacity(self.geo.mm.packed_a_len());
+        let mut pa = unsafe { Tensor::uninitialized_aligned::<T>(&[self.geo.mm.packed_a_len()], self.geo.mm.packed_a_alignment())? };
 
         for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
             let mut a = a.view();
@@ -427,13 +427,13 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
             }
 
             self.geo.mm.pack_a(
-                pa.as_mut_ptr(),
+                pa.as_ptr_mut()?,
                 a.as_ptr(),
                 a.strides()[prefix.ndim()],
                 a.strides()[prefix.ndim() + 1],
             );
             self.geo.mm.mat_mul_prepacked(
-                pa.as_ptr(),
+                pa.as_ptr_mut()?,
                 b.as_ptr(),
                 c.as_mut_ptr(),
                 c.strides()[prefix.ndim()],
