@@ -311,7 +311,7 @@ impl Tensor {
         }
     }
 
-    pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*const D> {
+    pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
         if self.is_null() {
             bail!("Null tensor")
         }

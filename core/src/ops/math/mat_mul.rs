@@ -279,7 +279,7 @@ impl InferenceRulesOp for MatMulUnaryA {
 #[derive(Debug, Clone)]
 pub struct MatMulUnaryImplASimpleB<T: Datum + Add + Mul + Zero> {
     geo: Geo<T>,
-    packed_b: Vec<T>,
+    packed_b: Tensor,
     a_shape: TVec<usize>,
     c_shape: TVec<usize>,
 }
@@ -294,10 +294,9 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
         let shape_a_internal = [a_len / geo_ext.k, geo_ext.k];
         let geo = Geo::new(&shape_a_internal, b.shape())?;
         let packed_b_len = geo.mm.packed_b_len();
-        let mut packed_b = Vec::with_capacity(packed_b_len);
-        unsafe { packed_b.set_len(packed_b_len) };
+        let mut packed_b = unsafe { Tensor::uninitialized_aligned::<T>(&[packed_b_len], geo.mm.packed_b_alignment())? };
         geo.mm.pack_b(
-            packed_b.as_mut_ptr(),
+            packed_b.as_ptr_mut()?,
             b.as_ptr(),
             b.strides()[0],
             b.strides()[1],
@@ -323,17 +322,17 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB<T> {
 
         let mut c = unsafe { Array::uninitialized(&*self.c_shape) };
 
-        let mut pa = Vec::with_capacity(self.geo.mm.packed_a_len());
+        let mut pa = unsafe { Tensor::uninitialized_aligned::<T>(&[self.geo.mm.packed_a_len()], self.geo.mm.packed_a_alignment())? };
 
         self.geo.mm.pack_a(
-            pa.as_mut_ptr(),
+            pa.as_ptr_mut()?,
             a.as_ptr(),
             self.geo.k as isize,
             1
         );
         self.geo.mm.mat_mul_prepacked(
-            pa.as_ptr(),
-            self.packed_b.as_ptr(),
+            pa.as_ptr()?,
+            self.packed_b.as_ptr()?,
             c.as_mut_ptr(),
             self.geo.n as isize,
             1,
