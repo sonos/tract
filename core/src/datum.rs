@@ -93,6 +93,23 @@ impl DatumType {
         }
         return None;
     }
+
+    pub fn size_of(&self) -> usize {
+        match self {
+            DatumType::Bool => std::mem::size_of::<bool>(),
+            DatumType::U8 => std::mem::size_of::<u8>(),
+            DatumType::U16 => std::mem::size_of::<u16>(),
+            DatumType::I8 => std::mem::size_of::<i8>(),
+            DatumType::I16 => std::mem::size_of::<i16>(),
+            DatumType::I32 => std::mem::size_of::<i32>(),
+            DatumType::I64 => std::mem::size_of::<i64>(),
+            DatumType::F16 => std::mem::size_of::<f16>(),
+            DatumType::F32 => std::mem::size_of::<f32>(),
+            DatumType::F64 => std::mem::size_of::<f64>(),
+            DatumType::TDim => std::mem::size_of::<TDim>(),
+            DatumType::String => std::mem::size_of::<String>(),
+        }
+    }
 }
 
 pub trait Datum:

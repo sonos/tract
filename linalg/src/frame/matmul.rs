@@ -4,12 +4,12 @@ use std::ops::{Add, Mul};
 
 use std::marker::PhantomData;
 
-use std::mem::size_of;
-
 pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug + objekt::Clone {
     fn packed_a_len(&self) -> usize;
+    fn packed_a_alignment(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
     fn packed_b_len(&self) -> usize;
+    fn packed_b_alignment(&self) -> usize;
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize);
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
@@ -92,29 +92,25 @@ where
     }
 }
 
-fn align_offset<T>(orig: *const T, align_bytes: usize) -> *const T {
-    assert!(orig as usize % size_of::<T>() == 0);
-    ((orig as usize + align_bytes - 1) / align_bytes * align_bytes) as _
-}
-
-fn align_offset_mut<T>(orig: *mut T, align_bytes: usize) -> *mut T {
-    assert!(orig as usize % size_of::<T>() == 0);
-    ((orig as usize + align_bytes - 1) / align_bytes * align_bytes) as _
-}
-
 impl<K, T> MatMul<T> for PackedMatMul<K, T>
 where
     K: PackedMatMulKer<T>,
-    T: Copy + Add + Mul + Zero + Debug + Send + Sync,
+    T: Copy + Add + Mul + Zero + Debug + Send + Sync + PartialEq,
 {
+    fn packed_a_alignment(&self) -> usize {
+        K::alignment_bytes_a()
+    }
+    fn packed_b_alignment(&self) -> usize {
+        K::alignment_bytes_b()
+    }
     fn packed_a_len(&self) -> usize {
         let mr = K::mr();
-        (self.m + mr - 1) / mr * mr * self.k + K::alignment_bytes_a() / size_of::<T>()
+        (self.m + mr - 1) / mr * mr * self.k
     }
 
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize) {
         let mr = K::mr();
-        let pa = align_offset_mut(pa, K::alignment_bytes_a());
+        assert!(pa as usize % K::alignment_bytes_a() == 0);
         unsafe {
             for p in 0..(self.m / mr) {
                 self.pack_panel_a(
@@ -134,16 +130,17 @@ where
                     self.m % mr,
                 )
             }
+            assert_eq!(*pa, *a);
         }
     }
 
     fn packed_b_len(&self) -> usize {
-        (self.n + K::nr() - 1) / K::nr() * K::nr() * self.k + K::alignment_bytes_b() / size_of::<T>()
+        (self.n + K::nr() - 1) / K::nr() * K::nr() * self.k
     }
 
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
         let nr = K::nr();
-        let pb = align_offset_mut(pb, K::alignment_bytes_b());
+        assert!(pb as usize % K::alignment_bytes_b() == 0);
         unsafe {
             for p in 0..(self.n / nr) {
                 self.pack_panel_b(
@@ -167,13 +164,13 @@ where
     }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize) {
+        assert!(pa as usize % K::alignment_bytes_a() == 0);
+        assert!(pb as usize % K::alignment_bytes_b() == 0);
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
         let k = self.k;
         let n = self.n;
-        let pa = align_offset(pa, K::alignment_bytes_a());
-        let pb = align_offset(pb, K::alignment_bytes_b());
         let mut tmpc = vec![T::zero(); mr * nr];
         unsafe {
             for ia in 0..m / mr {

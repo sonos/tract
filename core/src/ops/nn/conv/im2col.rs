@@ -31,13 +31,11 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
     pub(super) fn im2col<'i>(
         &'i self,
         input: &'i ArrayViewD<'i, T>,
-    ) -> TractResult<Array1<T>> {
+    ) -> TractResult<Tensor> {
         let input_shape = &self.patch.input_shape;
         let mut mega_matrix = unsafe { Array2::<T>::uninitialized((self.k, self.n)) };
 
-        let mut packed = unsafe {
-            Array1::<T>::uninitialized(self.packed_b_len * self.group * input_shape.n_dim())
-        };
+        let mut packed = unsafe { Tensor::uninitialized_aligned::<T>(&[self.mm.packed_b_len() * self.group * input_shape.n_dim()], self.mm.packed_b_alignment())? };
         let visitor = self.patch.wrap(input);
         let ci_per_group = input_shape.c_dim() / self.group;
         for i in 0..input_shape.n_dim() {
@@ -62,6 +60,7 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
                 unsafe {
                     self.mm.pack_b(
                         packed
+                            .as_slice_mut::<T>()?
                             .as_mut_ptr()
                             .offset(((i * self.group + g) * self.packed_b_len) as isize),
                         mega_matrix.as_ptr(),
@@ -85,8 +84,8 @@ impl<T: Datum + Mul + Zero> Op for Im2Col<T> {
 
 impl<T: Datum+Mul+Zero> StatelessOp for Im2Col<T> {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let tensor = self.im2col(&inputs[0].to_array_view()?)?.into();
-        Ok(tvec!(tensor))
+        let tensor = self.im2col(&inputs[0].to_array_view()?)?;
+        Ok(tvec!(tensor.into()))
     }
 }
 

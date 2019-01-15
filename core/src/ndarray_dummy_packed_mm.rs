@@ -16,6 +16,9 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
     fn packed_a_len(&self) -> usize {
         self.m * self.k
     }
+    fn packed_a_alignment(&self) -> usize {
+        std::mem::size_of::<T>()
+    }
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize) {
         unsafe {
             for x in 0..self.k as isize {
@@ -27,6 +30,9 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
     }
     fn packed_b_len(&self) -> usize {
         self.k * self.n
+    }
+    fn packed_b_alignment(&self) -> usize {
+        std::mem::size_of::<T>()
     }
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
         unsafe {
@@ -63,6 +69,9 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
     fn packed_a_len(&self) -> usize {
         self.k
     }
+    fn packed_a_alignment(&self) -> usize {
+        std::mem::size_of::<T>()
+    }
     fn pack_a(&self, pa: *mut T, a: *const T, _rsa: isize, csa: isize) {
         unsafe {
             for x in 0..self.k as isize {
@@ -72,6 +81,9 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
     }
     fn packed_b_len(&self) -> usize {
         self.k * self.n
+    }
+    fn packed_b_alignment(&self) -> usize {
+        std::mem::size_of::<T>()
     }
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
         unsafe {

@@ -9,6 +9,9 @@ pub struct KerFma16x6;
 #[target_feature(enable = "fma")]
 unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
     use std::arch::x86_64::*;
+    assert!(a as usize % 32 == 0);
+    assert!(b as usize % 4 == 0);
+    assert!(c as usize % 4 == 0);
     let mut ab1 = [_mm256_setzero_ps(); 6];
     let mut ab2 = [_mm256_setzero_ps(); 6];
     for i in 0..k {
@@ -47,7 +50,7 @@ impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
         32
     }
     fn alignment_bytes_b() -> usize {
-        32
+        4
     }
     #[inline(always)]
     fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
