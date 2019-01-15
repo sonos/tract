@@ -119,13 +119,12 @@ impl ConvUnary {
             KernelFormat::OIHW => kernel.into_shape(kernel_reshaped)?.to_owned(),
         };
 
-        let mut packed_kernels:Vec<Vec<T>> = vec!();
+        let mut packed_kernels:Vec<Tensor> = vec!();
         let co_per_group = output_channels / self.group;
         for g in 0..self.group {
             let subkernel = kernel.slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
-            let mut packed = Vec::with_capacity(mm.packed_a_len());
-            unsafe { packed.set_len(mm.packed_a_len()); }
-            mm.pack_a(packed.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
+            let mut packed = unsafe { Tensor::uninitialized_aligned::<T>(&[mm.packed_a_len()], mm.packed_a_alignment())? };
+            mm.pack_a(packed.as_slice_mut()?.as_mut_ptr(), subkernel.as_ptr(), subkernel.strides()[0], subkernel.strides()[1]);
             packed_kernels.push(packed);
         }
 
@@ -160,7 +159,7 @@ impl ConvUnary {
         let input = args_1!(inputs);
         let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
-        let output = conv_gemm.conv_gemm(&mega.view())?;
+        let output = conv_gemm.conv_gemm(&mega.to_array_view::<T>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into()))
     }
 

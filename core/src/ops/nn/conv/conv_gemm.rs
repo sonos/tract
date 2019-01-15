@@ -49,7 +49,7 @@ where
     pub n: usize,
     pub kernel_fmt: KernelFormat,
     #[debug(skip)]
-    pub packed_kernels: Vec<Vec<T>>,
+    pub packed_kernels: Vec<Tensor>,
     pub bias: Option<ArrayD<T>>,
     pub group: usize,
     pub mm: Arc<MatMul<T>>,
@@ -80,7 +80,7 @@ where
                         DataFormat::NCHW => (self.n as isize, 1),
                     };
                     self.mm.mat_mul_prepacked(
-                        a.as_ptr() as *const T,
+                        a.as_ptr()?,
                         packed_input.as_ptr().offset(
                             ((self.group * i + g) * self.mm.packed_b_len()) as isize,
                         ),
