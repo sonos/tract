@@ -362,7 +362,7 @@ impl<T: Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplASimpleB<T
 #[derive(Debug, Clone)]
 pub struct MatMulUnaryImplA<T: Datum + Add + Mul + Zero> {
     geo: Geo<T>,
-    packed_bs: ArrayD<T>,
+    packed_bs: Tensor,
 }
 
 impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
@@ -373,7 +373,7 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
         packed_bs_shape.pop();
         packed_bs_shape.pop();
         packed_bs_shape.push(packed_b_len);
-        let mut packed_bs = unsafe { ArrayD::<T>::uninitialized(&*packed_bs_shape) };
+        let mut packed_bs = unsafe { Tensor::uninitialized_aligned::<T>(&packed_bs_shape, geo.mm.packed_b_alignment())? };
         for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2])
             .into_iter()
             .enumerate()
@@ -384,7 +384,7 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
             }
             unsafe {
                 geo.mm.pack_b(
-                    packed_bs.as_mut_ptr().offset((ix * packed_b_len) as isize),
+                    packed_bs.as_ptr_mut::<T>()?.offset((ix * packed_b_len) as isize),
                     b.as_ptr(),
                     b.strides()[prefix.ndim()],
                     b.strides()[prefix.ndim() + 1],
@@ -416,7 +416,7 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
 
         for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
             let mut a = a.view();
-            let mut b = self.packed_bs.view();
+            let mut b = self.packed_bs.to_array_view::<T>()?;
             let mut c = c.view_mut();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
                 let d = dim.min(a.shape()[axis] - 1);
