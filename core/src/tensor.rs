@@ -64,13 +64,14 @@ impl PartialEq for SharedTensor {
 }
 
 pub fn realign_slice(v: &[u8], alignment: usize) -> TractResult<Vec<u8>> {
+    assert!((alignment as u32).count_ones() == 1, "Invalid alignment required ({})", alignment);
     if v.len() == 0 {
         return Ok(vec!())
     }
     unsafe {
         let aligned_buffer = alloc::alloc(
             alloc::Layout::from_size_align(v.len(), alignment)
-            .map_err(|e| format!("Memory layout error: {:?}", e))?
+            .map_err(|e| format!("Memory layout error: {:?} ({}, {})", e, v.len(), alignment))?
         );
         let mut output = Vec::from_raw_parts(aligned_buffer as _, v.len(), v.len());
         output.copy_from_slice(v);
@@ -95,6 +96,7 @@ pub struct Tensor {
 
 impl Clone for Tensor {
     fn clone(&self) -> Tensor {
+        assert!((self.alignment as u32).count_ones() == 1, "Invalid alignment in tensor ({})", self.alignment);
         Tensor {
             shape: self.shape.clone(),
             data: realign_slice(&self.data, self.alignment).unwrap(),
@@ -105,13 +107,14 @@ impl Clone for Tensor {
 
 impl Tensor {
     pub unsafe fn uninitialized_aligned<T:Datum>(shape: &[usize], alignment:usize) -> TractResult<Tensor> {
+        assert!((alignment as u32).count_ones() == 1, "Invalid alignment required ({})", alignment);
         let len = shape.iter().cloned().product::<usize>() * size_of::<T>();
         let data = if len == 0 {
             vec!()
         } else {
             let aligned_buffer = alloc::alloc(
                 alloc::Layout::from_size_align(len, alignment)
-                .map_err(|e| format!("Memory layout error: {:?}", e))?
+                .map_err(|e| format!("Memory layout error: {:?} ({}, {})", e, len, alignment))?
             );
             Vec::from_raw_parts(aligned_buffer as _, len, len)
         };
@@ -130,7 +133,7 @@ impl Tensor {
             dt: T::datum_type(),
             shape: shape.into(),
             data,
-            alignment: size_of::<T>(),
+            alignment: T::datum_type().alignment(),
         })
     }
 
@@ -154,7 +157,7 @@ impl Tensor {
             dt,
             shape: shape.into(),
             data: vec!(),
-            alignment: dt.size_of(),
+            alignment: dt.alignment(),
         })
     }
 
@@ -362,7 +365,7 @@ impl Tensor {
             dt: Target::datum_type(),
             shape: self.shape.clone(),
             data: vec_to_u8(data),
-            alignment: size_of::<Target>(),
+            alignment: Target::datum_type().alignment(),
         })
     }
 
@@ -485,7 +488,7 @@ fn vec_to_u8<T: Datum>(mut data: Vec<T>) -> Vec<u8> {
 }
 
 unsafe fn vec_to_datum<T: Datum>(mut data: Vec<u8>) -> Vec<T> {
-    assert!(data.as_ptr() as usize % std::mem::size_of::<T>() == 0);
+    assert!(data.as_ptr() as usize % T::datum_type().alignment() == 0);
     let v = Vec::from_raw_parts(
         data.as_mut_ptr() as *mut T,
         data.len() / ::std::mem::size_of::<T>(),
@@ -509,7 +512,7 @@ impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
             dt: T::datum_type(),
             shape,
             data: raw_data,
-            alignment: size_of::<T>(),
+            alignment: T::datum_type().alignment(),
         }
     }
 }

@@ -110,6 +110,14 @@ impl DatumType {
             DatumType::String => std::mem::size_of::<String>(),
         }
     }
+
+    pub fn alignment(&self) -> usize {
+        match self {
+            DatumType::TDim => std::mem::size_of::<usize>(),
+            DatumType::String => std::mem::size_of::<usize>(),
+            _ => self.size_of(),
+        }
+    }
 }
 
 pub trait Datum:
