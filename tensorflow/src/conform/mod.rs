@@ -24,7 +24,7 @@ pub mod tf;
 pub use protobuf::Message;
 
 use crate::tfpb;
-use crate::tfpb::tensor_shape::TensorShapeProto;
+use crate::tfpb::tensor_shape::{ TensorShapeProto, TensorShapeProto_Dim };
 use crate::tfpb::types::DataType;
 use tract_core::ops::prelude::*;
 
@@ -41,7 +41,6 @@ pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
 }
 
 pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
-    use tfpb::tensor_shape::*;
     let mut shape = TensorShapeProto::new();
     shape.set_dim(
         dims.iter()
