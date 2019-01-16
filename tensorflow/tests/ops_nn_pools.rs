@@ -20,7 +20,7 @@ use protobuf::Message;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use utils::*;
+use crate::utils::*;
 
 use tract_core::Tensor as TractSharedTensor;
 

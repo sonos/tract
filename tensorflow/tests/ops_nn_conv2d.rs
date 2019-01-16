@@ -20,9 +20,9 @@ use tract_core::Tensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use utils::*;
+use crate::utils::*;
 
-fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> ::Result<Vec<u8>> {
+fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u8>> {
     let conv = tfpb::node()
         .name("conv")
         .op("Conv2D")
