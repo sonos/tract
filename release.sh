@@ -37,4 +37,4 @@ git commit . -m "release $CRATE/$VERSION"
 git tag "$CRATE/$VERSION"
 git push --tags
 
-(cd $CRATE ; cargo publish)
+(cd $CRATE ; cargo publish --allow-dirty)
