@@ -3,7 +3,7 @@ mod slice;
 use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
-use num::cast::AsPrimitive;
+use num_traits::AsPrimitive;
 use ops::OpRegister;
 use pb::NodeProto;
 

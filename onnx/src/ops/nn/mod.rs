@@ -238,7 +238,7 @@ pub fn parametric_softplus(node: &NodeProto) -> TractResult<Box<Op>> {
 
 element_bin!(Prelu, match
     f16 => f16 { |a:f16, b:f16| {
-        use num::Zero;
+        use num_traits::Zero;
         if a < f16::zero() { a*b } else { b }
     } },
     f32 => f32 { |a, b| if a < 0.0 { a*b } else { a } },

@@ -150,12 +150,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_int<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<T> {
+    pub fn get_attr_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
         Ok(self.get_attr_opt_int(name)?
             .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_int<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
+    pub fn get_attr_opt_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
         if let Some(i) = self.get_attr().get(name) {
             Ok(Some(T::from_i64(i.get_i())
                 .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
@@ -164,12 +164,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_float<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<T> {
+    pub fn get_attr_float<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<T> {
         Ok(self.get_attr_opt_float(name)?
             .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_float<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
+    pub fn get_attr_opt_float<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Option<T>> {
         if let Some(i) = self.get_attr().get(name) {
             Ok(Some(T::from_f32(i.get_f())
                 .ok_or_else(|| format!("Node {} ({}) expected int attribute '{}'", self.get_name(), self.get_op(), name))?))
@@ -178,12 +178,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<Vec<T>> {
+    pub fn get_attr_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Vec<T>> {
         Ok(self.get_attr_opt_list_int(name)?
             .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_list_int<T: ::num::FromPrimitive>(&self, name: &str) -> TractResult<Option<Vec<T>>> {
+    pub fn get_attr_opt_list_int<T: ::num_traits::FromPrimitive>(&self, name: &str) -> TractResult<Option<Vec<T>>> {
         if let Some(list) = self.get_attr().get(name) {
             Ok(Some(list.get_list().get_i().iter().map(|i| T::from_i64(*i)
                 .ok_or_else(|| format!("Node {} ({}) expected list<int> attribute '{}'", self.get_name(), self.get_op(), name).into()))

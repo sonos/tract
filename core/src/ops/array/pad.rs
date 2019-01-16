@@ -1,5 +1,5 @@
 use ndarray::*;
-use num::traits::AsPrimitive;
+use num_traits::AsPrimitive;
 use ops::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]

@@ -7,7 +7,7 @@ use ops::prelude::*;
 
 use ops::nn::Patch;
 
-use num::Zero;
+use num_traits::Zero;
 use std::ops::Mul;
 
 #[derive(Debug, Clone, new)]

@@ -1,5 +1,5 @@
 use ndarray::*;
-use num::traits::AsPrimitive;
+use num_traits::AsPrimitive;
 use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
@@ -68,7 +68,7 @@ pub struct EyeLike {
 impl EyeLike {
     pub fn make<T>(&self, (r,c) : (usize, usize)) -> TractResult<SharedTensor>
     where
-        T: Datum + num::One + num::Zero,
+        T: Datum + num_traits::One + num_traits::Zero,
         f32: AsPrimitive<T>,
     {
         let mut array = Array2::<T>::zeros((r, c));

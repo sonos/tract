@@ -147,7 +147,7 @@ impl LocalPatch {
         pad_cols: bool,
     ) -> TractResult<Option<Array4<T>>>
     where
-        T: Copy + ::num::Zero + ::std::fmt::Debug,
+        T: Copy + ::num_traits::Zero + ::std::fmt::Debug,
     {
         // The pad_rows and pad_cols arguments are used for streaming evaluation,
         // where we don't want to pad along the streaming dimension, even if the
@@ -235,7 +235,7 @@ impl LocalPatch {
     }
 
     // data is expected in HWC
-    pub fn mk_patches<T: Copy + ::num::Zero + ::std::fmt::Debug>(
+    pub fn mk_patches<T: Copy + ::num_traits::Zero + ::std::fmt::Debug>(
         &self,
         data: ArrayView<T, Ix3>,
         shape: (usize, usize),

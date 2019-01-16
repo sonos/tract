@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
-use num::Zero;
+use num_traits::Zero;
 
 use tract_core::ops::prelude::*;
 use tract_core::TractResult;

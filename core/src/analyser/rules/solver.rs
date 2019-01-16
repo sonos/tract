@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::{Add, Neg};
 
-use num::Zero;
+use num_traits::Zero;
 
 use ops::prelude::*;
 

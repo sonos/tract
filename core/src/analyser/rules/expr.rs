@@ -2,8 +2,8 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-use num::cast::ToPrimitive;
-use num::Zero;
+use num_traits::ToPrimitive;
+use num_traits::Zero;
 
 use ops::prelude::*;
 

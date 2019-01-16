@@ -98,7 +98,7 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use ndarray::prelude::*;
-    use num::Zero;
+    use num_traits::Zero;
     use tract_core::ops::InferenceOp;
     use tract_core::Tensor;
 

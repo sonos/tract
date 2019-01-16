@@ -1,6 +1,6 @@
 use std::fmt;
 
-use num::cast::ToPrimitive;
+use num_traits::ToPrimitive;
 
 use ops::prelude::*;
 

@@ -89,7 +89,7 @@ impl Stack {
                     *stack.last_mut().ok_or("Too short stack")? /= b;
                 }
                 DivCeil => {
-                    use num::Integer;
+                    use num_integer::Integer;
                     let b = stack.pop().ok_or("Too short stack")?;
                     let a = stack.pop().ok_or("Too short stack")?;
                     let (d, r) = a.div_rem(&b);

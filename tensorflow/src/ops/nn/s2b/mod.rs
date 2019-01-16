@@ -1,5 +1,5 @@
 use ndarray::*;
-use num::Zero;
+use num_traits::Zero;
 
 pub mod raw;
 pub mod unary;

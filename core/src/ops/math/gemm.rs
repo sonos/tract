@@ -1,8 +1,8 @@
 use ndarray::prelude::*;
 use ops::prelude::*;
 
-use num::cast::AsPrimitive;
-use num::Float;
+use num_traits::AsPrimitive;
+use num_traits::Float;
 
 #[derive(Debug, Clone, new)]
 pub struct Gemm {

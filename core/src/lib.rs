@@ -70,7 +70,8 @@ extern crate log;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate ndarray;
-extern crate num;
+extern crate num_integer;
+extern crate num_traits;
 #[macro_use]
 extern crate maplit;
 #[cfg(test)]

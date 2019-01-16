@@ -3,7 +3,7 @@ use std::iter::FromIterator;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use TractResult;
 
-use num::Zero;
+use num_traits::Zero;
 
 use ops::prelude::*;
 
@@ -486,23 +486,24 @@ where
     }
 }
 
-impl<T> Add<GenericFact<T>> for GenericFact<T>
+impl<T, I> Add<I> for GenericFact<T>
 where
     T: Add<T, Output = T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
+    I: Into<GenericFact<T>>
 {
     type Output = GenericFact<T>;
-    fn add(self, rhs: GenericFact<T>) -> Self::Output {
-        match (self.concretize(), rhs.concretize()) {
+    fn add(self, rhs: I) -> Self::Output {
+        match (self.concretize(), rhs.into().concretize()) {
             (Some(a), Some(b)) => GenericFact::Only(a + b),
             _ => GenericFact::Any,
         }
     }
 }
 
+/*
 impl<T, R> Add<R> for GenericFact<T>
 where
     T: Add<R, Output = T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
-    R: ::num::Num,
 {
     type Output = GenericFact<T>;
     fn add(self, rhs: R) -> Self::Output {
@@ -520,9 +521,10 @@ where
 {
     type Output = GenericFact<T>;
     fn add(self, rhs: GenericFact<T>) -> Self::Output {
-        rhs + self
+        rhs + self.into()
     }
 }
+*/
 
 impl<T> Sub<GenericFact<T>> for GenericFact<T>
 where
@@ -540,7 +542,6 @@ where
 impl<T, R> Mul<R> for GenericFact<T>
 where
     T: Mul<R, Output = T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
-    R: ::num::Num,
 {
     type Output = GenericFact<T>;
     fn mul(self, rhs: R) -> Self::Output {
@@ -552,6 +553,7 @@ where
     }
 }
 
+/*
 impl<T> Mul<GenericFact<T>> for GenericFact<T>
 where
     T: Mul<T, Output = T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
@@ -564,11 +566,11 @@ where
         }
     }
 }
+*/
 
 impl<T, R> Div<R> for GenericFact<T>
 where
     T: Div<R, Output = T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
-    R: ::num::Num,
 {
     type Output = GenericFact<T>;
     fn div(self, rhs: R) -> Self::Output {
@@ -580,6 +582,7 @@ where
     }
 }
 
+/*
 impl<T> Div<GenericFact<T>> for GenericFact<T>
 where
     T: Div<T, Output = T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
@@ -592,3 +595,4 @@ where
         }
     }
 }
+*/

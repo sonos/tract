@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::Index;
 
-use num::cast::ToPrimitive;
+use num_traits::ToPrimitive;
 
 use ops::prelude::*;
 

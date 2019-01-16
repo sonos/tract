@@ -1,6 +1,6 @@
 use super::MatMul;
 use std::ops::{Add, Mul};
-use num::Zero;
+use num_traits::Zero;
 
 #[inline(always)]
 pub fn pack_panel_a<T:Copy>(

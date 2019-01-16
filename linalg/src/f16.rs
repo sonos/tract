@@ -38,7 +38,7 @@ macro_rules! const_f16 {
 }
 
 #[allow(deprecated)]
-impl num::Float for f16 {
+impl num_traits::Float for f16 {
     unary_as_f32!(floor);
     unary_as_f32!(ceil);
     unary_as_f32!(round);
@@ -109,14 +109,14 @@ impl num::Float for f16 {
     }
 }
 
-impl num::Num for f16 {
-    type FromStrRadixErr = <f32 as num::Num>::FromStrRadixErr;
+impl num_traits::Num for f16 {
+    type FromStrRadixErr = <f32 as num_traits::Num>::FromStrRadixErr;
     fn from_str_radix(str: &str, radix: u32) -> Result<Self, Self::FromStrRadixErr> {
         f32::from_str_radix(str, radix).map(|it| it.into())
     }
 }
 
-impl num::Zero for f16 {
+impl num_traits::Zero for f16 {
     fn is_zero(&self) -> bool {
         f32::from(self.0).is_zero()
     }
@@ -125,13 +125,13 @@ impl num::Zero for f16 {
     }
 }
 
-impl num::One for f16 {
+impl num_traits::One for f16 {
     fn one() -> f16 {
         1.0f32.into()
     }
 }
 
-impl num::ToPrimitive for f16 {
+impl num_traits::ToPrimitive for f16 {
     fn to_i64(&self) -> Option<i64> {
         f32::from(self.0).to_i64()
     }
@@ -140,32 +140,32 @@ impl num::ToPrimitive for f16 {
     }
 }
 
-impl num::cast::AsPrimitive<f32> for f16 {
+impl num_traits::AsPrimitive<f32> for f16 {
     fn as_(self) -> f32 {
         self.0.to_f32()
     }
 }
 
-impl num::cast::AsPrimitive<f16> for f32 {
+impl num_traits::AsPrimitive<f16> for f32 {
     fn as_(self) -> f16 {
         f16(half::f16::from_f32(self))
     }
 }
 
-impl num::cast::AsPrimitive<f64> for f16 {
+impl num_traits::AsPrimitive<f64> for f16 {
     fn as_(self) -> f64 {
         self.0.to_f64()
     }
 }
 
-impl num::cast::AsPrimitive<f16> for f64 {
+impl num_traits::AsPrimitive<f16> for f64 {
     fn as_(self) -> f16 {
         f16(half::f16::from_f64(self))
     }
 }
 
-impl num::NumCast for f16 {
-    fn from<T: num::ToPrimitive>(n: T) -> Option<Self> {
+impl num_traits::NumCast for f16 {
+    fn from<T: num_traits::ToPrimitive>(n: T) -> Option<Self> {
         n.to_f32().map(|f| f16(half::f16::from_f32(f)))
     }
 }
@@ -189,7 +189,7 @@ impl fmt::Display for f16 {
     }
 }
 
-impl num::cast::AsPrimitive<f16> for usize {
+impl num_traits::AsPrimitive<f16> for usize {
     fn as_(self) -> f16 {
         f16(half::f16::from_f64(self as f64))
     }

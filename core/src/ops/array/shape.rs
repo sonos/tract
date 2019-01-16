@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use num::cast::AsPrimitive;
+use num_traits::AsPrimitive;
 
 use ops::prelude::*;
 

@@ -177,7 +177,7 @@ impl ExpNode {
                         }
                     }
                     (Mul(v, factors), Val(b)) => {
-                        use num::Integer;
+                        use num_integer::Integer;
                         let gcd = v.gcd(&b);
                         if gcd == b {
                             Mul(v / gcd, factors).reduce()

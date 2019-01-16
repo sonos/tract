@@ -1,9 +1,9 @@
 use std::fmt;
 use std::ops;
 
-use num::cast::AsPrimitive;
-use num::One;
-use num::Zero;
+use num_traits::cast::AsPrimitive;
+use num_traits::One;
+use num_traits::Zero;
 
 mod stack;
 mod tree;
@@ -17,8 +17,8 @@ pub trait DimLike:
     + Default
     + PartialEq
     + From<usize>
-    + ::num::One
-    + ::num::Zero
+    + ::num_traits::One
+    + ::num_traits::Zero
     + fmt::Debug
     + fmt::Display
     + ops::Add<Self, Output = Self>
