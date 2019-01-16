@@ -1,8 +1,8 @@
 use std::borrow::BorrowMut;
 use std::collections::BTreeSet;
 
-use model::*;
-use ops::prelude::*;
+use crate::model::*;
+use crate::ops::prelude::*;
 
 pub mod types;
 
@@ -25,7 +25,8 @@ impl<M: BorrowMut<Model>> Analyser<M> {
 
     /// Runs the entire analysis at once.
     pub fn analyse(&mut self) -> TractResult<()> {
-        let mut nodes_to_visit: BTreeSet<usize> = self.model.borrow().eval_order()?.iter().cloned().collect();
+        let mut nodes_to_visit: BTreeSet<usize> =
+            self.model.borrow().eval_order()?.iter().cloned().collect();
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
             let node = match nodes_to_visit.iter().next() {
@@ -80,7 +81,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
             for (ix, &outlet) in node.inputs.iter().enumerate() {
                 let inferred_fact = &inferred.0[ix];
                 let old_fact = self.model.borrow().fact(outlet)?;
-                let mut unified = inferred_fact.unify(&old_fact).map_err(|e| {
+                let unified = inferred_fact.unify(&old_fact).map_err(|e| {
                     format!(
                         "While unifying inputs of node #{} {}: {}",
                         node.id, node.name, e

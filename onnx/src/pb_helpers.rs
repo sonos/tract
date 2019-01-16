@@ -1,4 +1,4 @@
-use pb::*;
+use crate::pb::*;
 use tract_core::*;
 
 impl NodeProto {

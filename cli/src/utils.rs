@@ -1,5 +1,5 @@
+use crate::CliResult;
 use tract_core::ops::prelude::*;
-use CliResult;
 
 /// Compares the outputs of a node in tract and tensorflow.
 pub fn check_outputs(got: &[SharedTensor], expected: &[TensorFact]) -> CliResult<()> {
@@ -36,7 +36,11 @@ pub fn check_inferred(got: &[TensorFact], expected: &[TensorFact]) -> CliResult<
 
     for (got, exp) in got.iter().zip(expected.iter()) {
         if exp.datum_type != got.datum_type {
-            bail!("Failed to infer datum type: expected {:?}, got {:?}", exp, got);
+            bail!(
+                "Failed to infer datum type: expected {:?}, got {:?}",
+                exp,
+                got
+            );
         }
         if exp.shape != got.shape {
             bail!("Failed to infer shape: expected {:?}, got {:?}", exp, got);

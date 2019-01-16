@@ -1,8 +1,8 @@
-use ops::source::Source;
+use crate::ops::source::Source;
 use std::collections::HashMap;
 
-use model::dsl::*;
-use ops::prelude::*;
+use crate::model::dsl::*;
+use crate::ops::prelude::*;
 
 pub mod delay;
 
@@ -39,7 +39,8 @@ impl PulsedTensorFact {
                 } else {
                     d.to_integer().map(|d| d as usize)
                 }
-            }).collect::<TractResult<_>>()?;
+            })
+            .collect::<TractResult<_>>()?;
         Ok(PulsedTensorFact {
             dt,
             shape,
@@ -67,7 +68,8 @@ impl PulsedTensorFact {
                 } else {
                     d.to_dim()
                 }
-            }).collect()
+            })
+            .collect()
     }
 
     pub fn to_streaming_fact(&self) -> TensorFact {
@@ -170,7 +172,8 @@ mod tests {
             .add_source_fact(
                 "a",
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
-            ).unwrap();
+            )
+            .unwrap();
         let mut pulse = PulsifiedModel::new(&model, 4).unwrap();
         pulse.model.analyse().unwrap();
         assert_eq!(
@@ -186,7 +189,8 @@ mod tests {
             .add_source_fact(
                 "a",
                 TensorFact::dt_shape(DatumType::F32, vec![TDim::s(), 2.to_dim(), 3.to_dim()]),
-            ).unwrap();
+            )
+            .unwrap();
 
         let pulse = PulsifiedModel::new(&model, 4).unwrap();
 
@@ -202,8 +206,8 @@ mod tests {
 
     #[test]
     fn test_simple_conv() {
+        use crate::ops::nn::*;
         use ndarray::*;
-        use ops::nn::*;
 
         let mut model = Model::default();
         let ker = model
@@ -225,7 +229,7 @@ mod tests {
         let model = model.into_optimized().unwrap();
 
         assert_eq!(model.nodes().len(), 2);
-        let plan = ::plan::SimplePlan::new(&model).unwrap();
+        let plan = crate::plan::SimplePlan::new(&model).unwrap();
         let outputs = plan.run(tvec!(t_input.clone())).unwrap();
 
         let pulse = 4;
@@ -233,18 +237,30 @@ mod tests {
         assert_eq!(pulsed.model.nodes().len(), 3); // source - delay - conv
         assert_eq!(pulsed.facts[&OutletId::new(2, 0)].delay, 2);
 
-        let pulsed_plan = ::plan::SimplePlan::new(pulsed.model).unwrap();
-        let mut state = ::plan::SimpleState::new(&pulsed_plan).unwrap();
+        let pulsed_plan = crate::plan::SimplePlan::new(pulsed.model).unwrap();
+        let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
         let mut got: Vec<f32> = vec![];
 
         for p in 0..(input.len() / pulse) {
             let chunk = &input[(p * pulse)..((p + 1) * pulse)];
             let mut outputs = state
-                .run(tvec!(ndarray::Array::from_shape_vec((1usize, 1, 4), chunk.to_vec()).unwrap().into()))
+                .run(tvec!(ndarray::Array::from_shape_vec(
+                    (1usize, 1, 4),
+                    chunk.to_vec()
+                )
+                .unwrap()
+                .into()))
                 .unwrap();
             got.extend(outputs.remove(0).to_array_view::<f32>().unwrap().iter());
         }
 
-        assert_eq!(&got[2..], outputs[0].to_array_view::<f32>().unwrap().as_slice().unwrap());
+        assert_eq!(
+            &got[2..],
+            outputs[0]
+                .to_array_view::<f32>()
+                .unwrap()
+                .as_slice()
+                .unwrap()
+        );
     }
 }

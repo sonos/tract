@@ -20,7 +20,7 @@ use tract_core::Tensor as TractSharedTensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
-use utils::*;
+use crate::utils::*;
 
 fn strided_slice_strat() -> BoxedStrategy<(
     TractSharedTensor,
@@ -42,7 +42,8 @@ fn strided_slice_strat() -> BoxedStrategy<(
             )
         }),
         1..4, // rank
-    ).prop_flat_map(|dims| {
+    )
+    .prop_flat_map(|dims| {
         let rank = dims.iter().len();
         (
             Just(dims),
@@ -54,7 +55,8 @@ fn strided_slice_strat() -> BoxedStrategy<(
                 0..(1 << rank),
             ),
         )
-    }).prop_map(|(dims, masks)| {
+    })
+    .prop_map(|(dims, masks)| {
         let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
         let size: i32 = shape.iter().map(|d| *d as i32).product();
         (
@@ -63,12 +65,14 @@ fn strided_slice_strat() -> BoxedStrategy<(
                 dims.iter()
                     .map(|d| if d.4 { d.1 - d.0 } else { d.1 })
                     .collect(),
-            ).into(),
+            )
+            .into(),
             Array::from_vec(
                 dims.iter()
                     .map(|d| if d.5 { d.2 - d.0 } else { d.2 })
                     .collect(),
-            ).into(),
+            )
+            .into(),
             Array::from_vec(
                 dims.iter()
                     .enumerate()
@@ -78,11 +82,14 @@ fn strided_slice_strat() -> BoxedStrategy<(
                         } else {
                             d.3 as i32 * (d.2 as i32 - d.1 as i32).signum()
                         }
-                    }).collect(),
-            ).into(),
+                    })
+                    .collect(),
+            )
+            .into(),
             masks,
         )
-    }).boxed()
+    })
+    .boxed()
 }
 
 proptest! {
@@ -127,7 +134,8 @@ fn strided_slice_1() {
                 .input("end")
                 .input("stride")
                 .op("StridedSlice"),
-        ).write_to_bytes()
+        )
+        .write_to_bytes()
         .unwrap();
 
     let inputs = vec![
@@ -157,7 +165,8 @@ fn strided_slice_2() {
                 .input("end")
                 .input("stride")
                 .op("StridedSlice"),
-        ).write_to_bytes()
+        )
+        .write_to_bytes()
         .unwrap();
 
     let inputs = vec![

@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::*;
-use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct ArgMaxMin {

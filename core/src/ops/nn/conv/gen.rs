@@ -1,10 +1,10 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 use super::ConvUnary;
-use dim::DimLike;
-use ops::nn::conv::KernelFormat;
-use ops::nn::DataFormat;
-use ops::nn::PaddingSpec;
+use crate::dim::DimLike;
+use crate::ops::nn::conv::KernelFormat;
+use crate::ops::nn::DataFormat;
+use crate::ops::nn::PaddingSpec;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv {
@@ -195,9 +195,9 @@ impl InferenceRulesOp for Conv {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ops::nn::conv::KernelFormat::HWIO;
+    use crate::ops::nn::DataFormat::NHWC;
     use ndarray::*;
-    use ops::nn::conv::KernelFormat::HWIO;
-    use ops::nn::DataFormat::NHWC;
 
     #[test]
     fn test_infer_with_known_kshape() {
@@ -304,16 +304,13 @@ mod test {
 
     #[test]
     fn test_eval_nhwc_3() {
-//        ::setup_test_logger();
+        //        ::setup_test_logger();
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::Valid, None, 1);
         let i: Tensor = Tensor::from(arr4(&[[
             [[0.0f32, 1.0], [2.0, 3.0]],
             [[10.0, 11.0], [12.0, 13.0]],
         ]]));
-        let k: Tensor = Tensor::from(arr4(&[[[
-            [1.0f32, 0.0],
-            [0.0, 1.0],
-        ]]]));
+        let k: Tensor = Tensor::from(arr4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]));
         let res = op.eval(tvec!(i.clone().into(), k.into())).unwrap();
         assert_eq!(res, tvec!(i.into()));
     }

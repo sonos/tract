@@ -24,7 +24,7 @@ pub use self::padding::PaddingSpec;
 pub use self::patches::Patch;
 pub use self::reduce::{Reduce, Reducer};
 
-use num::traits::AsPrimitive;
+use num_traits::AsPrimitive;
 
 element_map!(Relu, [f32, i32], |x| if x < 0 as _ { 0 as _ } else { x });
 element_map!(Sigmoid, [f32], |x| ((-x).exp() + 1.0).recip());
@@ -37,8 +37,8 @@ element_map_with_params!(
     { alpha: f32 },
     fn eval_one<T>(elu: &Elu, x: T) -> T
     where
-        T: Datum + ::num::Float,
-        f32: ::num::cast::AsPrimitive<T>,
+        T: Datum + ::num_traits::Float,
+        f32: ::num_traits::AsPrimitive<T>,
     {
         if x < 0.0.as_() {
             elu.alpha.as_() * (x.exp() - 1.0.as_())
@@ -50,7 +50,7 @@ element_map_with_params!(
 
 element_map_with_params!(Hardsigmoid, [f32, f64], {alpha: f32, beta: f32},
     fn eval_one<T>(hs: &Hardsigmoid, x:T) -> T
-    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
     {
         (hs.alpha.as_() * x + hs.beta.as_()).min(1.0.as_()).max(0.0.as_())
     }
@@ -62,8 +62,8 @@ element_map_with_params!(
     { alpha: f32 },
     fn eval_one<T>(lr: &LeakyRelu, x: T) -> T
     where
-        T: Datum + ::num::Float,
-        f32: ::num::cast::AsPrimitive<T>,
+        T: Datum + ::num_traits::Float,
+        f32: ::num_traits::AsPrimitive<T>,
     {
         if x < 0.0.as_() {
             lr.alpha.as_() * x
@@ -75,7 +75,7 @@ element_map_with_params!(
 
 element_map_with_params!(ParametricSoftplus, [f32, f64], {alpha: f32, beta: f32},
     fn eval_one<T>(s: &ParametricSoftplus, x:T) -> T
-    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
     {
         s.alpha.as_() * ((s.beta.as_() * x).exp() + 1.0.as_()).ln()
     }
@@ -83,7 +83,7 @@ element_map_with_params!(ParametricSoftplus, [f32, f64], {alpha: f32, beta: f32}
 
 element_map_with_params!(ScaledTanh, [f32, f64], {alpha: f32, beta: f32},
     fn eval_one<T>(s: &ScaledTanh, x:T) -> T
-    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
     {
         s.alpha.as_() * (s.beta.as_() * x).tanh()
     }
@@ -91,7 +91,7 @@ element_map_with_params!(ScaledTanh, [f32, f64], {alpha: f32, beta: f32},
 
 element_map_with_params!(Selu, [f32, f64], {alpha: f32, gamma: f32},
     fn eval_one<T>(s: &Selu, x:T) -> T
-    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
     {
         if x < 0.0.as_() {
             s.gamma.as_() * (s.alpha.as_() * x.exp() - s.alpha.as_())
@@ -107,8 +107,8 @@ element_map_with_params!(
     { alpha: f32 },
     fn eval_one<T>(s: &ThresholdedRelu, x: T) -> T
     where
-        T: Datum + ::num::Float,
-        f32: ::num::cast::AsPrimitive<T>,
+        T: Datum + ::num_traits::Float,
+        f32: ::num_traits::AsPrimitive<T>,
     {
         if x <= s.alpha.as_() {
             0.0.as_()

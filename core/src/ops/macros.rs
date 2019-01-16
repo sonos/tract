@@ -114,7 +114,7 @@ macro_rules! element_bin {
             #[allow(unused_imports)]
             use $crate::ops::prelude::*;
             #[allow(unused_imports)]
-            use num::Float;
+            use num_traits::Float;
 
             pub fn default() -> Bin {
                 Bin::default()

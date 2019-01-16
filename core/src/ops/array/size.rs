@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
-use num::cast::AsPrimitive;
+use num_traits::AsPrimitive;
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Size {

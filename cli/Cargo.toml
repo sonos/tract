@@ -8,6 +8,7 @@ repository = "https://github.com/kali/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "kali/tract" }
@@ -15,9 +16,9 @@ travis-ci = { repository = "kali/tract" }
 [dependencies]
 box_drawing = "0.1"
 clap = "2.31"
-colored = "1.6"
+ansi_term = "0.11.0"
 error-chain = "0.12"
-insideout = "0.1.0"
+insideout = "0.2"
 lazy_static = "1.0"
 log = "0.4"
 ndarray = "0.12"

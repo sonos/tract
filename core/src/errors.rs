@@ -1,6 +1,6 @@
 //! error_chain generated types
 
-error_chain!{
+error_chain! {
     types {
         TractError, TractErrorKind, TractResultExt, TractResult;
     }

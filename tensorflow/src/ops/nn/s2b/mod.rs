@@ -1,16 +1,16 @@
 use ndarray::*;
-use num::Zero;
+use num_traits::Zero;
 
 pub mod raw;
 pub mod unary;
 use tract_core::ops::prelude::*;
 
-pub fn space_to_batch_nd(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn space_to_batch_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::SpaceToBatch::new(datum_type)))
 }
 
-pub fn batch_to_space_nd(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn batch_to_space_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::BatchToSpace::new(datum_type)))
 }
@@ -114,8 +114,8 @@ mod tests {
     #![allow(non_snake_case)]
     use super::raw::{BatchToSpace, SpaceToBatch};
     use super::*;
-    use tract_core::tensor::arr4;
     use tract_core::ops::InferenceOp;
+    use tract_core::tensor::arr4;
 
     // https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd
     #[test]
@@ -126,7 +126,8 @@ mod tests {
                     arr4(&[[[[1i32], [2]], [[3], [4]]]]).into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
-                ]).unwrap(),
+                ])
+                .unwrap(),
             tvec![arr4(&[[[[1i32]]], [[[2]]], [[[3]]], [[[4]]]]).into()],
         )
     }
@@ -139,15 +140,15 @@ mod tests {
                     arr4(&[[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
-                ]).unwrap(),
-            tvec![
-                arr4(&[
-                    [[[1i32, 2, 3]]],
-                    [[[4, 5, 6]]],
-                    [[[7, 8, 9]]],
-                    [[[10, 11, 12]]],
-                ]).into(),
-            ],
+                ])
+                .unwrap(),
+            tvec![arr4(&[
+                [[[1i32, 2, 3]]],
+                [[[4, 5, 6]]],
+                [[[7, 8, 9]]],
+                [[[10, 11, 12]]],
+            ])
+            .into(),],
         )
     }
 
@@ -161,18 +162,19 @@ mod tests {
                         [[5], [6], [7], [8]],
                         [[9], [10], [11], [12]],
                         [[13], [14], [15], [16]],
-                    ]]).into(),
+                    ]])
+                    .into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
-                ]).unwrap(),
-            tvec![
-                arr4(&[
-                    [[[1], [3]], [[9], [11]]],
-                    [[[2], [4]], [[10], [12]]],
-                    [[[5], [7]], [[13], [15]]],
-                    [[[6], [8]], [[14], [16]]],
-                ]).into(),
-            ],
+                ])
+                .unwrap(),
+            tvec![arr4(&[
+                [[[1], [3]], [[9], [11]]],
+                [[[2], [4]], [[10], [12]]],
+                [[[5], [7]], [[13], [15]]],
+                [[[6], [8]], [[14], [16]]],
+            ])
+            .into(),],
         )
     }
 
@@ -184,22 +186,23 @@ mod tests {
                     arr4(&[
                         [[[1], [2], [3], [4]], [[5], [6], [7], [8]]],
                         [[[9], [10], [11], [12]], [[13], [14], [15], [16]]],
-                    ]).into(),
+                    ])
+                    .into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [2, 0]]).into(),
-                ]).unwrap(),
-            tvec![
-                arr4(&[
-                    [[[0], [1], [3]]],
-                    [[[0], [9], [11]]],
-                    [[[0], [2], [4]]],
-                    [[[0], [10], [12]]],
-                    [[[0], [5], [7]]],
-                    [[[0], [13], [15]]],
-                    [[[0], [6], [8]]],
-                    [[[0], [14], [16]]],
-                ]).into(),
-            ],
+                ])
+                .unwrap(),
+            tvec![arr4(&[
+                [[[0], [1], [3]]],
+                [[[0], [9], [11]]],
+                [[[0], [2], [4]]],
+                [[[0], [10], [12]]],
+                [[[0], [5], [7]]],
+                [[[0], [13], [15]]],
+                [[[0], [6], [8]]],
+                [[[0], [14], [16]]],
+            ])
+            .into(),],
         )
     }
 
@@ -249,7 +252,8 @@ mod tests {
                     arr4(&[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]).into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
-                ]).unwrap(),
+                ])
+                .unwrap(),
             tvec![arr4(&[[[[1], [2]], [[3], [4]]]]).into()]
         )
     }
@@ -264,10 +268,12 @@ mod tests {
                         [[[4, 5, 6]]],
                         [[[7, 8, 9]]],
                         [[[10, 11, 12]]],
-                    ]).into(),
+                    ])
+                    .into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
-                ]).unwrap(),
+                ])
+                .unwrap(),
             tvec![arr4(&[[[[1i32, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]).into()]
         )
     }
@@ -282,18 +288,19 @@ mod tests {
                         [[[2], [4]], [[10], [12]]],
                         [[[5], [7]], [[13], [15]]],
                         [[[6], [8]], [[14], [16]]],
-                    ]).into(),
+                    ])
+                    .into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
-                ]).unwrap(),
-            tvec![
-                arr4(&[[
-                    [[1i32], [2], [3], [4]],
-                    [[5], [6], [7], [8]],
-                    [[9], [10], [11], [12]],
-                    [[13], [14], [15], [16]],
-                ]]).into(),
-            ]
+                ])
+                .unwrap(),
+            tvec![arr4(&[[
+                [[1i32], [2], [3], [4]],
+                [[5], [6], [7], [8]],
+                [[9], [10], [11], [12]],
+                [[13], [14], [15], [16]],
+            ]])
+            .into(),]
         )
     }
 
@@ -311,16 +318,17 @@ mod tests {
                         [[[0], [13], [15]]],
                         [[[0], [6], [8]]],
                         [[[0], [14], [16]]],
-                    ]).into(),
+                    ])
+                    .into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [2, 0]]).into(),
-                ]).unwrap(),
-            tvec![
-                arr4(&[
-                    [[[1], [2], [3], [4]], [[5], [6], [7], [8]]],
-                    [[[9], [10], [11], [12]], [[13], [14], [15], [16]]],
-                ]).into(),
-            ]
+                ])
+                .unwrap(),
+            tvec![arr4(&[
+                [[[1], [2], [3], [4]], [[5], [6], [7], [8]]],
+                [[[9], [10], [11], [12]], [[13], [14], [15], [16]]],
+            ])
+            .into(),]
         )
     }
 }

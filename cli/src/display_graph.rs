@@ -1,12 +1,13 @@
-use colored::Colorize;
-use format::Row;
+use crate::format::Row;
+use crate::CliResult;
+use crate::SomeGraphDef;
+use ansi_term::Color::*;
+use ansi_term::Style;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use tract_core::{Model, Node, Tractify};
 use tract_onnx::pb::ModelProto;
 use tract_tensorflow::tfpb::graph::GraphDef;
-use CliResult;
-use SomeGraphDef;
 
 #[derive(Debug, Clone, Default)]
 pub struct DisplayOptions {
@@ -77,9 +78,21 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
     }
 
     pub fn render_node(&self, node: &Node) -> CliResult<()> {
-        let mut sections: Vec<Vec<Row>> = vec!();
-        if let Some(id) = self.model.borrow().inputs()?.iter().position(|n| n.node == node.id) {
-            sections.push(vec!(Row::Simple(format!("MODEL INPUT {}", id).yellow().bold().to_string())));
+        let bold = Style::new().bold();
+        let mut sections: Vec<Vec<Row>> = vec![];
+        if let Some(id) = self
+            .model
+            .borrow()
+            .inputs()?
+            .iter()
+            .position(|n| n.node == node.id)
+        {
+            sections.push(vec![Row::Simple(
+                Yellow
+                    .bold()
+                    .paint(format!("MODEL INPUT {}", id))
+                    .to_string(),
+            )]);
         }
         sections.push(
             node.inputs
@@ -89,13 +102,15 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                     Ok(Row::Double(
                         format!(
                             "Input {}: Node #{}/{}",
-                            ix.to_string().bold(),
-                            a.node.to_string().bold(),
-                            a.slot.to_string().bold()
+                            bold.paint(format!("{}", ix)),
+                            bold.paint(format!("{}", a.node)),
+                            bold.paint(format!("{}", a.slot)),
                         ),
                         format!("{:?}", self.model.borrow().fact(*a)?),
                     ))
-                }).collect::<CliResult<_>>()?);
+                })
+                .collect::<CliResult<_>>()?,
+        );
         sections.push(
             node.outputs
                 .iter()
@@ -110,18 +125,20 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                         .position(|&o| o == ::tract_core::model::OutletId::new(node.id, ix))
                     {
                         Row::Double(
-                            format!("Output {}:", ix.to_string().bold()),
-                            format!("{:?} {} #{}", outlet.fact, "Model output".bold(), pos),
+                            format!("Output {}:", bold.paint(ix.to_string())),
+                            format!("{:?} {} #{}", outlet.fact, bold.paint("Model output"), pos),
                         )
                     } else {
                         Row::Double(
-                            format!("Output {}:", ix.to_string().bold()),
+                            format!("Output {}:", bold.paint(ix.to_string())),
                             format!("{:?}", outlet.fact),
                         )
                     }
-                }).collect());
+                })
+                .collect(),
+        );
         if let Some(info) = node.op().info()? {
-            sections.push(vec!(Row::Simple(info)))
+            sections.push(vec![Row::Simple(info)])
         }
         if self.options.debug_op {
             sections.push(vec![Row::Simple(format!("{:?}", node.op))]);
@@ -131,7 +148,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 sections.push(s.clone());
             }
         }
-        ::format::print_box(
+        crate::format::print_box(
             &node.id.to_string(),
             &node.op.name(),
             &node.name,
@@ -171,6 +188,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
     }
 
     pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<M>> {
+        let bold = Style::new().bold();
         for gnode in graph_def.get_node().iter() {
             if let Ok(node_id) = self
                 .model
@@ -181,14 +199,11 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!(
-                            "{:?}",
-                            ::tract_core::Tensor::tractify(a.1.get_tensor())?
-                        )
+                        format!("{:?}", ::tract_core::Tensor::tractify(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };
-                    v.push(Row::Double(format!("Attr {}:", a.0.bold()), value));
+                    v.push(Row::Double(format!("Attr {}:", bold.paint(a.0)), value));
                 }
                 self.add_node_section(node_id, v)?;
             }
@@ -197,6 +212,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
     }
 
     pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<M>> {
+        let bold = Style::new().bold();
         for gnode in model_proto.get_graph().get_node().iter() {
             let mut node_name = gnode.get_name();
             if node_name == "" && gnode.get_output().len() > 0 {
@@ -210,7 +226,10 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                     } else {
                         format!("{:?}", a)
                     };
-                    v.push(Row::Double(format!("Attr {}:", a.get_name().bold()), value));
+                    v.push(Row::Double(
+                        format!("Attr {}:", bold.paint(a.get_name())),
+                        value,
+                    ));
                 }
                 self.add_node_section(id, v)?;
             }

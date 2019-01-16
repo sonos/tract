@@ -1,6 +1,6 @@
 use tract_core::ops as tractops;
 
-use ops::OpRegister;
+use crate::ops::OpRegister;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Not", |_| Ok(Box::new(tractops::logic::Not::default())));

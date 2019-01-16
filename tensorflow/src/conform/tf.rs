@@ -15,7 +15,7 @@ use tract_core::Tensor;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use conform::Result;
+use crate::conform::Result;
 
 pub struct Tensorflow {
     session: Session,
@@ -128,14 +128,17 @@ impl Tensorflow {
 
         self.session.run(&mut step)?;
 
-        tokens.into_iter().enumerate().map(|(ix, tok)| {
-            let output_type = &self
-                .graph
-                .operation_by_name_required(&output_name)?
-                .output_type(ix);
-            convert_output(&mut step, output_type, tok)
-        }).collect()
-
+        tokens
+            .into_iter()
+            .enumerate()
+            .map(|(ix, tok)| {
+                let output_type = &self
+                    .graph
+                    .operation_by_name_required(&output_name)?
+                    .output_type(ix);
+                convert_output(&mut step, output_type, tok)
+            })
+            .collect()
     }
 
     /// Executes the graph in one batch, and returns the output for every node but the inputs.
@@ -177,8 +180,11 @@ impl Tensorflow {
                 continue;
             }
 
-            if let Some(operation) = self.graph.operation_by_name(name)
-                .map_err(|e| format!("TfError: {:?}", e))? {
+            if let Some(operation) = self
+                .graph
+                .operation_by_name(name)
+                .map_err(|e| format!("TfError: {:?}", e))?
+            {
                 // switch only computes one of its outputs. tf explodes during
                 // the call to run() if we registers them
                 if operation.op_type()? == "Switch" {
@@ -201,10 +207,17 @@ impl Tensorflow {
         // Return the output for every node.
         let mut outputs = HashMap::new();
         for (name, tokens) in tokens {
-            let tensors = tokens.iter().enumerate().map(|(ix, tok)| {
-                let output_type = &self.graph.operation_by_name_required(&name)?.output_type(ix);
-                convert_output(&mut step, output_type, *tok)
-            }).collect::<Result<Vec<_>>>()?;
+            let tensors = tokens
+                .iter()
+                .enumerate()
+                .map(|(ix, tok)| {
+                    let output_type = &self
+                        .graph
+                        .operation_by_name_required(&name)?
+                        .output_type(ix);
+                    convert_output(&mut step, output_type, *tok)
+                })
+                .collect::<Result<Vec<_>>>()?;
             outputs.insert(name, tensors);
         }
 
@@ -227,7 +240,7 @@ fn convert_output(
                     } else {
                         Err(r)?
                     }
-                },
+                }
                 Ok(output) => tensor_to_array::<$dt>(&output)?.into(),
             }
         };

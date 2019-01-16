@@ -1,8 +1,8 @@
-use num::Zero;
+use num_traits::Zero;
 use std::ops::{Add, Mul};
 
+use crate::ops::prelude::*;
 use ndarray::*;
-use ops::prelude::*;
 
 fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
     let a = a.to_array_view::<T>()?;
@@ -12,8 +12,12 @@ fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor
     let b = b.into_shape(&*geo.bc_b_shape)?;
     let mut c = unsafe { Array::uninitialized(&*geo.c_shape) };
 
-    let mut pa = unsafe { Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_a_len()], geo.mm.packed_a_alignment())? };
-    let mut pb = unsafe { Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_b_len()], geo.mm.packed_b_alignment())? };
+    let mut pa = unsafe {
+        Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_a_len()], geo.mm.packed_a_alignment())?
+    };
+    let mut pb = unsafe {
+        Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_b_len()], geo.mm.packed_b_alignment())?
+    };
 
     for prefix in indices(&*geo.c_shape_prefix).into_iter() {
         let mut a = a.view();
@@ -66,7 +70,7 @@ fn infer_shapes<D: DimLike>(
     while bshape.len() < ashape.len() {
         bshape.insert(0, D::one());
     }
-    let cshape_prefix = ::broadcast::multi_broadcast(&[
+    let cshape_prefix = crate::broadcast::multi_broadcast(&[
         &ashape[..(ashape.len() - 2)],
         &bshape[..(bshape.len() - 2)],
     ])
@@ -200,12 +204,14 @@ pub struct MatMulUnaryA {
 }
 
 impl MatMulUnaryA {
-    pub fn codegen<T: Datum + Add + Mul + Zero>(&self, a_shape: &[usize]) -> TractResult<Option<ReducedOpRewire>> {
+    pub fn codegen<T: Datum + Add + Mul + Zero>(
+        &self,
+        a_shape: &[usize],
+    ) -> TractResult<Option<ReducedOpRewire>> {
         if self.b.shape().len() == 2 {
-            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplASimpleB::<T>::new(
-                a_shape,
-                &self.b.to_array_view()?,
-            )?)));
+            return Ok(Some(ReducedOpRewire::unary(
+                MatMulUnaryImplASimpleB::<T>::new(a_shape, &self.b.to_array_view()?)?,
+            )));
         } else {
             return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<T>::new(
                 a_shape,
@@ -249,7 +255,7 @@ impl Op for MatMulUnaryA {
             inputs[0].shape.as_concrete_finite()?,
             inputs[0].datum_type.concretize(),
         ) {
-            return dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape))
+            return dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape));
         }
         Ok(None)
     }
@@ -300,14 +306,21 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
         let shape_a_internal = [a_len / geo_ext.k, geo_ext.k];
         let geo = Geo::new(&shape_a_internal, b.shape())?;
         let packed_b_len = geo.mm.packed_b_len();
-        let mut packed_b = unsafe { Tensor::uninitialized_aligned::<T>(&[packed_b_len], geo.mm.packed_b_alignment())? };
+        let mut packed_b = unsafe {
+            Tensor::uninitialized_aligned::<T>(&[packed_b_len], geo.mm.packed_b_alignment())?
+        };
         geo.mm.pack_b(
             packed_b.as_ptr_mut()?,
             b.as_ptr(),
             b.strides()[0],
             b.strides()[1],
         );
-        Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
+        Ok(MatMulUnaryImplASimpleB {
+            geo,
+            packed_b,
+            c_shape,
+            a_shape: a_shape.into(),
+        })
     }
 }
 
@@ -328,14 +341,16 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB<T> {
 
         let mut c = unsafe { Array::uninitialized(&*self.c_shape) };
 
-        let mut pa = unsafe { Tensor::uninitialized_aligned::<T>(&[self.geo.mm.packed_a_len()], self.geo.mm.packed_a_alignment())? };
+        let mut pa = unsafe {
+            Tensor::uninitialized_aligned::<T>(
+                &[self.geo.mm.packed_a_len()],
+                self.geo.mm.packed_a_alignment(),
+            )?
+        };
 
-        self.geo.mm.pack_a(
-            pa.as_ptr_mut()?,
-            a.as_ptr(),
-            self.geo.k as isize,
-            1
-        );
+        self.geo
+            .mm
+            .pack_a(pa.as_ptr_mut()?, a.as_ptr(), self.geo.k as isize, 1);
         self.geo.mm.mat_mul_prepacked(
             pa.as_ptr()?,
             self.packed_b.as_ptr()?,
@@ -379,7 +394,9 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
         packed_bs_shape.pop();
         packed_bs_shape.pop();
         packed_bs_shape.push(packed_b_len);
-        let mut packed_bs = unsafe { Tensor::uninitialized_aligned::<T>(&packed_bs_shape, geo.mm.packed_b_alignment())? };
+        let mut packed_bs = unsafe {
+            Tensor::uninitialized_aligned::<T>(&packed_bs_shape, geo.mm.packed_b_alignment())?
+        };
         for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2])
             .into_iter()
             .enumerate()
@@ -390,7 +407,9 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
             }
             unsafe {
                 geo.mm.pack_b(
-                    packed_bs.as_ptr_mut::<T>()?.offset((ix * packed_b_len) as isize),
+                    packed_bs
+                        .as_ptr_mut::<T>()?
+                        .offset((ix * packed_b_len) as isize),
                     b.as_ptr(),
                     b.strides()[prefix.ndim()],
                     b.strides()[prefix.ndim() + 1],
@@ -418,7 +437,12 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
 
         let mut c = unsafe { Array::uninitialized(&*self.geo.c_shape) };
 
-        let mut pa = unsafe { Tensor::uninitialized_aligned::<T>(&[self.geo.mm.packed_a_len()], self.geo.mm.packed_a_alignment())? };
+        let mut pa = unsafe {
+            Tensor::uninitialized_aligned::<T>(
+                &[self.geo.mm.packed_a_len()],
+                self.geo.mm.packed_a_alignment(),
+            )?
+        };
 
         for prefix in indices(&*self.geo.c_shape_prefix).into_iter() {
             let mut a = a.view();

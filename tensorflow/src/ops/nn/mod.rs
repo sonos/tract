@@ -1,7 +1,7 @@
 use tract_core::ops::prelude::*;
 
-use ops::OpRegister;
-use tfpb::node_def::NodeDef;
+use crate::ops::OpRegister;
+use crate::tfpb::node_def::NodeDef;
 
 pub mod conv2d;
 pub mod fused_batch_norm;
@@ -45,10 +45,12 @@ impl StatelessOp for Softmax {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let mut input = input.to_array::<f32>()?;
-        let max: f32 = input.iter().cloned()
+        let max: f32 = input
+            .iter()
+            .cloned()
             .max_by(|a, b| a.partial_cmp(&b).unwrap_or(::std::cmp::Ordering::Equal))
             .unwrap_or(0.0);
-        input.map_inplace(|a| *a = (*a-max).exp());
+        input.map_inplace(|a| *a = (*a - max).exp());
         let norm: f32 = input.iter().sum();
         input.map_inplace(|a| *a = *a / norm);
         let result = Tensor::from(input);

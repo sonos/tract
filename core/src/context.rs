@@ -1,4 +1,4 @@
-use optim;
+use crate::optim;
 
 pub trait Context: std::fmt::Debug + Send + Sync {
     fn optimizer_passes(&self) -> Vec<Box<optim::OptimizerPass>>;

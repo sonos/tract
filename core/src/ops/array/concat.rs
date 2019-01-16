@@ -1,6 +1,6 @@
 use ndarray::*;
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Concat {
@@ -45,7 +45,7 @@ impl InferenceRulesOp for Concat {
             s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
             s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
             s.equals(
-                ::analyser::rules::expr::SumExp::new(
+                crate::analyser::rules::expr::SumExp::new(
                     (0..n)
                         .map(|i| (&inputs[i].shape[self.axis]).bex())
                         .collect(),

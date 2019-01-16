@@ -2,10 +2,10 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-use num::cast::ToPrimitive;
-use num::Zero;
+use num_traits::ToPrimitive;
+use num_traits::Zero;
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 use self::super::path::Path;
 use self::super::proxies::*;
@@ -373,7 +373,7 @@ pub struct IntoDimExp(Exp<IntFact>);
 impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<DimFact> {
-        use dim::ToDim;
+        use crate::dim::ToDim;
         let v: IntFact = self.0.get(context)?;
         match v {
             GenericFact::Only(i) => Ok(GenericFact::Only(i.to_dim())),

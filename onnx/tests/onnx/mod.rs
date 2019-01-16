@@ -25,7 +25,8 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
                 .to_str()
                 .unwrap()
                 .starts_with(prefix)
-        }).count();
+        })
+        .count();
     for i in 0..len {
         let filename = path.join(format!("{}_{}.pb", prefix, i));
         let mut file = fs::File::open(filename)
@@ -51,7 +52,7 @@ struct DataJson {
 }
 
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
-//    setup_test_logger();
+    //    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -84,7 +85,10 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     let model_file = path.join("model.onnx");
     debug!("Loading {:?}", model_file);
     let mut model = for_path(&model_file).unwrap();
-    trace!("Model: {:#?}", tract_onnx::model::model_proto_for_path(&model_file));
+    trace!(
+        "Model: {:#?}",
+        tract_onnx::model::model_proto_for_path(&model_file)
+    );
     trace!("Model: {:#?}", model);
     model.analyse().unwrap();
     debug!("Loaded {:?}", model_file);
@@ -98,17 +102,17 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
-        if d.metadata().unwrap().is_dir() && d
-            .file_name()
-            .to_str()
-            .unwrap()
-            .starts_with("test_data_set_")
+        if d.metadata().unwrap().is_dir()
+            && d.file_name()
+                .to_str()
+                .unwrap()
+                .starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
-//            println!("inputs: {:?}", inputs);
+            //            println!("inputs: {:?}", inputs);
             let computed = plan.run(inputs).unwrap();
-//            println!("computed: {:?}", computed);
-//            println!("expected: {:?}", expected);
+            //            println!("computed: {:?}", computed);
+            //            println!("expected: {:?}", expected);
             if computed.len() != expected.len() {
                 panic!(
                     "Different number of results: got:{} expected:{}",

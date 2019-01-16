@@ -1,7 +1,7 @@
 #!/bin/sh
 
 VERSION=$1
-CRATES="core tensorflow onnx cli"
+CRATES="linalg core tensorflow onnx cli"
 
 if [ -z "$VERSION" ]
 then

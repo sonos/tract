@@ -1,7 +1,7 @@
 use tract_core::ops::prelude::*;
 
-use ops::OpRegister;
-use tfpb::node_def::NodeDef;
+use crate::ops::OpRegister;
+use crate::tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("FakeQuantWithMinMaxVars", fake_quant_with_min_max_vars);

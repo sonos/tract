@@ -70,7 +70,8 @@ extern crate log;
 #[allow(unused_imports)]
 #[macro_use]
 pub extern crate ndarray;
-extern crate num;
+extern crate num_integer;
+extern crate num_traits;
 #[macro_use]
 extern crate maplit;
 #[cfg(test)]
@@ -110,14 +111,14 @@ pub mod plan;
 pub mod pulse;
 pub mod tensor;
 
-pub use errors::*;
+pub use crate::errors::*;
 
-pub use analyser::types::TensorFact;
-pub use datum::DatumType;
-pub use dim::TDim;
-pub use model::{Model, Node, TVec};
-pub use tensor::{Tensor, SharedTensor};
-pub use plan::{ SimplePlan, SimpleState };
+pub use crate::analyser::types::TensorFact;
+pub use crate::datum::DatumType;
+pub use crate::dim::TDim;
+pub use crate::model::{Model, Node, TVec};
+pub use crate::plan::{SimplePlan, SimpleState};
+pub use crate::tensor::{SharedTensor, Tensor};
 
 #[cfg(test)]
 #[allow(dead_code)]
@@ -134,7 +135,7 @@ pub trait ToTract<Tract>: Sized {
     fn tractify(&self) -> TractResult<Tract>;
 }
 
-impl<PB, Tract: Tractify<PB>> ::ToTract<Tract> for PB {
+impl<PB, Tract: Tractify<PB>> crate::ToTract<Tract> for PB {
     fn tractify(&self) -> TractResult<Tract> {
         Tract::tractify(self)
     }

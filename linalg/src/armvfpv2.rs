@@ -1,10 +1,16 @@
-use libc::size_t;
 use crate::frame;
+use libc::size_t;
 
-extern {
-    fn arm_vfpv2_mm_s4x4(k: size_t, a: *const f32, b: *const f32, c: *mut f32, rsc: size_t, csc: size_t);
+extern "C" {
+    fn arm_vfpv2_mm_s4x4(
+        k: size_t,
+        a: *const f32,
+        b: *const f32,
+        c: *mut f32,
+        rsc: size_t,
+        csc: size_t,
+    );
 }
-
 
 #[derive(Copy, Clone, Debug)]
 pub struct SMatMul4x4;
@@ -37,9 +43,9 @@ impl frame::matmul::PackedMatMulKer<f32> for SMatMul4x4 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use proptest::*;
-    use crate::frame::PackedMatMul;
     use crate::frame::matmul::test::*;
+    use crate::frame::PackedMatMul;
+    use proptest::*;
 
     proptest! {
         #[test]

@@ -1,6 +1,6 @@
+use crate::ops::prelude::*;
 use ndarray::*;
-use num::traits::AsPrimitive;
-use ops::prelude::*;
+use num_traits::AsPrimitive;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PadMode {
@@ -45,7 +45,8 @@ impl Pad {
                 start: a as isize,
                 end: if b != 0 { Some(-(b as isize)) } else { None },
                 step: 1,
-            }).collect();
+            })
+            .collect();
         let slice_info = SliceInfo::<_, IxDyn>::new(slice_spec).unwrap();
         output.slice_mut(slice_info.as_ref()).assign(&input);
         if self.mode == PadMode::Reflect || self.mode == PadMode::Edge {

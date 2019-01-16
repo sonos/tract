@@ -1,7 +1,7 @@
-use errors::*;
+use crate::errors::*;
+use crate::Parameters;
 use tract_core::ops::prelude::*;
 use tract_core::SimplePlan;
-use Parameters;
 
 pub fn handle(params: Parameters) -> CliResult<()> {
     let outputs = if params.pulse_facts.is_some() {
@@ -16,14 +16,14 @@ pub fn handle(params: Parameters) -> CliResult<()> {
 
     if let Some(asserts) = &params.assertions {
         if let Some(asserts) = &asserts.assert_outputs {
-            ::utils::check_outputs(&*outputs, &asserts)?;
+            crate::utils::check_outputs(&*outputs, &asserts)?;
         }
         if let Some(facts) = &asserts.assert_output_facts {
             let outputs: Vec<TensorFact> = outputs
                 .iter()
                 .map(|t| TensorFact::dt_shape(t.datum_type(), t.shape()))
                 .collect();
-            ::utils::check_inferred(&*outputs, &*facts)?;
+            crate::utils::check_inferred(&*outputs, &*facts)?;
         }
     }
 
@@ -44,7 +44,7 @@ fn run_regular(params: &Parameters) -> CliResult<TVec<SharedTensor>> {
             inputs.push(input.as_tensor().to_owned());
         } else {
             let fact = tract.fact(*input)?;
-            inputs.push(::tensor::tensor_for_fact(fact, None)?);
+            inputs.push(crate::tensor::tensor_for_fact(fact, None)?);
         }
     }
     info!("Running");
@@ -80,18 +80,20 @@ fn run_pulse(params: &Parameters) -> CliResult<TVec<SharedTensor>> {
                 .slice_axis_mut(
                     ::ndarray::Axis(input_fact.axis),
                     (..chunk.shape()[input_fact.axis]).into(),
-                ).assign(&chunk);
+                )
+                .assign(&chunk);
             padded_chunk
         } else {
             chunk.to_owned()
         };
-        let mut outputs = state.run(tvec!(input.into()))?;
+        let outputs = state.run(tvec!(input.into()))?;
         let result_chunk = outputs[0].to_array_view::<f32>()?;
         result
             .slice_axis_mut(
                 ::ndarray::Axis(output_fact.axis),
                 ((output_pulse * ix)..(output_pulse * (ix + 1))).into(),
-            ).assign(&result_chunk);
+            )
+            .assign(&result_chunk);
     }
     result.slice_axis_inplace(
         ::ndarray::Axis(output_fact.axis),

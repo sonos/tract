@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
-use num::Zero;
+use num_traits::Zero;
 
 use tract_core::ops::prelude::*;
 use tract_core::TractResult;
@@ -11,7 +11,7 @@ pub struct Pad<T: Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn pad(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }
@@ -32,7 +32,8 @@ impl<T: Datum + Zero> Pad<T> {
                 } else {
                     dim
                 }
-            }).collect();
+            })
+            .collect();
         let mut index_in_input = vec![0; input.ndim()];
         let result = Array::from_shape_fn(shape, |index| {
             for i in 0..input.ndim() {
@@ -113,14 +114,13 @@ mod tests {
             Tensor::from(arr2(&[[1, 1], [2, 2]])).into(),
         ];
 
-        let expected: TVec<_> = tvec!(
-            Tensor::from(arr2(&[
-                [0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 1, 2, 3, 0, 0],
-                [0, 0, 4, 5, 6, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0],
-            ])).into()
-        );
+        let expected: TVec<_> = tvec!(Tensor::from(arr2(&[
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 1, 2, 3, 0, 0],
+            [0, 0, 4, 5, 6, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+        ]))
+        .into());
 
         assert_eq!(Pad::<i32>::new().eval(inputs).unwrap(), expected);
     }

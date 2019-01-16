@@ -8,7 +8,7 @@ use tract_core::ops::prelude::*;
 #[derive(Debug, Clone, new)]
 pub struct Conv2D<T: Datum + LinalgScalar>(LocalPatch, PhantomData<T>);
 
-pub fn conv2d(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     use tract_core::ops::nn::*;
     let data_format = if pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC") == b"NHWC" {
         DataFormat::NHWC
@@ -106,9 +106,10 @@ impl<T: Datum + LinalgScalar> StatelessOp for Conv2D<T> {
         let filter = m_filter.to_array_view()?;
         let data = into_4d(data)?;
 
-        Ok(tvec![
-            self.convolve(&data, filter, true, true)?.into_dyn().into(),
-        ])
+        Ok(tvec![self
+            .convolve(&data, filter, true, true)?
+            .into_dyn()
+            .into(),])
     }
 }
 
@@ -152,7 +153,7 @@ impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use tract_core::ops::nn::{Conv, DataFormat, PaddingSpec, KernelFormat};
+    use tract_core::ops::nn::{Conv, DataFormat, KernelFormat, PaddingSpec};
     use tract_core::Tensor;
 
     fn mk(sizes: &[usize]) -> Tensor {
@@ -304,9 +305,15 @@ mod tests {
         let filter: SharedTensor = arr4(&[
             [[[160.72833f32]], [[107.84076]]],
             [[[247.50552]], [[-38.738464]]],
-        ]).into();
-        let exp: SharedTensor = arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
-        let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
+        ])
+        .into();
+        let exp: SharedTensor =
+            arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
+        let got = &conv
+            .as_stateless()
+            .unwrap()
+            .eval(tvec![data, filter])
+            .unwrap()[0];
         println!("{:?}", got);
         println!("{:?}", exp);
         assert!(exp.close_enough(&got, true));

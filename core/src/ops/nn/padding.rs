@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub enum PaddingSpec {
@@ -107,7 +107,8 @@ impl PaddingSpec {
                 let dim = (data_spatial_shape[ax] + bef[ax] + aft[ax] - kernel_field + 1)
                     .div_ceil(strides[ax]);
                 dim
-            }).collect();
+            })
+            .collect();
         ComputedPaddedDim {
             output: output_spatial_shape,
             pad_before: bef.iter().map(|&x| D::from(x)).collect(),

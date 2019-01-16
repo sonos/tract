@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::*;
-use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice {
@@ -16,7 +16,8 @@ impl Slice {
                 start: a as isize,
                 end: if b != 0 { Some(-(b as isize)) } else { None },
                 step: 1,
-            }).collect();
+            })
+            .collect();
         let slice_info = SliceInfo::<_, IxDyn>::new(slice_spec).unwrap();
         let slice = input.slice(&slice_info.as_ref());
         Ok(slice.to_owned().into())
@@ -41,7 +42,7 @@ impl Op for Slice {
             fact.delay += delay;
             fact.dim -= delay.to_dim();
             return Ok(vec![PulsifiedOp::new(
-                Box::new(::ops::identity::Identity::default()),
+                Box::new(crate::ops::identity::Identity::default()),
                 tvec!(fact),
             )]);
         }

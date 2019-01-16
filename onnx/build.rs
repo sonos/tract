@@ -69,9 +69,10 @@ pub fn make_test_file(tests_set: &str) {
             writeln!(rs, "fn {}() {{", t).unwrap();
             writeln!(
                 rs,
-                "::onnx::run_one({:?}, {:?}, {:?})",
+                "crate::onnx::run_one({:?}, {:?}, {:?})",
                 node_tests, t, optim
-            ).unwrap();
+            )
+            .unwrap();
             writeln!(rs, "}}").unwrap();
         }
         writeln!(rs, "}}").unwrap();

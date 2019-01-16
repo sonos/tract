@@ -8,8 +8,7 @@ use tract_core::*;
 #[derive(Debug)]
 pub struct TensorflowContext;
 
-impl TensorflowContext {
-}
+impl TensorflowContext {}
 
 impl Context for TensorflowContext {
     fn optimizer_passes(&self) -> Vec<Box<OptimizerPass>> {
@@ -87,7 +86,7 @@ fn undo_all_space_to_batch(model: &mut Model) -> TractResult<bool> {
 }
 
 fn undo_space_to_batch(model: &mut Model, node_id: usize) -> TractResult<bool> {
-    use ops::nn::s2b::unary::SpaceToBatchUnary;
+    use crate::ops::nn::s2b::unary::SpaceToBatchUnary;
     let new_op = {
         let prec_node = some_or_ok_false!(model.single_prec(node_id)?);
         let s2b_op = some_or_ok_false!(prec_node.op_as::<SpaceToBatchUnary>());
@@ -154,15 +153,19 @@ mod test {
 
     #[test]
     fn conv2d_unarization() {
-//        ::setup_test_logger();
+        //        ::setup_test_logger();
         let mut model = Model::default().with_context(Arc::new(TensorflowContext));
-        model.add_source_fact(
-            "source",
-            TensorFact::dt_shape(DatumType::F32, &[1, 10, 10, 3]),
-        ).unwrap();
+        model
+            .add_source_fact(
+                "source",
+                TensorFact::dt_shape(DatumType::F32, &[1, 10, 10, 3]),
+            )
+            .unwrap();
         let conv = model.chain("conv2d", make_conv(tvec!(1, 1), true)).unwrap();
         let kernel = model.add_const("kernel", mk(&[1, 1, 3, 3]).into()).unwrap();
-        model.add_edge(OutletId::new(kernel, 0), InletId::new(conv, 1)).unwrap();
+        model
+            .add_edge(OutletId::new(kernel, 0), InletId::new(conv, 1))
+            .unwrap();
 
         assert_eq!(model.eval_order().unwrap().len(), 3);
 

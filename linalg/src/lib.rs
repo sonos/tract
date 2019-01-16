@@ -5,7 +5,7 @@ extern crate log;
 extern crate objekt;
 #[cfg(test)]
 extern crate matrixmultiply;
-extern crate num;
+extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;
 

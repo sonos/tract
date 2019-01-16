@@ -1,8 +1,8 @@
 use std::fmt;
 
-use num::cast::ToPrimitive;
+use num_traits::ToPrimitive;
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 use self::super::expr::*;
 use self::super::solver::Context;
@@ -305,7 +305,7 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
 
     match value.concretize() {
         None => Ok(IntFact::default().wrap()),
-        Some(tensor) => Ok(tensor.cast_to::<i32>()?.into_owned().into_tensor().wrap())
+        Some(tensor) => Ok(tensor.cast_to::<i32>()?.into_owned().into_tensor().wrap()),
     }
 }
 

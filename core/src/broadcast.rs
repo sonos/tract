@@ -1,5 +1,5 @@
-use model::TVec;
-use num::One;
+use crate::model::TVec;
+use num_traits::One;
 
 pub fn multi_broadcast<T>(shapes: &[impl AsRef<[T]>]) -> Option<TVec<T>>
 where

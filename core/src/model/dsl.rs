@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 pub use super::{InletId, Model, Node, OutletId};
 
@@ -31,7 +31,7 @@ pub trait ModelDsl {
     fn unlink_node(&mut self, node: usize) -> TractResult<()>;
 }
 
-impl ModelDsl for ::model::Model {
+impl ModelDsl for crate::model::Model {
     fn add_source<S: AsRef<str>>(&mut self, name: S) -> TractResult<usize> {
         self.add_source_fact(name, TensorFact::default())
     }
@@ -39,7 +39,7 @@ impl ModelDsl for ::model::Model {
     fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TractResult<usize> {
         let id = self.add_node(
             name.as_ref().to_owned(),
-            Box::new(::ops::source::Source::new(fact.clone())),
+            Box::new(crate::ops::source::Source::new(fact.clone())),
         )?;
         self.set_fact(OutletId::new(id, 0), fact)?;
         Ok(id)
@@ -48,7 +48,7 @@ impl ModelDsl for ::model::Model {
     fn add_const<S: AsRef<str>>(&mut self, name: S, v: SharedTensor) -> TractResult<usize> {
         self.add_node(
             name.as_ref().to_owned(),
-            Box::new(::ops::konst::Const::new(v)),
+            Box::new(crate::ops::konst::Const::new(v)),
         )
     }
 

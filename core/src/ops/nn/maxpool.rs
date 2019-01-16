@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
 use super::{DataFormat, PaddingSpec, Patch};
 
@@ -73,7 +73,10 @@ impl StatelessOp for MaxPool {
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(
                 values.into(),
-                Tensor::from(indices.unwrap()).cast_to_dt(dt)?.into_owned().into_tensor()
+                Tensor::from(indices.unwrap())
+                    .cast_to_dt(dt)?
+                    .into_owned()
+                    .into_tensor()
             ))
         } else {
             Ok(tvec!(values.into()))

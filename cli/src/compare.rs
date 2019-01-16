@@ -1,14 +1,17 @@
 #![allow(unused_imports)]
+
+use ansi_term::Color::*;
+
 use log::Level::Info;
 use tract_core::model::OutletId;
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::{SharedTensor, Tensor, TensorFact};
 
-use display_graph::DisplayOptions;
-use errors::*;
-use format::*;
-use utils::*;
-use Parameters;
+use crate::display_graph::DisplayOptions;
+use crate::errors::*;
+use crate::format::*;
+use crate::utils::*;
+use crate::Parameters;
 
 /// Handles the `compare` subcommand.
 #[cfg(not(feature = "conform"))]
@@ -18,7 +21,6 @@ pub fn handle(_params: Parameters, _: DisplayOptions) -> CliResult<()> {
 
 #[cfg(feature = "conform")]
 pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
-    use colored::Colorize;
     use format::Row;
 
     let tract = params.tract_model;
@@ -85,7 +87,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         match state.compute_recursively(n) {
             Err(e) => {
                 failing.push(n);
-                display_graph.add_node_label(n, format!("{}: {}", "ERROR".red(), e))?;
+                display_graph.add_node_label(n, format!("{}: {}", Red.paint("ERROR"), e))?;
             }
 
             _ => {
@@ -96,11 +98,13 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                     .iter()
                     .enumerate()
                     .position(|(ix, o)| {
-                        o.successors.len() == 0 && !tract
-                            .outputs()
-                            .unwrap()
-                            .contains(&OutletId::new(node.id, ix))
-                    }).unwrap_or(node.outputs.len());
+                        o.successors.len() == 0
+                            && !tract
+                                .outputs()
+                                .unwrap()
+                                .contains(&OutletId::new(node.id, ix))
+                    })
+                    .unwrap_or(node.outputs.len());
                 let expected: Vec<TensorFact> = tf_output
                     .iter()
                     .take(wanted)
@@ -110,7 +114,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                 match check_outputs(&tract_output, &expected) {
                     Err(e) => {
                         failing.push(n);
-                        let header = format!("Output {}", n).yellow().bold();
+                        let header = Yellow.bold().paint(format!("Output {}", n));
                         let mismatches = tract_output
                             .iter()
                             .enumerate()
@@ -128,14 +132,15 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                                 };
 
                                 Row::Double(
-                                    format!("{} {}", header, reason).red().to_string(),
+                                    Red.paint(format!("{} {}", header, reason)).to_string(),
                                     format!(
                                         "TF    {:?}\ntract {:?}",
                                         tf_output[n],
                                         data.as_tensor()
                                     ),
                                 )
-                            }).collect::<Vec<_>>();
+                            })
+                            .collect::<Vec<_>>();
                         let inputs = tract.nodes()[n]
                             .inputs
                             .iter()
@@ -143,14 +148,15 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                             .map(|(ix, o)| {
                                 let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
                                 Row::Double(format!("Input #{}", ix), format!("{:?}", tensor))
-                            }).collect::<Vec<_>>();
+                            })
+                            .collect::<Vec<_>>();
                         display_graph.add_node_section(n, inputs)?;
                         display_graph.add_node_section(n, mismatches)?;
-                        display_graph.add_node_label(n, "MISM.".red().to_string())?;
+                        display_graph.add_node_label(n, Red.paint("MISM.").to_string())?;
                     }
 
                     _ => {
-                        display_graph.add_node_label(n, "OK".green().to_string())?;
+                        display_graph.add_node_label(n, Green.paint("OK").to_string())?;
                     }
                 }
             }
@@ -173,7 +179,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     } else if log_enabled!(Info) {
         display_graph.render()?;
     } else {
-        println!("{}", "Each node passed the comparison.".bold().green());
+        println!("{}", Green.paint("Each node passed the comparison."));
     }
     Ok(())
 }

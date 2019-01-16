@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Reshape {}
@@ -17,7 +17,8 @@ impl Reshape {
                 } else {
                     input
                 }
-            }).collect();
+            })
+            .collect();
         if let Some(minus_one) = shape.iter().position(|d| *d == -1) {
             let prod_input: usize = input
                 .iter()
@@ -35,7 +36,11 @@ impl Reshape {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: SharedTensor, shape: &[usize]) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Datum>(
+        &self,
+        input: SharedTensor,
+        shape: &[usize],
+    ) -> TractResult<TVec<SharedTensor>> {
         Ok(tvec![input.to_array::<T>()?.into_shape(shape)?.into()])
     }
 }

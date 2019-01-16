@@ -1,4 +1,4 @@
-use num::Zero;
+use num_traits::Zero;
 use std::fmt::Debug;
 use std::ops::{Add, Mul};
 
@@ -47,9 +47,19 @@ where
 impl<K, T> std::fmt::Debug for PackedMatMul<K, T>
 where
     K: PackedMatMulKer<T>,
-    T: Copy + Add + Mul + Zero + Debug + Send + Sync {
+    T: Copy + Add + Mul + Zero + Debug + Send + Sync,
+{
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(fmt, "MM m:{} k:{} n:{} {}({}x{})", self.m, self.k, self.n, K::name(), K::mr(), K::nr())
+        write!(
+            fmt,
+            "MM m:{} k:{} n:{} {}({}x{})",
+            self.m,
+            self.k,
+            self.n,
+            K::name(),
+            K::mr(),
+            K::nr()
+        )
     }
 }
 

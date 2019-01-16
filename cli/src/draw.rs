@@ -1,33 +1,32 @@
+use crate::CliResult;
+use ansi_term::{Color, Style};
 use box_drawing::light::*;
-use colored::Color;
-use colored::Colorize;
 use tract_core::model::OutletId;
 use tract_core::Model;
-use CliResult;
-
-const COLORS: &'static [Color] = &[
-    Color::Red,
-    Color::Green,
-    Color::Yellow,
-    Color::Blue,
-    Color::Magenta,
-    Color::Cyan,
-    Color::White,
-    Color::BrightRed,
-    Color::BrightGreen,
-    Color::BrightYellow,
-    Color::BrightBlue,
-    Color::BrightMagenta,
-    Color::BrightCyan,
-    Color::BrightWhite,
-];
 
 pub fn render(model: &Model) -> CliResult<()> {
+    let colors: &[Style] = &[
+        Color::Red.normal(),
+        Color::Green.normal(),
+        Color::Yellow.normal(),
+        Color::Blue.normal(),
+        Color::Purple.normal(),
+        Color::Cyan.normal(),
+        Color::White.normal(),
+        Color::Red.bold(),
+        Color::Green.bold(),
+        Color::Yellow.bold(),
+        Color::Blue.bold(),
+        Color::Purple.bold(),
+        Color::Cyan.bold(),
+        Color::White.bold(),
+    ];
+
     let mut next_color: usize = 0;
-    let mut wires: Vec<(OutletId, Color)> = vec![];
+    let mut wires: Vec<(OutletId, Style)> = vec![];
     for node in model.eval_order()? {
         let node = &model.nodes()[node];
-        let inputs = if model.inputs()?.contains(&OutletId::new(node.id,0)) {
+        let inputs = if model.inputs()?.contains(&OutletId::new(node.id, 0)) {
             &[]
         } else {
             &*node.inputs
@@ -40,16 +39,16 @@ pub fn render(model: &Model) -> CliResult<()> {
                 let little = wire.min(wanted);
                 let big = wire.max(wanted);
                 for w in &wires[0..little] {
-                    print!("{}", VERTICAL.color(w.1));
+                    print!("{}", w.1.paint(VERTICAL));
                 }
-                print!("{}", UP_RIGHT.color(wires[little].1));
+                print!("{}", wires[little].1.paint(UP_RIGHT));
                 for _ in little + 1..big {
-                    print!("{}", HORIZONTAL.color(wires[little].1));
+                    print!("{}", wires[little].1.paint(HORIZONTAL));
                 }
-                print!("{}", DOWN_LEFT.color(wires[little].1));
+                print!("{}", wires[little].1.paint(DOWN_LEFT));
                 if big < wires.len() {
                     for w in &wires[big + 1..] {
-                        print!("{}", VERTICAL.color(w.1));
+                        print!("{}", w.1.paint(VERTICAL));
                     }
                 }
                 println!("");
@@ -58,34 +57,34 @@ pub fn render(model: &Model) -> CliResult<()> {
             }
         }
         for wire in &wires[0..first_input_wire] {
-            print!("{}", VERTICAL.color(wire.1));
+            print!("{}", wire.1.paint(VERTICAL));
         }
-        let node_color = if inputs.len() == 1 && node.outputs.len() == 1 {
+        let node_color: Style = if inputs.len() == 1 && node.outputs.len() == 1 {
             wires[first_input_wire].1
         } else {
-            let col = COLORS[next_color % COLORS.len()];
+            let col = colors[next_color % colors.len()];
             next_color += 1;
             col
         };
         match (inputs.len(), node.outputs.len()) {
-            (0, 1) => print!("{}", DOWN_RIGHT.color(node_color)),
-            (1, 0) => print!("{}", "╵".color(node_color)),
+            (0, 1) => print!("{}", node_color.paint(DOWN_RIGHT)),
+            (1, 0) => print!("{}", node_color.paint("╵")),
             (u, d) => {
-                print!("{}", "┝".color(node_color));
+                print!("{}", node_color.paint("┝"));
                 for _ in 1..u.min(d) {
-                    print!("{}", "┿".color(node_color));
+                    print!("{}", node_color.paint("┿"));
                 }
                 for _ in u..d {
-                    print!("{}", "┯".color(node_color));
+                    print!("{}", node_color.paint("┯"));
                 }
                 for _ in d..u {
-                    print!("{}", "┷".color(node_color));
+                    print!("{}", node_color.paint("┷"));
                 }
             }
         }
         println!(
             " {} {} {}",
-            format!("{}", node.id).color(node_color),
+            node_color.paint(format!("{}", node.id)),
             node.op.name(),
             node.name
         );
@@ -97,7 +96,7 @@ pub fn render(model: &Model) -> CliResult<()> {
             let color = if ix == 0 {
                 node_color
             } else {
-                let col = COLORS[next_color % COLORS.len()];
+                let col = colors[next_color % colors.len()];
                 next_color += 1;
                 col
             };
@@ -106,13 +105,13 @@ pub fn render(model: &Model) -> CliResult<()> {
             }
             if output.successors.len() > 1 {
                 for wire in &wires[0..(first_input_wire + ix)] {
-                    print!("{}", VERTICAL.color(wire.1));
+                    print!("{}", wire.1.paint(VERTICAL));
                 }
-                print!("{}", VERTICAL_RIGHT.color(color));
+                print!("{}", color.paint(VERTICAL_RIGHT));
                 for _ in 02..output.successors.len() {
-                    print!("{}", DOWN_HORIZONTAL.color(color));
+                    print!("{}", color.paint(DOWN_HORIZONTAL));
                 }
-                println!("{}", DOWN_LEFT.color(color));
+                println!("{}", color.paint(DOWN_LEFT));
             }
         }
     }

@@ -1,12 +1,12 @@
 //! `Tensor` is the equivalent of SharedTensor Tensor.
-use dim::TDim;
+use crate::dim::TDim;
+use crate::tensor::Tensor;
+use crate::TractResult;
 use ndarray::prelude::*;
 use std::fmt;
-use TractResult;
-use tensor::Tensor;
 
+use crate::ndarray_dummy_packed_mm::*;
 use tract_linalg::f16::f16;
-use ndarray_dummy_packed_mm::*;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
@@ -126,15 +126,17 @@ pub trait Datum:
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
 
-    fn packed_mat_mul(m: usize, k: usize, n:usize) -> Option<Box<tract_linalg::MatMul<Self>>>;
+    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Option<Box<tract_linalg::MatMul<Self>>>;
 }
 
-pub (crate) trait TryInto<D: Datum> {
+pub(crate) trait TryInto<D: Datum> {
     fn try_into(self) -> TractResult<D>;
 }
 
 macro_rules! datum {
-    ($t:ident, $v:ident) => { datum!($t, $v, |_,_,_| None); };
+    ($t:ident, $v:ident) => {
+        datum!($t, $v, |_, _, _| None);
+    };
     ($t:ident, $v:ident, $matmul:expr) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
@@ -151,7 +153,11 @@ macro_rules! datum {
                 DatumType::$v
             }
 
-            fn packed_mat_mul(m: usize, k: usize, n:usize) -> Option<Box<tract_linalg::MatMul<Self>>> {
+            fn packed_mat_mul(
+                m: usize,
+                k: usize,
+                n: usize,
+            ) -> Option<Box<tract_linalg::MatMul<Self>>> {
                 $matmul(m, k, n)
             }
         }
@@ -243,14 +249,15 @@ impl TryInto<f16> for f64 {
 }
 
 datum!(bool, Bool);
-datum!(f16, F16, |m,k,n| Some(Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _));
-datum!(f32, F32, |m,k,n| if m != 1 {
-    Some((tract_linalg::ops().smm)(m,k,n))
+datum!(f16, F16, |m, k, n| Some(
+    Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _
+));
+datum!(f32, F32, |m, k, n| if m != 1 {
+    Some((tract_linalg::ops().smm)(m, k, n))
 } else {
     Some(Box::new(NdArrayDummyPackedMatMul1xKxN::new(k, n)) as _)
-}
-);
-datum!(f64, F64, |m,k,n| Some((tract_linalg::ops().dmm)(m,k,n)));
+});
+datum!(f64, F64, |m, k, n| Some((tract_linalg::ops().dmm)(m, k, n)));
 datum!(i8, I8);
 datum!(i16, I16);
 datum!(i32, I32);
@@ -261,8 +268,8 @@ datum!(TDim, TDim);
 
 #[cfg(test)]
 mod tests {
-    use datum::*;
-    use dim::ToDim;
+    use crate::datum::*;
+    use crate::dim::ToDim;
 
     #[test]
     fn test_array_to_tensor_to_array() {

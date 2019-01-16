@@ -1,9 +1,9 @@
 use std::fmt;
 use std::ops::{Add, Neg};
 
-use num::Zero;
+use num_traits::Zero;
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 use self::super::expr::{Exp, IntoExp, Output, TExp};
 use self::super::path::{get_path, set_path, Path};
@@ -614,8 +614,13 @@ impl<'rules> Solver<'rules> {
         T3: Fact + Output + 'static,
         A4: IntoExp<T4>,
         T4: Fact + Output + 'static,
-        F: Fn(&mut Solver<'rules>, T1::Concrete, T2::Concrete, T3::Concrete, T4::Concrete)
-                -> InferenceResult
+        F: Fn(
+                &mut Solver<'rules>,
+                T1::Concrete,
+                T2::Concrete,
+                T3::Concrete,
+                T4::Concrete,
+            ) -> InferenceResult
             + 'rules,
     {
         let rule = Given4Rule::new(
@@ -633,7 +638,7 @@ impl<'rules> Solver<'rules> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use DatumType;
+    use crate::DatumType;
 
     fn bootstrap<'s>() -> (Solver<'s>, SharedTensorsProxy, SharedTensorsProxy) {
         (

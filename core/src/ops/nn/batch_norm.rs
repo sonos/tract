@@ -1,6 +1,6 @@
 use self::super::DataFormat;
-use num::traits::AsPrimitive;
-use ops::prelude::*;
+use crate::ops::prelude::*;
+use num_traits::AsPrimitive;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct BatchNorm {
@@ -10,7 +10,7 @@ pub struct BatchNorm {
 }
 
 impl BatchNorm {
-    fn eval_t<T: Datum + ::num::Float + ::num::FromPrimitive>(
+    fn eval_t<T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive>(
         &self,
         mut inputs: TVec<SharedTensor>,
     ) -> TractResult<TVec<SharedTensor>>

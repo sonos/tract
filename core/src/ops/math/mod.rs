@@ -3,9 +3,9 @@ pub mod mat_mul;
 
 pub use self::gemm::Gemm;
 pub use self::mat_mul::MatMul;
-use num::traits::AsPrimitive;
-use num::Float;
-use ops::prelude::*;
+use crate::ops::prelude::*;
+use num_traits::AsPrimitive;
+use num_traits::Float;
 
 element_map!(Abs, [f16, f32, i32], |x| x.abs());
 element_map!(Exp, [f16, f32, f64], |x| x.exp());
@@ -19,7 +19,7 @@ element_map!(Floor, [f16, f32, f64], |x| x.floor());
 
 element_map_with_params!(Clip, [f16, f32, f64], { min: f32, max: f32 },
     fn eval_one<T>(clip: &Clip, x:T) -> T
-    where T: Datum+::num::Float, f32: ::num::cast::AsPrimitive<T>
+    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
     {
         x.max(clip.min.as_()).min(clip.max.as_())
     }
@@ -51,7 +51,7 @@ element_bin!(Pow, match
      f64 => f64 { |a:f64, b| a.powf(b) }
 );
 
-fn fcmp<F: ::num::Float>(a: &F, b: &F) -> ::std::cmp::Ordering {
+fn fcmp<F: ::num_traits::Float>(a: &F, b: &F) -> ::std::cmp::Ordering {
     a.partial_cmp(b).unwrap()
 }
 

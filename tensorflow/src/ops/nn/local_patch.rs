@@ -93,7 +93,7 @@ impl LocalPatch {
         }
     }
 
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> TractResult<LocalPatch> {
+    pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<LocalPatch> {
         let data_format = pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC");
         if data_format == b"NCHW" {
             Err("NCHW data_format not implemented")?
@@ -147,7 +147,7 @@ impl LocalPatch {
         pad_cols: bool,
     ) -> TractResult<Option<Array4<T>>>
     where
-        T: Copy + ::num::Zero + ::std::fmt::Debug,
+        T: Copy + ::num_traits::Zero + ::std::fmt::Debug,
     {
         // The pad_rows and pad_cols arguments are used for streaming evaluation,
         // where we don't want to pad along the streaming dimension, even if the
@@ -161,11 +161,12 @@ impl LocalPatch {
             let padded_cols = if pad_cols {
                 let h_padding = ::std::cmp::max(
                     0,
-                    filter_cols - if img.width() % self.h_stride == 0 {
-                        self.h_stride
-                    } else {
-                        img.width() % self.h_stride
-                    },
+                    filter_cols
+                        - if img.width() % self.h_stride == 0 {
+                            self.h_stride
+                        } else {
+                            img.width() % self.h_stride
+                        },
                 );
                 let left_padding = h_padding / 2;
                 let right_padding = h_padding - left_padding;
@@ -189,11 +190,12 @@ impl LocalPatch {
             let padded_rows = if pad_rows {
                 let v_padding = ::std::cmp::max(
                     0,
-                    filter_rows - if img.height() % self.v_stride == 0 {
-                        self.v_stride
-                    } else {
-                        img.height() % self.v_stride
-                    },
+                    filter_rows
+                        - if img.height() % self.v_stride == 0 {
+                            self.v_stride
+                        } else {
+                            img.height() % self.v_stride
+                        },
                 );
                 let top_padding = v_padding / 2;
                 let bottom_padding = v_padding - top_padding;
@@ -235,7 +237,7 @@ impl LocalPatch {
     }
 
     // data is expected in HWC
-    pub fn mk_patches<T: Copy + ::num::Zero + ::std::fmt::Debug>(
+    pub fn mk_patches<T: Copy + ::num_traits::Zero + ::std::fmt::Debug>(
         &self,
         data: ArrayView<T, Ix3>,
         shape: (usize, usize),

@@ -1,32 +1,36 @@
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
-use model::{eval_order, Model, Node};
-use ops::prelude::*;
+use crate::model::{eval_order, Model, Node};
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct SimplePlan<M: Borrow<Model>> {
     pub model: M,
     pub order: Vec<usize>,
-    pub flush_lists:Vec<TVec<usize>>,
+    pub flush_lists: Vec<TVec<usize>>,
 }
 
 impl<M: Borrow<Model>> SimplePlan<M> {
     pub fn new(model: M) -> TractResult<SimplePlan<M>> {
         let order = eval_order(model.borrow())?;
-        let mut values_needed_until_step = vec!(0; model.borrow().nodes().len());
+        let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for step in 0..order.len() {
             for i in &model.borrow().node(order[step]).inputs {
                 values_needed_until_step[i.node] = step;
             }
         }
-        let mut flush_lists:Vec<TVec<usize>> = vec!(tvec!(); order.len());
+        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len()];
         for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
             if flush_at != 0 {
                 flush_lists[flush_at].push(node)
             }
         }
-        Ok(SimplePlan { model, order, flush_lists })
+        Ok(SimplePlan {
+            model,
+            order,
+            flush_lists,
+        })
     }
 
     pub fn run(&self, inputs: TVec<Tensor>) -> TractResult<TVec<SharedTensor>> {
@@ -54,7 +58,8 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M
             .iter()
             .map(|opt: &Option<Box<OpState>>| -> Option<Box<OpState>> {
                 opt.as_ref().map(|b| ::objekt::clone_box(&**b))
-            }).collect();
+            })
+            .collect();
         SimpleState {
             plan: self.plan.clone(),
             states,
@@ -102,7 +107,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
     }
 
     pub fn run(&mut self, inputs: TVec<Tensor>) -> TractResult<TVec<SharedTensor>> {
-        use ops::source::Source;
+        use crate::ops::source::Source;
         let mut result = tvec!();
         {
             let &mut SimpleState {
@@ -135,7 +140,8 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     let vs = match states[node.id] {
                         Some(ref mut state) => state.eval(node.op(), inputs),
                         None => node.op().as_stateless().unwrap().eval(inputs),
-                    }.map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+                    }
+                    .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
 
                     values[node.id] = Some(vs);
                 }
@@ -224,7 +230,8 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         let vs = match self.states[node.id] {
             Some(ref mut state) => state.eval(node.op(), inputs),
             None => node.op().as_stateless().unwrap().eval(inputs),
-        }.map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+        }
+        .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -260,7 +267,8 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     .as_stateless()
                     .unwrap()
                     .eval(inputs),
-            }.map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
+            }
+            .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
         };
         self.values[node] = Some(values);
         Ok(())

@@ -1,6 +1,6 @@
-use pb::*;
-use tract_linalg::f16::f16;
+use crate::pb::*;
 use tract_core::*;
+use tract_linalg::f16::f16;
 
 impl Tractify<TensorProto_DataType> for DatumType {
     fn tractify(t: &TensorProto_DataType) -> TractResult<DatumType> {
@@ -85,23 +85,28 @@ impl Tractify<TensorProto> for Tensor {
                 DatumType::Bool => Array::from_shape_vec(
                     &*shape,
                     t.get_int32_data().iter().map(|&x| x != 0).collect(),
-                )?.into(),
+                )?
+                .into(),
                 DatumType::U8 => Array::from_shape_vec(
                     &*shape,
                     t.get_int32_data().iter().map(|&x| x as u8).collect(),
-                )?.into(),
+                )?
+                .into(),
                 DatumType::U16 => Array::from_shape_vec(
                     &*shape,
                     t.get_int32_data().iter().map(|&x| x as u16).collect(),
-                )?.into(),
+                )?
+                .into(),
                 DatumType::I8 => Array::from_shape_vec(
                     &*shape,
                     t.get_int32_data().iter().map(|&x| x as i8).collect(),
-                )?.into(),
+                )?
+                .into(),
                 DatumType::I16 => Array::from_shape_vec(
                     &*shape,
                     t.get_int32_data().iter().map(|&x| x as i16).collect(),
-                )?.into(),
+                )?
+                .into(),
                 DatumType::I32 => {
                     Array::from_shape_vec(&*shape, t.get_int32_data().to_vec())?.into()
                 }

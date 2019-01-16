@@ -1,7 +1,7 @@
 use super::tree::ExpNode;
+use crate::TractResult;
 use std::collections::HashMap;
 use std::{fmt, ops};
-use TractResult;
 
 const EXP_LEN: usize = 16;
 
@@ -89,7 +89,7 @@ impl Stack {
                     *stack.last_mut().ok_or("Too short stack")? /= b;
                 }
                 DivCeil => {
-                    use num::Integer;
+                    use num_integer::Integer;
                     let b = stack.pop().ok_or("Too short stack")?;
                     let a = stack.pop().ok_or("Too short stack")?;
                     let (d, r) = a.div_rem(&b);
@@ -311,26 +311,26 @@ mod tests {
     #[test]
     fn const_and_add() {
         let e: Stack = 2i32.into();
-        assert_eq!(e.eval(&hashmap!{}).unwrap(), 2);
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), 2);
         let e: Stack = Stack::from(2) + 3;
-        assert_eq!(e.eval(&hashmap!{}).unwrap(), 5);
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), 5);
         let e: Stack = Stack::from(2) - 3;
-        assert_eq!(e.eval(&hashmap!{}).unwrap(), -1);
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), -1);
         let e: Stack = -Stack::from(2);
-        assert_eq!(e.eval(&hashmap!{}).unwrap(), -2);
+        assert_eq!(e.eval(&hashmap! {}).unwrap(), -2);
     }
 
     #[test]
     fn simple_error_cases() {
         let e = Stack::empty();
-        assert!(e.eval(&hashmap!{}).is_err());
+        assert!(e.eval(&hashmap! {}).is_err());
         let mut e = Stack::empty();
         e.push(Val(2));
         e.push(Val(2));
-        assert!(e.eval(&hashmap!{}).is_err());
+        assert!(e.eval(&hashmap! {}).is_err());
         e.push(Val(2));
         e.push(Add);
-        assert!(e.eval(&hashmap!{}).is_err());
+        assert!(e.eval(&hashmap! {}).is_err());
     }
 
     #[test]
@@ -345,9 +345,9 @@ mod tests {
     #[test]
     fn substitution() {
         let e = Stack::sym('x');
-        assert_eq!(e.eval(&hashmap!{'x' => 2}).unwrap(), 2);
+        assert_eq!(e.eval(&hashmap! {'x' => 2}).unwrap(), 2);
         let e = Stack::sym('x') + 3;
-        assert_eq!(e.eval(&hashmap!{'x' => 2}).unwrap(), 5);
+        assert_eq!(e.eval(&hashmap! {'x' => 2}).unwrap(), 5);
     }
 
     #[test]

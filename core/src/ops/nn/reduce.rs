@@ -1,7 +1,6 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use num;
-use num::cast::AsPrimitive;
-use ops::prelude::*;
+use num_traits::cast::AsPrimitive;
 
 macro_rules! reduce_numbers {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
@@ -76,7 +75,12 @@ impl Reducer {
         }
     }
 
-    fn reduce_t<T, F>(&self, reduce: &Reduce, input: SharedTensor, f: F) -> TractResult<SharedTensor>
+    fn reduce_t<T, F>(
+        &self,
+        reduce: &Reduce,
+        input: SharedTensor,
+        f: F,
+    ) -> TractResult<SharedTensor>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Datum,
@@ -100,7 +104,8 @@ impl Reducer {
                     } else {
                         d.into()
                     }
-                }).collect();
+                })
+                .collect();
             let slice_info = SliceInfo::new(&slice_spec).unwrap();
             let slice = input.slice(slice_info.as_ref());
             f(slice)
@@ -118,14 +123,14 @@ impl Reducer {
 
 fn l1s_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Signed + num::Zero,
+    T: Datum + num_traits::Signed + num_traits::Zero,
 {
     v.fold(T::zero(), |acc, &v| acc + v.abs())
 }
 
 fn l1u_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Unsigned + num::Zero,
+    T: Datum + num_traits::Unsigned + num_traits::Zero,
 {
     v.fold(T::zero(), |acc, &v| acc + v)
 }
@@ -142,14 +147,14 @@ where
 
 fn log_sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Zero + num::Float,
+    T: Datum + num_traits::Zero + num_traits::Float,
 {
     v.scalar_sum().ln()
 }
 
 fn log_sum_exp_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Zero + num::Float,
+    T: Datum + num_traits::Zero + num_traits::Float,
 {
     let max = v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v });
     max + v.fold(T::zero(), |acc, &v| acc + (v - max).exp()).ln()
@@ -157,14 +162,14 @@ where
 
 fn max_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Bounded + ::std::cmp::PartialOrd,
+    T: Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }
 
 fn mean_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Zero + ::std::ops::Div<Output = T>,
+    T: Datum + num_traits::Zero + ::std::ops::Div<Output = T>,
     usize: AsPrimitive<T>,
 {
     let (sum, count) = v.fold((T::zero(), 0), |acc, &v| (acc.0 + v, acc.1 + 1));
@@ -173,28 +178,28 @@ where
 
 fn min_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Bounded + ::std::cmp::PartialOrd,
+    T: Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::max_value(), |acc, &v| if acc < v { acc } else { v })
 }
 
 fn prod_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::One,
+    T: Datum + num_traits::One,
 {
     v.fold(T::one(), |acc, &v| acc * v)
 }
 
 fn sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Zero,
+    T: Datum + num_traits::Zero,
 {
     v.scalar_sum()
 }
 
 fn sum_square_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num::Zero + ::std::ops::Mul<T, Output = T>,
+    T: Datum + num_traits::Zero + ::std::ops::Mul<T, Output = T>,
 {
     v.fold(T::zero(), |acc, &v| acc + v * v)
 }
@@ -260,7 +265,8 @@ impl InferenceRulesOp for Reduce {
                     } else {
                         Some(d)
                     }
-                }).collect();
+                })
+                .collect();
             s.equals(&outputs[0].shape, out_shape)
         })
     }

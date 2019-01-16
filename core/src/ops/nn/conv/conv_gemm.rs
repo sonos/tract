@@ -1,13 +1,13 @@
-use num::Zero;
+use num_traits::Zero;
 use std::ops::{Add, AddAssign, Mul};
 
 use std::sync::Arc;
 
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
-use ops::nn::conv::KernelFormat;
-use ops::nn::{DataFormat, Patch};
+use crate::ops::nn::conv::KernelFormat;
+use crate::ops::nn::{DataFormat, Patch};
 
 use tract_linalg::MatMul;
 
@@ -57,7 +57,7 @@ where
 
 impl<T> ConvGemm<T>
 where
-    T: Datum + Add + Mul + Zero + Copy + AddAssign + ndarray::LinalgScalar
+    T: Datum + Add + Mul + Zero + Copy + AddAssign + ndarray::LinalgScalar,
 {
     pub(super) fn conv_gemm<'i>(
         &'i self,
@@ -70,10 +70,14 @@ where
 
         for i in 0..input_shape.n_dim() {
             unsafe {
-                let output_i = output.as_mut_ptr().offset(output.strides()[input_shape.n_axis()]*i as isize);
+                let output_i = output
+                    .as_mut_ptr()
+                    .offset(output.strides()[input_shape.n_axis()] * i as isize);
                 for g in 0..self.group {
                     let a = &self.packed_kernels[g];
-                    let output_i_g = output_i.offset(output.strides()[input_shape.c_axis()] * co_per_group  as isize * g as isize);
+                    let output_i_g = output_i.offset(
+                        output.strides()[input_shape.c_axis()] * co_per_group as isize * g as isize,
+                    );
 
                     let (rsc, csc) = match self.patch.input_shape.fmt {
                         DataFormat::NHWC => (1, self.m as isize),
@@ -81,9 +85,9 @@ where
                     };
                     self.mm.mat_mul_prepacked(
                         a.as_ptr()?,
-                        packed_input.as_ptr().offset(
-                            ((self.group * i + g) * self.mm.packed_b_len()) as isize,
-                        ),
+                        packed_input
+                            .as_ptr()
+                            .offset(((self.group * i + g) * self.mm.packed_b_len()) as isize),
                         output_i_g,
                         rsc,
                         csc,

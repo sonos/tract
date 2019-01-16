@@ -21,7 +21,7 @@ use tract_core::Tensor as TractSharedTensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
-use utils::*;
+use crate::utils::*;
 
 fn strat() -> BoxedStrategy<(usize, Vec<TractSharedTensor>)> {
     // input rank
@@ -36,9 +36,11 @@ fn strat() -> BoxedStrategy<(usize, Vec<TractSharedTensor>)> {
                         Array::from_shape_vec(dims.clone(), ((ix * 1000)..).take(size).collect())
                             .unwrap(),
                     )
-                }).collect();
+                })
+                .collect();
             (ax, mats)
-        }).boxed()
+        })
+        .boxed()
 }
 
 proptest! {

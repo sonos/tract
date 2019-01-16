@@ -1,6 +1,8 @@
 use std::borrow::Borrow;
 use std::cmp::min;
 
+use ansi_term::Colour::*;
+use ansi_term::Style;
 use prettytable as pt;
 use prettytable::format::{FormatBuilder, TableFormat};
 use prettytable::Table;
@@ -10,13 +12,12 @@ use tract_core;
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::{Model, Node};
 
-use colored::Colorize;
-use format;
-use rusage::Duration;
+use crate::format;
+use crate::rusage::Duration;
 
 use itertools::Itertools;
 
-use SomeGraphDef;
+use crate::SomeGraphDef;
 
 /// A single row, which has either one or two columns.
 /// The two-column layout is usually used when displaying a header and some content.
@@ -48,7 +49,8 @@ fn format_no_right_border() -> TableFormat {
                 pt::format::LinePosition::Bottom,
             ],
             pt::format::LineSeparator::new('-', '+', '+', '+'),
-        ).padding(1, 1)
+        )
+        .padding(1, 1)
         .build()
 }
 
@@ -65,13 +67,15 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
             format!(
                 "Op: {:15}",
                 if op.starts_with("Unimplemented(") {
-                    op.bold().red()
+                    Red.bold().paint(op)
                 } else {
-                    op.bold().blue()
+                    Blue.bold().paint(op)
                 }
             ),
             name_table,
-            format!(" {:^33}", status.as_ref().bold()),
+            Style::new()
+                .bold()
+                .paint(format!(" {:^33}", status.as_ref())),
         ])
     } else {
         let mut name_table = table!([
@@ -80,7 +84,10 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
         ]);
 
         name_table.set_format(format_none());
-        table!([format!("Operation: {:15}", op.bold().blue()), name_table])
+        table!([
+            format!("Operation: {:15}", Blue.bold().paint(op)),
+            name_table
+        ])
     };
 
     header.set_format(format_only_columns());
@@ -101,9 +108,9 @@ fn build_header_wide(cols: usize, op: &str, name: &str, status: &[impl AsRef<str
         format!(
             "Operation: {:15}",
             if op.starts_with("Unimplemented(") {
-                op.bold().red()
+                Red.bold().paint(op)
             } else {
-                op.bold().blue()
+                Blue.bold().paint(op)
             },
         ),
         name_table,
@@ -142,7 +149,7 @@ pub fn print_box(
     };
 
     // Node identifier
-    let mut count = table!([format!("{:^5}", id.bold())]);
+    let mut count = table!([format!("{:^5}", Style::new().bold().paint(id))]);
 
     count.set_format(format_no_right_border());
 
@@ -202,7 +209,7 @@ where
         if let Some(proto_node) = proto_node {
             for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
                 attributes.push(Row::Double(
-                    format!("Attribute {}:", attr.0.bold()),
+                    format!("Attribute {}:", Style::new().bold().paint(attr.0)),
                     if attr.1.has_tensor() {
                         let tensor = attr.1.get_tensor();
                         format!(
@@ -226,7 +233,7 @@ where
             inputs.push(Row::Double(
                 format!(
                     "{} ({}/{}):",
-                    format!("Input {}", ix).bold(),
+                    Style::new().bold().paint(format!("Input {}", ix)),
                     outlet.node,
                     outlet.slot
                 ),
@@ -259,24 +266,24 @@ pub fn print_node<M, P>(
 }
 
 /// Prints some text with a line underneath.
-pub fn print_header(text: String, color: &str) {
-    println!("{}", text.bold().color(color));
-    println!("{}", format!("{:=<1$}", "", text.len()).bold().color(color));
+pub fn print_header(text: String, color: &Style) {
+    println!("{}", color.paint(&text));
+    println!("{}", color.paint(format!("{:=<1$}", "", text.len())));
 }
 
 /// Format a rusage::Duration showing avgtime in ms.
 pub fn dur_avg_oneline(measure: Duration) -> String {
     format!(
         "Real: {} User: {} Sys: {}",
-        format!("{:.3} ms/i", measure.avg_real() * 1e3)
-            .white()
-            .bold(),
-        format!("{:.3} ms/i", measure.avg_user() * 1e3)
-            .white()
-            .bold(),
-        format!("{:.3} ms/i", measure.avg_sys() * 1e3)
-            .white()
+        White
             .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
     )
 }
 
@@ -284,15 +291,15 @@ pub fn dur_avg_oneline(measure: Duration) -> String {
 pub fn dur_avg_multiline(measure: Duration) -> String {
     format!(
         "Real: {}\nUser: {}\nSys: {}",
-        format!("{:.3} ms/i", measure.avg_real() * 1e3)
-            .white()
-            .bold(),
-        format!("{:.3} ms/i", measure.avg_user() * 1e3)
-            .white()
-            .bold(),
-        format!("{:.3} ms/i", measure.avg_sys() * 1e3)
-            .white()
+        White
             .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
     )
 }
 
@@ -301,23 +308,26 @@ pub fn dur_avg_multiline(measure: Duration) -> String {
 pub fn dur_avg_oneline_ratio(measure: Duration, global: Duration) -> String {
     format!(
         "Real: {} {} User: {} {} Sys: {} {}",
-        format!("{:7.3} ms/i", measure.avg_real() * 1e3)
-            .white()
-            .bold(),
-        format!("{:2.0}%", measure.avg_real() / global.avg_real() * 100.)
-            .yellow()
-            .bold(),
-        format!("{:7.3} ms/i", measure.avg_user() * 1e3)
-            .white()
-            .bold(),
-        format!("{:2.0}%", measure.avg_user() / global.avg_user() * 100.)
-            .yellow()
-            .bold(),
-        format!("{:7.3} ms/i", measure.avg_sys() * 1e3)
-            .white()
-            .bold(),
-        format!("{:2.0}%", measure.avg_sys() / global.avg_sys() * 100.)
-            .yellow()
-            .bold(),
+        White
+            .bold()
+            .paint(format!("{:7.3} ms/i", measure.avg_real() * 1e3)),
+        Yellow.bold().paint(format!(
+            "{:2.0}%",
+            measure.avg_real() / global.avg_real() * 100.
+        )),
+        Yellow
+            .bold()
+            .paint(format!("{:7.3} ms/i", measure.avg_user() * 1e3)),
+        Yellow.bold().paint(format!(
+            "{:2.0}%",
+            measure.avg_user() / global.avg_user() * 100.
+        )),
+        Yellow
+            .bold()
+            .paint(format!("{:7.3} ms/i", measure.avg_sys() * 1e3)),
+        Yellow.bold().paint(format!(
+            "{:2.0}%",
+            measure.avg_sys() / global.avg_sys() * 100.
+        )),
     )
 }

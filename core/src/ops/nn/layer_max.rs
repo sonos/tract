@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct LayerHardmax {
@@ -6,7 +6,7 @@ pub struct LayerHardmax {
 }
 
 impl LayerHardmax {
-    fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive>(
+    fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive>(
         &self,
         input: SharedTensor,
     ) -> TractResult<TVec<SharedTensor>> {
@@ -67,7 +67,7 @@ pub struct LayerLogSoftmax {
 }
 
 impl LayerLogSoftmax {
-    fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive + ::std::iter::Sum>(
+    fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::std::iter::Sum>(
         &self,
         input: SharedTensor,
     ) -> TractResult<TVec<SharedTensor>> {
@@ -125,7 +125,7 @@ pub struct LayerSoftmax {
 }
 
 impl LayerSoftmax {
-    fn eval_t<D: Datum + ::num::Float + ::num::FromPrimitive + ::std::iter::Sum>(
+    fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::std::iter::Sum>(
         &self,
         input: SharedTensor,
     ) -> TractResult<TVec<SharedTensor>> {

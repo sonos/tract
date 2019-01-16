@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 use super::RmDims;
 
@@ -38,7 +38,7 @@ impl Op for Squeeze {
         &self,
         _inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase
+        phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
         if phase == ReductionPhase::Normalize {
             if let Some(dims) = &self.axes {

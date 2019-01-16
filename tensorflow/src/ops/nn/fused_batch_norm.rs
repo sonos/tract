@@ -1,4 +1,4 @@
-use tfpb::node_def::NodeDef;
+use crate::tfpb::node_def::NodeDef;
 use tract_core::ops::prelude::*;
 
 pub fn fused_batch_norm(node: &NodeDef) -> TractResult<Box<Op>> {
@@ -8,7 +8,7 @@ pub fn fused_batch_norm(node: &NodeDef) -> TractResult<Box<Op>> {
 
 #[derive(Debug, Clone, new)]
 struct FusedBatchNorm {
-    epsilon: f32
+    epsilon: f32,
 }
 
 impl Op for FusedBatchNorm {
@@ -71,5 +71,3 @@ impl InferenceRulesOp for FusedBatchNorm {
         Ok(())
     }
 }
-
-

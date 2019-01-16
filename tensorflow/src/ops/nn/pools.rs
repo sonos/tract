@@ -12,7 +12,7 @@ pub trait Pooler: Send + Sync + ::std::clone::Clone + ::std::fmt::Debug + 'stati
 #[derive(Debug, Clone)]
 pub struct Pool<P: Pooler>(LocalPatch, (usize, usize), PhantomData<P>);
 
-pub fn pool<P: Pooler>(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn pool<P: Pooler>(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let ksize: Vec<usize> = pb.get_attr_list_int("ksize")?;
     Ok(Box::new(Pool::<P>(
         LocalPatch::build(pb)?,
@@ -146,8 +146,11 @@ mod tests {
     #[test]
     fn test_maxpool_2() {
         let pool = Pool::<MaxPooler>(LocalPatch::same(3, 3), (3, 3), PhantomData);
-        let data: SharedTensor =
-            arr4(&[[[[1.0f32], [0.0], [0.0], [0.0]], [[0.0], [0.0], [0.0], [0.0]]]]).into();
+        let data: SharedTensor = arr4(&[[
+            [[1.0f32], [0.0], [0.0], [0.0]],
+            [[0.0], [0.0], [0.0], [0.0]],
+        ]])
+        .into();
         let exp: SharedTensor = arr4(&[[[[1.0f32], [0.0]]]]).into();
         let found = pool.eval(tvec![data.into()]).unwrap();
 

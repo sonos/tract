@@ -1,4 +1,4 @@
-use tract_core::{Tensor, TVec, TensorFact};
+use tract_core::{TVec, Tensor, TensorFact};
 
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
@@ -75,13 +75,12 @@ pub fn infer<S: AsRef<str>>(
                 .as_tensor()
                 .clone()
                 .into()
-        }).collect();
-    let output_vectors: TVec<TensorFact> = tvec![
-        state.values[output.id].as_ref().unwrap()[0]
-            .as_tensor()
-            .clone()
-            .into(),
-    ];
+        })
+        .collect();
+    let output_vectors: TVec<TensorFact> = tvec![state.values[output.id].as_ref().unwrap()[0]
+        .as_tensor()
+        .clone()
+        .into(),];
 
     let input_facts = input_vectors.iter().collect();
     let output_facts = output_vectors.iter().collect();

@@ -1,16 +1,17 @@
+use ansi_term::Colour::*;
 use atty;
 use pbr::ProgressBar;
 
 use log::Level::Info;
 
-use display_graph::DisplayOptions;
-use errors::*;
-use {Parameters, ProfilingMode};
+use crate::display_graph::DisplayOptions;
+use crate::errors::*;
+use crate::{Parameters, ProfilingMode};
 
-use format::*;
-use profile::ProfileData;
-use rusage::{Duration, Instant};
-use tensor::make_inputs;
+use crate::format::*;
+use crate::profile::ProfileData;
+use crate::rusage::{Duration, Instant};
+use crate::tensor::make_inputs;
 
 use tract_core::plan::{SimplePlan, SimpleState};
 
@@ -54,8 +55,6 @@ pub fn handle(
     profiling: ProfilingMode,
     display_options: DisplayOptions,
 ) -> CliResult<()> {
-    use colored::Colorize;
-
     let (max_iters, max_time) = if let ProfilingMode::Regular {
         max_iters,
         max_time,
@@ -90,7 +89,7 @@ pub fn handle(
 
     if log_enabled!(Info) {
         println!();
-        print_header(format!("Profiling for {}:", params.name), "white");
+        print_header(format!("Profiling for {}:", params.name), &White.normal());
     }
 
     // Then execute the plan while profiling each step.
@@ -107,7 +106,7 @@ pub fn handle(
                     &node,
                     &params.graph,
                     Some(&state),
-                    &["SKIP".yellow().to_string()],
+                    &[Yellow.paint("SKIP").to_string()],
                     vec![],
                 );
             }
@@ -131,8 +130,8 @@ pub fn handle(
                 &node,
                 &params.graph,
                 Some(&state),
-                &[format!("{:.3} ms/i", measure.avg_real() * 1e3)
-                    .white()
+                &[White
+                    .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3))
                     .to_string()],
                 vec![],
             );
@@ -145,7 +144,7 @@ pub fn handle(
         progress.finish_print("");
     }
 
-    print_header(format!("Summary for {}:", params.name), "white");
+    print_header(format!("Summary for {}:", params.name), &White.normal());
 
     profile.print_most_consuming_nodes(&params.tract_model, &params.graph, display_options)?;
     println!();
@@ -162,7 +161,7 @@ pub fn handle(
     if log_enabled!(Info) {
         println!(
             "(Real: {} in total, with max_iters={:e} and max_time={:?}ms.)",
-            format!("{:.3} ms", profile.summed().total_real * 1e3).white(),
+            White.paint(format!("{:.3} ms", profile.summed().total_real * 1e3)),
             max_iters as f32,
             max_time,
         );

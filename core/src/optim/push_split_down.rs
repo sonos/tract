@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use model::{ InletId, OutletId };
-use ops::prelude::*;
-use Model;
+use crate::model::{InletId, OutletId};
+use crate::ops::prelude::*;
+use crate::Model;
 
 use itertools::Itertools;
 
@@ -31,7 +31,13 @@ impl super::OptimizerPass for PushSplitDown {
             if remap.len() > 0 {
                 for (&killed, &kept) in remap.iter() {
                     trace!("collapsing {} into {}", killed, kept);
-                    let successors:Vec<InletId> = model.node(killed).outputs.iter().flat_map(|s| s.successors.iter()).cloned().collect();
+                    let successors: Vec<InletId> = model
+                        .node(killed)
+                        .outputs
+                        .iter()
+                        .flat_map(|s| s.successors.iter())
+                        .cloned()
+                        .collect();
                     for succ in successors {
                         for input_ix in 0..model.node(succ.node).inputs.len() {
                             let outlet = model.node(succ.node).inputs[input_ix];
@@ -49,7 +55,6 @@ impl super::OptimizerPass for PushSplitDown {
                     }
                     done_something = true;
                 }
-
             } else {
                 break;
             }
