@@ -97,14 +97,14 @@ do
         --num_runs=1 \
     2> bench
     usec=`cat bench | tail -1 | sed "s/.* //;s/\..*//"`
-    sec=`echo "scale=6; $usec / 1000000" | bc -l`
+    sec=`python -c "print($usec / 1000000)"`
     echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/hey_snips_v3.1.tflite \
     2> bench
     usec=`cat bench | tail -1 | sed "s/.* //;s/\..*//"`
-    sec=`echo "scale=6; $usec / 1000000" | bc -l`
+    sec=`python -c "print($usec / 1000000)"`
     echo net.hey_snips_v31.tflite_$tflite.400ms $sec >> metrics
 done
 
