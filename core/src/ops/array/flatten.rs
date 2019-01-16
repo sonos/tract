@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Flatten {
@@ -7,7 +7,11 @@ pub struct Flatten {
 
 impl Flatten {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: SharedTensor, shape: (usize, usize)) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Datum>(
+        &self,
+        input: SharedTensor,
+        shape: (usize, usize),
+    ) -> TractResult<TVec<SharedTensor>> {
         Ok(tvec![input.to_array::<T>()?.into_shape(shape)?.into()])
     }
 }

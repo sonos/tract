@@ -1,7 +1,7 @@
 use tract_core::ops as tractops;
 
-use ops::OpRegister;
-use tfpb::node_def::NodeDef;
+use crate::ops::OpRegister;
+use crate::tfpb::node_def::NodeDef;
 use tract_core::TractResult;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -35,5 +35,7 @@ pub fn add_n(pb: &NodeDef) -> TractResult<Box<tractops::Op>> {
 pub fn mat_mul(pb: &NodeDef) -> TractResult<Box<tractops::Op>> {
     let trans_a = pb.get_attr_bool("transpose_a")?;
     let trans_b = pb.get_attr_bool("transpose_b")?;
-    Ok(Box::new(tract_core::ops::math::Gemm::new(1.0, 0.0, trans_a, trans_b, false)))
+    Ok(Box::new(tract_core::ops::math::Gemm::new(
+        1.0, 0.0, trans_a, trans_b, false,
+    )))
 }

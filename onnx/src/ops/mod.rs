@@ -1,4 +1,4 @@
-use pb::NodeProto;
+use crate::pb::NodeProto;
 use tract_core::ops::prelude::*;
 
 mod array;

@@ -125,9 +125,9 @@ impl frame::matmul::PackedMatMulKer<f64> for DMatMul4x2 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use proptest::*;
-    use crate::frame::PackedMatMul;
     use crate::frame::matmul::test::*;
+    use crate::frame::PackedMatMul;
+    use proptest::*;
 
     proptest! {
         #[test]

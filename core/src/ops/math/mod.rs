@@ -3,9 +3,9 @@ pub mod mat_mul;
 
 pub use self::gemm::Gemm;
 pub use self::mat_mul::MatMul;
+use crate::ops::prelude::*;
 use num_traits::AsPrimitive;
 use num_traits::Float;
-use ops::prelude::*;
 
 element_map!(Abs, [f16, f32, i32], |x| x.abs());
 element_map!(Exp, [f16, f32, f64], |x| x.exp());

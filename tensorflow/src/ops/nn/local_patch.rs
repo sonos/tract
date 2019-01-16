@@ -93,7 +93,7 @@ impl LocalPatch {
         }
     }
 
-    pub fn build(pb: &::tfpb::node_def::NodeDef) -> TractResult<LocalPatch> {
+    pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<LocalPatch> {
         let data_format = pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC");
         if data_format == b"NCHW" {
             Err("NCHW data_format not implemented")?
@@ -161,11 +161,12 @@ impl LocalPatch {
             let padded_cols = if pad_cols {
                 let h_padding = ::std::cmp::max(
                     0,
-                    filter_cols - if img.width() % self.h_stride == 0 {
-                        self.h_stride
-                    } else {
-                        img.width() % self.h_stride
-                    },
+                    filter_cols
+                        - if img.width() % self.h_stride == 0 {
+                            self.h_stride
+                        } else {
+                            img.width() % self.h_stride
+                        },
                 );
                 let left_padding = h_padding / 2;
                 let right_padding = h_padding - left_padding;
@@ -189,11 +190,12 @@ impl LocalPatch {
             let padded_rows = if pad_rows {
                 let v_padding = ::std::cmp::max(
                     0,
-                    filter_rows - if img.height() % self.v_stride == 0 {
-                        self.v_stride
-                    } else {
-                        img.height() % self.v_stride
-                    },
+                    filter_rows
+                        - if img.height() % self.v_stride == 0 {
+                            self.v_stride
+                        } else {
+                            img.height() % self.v_stride
+                        },
                 );
                 let top_padding = v_padding / 2;
                 let bottom_padding = v_padding - top_padding;

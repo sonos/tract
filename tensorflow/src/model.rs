@@ -1,7 +1,7 @@
-use std::{fs, path};
 use std::sync::Arc;
+use std::{fs, path};
 
-use tfpb::graph::GraphDef;
+use crate::tfpb::graph::GraphDef;
 use tract_core::model::{InletId, Model, OutletId};
 use tract_core::{ToTract, TractResult, Tractify};
 
@@ -32,8 +32,8 @@ pub fn optimize(model: Model) -> TractResult<Model> {
 
 impl Tractify<GraphDef> for Model {
     fn tractify(graph: &GraphDef) -> TractResult<Model> {
-        let mut model = Model::default().with_context(Arc::new(::optim::TensorflowContext));
-        let op_builder = ::ops::OpBuilder::new();
+        let mut model = Model::default().with_context(Arc::new(crate::optim::TensorflowContext));
+        let op_builder = crate::ops::OpBuilder::new();
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
             let node_id = model.add_node(

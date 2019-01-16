@@ -1,7 +1,7 @@
 use tract_core::ops as tractops;
 
-use ops::OpRegister;
-use pb::NodeProto;
+use crate::ops::OpRegister;
+use crate::pb::NodeProto;
 use tract_core::ops::prelude::*;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
@@ -70,6 +70,6 @@ pub fn gemm(node: &NodeProto) -> TractResult<Box<Op>> {
         .map(|a| a != 0)
         .unwrap_or(false);
     Ok(Box::new(tractops::math::Gemm::new(
-        alpha, beta, trans_a, trans_b, true
+        alpha, beta, trans_a, trans_b, true,
     )))
 }

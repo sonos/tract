@@ -3,9 +3,9 @@ mod slice;
 use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
+use crate::ops::OpRegister;
+use crate::pb::NodeProto;
 use num_traits::AsPrimitive;
-use ops::OpRegister;
-use pb::NodeProto;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Concat", concat);
@@ -53,7 +53,8 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
             Some(dt) => ::pb::TensorProto_DataType::from_i32(dt as i32)
                 .ok_or_else(|| {
                     format!("Can not convert integer {} into a TensorProto_DataType", dt)
-                })?.tractify()?,
+                })?
+                .tractify()?,
             None => f32::datum_type(),
         };
         let shape: Vec<usize> = node
@@ -71,10 +72,13 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
 pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
     use protobuf::ProtobufEnum;
     let dt = match node.get_attr_opt_int("dtype")? {
-        Some(dt) => Some(::pb::TensorProto_DataType::from_i32(dt as i32)
-            .ok_or_else(|| {
-                format!("Can not convert integer {} into a TensorProto_DataType", dt)
-            })?.tractify()?),
+        Some(dt) => Some(
+            ::pb::TensorProto_DataType::from_i32(dt as i32)
+                .ok_or_else(|| {
+                    format!("Can not convert integer {} into a TensorProto_DataType", dt)
+                })?
+                .tractify()?,
+        ),
         None => None,
     };
     let k = node.get_attr_opt_int("k")?.unwrap_or(0);

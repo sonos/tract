@@ -1,4 +1,4 @@
-use dim::DimLike;
+use crate::dim::DimLike;
 use std::fmt;
 use std::marker::PhantomData;
 

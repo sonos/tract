@@ -200,7 +200,8 @@ impl ExpNode {
                     Add(vec![
                         a.clone(),
                         Mul(-1, vec![b.clone(), Div(b!(a.clone()), b!(b))]),
-                    ]).reduce()
+                    ])
+                    .reduce()
                 }
             }
             DivCeil(a, b) => {
@@ -243,7 +244,8 @@ impl ExpNode {
                         } else {
                             Some(Mul(v, vec![k]))
                         }
-                    }).collect();
+                    })
+                    .collect();
                 members.sort();
                 if members.len() == 0 {
                     Val(0)
@@ -382,7 +384,8 @@ mod tests {
             Add(vec![
                 add(&Sym('S'), &Val(-4)),
                 add(&Val(4), &Mul(1, vec![Val(-2), div(&Sym('S'), &Val(2))])),
-            ]).reduce(),
+            ])
+            .reduce(),
             add(&Sym('S'), &mul(-2, &div(&Sym('S'), &Val(2))))
         )
     }
@@ -393,7 +396,8 @@ mod tests {
             add(
                 &add(&Val(-4), &mul(-2, &div(&Sym('S'), &Val(4)))),
                 &mul(-2, &mul(-1, &div(&Sym('S'), &Val(4))))
-            ).reduce(),
+            )
+            .reduce(),
             Val(-4)
         )
     }
@@ -418,7 +422,8 @@ mod tests {
                     ]
                 ),
                 &Val(8)
-            ).reduce(),
+            )
+            .reduce(),
             add(&Val(-4), &mul(-8, &div(&Sym('S'), &Val(8))))
         )
     }

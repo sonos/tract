@@ -1,6 +1,6 @@
 use tract_core::ops::prelude::*;
 
-pub fn build(_pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn build(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     Ok(Box::new(ExpandDims))
 }
 
@@ -23,8 +23,11 @@ impl Op for ExpandDims {
             if let Some(dims) = dims.concretize() {
                 let dims = dims.cast_to::<i64>()?;
                 let op = ::tract_core::ops::array::AddDims::new(
-                        dims.to_array_view::<i64>()?.iter().map(|&i| i as usize).collect(),
-                    );
+                    dims.to_array_view::<i64>()?
+                        .iter()
+                        .map(|&i| i as usize)
+                        .collect(),
+                );
                 return Ok(Some(ReducedOpRewire::unary(op)));
             }
         }

@@ -3,7 +3,7 @@ use std::ops::Index;
 
 use num_traits::ToPrimitive;
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 use self::super::cache::Cache;
 use self::super::expr::Output;
@@ -115,7 +115,8 @@ impl Index<usize> for SharedTensorsProxy {
     /// to `index` will return the same SharedTensorProxy.
     fn index(&self, index: usize) -> &SharedTensorProxy {
         let path = [&self.path[..], &[index.to_isize().unwrap()]].concat();
-        self.tensors.get(index, || SharedTensorProxy::new(path.into()))
+        self.tensors
+            .get(index, || SharedTensorProxy::new(path.into()))
     }
 }
 

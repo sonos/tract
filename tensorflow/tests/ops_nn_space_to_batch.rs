@@ -17,9 +17,9 @@ mod utils;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::tensor::arr4;
 use tract_core::datum::Datum;
 use tract_core::ops::StatefullOp;
+use tract_core::tensor::arr4;
 use tract_core::Tensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
@@ -42,9 +42,11 @@ fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
                 vec(1usize..4, spatial_dims.len()..spatial_dims.len() + 1),
                 vec(0usize..4, spatial_dims.len()..spatial_dims.len() + 1),
             )
-        }).prop_filter("block < input", |&(_, ref sd, _, ref bs, _)| {
+        })
+        .prop_filter("block < input", |&(_, ref sd, _, ref bs, _)| {
             bs.iter().zip(sd.iter()).all(|(bs, is)| bs <= is)
-        }).prop_map(
+        })
+        .prop_map(
             |(b, sd, nsd, bs, left_pad): (
                 usize,
                 Vec<usize>,
@@ -60,7 +62,8 @@ fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
                     (0..input_shape.iter().cloned().product())
                         .map(|i| (1 + i) as f32)
                         .collect(),
-                ).unwrap();
+                )
+                .unwrap();
                 let block_size = Array1::from_shape_fn(sd.len(), |i| bs[i] as i32).into_dyn();
                 let padding = Array2::<i32>::from_shape_fn((sd.len(), 2), |(d, locus)| {
                     (if locus == 0 {
@@ -71,7 +74,8 @@ fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
                 });
                 (input.into(), block_size.into(), padding.into_dyn().into())
             },
-        ).boxed()
+        )
+        .boxed()
 }
 
 proptest! {
@@ -104,7 +108,8 @@ fn batch_to_space_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
                     .remove(0)
                     .to_tensor();
             (batches, bs, p)
-        }).boxed()
+        })
+        .boxed()
 }
 
 proptest! {

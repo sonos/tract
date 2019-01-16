@@ -1,7 +1,7 @@
 use tract_core::ops::array::Squeeze;
 use tract_core::ops::prelude::*;
 
-pub fn squeeze(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn squeeze(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
     if let Some(mut squeeze_dims) = squeeze_dims {
         if squeeze_dims.len() > 0 {
@@ -46,7 +46,8 @@ mod tests {
             run(
                 Squeeze::new(Some(vec![2, 4])),
                 Array::from_elem([1, 2, 1, 3, 1, 1], 0)
-            ).shape(),
+            )
+            .shape(),
             &[1, 2, 3, 1]
         );
     }
@@ -61,11 +62,9 @@ mod tests {
         let op = Squeeze::new(Some(vec![1]));
         let inferred = op.infer_facts(tvec!(&input), tvec!(&any)).unwrap();
 
-        let expect: TVec<_> = tvec!(
-            TensorFact::default()
-                .with_datum_type(DatumType::TDim)
-                .with_shape(shapefact![1, (TDim::stream() - 2), 16])
-        );
+        let expect: TVec<_> = tvec!(TensorFact::default()
+            .with_datum_type(DatumType::TDim)
+            .with_shape(shapefact![1, (TDim::stream() - 2), 16]));
 
         assert_eq!(inferred.1, expect);
     }

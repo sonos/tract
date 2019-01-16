@@ -1,8 +1,8 @@
+use crate::CliResult;
+use ansi_term::{Color, Style};
 use box_drawing::light::*;
-use ansi_term::{ Color, Style };
 use tract_core::model::OutletId;
 use tract_core::Model;
-use CliResult;
 
 pub fn render(model: &Model) -> CliResult<()> {
     let colors: &[Style] = &[
@@ -26,7 +26,7 @@ pub fn render(model: &Model) -> CliResult<()> {
     let mut wires: Vec<(OutletId, Style)> = vec![];
     for node in model.eval_order()? {
         let node = &model.nodes()[node];
-        let inputs = if model.inputs()?.contains(&OutletId::new(node.id,0)) {
+        let inputs = if model.inputs()?.contains(&OutletId::new(node.id, 0)) {
             &[]
         } else {
             &*node.inputs
@@ -59,7 +59,7 @@ pub fn render(model: &Model) -> CliResult<()> {
         for wire in &wires[0..first_input_wire] {
             print!("{}", wire.1.paint(VERTICAL));
         }
-        let node_color:Style = if inputs.len() == 1 && node.outputs.len() == 1 {
+        let node_color: Style = if inputs.len() == 1 && node.outputs.len() == 1 {
             wires[first_input_wire].1
         } else {
             let col = colors[next_color % colors.len()];

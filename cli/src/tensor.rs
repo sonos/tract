@@ -1,8 +1,8 @@
 use std::fs;
 use std::io::Read;
 
+use crate::CliResult;
 use tract_core::ops::prelude::*;
-use CliResult;
 
 pub fn for_size(size: &str) -> CliResult<TensorFact> {
     let splits = size.split("x").collect::<Vec<_>>();
@@ -18,7 +18,8 @@ pub fn for_size(size: &str) -> CliResult<TensorFact> {
         .map(|s| match *s {
             "S" => Ok(TDim::stream()),         // Streaming dimension.
             _ => Ok(s.parse::<i32>()?.into()), // Regular dimension.
-        }).collect::<TractResult<Vec<TDim>>>()?;
+        })
+        .collect::<TractResult<Vec<TDim>>>()?;
 
     if shape.iter().filter(|o| o.is_stream()).count() > 1 {
         bail!("The <size> argument doesn't support more than one streaming dimension.");
@@ -123,7 +124,8 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
                         .map(|d| d as usize)
                         .or(streaming_dim)
                         .unwrap()
-                }).collect(),
+                })
+                .collect(),
             fact.datum_type.concretize().unwrap(),
         ))
     }
@@ -133,12 +135,18 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
 pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
     use rand;
     use std::iter::repeat_with;
-    fn make<D>(shape: Vec<usize>) -> Tensor where
+    fn make<D>(shape: Vec<usize>) -> Tensor
+    where
         D: Datum,
-        rand::distributions::Standard: rand::distributions::Distribution<D>
+        rand::distributions::Standard: rand::distributions::Distribution<D>,
     {
         let len = shape.iter().product();
-        ndarray::ArrayD::from_shape_vec(shape, repeat_with(|| rand::random::<D>()).take(len).collect()).unwrap().into()
+        ndarray::ArrayD::from_shape_vec(
+            shape,
+            repeat_with(|| rand::random::<D>()).take(len).collect(),
+        )
+        .unwrap()
+        .into()
     }
 
     match datum_type {

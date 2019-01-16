@@ -36,9 +36,11 @@ fn strat() -> BoxedStrategy<(usize, Vec<TractSharedTensor>)> {
                         Array::from_shape_vec(dims.clone(), ((ix * 1000)..).take(size).collect())
                             .unwrap(),
                     )
-                }).collect();
+                })
+                .collect();
             (ax, mats)
-        }).boxed()
+        })
+        .boxed()
 }
 
 proptest! {

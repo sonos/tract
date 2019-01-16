@@ -1,5 +1,5 @@
-use ops::prelude::*;
-use Model;
+use crate::ops::prelude::*;
+use crate::Model;
 
 #[derive(Debug)]
 pub struct Reduce(pub ReductionPhase);
@@ -33,11 +33,14 @@ impl super::OptimizerPass for Reduce {
                 };
                 if let Some(red) = reduced {
                     debug!("  Unarize to {:?}", red);
-                    use model::dsl::ModelDsl;
-                    use model::{ InletId, OutletId };
+                    use crate::model::dsl::ModelDsl;
+                    use crate::model::{InletId, OutletId};
 
-                    let ::ops::ReducedOpRewire { mut ops, rewired } = red;
-                    let inputs:Vec<OutletId> = rewired.into_iter().map(|ix| model.node(id).inputs[ix]).collect();
+                    let crate::ops::ReducedOpRewire { mut ops, rewired } = red;
+                    let inputs: Vec<OutletId> = rewired
+                        .into_iter()
+                        .map(|ix| model.node(id).inputs[ix])
+                        .collect();
                     if ops.len() == 1 {
                         model.node_mut(id).op = ops.remove(0);
                         model.clear_inputs(id)?;
@@ -72,4 +75,3 @@ impl super::OptimizerPass for Reduce {
         Ok(done_something)
     }
 }
-

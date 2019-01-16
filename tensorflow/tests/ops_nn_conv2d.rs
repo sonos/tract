@@ -53,7 +53,8 @@ fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
                 ::proptest::collection::vec(-9i32..9, k_size..k_size + 1),
                 (1..(kh + 1), 1..(kw + 1)),
             )
-        }).prop_map(|(img_shape, ker_shape, img, ker, strides)| {
+        })
+        .prop_map(|(img_shape, ker_shape, img, ker, strides)| {
             (
                 Array::from_vec(img.into_iter().map(|i| i as f32).collect())
                     .into_shape(img_shape)
@@ -65,7 +66,8 @@ fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
                     .into(),
                 strides,
             )
-        }).boxed()
+        })
+        .boxed()
 }
 
 proptest! {
@@ -106,7 +108,8 @@ fn conv_infer_facts_1() {
         &model,
         vec![("data", i.into()), ("kernel", k.into())],
         "conv",
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 #[test]
@@ -120,5 +123,6 @@ fn conv_eval_1() {
         &model,
         vec![("data", i.into()), ("kernel", k.into())],
         "conv",
-    ).unwrap();
+    )
+    .unwrap();
 }

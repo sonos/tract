@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Lrn {
@@ -25,7 +25,8 @@ impl Lrn {
                 .map(|c| {
                     coords[1] = c;
                     input[&coords].powi(2)
-                }).sum();
+                })
+                .sum();
             x / (T::from(self.bias).unwrap()
                 + T::from(self.alpha).unwrap() / T::from(self.size).unwrap() * square_sum)
                 .powf(T::from(self.beta).unwrap())

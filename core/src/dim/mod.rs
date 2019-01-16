@@ -9,7 +9,7 @@ mod stack;
 mod tree;
 
 use self::stack::Stack;
-use TractResult;
+use crate::TractResult;
 
 pub trait DimLike:
     Copy

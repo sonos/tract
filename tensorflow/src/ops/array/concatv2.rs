@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use tract_core::ops::prelude::*;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let n = pb.get_attr_int("N")?;
     let t = pb.get_attr_datum_type("T")?;
     let tidx = pb.get_attr_datum_type("Tidx")?;
@@ -17,10 +17,7 @@ pub struct ConcatV2<T: Datum> {
 
 impl<T: Datum> StatelessOp for ConcatV2<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let axis: i32 = inputs
-            .pop()
-            .unwrap()
-            .to_scalar::<i32>()?;
+        let axis: i32 = inputs.pop().unwrap().to_scalar::<i32>()?;
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;

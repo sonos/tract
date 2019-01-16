@@ -1,8 +1,8 @@
 use std::borrow::BorrowMut;
 use std::collections::BTreeSet;
 
-use model::*;
-use ops::prelude::*;
+use crate::model::*;
+use crate::ops::prelude::*;
 
 pub mod types;
 
@@ -25,7 +25,8 @@ impl<M: BorrowMut<Model>> Analyser<M> {
 
     /// Runs the entire analysis at once.
     pub fn analyse(&mut self) -> TractResult<()> {
-        let mut nodes_to_visit: BTreeSet<usize> = self.model.borrow().eval_order()?.iter().cloned().collect();
+        let mut nodes_to_visit: BTreeSet<usize> =
+            self.model.borrow().eval_order()?.iter().cloned().collect();
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
             let node = match nodes_to_visit.iter().next() {

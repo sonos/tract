@@ -1,14 +1,14 @@
-use rusage::Duration;
-use std::collections::HashMap;
+use crate::rusage::Duration;
 use ansi_term::Color::*;
+use std::collections::HashMap;
 
-use errors::*;
-use format::*;
+use crate::errors::*;
+use crate::format::*;
 use itertools::Itertools;
 use tract_core::{Model, Node};
 
-use display_graph::DisplayOptions;
-use {Parameters, ProfilingMode, SomeGraphDef};
+use crate::display_graph::DisplayOptions;
+use crate::{Parameters, ProfilingMode, SomeGraphDef};
 
 mod regular;
 //mod streaming;
@@ -38,7 +38,7 @@ impl ProfileData {
     ) -> CliResult<()> {
         let sum = self.summed();
         let mut display_graph =
-            ::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
+            crate::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
                 .with_graph_def(&graph)?;
         for (ix, measure) in self.nodes.iter() {
             display_graph.add_node_label(*ix, dur_avg_oneline_ratio(*measure, sum))?;
@@ -50,7 +50,8 @@ impl ProfileData {
                 a.avg_real()
                     .partial_cmp(&b.avg_real())
                     .unwrap_or(::std::cmp::Ordering::Greater)
-            }).iter()
+            })
+            .iter()
             .rev()
             .take(5)
             .map(|a| *a.0)

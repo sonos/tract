@@ -49,7 +49,8 @@ pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
                 let mut dim = TensorShapeProto_Dim::new();
                 dim.set_size(d as i64);
                 dim
-            }).collect(),
+            })
+            .collect(),
     );
     shape
 }

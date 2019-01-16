@@ -1,17 +1,17 @@
-use atty;
 use ansi_term::Colour::*;
+use atty;
 use pbr::ProgressBar;
 
 use log::Level::Info;
 
-use display_graph::DisplayOptions;
-use errors::*;
-use {Parameters, ProfilingMode};
+use crate::display_graph::DisplayOptions;
+use crate::errors::*;
+use crate::{Parameters, ProfilingMode};
 
-use format::*;
-use profile::ProfileData;
-use rusage::{Duration, Instant};
-use tensor::make_inputs;
+use crate::format::*;
+use crate::profile::ProfileData;
+use crate::rusage::{Duration, Instant};
+use crate::tensor::make_inputs;
 
 use tract_core::plan::{SimplePlan, SimpleState};
 
@@ -130,7 +130,9 @@ pub fn handle(
                 &node,
                 &params.graph,
                 Some(&state),
-                &[White.paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)).to_string()],
+                &[White
+                    .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3))
+                    .to_string()],
                 vec![],
             );
         }

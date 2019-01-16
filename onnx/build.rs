@@ -71,7 +71,8 @@ pub fn make_test_file(tests_set: &str) {
                 rs,
                 "::onnx::run_one({:?}, {:?}, {:?})",
                 node_tests, t, optim
-            ).unwrap();
+            )
+            .unwrap();
             writeln!(rs, "}}").unwrap();
         }
         writeln!(rs, "}}").unwrap();

@@ -5,11 +5,11 @@ use std::sync::Arc;
 pub mod dsl;
 mod order;
 pub use self::order::eval_order;
-pub use analyser::types::TensorFact;
-use context::Context;
+pub use crate::analyser::types::TensorFact;
+use crate::context::Context;
 
 pub use self::dsl::ModelDsl;
-use {ops, TractResult};
+use crate::{ops, TractResult};
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -78,7 +78,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 /// Model is Tract workhouse.
 #[derive(Clone, Debug)]
 pub struct Model {
-    ctx: Arc<::context::Context>,
+    ctx: Arc<crate::context::Context>,
     nodes: Vec<Node>,
     nodes_by_name: HashMap<String, usize>,
     pub(crate) inputs: Vec<OutletId>,
@@ -88,7 +88,7 @@ pub struct Model {
 impl Default for Model {
     fn default() -> Model {
         Model {
-            ctx: Arc::new(::context::DefaultContext),
+            ctx: Arc::new(crate::context::DefaultContext),
             nodes: vec![],
             nodes_by_name: HashMap::new(),
             inputs: vec![],
@@ -164,7 +164,7 @@ impl Model {
         &mut self,
         inputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
-        use ops::source::Source;
+        use crate::ops::source::Source;
         let ids: Vec<OutletId> = inputs
             .into_iter()
             .map(|s| {
@@ -241,16 +241,16 @@ impl Model {
     }
 
     pub fn analyse_one(&mut self, id: usize) -> TractResult<()> {
-        let _ = ::analyser::Analyser::new(self)?.analyse_one(id)?;
+        let _ = crate::analyser::Analyser::new(self)?.analyse_one(id)?;
         Ok(())
     }
 
     pub fn analyse(&mut self) -> TractResult<()> {
-        ::analyser::Analyser::new(self)?.analyse()
+        crate::analyser::Analyser::new(self)?.analyse()
     }
 
     pub fn missing_type_shape(&self) -> TractResult<Vec<OutletId>> {
-        use analyser::types::Fact;
+        use crate::analyser::types::Fact;
         Ok(self
             .eval_order()?
             .iter()
@@ -276,7 +276,7 @@ impl Model {
                 self.check_edges()?;
             }
         }
-        let mut model = ::optim::compact(&self)?;
+        let mut model = crate::optim::compact(&self)?;
         if cfg!(debug_assertions) {
             model.check_edges()?;
         }

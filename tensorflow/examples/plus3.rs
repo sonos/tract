@@ -19,7 +19,9 @@ fn main() {
         .attr("dtype", DT_FLOAT)
         .attr(
             "value",
-            SharedTensor::from(::ndarray::arr1(&[3.0f32])).to_tf().unwrap(),
+            SharedTensor::from(::ndarray::arr1(&[3.0f32]))
+                .to_tf()
+                .unwrap(),
         );
     let input = tfpb::node()
         .op("Placeholder")

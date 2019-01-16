@@ -1,7 +1,7 @@
 use tract_core::ops::prelude::*;
 use tract_core::TractResult;
 
-pub fn pack(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn pack(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;
@@ -131,7 +131,7 @@ mod tests {
     fn pack_1() {
         let pack = Pack::new(DatumType::I32, 3, 0);
         let input = arr1::<i32>(&[]).into();
-        let exp:SharedTensor = arr2::<i32, _>(&[[]]).into();
+        let exp: SharedTensor = arr2::<i32, _>(&[[]]).into();
         let found = pack.eval(tvec![input]).unwrap();
 
         assert!(
@@ -160,8 +160,7 @@ mod tests {
         let b = TensorFact::from(Tensor::from(TDim::zero()));
         let any = TensorFact::default();
         let (_, output_facts) = pack.infer(tvec![&a, &b], tvec![&any]).unwrap();
-        let exp: TVec<TensorFact> =
-            tvec!(Tensor::from(arr1(&[TDim::zero(), TDim::zero()])).into());
+        let exp: TVec<TensorFact> = tvec!(Tensor::from(arr1(&[TDim::zero(), TDim::zero()])).into());
         assert_eq!(output_facts, exp);
     }
 

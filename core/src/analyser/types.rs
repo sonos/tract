@@ -1,11 +1,11 @@
+use crate::TractResult;
 use std::fmt;
 use std::iter::FromIterator;
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use TractResult;
 
 use num_traits::Zero;
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 /// Partial information about any value.
 pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
@@ -84,7 +84,7 @@ impl TensorFact {
         self,
         shape: S,
     ) -> TensorFact {
-        use dim::ToDim;
+        use crate::dim::ToDim;
         let shape: ShapeFact = shape
             .into_iter()
             .map(|d| d.map(|d| (d as isize).to_dim()).unwrap_or(TDim::s()))
@@ -240,7 +240,8 @@ impl ShapeFact {
                         GenericFact::Only(d) if d.is_stream() => GenericFact::Only(-1),
                         GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
                         GenericFact::Any => GenericFact::Any,
-                    }).collect(),
+                    })
+                    .collect(),
                 stream,
             }
         } else {
@@ -251,7 +252,8 @@ impl ShapeFact {
                     .map(|d| match d {
                         GenericFact::Only(d) => GenericFact::Only(d.to_integer().unwrap()),
                         GenericFact::Any => GenericFact::Any,
-                    }).collect(),
+                    })
+                    .collect(),
                 stream: None,
             }
         }
@@ -274,7 +276,8 @@ impl ShapeFact {
             GenericFact::Any
         } else {
             GenericFact::Only(self.dims.len() as i32)
-        }.into()
+        }
+        .into()
     }
 
     pub fn dims(&self) -> impl Iterator<Item = DimFact> {
@@ -306,9 +309,14 @@ impl ShapeFact {
 
     pub fn as_concrete_finite(&self) -> TractResult<Option<TVec<usize>>> {
         if !self.is_concrete() || self.stream_info()?.is_some() {
-            return Ok(None)
+            return Ok(None);
         }
-        Ok(Some(self.dims.iter().map(|i| i.concretize().unwrap() as usize).collect()))
+        Ok(Some(
+            self.dims
+                .iter()
+                .map(|i| i.concretize().unwrap() as usize)
+                .collect(),
+        ))
     }
 }
 
@@ -354,7 +362,8 @@ impl Fact for ShapeFact {
                     x,
                     y
                 ),
-            }).collect::<TractResult<_>>()
+            })
+            .collect::<TractResult<_>>()
             .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
 
         if x.open && y.open {
@@ -489,7 +498,7 @@ where
 impl<T, I> Add<I> for GenericFact<T>
 where
     T: Add<T, Output = T> + PartialEq + Copy + Clone + ::std::fmt::Debug,
-    I: Into<GenericFact<T>>
+    I: Into<GenericFact<T>>,
 {
     type Output = GenericFact<T>;
     fn add(self, rhs: I) -> Self::Output {

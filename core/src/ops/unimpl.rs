@@ -1,9 +1,9 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct UnimplementedOp {
     name: String,
-    message: String
+    message: String,
 }
 
 impl UnimplementedOp {

@@ -1,6 +1,6 @@
 use tract_core::ops::prelude::*;
 
-use ops::OpRegister;
+use crate::ops::OpRegister;
 
 mod concatv2;
 mod expand_dims;

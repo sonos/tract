@@ -1,7 +1,7 @@
-use display_graph::*;
-use errors::*;
+use crate::display_graph::*;
+use crate::errors::*;
+use crate::Parameters;
 use tract_core::ops::prelude::*;
-use Parameters;
 
 pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
     let tract = &params.tract_model;
@@ -22,7 +22,7 @@ pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
                 .iter()
                 .map(|o| tract.fact(*o).unwrap().clone())
                 .collect();
-            ::utils::check_inferred(&*outputs_facts, &*asserts)?;
+            crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
         }
     }
 

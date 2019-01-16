@@ -22,7 +22,7 @@ macro_rules! wrap {
     ($($x:expr,)*) => (wrap![$($x),*]);
 }
 
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 mod cache;
 pub mod expr;
@@ -45,7 +45,7 @@ pub trait InferenceRulesOp {
     ) -> InferenceResult;
 }
 
-impl<O: InferenceRulesOp> ::ops::InferenceOp for O {
+impl<O: InferenceRulesOp> crate::ops::InferenceOp for O {
     fn infer_facts(
         &self,
         inputs: TVec<&TensorFact>,

@@ -4,7 +4,7 @@ use std::{fs, path};
 use tract_core::model::{InletId, Model, OutletId};
 use tract_core::*;
 
-use pb;
+use crate::pb;
 
 /// Load a ONNX protobul model from a file.
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {

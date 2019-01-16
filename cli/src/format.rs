@@ -1,8 +1,8 @@
 use std::borrow::Borrow;
 use std::cmp::min;
 
-use ansi_term::Style;
 use ansi_term::Colour::*;
+use ansi_term::Style;
 use prettytable as pt;
 use prettytable::format::{FormatBuilder, TableFormat};
 use prettytable::Table;
@@ -12,12 +12,12 @@ use tract_core;
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::{Model, Node};
 
-use format;
-use rusage::Duration;
+use crate::format;
+use crate::rusage::Duration;
 
 use itertools::Itertools;
 
-use SomeGraphDef;
+use crate::SomeGraphDef;
 
 /// A single row, which has either one or two columns.
 /// The two-column layout is usually used when displaying a header and some content.
@@ -49,7 +49,8 @@ fn format_no_right_border() -> TableFormat {
                 pt::format::LinePosition::Bottom,
             ],
             pt::format::LineSeparator::new('-', '+', '+', '+'),
-        ).padding(1, 1)
+        )
+        .padding(1, 1)
         .build()
 }
 
@@ -72,7 +73,9 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
                 }
             ),
             name_table,
-            Style::new().bold().paint(format!(" {:^33}", status.as_ref())),
+            Style::new()
+                .bold()
+                .paint(format!(" {:^33}", status.as_ref())),
         ])
     } else {
         let mut name_table = table!([
@@ -81,7 +84,10 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
         ]);
 
         name_table.set_format(format_none());
-        table!([format!("Operation: {:15}", Blue.bold().paint(op)), name_table])
+        table!([
+            format!("Operation: {:15}", Blue.bold().paint(op)),
+            name_table
+        ])
     };
 
     header.set_format(format_only_columns());
@@ -269,9 +275,15 @@ pub fn print_header(text: String, color: &Style) {
 pub fn dur_avg_oneline(measure: Duration) -> String {
     format!(
         "Real: {} User: {} Sys: {}",
-        White.bold().paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
-        White.bold().paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
-        White.bold().paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
     )
 }
 
@@ -279,9 +291,15 @@ pub fn dur_avg_oneline(measure: Duration) -> String {
 pub fn dur_avg_multiline(measure: Duration) -> String {
     format!(
         "Real: {}\nUser: {}\nSys: {}",
-        White.bold().paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
-        White.bold().paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
-        White.bold().paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
+        White
+            .bold()
+            .paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
     )
 }
 
@@ -290,11 +308,26 @@ pub fn dur_avg_multiline(measure: Duration) -> String {
 pub fn dur_avg_oneline_ratio(measure: Duration, global: Duration) -> String {
     format!(
         "Real: {} {} User: {} {} Sys: {} {}",
-        White.bold().paint(format!("{:7.3} ms/i", measure.avg_real() * 1e3)),
-        Yellow.bold().paint(format!("{:2.0}%", measure.avg_real() / global.avg_real() * 100.)),
-        Yellow.bold().paint(format!("{:7.3} ms/i", measure.avg_user() * 1e3)),
-        Yellow.bold().paint(format!("{:2.0}%", measure.avg_user() / global.avg_user() * 100.)),
-        Yellow.bold().paint(format!("{:7.3} ms/i", measure.avg_sys() * 1e3)),
-        Yellow.bold().paint(format!("{:2.0}%", measure.avg_sys() / global.avg_sys() * 100.)),
+        White
+            .bold()
+            .paint(format!("{:7.3} ms/i", measure.avg_real() * 1e3)),
+        Yellow.bold().paint(format!(
+            "{:2.0}%",
+            measure.avg_real() / global.avg_real() * 100.
+        )),
+        Yellow
+            .bold()
+            .paint(format!("{:7.3} ms/i", measure.avg_user() * 1e3)),
+        Yellow.bold().paint(format!(
+            "{:2.0}%",
+            measure.avg_user() / global.avg_user() * 100.
+        )),
+        Yellow
+            .bold()
+            .paint(format!("{:7.3} ms/i", measure.avg_sys() * 1e3)),
+        Yellow.bold().paint(format!(
+            "{:2.0}%",
+            measure.avg_sys() / global.avg_sys() * 100.
+        )),
     )
 }

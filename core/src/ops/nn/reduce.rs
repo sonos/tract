@@ -1,6 +1,6 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
 use num_traits::cast::AsPrimitive;
-use ops::prelude::*;
 
 macro_rules! reduce_numbers {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
@@ -75,7 +75,12 @@ impl Reducer {
         }
     }
 
-    fn reduce_t<T, F>(&self, reduce: &Reduce, input: SharedTensor, f: F) -> TractResult<SharedTensor>
+    fn reduce_t<T, F>(
+        &self,
+        reduce: &Reduce,
+        input: SharedTensor,
+        f: F,
+    ) -> TractResult<SharedTensor>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Datum,
@@ -99,7 +104,8 @@ impl Reducer {
                     } else {
                         d.into()
                     }
-                }).collect();
+                })
+                .collect();
             let slice_info = SliceInfo::new(&slice_spec).unwrap();
             let slice = input.slice(slice_info.as_ref());
             f(slice)
@@ -259,7 +265,8 @@ impl InferenceRulesOp for Reduce {
                     } else {
                         Some(d)
                     }
-                }).collect();
+                })
+                .collect();
             s.equals(&outputs[0].shape, out_shape)
         })
     }

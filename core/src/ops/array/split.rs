@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::*;
-use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Split {
@@ -28,7 +28,8 @@ impl Split {
                     .to_owned();
                 current += d;
                 slice.into()
-            }).collect())
+            })
+            .collect())
     }
 }
 

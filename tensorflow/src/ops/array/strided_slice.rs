@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use ndarray::prelude::*;
 use tract_core::ops::prelude::*;
 
-pub fn build(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
@@ -143,7 +143,9 @@ impl BaseStridedSlice {
         strides: SharedTensor,
     ) -> TractResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
         let casted_begin = begin.cast_to::<TDim>()?;
-        let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
+        let begin = casted_begin
+            .to_array_view::<TDim>()?
+            .into_dimensionality()?;
         let casted_end = end.cast_to::<TDim>()?;
         let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
         let strides = strides.to_array_view::<i32>()?.into_dimensionality()?;
@@ -183,7 +185,8 @@ impl BaseStridedSlice {
                 .map(|(d, i)| {
                     (*i as i32 * bounds[d].stride + bounds[d].begin.to_integer().unwrap() as i32)
                         as usize
-                }).collect();
+                })
+                .collect();
             input[&*coord]
         });
         let output = output.into_shape(end_shape)?;
@@ -214,7 +217,9 @@ impl BaseStridedSlice {
             &inputs[3].value,
             move |s, input_shape, begin, end, stride| {
                 let casted_begin = begin.cast_to::<TDim>()?;
-                let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
+                let begin = casted_begin
+                    .to_array_view::<TDim>()?
+                    .into_dimensionality()?;
                 let casted_end = end.cast_to::<TDim>()?;
                 let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
                 let stride = stride.to_array_view::<i32>()?.into_dimensionality()?;
@@ -359,7 +364,8 @@ mod tests {
             begin.into().into(),
             end.into().into(),
             strides.into().into(),
-        ]).unwrap()
+        ])
+        .unwrap()
         .pop()
         .unwrap()
         .to_tensor()
@@ -541,11 +547,9 @@ mod tests {
         );
         assert_eq!(
             output_facts,
-            tvec![
-                TensorFact::default()
-                    .with_datum_type(DatumType::F32)
-                    .with_shape(shapefact![..]),
-            ]
+            tvec![TensorFact::default()
+                .with_datum_type(DatumType::F32)
+                .with_shape(shapefact![..]),]
         );
     }
 
@@ -574,11 +578,9 @@ mod tests {
         );
         assert_eq!(
             output_facts,
-            tvec![
-                TensorFact::default()
-                    .with_datum_type(DatumType::F32)
-                    .with_shape(shapefact![..]),
-            ]
+            tvec![TensorFact::default()
+                .with_datum_type(DatumType::F32)
+                .with_shape(shapefact![..]),]
         );
     }
 

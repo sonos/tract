@@ -1,6 +1,6 @@
+use crate::model::{InletId, OutletId};
+use crate::{Model, TractResult};
 use bit_set;
-use model::{InletId, OutletId};
-use {Model, TractResult};
 
 #[derive(Debug)]
 pub struct PropConst;
@@ -28,12 +28,12 @@ impl super::OptimizerPass for PropConst {
             } else {
                 trace!("Looking at node {} inputs", node);
                 for ix in 0..model.nodes()[node].inputs.len() {
-                    use analyser::types::Fact;
+                    use crate::analyser::types::Fact;
                     let source = model.nodes()[node].inputs[ix];
                     if model.nodes()[source.node].op().name() != "Const"
                         && model.fact(source)?.is_concrete()
                     {
-                        use model::ModelDsl;
+                        use crate::model::ModelDsl;
                         let konst = model.fact(source)?.concretize().unwrap();
                         let id = model.nodes().len();
                         trace!(

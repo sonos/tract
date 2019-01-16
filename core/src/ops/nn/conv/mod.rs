@@ -7,7 +7,10 @@ pub use self::gen::Conv;
 pub use self::unary::ConvUnary;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum KernelFormat { OIHW, HWIO }
+pub enum KernelFormat {
+    OIHW,
+    HWIO,
+}
 
 impl Default for KernelFormat {
     fn default() -> KernelFormat {

@@ -1,6 +1,6 @@
 use super::{DataFormat, DataShape, PaddingSpec};
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Patch {
@@ -25,7 +25,7 @@ impl Patch {
         kernel_strides: TVec<usize>,
         input_full_shape: TVec<usize>,
     ) -> Patch {
-        use ops::nn::padding::ComputedPaddedDim;
+        use crate::ops::nn::padding::ComputedPaddedDim;
         let input_shape = data_fmt.shape(input_full_shape);
         let ComputedPaddedDim {
             pad_after,
@@ -47,14 +47,16 @@ impl Patch {
                     .into_iter()
                     .enumerate()
                     .map(|(ix, c)| (c * dilations[ix]).wrapping_sub(pad_before[ix]))
-            }).collect();
+            })
+            .collect();
         let data_field = Array2::from_shape_vec(
             (
                 kernel_spatial_shape.iter().cloned().product(),
                 kernel_spatial_shape.len(),
             ),
             data_field,
-        ).unwrap();
+        )
+        .unwrap();
 
         let mut input_layout_strides: Vec<usize> = vec![1];
         for dim in input_shape.shape.iter().skip(1).rev() {
@@ -70,7 +72,8 @@ impl Patch {
                     .zip(input_layout_strides.iter().skip(input_shape.h_axis()))
                     .map(|(&a, &b)| (a as isize * b as isize))
                     .sum()
-            }).collect();
+            })
+            .collect();
 
         Patch {
             dilations,
@@ -193,11 +196,12 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for FastPatchIterator<'i
             return None;
         }
         unsafe {
-            let position = self.center + self
-                .visitor
-                .patch
-                .standard_layout_data_field
-                .get_unchecked(self.item);
+            let position = self.center
+                + self
+                    .visitor
+                    .patch
+                    .standard_layout_data_field
+                    .get_unchecked(self.item);
             self.item += 1;
             Some(Some(*(self.ptr.offset(position))))
         }
@@ -232,7 +236,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for SafePatchIterator<'i
 #[cfg(test)]
 mod test {
     use super::*;
-    use ops::nn::DataFormat::NCHW;
+    use crate::ops::nn::DataFormat::NCHW;
 
     fn compute_output_spatial_dim(
         input: usize,

@@ -25,13 +25,13 @@ extern crate tract_tensorflow;
 use std::process;
 use std::str::FromStr;
 
+use crate::tfpb::graph::GraphDef;
 use insideout::InsideOut;
-use tfpb::graph::GraphDef;
 use tract_core::ops::prelude::*;
 use tract_tensorflow::tfpb;
 
-use display_graph::DisplayOptions;
-use errors::*;
+use crate::display_graph::DisplayOptions;
+use crate::errors::*;
 
 mod compare;
 mod display_graph;
@@ -101,11 +101,12 @@ fn main() {
                 .takes_value(true)
                 .long("assert-output")
                 .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("assert-output-fact")
                 .takes_value(true)
                 .long("assert-output-fact")
-                .help("Infered shape and datum type must match exactly this")
+                .help("Infered shape and datum type must match exactly this"),
         );
     app = app.subcommand(output_options(dump));
 
@@ -118,18 +119,21 @@ fn main() {
             Arg::with_name("bench")
                 .long("bench")
                 .help("Run as an overall bench"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("max_iters")
                 .takes_value(true)
                 .long("max-iters")
                 .short("n")
                 .help("Sets the maximum number of iterations for each node [default: 100_000]."),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("max-time")
                 .takes_value(true)
                 .long("max-time")
-                .help("Sets the maximum execution time for each node (in ms) [default: 5000].")
-        ).arg(
+                .help("Sets the maximum execution time for each node (in ms) [default: 5000]."),
+        )
+        .arg(
             Arg::with_name("buffering")
                 .short("b")
                 .help("Run the stream network without inner instrumentations"),
@@ -142,12 +146,13 @@ fn main() {
             Arg::with_name("assert-output")
                 .takes_value(true)
                 .long("assert-output")
-                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)")
-        ).arg(
+                .help("Fact to check the ouput tensor against (@filename, or 3x4xf32)"),
+        )
+        .arg(
             Arg::with_name("assert-output-fact")
                 .takes_value(true)
                 .long("assert-output-fact")
-                .help("Infered shape and datum type must match exactly this")
+                .help("Infered shape and datum type must match exactly this"),
         );
     app = app.subcommand(output_options(run));
 
@@ -198,31 +203,37 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
                 .short("q")
                 .long("quiet")
                 .help("don't dump"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("debug-op")
                 .long("debug-op")
                 .help("show debug dump for each op"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("node_id")
                 .long("node-id")
                 .takes_value(true)
                 .help("Select a node to dump"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("successors")
                 .long("successors")
                 .takes_value(true)
                 .help("Show successors of node"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("op_name")
                 .long("op-name")
                 .takes_value(true)
                 .help("Select one op to dump"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("node_name")
                 .long("node-name")
                 .takes_value(true)
                 .help("Select one node to dump"),
-        ).arg(
+        )
+        .arg(
             Arg::with_name("const")
                 .long("const")
                 .help("also display consts nodes"),
@@ -321,7 +332,8 @@ impl Parameters {
                                 } else {
                                     d
                                 }
-                            }).collect(),
+                            })
+                            .collect(),
                     );
                     fact.shape = shape;
                 }
@@ -436,7 +448,10 @@ impl Assertions {
         let assert_output_facts: Option<Vec<TensorFact>> = sub_matches
             .values_of("assert-output-fact")
             .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
-        Ok(Assertions { assert_outputs, assert_output_facts })
+        Ok(Assertions {
+            assert_outputs,
+            assert_output_facts,
+        })
     }
 }
 
@@ -459,7 +474,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
         */
-        ("draw", _) => ::draw::render(&params.tract_model),
+        ("draw", _) => crate::draw::render(&params.tract_model),
 
         ("dump", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);

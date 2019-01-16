@@ -1,9 +1,9 @@
 use tract_core::ops as tractops;
-use tract_core::ops::nn::{DataFormat, PaddingSpec, KernelFormat};
+use tract_core::ops::nn::{DataFormat, KernelFormat, PaddingSpec};
 use tract_core::ops::prelude::*;
 
-use ops::OpRegister;
-use pb::NodeProto;
+use crate::ops::OpRegister;
+use crate::pb::NodeProto;
 
 macro_rules! reduce {
     ($id:ident) => {

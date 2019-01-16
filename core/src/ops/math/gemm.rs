@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
 use num_traits::AsPrimitive;
 use num_traits::Float;
@@ -14,7 +14,10 @@ pub struct Gemm {
 }
 
 impl Gemm {
-    fn eval_t_3<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t_3<T: Datum + Float>(
+        &self,
+        mut inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -36,7 +39,10 @@ impl Gemm {
         Ok(tvec!(c.into()))
     }
 
-    fn eval_t_2<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t_2<T: Datum + Float>(
+        &self,
+        mut inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -107,7 +113,10 @@ pub struct GemmUnaryA {
 }
 
 impl GemmUnaryA {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t<T: Datum + Float>(
+        &self,
+        mut inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {
@@ -172,7 +181,10 @@ pub struct GemmUnaryB {
 }
 
 impl GemmUnaryB {
-    fn eval_t<T: Datum + Float>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t<T: Datum + Float>(
+        &self,
+        mut inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>>
     where
         f32: AsPrimitive<T>,
     {

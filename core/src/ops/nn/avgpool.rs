@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
 use super::{DataFormat, PaddingSpec, Patch};
 

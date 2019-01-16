@@ -7,11 +7,11 @@ use tract_core::model::OutletId;
 use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::{SharedTensor, Tensor, TensorFact};
 
-use display_graph::DisplayOptions;
-use errors::*;
-use format::*;
-use utils::*;
-use Parameters;
+use crate::display_graph::DisplayOptions;
+use crate::errors::*;
+use crate::format::*;
+use crate::utils::*;
+use crate::Parameters;
 
 /// Handles the `compare` subcommand.
 #[cfg(not(feature = "conform"))]
@@ -98,11 +98,13 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                     .iter()
                     .enumerate()
                     .position(|(ix, o)| {
-                        o.successors.len() == 0 && !tract
-                            .outputs()
-                            .unwrap()
-                            .contains(&OutletId::new(node.id, ix))
-                    }).unwrap_or(node.outputs.len());
+                        o.successors.len() == 0
+                            && !tract
+                                .outputs()
+                                .unwrap()
+                                .contains(&OutletId::new(node.id, ix))
+                    })
+                    .unwrap_or(node.outputs.len());
                 let expected: Vec<TensorFact> = tf_output
                     .iter()
                     .take(wanted)
@@ -137,7 +139,8 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                                         data.as_tensor()
                                     ),
                                 )
-                            }).collect::<Vec<_>>();
+                            })
+                            .collect::<Vec<_>>();
                         let inputs = tract.nodes()[n]
                             .inputs
                             .iter()
@@ -145,7 +148,8 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
                             .map(|(ix, o)| {
                                 let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
                                 Row::Double(format!("Input #{}", ix), format!("{:?}", tensor))
-                            }).collect::<Vec<_>>();
+                            })
+                            .collect::<Vec<_>>();
                         display_graph.add_node_section(n, inputs)?;
                         display_graph.add_node_section(n, mismatches)?;
                         display_graph.add_node_label(n, Red.paint("MISM.").to_string())?;

@@ -1,6 +1,6 @@
 use self::super::DataFormat;
+use crate::ops::prelude::*;
 use num_traits::AsPrimitive;
-use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct BatchNorm {

@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use downcast_rs::Downcast;
 
-use model::TVec;
+use crate::model::TVec;
 
 use objekt;
 
@@ -28,28 +28,34 @@ pub struct StreamInfo {
     pub len: TDim,
 }
 
-#[derive(Debug,PartialEq, Copy, Clone )]
-pub enum ReductionPhase { Normalize, Codegen }
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum ReductionPhase {
+    Normalize,
+    Codegen,
+}
 
 pub mod prelude {
     pub use super::{
-        InferenceOp, Op, OpState, ReductionPhase, ReducedOpRewire, StatefullOp, StatelessOp, StreamInfo,
+        InferenceOp, Op, OpState, ReducedOpRewire, ReductionPhase, StatefullOp, StatelessOp,
+        StreamInfo,
     };
-    pub use analyser::rules::expr::{IntoExp, ToDimExp};
-    pub use analyser::rules::{InferenceResult, InferenceRulesOp, SharedTensorsProxy, Solver};
-    pub use analyser::types::TypeFact;
-    pub use analyser::types::*;
-    pub use datum::{Datum, DatumType};
-    pub use dim::{DimLike, TDim, ToDim};
-    pub use tract_linalg::f16::f16;
-    pub use model::TVec;
-    pub use pulse::{PulsedTensorFact, PulsifiedOp};
+    pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
+    pub use crate::analyser::rules::{
+        InferenceResult, InferenceRulesOp, SharedTensorsProxy, Solver,
+    };
+    pub use crate::analyser::types::TypeFact;
+    pub use crate::analyser::types::*;
+    pub use crate::datum::{Datum, DatumType};
+    pub use crate::dim::{DimLike, TDim, ToDim};
+    pub use crate::model::TVec;
+    pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
+    pub use crate::tensor::{arr4, SharedTensor, Tensor};
+    pub use crate::ToTract;
+    pub use crate::TractResult;
+    pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
-    pub use std::borrow::Cow;
-    pub use tensor::{arr4, SharedTensor, Tensor};
-    pub use ToTract;
-    pub use TractResult;
+    pub use tract_linalg::f16::f16;
 }
 
 use self::prelude::*;
@@ -123,7 +129,10 @@ pub trait Op:
         Ok(None)
     }
 
-    fn pulsify(&self, _inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<::pulse::PulsifiedOp>> {
+    fn pulsify(
+        &self,
+        _inputs: TVec<&PulsedTensorFact>,
+    ) -> TractResult<Vec<crate::pulse::PulsifiedOp>> {
         bail!("Operator {} do not support pulsification", self.name())
     }
 
@@ -146,7 +155,6 @@ pub trait Op:
     fn info(&self) -> TractResult<Option<String>> {
         Ok(None)
     }
-
 }
 
 pub trait InferenceOp {
@@ -159,7 +167,7 @@ pub trait InferenceOp {
 
 clone_trait_object!(Op);
 
-impl<O:Op> From<O> for Box<Op> {
+impl<O: Op> From<O> for Box<Op> {
     fn from(it: O) -> Box<Op> {
         Box::new(it)
     }
@@ -174,7 +182,7 @@ pub struct ReducedOpRewire {
 impl ReducedOpRewire {
     pub fn unary<O: Into<Box<Op>>>(op: O) -> ReducedOpRewire {
         ReducedOpRewire {
-            ops: vec!(op.into()),
+            ops: vec![op.into()],
             rewired: tvec!(0),
         }
     }

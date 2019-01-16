@@ -1,8 +1,8 @@
 use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
-use ops::OpRegister;
-use tfpb::node_def::NodeDef;
+use crate::ops::OpRegister;
+use crate::tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
@@ -55,7 +55,7 @@ impl InferenceRulesOp for Switch {
     }
 }
 
-fn merge(pb: &::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+fn merge(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let inputs = pb.get_attr_int::<i32>("N")?;
     Ok(Box::new(Merge::new(inputs as usize)))
 }

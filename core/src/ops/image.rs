@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 
 use super::{Input, Op};
-use {Tensor, Result};
+use {Result, Tensor};
 
 #[derive(Debug)]
 pub struct DecodeJpeg {}

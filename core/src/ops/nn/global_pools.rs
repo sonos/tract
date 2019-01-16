@@ -1,5 +1,5 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct GlobalAvgPool {
@@ -59,7 +59,10 @@ pub struct GlobalLpPool {
 }
 
 impl GlobalLpPool {
-    fn eval_t<D: Datum + ::num_traits::Float>(&self, input: SharedTensor) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<D: Datum + ::num_traits::Float>(
+        &self,
+        input: SharedTensor,
+    ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -117,7 +120,10 @@ pub struct GlobalMaxPool {
 }
 
 impl GlobalMaxPool {
-    fn eval_t<D: Datum + ::num_traits::Float>(&self, input: SharedTensor) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<D: Datum + ::num_traits::Float>(
+        &self,
+        input: SharedTensor,
+    ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];

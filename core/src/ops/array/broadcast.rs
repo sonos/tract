@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct MultiBroadcastTo;
@@ -26,7 +26,7 @@ impl StatelessOp for MultiBroadcastTo {
             .iter()
             .map(|i| *i as usize)
             .collect();
-        let dims = ::broadcast::multi_broadcast(&[&*dims, &*input.shape()])
+        let dims = crate::broadcast::multi_broadcast(&[&*dims, &*input.shape()])
             .ok_or("incompatible shapes")?;
         dispatch_datum!(Self::eval_t(input.datum_type())(input.as_tensor(), &*dims))
     }
@@ -52,7 +52,7 @@ impl InferenceRulesOp for MultiBroadcastTo {
                     .iter()
                     .map(|i| TDim::from(*i))
                     .collect();
-                let dims = ::broadcast::multi_broadcast(&[&*dims, &*shape])
+                let dims = crate::broadcast::multi_broadcast(&[&*dims, &*shape])
                     .ok_or("incompatible shapes")
                     .unwrap();
                 s.equals(&outputs[0].shape, ShapeFact::from(dims))

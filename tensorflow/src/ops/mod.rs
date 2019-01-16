@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use tract_core::ops::Op;
 use tract_core::TractResult;
 
-use tfpb::node_def::NodeDef;
+use crate::tfpb::node_def::NodeDef;
 
 #[macro_use]
 mod macros;

@@ -77,7 +77,8 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tract::Tensor {
     let image: ::tract::Tensor =
         ::ndarray::Array4::from_shape_fn((1, 299, 299, 3), |(_, y, x, c)| {
             resized[(x as _, y as _)][c] as f32 / 255.0
-        }).into_dyn()
+        })
+        .into_dyn()
         .into();
     image
 }

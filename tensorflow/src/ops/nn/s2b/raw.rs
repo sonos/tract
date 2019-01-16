@@ -29,7 +29,9 @@ impl Op for SpaceToBatch {
                 output.shape.concretize(),
             ) {
                 let paddings = paddings.cast_to::<TDim>()?;
-                let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
+                let paddings_view = paddings
+                    .to_array_view::<TDim>()?
+                    .into_dimensionality::<Ix2>()?;
                 let mut paddings = tvec![];
                 for p in paddings_view.outer_iter() {
                     let pad = match (p[0].to_integer(), p[1].to_integer()) {
@@ -52,7 +54,7 @@ impl Op for SpaceToBatch {
                     block_shape.to_array::<i32>()?.into_dimensionality()?,
                     paddings,
                 );
-                return Ok(Some(ReducedOpRewire::unary(op)))
+                return Ok(Some(ReducedOpRewire::unary(op)));
             }
         }
         Ok(None)
@@ -122,7 +124,9 @@ impl Op for BatchToSpace {
                 output.shape.concretize(),
             ) {
                 let paddings = paddings.cast_to::<TDim>()?;
-                let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
+                let paddings = paddings
+                    .to_array_view::<TDim>()?
+                    .into_dimensionality::<Ix2>()?;
                 let paddings = paddings
                     .outer_iter()
                     .map(|p| {
@@ -134,7 +138,8 @@ impl Op for BatchToSpace {
                             (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
                             _ => bail!("Failed to unarize SpaceToBatch because of padding"),
                         })
-                    }).collect::<TractResult<_>>()?;
+                    })
+                    .collect::<TractResult<_>>()?;
                 let op = super::unary::BatchToSpaceUnary::new(
                     self.datum_type,
                     input_shape,
@@ -142,7 +147,7 @@ impl Op for BatchToSpace {
                     block_shape.to_array::<i32>()?.into_dimensionality()?,
                     paddings,
                 );
-                return Ok(Some(ReducedOpRewire::unary(op)))
+                return Ok(Some(ReducedOpRewire::unary(op)));
             }
         }
         Ok(None)

@@ -2,10 +2,10 @@ use tract_linalg::MatMul;
 
 use std::sync::Arc;
 
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
-use ops::prelude::*;
 
-use ops::nn::Patch;
+use crate::ops::nn::Patch;
 
 use num_traits::Zero;
 use std::ops::Mul;
@@ -23,19 +23,26 @@ pub(super) struct Im2Col<T: Datum + Mul + Zero> {
 
 impl<T: Datum + Mul + Zero> PartialEq for Im2Col<T> {
     fn eq(&self, other: &Im2Col<T>) -> bool {
-        self.patch == other.patch && self.m == other.m && self.n == other.n && self.k == other.k && self.group == other.group && self.packed_b_len == other.packed_b_len
+        self.patch == other.patch
+            && self.m == other.m
+            && self.n == other.n
+            && self.k == other.k
+            && self.group == other.group
+            && self.packed_b_len == other.packed_b_len
     }
 }
 
 impl<T: Datum + Mul + Zero> Im2Col<T> {
-    pub(super) fn im2col<'i>(
-        &'i self,
-        input: &'i ArrayViewD<'i, T>,
-    ) -> TractResult<Tensor> {
+    pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, T>) -> TractResult<Tensor> {
         let input_shape = &self.patch.input_shape;
         let mut mega_matrix = unsafe { Array2::<T>::uninitialized((self.k, self.n)) };
 
-        let mut packed = unsafe { Tensor::uninitialized_aligned::<T>(&[self.mm.packed_b_len() * self.group * input_shape.n_dim()], self.mm.packed_b_alignment())? };
+        let mut packed = unsafe {
+            Tensor::uninitialized_aligned::<T>(
+                &[self.mm.packed_b_len() * self.group * input_shape.n_dim()],
+                self.mm.packed_b_alignment(),
+            )?
+        };
         let visitor = self.patch.wrap(input);
         let ci_per_group = input_shape.c_dim() / self.group;
         for i in 0..input_shape.n_dim() {
@@ -82,7 +89,7 @@ impl<T: Datum + Mul + Zero> Op for Im2Col<T> {
     impl_op_same_as!();
 }
 
-impl<T: Datum+Mul+Zero> StatelessOp for Im2Col<T> {
+impl<T: Datum + Mul + Zero> StatelessOp for Im2Col<T> {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let tensor = self.im2col(&inputs[0].to_array_view()?)?;
         Ok(tvec!(tensor.into()))

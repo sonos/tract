@@ -1,6 +1,6 @@
+use crate::model::Node;
+use crate::TractResult;
 use bit_set;
-use model::Node;
-use TractResult;
 
 pub fn eval_order(model: &super::Model) -> TractResult<Vec<usize>> {
     let inputs = model
@@ -16,7 +16,11 @@ pub fn eval_order(model: &super::Model) -> TractResult<Vec<usize>> {
     eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 
-pub fn eval_order_for_nodes(nodes: &[Node], inputs: &[usize], targets: &[usize]) -> TractResult<Vec<usize>> {
+pub fn eval_order_for_nodes(
+    nodes: &[Node],
+    inputs: &[usize],
+    targets: &[usize],
+) -> TractResult<Vec<usize>> {
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut needed: Vec<usize> = vec![];
     let mut order: Vec<usize> = vec![];
@@ -45,10 +49,10 @@ pub fn eval_order_for_nodes(nodes: &[Node], inputs: &[usize], targets: &[usize])
 
 #[cfg(test)]
 mod tests {
-    use model::dsl::ModelDsl;
-    use model::*;
-    use ops::math::Add;
-    use *;
+    use crate::model::dsl::ModelDsl;
+    use crate::model::*;
+    use crate::ops::math::Add;
+    use crate::*;
 
     #[test]
     fn test_simple() {

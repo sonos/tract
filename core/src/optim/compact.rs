@@ -1,6 +1,6 @@
-use model::{InletId, OutletId};
+use crate::model::{InletId, OutletId};
+use crate::{Model, TractResult};
 use std::collections::HashMap;
-use {Model, TractResult};
 
 pub fn compact(old: &Model) -> TractResult<Model> {
     let mut model = Model::default();
@@ -13,7 +13,7 @@ pub fn compact(old: &Model) -> TractResult<Model> {
             model.set_fact(OutletId::new(new_id, ix), output.fact.clone())?;
         }
         if old.inputs()?.contains(&OutletId::new(old_node.id, 0)) {
-            continue
+            continue;
         }
         for (ix, input) in old_node.inputs.iter().enumerate() {
             model.add_edge(

@@ -1,12 +1,12 @@
 //! `Tensor` is the equivalent of SharedTensor Tensor.
-use dim::TDim;
-use model::TVec;
+use crate::dim::TDim;
+use crate::model::TVec;
+use crate::TractResult;
 use ndarray::prelude::*;
 use std::alloc;
 use std::borrow::Cow;
 use std::fmt;
 use std::mem::size_of;
-use TractResult;
 
 use tract_linalg::f16::f16;
 
@@ -14,8 +14,8 @@ use tract_linalg::f16::f16;
 use serde::ser::{Serialize, Serializer};
 use std::sync::Arc;
 
-use ops::prelude::*;
-use datum::TryInto;
+use crate::datum::TryInto;
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct SharedTensor(Arc<Tensor>);
@@ -30,7 +30,7 @@ impl SharedTensor {
         Arc::try_unwrap(self.0).unwrap_or_else(|arc| arc.as_ref().clone())
     }
 
-    pub fn to_array<'a, D: ::datum::Datum>(self) -> TractResult<::ndarray::ArrayD<D>> {
+    pub fn to_array<'a, D: crate::datum::Datum>(self) -> TractResult<::ndarray::ArrayD<D>> {
         self.to_tensor().into_array()
     }
 }
@@ -64,14 +64,19 @@ impl PartialEq for SharedTensor {
 }
 
 pub fn realign_slice(v: &[u8], alignment: usize) -> TractResult<Vec<u8>> {
-    assert!((alignment as u32).count_ones() == 1, "Invalid alignment required ({})", alignment);
+    assert!(
+        (alignment as u32).count_ones() == 1,
+        "Invalid alignment required ({})",
+        alignment
+    );
     if v.len() == 0 {
-        return Ok(vec!())
+        return Ok(vec![]);
     }
     unsafe {
         let aligned_buffer = alloc::alloc(
-            alloc::Layout::from_size_align(v.len(), alignment)
-            .map_err(|e| format!("Memory layout error: {:?} ({}, {})", e, v.len(), alignment))?
+            alloc::Layout::from_size_align(v.len(), alignment).map_err(|e| {
+                format!("Memory layout error: {:?} ({}, {})", e, v.len(), alignment)
+            })?,
         );
         let mut output = Vec::from_raw_parts(aligned_buffer as _, v.len(), v.len());
         output.copy_from_slice(v);
@@ -81,7 +86,7 @@ pub fn realign_slice(v: &[u8], alignment: usize) -> TractResult<Vec<u8>> {
 
 pub fn realign_vec(v: Vec<u8>, alignment: usize) -> TractResult<Vec<u8>> {
     if v.len() == 0 || v.as_ptr() as usize % alignment == 0 {
-        return Ok(v)
+        return Ok(v);
     }
     realign_slice(&v, alignment)
 }
@@ -96,26 +101,37 @@ pub struct Tensor {
 
 impl Clone for Tensor {
     fn clone(&self) -> Tensor {
-        assert!((self.alignment as u32).count_ones() == 1, "Invalid alignment in tensor ({})", self.alignment);
+        assert!(
+            (self.alignment as u32).count_ones() == 1,
+            "Invalid alignment in tensor ({})",
+            self.alignment
+        );
         Tensor {
             shape: self.shape.clone(),
             data: realign_slice(&self.data, self.alignment).unwrap(),
-            .. *self
+            ..*self
         }
     }
 }
 
 impl Tensor {
-    pub unsafe fn uninitialized_aligned<T:Datum>(shape: &[usize], alignment:usize) -> TractResult<Tensor> {
-        assert!((alignment as u32).count_ones() == 1, "Invalid alignment required ({})", alignment);
+    pub unsafe fn uninitialized_aligned<T: Datum>(
+        shape: &[usize],
+        alignment: usize,
+    ) -> TractResult<Tensor> {
+        assert!(
+            (alignment as u32).count_ones() == 1,
+            "Invalid alignment required ({})",
+            alignment
+        );
         let len = shape.iter().cloned().product::<usize>() * size_of::<T>();
         let data = if len == 0 {
-            vec!()
+            vec![]
         } else {
-            let aligned_buffer = alloc::alloc(
-                alloc::Layout::from_size_align(len, alignment)
-                .map_err(|e| format!("Memory layout error: {:?} ({}, {})", e, len, alignment))?
-            );
+            let aligned_buffer =
+                alloc::alloc(alloc::Layout::from_size_align(len, alignment).map_err(|e| {
+                    format!("Memory layout error: {:?} ({}, {})", e, len, alignment)
+                })?);
             Vec::from_raw_parts(aligned_buffer as _, len, len)
         };
         Ok(Tensor {
@@ -123,7 +139,7 @@ impl Tensor {
             dt: T::datum_type(),
             shape: shape.into(),
             alignment,
-            data
+            data,
         })
     }
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
@@ -147,7 +163,7 @@ impl Tensor {
         })
     }
 
-    pub unsafe fn null<T:Datum>(shape: &[usize]) -> TractResult<Tensor> {
+    pub unsafe fn null<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
         Self::null_dt(T::datum_type(), shape)
     }
 
@@ -156,7 +172,7 @@ impl Tensor {
             null: true,
             dt,
             shape: shape.into(),
-            data: vec!(),
+            data: vec![],
             alignment: dt.alignment(),
         })
     }
@@ -165,8 +181,8 @@ impl Tensor {
         self.null
     }
 
-    pub fn into_tensor(self) -> ::SharedTensor {
-        ::SharedTensor::from(self)
+    pub fn into_tensor(self) -> crate::SharedTensor {
+        crate::SharedTensor::from(self)
     }
 
     pub fn shape(&self) -> &[usize] {
@@ -214,7 +230,7 @@ impl Tensor {
 
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
         if self.is_null() != other.is_null() {
-            return false
+            return false;
         }
         let ma = self.cast_to::<f32>().unwrap();
         let ma = ma.to_array_view::<f32>().unwrap();
@@ -239,18 +255,19 @@ impl Tensor {
             0.0
         };
         trace!("close_enough 4");
-        ma.shape() == mb.shape() && mb
-            .iter()
-            .zip(ma.iter())
-            .map(|(&a, &b)| {
-                (
-                    a,
-                    b,
-                    a.is_nan() && b.is_nan() || a == b || (b - a).abs() <= margin,
-                )
-            })
-            //.inspect(|t| println!("{:?}", t))
-            .all(|t| t.2)
+        ma.shape() == mb.shape()
+            && mb
+                .iter()
+                .zip(ma.iter())
+                .map(|(&a, &b)| {
+                    (
+                        a,
+                        b,
+                        a.is_nan() && b.is_nan() || a == b || (b - a).abs() <= margin,
+                    )
+                })
+                //.inspect(|t| println!("{:?}", t))
+                .all(|t| t.2)
     }
 
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
@@ -294,10 +311,7 @@ impl Tensor {
                 ));
             }
         } else {
-            return Ok(ArrayViewD::from_shape(
-                &*self.shape,
-                &[],
-            )?);
+            return Ok(ArrayViewD::from_shape(&*self.shape, &[])?);
         }
     }
 
@@ -335,10 +349,7 @@ impl Tensor {
                 ))
             }
         } else {
-            return Ok(ArrayViewMutD::from_shape(
-                &*self.shape,
-                &mut [],
-            )?);
+            return Ok(ArrayViewMutD::from_shape(&*self.shape, &mut [])?);
         }
     }
 
@@ -374,13 +385,13 @@ impl Tensor {
     }
 
     pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<Tensor>> {
-        use DatumType::*;
+        use crate::DatumType::*;
         if self.dt == dt {
             return Ok(Cow::Borrowed(self));
         }
         let target = match (self.dt, dt) {
-            (TDim, I32) => self.cast::<::dim::TDim, i32>()?,
-            (I32, TDim) => self.cast::<i32, ::dim::TDim>()?,
+            (TDim, I32) => self.cast::<crate::dim::TDim, i32>()?,
+            (I32, TDim) => self.cast::<i32, crate::dim::TDim>()?,
 
             (F16, F32) => self.cast::<f16, f32>()?,
             (F32, F16) => self.cast::<f32, f16>()?,
@@ -435,7 +446,9 @@ impl PartialEq for Tensor {
 
 impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let content = self.dump(false).unwrap_or_else(|e| format!("Error : {:?}", e));
+        let content = self
+            .dump(false)
+            .unwrap_or_else(|e| format!("Error : {:?}", e));
         write!(formatter, "{}", content)
     }
 }
@@ -544,4 +557,3 @@ where
         ArrayBase::from_shape_vec_unchecked(dim, v)
     }
 }
-
