@@ -86,7 +86,7 @@ fn run_pulse(params: &Parameters) -> CliResult<TVec<SharedTensor>> {
         } else {
             chunk.to_owned()
         };
-        let mut outputs = state.run(tvec!(input.into()))?;
+        let outputs = state.run(tvec!(input.into()))?;
         let result_chunk = outputs[0].to_array_view::<f32>()?;
         result
             .slice_axis_mut(

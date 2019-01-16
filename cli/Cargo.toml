@@ -8,6 +8,7 @@ repository = "https://github.com/kali/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
+edition = "2018"
 
 [badges]
 travis-ci = { repository = "kali/tract" }

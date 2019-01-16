@@ -4,6 +4,7 @@ use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
 use crate::ops::OpRegister;
+use crate::pb;
 use crate::pb::NodeProto;
 use num_traits::AsPrimitive;
 
@@ -50,7 +51,7 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
     if node.get_input().len() == 0 {
         use protobuf::ProtobufEnum;
         let dt = match node.get_attr_opt_int("dtype")? {
-            Some(dt) => ::pb::TensorProto_DataType::from_i32(dt as i32)
+            Some(dt) => pb::TensorProto_DataType::from_i32(dt as i32)
                 .ok_or_else(|| {
                     format!("Can not convert integer {} into a TensorProto_DataType", dt)
                 })?
@@ -73,7 +74,7 @@ pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
     use protobuf::ProtobufEnum;
     let dt = match node.get_attr_opt_int("dtype")? {
         Some(dt) => Some(
-            ::pb::TensorProto_DataType::from_i32(dt as i32)
+            pb::TensorProto_DataType::from_i32(dt as i32)
                 .ok_or_else(|| {
                     format!("Can not convert integer {} into a TensorProto_DataType", dt)
                 })?

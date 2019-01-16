@@ -84,12 +84,12 @@ impl InferenceRulesOp for Slice {
                             e = (d as isize).into();
                         }
                     }
-                    let mut b = if b < 0 {
+                    let b = if b < 0 {
                         d.bex() + TDim::from(b)
                     } else {
                         TDim::from(b).bex()
                     };
-                    let mut e = if e < 0 {
+                    let e = if e < 0 {
                         d.bex() + TDim::from(e)
                     } else {
                         TDim::from(e).bex()

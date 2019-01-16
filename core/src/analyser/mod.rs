@@ -81,7 +81,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
             for (ix, &outlet) in node.inputs.iter().enumerate() {
                 let inferred_fact = &inferred.0[ix];
                 let old_fact = self.model.borrow().fact(outlet)?;
-                let mut unified = inferred_fact.unify(&old_fact).map_err(|e| {
+                let unified = inferred_fact.unify(&old_fact).map_err(|e| {
                     format!(
                         "While unifying inputs of node #{} {}: {}",
                         node.id, node.name, e

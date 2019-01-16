@@ -85,7 +85,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 /// Parses the `data` command-line argument.
 fn for_data(filename: &str) -> CliResult<TensorFact> {
     let tensor = if filename.ends_with(".pb") {
-        let mut file = fs::File::open(filename)?;
+        let file = fs::File::open(filename)?;
         ::tract_onnx::tensor::from_reader(file)?
     } else {
         tensor_for_text_data(filename)?

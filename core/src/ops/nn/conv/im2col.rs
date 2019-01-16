@@ -49,7 +49,7 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
             for g in 0..self.group {
                 let mut coords = vec![0; input_shape.rank()];
                 coords[input_shape.n_axis()] = i;
-                for (mut spatial, mut col) in ndarray::indices(&*self.patch.output_spatial_shape)
+                for (spatial, mut col) in ndarray::indices(&*self.patch.output_spatial_shape)
                     .into_iter()
                     .zip(mega_matrix.axis_iter_mut(Axis(1)))
                 {

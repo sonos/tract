@@ -2,7 +2,7 @@
 
 CRATE=$1
 VERSION=$2
-CRATES="core tensorflow onnx cli"
+CRATES="linalg core tensorflow onnx cli"
 
 if [ -z "$VERSION" ]
 then
