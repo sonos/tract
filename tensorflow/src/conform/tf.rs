@@ -15,7 +15,7 @@ use tract_core::Tensor;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use conform::Result;
+use crate::conform::Result;
 
 pub struct Tensorflow {
     session: Session,

@@ -23,9 +23,9 @@ pub mod tf;
 
 pub use protobuf::Message;
 
-use tfpb;
-use tfpb::tensor_shape::TensorShapeProto;
-use tfpb::types::DataType;
+use crate::tfpb;
+use crate::tfpb::tensor_shape::TensorShapeProto;
+use crate::tfpb::types::DataType;
 use tract_core::ops::prelude::*;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
