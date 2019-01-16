@@ -34,7 +34,7 @@ set_version $CRATE/Cargo.toml $VERSION
 (cd $CRATE ; cargo publish --dry-run --allow-dirty)
 
 git commit . -m "release $CRATE/$VERSION"
-git tag "$CRATE/$VERSION"
-git push --tags
+git tag -f "$CRATE/$VERSION"
+git push -f --tags
 
 (cd $CRATE ; cargo publish --allow-dirty)
