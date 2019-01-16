@@ -96,14 +96,14 @@ do
         --graph=$CACHEDIR/inception_v3_2016_08_28_frozen.tflite \
         --num_runs=1 \
     2> bench
-    usec=`cat bench | tail -1 | sed "s/.* //;s/\..*//"`
+    usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/hey_snips_v3.1.tflite \
     2> bench
-    usec=`cat bench | tail -1 | sed "s/.* //;s/\..*//"`
+    usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.hey_snips_v31.tflite_$tflite.400ms $sec >> metrics
 done
