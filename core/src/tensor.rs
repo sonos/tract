@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::mem::size_of;
 
+use tract_linalg::align;
 use tract_linalg::f16::f16;
 
 #[cfg(feature = "serialize")]
@@ -63,34 +64,6 @@ impl PartialEq for SharedTensor {
     }
 }
 
-pub fn realign_slice(v: &[u8], alignment: usize) -> TractResult<Vec<u8>> {
-    assert!(
-        (alignment as u32).count_ones() == 1,
-        "Invalid alignment required ({})",
-        alignment
-    );
-    if v.len() == 0 {
-        return Ok(vec![]);
-    }
-    unsafe {
-        let aligned_buffer = alloc::alloc(
-            alloc::Layout::from_size_align(v.len(), alignment).map_err(|e| {
-                format!("Memory layout error: {:?} ({}, {})", e, v.len(), alignment)
-            })?,
-        );
-        let mut output = Vec::from_raw_parts(aligned_buffer as _, v.len(), v.len());
-        output.copy_from_slice(v);
-        Ok(output)
-    }
-}
-
-pub fn realign_vec(v: Vec<u8>, alignment: usize) -> TractResult<Vec<u8>> {
-    if v.len() == 0 || v.as_ptr() as usize % alignment == 0 {
-        return Ok(v);
-    }
-    realign_slice(&v, alignment)
-}
-
 pub struct Tensor {
     null: bool,
     dt: DatumType,
@@ -108,7 +81,7 @@ impl Clone for Tensor {
         );
         Tensor {
             shape: self.shape.clone(),
-            data: realign_slice(&self.data, self.alignment).unwrap(),
+            data: align::realign_slice(&self.data, self.alignment),
             ..*self
         }
     }
@@ -143,7 +116,7 @@ impl Tensor {
         })
     }
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
-        let data = realign_slice(content, size_of::<T>())?;
+        let data = align::realign_slice(content, size_of::<T>());
         Ok(Tensor {
             null: false,
             dt: T::datum_type(),
@@ -158,7 +131,7 @@ impl Tensor {
             null: self.null,
             dt: self.datum_type(),
             shape: self.shape,
-            data: realign_vec(self.data, alignment)?,
+            data: align::realign_vec(self.data, alignment),
             alignment,
         })
     }

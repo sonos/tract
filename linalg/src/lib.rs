@@ -9,6 +9,7 @@ extern crate num_traits;
 #[cfg(test)]
 extern crate proptest;
 
+pub mod align;
 pub mod f16;
 pub mod frame;
 mod generic;
@@ -17,7 +18,7 @@ mod generic;
 pub mod x86_64_fma;
 
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
-pub mod armvfpv2;
+pub mod arm32;
 
 pub use self::frame::{MatMul, PackedMatMul};
 
@@ -35,9 +36,9 @@ pub fn generic() -> Ops {
 
 #[allow(unreachable_code)]
 pub fn best() -> Ops {
+    let mut ops = generic();
     #[cfg(target_arch = "x86_64")]
     {
-        let mut ops = generic();
         if is_x86_feature_detected!("fma") {
             log::info!("x86_64/fma activated for smm");
             ops.smm = Box::new(|m, k, n| {
@@ -46,20 +47,10 @@ pub fn best() -> Ops {
                 ))
             });
         }
-        return ops;
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
-    {
-        return Ops {
-            smm: Box::new(|m, k, n| {
-                Box::new(PackedMatMul::<armvfpv2::SMatMul4x4, f32>::new(m, k, n))
-            }),
-            dmm: Box::new(|m, k, n| {
-                Box::new(PackedMatMul::<generic::DMatMul4x2, f64>::new(m, k, n))
-            }),
-        };
-    }
-    generic()
+    arm32::plug(&mut ops);
+    return ops;
 }
 
 lazy_static::lazy_static! {

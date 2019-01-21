@@ -131,7 +131,7 @@ mod test {
 
     proptest! {
         #[test]
-        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat(1)) {
+        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
             let mm = PackedMatMul::<SMatMul4x4, f32>::new(m, k, n);
             test_mat_mul_prep_f32(mm, m, k, n, a, b)?
         }
