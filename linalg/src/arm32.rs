@@ -19,7 +19,7 @@ pub fn plug(ops: &mut Ops) {
     if has_neon() {
         ops.smm = Box::new(|m, k, n| {
             log::info!("armv7neon activated for smm");
-            Box::new(PackedMatMul::<armv7neon::SMatMul4x4, f32>::new(m, k, n))
+            Box::new(PackedMatMul::<armv7neon::SMatMul8x4, f32>::new(m, k, n))
         });
     } else {
         ops.smm = Box::new(|m, k, n| {
