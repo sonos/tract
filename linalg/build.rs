@@ -11,5 +11,12 @@ fn main() {
             .flag("-mfpu=vfp")
             .static_flag(true)
             .compile("armvfpv2");
+        cc::Build::new()
+            .file("armv7neon/armv7neon_mm_s8x4.c")
+            .flag("-marm")
+            .flag("-mfpu=neon")
+            .flag("-mfloat-abi=hard")
+            .static_flag(true)
+            .compile("armv7neon");
     }
 }

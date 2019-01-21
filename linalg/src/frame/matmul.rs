@@ -257,16 +257,57 @@ pub mod test {
     use super::*;
     use proptest::prelude::*;
     use proptest::*;
+    use crate::align;
 
-    pub fn strat(k_fact: usize) -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
+    pub fn strat_ker_mat_mul<MM:PackedMatMulKer<f32>>() -> BoxedStrategy<(usize, Vec<f32>, Vec<f32>)> {
+        (0usize..35)
+            .prop_flat_map(move |k| {
+                (
+                    Just(k),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), MM::mr() * k),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), MM::nr() * k),
+                )
+            })
+            .boxed()
+    }
+
+    pub fn test_ker_mat_mul<MM: PackedMatMulKer<f32>>(
+        k: usize,
+        a: &[f32],
+        b: &[f32],
+    ) -> Result<(), proptest::test_runner::TestCaseError> {
+        unsafe {
+            let pa = align::realign_slice(a, MM::alignment_bytes_a());
+            let pb = align::realign_slice(b, MM::alignment_bytes_b());
+
+            let mut expect = vec![0.0f32; MM::mr() * MM::nr()];
+            for x in 0..MM::nr() {
+                for y in 0..MM::mr() {
+                    expect[x+y*MM::nr()] = (0..k).map(|k| pa[k*MM::mr() + y] * pb[k*MM::nr() + x]).sum::<f32>();
+                }
+            }
+            let mut found = vec![9999.0f32; expect.len()];
+            MM::kernel(
+                k,
+                pa.as_ptr(),
+                pb.as_ptr(),
+                found.as_mut_ptr(),
+                MM::nr(),
+                1);
+            prop_assert_eq!(found, expect);
+        }
+        Ok(())
+    }
+
+    pub fn strat_mat_mul() -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
         (1usize..35, 1usize..35, 1usize..35)
             .prop_flat_map(move |(m, k, n)| {
                 (
                     Just(m),
-                    Just(k * k_fact),
+                    Just(k),
                     Just(n),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), m * k * k_fact),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), n * k * k_fact),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), m * k),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), n * k),
                 )
             })
             .boxed()
@@ -280,15 +321,16 @@ pub mod test {
         a: &[f32],
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
-        let mut packed_a = vec![0.0f32; mm.packed_a_len()];
-        mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
-
-        let mut packed_b = vec![0.0f32; mm.packed_b_len()];
-        mm.pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
-
-        let mut expect = vec![9999.0f32; m * n];
-        let mut found = vec![9999.0f32; m * n];
         unsafe {
+            let mut packed_a:Vec<f32> = align::uninitialized(mm.packed_a_len(), mm.packed_a_alignment());
+            mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+
+            let mut packed_b:Vec<f32> = align::uninitialized(mm.packed_b_len(), mm.packed_b_alignment());
+            mm.pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+
+            let mut expect = vec![9999.0f32; m * n];
+            let mut found = vec![9999.0f32; m * n];
+
             mm.mat_mul_prepacked(
                 packed_a.as_ptr(),
                 packed_b.as_ptr(),
@@ -312,8 +354,8 @@ pub mod test {
                 n as _,
                 1,
             );
+            prop_assert_eq!(found, expect);
         }
-        prop_assert_eq!(expect, found);
         Ok(())
     }
 
