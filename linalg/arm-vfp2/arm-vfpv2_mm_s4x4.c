@@ -114,7 +114,7 @@ void arm_vfpv2_mm_s4x4(size_t k, float *a, float *b, float *c, size_t rsc, size_
     " vmla.f32        s22, s2, s9                 \n\t"
     " vmla.f32        s23, s3, s9                 \n\t"
 
-    " vldmia          r3!, { s8-s11 }             \n\t"
+    " vldmia          r3!, { s12-s15 }            \n\t"
 
     " vmla.f32        s24, s0, s10                 \n\t"
     " vmla.f32        s25, s1, s10                 \n\t"
@@ -131,25 +131,25 @@ void arm_vfpv2_mm_s4x4(size_t k, float *a, float *b, float *c, size_t rsc, size_
     " pld [r3]                        \n\t"
 
     // 4
-    " vmla.f32        s16, s4, s8                 \n\t"
-    " vmla.f32        s17, s5, s8                 \n\t"
-    " vmla.f32        s18, s6, s8                 \n\t"
-    " vmla.f32        s19, s7, s8                 \n\t"
+    " vmla.f32        s16, s4, s12                 \n\t"
+    " vmla.f32        s17, s5, s12                 \n\t"
+    " vmla.f32        s18, s6, s12                 \n\t"
+    " vmla.f32        s19, s7, s12                 \n\t"
 
-    " vmla.f32        s20, s4, s9                 \n\t"
-    " vmla.f32        s21, s5, s9                 \n\t"
-    " vmla.f32        s22, s6, s9                 \n\t"
-    " vmla.f32        s23, s7, s9                 \n\t"
+    " vmla.f32        s20, s4, s13                 \n\t"
+    " vmla.f32        s21, s5, s13                 \n\t"
+    " vmla.f32        s22, s6, s13                 \n\t"
+    " vmla.f32        s23, s7, s13                 \n\t"
 
-    " vmla.f32        s24, s4, s10                 \n\t"
-    " vmla.f32        s25, s5, s10                 \n\t"
-    " vmla.f32        s26, s6, s10                 \n\t"
-    " vmla.f32        s27, s7, s10                 \n\t"
+    " vmla.f32        s24, s4, s14                 \n\t"
+    " vmla.f32        s25, s5, s14                 \n\t"
+    " vmla.f32        s26, s6, s14                 \n\t"
+    " vmla.f32        s27, s7, s14                 \n\t"
 
-    " vmla.f32        s28, s4, s11                 \n\t"
-    " vmla.f32        s29, s5, s11                 \n\t"
-    " vmla.f32        s30, s6, s11                 \n\t"
-    " vmla.f32        s31, s7, s11                 \n\t"
+    " vmla.f32        s28, s4, s15                 \n\t"
+    " vmla.f32        s29, s5, s15                 \n\t"
+    " vmla.f32        s30, s6, s15                 \n\t"
+    " vmla.f32        s31, s7, s15                 \n\t"
 
     " sub r1, r1, #4                              \n\t"
     " cmp r1, #4                                  \n\t"
