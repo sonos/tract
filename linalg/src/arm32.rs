@@ -1,7 +1,7 @@
 mod armvfpv2;
 mod armv7neon;
 
-use Ops;
+use crate::Ops;
 use crate::frame::PackedMatMul;
 
 pub fn has_neon_cpuinfo() -> std::io::Result<bool>  {
