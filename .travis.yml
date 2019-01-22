@@ -2,7 +2,7 @@ language: rust
 cache:
 - cargo
 - directories:
-  - cached
+  - $HOME/cached
 addons:
   apt:
     packages:
