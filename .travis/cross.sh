@@ -3,6 +3,7 @@
 set -ex
 
 mkdir -p $HOME/cached/bin
+ls $HOME/cached/bin
 PATH=$HOME/cached/bin:$PATH
 
 which cargo-dinghy || cargo install --debug --root $HOME/cached cargo-dinghy
