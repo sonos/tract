@@ -22,7 +22,7 @@ echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 mkdir $TASK_NAME/benches
 cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
 cargo bench  --message-format=json  --no-run | grep bench
-for bench in `cargo bench  --message-format=json  --no-run | grep -F  '"kind":["bench"]'
+for bench in `cargo bench --message-format=json  --no-run | grep -F  '"kind":["bench"]'`
 do
     echo $bench
     echo $bench | jshon -e executable -u
