@@ -14,18 +14,21 @@
 
 void armv7neon_mm_s8x4(size_t k, float *a, float *b, float *c, size_t rsc, size_t csc) {
 
-    float zero = 0.0;
-    float *pzero = &zero;
-
     __asm__ volatile (
 
-    " ldr r0,%[pzero]                  \n\t"
     " ldr r1,%[k]                      \n\t"
     " ldr r2,%[a]                      \n\t"
     " ldr r3,%[b]                      \n\t"
     " ldr r4,%[c]                      \n\t"
     " ldr r8,%[csc]                    \n\t"
     " ldr r9,%[rsc]                    \n\t"
+
+    " pld [r2]                        \n\t"
+    " pld [r2, #8]                    \n\t"
+    " pld [r2, #16]                   \n\t"
+    " pld [r2, #24]                   \n\t"
+    " pld [r3]                        \n\t"
+    " pld [r3, #8]                    \n\t"
 
     " veor      q8, q8 ,q8         \n\t"
     " veor      q9, q9 ,q9         \n\t"
@@ -51,8 +54,12 @@ void armv7neon_mm_s8x4(size_t k, float *a, float *b, float *c, size_t rsc, size_
     " vmla.f32        q8, q0, d8[0]              \n\t"
     " vmla.f32        q9, q1, d8[0]              \n\t"
 
+    " vldmia          r2!, { q2, q3 }            \n\t"
+
     " vmla.f32        q10, q0, d8[1]              \n\t"
     " vmla.f32        q11, q1, d8[1]              \n\t"
+
+    " vldmia          r3!, { q5 }                \n\t"
 
     " vmla.f32        q12, q0, d9[0]              \n\t"
     " vmla.f32        q13, q1, d9[0]              \n\t"
@@ -61,11 +68,12 @@ void armv7neon_mm_s8x4(size_t k, float *a, float *b, float *c, size_t rsc, size_
     " vmla.f32        q15, q1, d9[1]              \n\t"
 
     // 2
-    " vldmia          r2!, { q2, q3 }            \n\t"
-    " vldmia          r3!, { q5 }                \n\t"
+    " vldmia          r2!, { q0, q1 }            \n\t"
 
     " vmla.f32        q8, q2, d10[0]              \n\t"
     " vmla.f32        q9, q3, d10[0]              \n\t"
+
+    " vldmia          r3!, { q4 }                \n\t"
 
     " vmla.f32        q10, q2, d10[1]              \n\t"
     " vmla.f32        q11, q3, d10[1]              \n\t"
@@ -77,33 +85,43 @@ void armv7neon_mm_s8x4(size_t k, float *a, float *b, float *c, size_t rsc, size_
     " vmla.f32        q15, q3, d11[1]              \n\t"
 
     // 3
-    " vldmia          r2!, { q0, q1 }            \n\t"
-    " vldmia          r3!, { q4 }                \n\t"
+    " vldmia          r2!, { q2, q3 }            \n\t"
 
     " vmla.f32        q8, q0, d8[0]              \n\t"
     " vmla.f32        q9, q1, d8[0]              \n\t"
 
+    " vldmia          r3!, { q5 }                \n\t"
+
     " vmla.f32        q10, q0, d8[1]              \n\t"
     " vmla.f32        q11, q1, d8[1]              \n\t"
+
+    " pld [r2]                        \n\t"
 
     " vmla.f32        q12, q0, d9[0]              \n\t"
     " vmla.f32        q13, q1, d9[0]              \n\t"
 
+    " pld [r2, #8]                    \n\t"
+
     " vmla.f32        q14, q0, d9[1]              \n\t"
     " vmla.f32        q15, q1, d9[1]              \n\t"
+    " pld [r2, #16]                   \n\t"
 
     // 4
-    " vldmia          r2!, { q2, q3 }            \n\t"
-    " vldmia          r3!, { q5 }                \n\t"
 
     " vmla.f32        q8, q2, d10[0]              \n\t"
     " vmla.f32        q9, q3, d10[0]              \n\t"
 
+    " pld [r2, #24]                   \n\t"
+
     " vmla.f32        q10, q2, d10[1]              \n\t"
     " vmla.f32        q11, q3, d10[1]              \n\t"
 
+    " pld [r3]                        \n\t"
+
     " vmla.f32        q12, q2, d11[0]              \n\t"
     " vmla.f32        q13, q3, d11[0]              \n\t"
+
+    " pld [r3, #8]                    \n\t"
 
     " vmla.f32        q14, q2, d11[1]              \n\t"
     " vmla.f32        q15, q3, d11[1]              \n\t"
@@ -215,7 +233,6 @@ void armv7neon_mm_s8x4(size_t k, float *a, float *b, float *c, size_t rsc, size_
 
     : // Outputs
     : // Inputs
-    [pzero]  "m" (pzero),
     [k]      "m" (k),
     [a]      "m" (a),
     [b]      "m" (b),
@@ -224,7 +241,7 @@ void armv7neon_mm_s8x4(size_t k, float *a, float *b, float *c, size_t rsc, size_
     [rsc]    "m" (rsc)
     : // Clobber
       "memory",
-      "r0", "r1", "r2", "r3",
+            "r1", "r2", "r3",
       "r4", "r5", "r6", "r7",
       "r8", "r9",
 
