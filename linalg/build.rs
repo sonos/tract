@@ -9,7 +9,6 @@ fn main() {
             .file("arm-vfp2/arm-vfpv2_mm_s4x4.c")
             .flag("-marm")
             .flag("-mfpu=vfp")
-            .flag("-mfloat-abi=hard")
             .static_flag(true)
             .compile("armvfpv2");
     }
