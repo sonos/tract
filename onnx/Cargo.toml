@@ -1,6 +1,6 @@
 [package]
 name = "tract-onnx"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -21,8 +21,8 @@ ndarray = { version = "0.12" }
 num-integer = "0.1"
 num-traits = "0.2"
 protobuf = "2.0"
-tract-linalg = { path = "../linalg" }
-tract-core = { path = "../core" }
+tract-linalg = "0.2.4"
+tract-core = "0.2.4"
 
 [build-dependencies]
 git2 = "0.7"
