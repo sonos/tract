@@ -24,6 +24,8 @@ cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
 cargo bench  --message-format=json  --no-run | grep bench
 for bench in `cargo bench  --message-format=json  --no-run | grep -F  '"kind":["bench"]'
 do
+    echo $bench
+    echo $bench | jshon -e executable -u
     exe=`echo $bench | jshon -e executable -u`
     cp $exe $TASK_NAME/benches/
 done
