@@ -21,11 +21,9 @@ echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
 mkdir $TASK_NAME/benches
 cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
-cargo bench --message-format=json  --no-run | grep -F  '"kind":["bench"]' | \
-while read bench 
+for bench in `ls -t target/$RUSTC_TRIPLE/release/mm_for_wavenet_hw-???????????????? | head -1`
 do
-    exe=`echo $bench | jshon -e executable -u`
-    cp $exe $TASK_NAME/benches/
+    cp $bench $TASK_NAME/benches/
 done
 cp .travis/bundle-entrypoint.sh $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME/
