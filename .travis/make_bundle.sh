@@ -24,8 +24,8 @@ cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
 cargo bench  --message-format=json  --no-run | grep bench
 for bench in `cargo bench  --message-format=json  --no-run | grep -F  '"kind":["bench"]'
 do
-    echo $bench 
-    cp `echo $bench | jshon -e executable -u` $TASK_NAME/benches/
+    exe=`echo $bench | jshon -e executable -u`
+    cp $exe $TASK_NAME/benches/
 done
 cp .travis/bundle-entrypoint.sh $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME/
