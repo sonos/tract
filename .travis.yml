@@ -20,11 +20,11 @@ matrix:
   include:
   - rust: stable
     env: PLATFORM=raspbian
-    #  - rust: stable
-    #    env: PLATFORM=aarch64
-    #  - rust: stable
-    #  - rust: beta
-    #  - rust: nightly
+  - rust: stable
+    env: PLATFORM=aarch64
+  - rust: stable
+  - rust: beta
+  - rust: nightly
   allow_failures:
   - rust: nightly
 script: ".travis/travis.sh"
