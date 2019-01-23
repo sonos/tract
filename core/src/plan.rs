@@ -146,7 +146,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                     values[node.id] = Some(vs);
                 }
                 for flush in &plan.flush_lists[step] {
-                    trace!("Flushing node {} {}", flush, model.node(*flush).name);
+                    trace!("  flushing node {} {}", flush, model.node(*flush).name);
                     values[*flush] = None;
                 }
             }
