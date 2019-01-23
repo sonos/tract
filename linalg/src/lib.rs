@@ -34,7 +34,7 @@ pub fn generic() -> Ops {
     }
 }
 
-#[allow(unreachable_code)]
+#[allow(unreachable_code,unused_mut)]
 pub fn best() -> Ops {
     let mut ops = generic();
     #[cfg(target_arch = "x86_64")]
