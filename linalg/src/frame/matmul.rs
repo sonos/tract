@@ -276,26 +276,24 @@ pub mod test {
         a: &[f32],
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
-        unsafe {
-            let pa = align::realign_slice(a, MM::alignment_bytes_a());
-            let pb = align::realign_slice(b, MM::alignment_bytes_b());
+        let pa = align::realign_slice(a, MM::alignment_bytes_a());
+        let pb = align::realign_slice(b, MM::alignment_bytes_b());
 
-            let mut expect = vec![0.0f32; MM::mr() * MM::nr()];
-            for x in 0..MM::nr() {
-                for y in 0..MM::mr() {
-                    expect[x+y*MM::nr()] = (0..k).map(|k| pa[k*MM::mr() + y] * pb[k*MM::nr() + x]).sum::<f32>();
-                }
+        let mut expect = vec![0.0f32; MM::mr() * MM::nr()];
+        for x in 0..MM::nr() {
+            for y in 0..MM::mr() {
+                expect[x+y*MM::nr()] = (0..k).map(|k| pa[k*MM::mr() + y] * pb[k*MM::nr() + x]).sum::<f32>();
             }
-            let mut found = vec![9999.0f32; expect.len()];
-            MM::kernel(
-                k,
-                pa.as_ptr(),
-                pb.as_ptr(),
-                found.as_mut_ptr(),
-                MM::nr(),
-                1);
-            prop_assert_eq!(found, expect);
         }
+        let mut found = vec![9999.0f32; expect.len()];
+        MM::kernel(
+            k,
+            pa.as_ptr(),
+            pb.as_ptr(),
+            found.as_mut_ptr(),
+            MM::nr(),
+            1);
+        prop_assert_eq!(found, expect);
         Ok(())
     }
 
