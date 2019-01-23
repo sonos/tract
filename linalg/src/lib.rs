@@ -13,7 +13,7 @@ pub mod f16;
 pub mod frame;
 mod generic;
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
@@ -35,7 +35,7 @@ pub fn generic() -> Ops {
 
 #[allow(unreachable_code)]
 pub fn best() -> Ops {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     {
         let mut ops = generic();
         if is_x86_feature_detected!("fma") {
