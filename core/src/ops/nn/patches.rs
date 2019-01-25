@@ -12,7 +12,8 @@ pub struct Patch {
     pub kernel_strides: TVec<usize>,
     pub input_shape: DataShape<usize, TVec<usize>>,
     pub output_spatial_shape: TVec<usize>,
-    pub data_field: Array2<usize>,
+    pub data_field: Array2<isize>,
+    pub data_field_min_max: TVec<(isize, isize)>,
     pub standard_layout_data_field: Vec<isize>,
 }
 
@@ -38,7 +39,7 @@ impl Patch {
             &*kernel_strides,
         );
 
-        let data_field: Vec<usize> = ::ndarray::indices(&*kernel_spatial_shape)
+        let data_field: Vec<isize> = ::ndarray::indices(&*kernel_spatial_shape)
             .into_iter()
             .flat_map(|coords| {
                 coords
@@ -46,7 +47,7 @@ impl Patch {
                     .to_vec()
                     .into_iter()
                     .enumerate()
-                    .map(|(ix, c)| (c * dilations[ix]).wrapping_sub(pad_before[ix]))
+                    .map(|(ix, c)| (c * dilations[ix]) as isize - pad_before[ix] as isize)
             })
             .collect();
         let data_field = Array2::from_shape_vec(
@@ -57,6 +58,9 @@ impl Patch {
             data_field,
         )
         .unwrap();
+        let data_field_min_max = data_field.gencolumns().into_iter().map(|col|
+            (col.iter().min().cloned().unwrap(), col.iter().max().cloned().unwrap())
+        ).collect();
 
         let mut input_layout_strides: Vec<usize> = vec![1];
         for dim in input_shape.shape.iter().skip(1).rev() {
@@ -85,6 +89,7 @@ impl Patch {
             input_shape,
             output_spatial_shape: output,
             data_field,
+            data_field_min_max,
             standard_layout_data_field,
         }
     }
@@ -129,7 +134,10 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
         'i: 'v,
         'p: 'v,
     {
-        if self.valid {
+        if self.valid || coords.iter().skip(self.patch.input_shape.h_axis()).take(coords.len()-2).enumerate().all(|(ix,&c)| {
+            (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].0 >= 0 &&
+            (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].1 < self.patch.input_shape.hw_dims()[ix] as isize
+        }) {
             let center = coords
                 .iter()
                 .zip(self.fast_strides.iter())
@@ -228,7 +236,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for SafePatchIterator<'i
         self.input_patch_current[self.visitor.patch.input_shape.hw_axes()]
             .iter_mut()
             .zip(img_offset.iter())
-            .for_each(|(x, &i)| *x = x.wrapping_add(i));
+            .for_each(|(x, &i)| *x = (*x as isize + i as isize) as usize);
         Some(self.visitor.input.get(&*self.input_patch_current).cloned())
     }
 }
@@ -277,7 +285,7 @@ mod test {
         assert_eq!(compute_output_spatial_dim(7, 1, 3, 1, 1, 2), 4);
     }
 
-    fn field(kdim: &[usize], dilations: &[usize]) -> Array2<usize> {
+    fn field(kdim: &[usize], dilations: &[usize]) -> Array2<isize> {
         let patch = Patch::new(
             NCHW,
             dilations.into(),

@@ -79,6 +79,7 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
         }
         Ok(packed)
     }
+
 }
 
 impl<T: Datum + Mul + Zero> Op for Im2Col<T> {
@@ -87,6 +88,10 @@ impl<T: Datum + Mul + Zero> Op for Im2Col<T> {
     }
 
     impl_op_same_as!();
+
+    fn info(&self) -> TractResult<Option<String>> {
+        Ok(Some(format!("Pack: {:?}\nMatMul: {:?}", self.patch, self.mm)))
+    }
 }
 
 impl<T: Datum + Mul + Zero> StatelessOp for Im2Col<T> {
