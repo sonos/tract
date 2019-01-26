@@ -182,6 +182,7 @@ pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
 
 impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for PatchIterator<'p, 'i, 'v, T> {
     type Item = Option<T>;
+    #[inline(always)]
     fn next(&mut self) -> Option<Option<T>> {
         match self {
             &mut PatchIterator::Fast(ref mut it) => it.next(),
@@ -199,6 +200,7 @@ pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
 
 impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for FastPatchIterator<'i, 'p, 'v, T> {
     type Item = Option<T>;
+    #[inline(always)]
     fn next(&mut self) -> Option<Option<T>> {
         if self.item == self.visitor.patch.standard_layout_data_field.len() {
             return None;
@@ -225,6 +227,7 @@ pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
 
 impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for SafePatchIterator<'i, 'p, 'v, T> {
     type Item = Option<T>;
+    #[inline(never)]
     fn next(&mut self) -> Option<Option<T>> {
         if self.item == self.visitor.patch.data_field.rows() {
             return None;
