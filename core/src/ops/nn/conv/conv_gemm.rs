@@ -44,6 +44,9 @@ where
 {
     pub patch: Patch,
     pub full_output_shape: TVec<usize>,
+    pub m: usize,
+    pub k: usize,
+    pub n: usize,
     pub kernel_fmt: KernelFormat,
     #[debug(skip)]
     pub packed_kernels: Vec<Tensor>,
@@ -65,11 +68,6 @@ where
 
         let co_per_group = self.full_output_shape[input_shape.c_axis()] / self.group;
 
-        let (rsc, csc) = match self.patch.input_shape.fmt {
-            DataFormat::NHWC => (1, self.mm.m() as isize),
-            DataFormat::NCHW => (self.mm.n() as isize, 1),
-        };
-
         for i in 0..input_shape.n_dim() {
             unsafe {
                 let output_i = output
@@ -81,6 +79,10 @@ where
                         output.strides()[input_shape.c_axis()] * co_per_group as isize * g as isize,
                     );
 
+                    let (rsc, csc) = match self.patch.input_shape.fmt {
+                        DataFormat::NHWC => (1, self.m as isize),
+                        DataFormat::NCHW => (self.n as isize, 1),
+                    };
                     self.mm.mat_mul_prepacked(
                         a.as_ptr()?,
                         packed_input
