@@ -53,6 +53,6 @@ matrixmultiply = "0.2"
 proptest = "0.8"
 simplelog = "0.5"
 
-[[bench]]
-name = "im2col_inception"
-harness = false
+#[[bench]]
+#name = "im2col_inception"
+#harness = false
