@@ -13,6 +13,15 @@ pub struct NdArrayDummyPackedMatMul<T: ndarray::LinalgScalar + Copy> {
 impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
     for NdArrayDummyPackedMatMul<T>
 {
+    fn m(&self) -> usize {
+        self.m
+    }
+    fn k(&self) -> usize {
+        self.k
+    }
+    fn n(&self) -> usize {
+        self.n
+    }
     fn packed_a_len(&self) -> usize {
         self.m * self.k
     }
@@ -66,6 +75,15 @@ pub struct NdArrayDummyPackedMatMul1xKxN<T: ndarray::LinalgScalar + Copy> {
 impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
     for NdArrayDummyPackedMatMul1xKxN<T>
 {
+    fn m(&self) -> usize {
+        1
+    }
+    fn k(&self) -> usize {
+        self.k
+    }
+    fn n(&self) -> usize {
+        self.n
+    }
     fn packed_a_len(&self) -> usize {
         self.k
     }

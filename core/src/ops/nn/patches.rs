@@ -134,7 +134,7 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
         'i: 'v,
         'p: 'v,
     {
-        if self.valid || coords.iter().skip(self.patch.input_shape.h_axis()).take(coords.len()-2).enumerate().all(|(ix,&c)| {
+        if self.valid || coords[self.patch.input_shape.hw_axes()].iter().enumerate().all(|(ix,&c)| {
             (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].0 >= 0 &&
             (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].1 < self.patch.input_shape.hw_dims()[ix] as isize
         }) {
@@ -150,12 +150,12 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
                 item: 0,
             })
         } else {
-            let mut input_patch_center = coords.to_vec();
+            let mut input_patch_center:TVec<usize> = coords.into();
             input_patch_center[self.patch.input_shape.hw_axes()]
                 .iter_mut()
                 .zip(self.patch.kernel_strides.iter())
                 .for_each(|(a, &b)| *a *= b as usize);
-            let input_patch_current = vec![0; coords.len()];
+            let input_patch_current = tvec![0; coords.len()];
             PatchIterator::Safe(SafePatchIterator {
                 visitor: self,
                 item: 0,
@@ -219,8 +219,8 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for FastPatchIterator<'i
 pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
     visitor: &'v PatchVisitor<'i, 'p, T>,
     item: usize,
-    input_patch_center: Vec<usize>,
-    input_patch_current: Vec<usize>,
+    input_patch_center: TVec<usize>,
+    input_patch_current: TVec<usize>,
 }
 
 impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for SafePatchIterator<'i, 'p, 'v, T> {

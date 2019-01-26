@@ -88,6 +88,7 @@ impl ConvUnary {
             self.strides.clone(),
             input_full_shape.into(),
         );
+        let ci_per_group = patch.input_shape.c_dim() / self.group;
 
         let shape: TVec<usize> = patch.output_full_shape(output_channels);
 
@@ -165,14 +166,11 @@ impl ConvUnary {
             })
             .inside_out()?;
 
-        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group, packed_b_len, mm.clone());
+        let im2col = Im2Col::new(patch.clone(), self.group, ci_per_group, packed_b_len, mm.clone());
         trace!("im2col: {:?}", im2col);
         let conv_gemm = ConvGemm::new(
             patch,
             shape,
-            m,
-            k,
-            n,
             self.kernel_fmt,
             packed_kernels,
             bias,
