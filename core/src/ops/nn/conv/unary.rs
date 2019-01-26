@@ -136,6 +136,7 @@ impl ConvUnary {
         };
 
         let mut packed_kernels: Vec<Tensor> = vec![];
+        let ci_per_group = patch.input_shape.c_dim() / self.group;
         let co_per_group = output_channels / self.group;
         for g in 0..self.group {
             let subkernel =
@@ -165,7 +166,7 @@ impl ConvUnary {
             })
             .inside_out()?;
 
-        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group, packed_b_len, mm.clone());
+        let im2col = Im2Col::new(patch.clone(), m, k, n, self.group, ci_per_group, packed_b_len, mm.clone());
         trace!("im2col: {:?}", im2col);
         let conv_gemm = ConvGemm::new(
             patch,
