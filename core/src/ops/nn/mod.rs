@@ -21,7 +21,7 @@ pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::lrn::Lrn;
 pub use self::maxpool::MaxPool;
 pub use self::padding::PaddingSpec;
-pub use self::patches::Patch;
+pub use self::patches::{ Patch, PatchVisitor };
 pub use self::reduce::{Reduce, Reducer};
 
 use num_traits::AsPrimitive;
