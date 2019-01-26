@@ -13,10 +13,6 @@ pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug + objekt::Clon
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize);
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
-
-    fn m(&self) -> usize;
-    fn n(&self) -> usize;
-    fn k(&self) -> usize;
 }
 
 clone_trait_object!(<T> MatMul<T> where T: Copy + Add + Mul + Zero);
@@ -111,15 +107,6 @@ where
     K: PackedMatMulKer<T>,
     T: Copy + Add + Mul + Zero + Debug + Send + Sync + PartialEq,
 {
-    fn m(&self) -> usize {
-        self.m
-    }
-    fn k(&self) -> usize {
-        self.k
-    }
-    fn n(&self) -> usize {
-        self.n
-    }
     fn packed_a_alignment(&self) -> usize {
         K::alignment_bytes_a()
     }
