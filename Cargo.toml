@@ -8,5 +8,8 @@ members = [
     "cli"
 ]
 
+[profile.release]
+lto = true
+
 [profile.bench]
 debug = true

@@ -134,7 +134,7 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
         'i: 'v,
         'p: 'v,
     {
-        if self.valid || coords.iter().skip(self.patch.input_shape.h_axis()).take(coords.len()-2).enumerate().all(|(ix,&c)| {
+        if self.valid || coords[self.patch.input_shape.hw_axes()].iter().enumerate().all(|(ix,&c)| {
             (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].0 >= 0 &&
             (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].1 < self.patch.input_shape.hw_dims()[ix] as isize
         }) {
