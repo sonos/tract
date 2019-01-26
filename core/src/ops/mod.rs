@@ -175,8 +175,8 @@ impl<O: Op> From<O> for Box<Op> {
 
 #[derive(Clone, Debug, new)]
 pub struct ReducedOpRewire {
-    pub(crate) ops: Vec<Box<Op>>,
-    pub(crate) rewired: TVec<usize>,
+    pub ops: Vec<Box<Op>>,
+    pub rewired: TVec<usize>,
 }
 
 impl ReducedOpRewire {
