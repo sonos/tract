@@ -47,6 +47,8 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
     ) -> Im2Col<T> {
         let patcher = if !patch.padded && patch.input_shape.hw_rank() == 2 {
             Patcher::Valid2d
+        } else if !patch.padded && patch.input_shape.hw_rank() == 1 {
+            Patcher::Valid1d
         } else {
             Patcher::Generic
         };
@@ -142,6 +144,7 @@ impl<T: Datum + Mul + Zero> InferenceRulesOp for Im2Col<T> {
 #[derive(Copy, Clone, Debug)]
 enum Patcher {
     Generic,
+    Valid1d,
     Valid2d,
 }
 
@@ -155,6 +158,13 @@ impl Patcher {
         g: usize,
     ) {
         match self {
+            Patcher::Valid1d => Self::valid_1d(
+                im2col,
+                input.view().into_dimensionality().as_ref().unwrap(),
+                mega_matrix,
+                i,
+                g,
+            ),
             Patcher::Valid2d => Self::valid_2d(
                 im2col,
                 input.view().into_dimensionality().as_ref().unwrap(),
@@ -191,6 +201,31 @@ impl Patcher {
         }
     }
 
+    fn valid_1d<'i, T: Datum + Mul + Zero>(
+        im2col: &'i Im2Col<T>,
+        input: &'i ArrayView3<'i, T>,
+        mega_matrix: &mut ArrayViewMut2<T>,
+        i: usize,
+        g: usize,
+    ) {
+        unsafe {
+            let x_stride = input.strides()[im2col.patch.input_shape.h_axis()] * im2col.patch.kernel_strides[0] as isize;
+            let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
+            let mut optr = mega_matrix.as_mut_ptr();
+            let iptr = input.slice_axis(Axis(0), (i..=i).into()).as_ptr();
+            for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
+                let iptr = iptr.offset(ci as isize * c_stride);
+                for koffset in &im2col.patch.standard_layout_data_field {
+                    let iptr = iptr.offset(*koffset as isize);
+                    for x in 0..*im2col.patch.output_spatial_shape.get_unchecked(0) {
+                        *optr = *iptr.offset(x as isize * x_stride);
+                        optr = optr.offset(1);
+                    }
+                }
+            }
+        }
+    }
+
     fn valid_2d<'i, T: Datum + Mul + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView4<'i, T>,
@@ -208,9 +243,9 @@ impl Patcher {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
                     let iptr = iptr.offset(*koffset as isize);
-                    for y in 0..im2col.patch.output_spatial_shape[0] {
+                    for y in 0..*im2col.patch.output_spatial_shape.get_unchecked(0) {
                         let iptr = iptr.offset(y as isize * y_stride);
-                        for x in 0..im2col.patch.output_spatial_shape[1] {
+                        for x in 0..*im2col.patch.output_spatial_shape.get_unchecked(1) {
                             *optr = *iptr.offset(x as isize * x_stride);
                             optr = optr.offset(1);
                         }
