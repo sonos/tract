@@ -262,12 +262,11 @@ pub struct PackedWriter<'p, T>
 where
     T: Copy + Debug
 {
-    orig: *mut T,
     ptr: *mut T,
     panels: usize,
     panel_width: usize,
     last_panel_width: usize,
-    current: usize,
+    remain: usize,
     current_panel: usize,
     next_panel: isize,
     next_lane: isize,
@@ -282,12 +281,11 @@ where
         let panels = (mn + panel_width - 1) / panel_width;
         let last_panel_width = mn - (panels - 1) * panel_width;
         PackedWriter {
-            orig: data.as_mut_ptr(),
             ptr: data.as_mut_ptr(),
             panels,
             panel_width,
             last_panel_width,
-            current: 0,
+            remain: if panels > 1 { panel_width } else { last_panel_width },
             current_panel: 0,
             next_panel: ((k-1) * panel_width) as isize,
             next_lane: panel_width as isize - ((last_panel_width + (panels-1)*panel_width*k) as isize),
@@ -299,16 +297,21 @@ where
     pub fn write(&mut self, t: T) {
         unsafe {
             *self.ptr = t;
+            self.remain -= 1;
             self.ptr = self.ptr.offset(1);
-            self.current += 1;
-            if self.current == self.last_panel_width && self.current_panel == self.panels - 1 {
-                self.ptr = self.ptr.offset(self.next_lane);
-                self.current = 0;
-                self.current_panel = 0;
-            } else if self.current == self.panel_width {
-                self.ptr = self.ptr.offset(self.next_panel);
-                self.current = 0;
+            if self.remain == 0 {
                 self.current_panel += 1;
+                if self.current_panel == self.panels {
+                    self.ptr = self.ptr.offset(self.next_lane);
+                    self.current_panel = 0;
+                } else {
+                    self.ptr = self.ptr.offset(self.next_panel);
+                }
+                if self.current_panel == self.panels - 1 {
+                    self.remain = self.last_panel_width;
+                } else {
+                    self.remain = self.panel_width;
+                }
             }
         }
     }
