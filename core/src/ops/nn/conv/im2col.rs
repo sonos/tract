@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::ops::prelude::*;
 use ndarray::prelude::*;
 
-use crate::ops::nn::Patch;
+use crate::ops::nn::{ DataFormat, Patch };
 
 use num_traits::Zero;
 use std::ops::Mul;
@@ -47,6 +47,8 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
     ) -> Im2Col<T> {
         let patcher = if !patch.padded && patch.input_shape.hw_rank() == 2 {
             Patcher::Valid2d
+        } else if patch.input_shape.hw_rank() == 2 {
+            Patcher::Padded2d
         } else if !patch.padded && patch.input_shape.hw_rank() == 1 {
             Patcher::Valid1d
         } else {
@@ -146,6 +148,7 @@ enum Patcher {
     Generic,
     Valid1d,
     Valid2d,
+    Padded2d,
 }
 
 impl Patcher {
@@ -166,6 +169,13 @@ impl Patcher {
                 g,
             ),
             Patcher::Valid2d => Self::valid_2d(
+                im2col,
+                input.view().into_dimensionality().as_ref().unwrap(),
+                mega_matrix,
+                i,
+                g,
+            ),
+            Patcher::Padded2d => Self::padded_2d(
                 im2col,
                 input.view().into_dimensionality().as_ref().unwrap(),
                 mega_matrix,
@@ -209,10 +219,13 @@ impl Patcher {
         g: usize,
     ) {
         unsafe {
-            let x_stride = input.strides()[im2col.patch.input_shape.h_axis()] * im2col.patch.kernel_strides[0] as isize;
+            let x_stride = input.strides()[im2col.patch.input_shape.h_axis()]
+                * im2col.patch.kernel_strides[0] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
             let mut optr = mega_matrix.as_mut_ptr();
-            let iptr = input.slice_axis(Axis(0), (i..=i).into()).as_ptr();
+            let iptr = input
+                .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
+                .as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
@@ -220,6 +233,58 @@ impl Patcher {
                     for x in 0..*im2col.patch.output_spatial_shape.get_unchecked(0) {
                         *optr = *iptr.offset(x as isize * x_stride);
                         optr = optr.offset(1);
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline(never)]
+    fn padded_2d<'i, T: Datum + Mul + Zero>(
+        im2col: &'i Im2Col<T>,
+        input: &'i ArrayView4<'i, T>,
+        mega_matrix: &mut ArrayViewMut2<T>,
+        i: usize,
+        g: usize,
+    ) {
+        unsafe {
+            let y_stride = im2col.patch.kernel_strides[0] as isize;
+            let x_stride = im2col.patch.kernel_strides[1] as isize;
+            let y_stride_ptr = y_stride * input.strides()[im2col.patch.input_shape.hw_axes()][0];
+            let x_stride_ptr = x_stride * input.strides()[im2col.patch.input_shape.hw_axes()][1];
+            let c_stride_ptr = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
+            let input_heigth = im2col.patch.input_shape.hw_dims()[0] as isize;
+            let input_width = im2col.patch.input_shape.hw_dims()[1] as isize;
+            let kernel_len = im2col.patch.standard_layout_data_field.len();
+            let mut optr = mega_matrix.as_mut_ptr();
+            let iptr = input
+                .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
+                .as_ptr();
+            for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
+                let iptr = iptr.offset(ci as isize * c_stride_ptr);
+                for kitem in 0..kernel_len {
+                    let dy = *im2col.patch.data_field.as_ptr().offset(kitem as isize*2);
+                    let dx = *im2col.patch.data_field.as_ptr().offset(1+kitem as isize*2);
+                    let iptr = iptr.offset(*im2col.patch.standard_layout_data_field.get_unchecked(kitem));
+                    for yo in 0..*im2col.patch.output_spatial_shape.get_unchecked(0) {
+                        let y = yo as isize * y_stride + dy;
+                        let iptr = iptr.offset(yo as isize * y_stride_ptr);
+                        if y >= 0 && y < input_heigth {
+                            for xo in 0..*im2col.patch.output_spatial_shape.get_unchecked(1) {
+                                let x = xo as isize * x_stride + dx;
+                                if x >= 0 && x < input_width {
+                                    *optr = *iptr.offset(xo as isize * x_stride_ptr);
+                                } else {
+                                    *optr = T::default();
+                                }
+                                optr = optr.offset(1);
+                            }
+                        } else {
+                            for x in 0..*im2col.patch.output_spatial_shape.get_unchecked(1) {
+                                *optr = T::default();
+                                optr = optr.offset(1);
+                            }
+                        }
                     }
                 }
             }
@@ -234,11 +299,15 @@ impl Patcher {
         g: usize,
     ) {
         unsafe {
-            let y_stride = input.strides()[im2col.patch.input_shape.hw_axes()][0] * im2col.patch.kernel_strides[0] as isize;
-            let x_stride = input.strides()[im2col.patch.input_shape.hw_axes()][1] * im2col.patch.kernel_strides[1] as isize;
+            let y_stride = input.strides()[im2col.patch.input_shape.hw_axes()][0]
+                * im2col.patch.kernel_strides[0] as isize;
+            let x_stride = input.strides()[im2col.patch.input_shape.hw_axes()][1]
+                * im2col.patch.kernel_strides[1] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
             let mut optr = mega_matrix.as_mut_ptr();
-            let iptr = input.slice_axis(Axis(0), (i..=i).into()).as_ptr();
+            let iptr = input
+                .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
+                .as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
