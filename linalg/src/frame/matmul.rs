@@ -4,13 +4,14 @@ use std::ops::{Add, Mul};
 
 use std::marker::PhantomData;
 
-pub trait MatMul<T: Copy + Add + Mul + Zero>: Send + Sync + Debug + objekt::Clone {
+pub trait MatMul<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + objekt::Clone {
     fn packed_a_len(&self) -> usize;
     fn packed_a_alignment(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
     fn packed_b_len(&self) -> usize;
     fn packed_b_alignment(&self) -> usize;
     fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize);
+    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T>;
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
 }
@@ -173,6 +174,10 @@ where
         }
     }
 
+    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
+        PackedWriter::new(pb, K::nr(), self.n, self.k)
+    }
+
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize) {
         assert!(pa as usize % K::alignment_bytes_a() == 0);
         assert!(pb as usize % K::alignment_bytes_b() == 0);
@@ -247,6 +252,63 @@ where
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct PackedWriter<'p, T>
+where
+    T: Copy + Debug
+{
+    orig: *mut T,
+    ptr: *mut T,
+    panels: usize,
+    panel_width: usize,
+    last_panel_width: usize,
+    current: usize,
+    current_panel: usize,
+    next_panel: isize,
+    next_lane: isize,
+    _phantom: PhantomData<&'p T>,
+}
+
+impl<'p, T> PackedWriter<'p, T>
+where
+    T: Copy + Debug
+{
+    pub fn new(data: &'p mut [T], panel_width:usize, mn:usize, k:usize) -> PackedWriter<'p, T> {
+        let panels = (mn + panel_width - 1) / panel_width;
+        let last_panel_width = mn - (panels - 1) * panel_width;
+        PackedWriter {
+            orig: data.as_mut_ptr(),
+            ptr: data.as_mut_ptr(),
+            panels,
+            panel_width,
+            last_panel_width,
+            current: 0,
+            current_panel: 0,
+            next_panel: ((k-1) * panel_width) as isize,
+            next_lane: panel_width as isize - ((last_panel_width + (panels-1)*panel_width*k) as isize),
+            _phantom: PhantomData
+        }
+    }
+
+    #[inline]
+    pub fn write(&mut self, t: T) {
+        unsafe {
+            *self.ptr = t;
+            self.ptr = self.ptr.offset(1);
+            self.current += 1;
+            if self.current == self.last_panel_width && self.current_panel == self.panels - 1 {
+                self.ptr = self.ptr.offset(self.next_lane);
+                self.current = 0;
+                self.current_panel = 0;
+            } else if self.current == self.panel_width {
+                self.ptr = self.ptr.offset(self.next_panel);
+                self.current = 0;
+                self.current_panel += 1;
             }
         }
     }

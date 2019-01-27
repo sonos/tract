@@ -69,29 +69,19 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
 
     pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, T>) -> TractResult<Tensor> {
         let input_shape = &self.patch.input_shape;
-        let mut mega_matrix = unsafe { Array2::<T>::uninitialized((self.k, self.n)) };
 
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<T>(
-                &[self.mm.packed_b_len() * self.group * input_shape.n_dim()],
+                &[input_shape.n_dim(), self.group, self.mm.packed_b_len()],
                 self.mm.packed_b_alignment(),
             )?
         };
         for i in 0..input_shape.n_dim() {
             for g in 0..self.group {
-                self.patcher
-                    .patch(self, input, &mut mega_matrix.view_mut(), i, g);
-                unsafe {
-                    self.mm.pack_b(
-                        packed
-                            .as_slice_mut::<T>()?
-                            .as_mut_ptr()
-                            .offset(((i * self.group + g) * self.packed_b_len) as isize),
-                        mega_matrix.as_ptr(),
-                        mega_matrix.strides()[0],
-                        mega_matrix.strides()[1],
-                    );
-                }
+                let mut packed = packed.to_array_view_mut::<T>()?;
+                packed.slice_axis_inplace(Axis(0), (i..=i).into());
+                packed.slice_axis_inplace(Axis(1), (g..=g).into());
+                self.patcher.patch(self, input, packed.as_slice_mut().unwrap(), i, g);
             }
         }
         Ok(packed)
@@ -152,11 +142,11 @@ enum Patcher {
 }
 
 impl Patcher {
-    fn patch<'i, T: Datum + Mul + Zero>(
+    fn patch<'i, 'p, T: Datum + Mul + Zero>(
         &self,
         im2col: &'i Im2Col<T>,
         input: &'i ArrayViewD<'i, T>,
-        mega_matrix: &mut ArrayViewMut2<T>,
+        pack: &'p mut [T],
         i: usize,
         g: usize,
     ) {
@@ -164,35 +154,37 @@ impl Patcher {
             Patcher::Valid1d => Self::valid_1d(
                 im2col,
                 input.view().into_dimensionality().as_ref().unwrap(),
-                mega_matrix,
+                pack,
                 i,
                 g,
             ),
             Patcher::Valid2d => Self::valid_2d(
                 im2col,
                 input.view().into_dimensionality().as_ref().unwrap(),
-                mega_matrix,
+                pack,
                 i,
                 g,
             ),
             Patcher::Padded2d => Self::padded_2d(
                 im2col,
                 input.view().into_dimensionality().as_ref().unwrap(),
-                mega_matrix,
+                pack,
                 i,
                 g,
             ),
-            Patcher::Generic => Self::generic(im2col, input, mega_matrix, i, g),
+            _ => Self::generic(im2col, input, pack, i, g)
         }
     }
 
-    fn generic<'i, T: Datum + Mul + Zero>(
+    #[inline(never)]
+    fn generic<'i, 'p, T: Datum + Mul + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayViewD<'i, T>,
-        mega_matrix: &mut ArrayViewMut2<T>,
+        pack: &'p mut [T],
         i: usize,
         g: usize,
     ) {
+        let mut mega_matrix = unsafe { Array2::<T>::uninitialized((im2col.k, im2col.n)) };
         let visitor = im2col.patch.wrap(input);
         let mut coords = vec![0; im2col.patch.input_shape.rank()];
         coords[im2col.patch.input_shape.n_axis()] = i;
@@ -209,12 +201,19 @@ impl Patcher {
                 }
             }
         }
+        im2col.mm.pack_b(
+            pack.as_mut_ptr(),
+            mega_matrix.as_ptr(),
+            mega_matrix.strides()[0],
+            mega_matrix.strides()[1],
+        );
     }
 
-    fn valid_1d<'i, T: Datum + Mul + Zero>(
+    #[inline(never)]
+    fn valid_1d<'i, 'p, T: Datum + Mul + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView3<'i, T>,
-        mega_matrix: &mut ArrayViewMut2<T>,
+        pack: &'p mut [T],
         i: usize,
         g: usize,
     ) {
@@ -222,7 +221,7 @@ impl Patcher {
             let x_stride = input.strides()[im2col.patch.input_shape.h_axis()]
                 * im2col.patch.kernel_strides[0] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
-            let mut optr = mega_matrix.as_mut_ptr();
+            let mut writer = im2col.mm.write_b_packed_by_rows(pack);
             let iptr = input
                 .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
                 .as_ptr();
@@ -231,8 +230,7 @@ impl Patcher {
                 for koffset in &im2col.patch.standard_layout_data_field {
                     let iptr = iptr.offset(*koffset as isize);
                     for x in 0..*im2col.patch.output_spatial_shape.get_unchecked(0) {
-                        *optr = *iptr.offset(x as isize * x_stride);
-                        optr = optr.offset(1);
+                        writer.write(*iptr.offset(x as isize * x_stride));
                     }
                 }
             }
@@ -240,10 +238,10 @@ impl Patcher {
     }
 
     #[inline(never)]
-    fn padded_2d<'i, T: Datum + Mul + Zero>(
+    fn padded_2d<'i, 'p, T: Datum + Mul + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView4<'i, T>,
-        mega_matrix: &mut ArrayViewMut2<T>,
+        pack: &'p mut [T],
         i: usize,
         g: usize,
     ) {
@@ -256,7 +254,7 @@ impl Patcher {
             let input_heigth = im2col.patch.input_shape.hw_dims()[0] as isize;
             let input_width = im2col.patch.input_shape.hw_dims()[1] as isize;
             let kernel_len = im2col.patch.standard_layout_data_field.len();
-            let mut optr = mega_matrix.as_mut_ptr();
+            let mut writer = im2col.mm.write_b_packed_by_rows(pack);
             let iptr = input
                 .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
                 .as_ptr();
@@ -273,16 +271,14 @@ impl Patcher {
                             for xo in 0..*im2col.patch.output_spatial_shape.get_unchecked(1) {
                                 let x = xo as isize * x_stride + dx;
                                 if x >= 0 && x < input_width {
-                                    *optr = *iptr.offset(xo as isize * x_stride_ptr);
+                                    writer.write(*iptr.offset(xo as isize * x_stride_ptr));
                                 } else {
-                                    *optr = T::default();
+                                    writer.write(T::default());
                                 }
-                                optr = optr.offset(1);
                             }
                         } else {
-                            for x in 0..*im2col.patch.output_spatial_shape.get_unchecked(1) {
-                                *optr = T::default();
-                                optr = optr.offset(1);
+                            for _x in 0..*im2col.patch.output_spatial_shape.get_unchecked(1) {
+                                writer.write(T::default());
                             }
                         }
                     }
@@ -291,10 +287,11 @@ impl Patcher {
         }
     }
 
-    fn valid_2d<'i, T: Datum + Mul + Zero>(
+    #[inline(never)]
+    fn valid_2d<'i, 'p, T: Datum + Mul + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView4<'i, T>,
-        mega_matrix: &mut ArrayViewMut2<T>,
+        pack: &'p mut [T],
         i: usize,
         g: usize,
     ) {
@@ -304,7 +301,7 @@ impl Patcher {
             let x_stride = input.strides()[im2col.patch.input_shape.hw_axes()][1]
                 * im2col.patch.kernel_strides[1] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
-            let mut optr = mega_matrix.as_mut_ptr();
+            let mut writer = im2col.mm.write_b_packed_by_rows(pack);
             let iptr = input
                 .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
                 .as_ptr();
@@ -315,8 +312,7 @@ impl Patcher {
                     for y in 0..*im2col.patch.output_spatial_shape.get_unchecked(0) {
                         let iptr = iptr.offset(y as isize * y_stride);
                         for x in 0..*im2col.patch.output_spatial_shape.get_unchecked(1) {
-                            *optr = *iptr.offset(x as isize * x_stride);
-                            optr = optr.offset(1);
+                            writer.write(*iptr.offset(x as isize * x_stride));
                         }
                     }
                 }
