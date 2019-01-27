@@ -61,7 +61,7 @@ where
 {
     pub(super) fn conv_gemm<'i>(
         &'i self,
-        packed_input: &'i ArrayView1<'i, T>,
+        packed_input: &'i ArrayView3<'i, T>,
     ) -> TractResult<ArrayD<T>> {
         let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.full_output_shape) };
         let input_shape = &self.patch.input_shape;

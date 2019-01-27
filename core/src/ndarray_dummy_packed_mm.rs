@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use tract_linalg::MatMul;
+use tract_linalg::frame::matmul::PackedWriter;
 
 #[derive(Copy, Clone, Debug, new)]
 pub struct NdArrayDummyPackedMatMul<T: ndarray::LinalgScalar + Copy> {
@@ -42,6 +43,9 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
                 }
             }
         }
+    }
+    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
+        PackedWriter::new(pb, self.n, self.n, self.k)
     }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, rsc: isize, csc: isize) {
@@ -93,6 +97,9 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
                 }
             }
         }
+    }
+    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
+        PackedWriter::new(pb, self.n, self.n, self.k)
     }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, _rsc: isize, _csc: isize) {
