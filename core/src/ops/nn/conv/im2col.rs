@@ -46,7 +46,7 @@ impl<T: Datum + Mul + Zero> Im2Col<T> {
         mm: Arc<MatMul<T>>,
     ) -> Im2Col<T> {
         let patcher = if !patch.padded && patch.input_shape.hw_rank() == 2 {
-            Patcher::Valid2dNhwc
+            Patcher::Valid2d
         } else {
             Patcher::Generic
         };
@@ -142,7 +142,7 @@ impl<T: Datum + Mul + Zero> InferenceRulesOp for Im2Col<T> {
 #[derive(Copy, Clone, Debug)]
 enum Patcher {
     Generic,
-    Valid2dNhwc,
+    Valid2d,
 }
 
 impl Patcher {
@@ -155,7 +155,7 @@ impl Patcher {
         g: usize,
     ) {
         match self {
-            Patcher::Valid2dNhwc => Self::valid_2d_nhwc(
+            Patcher::Valid2d => Self::valid_2d(
                 im2col,
                 input.view().into_dimensionality().as_ref().unwrap(),
                 mega_matrix,
@@ -191,7 +191,7 @@ impl Patcher {
         }
     }
 
-    fn valid_2d_nhwc<'i, T: Datum + Mul + Zero>(
+    fn valid_2d<'i, T: Datum + Mul + Zero>(
         im2col: &'i Im2Col<T>,
         input: &'i ArrayView4<'i, T>,
         mega_matrix: &mut ArrayViewMut2<T>,
@@ -199,12 +199,13 @@ impl Patcher {
         g: usize,
     ) {
         unsafe {
-            let x_stride = input.strides()[2];
-            let y_stride = input.strides()[1];
+            let y_stride = input.strides()[im2col.patch.input_shape.hw_axes()][0] * im2col.patch.kernel_strides[0] as isize;
+            let x_stride = input.strides()[im2col.patch.input_shape.hw_axes()][1] * im2col.patch.kernel_strides[1] as isize;
+            let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
             let mut optr = mega_matrix.as_mut_ptr();
             let iptr = input.slice_axis(Axis(0), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
-                let iptr = iptr.offset(ci as isize);
+                let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
                     let iptr = iptr.offset(*koffset as isize);
                     for y in 0..im2col.patch.output_spatial_shape[0] {
