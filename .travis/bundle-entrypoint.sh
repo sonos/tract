@@ -106,5 +106,12 @@ do
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.hey_snips_v31.tflite_$tflite.400ms $sec >> metrics
+
+    $CACHEDIR/tflite_benchmark_model_$tflite \
+        --graph=$CACHEDIR/ARM-ML-KWS-CNN-M.tflite \
+    2> bench
+    usec=`cat bench | tail -1 | sed "s/.* //"`
+    sec=`python -c "print(float($usec) / 1000000)"`
+    echo net.arm_ml_kws_cnn_m.tflite_$tflite.pass $sec >> metrics
 done
 
