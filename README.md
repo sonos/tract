@@ -15,16 +15,16 @@ it.
 
 ## Real-time streaming support
 
-This is a semi-experimental support for real-time application like voice
-processing. In many real time voice application, processing must happen "as you
-go", one can not wait for the end of the incoming audio signal to start
+This is a semi-experimental support for real-time applications like voice
+processing. In many real time voice applications, processing must happen "as you
+go". One can not wait for the end of the incoming audio signal to start
 decoding.
 
-While Kaldi has build its inference engine around this streaming constraint,
-our approach to the same issue, is a bit different. `tract` graph analyser and
+While Kaldi has built its inference engine around this streaming constraint,
+our approach to the same issue is a bit different. `tract` graph analyser and
 optimiser will reason on "streamed" tensors, in order to generate an equivalent
-stateful "pulsing" network that will propagate small time slices ("pulse") of
-data. This make optimisation efforts on pulsing and "finite" tensor mode
+stateful "pulsing" network that will propagate small time slices ("pulses") of
+data. This makes optimisation efforts on pulsing and "finite" tensor modes
 mutually benefit each other.
 
 Obviously, this conversion only makes sense for a subset of operators, so not
@@ -45,7 +45,7 @@ Making a ONNX backend out of `tract` is on the roadmap.
 ### TensorFlow
 
 Even if `tract` is very far from supporting any arbitrary model, it can run
-Google Inception v3, Snips wakeword models, missing operators are easy
+Google Inception v3 and Snips wake word models. Missing operators are easy
 to add. The lack of easy to reuse test suite, and the wide diversity of 
 operators in Tensorflow make it difficult to target a full support.
 
@@ -57,7 +57,7 @@ its own format. It only supports a subset of operators from TensorFlow though,
 and is only optimised for devices with Arm Neon support.
 
 Tract supports a wider subset of TensorFlow operators, and has been optimised
-for CPU of the previous generation (ARM VFP), targetting devices in the
+for CPU of the previous generation (ARM VFP), also targetting devices in the
 Raspberry Pi Zero family.
 
 ## Example of supported networks
@@ -93,8 +93,8 @@ Raspberry Pi Zero.
 
 Notes:
     * while the Raspberry Pi 3 is an Armv8 device, this bench is running
-        on Raspbian, a armv6 operating system, crippling the performance
-        of both bench
+        on Raspbian, an armv6 operating system, crippling the performance
+        of both benches
     * there exists other benches on the internet that show better
         performance results for TensorFlow (not -Lite) on the Pi 3.
         They use all four cores of the device. Both TensorFlow-Lite and tract
