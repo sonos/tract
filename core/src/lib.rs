@@ -79,7 +79,6 @@ extern crate matrixmultiply;
 #[macro_use]
 extern crate objekt;
 #[cfg(test)]
-#[macro_use]
 extern crate proptest;
 #[cfg(feature = "serialize")]
 extern crate serde;
