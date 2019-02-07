@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::ops::prelude::*;
 use ndarray::prelude::*;
 
-use crate::ops::nn::{ DataFormat, Patch };
+use crate::ops::nn::Patch;
 
 use num_traits::Zero;
 use std::ops::Mul;

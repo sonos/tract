@@ -88,6 +88,7 @@ mod tests {
     extern crate dinghy_test;
     extern crate simplelog;
 
+    #[allow(unused_imports)]
     use self::simplelog::{Config, LevelFilter, TermLogger};
 
     use self::dinghy_test::test_project_path;
