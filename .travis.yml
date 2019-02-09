@@ -21,6 +21,9 @@ matrix:
   include:
     - rust: stable
     - rust: stable
+      os: osx
+      osx_image: xcode8.3
+    - rust: stable
       env: PLATFORM=raspbian
     - rust: stable
       env: PLATFORM=aarch64-unknown-linux-gnu
