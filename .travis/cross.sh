@@ -68,7 +68,7 @@ case "$PLATFORM" in
     ;;
 
     "aarch64-apple-ios")
-        cargo dinghy --platform auto-ios-aar build -p tract-linalg 
+        cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg 
     ;;
 
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf")
