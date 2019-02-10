@@ -39,7 +39,9 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Sqrt", |_| Ok(Box::new(tractops::math::Sqrt::default())));
     reg.insert("Rsqrt", |_| Ok(Box::new(tractops::math::Rsqrt::default())));
 
+    reg.insert("IsNaN", |_| Ok(Box::new(tractops::math::IsNan::default())));
     reg.insert("Neg", |_| Ok(Box::new(tractops::math::Neg::default())));
+    reg.insert("Sign", |_| Ok(Box::new(tractops::math::Sign::default())));
     reg.insert("Reciprocal", |_| {
         Ok(Box::new(tractops::math::Recip::default()))
     });

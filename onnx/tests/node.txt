@@ -136,6 +136,7 @@ test_hardsigmoid_default
 test_hardsigmoid_example
 test_hardsigmoid_example
 test_identity
+test_isnan
 test_leakyrelu
 test_leakyrelu_default
 test_leakyrelu_example
@@ -268,8 +269,12 @@ test_selu_default
 test_selu_example
 test_shape
 test_shape_example
+test_shrink_hard
+test_shrink_soft
 test_sigmoid
 test_sigmoid_example
+test_sign
+test_sign
 test_sin
 test_sin_example
 test_sinh

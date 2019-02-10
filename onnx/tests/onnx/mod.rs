@@ -52,7 +52,7 @@ struct DataJson {
 }
 
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
-    //    setup_test_logger();
+    // setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -109,10 +109,10 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
                 .starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
-            //            println!("inputs: {:?}", inputs);
+            // println!("inputs: {:?}", inputs[0].dump(true));
             let computed = plan.run(inputs).unwrap();
-            //            println!("computed: {:?}", computed);
-            //            println!("expected: {:?}", expected);
+            // println!("computed: {:?}", computed[0].dump(true));
+            // println!("expected: {:?}", expected[0].dump(true));
             if computed.len() != expected.len() {
                 panic!(
                     "Different number of results: got:{} expected:{}",

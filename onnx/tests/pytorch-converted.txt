@@ -52,6 +52,7 @@ test_MaxPool2d
 test_MaxPool3d
 test_MaxPool3d_stride
 test_MaxPool3d_stride_padding
+test_PixelShuffle
 test_PoissonNLLLLoss_no_reduce
 test_PReLU_1d
 test_PReLU_2d
