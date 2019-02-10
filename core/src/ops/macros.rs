@@ -1,8 +1,11 @@
 macro_rules! element_map {
     ($Name:ident, [$($type:ty),*], $expr:expr) => {
-        element_map!($Name, match $($type => $expr),*);
+        element_map!($Name, match $($type => { $expr } ),*);
     };
-    ($Name:ident, match $($type:ty => $expr:expr),*) => {
+    ($Name:ident, match $($type:ty => { $expr:expr }),*) => {
+        element_map!($Name, match $($type => $type { $expr }),*);
+    };
+    ($Name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
         #[allow(unused_imports)]
         use $crate::ops::prelude::*;
 
@@ -14,9 +17,8 @@ macro_rules! element_map {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
-                    let mut a = a.to_array::<$type>()?;
-                    a.mapv_inplace($expr);
-                    return Ok(tvec![a.into()])
+                    let a = a.to_array::<$type>()?;
+                    return Ok(tvec!(a.mapv($expr).into()));
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
@@ -43,13 +45,19 @@ macro_rules! element_map {
             ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
-                s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+                s.given(&inputs[0].datum_type, move |s, dt| {
+                    $(if dt == <$type>::datum_type() {
+                        s.equals(&outputs[0].datum_type, <$to>::datum_type())?;
+                    })*
+                    Ok(())
+                })?;
                 s.equals(&inputs[0].shape, &outputs[0].shape)
             }
         }
     };
 }
 
+#[macro_export]
 macro_rules! element_map_with_params {
     ($Name:ident, [$($type:ty),*], {$($pname:ident : $pty:ty),*}, $expr:item) => {
         #[allow(unused_imports)]

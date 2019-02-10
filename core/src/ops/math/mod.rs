@@ -6,6 +6,7 @@ pub use self::mat_mul::MatMul;
 use crate::ops::prelude::*;
 use num_traits::AsPrimitive;
 use num_traits::Float;
+use num_traits::Zero;
 
 element_map!(Abs, [f16, f32, i32], |x| x.abs());
 element_map!(Exp, [f16, f32, f64], |x| x.exp());
@@ -49,6 +50,18 @@ element_bin!(Pow, match
      f16 => f16 { |a:f16, b| a.powf(b) },
      f32 => f32 { |a:f32, b| a.powf(b) },
      f64 => f64 { |a:f64, b| a.powf(b) }
+);
+
+element_map!(Sign, match
+     f16 => f16 { |a:f16| if a.is_zero() { (0.0).into() } else { a.signum()} },
+     f32 => f32 { |a:f32| if a == 0.0 { 0.0 } else { a.signum()} },
+     f64 => f64 { |a:f64| if a == 0.0 { 0.0 } else { a.signum()} }
+);
+
+element_map!(IsNan, match
+     f16 => bool { |a:f16| a.is_nan() },
+     f32 => bool { |a:f32| a.is_nan() },
+     f64 => bool { |a:f64| a.is_nan() }
 );
 
 fn fcmp<F: ::num_traits::Float>(a: &F, b: &F) -> ::std::cmp::Ordering {

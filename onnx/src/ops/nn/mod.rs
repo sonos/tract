@@ -58,6 +58,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("ReduceSumSquare", reduce!(SumSquare));
     reg.insert("Relu", |_| Ok(Box::new(tractops::nn::Relu::default())));
     reg.insert("ScaledTanh", scaled_tanh);
+    reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_| {
@@ -249,6 +250,21 @@ pub fn scaled_tanh(node: &NodeProto) -> TractResult<Box<Op>> {
     let alpha = node.get_attr_float("alpha")?;
     let beta = node.get_attr_float("beta")?;
     Ok(Box::new(tractops::nn::ScaledTanh::new(alpha, beta)))
+}
+
+element_map_with_params!(Shrink, [f16, f32, f64], { bias: f32, lambd: f32 },
+    fn eval_one<T>(s: &Shrink, x:T) -> T
+    where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
+    {
+        use num_traits::AsPrimitive;
+        if x < -s.lambd.as_() { x + s.bias.as_() } else if x > s.lambd.as_() { x - s.bias.as_() } else { T::zero() }
+    }
+);
+
+pub fn shrink(node: &NodeProto) -> TractResult<Box<Op>> {
+    let bias = node.get_attr_opt_float("bias")?.unwrap_or(0.0);
+    let lambd = node.get_attr_opt_float("lambd")?.unwrap_or(0.5);
+    Ok(Box::new(Shrink::new(bias, lambd)))
 }
 
 pub fn selu(node: &NodeProto) -> TractResult<Box<Op>> {
