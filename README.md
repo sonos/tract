@@ -37,7 +37,7 @@ signal has been processed up to the end.
 ### ONNX
 
 As of today (feb 2019), `tract` passes successfully about 85% of ONNX backends
-tests. `sqeezenet`, `densenet121`, `resnet50`, `inception_v2` and `vgg19` tests
+tests. `squeezenet`, `densenet121`, `resnet50`, `inception_v2` and `vgg19` tests
 are passing.
 
 Making a ONNX backend out of `tract` is on the roadmap.
@@ -92,13 +92,14 @@ Raspberry Pi Zero.
 |  Raspberry Pi 3     |  aarch32 NEON  |          5s       |    7s   |
 
 Notes:
-    * while the Raspberry Pi 3 is an Armv8 device, this bench is running
-        on Raspbian, an armv6 operating system, crippling the performance
-        of both benches
-    * there exists other benches on the internet that show better
-        performance results for TensorFlow (not -Lite) on the Pi 3.
-        They use all four cores of the device. Both TensorFlow-Lite and tract
-        here have been made to run on a single-core.
+
+ * while the Raspberry Pi 3 is an Armv8 device, this bench is running
+     on Raspbian, an armv6 operating system, crippling the performance
+     of both benches
+ * there exists other benches on the internet that show better
+     performance results for TensorFlow (not -Lite) on the Pi 3.
+     They use all four cores of the device. Both TensorFlow-Lite and tract
+     here have been made to run on a single-core.
 
 ## Roadmap
 
