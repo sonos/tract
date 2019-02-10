@@ -3,9 +3,9 @@
 set -ex
 
 mkdir -p $HOME/cached/bin
-PATH=$HOME/cached/bin:$HOME/.cargo/bin:/tmp/cargo-dinghy-travis:$HOME/cached/android-sdk/platform-tools:$PATH
+PATH=$HOME/cached/bin:$HOME/.cargo/bin:/tmp/cargo-dinghy:$HOME/cached/android-sdk/platform-tools:$PATH
 
-if [ -z "$TRAVIS" ]
+if [ -z "$TRAVIS" -a `uname` = "linux" ]
 then
     apt-get update
     apt-get -y upgrade
@@ -14,9 +14,16 @@ fi
 
 which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
 
-( cd /tmp
-wget -q https://github.com/snipsco/dinghy/releases/download/v0.4.4/cargo-dinghy-travis.tgz
-tar vzxf cargo-dinghy-travis.tgz
+( mkdir -p /tmp/cargo-dinghy
+cd /tmp/cargo-dinghy
+if [ `uname` = "Darwin" ]
+then
+    NAME=macos
+else
+    NAME=travis
+fi
+wget -q https://github.com/snipsco/dinghy/releases/download/0.4.5/cargo-dinghy-$NAME.tgz -O cargo-dinghy.tgz
+tar vzxf cargo-dinghy.tgz --strip-components 1
 )
 
 case "$PLATFORM" in
@@ -58,6 +65,10 @@ case "$PLATFORM" in
         ls $ANDROID_SDK_HOME/ndk-bundle
         export ANDROID_NDK_HOME=$ANDROID_SDK_HOME/ndk-bundle
         cargo dinghy --platform auto-android-$ANDROID_CPU build -p tract-linalg
+    ;;
+
+    "aarch64-apple-ios")
+        cargo dinghy --platform auto-ios-aar build -p tract-linalg 
     ;;
 
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf")

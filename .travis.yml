@@ -44,6 +44,10 @@ matrix:
       env: PLATFORM=i686-linux-android
     - rust: stable
       env: PLATFORM=x86_64-linux-android
+    - rust: stable
+      os: osx
+      osx_image: xcode8.3
+      env: PLATFORM=aarch64-apple-ios
     - rust: beta
     - rust: nightly
   allow_failures:
