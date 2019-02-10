@@ -5,7 +5,7 @@ set -ex
 mkdir -p $HOME/cached/bin
 PATH=$HOME/cached/bin:$HOME/.cargo/bin:/tmp/cargo-dinghy:$HOME/cached/android-sdk/platform-tools:$PATH
 
-if [ -z "$TRAVIS" -a `uname` = "linux" ]
+if [ -z "$TRAVIS" -a `uname` = "Linux" ]
 then
     apt-get update
     apt-get -y upgrade
@@ -68,6 +68,7 @@ case "$PLATFORM" in
     ;;
 
     "aarch64-apple-ios")
+        rustup target add aarch64-apple-ios
         cargo dinghy --platform auto-ios-aarch64 build -p tract-linalg 
     ;;
 
@@ -76,11 +77,8 @@ case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
                 export QEMU_ARCH=aarch64
-                export QEMU_OPTS=
                 export RUSTC_TRIPLE=$ARCH-unknown-linux-gnu
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
-                export TARGET_CC=$DEBIAN_TRIPLE-gcc
-                export PACKAGES="binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm"
             ;;
             "armv6vfp-unknown-linux-gnueabihf")
                 export ARCH=armv6vfp
@@ -88,8 +86,6 @@ case "$PLATFORM" in
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
-                export TARGET_CC=$DEBIAN_TRIPLE-gcc
-                export PACKAGES="binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm"
             ;;
             "armv7-unknown-linux-gnueabihf")
                 export ARCH=armv7
@@ -97,8 +93,6 @@ case "$PLATFORM" in
                 export QEMU_OPTS="-cpu cortex-a15"
                 export RUSTC_TRIPLE=armv7-unknown-linux-gnueabihf
                 export DEBIAN_TRIPLE=arm-linux-gnueabihf
-                export TARGET_CC=$DEBIAN_TRIPLE-gcc
-                export PACKAGES="binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm"
             ;;
             *)
                 echo "unsupported platform $PLATFORM"
@@ -106,13 +100,15 @@ case "$PLATFORM" in
             ;;
         esac
 
+        export TARGET_CC=$DEBIAN_TRIPLE-gcc
+
         echo "[platforms.$PLATFORM]\ndeb_multiarch='$DEBIAN_TRIPLE'\nrustc_triple='$RUSTC_TRIPLE'" > $HOME/.dinghy.toml
         echo "[script_devices.qemu-$ARCH]\nplatform='$PLATFORM'\npath='$HOME/qemu-$ARCH'" >> $HOME/.dinghy.toml
 
         echo "#!/bin/sh\nexe=\$1\nshift\n/usr/bin/qemu-$QEMU_ARCH $QEMU_OPTS -L /usr/$DEBIAN_TRIPLE/ \$exe --test-threads 1 \"\$@\"" > $HOME/qemu-$ARCH
         chmod +x $HOME/qemu-$ARCH
 
-        sudo apt-get -y install $PACKAGES qemu-user
+        sudo apt-get -y install binutils-$DEBIAN_TRIPLE gcc-$DEBIAN_TRIPLE qemu-system-arm qemu-user libssl-dev pkg-config
         rustup target add $RUSTC_TRIPLE
         cargo dinghy --platform $PLATFORM test --release -p tract-linalg -- --nocapture
         cargo dinghy --platform $PLATFORM test --release -p tract-core
