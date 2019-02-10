@@ -43,6 +43,7 @@ impl frame::matmul::PackedMatMulKer<f32> for SMatMul8x4 {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::arm32::has_neon;
     use crate::frame::matmul::test::*;
     use crate::frame::PackedMatMul;
     use proptest::*;
@@ -50,11 +51,17 @@ mod test {
     proptest! {
         #[test]
         fn ker_mat_mul((k, ref a, ref b) in strat_ker_mat_mul::<SMatMul8x4>()) {
+            if !has_neon() {
+                return Ok(())
+            }
             test_ker_mat_mul::<SMatMul8x4>(k, a, b)?
         }
 
         #[test]
         fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
+            if !has_neon() {
+                return Ok(())
+            }
             let mm = PackedMatMul::<SMatMul8x4, f32>::new(m, k, n);
             test_mat_mul_prep_f32(mm, m, k, n, a, b)?
         }

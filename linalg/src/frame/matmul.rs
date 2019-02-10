@@ -260,7 +260,7 @@ where
 #[derive(Debug)]
 pub struct PackedWriter<'p, T>
 where
-    T: Copy + Debug
+    T: Copy + Debug,
 {
     ptr: *mut T,
     panels: usize,
@@ -275,9 +275,9 @@ where
 
 impl<'p, T> PackedWriter<'p, T>
 where
-    T: Copy + Debug
+    T: Copy + Debug,
 {
-    pub fn new(data: &'p mut [T], panel_width:usize, mn:usize, k:usize) -> PackedWriter<'p, T> {
+    pub fn new(data: &'p mut [T], panel_width: usize, mn: usize, k: usize) -> PackedWriter<'p, T> {
         let panels = (mn + panel_width - 1) / panel_width;
         let last_panel_width = mn - (panels - 1) * panel_width;
         PackedWriter {
@@ -285,11 +285,16 @@ where
             panels,
             panel_width,
             last_panel_width,
-            remain: if panels > 1 { panel_width } else { last_panel_width },
+            remain: if panels > 1 {
+                panel_width
+            } else {
+                last_panel_width
+            },
             current_panel: 0,
-            next_panel: ((k-1) * panel_width) as isize,
-            next_lane: panel_width as isize - ((last_panel_width + (panels-1)*panel_width*k) as isize),
-            _phantom: PhantomData
+            next_panel: ((k - 1) * panel_width) as isize,
+            next_lane: panel_width as isize
+                - ((last_panel_width + (panels - 1) * panel_width * k) as isize),
+            _phantom: PhantomData,
         }
     }
 
@@ -320,11 +325,12 @@ where
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use crate::align;
     use proptest::prelude::*;
     use proptest::*;
-    use crate::align;
 
-    pub fn strat_ker_mat_mul<MM:PackedMatMulKer<f32>>() -> BoxedStrategy<(usize, Vec<f32>, Vec<f32>)> {
+    pub fn strat_ker_mat_mul<MM: PackedMatMulKer<f32>>(
+    ) -> BoxedStrategy<(usize, Vec<f32>, Vec<f32>)> {
         (0usize..35)
             .prop_flat_map(move |k| {
                 (
@@ -347,17 +353,13 @@ pub mod test {
         let mut expect = vec![0.0f32; MM::mr() * MM::nr()];
         for x in 0..MM::nr() {
             for y in 0..MM::mr() {
-                expect[x+y*MM::nr()] = (0..k).map(|k| pa[k*MM::mr() + y] * pb[k*MM::nr() + x]).sum::<f32>();
+                expect[x + y * MM::nr()] = (0..k)
+                    .map(|k| pa[k * MM::mr() + y] * pb[k * MM::nr() + x])
+                    .sum::<f32>();
             }
         }
         let mut found = vec![9999.0f32; expect.len()];
-        MM::kernel(
-            k,
-            pa.as_ptr(),
-            pb.as_ptr(),
-            found.as_mut_ptr(),
-            MM::nr(),
-            1);
+        MM::kernel(k, pa.as_ptr(), pb.as_ptr(), found.as_mut_ptr(), MM::nr(), 1);
         prop_assert_eq!(found, expect);
         Ok(())
     }
@@ -385,13 +387,14 @@ pub mod test {
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         unsafe {
-            let mut packed_a:Vec<f32> = align::uninitialized(mm.packed_a_len(), mm.packed_a_alignment());
+            let mut packed_a: Vec<f32> =
+                align::uninitialized(mm.packed_a_len(), mm.packed_a_alignment());
             mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
-            let mut packed_b:Vec<f32> = align::uninitialized(mm.packed_b_len(), mm.packed_b_alignment());
+            let mut packed_b: Vec<f32> =
+                align::uninitialized(mm.packed_b_len(), mm.packed_b_alignment());
             mm.pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
-            let mut expect = vec![9999.0f32; m * n];
             let mut found = vec![9999.0f32; m * n];
 
             mm.mat_mul_prepacked(
@@ -401,22 +404,14 @@ pub mod test {
                 n as isize,
                 1,
             );
-            ::matrixmultiply::sgemm(
-                m,
-                k,
-                n,
-                1.0,
-                a.as_ptr(),
-                k as _,
-                1,
-                b.as_ptr(),
-                n as _,
-                1,
-                0.0,
-                expect.as_mut_ptr(),
-                n as _,
-                1,
-            );
+            let mut expect = vec![0.0f32; m * n];
+            for x in 0..n {
+                for y in 0..m {
+                    for i in 0..k {
+                        expect[x + y * n] += a[i + k * y] * b[x + i * n]
+                    }
+                }
+            }
             prop_assert_eq!(found, expect);
         }
         Ok(())
