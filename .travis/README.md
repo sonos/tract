@@ -29,7 +29,7 @@ scp .travis/minion.sh $MINION:
 also setup aws credentials (.aws/credentials)
 
 ```
-apt install wget curl perl awscli screen vim
+apt install wget curl perl awscli screen vim netcat
 ```
 
 On device: `.minioncrc` set a MINION_ID. At this point, running `./minion.sh`

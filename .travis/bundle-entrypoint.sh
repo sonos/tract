@@ -84,7 +84,7 @@ then
     fi
 elif [ -e /etc/issue ] && ( cat /etc/issue | grep i.MX )
 then
-    if [ `uname -m` = "aarch64" ]
+    if [ `uname -m` = "aarch64-unknown-linux-gnu" ]
     then
         tflites=aarch64
     fi
