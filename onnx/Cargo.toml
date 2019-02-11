@@ -26,7 +26,6 @@ tract-core = { path = "../core" }
 
 [build-dependencies]
 git2 = "0.7"
-tempdir = "0.3"
 
 [dev-dependencies]
 flate2 = "1"
