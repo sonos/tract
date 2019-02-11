@@ -1,14 +1,11 @@
 extern crate git2;
-extern crate tempdir;
 
 use std::{fs, path};
-
-use tempdir::TempDir;
 
 pub fn dir() -> path::PathBuf {
     match ::std::env::var("TRAVIS_BUILD_DIR") {
         Ok(t) => path::Path::new(&t).join("cached").join("onnx-checkout"),
-        _ => ".onnx".into(),
+        _ => ".onnx/onnx".into(),
     }
 }
 
@@ -20,13 +17,9 @@ pub fn ensure_onnx_git_checkout() {
             println!("DEBUG ensure_onnx_git_checkout 1");
             let _ = fs::create_dir_all(dir().parent().unwrap());
             println!("DEBUG ensure_onnx_git_checkout 2");
-            let tmp = TempDir::new("onnx").unwrap();
-            println!("DEBUG ensure_onnx_git_checkout 3");
             let url = "https://github.com/onnx/onnx";
             println!("DEBUG ensure_onnx_git_checkout 4");
-            ::git2::Repository::clone(url, &tmp).unwrap();
-            println!("DEBUG ensure_onnx_git_checkout 5");
-            fs::rename(tmp.into_path(), dir()).unwrap();
+            ::git2::Repository::clone(url, dir()).unwrap();
         }
     });
 }
