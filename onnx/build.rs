@@ -5,7 +5,11 @@ use std::{fs, path};
 pub fn dir() -> path::PathBuf {
     match ::std::env::var("TRAVIS_BUILD_DIR") {
         Ok(t) => path::Path::new(&t).join("cached").join("onnx-checkout"),
-        _ => ".onnx/onnx".into(),
+        _ => {
+            let out_dir = std::env::var("OUT_DIR").unwrap();
+            let out_dir = path::PathBuf::from(out_dir);
+            out_dir.join("onnx")
+        }
     }
 }
 
