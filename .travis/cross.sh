@@ -118,7 +118,7 @@ case "$PLATFORM" in
     *)
 esac
 
-if [ -n "$AWS_ACCESS_KEY_ID" -a "$TRAVIS_EVENT_TYPE" = "push" ]
+if [ -n "$AWS_ACCESS_KEY_ID" ]
 then
     export RUSTC_TRIPLE
     TASK_NAME=`.travis/make_bundle.sh`
