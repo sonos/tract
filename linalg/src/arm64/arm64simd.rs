@@ -2,6 +2,7 @@ use crate::frame;
 use libc::size_t;
 
 extern "C" {
+    #[no_mangle]
     fn arm64simd_mm_s8x8(
         k: size_t,
         a: *const f32,

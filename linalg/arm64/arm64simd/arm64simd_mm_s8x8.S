@@ -1,7 +1,5 @@
 // vim: ft=arm
 
-    .text
-    .global _arm64simd_mm_s8x8
 /*
     fn arm64simd_mm_s8x8(
         k: size_t,
@@ -29,8 +27,16 @@
 // packed A buffering (2x8 values): alternating v0, v1 with v2, v3
 // packed B buffering (2x8 values): alternating v4, v5 with v6, v7
 
+.text
 .align 4
-_arm64simd_mm_s8x8:
+#ifdef __MACH__
+    .global _arm64simd_mm_s8x8
+    _arm64simd_mm_s8x8:
+#else
+    .cpu generic+fp+simd
+    .global arm64simd_mm_s8x8
+    arm64simd_mm_s8x8:
+#endif
 
     eor         v16.8b, v16.8b, v16.8b
     eor         v17.8b, v17.8b, v17.8b
