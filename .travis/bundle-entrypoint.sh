@@ -38,31 +38,31 @@ echo binary_size.cli $binary_size_cli > metrics
 
 inceptionv3=`$TRACT --machine-friendly $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
     -O -i 1x299x299x3xf32 profile --bench \
-    | grep real | cut -f 2 -d ' '`
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 voicecom_float=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-float.pb \
     -O -i 200x10xf32 profile --bench \
-    | grep real | cut -f 2 -d ' '`
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 voicecom_fake_quant=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
     -O -i 200x10xf32 profile --bench \
-    | grep real | cut -f 2 -d ' '`
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 arm_ml_kws_cnn_m=`$TRACT --machine-friendly $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
     -O -i 49x10xf32 --input-node Mfcc profile --bench \
-    | grep real | cut -f 2 -d ' '`
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 hey_snips_v31_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v3.1.pb \
     -O -i 40x40xf32 profile --bench \
-    | grep real | cut -f 2 -d ' '`
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 hey_snips_v4_model17_2sec=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
     -O -i 200x20xf32 profile --bench \
-    | grep real | cut -f 2 -d ' '`
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
     -O -i Sx20xf32 --pulse 8 profile --bench \
-    | grep real | cut -f 2 -d ' '`
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
