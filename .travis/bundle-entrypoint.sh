@@ -84,10 +84,13 @@ then
     fi
 elif [ -e /etc/issue ] && ( cat /etc/issue | grep i.MX )
 then
-    if [ `uname -m` = "aarch64-unknown-linux-gnu" ]
+    if [ `uname -m` = "aarch64" ]
     then
         tflites=aarch64_unknown_linux_gnu
+    elif[ `uname -m` = "armv7l" ]
+        tflites=official_rpi
     fi
+
 fi
 
 for tflite in $tflites
