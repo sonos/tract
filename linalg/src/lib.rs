@@ -15,6 +15,9 @@ mod generic;
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 
+#[cfg(target_arch = "aarch64")]
+pub mod arm64;
+
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
 pub mod arm32;
 
@@ -48,6 +51,8 @@ pub fn best() -> Ops {
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
     arm32::plug(&mut ops);
+    #[cfg(target_arch = "aarch64")]
+    arm64::plug(&mut ops);
     return ops;
 }
 
