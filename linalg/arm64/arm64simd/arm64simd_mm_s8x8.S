@@ -58,6 +58,114 @@
     eor         v30.8b, v30.8b, v30.8b
     eor         v31.8b, v31.8b, v31.8b
 
+    cmp         x0, #0
+    beq .STORE
+
+    cmp         x0, #4
+    blt         .LOOP
+
+    .LOOP4:
+
+    ldr         q0, [ x1 ], #16
+    ldr         q1, [ x1 ], #16
+
+    ldr         q4, [ x2 ], #16
+    ldr         q5, [ x2 ], #16
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ldr         q2, [ x1 ], #16
+    ldr         q3, [ x1 ], #16
+
+    ldr         q6, [ x2 ], #16
+    ldr         q7, [ x2 ], #16
+
+    fmla        v16.4s, v2.4s, v6.s[0]
+    fmla        v17.4s, v3.4s, v6.s[0]
+    fmla        v18.4s, v2.4s, v6.s[1]
+    fmla        v19.4s, v3.4s, v6.s[1]
+    fmla        v20.4s, v2.4s, v6.s[2]
+    fmla        v21.4s, v3.4s, v6.s[2]
+    fmla        v22.4s, v2.4s, v6.s[3]
+    fmla        v23.4s, v3.4s, v6.s[3]
+
+    fmla        v24.4s, v2.4s, v7.s[0]
+    fmla        v25.4s, v3.4s, v7.s[0]
+    fmla        v26.4s, v2.4s, v7.s[1]
+    fmla        v27.4s, v3.4s, v7.s[1]
+    fmla        v28.4s, v2.4s, v7.s[2]
+    fmla        v29.4s, v3.4s, v7.s[2]
+    fmla        v30.4s, v2.4s, v7.s[3]
+    fmla        v31.4s, v3.4s, v7.s[3]
+
+    ldr         q0, [ x1 ], #16
+    ldr         q1, [ x1 ], #16
+
+    ldr         q4, [ x2 ], #16
+    ldr         q5, [ x2 ], #16
+
+    fmla        v16.4s, v0.4s, v4.s[0]
+    fmla        v17.4s, v1.4s, v4.s[0]
+    fmla        v18.4s, v0.4s, v4.s[1]
+    fmla        v19.4s, v1.4s, v4.s[1]
+    fmla        v20.4s, v0.4s, v4.s[2]
+    fmla        v21.4s, v1.4s, v4.s[2]
+    fmla        v22.4s, v0.4s, v4.s[3]
+    fmla        v23.4s, v1.4s, v4.s[3]
+
+    fmla        v24.4s, v0.4s, v5.s[0]
+    fmla        v25.4s, v1.4s, v5.s[0]
+    fmla        v26.4s, v0.4s, v5.s[1]
+    fmla        v27.4s, v1.4s, v5.s[1]
+    fmla        v28.4s, v0.4s, v5.s[2]
+    fmla        v29.4s, v1.4s, v5.s[2]
+    fmla        v30.4s, v0.4s, v5.s[3]
+    fmla        v31.4s, v1.4s, v5.s[3]
+
+    ldr         q2, [ x1 ], #16
+    ldr         q3, [ x1 ], #16
+
+    ldr         q6, [ x2 ], #16
+    ldr         q7, [ x2 ], #16
+
+    fmla        v16.4s, v2.4s, v6.s[0]
+    fmla        v17.4s, v3.4s, v6.s[0]
+    fmla        v18.4s, v2.4s, v6.s[1]
+    fmla        v19.4s, v3.4s, v6.s[1]
+    fmla        v20.4s, v2.4s, v6.s[2]
+    fmla        v21.4s, v3.4s, v6.s[2]
+    fmla        v22.4s, v2.4s, v6.s[3]
+    fmla        v23.4s, v3.4s, v6.s[3]
+
+    fmla        v24.4s, v2.4s, v7.s[0]
+    fmla        v25.4s, v3.4s, v7.s[0]
+    fmla        v26.4s, v2.4s, v7.s[1]
+    fmla        v27.4s, v3.4s, v7.s[1]
+    fmla        v28.4s, v2.4s, v7.s[2]
+    fmla        v29.4s, v3.4s, v7.s[2]
+    fmla        v30.4s, v2.4s, v7.s[3]
+    fmla        v31.4s, v3.4s, v7.s[3]
+
+    sub         x0, x0, #4
+    cmp         x0, #4
+    bge         .LOOP4
+
     cmp x0, #0
     beq .STORE
 
