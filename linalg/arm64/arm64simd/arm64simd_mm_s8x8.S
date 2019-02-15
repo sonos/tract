@@ -38,6 +38,9 @@
     arm64simd_mm_s8x8:
 #endif
 
+    prfm        pldl1keep, [x1]
+    prfm        pldl1keep, [x2]
+
     eor         v16.8b, v16.8b, v16.8b
     eor         v17.8b, v17.8b, v17.8b
     eor         v18.8b, v18.8b, v18.8b
