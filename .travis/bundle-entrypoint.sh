@@ -87,7 +87,8 @@ then
     if [ `uname -m` = "aarch64" ]
     then
         tflites=aarch64_unknown_linux_gnu
-    elif[ `uname -m` = "armv7l" ]
+    elif [ `uname -m` = "armv7l" ]
+    then
         tflites=official_rpi
     fi
 
