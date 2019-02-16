@@ -3,7 +3,12 @@
 set -ex
 
 TRAVIS_COMMIT=${TRAVIS_COMMIT:-dummy-commit-id}
-TRAVIS_BRANCH=${TRAVIS_BRANCH:-dummy-branch}
+if [ -n "$TRAVIS_PULL_REQUEST_BRANCH" ]
+then
+    BRANCH=$TRAVIS_PULL_REQUEST_BRANCH
+else
+    BRANCH=${TRAVIS_BRANCH:-dummy-branch}
+fi
 PLATFORM=${PLATFORM:-dummy-platform}
 
 dates=`date -u +"%Y%m%dT%H%M%S %s"`
@@ -13,7 +18,7 @@ TASK_NAME=tract-$date_iso
 mkdir -p $TASK_NAME
 echo "export TASK_NAME=$TASK_NAME" > $TASK_NAME/vars
 echo "export TRAVIS_COMMIT=$TRAVIS_COMMIT" >> $TASK_NAME/vars
-TRAVIS_BRANCH_SANE=`echo $TRAVIS_BRANCH | tr '/' '_'`
+TRAVIS_BRANCH_SANE=`echo $BRANCH | tr '/' '_'`
 echo "export TRAVIS_BRANCH_SANE=$TRAVIS_BRANCH_SANE" >> $TASK_NAME/vars
 echo "export DATE_ISO=$date_iso" >> $TASK_NAME/vars
 echo "export TIMESTAMP=$timestamp" >> $TASK_NAME/vars

@@ -65,7 +65,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
                 .url(&data.url)
                 .unwrap()
                 .max_response(1_000_000_000)
-                .timeout_ms(600_000)
+                .timeout_ms(1_200_000)
                 .exec()
                 .unwrap();
             info!("Downloaded {:?}", data.url);

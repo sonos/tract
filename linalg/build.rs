@@ -18,4 +18,10 @@ fn main() {
             .static_flag(true)
             .compile("armv7neon");
     }
+    if arch == "aarch64" {
+        cc::Build::new()
+            .file("arm64/arm64simd/arm64simd_mm_s8x8.S")
+            .static_flag(true)
+            .compile("arm64");
+    }
 }
