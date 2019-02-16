@@ -11,6 +11,7 @@ mod padding;
 mod patches;
 mod reduce;
 mod sigmoid;
+mod tanh;
 
 pub use self::arg_max_min::ArgMaxMin;
 pub use self::avgpool::AvgPool;
@@ -25,6 +26,7 @@ pub use self::padding::PaddingSpec;
 pub use self::patches::Patch;
 pub use self::reduce::{Reduce, Reducer};
 pub use self::sigmoid::Sigmoid;
+pub use self::tanh::Tanh;
 
 use num_traits::AsPrimitive;
 

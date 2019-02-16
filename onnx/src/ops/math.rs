@@ -29,7 +29,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 
     reg.insert("Cosh", |_| Ok(Box::new(tractops::math::Cosh::default())));
     reg.insert("Sinh", |_| Ok(Box::new(tractops::math::Sinh::default())));
-    reg.insert("Tanh", |_| Ok(Box::new(tractops::math::Tanh::default())));
+    reg.insert("Tanh", |_| Ok(Box::new(tractops::nn::Tanh::default())));
     reg.insert("Acosh", |_| Ok(Box::new(tractops::math::Acosh::default())));
     reg.insert("Asinh", |_| Ok(Box::new(tractops::math::Asinh::default())));
     reg.insert("Atanh", |_| Ok(Box::new(tractops::math::Atanh::default())));
