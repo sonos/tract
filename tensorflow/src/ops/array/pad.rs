@@ -7,7 +7,7 @@ use tract_core::ops::prelude::*;
 use tract_core::TractResult;
 
 #[derive(Debug, Clone, Default, new)]
-pub struct Pad<T: Datum + Zero> {
+pub struct Pad<T: Copy + Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
@@ -16,7 +16,7 @@ pub fn pad(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     Ok(boxed_new!(Pad(dtype)()))
 }
 
-impl<T: Datum + Zero> Pad<T> {
+impl<T: Copy + Datum + Zero> Pad<T> {
     fn compute(
         input: &ArrayViewD<T>,
         paddings: ArrayView2<i32>,
@@ -53,14 +53,14 @@ impl<T: Datum + Zero> Pad<T> {
 
 impl<T> Op for Pad<T>
 where
-    T: Datum + Zero,
+    T: Copy + Datum + Zero,
 {
     fn name(&self) -> Cow<str> {
         "tf.Pad".into()
     }
 }
 
-impl<T: Datum + Zero> StatelessOp for Pad<T> {
+impl<T: Copy + Datum + Zero> StatelessOp for Pad<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
@@ -69,7 +69,7 @@ impl<T: Datum + Zero> StatelessOp for Pad<T> {
     }
 }
 
-impl<T: Datum + Zero> InferenceRulesOp for Pad<T> {
+impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,

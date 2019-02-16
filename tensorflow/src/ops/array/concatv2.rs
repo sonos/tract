@@ -9,15 +9,15 @@ pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 }
 
 #[derive(Debug, Clone, new)]
-pub struct ConcatV2<T: Datum> {
+pub struct ConcatV2<T: Copy + Datum> {
     n: usize,
     tidx: DatumType,
     t: PhantomData<T>,
 }
 
-impl<T: Datum> StatelessOp for ConcatV2<T> {
+impl<T: Copy + Datum> StatelessOp for ConcatV2<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let axis: i32 = inputs.pop().unwrap().to_scalar::<i32>()?;
+        let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
@@ -25,13 +25,13 @@ impl<T: Datum> StatelessOp for ConcatV2<T> {
     }
 }
 
-impl<T: Datum> Op for ConcatV2<T> {
+impl<T: Copy + Datum> Op for ConcatV2<T> {
     fn name(&self) -> Cow<str> {
         "tf.ConvatV2".into()
     }
 }
 
-impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
+impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -48,7 +48,7 @@ impl<T: Datum> InferenceRulesOp for ConcatV2<T> {
         s.equals(&inputs[n].rank, 0)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[n].value, move |s, axis| {
-            let axis = axis.to_scalar::<i32>()? as usize; // checked
+            let axis = *axis.to_scalar::<i32>()? as usize;
             trace!("axis for Concatv2: {}", axis);
             for d in 0..axis {
                 s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;

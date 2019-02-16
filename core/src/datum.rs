@@ -121,7 +121,7 @@ impl DatumType {
 }
 
 pub trait Datum:
-    Copy + Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
+    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
@@ -130,7 +130,7 @@ pub trait Datum:
 }
 
 pub(crate) trait TryInto<D: Datum> {
-    fn try_into(self) -> TractResult<D>;
+    fn try_into(&self) -> TractResult<D>;
 }
 
 macro_rules! datum {
@@ -167,8 +167,8 @@ macro_rules! datum {
 macro_rules! try_into {
     ($f:ty, $t:ty) => {
         impl TryInto<$t> for $f {
-            fn try_into(self) -> TractResult<$t> {
-                Ok(self as $t)
+            fn try_into(&self) -> TractResult<$t> {
+                Ok(*self as $t)
             }
         }
     };
@@ -197,26 +197,26 @@ try_into!(i32, f32);
 try_into!(i64, f32);
 
 impl TryInto<TDim> for i32 {
-    fn try_into(self) -> TractResult<TDim> {
-        Ok(self.into())
+    fn try_into(&self) -> TractResult<TDim> {
+        Ok((*self).into())
     }
 }
 
 impl TryInto<i32> for TDim {
-    fn try_into(self) -> TractResult<i32> {
+    fn try_into(&self) -> TractResult<i32> {
         self.to_integer().map(|i| i as i32)
     }
 }
 
 impl TryInto<i64> for TDim {
-    fn try_into(self) -> TractResult<i64> {
+    fn try_into(&self) -> TractResult<i64> {
         self.to_integer().map(|i| i as i64)
     }
 }
 
 impl TryInto<f32> for bool {
-    fn try_into(self) -> TractResult<f32> {
-        if self {
+    fn try_into(&self) -> TractResult<f32> {
+        if *self {
             Ok(1.0)
         } else {
             Ok(0.0)
@@ -225,26 +225,45 @@ impl TryInto<f32> for bool {
 }
 
 impl TryInto<f32> for f16 {
-    fn try_into(self) -> TractResult<f32> {
+    fn try_into(&self) -> TractResult<f32> {
         Ok(self.0.to_f32())
     }
 }
 
 impl TryInto<f64> for f16 {
-    fn try_into(self) -> TractResult<f64> {
+    fn try_into(&self) -> TractResult<f64> {
         Ok(self.0.to_f64())
     }
 }
 
 impl TryInto<f16> for f32 {
-    fn try_into(self) -> TractResult<f16> {
-        Ok(f16(half::f16::from_f32(self)))
+    fn try_into(&self) -> TractResult<f16> {
+        Ok(f16(half::f16::from_f32(*self)))
     }
 }
 
 impl TryInto<f16> for f64 {
-    fn try_into(self) -> TractResult<f16> {
-        Ok(f16(half::f16::from_f64(self)))
+    fn try_into(&self) -> TractResult<f16> {
+        Ok(f16(half::f16::from_f64(*self)))
+    }
+}
+
+impl TryInto<String> for f32 {
+    fn try_into(&self) -> TractResult<String> {
+        Ok(self.to_string())
+    }
+}
+
+impl TryInto<f32> for String {
+    fn try_into(&self) -> TractResult<f32> {
+        // this is onnx casts
+        if self == "INF" || self == "+INF" {
+            Ok(std::f32::INFINITY)
+        } else if self == "-INF" {
+            Ok(-std::f32::INFINITY)
+        } else {
+            Ok(self.parse::<f32>().map_err(|_| format!("Can not parse {} as f32", self))?)
+        }
     }
 }
 
@@ -265,6 +284,7 @@ datum!(i64, I64);
 datum!(u8, U8);
 datum!(u16, U16);
 datum!(TDim, TDim);
+datum!(String, String);
 
 #[cfg(test)]
 mod tests {

@@ -76,7 +76,7 @@ impl Tractify<TensorProto> for Tensor {
                         .into_array::<u8>()?
                         .mapv(|x| x != 0)
                         .into()),
-                    _ => unimplemented!("FIXME, tensor loading"),
+                    _ => unimplemented!("FIXME, raw tensor loading"),
                 }
             }
         } else {
@@ -119,7 +119,17 @@ impl Tractify<TensorProto> for Tensor {
                 DatumType::F64 => {
                     Array::from_shape_vec(&*shape, t.get_double_data().to_vec())?.into()
                 }
-                _ => unimplemented!("FIXME, tensor loading"),
+                DatumType::String => {
+                    let strings = t
+                        .get_string_data()
+                        .iter()
+                        .cloned()
+                        .map(String::from_utf8)
+                        .collect::<Result<Vec<String>, _>>()
+                        .map_err(|_| format!("Invalid UTF8 buffer"))?;
+                    Array::from_shape_vec(&*shape, strings)?.into()
+                }
+                _ => unimplemented!("FIXME, struct tensor loading"),
             };
             Ok(it)
         }

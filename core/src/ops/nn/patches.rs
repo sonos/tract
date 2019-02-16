@@ -101,7 +101,7 @@ impl Patch {
         v
     }
 
-    pub fn wrap<'i, 'p, T: Datum>(
+    pub fn wrap<'i, 'p, T: Copy + Datum>(
         &'p self,
         input: &'i ArrayViewD<'i, T>,
     ) -> PatchVisitor<'i, 'p, T> {
@@ -121,14 +121,14 @@ impl Patch {
 }
 
 #[derive(Debug)]
-pub struct PatchVisitor<'i, 'p, T: Datum> {
+pub struct PatchVisitor<'i, 'p, T: Copy + Datum> {
     patch: &'p Patch,
     input: &'i ArrayViewD<'i, T>,
     valid: bool,
     fast_strides: Vec<isize>, // kernel strides * storage strides
 }
 
-impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
+impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
     pub fn at<'v>(&'p self, coords: &[usize]) -> PatchIterator<'i, 'p, 'v, T>
     where
         'i: 'v,
@@ -175,12 +175,12 @@ impl<'i, 'p, T: Datum> PatchVisitor<'i, 'p, T> {
     }
 }
 
-pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
+pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
     Fast(FastPatchIterator<'i, 'p, 'v, T>),
     Safe(SafePatchIterator<'i, 'p, 'v, T>),
 }
 
-impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for PatchIterator<'p, 'i, 'v, T> {
+impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for PatchIterator<'p, 'i, 'v, T> {
     type Item = Option<T>;
     #[inline(always)]
     fn next(&mut self) -> Option<Option<T>> {
@@ -191,14 +191,14 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for PatchIterator<'p, 'i
     }
 }
 
-pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
+pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
     visitor: &'v PatchVisitor<'i, 'p, T>,
     ptr: *const T,
     center: isize,
     item: usize,
 }
 
-impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for FastPatchIterator<'i, 'p, 'v, T> {
+impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for FastPatchIterator<'i, 'p, 'v, T> {
     type Item = Option<T>;
     #[inline(always)]
     fn next(&mut self) -> Option<Option<T>> {
@@ -218,14 +218,14 @@ impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for FastPatchIterator<'i
     }
 }
 
-pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Datum> {
+pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
     visitor: &'v PatchVisitor<'i, 'p, T>,
     item: usize,
     input_patch_center: Vec<usize>,
     input_patch_current: Vec<usize>,
 }
 
-impl<'i: 'v, 'p: 'v, 'v, T: Datum + PartialEq> Iterator for SafePatchIterator<'i, 'p, 'v, T> {
+impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for SafePatchIterator<'i, 'p, 'v, T> {
     type Item = Option<T>;
     #[inline(never)]
     fn next(&mut self) -> Option<Option<T>> {

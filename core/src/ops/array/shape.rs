@@ -11,7 +11,7 @@ pub struct Shape {
 impl Shape {
     pub fn coerce_to<T>(shape: &[usize]) -> TractResult<SharedTensor>
     where
-        T: Datum,
+        T: Copy + Datum,
         usize: AsPrimitive<T>,
     {
         let array = Array1::from_vec(shape.iter().map(|i| i.as_()).collect());

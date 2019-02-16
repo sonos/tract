@@ -326,11 +326,11 @@ impl Tensor {
         }
     }
 
-    pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<D> {
+    pub fn to_scalar<'a, D>(&'a self) -> TractResult<&D> {
         if self.is_null() {
             bail!("Null tensor")
         }
-        unsafe { Ok(*(self.data.as_ptr() as *const D)) }
+        unsafe { Ok(&*(self.data.as_ptr() as *const D)) }
     }
 
     fn cast_data<Source: Datum + TryInto<Target>, Target: Datum>(
@@ -391,6 +391,10 @@ impl Tensor {
             (I16, F32) => self.cast::<i16, f32>()?,
             (I32, F32) => self.cast::<i32, f32>()?,
             (I64, F32) => self.cast::<i64, f32>()?,
+
+            (F32, String) => self.cast::<f32, std::string::String>()?,
+            (String, F32) => self.cast::<std::string::String, f32>()?,
+
             _ => bail!("Unsupported cast from {:?} to {:?}", self.dt, dt),
         };
         Ok(Cow::Owned(target))

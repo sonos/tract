@@ -40,7 +40,7 @@ pub fn concat(node: &NodeProto) -> TractResult<Box<Op>> {
 
 pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<SharedTensor>
 where
-    T: Datum,
+    T: Copy + Datum,
     f32: AsPrimitive<T>,
 {
     Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into())

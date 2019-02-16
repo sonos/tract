@@ -11,7 +11,7 @@ pub struct Size {
 impl Size {
     pub fn coerce_to<T>(size: usize) -> TractResult<SharedTensor>
     where
-        T: Datum,
+        T: Copy + Datum,
         usize: AsPrimitive<T>,
     {
         Ok(Tensor::from(arr0(size.as_())).into())

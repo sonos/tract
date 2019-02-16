@@ -4,7 +4,7 @@ use std::ops::{Add, Mul};
 use crate::ops::prelude::*;
 use ndarray::*;
 
-fn eval_t<T: Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
+fn eval_t<T: Copy + Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
     let geo = Geo::<T>::new(a.shape(), b.shape())?;
@@ -82,7 +82,7 @@ fn infer_shapes<D: DimLike>(
 }
 
 #[derive(Debug, Clone)]
-struct Geo<T: Datum + Add + Mul + Zero> {
+struct Geo<T: Copy + Datum + Add + Mul + Zero> {
     m: usize,
     k: usize,
     n: usize,
@@ -98,7 +98,7 @@ struct Geo<T: Datum + Add + Mul + Zero> {
     c_stride_prefix: TVec<usize>,
 }
 
-impl<T: Datum + Add + Mul + Zero> Geo<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> Geo<T> {
     pub fn new(a_shape: &[usize], b_shape: &[usize]) -> TractResult<Geo<T>> {
         let (bc_a_shape, bc_b_shape, bc_c_shape) = infer_shapes(a_shape.into(), b_shape.into())?;
         let m = bc_a_shape[bc_a_shape.len() - 2];
@@ -204,7 +204,7 @@ pub struct MatMulUnaryA {
 }
 
 impl MatMulUnaryA {
-    pub fn codegen<T: Datum + Add + Mul + Zero>(
+    pub fn codegen<T: Copy + Datum + Add + Mul + Zero>(
         &self,
         a_shape: &[usize],
     ) -> TractResult<Option<ReducedOpRewire>> {
@@ -289,14 +289,14 @@ impl InferenceRulesOp for MatMulUnaryA {
 }
 
 #[derive(Debug, Clone)]
-pub struct MatMulUnaryImplASimpleB<T: Datum + Add + Mul + Zero> {
+pub struct MatMulUnaryImplASimpleB<T: Copy + Datum + Add + Mul + Zero> {
     geo: Geo<T>,
     packed_b: Tensor,
     a_shape: TVec<usize>,
     c_shape: TVec<usize>,
 }
 
-impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
     pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplASimpleB<T>> {
         assert_eq!(b.ndim(), 2);
         let geo_ext = Geo::<T>::new(a_shape, b.shape())?;
@@ -324,7 +324,7 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
     }
 }
 
-impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplASimpleB<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> Op for MatMulUnaryImplASimpleB<T> {
     fn name(&self) -> Cow<str> {
         "MatMulUnaryImplASimpleB".into()
     }
@@ -334,7 +334,7 @@ impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplASimpleB<T> {
     }
 }
 
-impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let a = args_1!(inputs);
         let a = a.to_array_view::<T>()?;
@@ -363,7 +363,7 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB<T> {
     }
 }
 
-impl<T: Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplASimpleB<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplASimpleB<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -381,12 +381,12 @@ impl<T: Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplASimpleB<T
 }
 
 #[derive(Debug, Clone)]
-pub struct MatMulUnaryImplA<T: Datum + Add + Mul + Zero> {
+pub struct MatMulUnaryImplA<T: Copy + Datum + Add + Mul + Zero> {
     geo: Geo<T>,
     packed_bs: Tensor,
 }
 
-impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
     pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplA<T>> {
         let geo = Geo::new(a_shape, b.shape())?;
         let packed_b_len = geo.mm.packed_b_len();
@@ -420,7 +420,7 @@ impl<T: Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
     }
 }
 
-impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplA<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> Op for MatMulUnaryImplA<T> {
     fn name(&self) -> Cow<str> {
         "MatMulUnaryImplA".into()
     }
@@ -430,7 +430,7 @@ impl<T: Datum + Add + Mul + Zero> Op for MatMulUnaryImplA<T> {
     }
 }
 
-impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let a = args_1!(inputs);
         let a = a.to_array_view::<T>()?.into_shape(&*self.geo.bc_a_shape)?;
@@ -474,7 +474,7 @@ impl<T: Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplA<T> {
     }
 }
 
-impl<T: Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplA<T> {
+impl<T: Copy + Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplA<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
