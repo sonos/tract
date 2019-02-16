@@ -9,7 +9,7 @@ pub struct Concat {
 
 impl Concat {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Datum + Copy>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(self.axis as usize), &*mats?)?;
@@ -26,7 +26,7 @@ impl Op for Concat {
 impl StatelessOp for Concat {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+        dispatch_copy!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
 

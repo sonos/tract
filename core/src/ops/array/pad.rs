@@ -23,7 +23,7 @@ pub struct Pad {
 impl Pad {
     fn eval_t<T>(&self, input: SharedTensor) -> TractResult<SharedTensor>
     where
-        T: Datum,
+        T: Copy + Datum,
         f32: AsPrimitive<T>,
     {
         let input = input.to_array_view::<T>()?;

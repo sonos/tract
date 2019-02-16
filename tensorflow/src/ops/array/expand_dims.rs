@@ -70,7 +70,7 @@ impl InferenceRulesOp for ExpandDims {
         s.equals(&data.datum_type, &output.datum_type)?;
         s.equals_zero(data.rank.bex() + 1 - &output.rank)?;
         s.given(&dims.value, move |s, index| {
-            let index = index.to_scalar::<i32>()? as usize;
+            let index = *(index.to_scalar::<i32>()?) as usize;
 
             for i in 0..index {
                 s.equals(&output.shape[i], &data.shape[i])?;

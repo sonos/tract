@@ -27,7 +27,7 @@ impl StatelessOp for Switch {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, pred) = args_2!(inputs);
         let null = unsafe { Tensor::null_dt(input.datum_type(), input.shape())? };
-        if pred.to_scalar::<bool>()? {
+        if *pred.to_scalar::<bool>()? {
             Ok(tvec!(null.into(), input))
         } else {
             Ok(tvec!(input, null.into()))

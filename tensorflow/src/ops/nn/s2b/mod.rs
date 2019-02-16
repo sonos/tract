@@ -15,7 +15,7 @@ pub fn batch_to_space_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box
     Ok(Box::new(raw::BatchToSpace::new(datum_type)))
 }
 
-fn space_to_batch<T: Datum + Zero>(
+fn space_to_batch<T: Copy + Datum + Zero>(
     input: SharedTensor,
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
@@ -65,7 +65,7 @@ fn space_to_batch<T: Datum + Zero>(
     Ok(data.into())
 }
 
-fn batch_to_space<T: Datum + Zero>(
+fn batch_to_space<T: Copy + Datum + Zero>(
     input: SharedTensor,
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,

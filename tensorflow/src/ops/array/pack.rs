@@ -18,7 +18,7 @@ pub struct Pack {
 
 impl Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Copy + Datum>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         use ndarray::Axis;
         let arrays = inputs
             .iter()

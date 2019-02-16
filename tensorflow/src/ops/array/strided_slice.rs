@@ -173,7 +173,7 @@ impl BaseStridedSlice {
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Datum>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval<T: Copy + Datum>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -238,18 +238,18 @@ impl BaseStridedSlice {
 }
 
 #[derive(Debug, Default, Clone, new)]
-pub struct StridedSlice<T: Datum> {
+pub struct StridedSlice<T: Copy + Datum> {
     base: BaseStridedSlice,
     _phantom: PhantomData<T>,
 }
 
-impl<T: Datum> StatelessOp for StridedSlice<T> {
+impl<T: Copy + Datum> StatelessOp for StridedSlice<T> {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         self.base.eval::<T>(inputs)
     }
 }
 
-impl<T: Datum> Op for StridedSlice<T> {
+impl<T: Copy + Datum> Op for StridedSlice<T> {
     fn name(&self) -> Cow<str> {
         "tf.StridedSlice".into()
     }
@@ -300,7 +300,7 @@ impl<T: Datum> Op for StridedSlice<T> {
     }
 }
 
-impl<T: Datum> InferenceRulesOp for StridedSlice<T> {
+impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,

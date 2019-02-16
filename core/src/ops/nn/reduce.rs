@@ -83,7 +83,7 @@ impl Reducer {
     ) -> TractResult<SharedTensor>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
-        T: Datum,
+        T: Copy + Datum,
     {
         use ndarray::*;
         let input = input.to_array::<T>()?;
@@ -123,21 +123,21 @@ impl Reducer {
 
 fn l1s_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Signed + num_traits::Zero,
+    T: Copy + Datum + num_traits::Signed + num_traits::Zero,
 {
     v.fold(T::zero(), |acc, &v| acc + v.abs())
 }
 
 fn l1u_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Unsigned + num_traits::Zero,
+    T: Copy + Datum + num_traits::Unsigned + num_traits::Zero,
 {
     v.fold(T::zero(), |acc, &v| acc + v)
 }
 
 fn l2_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + AsPrimitive<f64>,
+    T: Copy + Datum + AsPrimitive<f64>,
     f64: AsPrimitive<T>,
 {
     v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2))
@@ -147,14 +147,14 @@ where
 
 fn log_sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Zero + num_traits::Float,
+    T: Copy + Datum + num_traits::Zero + num_traits::Float,
 {
     v.scalar_sum().ln()
 }
 
 fn log_sum_exp_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Zero + num_traits::Float,
+    T: Copy + Datum + num_traits::Zero + num_traits::Float,
 {
     let max = v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v });
     max + v.fold(T::zero(), |acc, &v| acc + (v - max).exp()).ln()
@@ -162,14 +162,14 @@ where
 
 fn max_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
+    T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::min_value(), |acc, &v| if acc > v { acc } else { v })
 }
 
 fn mean_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Zero + ::std::ops::Div<Output = T>,
+    T: Copy + Datum + num_traits::Zero + ::std::ops::Div<Output = T>,
     usize: AsPrimitive<T>,
 {
     let (sum, count) = v.fold((T::zero(), 0), |acc, &v| (acc.0 + v, acc.1 + 1));
@@ -178,28 +178,28 @@ where
 
 fn min_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
+    T: Copy + Datum + num_traits::Bounded + ::std::cmp::PartialOrd,
 {
     v.fold(T::max_value(), |acc, &v| if acc < v { acc } else { v })
 }
 
 fn prod_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::One,
+    T: Copy + Datum + num_traits::One,
 {
     v.fold(T::one(), |acc, &v| acc * v)
 }
 
 fn sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Zero,
+    T: Copy + Datum + num_traits::Zero,
 {
     v.scalar_sum()
 }
 
 fn sum_square_t<'a, T>(v: ArrayViewD<'a, T>) -> T
 where
-    T: Datum + num_traits::Zero + ::std::ops::Mul<T, Output = T>,
+    T: Copy + Datum + num_traits::Zero + ::std::ops::Mul<T, Output = T>,
 {
     v.fold(T::zero(), |acc, &v| acc + v * v)
 }

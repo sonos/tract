@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use tract_core::ops::prelude::*;
 
 #[derive(Debug, Clone, Default, new)]
-pub struct Fill<T: Datum> {
+pub struct Fill<T: Copy + Datum> {
     _phantom: PhantomData<T>,
 }
 
@@ -14,14 +14,14 @@ pub fn fill(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 
 impl<T> Op for Fill<T>
 where
-    T: Datum,
+    T: Copy + Datum,
 {
     fn name(&self) -> Cow<str> {
         "tf.Fill".into()
     }
 }
 
-impl<T: Datum> StatelessOp for Fill<T> {
+impl<T: Copy + Datum> StatelessOp for Fill<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (shape, value) = args_2!(inputs);
         let value = value.to_array_view()?;
@@ -35,7 +35,7 @@ impl<T: Datum> StatelessOp for Fill<T> {
     }
 }
 
-impl<T: Datum> InferenceRulesOp for Fill<T> {
+impl<T: Copy + Datum> InferenceRulesOp for Fill<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
