@@ -10,6 +10,7 @@ mod maxpool;
 mod padding;
 mod patches;
 mod reduce;
+mod sigmoid;
 
 pub use self::arg_max_min::ArgMaxMin;
 pub use self::avgpool::AvgPool;
@@ -23,11 +24,11 @@ pub use self::maxpool::MaxPool;
 pub use self::padding::PaddingSpec;
 pub use self::patches::Patch;
 pub use self::reduce::{Reduce, Reducer};
+pub use self::sigmoid::Sigmoid;
 
 use num_traits::AsPrimitive;
 
 element_map!(Relu, [f32, i32], |x| if x < 0 as _ { 0 as _ } else { x });
-element_map!(Sigmoid, [f32], |x| ((-x).exp() + 1.0).recip());
 element_map!(Softplus, [f32], |x| (x.exp() + 1.0).ln());
 element_map!(Softsign, [f32], |x| x / (x.abs() + 1.0));
 
