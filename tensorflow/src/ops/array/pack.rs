@@ -57,16 +57,15 @@ impl InferenceRulesOp for Pack {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        let n = self.n;
         let axis = self.axis;
-        s.equals(&inputs.len, n as i32)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, self.n)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].rank, inputs[0].rank.bex() + 1)?;
-        s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
-        s.given_all((0..n).map(move |i| &inputs[i].datum_type), move |s, dts| {
+        s.equals_all((0..self.n).map(|i| inputs[i].rank.bex()).collect())?;
+        s.given_all((0..self.n).map(move |i| &inputs[i].datum_type), move |s, dts| {
             if let Some(dt) = DatumType::super_type_for(dts) {
                 s.equals(&outputs[0].datum_type, dt)?;
             }
@@ -74,7 +73,7 @@ impl InferenceRulesOp for Pack {
         })?;
         s.given(&inputs[0].rank, move |s, r| {
             for d in 0..r as usize {
-                s.equals_all((0..n).map(|i| inputs[i].shape[d].bex()).collect())?;
+                s.equals_all((0..self.n).map(|i| inputs[i].shape[d].bex()).collect())?;
             }
             Ok(())
         })?;
@@ -89,7 +88,7 @@ impl InferenceRulesOp for Pack {
             }
             Ok(())
         })?;
-        s.equals(&outputs[0].shape[axis], n.to_dim())
+        s.equals(&outputs[0].shape[axis], self.n.to_dim())
     }
 }
 

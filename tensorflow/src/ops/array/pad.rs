@@ -73,14 +73,14 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         let input = &inputs[0];
         let padding = &inputs[1];
         let output = &outputs[0];
-        s.equals(&inputs.len, 2)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 2)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&output.datum_type, &input.datum_type)?;
         s.equals(&padding.datum_type, DatumType::TDim)?;
         s.equals(&input.rank, &output.rank)?;

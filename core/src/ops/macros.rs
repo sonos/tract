@@ -40,11 +40,11 @@ macro_rules! element_map {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p TensorsProxy,
-                outputs: &'p TensorsProxy,
+                inputs: &'p [TensorProxy],
+                outputs: &'p [TensorProxy],
             ) -> InferenceResult {
-                s.equals(&inputs.len, 1)?;
-                s.equals(&outputs.len, 1)?;
+                check_input_arity(&inputs, 1)?;
+                check_output_arity(&outputs, 1)?;
                 s.given(&inputs[0].datum_type, move |s, dt| {
                     $(if dt == <$type>::datum_type() {
                         s.equals(&outputs[0].datum_type, <$to>::datum_type())?;
@@ -93,11 +93,11 @@ macro_rules! element_map_with_params {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p TensorsProxy,
-                outputs: &'p TensorsProxy,
+                inputs: &'p [TensorProxy],
+                outputs: &'p [TensorProxy],
             ) -> InferenceResult {
-                s.equals(&inputs.len, 1)?;
-                s.equals(&outputs.len, 1)?;
+                check_input_arity(&inputs, 1)?;
+                check_output_arity(&outputs, 1)?;
                 s.equals_all(wrap![
                     &inputs[0].datum_type,
                     &outputs[0].datum_type,
@@ -194,25 +194,24 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p TensorsProxy,
-                    outputs: &'p TensorsProxy,
+                    inputs: &'p [TensorProxy],
+                    outputs: &'p [TensorProxy],
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let b = &inputs[1];
                     let c = &outputs[0];
 
-                    s.given(&inputs.len, move |s, n|
-                        s.given_all((0..n).map(|i| &inputs[i as usize].datum_type), move |s, dts| {
-                            let dt:DatumType = DatumType::super_type_for(dts.iter().cloned())
-                                .ok_or_else(|| format!("No supertype for {:?}", dts))?;
-                            $(if dt == <$type>::datum_type() {
-                                return s.equals(&outputs[0].datum_type, <$to>::datum_type());
-                            })*
-                            bail!("{} not covering {:?}", stringify!($name), dt)
-                        })
-                    )?;
-                    s.equals(&inputs.len, 2)?;
-                    s.equals(&outputs.len, 1)?;
+                    let n = inputs.len();
+                    s.given_all((0..n).map(|i| &inputs[i as usize].datum_type), move |s, dts| {
+                        let dt:DatumType = DatumType::super_type_for(dts.iter().cloned())
+                            .ok_or_else(|| format!("No supertype for {:?}", dts))?;
+                        $(if dt == <$type>::datum_type() {
+                            return s.equals(&outputs[0].datum_type, <$to>::datum_type());
+                        })*
+                        bail!("{} not covering {:?}", stringify!($name), dt)
+                    })?;
+                    check_input_arity(&inputs, 2)?;
+                    check_output_arity(&outputs, 1)?;
                     s.with(&a.shape, move |s, a_shape| {
                         s.with(&b.shape, move |s, b_shape| {
                             if let Ok(Some(c_shape)) = $crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape]) {
@@ -256,8 +255,8 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p TensorsProxy,
-                    outputs: &'p TensorsProxy,
+                    inputs: &'p [TensorProxy],
+                    outputs: &'p [TensorProxy],
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let c = &outputs[0];
@@ -268,8 +267,8 @@ macro_rules! element_bin {
                         })*
                         bail!("{} not covering {:?}", stringify!($name), dt)
                     })?;
-                    s.equals(&inputs.len, 1)?;
-                    s.equals(&outputs.len, 1)?;
+                    check_input_arity(&inputs, 1)?;
+                    check_output_arity(&outputs, 1)?;
                     s.with(&a.shape, move |s, a_shape| {
                         let b_shape = self.b.shape();
                         if let Ok(Some(c_shape)) = $crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape.into()]) {
@@ -355,30 +354,28 @@ macro_rules! element_nary {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p TensorsProxy,
-                outputs: &'p TensorsProxy,
+                inputs: &'p [TensorProxy],
+                outputs: &'p [TensorProxy],
             ) -> InferenceResult {
                 if let Some(n) = self.n {
-                    s.equals(&inputs.len, n as i32)?;
+                    check_input_arity(&inputs, n)?;
                 }
-                s.equals(&outputs.len, 1)?;
+                check_output_arity(&outputs, 1)?;
                 s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
                 s.equals(&inputs[0].rank, &outputs[0].rank)?;
-                s.given(&inputs.len, move |s, n| {
-                    let n = n as usize;
-                    s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
-                    s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
-                    s.given(&inputs[0].rank, move |s, rank: i32| {
-                        for dim in 0..(rank as usize) {
-                            s.equals(&inputs[0].shape[dim], &outputs[0].shape[dim])?;
-                            s.equals_all(
-                                (0..n as usize)
-                                    .map(|i| inputs[i].shape[dim].bex())
-                                    .collect(),
-                            )?;
-                        }
-                        Ok(())
-                    })
+                let n = inputs.len();
+                s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
+                s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
+                s.given(&inputs[0].rank, move |s, rank: i32| {
+                    for dim in 0..(rank as usize) {
+                        s.equals(&inputs[0].shape[dim], &outputs[0].shape[dim])?;
+                        s.equals_all(
+                            (0..n as usize)
+                                .map(|i| inputs[i].shape[dim].bex())
+                                .collect(),
+                        )?;
+                    }
+                    Ok(())
                 })
             }
         }

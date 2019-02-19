@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use tract_core::ops::prelude::*;
 
-use tract_core::analyser::rules::SharedTensorProxy;
+use tract_core::analyser::rules::TensorProxy;
 
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatch {
@@ -82,11 +82,11 @@ impl InferenceRulesOp for SpaceToBatch {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 3)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 3)?;
+        check_output_arity(&outputs, 1)?;
         rules(
             s,
             self.datum_type,
@@ -176,11 +176,11 @@ impl InferenceRulesOp for BatchToSpace {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 3)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 3)?;
+        check_output_arity(&outputs, 1)?;
         rules(
             s,
             self.datum_type,
@@ -195,10 +195,10 @@ impl InferenceRulesOp for BatchToSpace {
 fn rules<'r, 'p: 'r>(
     s: &mut Solver<'r>,
     datum_type: DatumType,
-    batch: &'p SharedTensorProxy,
-    space: &'p SharedTensorProxy,
-    block_shape: &'p SharedTensorProxy,
-    paddings: &'p SharedTensorProxy,
+    batch: &'p TensorProxy,
+    space: &'p TensorProxy,
+    block_shape: &'p TensorProxy,
+    paddings: &'p TensorProxy,
 ) -> InferenceResult {
     s.equals(&batch.datum_type, datum_type)?;
     s.equals(&batch.datum_type, &space.datum_type)?;

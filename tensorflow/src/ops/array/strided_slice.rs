@@ -196,11 +196,11 @@ impl BaseStridedSlice {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 4)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 4)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].rank, 1)?;
         s.equals(&inputs[2].rank, 1)?;
@@ -304,8 +304,8 @@ impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
@@ -337,8 +337,8 @@ impl InferenceRulesOp for StridedSliceD {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }

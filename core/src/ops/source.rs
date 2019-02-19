@@ -31,11 +31,11 @@ impl InferenceRulesOp for Source {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 0)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 0)?;
+        check_output_arity(&outputs, 1)?;
         if let GenericFact::Only(dt) = self.fact.datum_type {
             s.equals(&outputs[0].datum_type, dt)?;
         }

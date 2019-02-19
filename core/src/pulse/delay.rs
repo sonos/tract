@@ -95,8 +95,8 @@ impl InferenceRulesOp for Delay {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         _s: &mut Solver<'r>,
-        _inputs: &'p TensorsProxy,
-        _outputs: &'p TensorsProxy,
+        _inputs: &'p [TensorProxy],
+        _outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         Ok(())
     }
