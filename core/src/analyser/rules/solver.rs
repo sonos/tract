@@ -640,11 +640,11 @@ mod tests {
     use super::*;
     use crate::DatumType;
 
-    fn bootstrap<'s>() -> (Solver<'s>, SharedTensorsProxy, SharedTensorsProxy) {
+    fn bootstrap<'s>() -> (Solver<'s>, TensorsProxy, TensorsProxy) {
         (
             Solver::default(),
-            SharedTensorsProxy::new(tvec![0].into()),
-            SharedTensorsProxy::new(tvec![1].into()),
+            TensorsProxy::new(tvec![0].into()),
+            TensorsProxy::new(tvec![1].into()),
         )
     }
 

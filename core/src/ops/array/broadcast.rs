@@ -36,8 +36,8 @@ impl InferenceRulesOp for MultiBroadcastTo {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 2)?;
         s.equals(&outputs.len, 1)?;

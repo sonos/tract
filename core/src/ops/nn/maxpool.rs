@@ -88,8 +88,8 @@ impl InferenceRulesOp for MaxPool {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         s.equals(&outputs.len, self.noutputs() as i32)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
