@@ -52,8 +52,8 @@ impl InferenceRulesOp for Lrn {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;

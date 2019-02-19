@@ -54,8 +54,8 @@ impl InferenceRulesOp for LayerHardmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
@@ -112,8 +112,8 @@ impl InferenceRulesOp for LayerLogSoftmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
@@ -170,8 +170,8 @@ impl InferenceRulesOp for LayerSoftmax {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
@@ -179,8 +179,8 @@ impl InferenceRulesOp for LayerSoftmax {
 
 fn rules<'r, 'p: 'r, 's: 'r>(
     s: &mut Solver<'r>,
-    inputs: &'p SharedTensorsProxy,
-    outputs: &'p SharedTensorsProxy,
+    inputs: &'p TensorsProxy,
+    outputs: &'p TensorsProxy,
 ) -> InferenceResult {
     s.equals(&outputs.len, 1)?;
     s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;

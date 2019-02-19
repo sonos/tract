@@ -135,8 +135,8 @@ impl InferenceRulesOp for Conv {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         if let Some(kshape) = &self.kernel_shape {
             s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;

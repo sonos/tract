@@ -40,8 +40,8 @@ macro_rules! element_map {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p SharedTensorsProxy,
-                outputs: &'p SharedTensorsProxy,
+                inputs: &'p TensorsProxy,
+                outputs: &'p TensorsProxy,
             ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
@@ -93,8 +93,8 @@ macro_rules! element_map_with_params {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p SharedTensorsProxy,
-                outputs: &'p SharedTensorsProxy,
+                inputs: &'p TensorsProxy,
+                outputs: &'p TensorsProxy,
             ) -> InferenceResult {
                 s.equals(&inputs.len, 1)?;
                 s.equals(&outputs.len, 1)?;
@@ -194,8 +194,8 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p SharedTensorsProxy,
-                    outputs: &'p SharedTensorsProxy,
+                    inputs: &'p TensorsProxy,
+                    outputs: &'p TensorsProxy,
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let b = &inputs[1];
@@ -256,8 +256,8 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p SharedTensorsProxy,
-                    outputs: &'p SharedTensorsProxy,
+                    inputs: &'p TensorsProxy,
+                    outputs: &'p TensorsProxy,
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let c = &outputs[0];
@@ -355,8 +355,8 @@ macro_rules! element_nary {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p SharedTensorsProxy,
-                outputs: &'p SharedTensorsProxy,
+                inputs: &'p TensorsProxy,
+                outputs: &'p TensorsProxy,
             ) -> InferenceResult {
                 if let Some(n) = self.n {
                     s.equals(&inputs.len, n as i32)?;

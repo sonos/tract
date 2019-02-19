@@ -77,7 +77,7 @@ impl_comparable_proxy!(IntProxy, IntFact);
 /// ```text
 /// solver.equals(inputs.len, 2);
 /// ```
-/// When the indexing operator is used on a SharedTensorsProxy (e.g. `inputs[0]`),
+/// When the indexing operator is used on a TensorsProxy (e.g. `inputs[0]`),
 /// a new SharedTensorProxy is created dynamically and cached in `tensors`.
 ///
 /// The solver should check the coherence of `len` with the indices of every
@@ -86,16 +86,16 @@ impl_comparable_proxy!(IntProxy, IntFact);
 /// solver.equals(inputs[i].rank, 2);
 /// ```
 /// when i >= len.
-pub struct SharedTensorsProxy {
+pub struct TensorsProxy {
     pub len: IntProxy,
     tensors: Cache<usize, SharedTensorProxy>,
     path: Path,
 }
 
-impl SharedTensorsProxy {
-    /// Creates a new SharedTensorsProxy instance.
-    pub fn new(path: Path) -> SharedTensorsProxy {
-        SharedTensorsProxy {
+impl TensorsProxy {
+    /// Creates a new TensorsProxy instance.
+    pub fn new(path: Path) -> TensorsProxy {
+        TensorsProxy {
             len: IntProxy::new([&path[..], &[-1]].concat().into()),
             tensors: Cache::new(),
             path,
@@ -103,9 +103,9 @@ impl SharedTensorsProxy {
     }
 }
 
-impl_proxy!(SharedTensorsProxy);
+impl_proxy!(TensorsProxy);
 
-impl Index<usize> for SharedTensorsProxy {
+impl Index<usize> for TensorsProxy {
     type Output = SharedTensorProxy;
 
     /// Returns the SharedTensorProxy corresponding to the given index.
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_tensors_proxy() {
-        let inputs = SharedTensorsProxy::new(vec![0].into());
+        let inputs = TensorsProxy::new(vec![0].into());
         assert_eq!(inputs.len.get_path(), &vec![0, -1].into());
         assert_eq!(inputs[0].get_path(), &vec![0, 0].into());
         assert_eq!(inputs[2].get_path(), &vec![0, 2].into());
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_tensor_proxy_datum_type() {
-        let inputs = SharedTensorsProxy::new(vec![0].into());
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
         assert_eq!(input.datum_type.get_path(), &vec![0, 0, 0].into());
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_tensor_proxy_rank() {
-        let inputs = SharedTensorsProxy::new(vec![0].into());
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
         assert_eq!(input.rank.get_path(), &vec![0, 0, 1].into());
@@ -304,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_tensor_proxy_shape() {
-        let inputs = SharedTensorsProxy::new(vec![0].into());
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
         assert_eq!(input.shape[0].get_path(), &vec![0, 0, 2, 0].into());
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_tensor_proxy_value() {
-        let inputs = SharedTensorsProxy::new(vec![0].into());
+        let inputs = TensorsProxy::new(vec![0].into());
         let input = &inputs[0];
 
         assert_eq!(input.value.get_path(), &vec![0, 0, 3].into());

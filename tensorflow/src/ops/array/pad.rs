@@ -73,8 +73,8 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         let input = &inputs[0];
         let padding = &inputs[1];

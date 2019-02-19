@@ -41,7 +41,7 @@ pub mod prelude {
     };
     pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
     pub use crate::analyser::rules::{
-        InferenceResult, InferenceRulesOp, SharedTensorsProxy, Solver,
+        InferenceResult, InferenceRulesOp, TensorsProxy, Solver,
     };
     pub use crate::analyser::types::TypeFact;
     pub use crate::analyser::types::*;

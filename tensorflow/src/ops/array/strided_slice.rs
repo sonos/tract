@@ -196,8 +196,8 @@ impl BaseStridedSlice {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         s.equals(&inputs.len, 4)?;
         s.equals(&outputs.len, 1)?;
@@ -304,8 +304,8 @@ impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
@@ -337,8 +337,8 @@ impl InferenceRulesOp for StridedSliceD {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p TensorsProxy,
+        outputs: &'p TensorsProxy,
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
