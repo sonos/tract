@@ -35,23 +35,22 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        let n = self.n;
-        s.equals(&inputs.len, n as i32 + 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, self.n + 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals_all((0..self.n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        s.equals(&inputs[n].datum_type, DatumType::I32)?;
+        s.equals(&inputs[self.n].datum_type, DatumType::I32)?;
         s.equals_all((0..self.n).map(|i| (&inputs[i].rank).bex()).collect())?;
-        s.equals(&inputs[n].rank, 0)?;
+        s.equals(&inputs[self.n].rank, 0)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        s.given(&inputs[n].value, move |s, axis| {
+        s.given(&inputs[self.n].value, move |s, axis| {
             let axis = *axis.to_scalar::<i32>()? as usize;
             trace!("axis for Concatv2: {}", axis);
             for d in 0..axis {
-                s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
+                s.equals_all((0..self.n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
             }
             for d in 0..axis {
                 s.equals(&inputs[0].shape[d], &outputs[0].shape[d])?;
@@ -62,13 +61,13 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
                     s.equals(&inputs[0].shape[d], &outputs[0].shape[d])?;
                 }
                 for d in (axis + 1)..(rank as usize) {
-                    s.equals_all((0..n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
+                    s.equals_all((0..self.n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
                 }
                 Ok(())
             })?;
 
             let mut concat_dim = -1 * outputs[0].shape[axis].bex();
-            for i in 0..n {
+            for i in 0..self.n {
                 concat_dim = concat_dim + inputs[i].shape[axis].bex();
             }
             s.equals_zero(concat_dim)

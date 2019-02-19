@@ -41,7 +41,7 @@ pub mod prelude {
     };
     pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
     pub use crate::analyser::rules::{
-        InferenceResult, InferenceRulesOp, TensorsProxy, Solver,
+        InferenceResult, InferenceRulesOp, TensorProxy, Solver,
     };
     pub use crate::analyser::types::TypeFact;
     pub use crate::analyser::types::*;
@@ -56,6 +56,22 @@ pub mod prelude {
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
+
+    pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
+        if inputs.len() != expected {
+            bail!("Wrong input number. Expected {}, got {}.", expected, inputs.len())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResult<()> {
+        if outputs.len() != expected {
+            bail!("Wrong output number. Expected {}, got {}.", expected, outputs.len())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 use self::prelude::*;

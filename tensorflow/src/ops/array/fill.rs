@@ -39,11 +39,11 @@ impl<T: Copy + Datum> InferenceRulesOp for Fill<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 2)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 2)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].rank, 1)?;
         s.equals(&inputs[1].rank, 0)?;

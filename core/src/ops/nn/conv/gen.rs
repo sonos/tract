@@ -135,8 +135,8 @@ impl InferenceRulesOp for Conv {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         if let Some(kshape) = &self.kernel_shape {
             s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;
@@ -149,26 +149,23 @@ impl InferenceRulesOp for Conv {
         }
         s.equals(&inputs[0].rank, &inputs[1].rank)?;
         s.equals(&outputs[0].rank, &inputs[1].rank)?;
-        s.equals(&outputs.len, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals_all(wrap![
             &outputs[0].datum_type,
             &inputs[0].datum_type,
             &inputs[1].datum_type
         ])?;
-        s.given(&inputs.len, move |s, len| {
-            if len == 3 {
-                s.equals(&inputs[2].rank, 1)?;
-                s.equals(&outputs[0].datum_type, &inputs[2].datum_type)?;
-                s.given(&inputs[1].rank, move |s, krank| {
-                    let filter_o = match self.kernel_fmt {
-                        KernelFormat::OIHW => &inputs[1].shape[0],
-                        KernelFormat::HWIO => &inputs[1].shape[krank as usize - 1],
-                    };
-                    s.equals(&inputs[2].shape[0], filter_o)
-                })?
-            }
-            Ok(())
-        })?;
+        if inputs.len() == 3 {
+            s.equals(&inputs[2].rank, 1)?;
+            s.equals(&outputs[0].datum_type, &inputs[2].datum_type)?;
+            s.given(&inputs[1].rank, move |s, krank| {
+                let filter_o = match self.kernel_fmt {
+                    KernelFormat::OIHW => &inputs[1].shape[0],
+                    KernelFormat::HWIO => &inputs[1].shape[krank as usize - 1],
+                };
+                s.equals(&inputs[2].shape[0], filter_o)
+            })?
+        }
         s.given_2(&inputs[0].rank, &inputs[1].rank, move |s, irank, krank| {
             let input_c = if self.data_fmt == DataFormat::NHWC {
                 &inputs[0].shape[irank as usize - 1]

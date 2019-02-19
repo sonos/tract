@@ -179,11 +179,11 @@ impl InferenceRulesOp for MatMul {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 2)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 2)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
         s.given_2(
@@ -273,11 +273,11 @@ impl InferenceRulesOp for MatMulUnaryA {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, ashape| {
             let bshape: TVec<TDim> = self.b.shape().iter().map(|x| x.to_dim()).collect();
@@ -367,11 +367,11 @@ impl<T: Copy + Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplASi
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, ShapeFact::from(&*self.a_shape))?;
@@ -478,11 +478,11 @@ impl<T: Copy + Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplA<T
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, ShapeFact::from(&*self.geo.a_shape))?;
@@ -514,11 +514,11 @@ impl InferenceRulesOp for MatMulUnaryB {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p TensorsProxy,
-        outputs: &'p TensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, bshape| {
             let ashape: TVec<TDim> = self.a.shape().iter().map(|x| x.to_dim()).collect();
