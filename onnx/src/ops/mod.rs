@@ -6,6 +6,7 @@ mod array;
 mod logic;
 mod math;
 mod nn;
+mod rec;
 
 pub type OpRegister = HashMap<&'static str, fn(&NodeProto) -> TractResult<Box<Op>>>;
 
@@ -23,6 +24,7 @@ impl OpBuilder {
         math::register_all_ops(&mut reg);
         nn::register_all_ops(&mut reg);
         array::register_all_ops(&mut reg);
+        rec::register_all_ops(&mut reg);
         OpBuilder(reg)
     }
 

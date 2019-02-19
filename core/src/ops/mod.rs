@@ -80,7 +80,7 @@ pub trait OpState: Debug + Send + objekt::Clone {
     fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
 }
 
-pub trait StatelessOp {
+pub trait StatelessOp: Op {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
 }
 
@@ -182,6 +182,7 @@ pub trait InferenceOp {
 }
 
 clone_trait_object!(Op);
+clone_trait_object!(StatelessOp);
 
 impl<O: Op> From<O> for Box<Op> {
     fn from(it: O) -> Box<Op> {
