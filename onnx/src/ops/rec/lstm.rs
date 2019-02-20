@@ -68,9 +68,12 @@ impl InferenceRulesOp for LSTM {
         s.equals(&outputs[1].shape[0], &inputs[1].shape[0])?; // num_directions
         s.equals(&outputs[1].shape[1], &inputs[0].shape[1])?; // batch_size
         s.equals(&outputs[1].shape[2], &inputs[2].shape[2])?; // hidden_size
-        if inputs.len() > 2 {
-            s.equals(&outputs[1].datum_type, &outputs[2].datum_type)?;
-            s.equals(&outputs[1].shape, &outputs[2].shape)?;
+        if inputs.len() > 3 {
+            // bias
+            s.equals(&inputs[3].datum_type, &inputs[0].datum_type)?;
+            s.equals(&inputs[3].rank, 2)?;
+            s.equals(&inputs[3].shape[0], &inputs[0].shape[0])?; // num_directions
+            s.equals(&inputs[3].shape[1],  8 * inputs[2].shape[2].bex())?; // 8 * hidden_size
         }
         Ok(())
     }
@@ -87,16 +90,17 @@ impl OpState for LSTMState {
         let x:ArrayView3<f32> = inputs[0].to_array_view::<f32>()?.into_dimensionality()?; // [seq_length, batch_size, input_size]
         let w:ArrayView3<f32> = inputs[1].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 4*hidden_size, input_size]
         let r:ArrayView3<f32> = inputs[2].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 4*hidden_size, hidden_size]
+
+        let bias = if let Some(bias) = inputs.get(3) {
+            Some(bias.to_array_view::<f32>()?.into_dimensionality::<Ix2>()?) // [num_directions, 8*hidden_size]
+        } else {
+            None
+        };
+
         let seq_length = x.shape()[0];
         let batch_size = x.shape()[1];
-        let input_size = x.shape()[2];
         let num_directions = w.shape()[0];
         let hidden_size = r.shape()[2];
-
-        dbg!(seq_length);
-        dbg!(batch_size);
-        dbg!(num_directions);
-        dbg!(hidden_size);
 
         if num_directions != 1 {
             bail!("Only forward LSTM implemented");
@@ -119,7 +123,11 @@ impl OpState for LSTMState {
             // x -> batch_size x input_size
             // Wt -> k=input_size x n=4*hidden_size
             // gates -> batch_size x 4 * hidden_size
-            let gates = x.dot(&w.t()) + ht.dot(&r.t()); // batch_size x 4*hidden_size
+            let mut gates = x.dot(&w.t()) + ht.dot(&r.t()); // batch_size x 4*hidden_size
+            if let Some(bias) = bias {
+                gates += &bias.slice(s!(0, 0..4*hidden_size));
+                gates += &bias.slice(s!(0, 4*hidden_size..8*hidden_size));
+            }
             let gates = gates.into_shape((batch_size, hidden_size, 4))?;
             dbg!(gates.shape());
             let i = op.f.eval(tvec!(gates.slice_axis(Axis(2), (0..=0).into()).to_owned().into()))?;
@@ -139,7 +147,6 @@ impl OpState for LSTMState {
             ht.assign(&big_h);
             ct.assign(&big_c);
         }
-        println!("done lstm loop");
         let ht_list = ht_list.into_shape((seq_length, 1, batch_size, hidden_size))?;
         let hto = ht.to_owned().into_shape((1, batch_size, hidden_size))?;
 
