@@ -148,6 +148,9 @@ test_leakyrelu_default
 test_leakyrelu_example
 test_less
 test_less_bcast
+test_lstm_defaults
+test_lstm_with_peepholes
+test_lstm_with_initial_bias
 test_log
 test_log_example
 test_logsoftmax_axis_0
