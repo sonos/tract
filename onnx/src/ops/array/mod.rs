@@ -11,6 +11,7 @@ use num_traits::AsPrimitive;
 pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
+    reg.insert("ConstantOfShape", constant_of_shape);
     reg.insert("Expand", |_| {
         Ok(Box::new(tractops::array::MultiBroadcastTo::default()))
     });
@@ -44,6 +45,14 @@ where
     f32: AsPrimitive<T>,
 {
     Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into())
+}
+
+pub fn constant_of_shape(node: &NodeProto) -> TractResult<Box<Op>> {
+    let value = match node.get_attr_opt_tensor("value")? {
+        Some(val) => val.into_tensor(),
+        None => make_const::<f32>(&vec![1], 0.0 as f32)?,
+    };
+    Ok(Box::new(tractops::array::ConstantOfShape::new(value)))
 }
 
 pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
