@@ -32,6 +32,7 @@ use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
 use tract_core::{ TractResult, ToTract };
+use tract_core::model::TVec;
 
 pub fn graph() -> graph::GraphDef {
     graph::GraphDef::new()
@@ -132,6 +133,19 @@ impl node_def::NodeDef {
     pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<tract_core::DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
             Ok(Some(t.get_field_type().tractify()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_attr_shape(&self, name: &str) -> TractResult<TVec<usize>> {
+        Ok(self.get_attr_opt_shape(name)?
+            .ok_or_else(|| format!("Node {} ({}) expected shape attribute '{}'", self.get_name(), self.get_op(), name))?)
+    }
+
+    pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<usize>>> {
+        if let Some(t) = self.get_attr().get(name).map(|v| v.get_shape()) {
+            Ok(Some(t.tractify()?))
         } else {
             Ok(None)
         }
