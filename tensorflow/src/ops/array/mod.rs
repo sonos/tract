@@ -6,6 +6,7 @@ mod expand_dims;
 mod fill;
 mod pack;
 mod pad;
+mod range;
 mod reshape;
 mod squeeze;
 mod strided_slice;
@@ -18,6 +19,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Fill", fill::fill);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
+    reg.insert("Range", range::range);
     reg.insert("Reshape", reshape::reshape);
     reg.insert("Shape", |_| Ok(Box::new(::tract_core::ops::array::Shape::new(DatumType::I32))));
     reg.insert("Squeeze", squeeze::squeeze);

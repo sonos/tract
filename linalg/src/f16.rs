@@ -140,6 +140,12 @@ impl num_traits::ToPrimitive for f16 {
     }
 }
 
+impl num_traits::AsPrimitive<usize> for f16 {
+    fn as_(self) -> usize {
+        self.0.to_f32() as usize
+    }
+}
+
 impl num_traits::AsPrimitive<f32> for f16 {
     fn as_(self) -> f32 {
         self.0.to_f32()
