@@ -39,12 +39,12 @@ pub type NormalizedModelPatch = patch::ModelPatch<NormalizedTensorInfo>;
 
 impl InferenceModel {
     pub fn analyse_one(&mut self, id: usize) -> TractResult<()> {
-        let _ = crate::analyser::Analyser::new(self)?.analyse_one(id)?;
+        crate::analyser::Analyser::new(self)?.analyse_one(id)?;
         Ok(())
     }
 
-    pub fn analyse(&mut self) -> TractResult<()> {
-        crate::analyser::Analyser::new(self)?.analyse()
+    pub fn analyse(&mut self, obstinate: bool) -> TractResult<()> {
+        crate::analyser::Analyser::new(self)?.analyse_obstinate(obstinate)
     }
 
     pub fn missing_type_shape(&self) -> TractResult<Vec<OutletId>> {
@@ -65,7 +65,7 @@ impl InferenceModel {
     }
 
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
-        self.analyse()?;
+        self.analyse(false)?;
         compact::compact(&mut self)
     }
 

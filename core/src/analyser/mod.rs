@@ -23,42 +23,53 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
         Ok(Analyser { model })
     }
 
-    /// Runs the entire analysis at once.
-    pub fn analyse(&mut self) -> TractResult<()> {
+    /// Runs the entire analysis at once. Will not stop on error if obstinate is
+    /// true.
+    pub fn analyse_obstinate(&mut self, obstinate: bool) -> TractResult<()> {
         let mut nodes_to_visit: BTreeSet<usize> =
             self.model.borrow().eval_order()?.iter().cloned().collect();
+        let mut first_error = None;
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
             let node = match nodes_to_visit.iter().next() {
-                None => return Ok(()),
+                None => break,
                 Some(n) => *n,
             };
-            let changed_edges = self.analyse_one(node).map_err(|e| {
-                format!(
-                    "Analysing node #{} {} ({}), {}",
-                    node,
-                    self.model.borrow().nodes()[node].name,
-                    self.model.borrow().nodes()[node].op.name(),
-                    e
-                )
-            })?;
-            for (edge, _fact) in changed_edges {
-                trace!("Changed edge: {:?}", edge);
-                for dst in
-                    self.model.borrow().nodes()[edge.node].outputs[edge.slot].successors.iter()
-                {
-                    if dst.node != edge.node {
-                        trace!("Inserting node dn {:?}", dst.node);
-                        nodes_to_visit.insert(dst.node);
+            match self.analyse_one(node) {
+                Ok(changed_edges) => for (edge, _fact) in changed_edges {
+                    trace!("Changed edge: {:?}", edge);
+                    for dst in self.model.borrow().nodes()[edge.node].outputs[edge.slot]
+                        .successors
+                        .iter()
+                    {
+                        if dst.node != edge.node {
+                            trace!("Inserting node dn {:?}", dst.node);
+                            nodes_to_visit.insert(dst.node);
+                        }
+                    }
+                    if edge.node != node {
+                        trace!("Inserting node up {}", edge.node);
+                        nodes_to_visit.insert(edge.node);
                     }
                 }
-                if edge.node != node {
-                    trace!("Inserting node up {}", edge.node);
-                    nodes_to_visit.insert(edge.node);
+                Err(e) => {
+                    let e = format!("Analysing node {:?}, {:?}", node, e);
+                    if !obstinate {
+                        return Err(e.into())
+                    }
+                    debug!("{:?}", e);
+                    if first_error.is_none() {
+                        first_error = Some(e);
+                    }
                 }
             }
             nodes_to_visit.remove(&node);
         }
+        trace!("analyse done");
+        if let Some(e) = first_error {
+            Err(e)?
+        }
+        Ok(())
     }
 
     /// Tries to run a single step of the analysis, and returns whether

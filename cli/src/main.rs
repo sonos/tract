@@ -359,7 +359,13 @@ impl Parameters {
 
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
-            SomeModel::Typed(raw_model.into_typed()?)
+            if let Err(e) = raw_model.analyse(true) {
+                // do not stop on mere analyse error
+                error!("{}", e);
+                SomeModel::Inference(raw_model)
+            } else {
+                SomeModel::Typed(raw_model.into_typed()?)
+            }
         } else {
             info!("Skipping analyse");
             SomeModel::Inference(raw_model)
