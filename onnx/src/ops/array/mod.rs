@@ -17,6 +17,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     });
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
+    reg.insert("Gather", gather);
     reg.insert("Pad", pad);
     reg.insert("Reshape", |_| {
         Ok(Box::new(tractops::array::Reshape::default()))
@@ -47,14 +48,6 @@ where
     Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into())
 }
 
-pub fn constant_of_shape(node: &NodeProto) -> TractResult<Box<Op>> {
-    let value = match node.get_attr_opt_tensor("value")? {
-        Some(val) => val.into_tensor(),
-        None => make_const::<f32>(&vec![1], 0.0 as f32)?,
-    };
-    Ok(Box::new(tractops::array::ConstantOfShape::new(value)))
-}
-
 pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
     let value = node.get_attr_opt_float("value")?.unwrap_or(0.0);
     if node.get_input().len() == 0 {
@@ -79,6 +72,14 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
     }
 }
 
+pub fn constant_of_shape(node: &NodeProto) -> TractResult<Box<Op>> {
+    let value = match node.get_attr_opt_tensor("value")? {
+        Some(val) => val.into_tensor(),
+        None => make_const::<f32>(&vec![1], 0.0 as f32)?,
+    };
+    Ok(Box::new(tractops::array::ConstantOfShape::new(value)))
+}
+
 pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
     use protobuf::ProtobufEnum;
     let dt = match node.get_attr_opt_int("dtype")? {
@@ -98,6 +99,11 @@ pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
 pub fn flatten(node: &NodeProto) -> TractResult<Box<Op>> {
     let axis = node.get_attr_opt_int("axis")?.unwrap_or(1);
     Ok(Box::new(tractops::array::Flatten::new(axis as usize)))
+}
+
+pub fn gather(node: &NodeProto) -> TractResult<Box<Op>> {
+    let axis = node.get_attr_opt_int("axis")?.unwrap_or(0);
+    Ok(Box::new(tractops::array::Gather::new(axis)))
 }
 
 pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
