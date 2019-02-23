@@ -167,7 +167,6 @@ where
             let btops: Vec<*const T> = self.data_offsets.iter().map(|&o| b.offset(o)).collect();
             for ia in 0..co / mr {
                 for ib in 0..n / nr {
-                    dbg!((ia, ib));
                     K::kernel(
                         k,
                         pa.offset((ia * k * mr) as isize),

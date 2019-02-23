@@ -96,7 +96,6 @@ impl ConvUnary {
 
     fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
         let patch = self.patch(input_full_shape);
-        dbg!(&patch);
         let ref input_spatial_dims_strides: TVec<usize> = patch
             .input_shape
             .hw_axes()
@@ -132,8 +131,6 @@ impl ConvUnary {
                     .map(move |x| x + (ici * channel_stride) as isize)
             })
             .collect();
-        dbg!(kernel_offsets.len());
-        dbg!(data_offsets.len());
         let conv =
             (tract_linalg::ops().sconv)(self.output_channels(), kernel_offsets, data_offsets);
 
