@@ -22,16 +22,19 @@ pub mod arm64;
 pub mod arm32;
 
 pub use self::frame::{MatMul, PackedMatMul};
+pub use self::frame::{Conv, PackedConv};
 
 pub struct Ops {
     pub smm: Box<Fn(usize, usize, usize) -> Box<MatMul<f32>> + Send + Sync>,
     pub dmm: Box<Fn(usize, usize, usize) -> Box<MatMul<f64>> + Send + Sync>,
+    pub sconv: Box<Fn(usize, Vec<isize>, Vec<isize>) -> Box<Conv<f32>> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
     Ops {
         smm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::SMatMul4x4, f32>::new(m, k, n))),
         dmm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::DMatMul4x2, f64>::new(m, k, n))),
+        sconv: Box::new(|co, kernel_offsets, data_offsets| Box::new(PackedConv::<generic::SConv4x4, f32>::new(co, kernel_offsets, data_offsets)))
     }
 }
 
