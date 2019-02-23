@@ -9,6 +9,8 @@ pub trait Conv<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + objekt
     fn packed_a_alignment(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
 
+    fn co(&self) -> usize;
+    fn n(&self) -> usize;
     fn conv(&self, pa: *const T, b: *const T, c: *mut T, rsc: isize, csc: isize);
 }
 
@@ -49,10 +51,10 @@ where
     K: ConvKer<T> + Debug,
     T: Copy + Add + Mul + Zero + Debug + Send + Sync,
 {
-    co: usize,
-    kernel_offsets: Vec<isize>,
-    n: usize,
-    data_offsets: Vec<isize>,
+    pub co: usize,
+    pub kernel_offsets: Vec<isize>,
+    pub n: usize,
+    pub data_offsets: Vec<isize>,
     _kernel: PhantomData<(K, T)>,
 }
 
@@ -64,7 +66,7 @@ where
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             fmt,
-            "Conv co:{} k:{} data:{} ({} {}x{})",
+            "Conv co:{} k:{} centers:{} ({} {}x{})",
             self.co,
             self.kernel_offsets.len(),
             self.data_offsets.len(),
@@ -165,11 +167,12 @@ where
             let btops: Vec<*const T> = self.data_offsets.iter().map(|&o| b.offset(o)).collect();
             for ia in 0..co / mr {
                 for ib in 0..n / nr {
+                    dbg!((ia, ib));
                     K::kernel(
                         k,
                         pa.offset((ia * k * mr) as isize),
                         btops.as_ptr().offset((ib * nr) as isize),
-                        self.kernel_offsets.as_ptr().offset((ia * mr) as isize),
+                        self.kernel_offsets.as_ptr(),
                         c.offset((mr * ia) as isize * rsc + (nr * ib) as isize * csc),
                         rsc as usize,
                         csc as usize,
@@ -180,7 +183,7 @@ where
                         k,
                         pa.offset((ia * k * mr) as isize),
                         btops.as_ptr().offset((n / nr * nr) as isize),
-                        self.kernel_offsets.as_ptr().offset((ia * mr) as isize),
+                        self.kernel_offsets.as_ptr(),
                         tmpc.as_mut_ptr(),
                         nr,
                         1,
@@ -200,7 +203,7 @@ where
                         k,
                         pa.offset((co / mr * mr * k) as isize),
                         btops.as_ptr().offset((ib * nr) as isize),
-                        self.kernel_offsets.as_ptr().offset((co / mr * mr) as isize),
+                        self.kernel_offsets.as_ptr(),
                         tmpc.as_mut_ptr(),
                         nr,
                         1,
@@ -218,7 +221,7 @@ where
                         k,
                         pa.offset((co / mr * mr * k) as isize),
                         btops.as_ptr().offset((n / nr * nr) as isize),
-                        self.kernel_offsets.as_ptr().offset((co / mr * mr) as isize),
+                        self.kernel_offsets.as_ptr(),
                         tmpc.as_mut_ptr(),
                         nr,
                         1,
@@ -234,6 +237,14 @@ where
                 }
             }
         }
+    }
+
+    fn co(&self) -> usize {
+        self.co
+    }
+
+    fn n(&self) -> usize {
+        self.n
     }
 }
 

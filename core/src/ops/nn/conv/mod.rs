@@ -1,8 +1,10 @@
 mod conv_gemm;
+mod direct;
 mod gen;
 mod im2col;
 mod unary;
 
+pub use self::direct::Direct;
 pub use self::gen::Conv;
 pub use self::unary::ConvUnary;
 
