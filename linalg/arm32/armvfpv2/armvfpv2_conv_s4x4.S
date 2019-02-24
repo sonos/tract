@@ -69,7 +69,6 @@ arm_vfpv2_conv_s4x4:
     cmp r0, #0
     beq .STORE
 
-/*
     cmp r0, #4
     blt .LOOP
 
@@ -77,12 +76,22 @@ arm_vfpv2_conv_s4x4:
 
     // 1
     vldmia          r1!, { s0, s1 }
-    vldmia          r2!, { s8, s9 }
+
+    ldr             r4, [r3], #4
+    ldm             r2, { r5, r6, r7, r8 }
+
+    add             r5, r5, r4
+    vldr            s8, [r5]
+    add             r6, r6, r4
+    vldr            s9, [r6]
+    add             r7, r7, r4
+    vldr            s10, [r7]
+    add             r8, r8, r4
+    vldr            s11, [r8]
 
     vmla.f32        s16, s0, s8
     vldmia          r1!, { s2, s3 }
     vmla.f32        s17, s1, s8
-    vldmia          r2!, { s10, s11 }
     vmla.f32        s18, s2, s8
     vmla.f32        s19, s3, s8
 
@@ -97,13 +106,26 @@ arm_vfpv2_conv_s4x4:
     vmla.f32        s26, s2, s10
     vmla.f32        s27, s3, s10
 
-    vldmia          r2!, { s12-s15 }
+
     vmla.f32        s28, s0, s11
     vmla.f32        s29, s1, s11
     vmla.f32        s30, s2, s11
     vmla.f32        s31, s3, s11
 
     // 2
+
+    ldr             r4, [r3], #4
+    ldm             r2, { r5, r6, r7, r8 }
+
+    add             r5, r5, r4
+    vldr            s12, [r5]
+    add             r6, r6, r4
+    vldr            s13, [r6]
+    add             r7, r7, r4
+    vldr            s14, [r7]
+    add             r8, r8, r4
+    vldr            s15, [r8]
+
     vmla.f32        s16, s4, s12
     vmla.f32        s17, s5, s12
     vmla.f32        s18, s6, s12
@@ -116,7 +138,7 @@ arm_vfpv2_conv_s4x4:
     vmla.f32        s22, s6, s13
     vmla.f32        s23, s7, s13
 
-    vldmia          r2!, { s8-s11 }
+//    vldmia          r2!, { s8-s11 }
 
     vmla.f32        s24, s4, s14
     vmla.f32        s25, s5, s14
@@ -129,6 +151,19 @@ arm_vfpv2_conv_s4x4:
     vmla.f32        s31, s7, s15
 
     // 3
+
+    ldr             r4, [r3], #4
+    ldm             r2, { r5, r6, r7, r8 }
+
+    add             r5, r5, r4
+    vldr            s8, [r5]
+    add             r6, r6, r4
+    vldr            s9, [r6]
+    add             r7, r7, r4
+    vldr            s10, [r7]
+    add             r8, r8, r4
+    vldr            s11, [r8]
+
     vmla.f32        s16, s0, s8
     vmla.f32        s17, s1, s8
     vmla.f32        s18, s2, s8
@@ -141,23 +176,36 @@ arm_vfpv2_conv_s4x4:
     vmla.f32        s22, s2, s9
     vmla.f32        s23, s3, s9
 
-    vldmia          r2!, { s12-s15 }
+//    vldmia          r2!, { s12-s15 }
 
     vmla.f32        s24, s0, s10
     vmla.f32        s25, s1, s10
     vmla.f32        s26, s2, s10
     vmla.f32        s27, s3, s10
 
-    pld [r1]
+//    pld [r1]
 
     vmla.f32        s28, s0, s11
     vmla.f32        s29, s1, s11
     vmla.f32        s30, s2, s11
     vmla.f32        s31, s3, s11
 
-    pld [r2]
+//    pld [r2]
 
     // 4
+
+    ldr             r4, [r3], #4
+    ldm             r2, { r5, r6, r7, r8 }
+
+    add             r5, r5, r4
+    vldr            s12, [r5]
+    add             r6, r6, r4
+    vldr            s13, [r6]
+    add             r7, r7, r4
+    vldr            s14, [r7]
+    add             r8, r8, r4
+    vldr            s15, [r8]
+
     vmla.f32        s16, s4, s12
     vmla.f32        s17, s5, s12
     vmla.f32        s18, s6, s12
@@ -184,35 +232,22 @@ arm_vfpv2_conv_s4x4:
 
     cmp r0, #0
     beq .STORE
-*/
 
     .LOOP:
 
-    // kernel offset
+    vldmia          r1!, { s0, s1, s2, s3 }
+
     ldr             r4, [r3], #4
+    ldm             r2, { r5, r6, r7, r8 }
 
-    // centers addresses
-    ldr             r5, [r2, #0]
-    ldr             r6, [r2, #4]
-    ldr             r7, [r2, #8]
-    ldr             r8, [r2, #12]
-
-    lsl             r4, r4, #2
-
-    // centers + offset
     add             r5, r5, r4
-    add             r6, r6, r4
-    add             r7, r7, r4
-    add             r8, r8, r4
-
-    // read data values
     vldr            s8, [r5]
+    add             r6, r6, r4
     vldr            s9, [r6]
+    add             r7, r7, r4
     vldr            s10, [r7]
+    add             r8, r8, r4
     vldr            s11, [r8]
-
-    vldmia          r1!, { s0, s1 }
-    vldmia          r1!, { s2, s3 }
 
     vmla.f32        s16, s0, s8
     vmla.f32        s17, s1, s8
