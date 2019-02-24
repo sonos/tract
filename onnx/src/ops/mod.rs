@@ -5,6 +5,7 @@ use tract_core::ops::prelude::*;
 mod array;
 mod logic;
 mod math;
+mod ml;
 mod nn;
 
 pub type OpRegister = HashMap<&'static str, fn(&NodeProto) -> TractResult<Box<Op>>>;
