@@ -16,6 +16,7 @@ mod cast;
 mod category_mapper;
 mod logic;
 mod math;
+mod ml;
 mod nn;
 mod quant;
 pub mod rec;
