@@ -42,7 +42,7 @@ impl frame::conv::ConvKer<f32> for SConv4x4 {
             let pb3 = *(b_tops.offset(3));
             for i in 0..k {
                 let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                let offset = *b_down_offsets.offset(i as isize);
+                let offset = *b_down_offsets.offset(i as isize) >> 2;
                 let b0 = *(pb0.offset(offset));
                 let b1 = *(pb1.offset(offset));
                 let b2 = *(pb2.offset(offset));

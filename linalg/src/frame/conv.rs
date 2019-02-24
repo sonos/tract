@@ -84,7 +84,7 @@ where
 {
     pub fn new(
         co: usize,
-        kernel_offsets: Vec<isize>,
+        mut kernel_offsets: Vec<isize>,
         mut data_offsets: Vec<isize>,
     ) -> PackedConv<K, T> {
         assert!(data_offsets.len() > 0);
@@ -93,6 +93,7 @@ where
         while data_offsets.len() % K::nr() != 0 {
             data_offsets.push(data_offsets[data_offsets.len() - 1]);
         }
+        kernel_offsets.iter_mut().for_each(|x| *x *= 4);
         PackedConv {
             co,
             kernel_offsets,
