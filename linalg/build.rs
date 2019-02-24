@@ -14,6 +14,7 @@ fn main() {
             .compile("armvfpv2");
         cc::Build::new()
             .file("arm32/armv7neon/armv7neon_mm_s8x4.S")
+            .file("arm32/armv7neon/armv7neon_conv_s8x4.S")
             .flag("-marm")
             .flag("-mfpu=neon")
             .static_flag(true)

@@ -26,8 +26,8 @@ pub fn plug(ops: &mut Ops) {
             Box::new(PackedMatMul::<armv7neon::SMatMul8x4, f32>::new(m, k, n))
         });
         ops.sconv = Box::new(|m, k, n| {
-            log::info!("armvfpv2 activated for sconv");
-            Box::new(PackedConv::<armvfpv2::SConv4x4, f32>::new(m, k, n))
+            log::info!("arm7neon activated for sconv");
+            Box::new(PackedConv::<armv7neon::SConv8x4, f32>::new(m, k, n))
         });
     } else {
         ops.smm = Box::new(|m, k, n| {
