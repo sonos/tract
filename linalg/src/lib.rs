@@ -21,8 +21,8 @@ pub mod arm64;
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
 pub mod arm32;
 
-pub use self::frame::{MatMul, PackedMatMul};
 pub use self::frame::{Conv, PackedConv};
+pub use self::frame::{MatMul, PackedMatMul};
 
 pub struct Ops {
     pub smm: Box<Fn(usize, usize, usize) -> Box<MatMul<f32>> + Send + Sync>,
@@ -34,11 +34,17 @@ pub fn generic() -> Ops {
     Ops {
         smm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::SMatMul4x4, f32>::new(m, k, n))),
         dmm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::DMatMul4x2, f64>::new(m, k, n))),
-        sconv: Box::new(|co, kernel_offsets, data_offsets| Box::new(PackedConv::<generic::SConv4x4, f32>::new(co, kernel_offsets, data_offsets)))
+        sconv: Box::new(|co, kernel_offsets, data_offsets| {
+            Box::new(PackedConv::<generic::SConv4x4, f32>::new(
+                co,
+                kernel_offsets,
+                data_offsets,
+            ))
+        }),
     }
 }
 
-#[allow(unreachable_code,unused_mut)]
+#[allow(unreachable_code, unused_mut)]
 pub fn best() -> Ops {
     let mut ops = generic();
     #[cfg(target_arch = "x86_64")]

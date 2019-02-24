@@ -252,60 +252,97 @@ pub mod test {
     use super::*;
     use crate::align;
     use proptest::prelude::*;
-    use proptest::*;
 
-    /*
-    pub fn strat_ker_mat_mul<MM: PackedMatMulKer<f32>>(
-    ) -> BoxedStrategy<(usize, Vec<f32>, Vec<f32>)> {
-        (0usize..35)
-            .prop_flat_map(move |k| {
-                (
-                    Just(k),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), MM::mr() * k),
-                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), MM::nr() * k),
-                )
-            })
-            .boxed()
+    #[derive(Clone, Debug)]
+    pub struct ConvProblem {
+        pub ci: usize,
+        pub co: usize,
+        pub kt: usize,
+        pub stride: usize,
+        pub dilation: usize,
+        pub filters: Vec<f32>,
+        pub data: Vec<f32>,
     }
 
-    pub fn test_ker_mat_mul<MM: PackedMatMulKer<f32>>(
-        k: usize,
-        a: &[f32],
-        b: &[f32],
-    ) -> Result<(), proptest::test_runner::TestCaseError> {
-        let pa = align::realign_slice(a, MM::alignment_bytes_a());
-        let pb = align::realign_slice(b, MM::alignment_bytes_b());
+    impl ConvProblem {
+        pub fn k(&self) -> usize {
+            self.ci * self.kt
+        }
+        pub fn kernel_field(&self) -> usize {
+            self.dilation * (self.kt - 1) + 1
+        }
+        pub fn input_width(&self) -> usize {
+            self.data.len() / self.ci
+        }
+        pub fn output_width(&self) -> usize {
+            (self.input_width() - self.kernel_field()) / self.stride + 1
+        }
+        pub fn offsets(&self) -> (Vec<isize>, Vec<isize>) {
+            let data_offsets: Vec<isize> = (0..self.output_width())
+                .map(|i| (i * self.stride) as isize)
+                .collect();
+            let kernel_offsets: Vec<isize> = (0..self.ci)
+                .flat_map(move |ici| {
+                    (0..self.kt)
+                        .map(move |ikt| (ikt * self.dilation + ici * self.input_width()) as isize)
+                })
+                .collect();
+            (kernel_offsets, data_offsets)
+        }
+        pub fn expected(&self) -> Vec<f32> {
+            let mut expect = vec![0.0f32; self.co * self.output_width()];
+            for x in 0..self.output_width() {
+                for ico in 0..self.co {
+                    for ikt in 0..self.kt {
+                        for ici in 0..self.ci {
+                            let f = self.filters[ici * self.kt + ikt + self.ci * self.kt * ico];
+                            let d = self.data
+                                [x * self.stride + ikt * self.dilation + ici * self.input_width()];
+                            expect[x + ico * self.output_width()] += f * d;
+                        }
+                    }
+                }
+            }
+            expect
+        }
 
-        let mut expect = vec![0.0f32; MM::mr() * MM::nr()];
-        for x in 0..MM::nr() {
-            for y in 0..MM::mr() {
-                expect[x + y * MM::nr()] = (0..k)
-                    .map(|k| pa[k * MM::mr() + y] * pb[k * MM::nr() + x])
-                    .sum::<f32>();
+        pub fn run<C: Conv<f32>>(&self, conv: &C) -> Vec<f32> {
+            unsafe {
+                let mut packed_a: Vec<f32> =
+                    align::uninitialized(conv.packed_a_len(), conv.packed_a_alignment());
+                conv.pack_a(
+                    packed_a.as_mut_ptr(),
+                    self.filters.as_ptr(),
+                    self.k() as isize,
+                    1,
+                );
+
+                let mut found = vec![9999.0f32; self.co * self.output_width()];
+                conv.conv(
+                    packed_a.as_ptr(),
+                    self.data.as_ptr(),
+                    found.as_mut_ptr(),
+                    self.output_width() as isize,
+                    1,
+                );
+                found
             }
         }
-        let mut found = vec![9999.0f32; expect.len()];
-        MM::kernel(k, pa.as_ptr(), pb.as_ptr(), found.as_mut_ptr(), MM::nr(), 1);
-        prop_assert_eq!(found, expect);
-        Ok(())
     }
 
-    */
-
-    /// ci, co, kt, stride, dilation, filters, data
-    pub fn strat_conv_1d() -> BoxedStrategy<(usize, usize, usize, usize, usize, Vec<f32>, Vec<f32>)> {
-        (
-            1usize..5,
-            1usize..5,
-            1usize..5,
-            1usize..5,
-            1usize..5,
-            1usize..25,
-        )
-            .prop_filter(
-                "data must at least as wide as kernel",
-                |(_ci, _co, kt, _stride, dilation, t)| (kt - 1) * dilation + 1 <= *t,
-            )
+    pub fn strat_conv_1d() -> BoxedStrategy<ConvProblem> {
+        (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)
+            .prop_flat_map(|(ci, co, kt, stride, dilation)| {
+                let min = (kt - 1) * dilation + 1;
+                (
+                    Just(ci),
+                    Just(co),
+                    Just(kt),
+                    Just(stride),
+                    Just(dilation),
+                    min..min + 10,
+                )
+            })
             .prop_flat_map(move |(ci, co, kt, stride, dilation, t)| {
                 (
                     Just(ci),
@@ -317,48 +354,17 @@ pub mod test {
                     proptest::collection::vec((-10..10).prop_map(|a| a as f32), t * ci),
                 )
             })
+            .prop_map(
+                move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {
+                    ci,
+                    co,
+                    kt,
+                    stride,
+                    dilation,
+                    filters,
+                    data,
+                },
+            )
             .boxed()
     }
-
-    pub fn test_conv_1d_f32<C: Conv<f32>>(
-        conv: C,
-        ci: usize,
-        co: usize,
-        kt: usize,
-        stride: usize,
-        dilation: usize,
-        filters: &[f32],
-        data: &[f32],
-    ) -> Result<(), proptest::test_runner::TestCaseError> {
-        unsafe {
-            let k = ci * kt;
-            let kernel_field = dilation * (kt - 1) + 1;
-            let t = data.len() / ci;
-            let n = (t - kernel_field) / stride + 1;
-
-            let mut expect = vec![0.0f32; co * n];
-            for x in 0..n {
-                for ico in 0..co {
-                    for ikt in 0..kt {
-                        for ici in 0..ci {
-                            let f = filters[ici * kt + ikt + k * ico];
-                            let d = data[x * stride + ikt * dilation + ici * t];
-                            expect[x + ico * n] += f * d;
-                        }
-                    }
-                }
-            }
-
-            let mut packed_a: Vec<f32> =
-                align::uninitialized(conv.packed_a_len(), conv.packed_a_alignment());
-            conv.pack_a(packed_a.as_mut_ptr(), filters.as_ptr(), k as isize, 1);
-
-            let mut found = vec![9999.0f32; co * n];
-            conv.conv(packed_a.as_ptr(), data.as_ptr(), found.as_mut_ptr(), n as isize, 1);
-
-            prop_assert_eq!(found, expect);
-        }
-        Ok(())
-    }
-
 }
