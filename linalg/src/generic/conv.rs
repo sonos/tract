@@ -87,24 +87,19 @@ impl frame::conv::ConvKer<f32> for SConv4x4 {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::frame::conv::test::*;
     use crate::frame::PackedConv;
     use proptest::*;
 
     proptest! {
         #[test]
-        fn conv_prepacked((ci, co, kt, stride, dilation, ref filters, ref data) in strat_conv_1d()) {
-            let kernel_field = dilation * (kt - 1) + 1;
-            let t = data.len() / ci;
-            let n = (t - kernel_field) / stride + 1;
-            let data_offsets:Vec<isize> = (0..n).map(|i| (i * stride) as isize).collect();
-            let kernel_offsets:Vec<isize> = (0..ci)
-                .flat_map(move |ici| (0..kt).map(move |ikt| (ikt * dilation + ici * t) as isize))
-                .collect();
-            assert!(data_offsets.iter().max().unwrap() + kernel_offsets.iter().max().unwrap() <= data.len() as isize);
-
-            let conv = PackedConv::<crate::generic::conv::SConv4x4, f32>::new(co, kernel_offsets, data_offsets);
-            test_conv_1d_f32(conv, ci, co, kt, stride, dilation, filters, data)?
+        fn conv_prepacked(pb in strat_conv_1d()) {
+            let (kernel_offsets, data_offsets) = pb.offsets();
+            let conv = PackedConv::<SConv4x4, f32>::new(pb.co, kernel_offsets, data_offsets);
+            let found = pb.run(&conv);
+            let expected = pb.expected();
+            prop_assert_eq!(found, expected)
         }
     }
 }

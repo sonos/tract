@@ -7,6 +7,7 @@ fn main() {
     if arch == "arm" || arch == "armv7" {
         cc::Build::new()
             .file("arm32/armvfpv2/armvfpv2_mm_s4x4.S")
+            .file("arm32/armvfpv2/armvfpv2_conv_s4x4.S")
             .flag("-marm")
             .flag("-mfpu=vfp")
             .static_flag(true)
