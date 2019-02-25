@@ -117,4 +117,22 @@ impl NodeProto {
             )
         })?)
     }
+
+    pub fn get_attr_opt_floats(&self, name: &str) -> TractResult<Option<&[f32]>> {
+        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOATS)? {
+            Some(attr) => Ok(Some(attr.get_floats())),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_attr_floats(&self, name: &str) -> TractResult<&[f32]> {
+        Ok(self.get_attr_opt_floats(name)?.ok_or_else(|| {
+            format!(
+                "Node {} ({}) expected list of floats attribute '{}'",
+                self.get_name(),
+                self.get_op_type(),
+                name
+            )
+        })?)
+    }
 }
