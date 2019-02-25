@@ -71,11 +71,6 @@ arm7neon_conv_s8x4:
     .LOOP:
 
     vldmia          r1!, { q0, q1 }
-    pld             [r1]
-    pld             [r1, #8]
-    pld             [r1, #16]
-    pld             [r1, #24]
-
     ldr             r4, [r3], #4
 
     vldr            s16, [r9]
@@ -83,26 +78,20 @@ arm7neon_conv_s8x4:
     vldr            s18, [r11]
     vldr            s19, [r12]
 
-    add             r9, r5, r4
-    add             r10, r6, r4
-    add             r11, r7, r4
-    add             r12, r8, r4
-
-    pld             [r9]
-    pld             [r10]
-    pld             [r11]
-    pld             [r12]
-
     vmla.f32        q8, q0, d8[0]
+    add             r9, r5, r4
     vmla.f32        q9, q1, d8[0]
 
     vmla.f32        q10, q0, d8[1]
+    add             r10, r6, r4
     vmla.f32        q11, q1, d8[1]
 
     vmla.f32        q12, q0, d9[0]
+    add             r11, r7, r4
     vmla.f32        q13, q1, d9[0]
 
     vmla.f32        q14, q0, d9[1]
+    add             r12, r8, r4
     vmla.f32        q15, q1, d9[1]
 
     subs r0, r0, #1
