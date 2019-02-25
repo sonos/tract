@@ -147,4 +147,20 @@ impl NodeProto {
         );
         Ok(ints.iter().map(|&x| x as _).collect())
     }
+
+    pub fn get_attr_opt_int_tvec(&self, name: &str) -> TractResult<Option<TVec<i64>>> {
+        self.get_attr_opt_ints(name)?.map(Into::into)
+    }
+
+    pub fn get_attr_int_tvec(&self, name: &str) -> TractResult<TVec<i64>> {
+        self.get_attr_ints(name)?.into()
+    }
+
+    pub fn get_attr_opt_float_tvec(&self, name: &str) -> TractResult<Option<TVec<f32>>> {
+        self.get_attr_opt_floats(name)?.map(Into::into)
+    }
+
+    pub fn get_attr_float_tvec(&self, name: &str) -> TractResult<TVec<f32>> {
+        self.get_attr_floats(name)?.into()
+    }
 }
