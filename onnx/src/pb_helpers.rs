@@ -135,4 +135,16 @@ impl NodeProto {
             )
         })?)
     }
+
+    pub fn get_attr_usize_tvec(&self, name: &str) -> TractResult<TVec<usize>> {
+        let ints = self.get_attr_ints(name)?;
+        ensure!(
+            ints.iter().any(|&x| x < 0),
+            "Node {} ({}) expected a list of non-negatve ints in attribute '{}'",
+            self.get_name(),
+            self.get_op_type(),
+            name
+        );
+        Ok(ints.iter().map(|&x| x as _).collect())
+    }
 }
