@@ -248,6 +248,8 @@ impl Tree {
     pub fn build(n_classes: usize, nodes: &[Node], leaves: &[Leaf]) -> TractResult<Self> {
         use self::Cmp::{Equal, Less, LessEqual};
 
+        ensure!(n_classes != 0, "Invalid tree: n_classes == 0");
+
         let n_nodes = nodes.len();
         ensure!(n_nodes != 0, "Invalid tree: no nodes");
         let n_leaves = leaves.len();
