@@ -44,9 +44,9 @@ arm7neon_conv_s8x4:
     pld [r2]
     pld [r2, #8]
 
-    push        { r4-r9 }               // no lr (we're a leaf), no fp. #24 bytes
+    push        { r4-r12 }               // no lr (we're a leaf), no fp. #36 bytes
 
-    vpush       { q4-q5 }               // 2*4*4 = 32 bytes -> total 56bytes
+    vpush       { q4-q5 }               // 2*4*4 = 32 bytes -> total 68bytes
 
     veor      q8, q8 ,q8
     veor      q9, q9 ,q9
@@ -60,114 +60,38 @@ arm7neon_conv_s8x4:
     cmp r0, #0
     beq .STORE
 
-/*
-    cmp r0, #4
-    blt .LOOP
+    ldm             r2, { r5, r6, r7, r8 }
+    ldr             r4, [r3], #4
 
-    .LOOP4:
-
-    // 1
-    vldmia          r1!, { q0, q1 }
-    vldmia          r2!, { q4 }
-
-    vmla.f32        q8, q0, d8[0]
-    vmla.f32        q9, q1, d8[0]
-
-    vldmia          r1!, { q2, q3 }
-
-    vmla.f32        q10, q0, d8[1]
-    vmla.f32        q11, q1, d8[1]
-
-    vldmia          r2!, { q5 }
-
-    vmla.f32        q12, q0, d9[0]
-    vmla.f32        q13, q1, d9[0]
-
-    vmla.f32        q14, q0, d9[1]
-    vmla.f32        q15, q1, d9[1]
-
-    // 2
-    vldmia          r1!, { q0, q1 }
-
-    vmla.f32        q8, q2, d10[0]
-    vmla.f32        q9, q3, d10[0]
-
-    vldmia          r2!, { q4 }
-
-    vmla.f32        q10, q2, d10[1]
-    vmla.f32        q11, q3, d10[1]
-
-    vmla.f32        q12, q2, d11[0]
-    vmla.f32        q13, q3, d11[0]
-
-    vmla.f32        q14, q2, d11[1]
-    vmla.f32        q15, q3, d11[1]
-
-    // 3
-    vldmia          r1!, { q2, q3 }
-
-    vmla.f32        q8, q0, d8[0]
-    vmla.f32        q9, q1, d8[0]
-
-    vldmia          r2!, { q5 }
-
-    vmla.f32        q10, q0, d8[1]
-    vmla.f32        q11, q1, d8[1]
-
-    pld [r1]
-
-    vmla.f32        q12, q0, d9[0]
-    vmla.f32        q13, q1, d9[0]
-
-    pld [r1, #8]
-
-    vmla.f32        q14, q0, d9[1]
-    vmla.f32        q15, q1, d9[1]
-    pld [r1, #16]
-
-    // 4
-
-    vmla.f32        q8, q2, d10[0]
-    vmla.f32        q9, q3, d10[0]
-
-    pld [r1, #24]
-
-    vmla.f32        q10, q2, d10[1]
-    vmla.f32        q11, q3, d10[1]
-
-    pld [r2]
-
-    vmla.f32        q12, q2, d11[0]
-    vmla.f32        q13, q3, d11[0]
-
-    pld [r2, #8]
-
-    vmla.f32        q14, q2, d11[1]
-    vmla.f32        q15, q3, d11[1]
-
-    sub r0, r0, #4
-    cmp r0, #4
-    bge .LOOP4
-
-    cmp r0, #0
-    beq .STORE
-*/
+    add             r9, r5, r4
+    add             r10, r6, r4
+    add             r11, r7, r4
+    add             r12, r8, r4
 
     .LOOP:
 
     vldmia          r1!, { q0, q1 }
+    pld             [r1]
+    pld             [r1, #8]
+    pld             [r1, #16]
+    pld             [r1, #24]
 
     ldr             r4, [r3], #4
-    ldm             r2, { r5, r6, r7, r8 }
 
-    add             r5, r5, r4
-    vldr            s16, [r5]
-    add             r6, r6, r4
-    vldr            s17, [r6]
-    add             r7, r7, r4
-    vldr            s18, [r7]
-    add             r8, r8, r4
-    vldr            s19, [r8]
+    vldr            s16, [r9]
+    vldr            s17, [r10]
+    vldr            s18, [r11]
+    vldr            s19, [r12]
+
+    add             r9, r5, r4
+    add             r10, r6, r4
+    add             r11, r7, r4
+    add             r12, r8, r4
+
+    pld             [r9]
+    pld             [r10]
+    pld             [r11]
+    pld             [r12]
 
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
@@ -186,9 +110,9 @@ arm7neon_conv_s8x4:
 
     .STORE:
 
-    ldr         r3, [sp, #56]
-    ldr         r9, [sp, #60]
-    ldr         r8, [sp, #64]
+    ldr         r3, [sp, #68]
+    ldr         r9, [sp, #72]
+    ldr         r8, [sp, #76]
 
     lsl r8, r8, #2 // r8 *= sizeof(float) // csc
     lsl r9, r9, #2 // r9 *= sizeof(float) // rsc
@@ -266,6 +190,6 @@ arm7neon_conv_s8x4:
     vst1.f32   d31[1], [ r6 ]
 
     vpop        { q4-q5 }
-    pop         { r4-r9 }
+    pop         { r4-r12 }
 
     bx          lr
