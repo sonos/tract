@@ -26,9 +26,10 @@ echo "export PLATFORM=$PLATFORM" >> $TASK_NAME/vars
 
 mkdir $TASK_NAME/benches
 cp target/$RUSTC_TRIPLE/release/tract $TASK_NAME
-for bench in `ls -t target/$RUSTC_TRIPLE/release/mm_for_wavenet_hw-???????????????? | head -1`
+for bench in mm_for_wavenet_hw conv_for_wavenet_hw
 do
-    cp $bench $TASK_NAME/benches/
+    exe=`ls -t target/$RUSTC_TRIPLE/release/$bench-???????????????? | head -1`
+    cp $exe $TASK_NAME/benches/$bench
 done
 cp .travis/bundle-entrypoint.sh $TASK_NAME/entrypoint.sh
 tar czf $TASK_NAME.tgz $TASK_NAME/
