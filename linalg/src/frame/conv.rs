@@ -53,6 +53,7 @@ where
 {
     pub co: usize,
     pub kernel_offsets: Vec<isize>,
+    pub k: usize,
     pub n: usize,
     pub data_offsets: Vec<isize>,
     _kernel: PhantomData<(K, T)>,
@@ -89,13 +90,18 @@ where
     ) -> PackedConv<K, T> {
         assert!(data_offsets.len() > 0);
         assert!(kernel_offsets.len() > 0);
+        let k = kernel_offsets.len();
         let n = data_offsets.len();
         while data_offsets.len() % K::nr() != 0 {
             data_offsets.push(data_offsets[data_offsets.len() - 1]);
         }
         kernel_offsets.iter_mut().for_each(|x| *x *= 4);
+        for _ in 0..4 {
+            kernel_offsets.push(kernel_offsets[kernel_offsets.len() - 1]);
+        }
         PackedConv {
             co,
+            k,
             kernel_offsets,
             n,
             data_offsets,
@@ -105,7 +111,7 @@ where
 
     fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
         let mr = K::mr();
-        for i in 0..self.kernel_offsets.len() {
+        for i in 0..self.k {
             for j in 0..rows {
                 unsafe {
                     *pa.offset((i * mr + j) as isize) =
@@ -127,7 +133,7 @@ where
 
     fn packed_a_len(&self) -> usize {
         let mr = K::mr();
-        (self.co + mr - 1) / mr * mr * self.kernel_offsets.len()
+        (self.co + mr - 1) / mr * mr * self.k
     }
 
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize) {
@@ -136,7 +142,7 @@ where
         unsafe {
             for p in 0..(self.co / mr) {
                 self.pack_panel_a(
-                    pa.offset((p * mr * self.kernel_offsets.len()) as isize),
+                    pa.offset((p * mr * self.k) as isize),
                     a.offset((p * mr) as isize * rsa),
                     rsa,
                     csa,
@@ -145,7 +151,7 @@ where
             }
             if self.co % mr != 0 {
                 self.pack_panel_a(
-                    pa.offset((self.co / mr * mr * self.kernel_offsets.len()) as isize),
+                    pa.offset((self.co / mr * mr * self.k) as isize),
                     a.offset((self.co / mr * mr) as isize * rsa),
                     rsa,
                     csa,
@@ -161,7 +167,7 @@ where
         let mr = K::mr();
         let nr = K::nr();
         let co = self.co;
-        let k = self.kernel_offsets.len();
+        let k = self.k;
         let n = self.n;
         let mut tmpc = vec![T::zero(); mr * nr];
         unsafe {

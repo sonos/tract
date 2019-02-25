@@ -28,3 +28,7 @@ proptest = "0.8"
 [[bench]]
 name = "mm_for_wavenet_hw"
 harness = false
+
+[[bench]]
+name = "conv_for_wavenet_hw"
+harness = false

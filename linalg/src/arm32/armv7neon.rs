@@ -111,6 +111,9 @@ mod test {
     proptest! {
         #[test]
         fn conv(pb in strat_conv_1d()) {
+            if !has_neon() {
+                return Ok(())
+            }
             let (kernel_offsets, data_offsets) = pb.offsets();
             let conv = PackedConv::<SConv8x4, f32>::new(pb.co, kernel_offsets, data_offsets);
             let found = pb.run(&conv);
