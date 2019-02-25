@@ -15,6 +15,10 @@ impl Op for Direct {
     fn name(&self) -> Cow<str> {
         "ConvDirect".into()
     }
+
+    fn info(&self) -> TractResult<Option<String>> {
+        Ok(Some(format!("{:?}", self.conv)))
+    }
 }
 
 impl StatelessOp for Direct {
