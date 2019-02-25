@@ -19,11 +19,17 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
+    reg.insert("Cast", cast);
     reg.insert("Const", konst);
     reg.insert("NoOp", |_| Ok(Box::new(Noop)));
     reg.insert("Placeholder", placeholder);
 }
 
+
+pub fn cast(node: &NodeDef) -> TractResult<Box<Op>> {
+    let dtype = node.get_attr_datum_type("DstT")?;
+    Ok(Box::new(::tract_core::ops::cast::Cast::new(dtype)))
+}
 
 pub fn konst(node: &NodeDef) -> TractResult<Box<Op>> {
     let dtype = node.get_attr_datum_type("dtype")?;

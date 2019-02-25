@@ -176,6 +176,11 @@ impl num_traits::NumCast for f16 {
     }
 }
 
+impl num_traits::Bounded for f16 {
+    fn min_value() -> f16 { f16(half::consts::MIN) }
+    fn max_value() -> f16 { f16(half::consts::MAX) }
+}
+
 impl ops::Neg for f16 {
     type Output = f16;
     fn neg(self) -> f16 {

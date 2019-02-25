@@ -106,6 +106,7 @@ impl InferenceRulesOp for Concat {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        trace!("{:?}", self);
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;

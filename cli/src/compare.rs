@@ -21,13 +21,13 @@ pub fn handle(_params: Parameters, _: DisplayOptions) -> CliResult<()> {
 
 #[cfg(feature = "conform")]
 pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
-    use format::Row;
+    use crate::format::Row;
 
     let tract = params.tract_model;
     let tf = params.tf_model;
 
     // First generate random values for the inputs.
-    let generated = ::tensor::make_inputs(&[tract.input_fact()?.clone()])?;
+    let generated = crate::tensor::make_inputs(&[tract.input_fact()?.clone()])?;
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
@@ -57,7 +57,7 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
     }
 
     let mut display_graph =
-        ::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?
+        crate::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?
             .with_graph_def(&params.graph)?;
 
     let mut failing = vec![];
