@@ -339,11 +339,13 @@ pub struct TreeEnsemble {
     n_classes: usize,
     aggregate_fn: Aggregate, // TODO: should this be an argument to eval()?
     post_transform: Option<PostTransform>, // TODO: should this be an argument to eval()?
+    base_scores: Option<Vec<f32>>,
 }
 
 impl TreeEnsemble {
     pub fn build(
         trees: &[Tree], aggregate_fn: Aggregate, post_transform: Option<PostTransform>,
+        base_scores: Option<&[f32]>,
     ) -> TractResult<Self> {
         ensure!(trees.len() > 0, "Invalid tree ensemble: cannot be empty");
         let max_feature_id = trees.iter().map(Tree::max_feature_id).max().unwrap_or(0);
@@ -356,7 +358,27 @@ impl TreeEnsemble {
                 tree.n_classes
             );
         }
-        Ok(Self { trees: trees.into(), max_feature_id, n_classes, aggregate_fn, post_transform })
+        let base_scores = match base_scores {
+            Some(base_scores) => {
+                let base_scores = base_scores.to_owned();
+                ensure!(
+                    base_scores.len() == n_classes,
+                    "Invalid tree ensemble: base_scores.len() = {} != n_classes = {}",
+                    base_scores.len(),
+                    n_classes,
+                );
+                Some(base_scores)
+            }
+            None => None,
+        };
+        Ok(Self {
+            trees: trees.into(),
+            max_feature_id,
+            n_classes,
+            aggregate_fn,
+            post_transform,
+            base_scores,
+        })
     }
 
     unsafe fn eval_one_unchecked<A, T>(
@@ -365,6 +387,12 @@ impl TreeEnsemble {
         A: AggregateFn,
         T: AsPrimitive<f32>,
     {
+        if let Some(ref base_scores) = self.base_scores {
+            for i in 0..self.n_classes {
+                // TODO: should this be done at initialization time?
+                *output.uget_mut(i) += base_scores[i];
+            }
+        }
         for tree in &self.trees {
             tree.eval_unchecked(input, output, aggs);
         }
@@ -585,7 +613,7 @@ mod tests {
     fn generate_gbm_ensemble(post_transform: Option<PostTransform>) -> TreeEnsemble {
         // converted manually from LightGBM, fitted on iris dataset
         let trees = generate_gbm_trees();
-        TreeEnsemble::build(&trees, Aggregate::Sum, post_transform).unwrap()
+        TreeEnsemble::build(&trees, Aggregate::Sum, post_transform, None).unwrap()
     }
 
     fn generate_gbm_input() -> Array2<f32> {
