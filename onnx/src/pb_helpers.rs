@@ -35,6 +35,39 @@ where
     }
 }
 
+trait OptionExt {
+    type Item;
+
+    fn and_try<F, T>(self, f: F) -> TractResult<Option<T>>
+    where
+        F: Fn(Self::Item) -> TractResult<T>;
+
+    fn and_ok<F, T>(self, f: F) -> TractResult<Option<T>>
+    where
+        F: Fn(Self::Item) -> T;
+}
+
+impl<A> OptionExt for Option<A> {
+    type Item = A;
+
+    fn and_try<F, T>(self, f: F) -> TractResult<Option<T>>
+    where
+        F: Fn(Self::Item) -> TractResult<T>,
+    {
+        match self {
+            Some(attr) => f(attr).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    fn and_ok<F, T>(self, f: F) -> TractResult<Option<T>>
+    where
+        F: Fn(Self::Item) -> T,
+    {
+        Ok(self.map(f))
+    }
+}
+
 impl NodeProto {
     pub fn expect<R: Reason>(&self, cond: bool, what: R) -> TractResult<()> {
         ensure!(
