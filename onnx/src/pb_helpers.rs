@@ -150,6 +150,53 @@ impl<'a> AttrSliceType<'a> for f32 {
     }
 }
 
+pub trait AttrTVecType<'a>: 'a + Sized {
+    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>>;
+}
+
+impl<'a, T> AttrTVecType<'a> for T
+where
+    T: AttrSliceType<'a> + Clone,
+{
+    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
+        T::get_attr_opt_slice(node, name)?.and_ok(Into::into)
+    }
+}
+
+impl<'a> AttrTVecType<'a> for Tensor {
+    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSORS)?
+            .and_try(|attr| attr.get_tensors().iter().map(|t| t.tractify()).try_collect())
+    }
+}
+
+impl<'a> AttrTVecType<'a> for &'a str {
+    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
+        <Vec<u8>>::get_attr_opt_slice(node, name)?
+            .and_try(|b| b.iter().map(|v| str::from_utf8(v)).try_collect().map_err(Into::into))
+    }
+}
+
+impl<'a> AttrTVecType<'a> for String {
+    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
+        <Vec<u8>>::get_attr_opt_slice(node, name)?.and_try(|b| {
+            b.iter().map(|v| str::from_utf8(v).map(Into::into)).try_collect().map_err(Into::into)
+        })
+    }
+}
+
+impl<'a> AttrTVecType<'a> for usize {
+    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
+        let ints: Option<&[i64]> = AttrSliceType::get_attr_opt_slice(node, name)?;
+        ints.and_try(|ints| {
+            for int in ints.iter() {
+                node.expect_attr(name, *int >= 0, "list of non-negative ints")?;
+            }
+            Ok(ints.iter().map(|&x| x as _).collect())
+        })
+    }
+}
+
 impl NodeProto {
     pub fn expect<R: Reason>(&self, cond: bool, what: R) -> TractResult<()> {
         ensure!(
