@@ -3,6 +3,19 @@ use tract_core::*;
 
 use std::borrow::Cow;
 
+pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
+    #[must_use]
+    fn try_collect<B: Default + Extend<T>>(mut self) -> Result<B, E> {
+        let mut out = B::default();
+        while let Some(item) = self.next() {
+            out.extend(Some(item?));
+        }
+        Ok(out)
+    }
+}
+
+impl<T, E, I> TryCollect<T, E> for I where I: Iterator<Item = Result<T, E>> + Sized {}
+
 pub trait Reason {
     fn reason(&self) -> Cow<str>;
 }
