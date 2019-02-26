@@ -1,5 +1,4 @@
 use tract_core::ops::prelude::*;
-use std::collections::HashMap;
 
 use crate::tfpb::node_def::NodeDef;
 use crate::model::TfOpRegister;
@@ -12,6 +11,7 @@ pub mod logic;
 pub mod math;
 pub mod nn;
 pub mod quant;
+pub mod vars;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     array::register_all_ops(reg);
@@ -19,6 +19,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
+    vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
     reg.insert("NoOp", |_| Ok(Box::new(Noop)));
