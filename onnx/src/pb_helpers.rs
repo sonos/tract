@@ -125,6 +125,31 @@ impl<'a> AttrScalarType<'a> for f32 {
     }
 }
 
+pub trait AttrSliceType<'a>: 'a + Sized {
+    fn get_attr_opt_slice(node: &'a NodeProto, name: &str) -> TractResult<Option<&'a [Self]>>;
+}
+
+impl<'a> AttrSliceType<'a> for Vec<u8> {
+    fn get_attr_opt_slice(node: &'a NodeProto, name: &str) -> TractResult<Option<&'a [Self]>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRINGS)?
+            .and_ok(AttributeProto::get_strings)
+    }
+}
+
+impl<'a> AttrSliceType<'a> for i64 {
+    fn get_attr_opt_slice(node: &'a NodeProto, name: &str) -> TractResult<Option<&'a [Self]>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)?
+            .and_ok(AttributeProto::get_ints)
+    }
+}
+
+impl<'a> AttrSliceType<'a> for f32 {
+    fn get_attr_opt_slice(node: &'a NodeProto, name: &str) -> TractResult<Option<&'a [Self]>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOATS)?
+            .and_ok(AttributeProto::get_floats)
+    }
+}
+
 impl NodeProto {
     pub fn expect<R: Reason>(&self, cond: bool, what: R) -> TractResult<()> {
         ensure!(
