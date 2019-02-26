@@ -230,17 +230,12 @@ impl NodeProto {
         }
     }
 
-    fn get_attr_opt(&self, name: &str) -> TractResult<Option<&AttributeProto>> {
-        Ok(self.get_attribute().iter().find(|a| a.get_name() == name))
-    }
-
     fn get_attr_opt_with_type(
         &self, name: &str, ty: AttributeProto_AttributeType,
     ) -> TractResult<Option<&AttributeProto>> {
-        let attr = if let Some(a) = self.get_attr_opt(name)? {
-            a
-        } else {
-            return Ok(None);
+        let attr = match self.get_attribute().iter().find(|a| a.get_name() == name) {
+            Some(attr) => attr,
+            _ => return Ok(None),
         };
         self.expect_attr(name, attr.get_field_type() == ty, || format!("{:?}", ty))?;
         Ok(Some(attr))
