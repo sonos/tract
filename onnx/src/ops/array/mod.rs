@@ -29,6 +29,9 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
         Ok(Box::new(tractops::array::Size::new(DatumType::I64)))
     });
     reg.insert("Transpose", transpose);
+    reg.insert("Tile", |_| {
+        Ok(Box::new(tractops::array::Tile::default()))
+    });
     reg.insert("Slice", slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
