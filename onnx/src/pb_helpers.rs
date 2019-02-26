@@ -2,6 +2,7 @@ use crate::pb::*;
 use tract_core::*;
 
 use std::borrow::Cow;
+use std::str;
 
 pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
     #[must_use]
@@ -65,6 +66,62 @@ impl<A> OptionExt for Option<A> {
         F: Fn(Self::Item) -> T,
     {
         Ok(self.map(f))
+    }
+}
+
+pub trait AttrScalarType<'a>: 'a + Sized {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>>;
+}
+
+impl<'a> AttrScalarType<'a> for Tensor {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)?
+            .and_try(|attr| attr.get_t().tractify())
+    }
+}
+
+impl<'a> AttrScalarType<'a> for &'a [u8] {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRING)?
+            .and_ok(AttributeProto::get_s)
+    }
+}
+
+impl<'a> AttrScalarType<'a> for &'a str {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        let bytes: Option<&[u8]> = AttrScalarType::get_attr_opt_scalar(node, name)?;
+        bytes.and_try(|b| str::from_utf8(b).map_err(Into::into))
+    }
+}
+
+impl<'a> AttrScalarType<'a> for String {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        let string: Option<&'a str> = AttrScalarType::get_attr_opt_scalar(node, name)?;
+        string.and_ok(Into::into)
+    }
+}
+
+impl<'a> AttrScalarType<'a> for i64 {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::INT)?
+            .and_ok(AttributeProto::get_i)
+    }
+}
+
+impl<'a> AttrScalarType<'a> for usize {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        let int: Option<i64> = AttrScalarType::get_attr_opt_scalar(node, name)?;
+        int.and_try(|int| {
+            node.expect_attr(name, int >= 0, "non-negative int")?;
+            Ok(int as _)
+        })
+    }
+}
+
+impl<'a> AttrScalarType<'a> for f32 {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOAT)?
+            .and_ok(AttributeProto::get_f)
     }
 }
 
