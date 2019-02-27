@@ -86,12 +86,13 @@ impl Reducer {
         T: Copy + Datum,
     {
         use ndarray::*;
+        let rank = input.shape().len();
         let input = input.to_array::<T>()?;
         let full_output_shape: Vec<usize> = input
             .shape()
             .iter()
             .enumerate()
-            .map(|(ax, &d)| if reduce.must_reduce(ax) { 1 } else { d })
+            .map(|(ax, &d)| if reduce.must_reduce(ax, rank) { 1 } else { d })
             .collect();
         let mut result = Array::from_shape_fn(&*full_output_shape, |coords| {
             let slice_spec: Vec<SliceOrIndex> = coords
@@ -99,7 +100,7 @@ impl Reducer {
                 .iter()
                 .enumerate()
                 .map(|(ax, &d)| {
-                    if reduce.must_reduce(ax) {
+                    if reduce.must_reduce(ax, rank) {
                         (..).into()
                     } else {
                         d.into()
@@ -112,7 +113,7 @@ impl Reducer {
         });
         if !reduce.keep_dims {
             for ax in (0..full_output_shape.len()).rev() {
-                if reduce.must_reduce(ax) {
+                if reduce.must_reduce(ax, rank) {
                     result = result.index_axis_move(Axis(ax), 0);
                 }
             }
@@ -206,17 +207,44 @@ where
 
 #[derive(Clone, Debug, new)]
 pub struct Reduce {
-    axes: Option<Vec<usize>>,
+    axes: Option<Vec<i64>>,
     keep_dims: bool,
     reducer: Reducer,
 }
 
 impl Reduce {
-    pub fn must_reduce(&self, ax: usize) -> bool {
-        self.axes
+    pub fn must_reduce(&self, ax: usize, rank: usize) -> bool {
+        let resolved_axes: Option<Vec<usize>> = match &self.axes {
+            None => None,
+            Some(original_axes) => {
+                let mut ans: Vec<usize> = vec![];
+                for or_ax in original_axes.iter() {
+                    ans.push(Self::resolve_axis(*or_ax, rank as i64).unwrap());
+                }
+                Some(ans)
+            }
+        };
+
+        resolved_axes
             .as_ref()
             .map(|axes| axes.contains(&ax))
             .unwrap_or(true)
+    }
+
+    fn resolve_axis(axis: i64, rank: i64) -> TractResult<usize> {
+        let axis = {
+            let axis_res: TractResult<i64> = {
+                if 0 <= axis && axis <= rank - 1 {
+                    Ok(axis)
+                } else if -rank <= axis && axis < 0 {
+                    Ok(axis + rank)
+                } else {
+                    bail!("Illegal combination of values for rank and axis")
+                }
+            };
+            axis_res? as usize
+        };
+        Ok(axis)
     }
 }
 
@@ -256,7 +284,7 @@ impl InferenceRulesOp for Reduce {
                 .iter()
                 .enumerate()
                 .filter_map(|(ix, &d)| {
-                    if self.must_reduce(ix) {
+                    if self.must_reduce(ix, shape.len()) {
                         if self.keep_dims {
                             Some(1.to_dim())
                         } else {
