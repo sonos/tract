@@ -36,8 +36,8 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 }
 
 pub fn concat(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis = node.get_attr("axis")?;
-    Ok(Box::new(tractops::array::Concat::new(axis)))
+    let axis = node.get_attr_int("axis")?;
+    Ok(Box::new(tractops::array::Concat::new(axis as i64)))
 }
 
 pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<SharedTensor>
