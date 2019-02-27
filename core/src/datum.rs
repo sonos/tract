@@ -202,6 +202,12 @@ impl TryInto<TDim> for i32 {
     }
 }
 
+impl TryInto<TDim> for i64 {
+    fn try_into(&self) -> TractResult<TDim> {
+        Ok((*self).into())
+    }
+}
+
 impl TryInto<i32> for TDim {
     fn try_into(&self) -> TractResult<i32> {
         self.to_integer().map(|i| i as i32)
@@ -262,7 +268,9 @@ impl TryInto<f32> for String {
         } else if self == "-INF" {
             Ok(-std::f32::INFINITY)
         } else {
-            Ok(self.parse::<f32>().map_err(|_| format!("Can not parse {} as f32", self))?)
+            Ok(self
+                .parse::<f32>()
+                .map_err(|_| format!("Can not parse {} as f32", self))?)
         }
     }
 }
