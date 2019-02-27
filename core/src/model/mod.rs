@@ -6,7 +6,7 @@ pub mod compact;
 mod dsl;
 mod model;
 mod node;
-mod order;
+pub mod order;
 mod patch;
 mod tensor_info;
 

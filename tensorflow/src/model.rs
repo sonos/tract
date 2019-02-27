@@ -67,6 +67,30 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
                 model.add_edge(outlet, inlet)?;
             }
         }
+
+        // variable -> assign rewire
+        // in protobuf:
+        //  * VariableV2 has a single output (a byref tensor)
+        //  * Assign consumes this by_ref tensor on #0 and somehow performs
+        //      updates on it (it has a second input on #1 for the value to
+        //      assign)
+        //
+        // in tract:
+        //  * VariableV2 has two outputs: first is the value, second is an
+        //      opaque ptr to be used by Assign (pointing to the state)
+        //  * Assign will plug a third input (#2) into the VariableV2
+        //      output #1 to access the opaque ptr
+        for id in 0..model.nodes().len() {
+            use crate::ops::vars::*;
+            if model.node(id).op_is::<Assign>() {
+                let prec = model.node(id).inputs[0];
+                if model.node(prec.node).op_is::<VariableV2>() && prec.slot == 0 {
+                    model.add_edge(OutletId::new(prec.node, 1), InletId::new(id, 2))?;
+                } else {
+                    bail!("Model contains Assign/Variable2");
+                }
+            }
+        }
         Ok(model)
     }
 }

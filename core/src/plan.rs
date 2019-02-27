@@ -1,7 +1,8 @@
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
-use crate::model::{eval_order, Model, TensorInfo};
+use crate::model::{eval_order, Model, OutletId, TensorInfo};
+use crate::model::order::eval_order_for_nodes;
 use crate::ops::prelude::*;
 
 #[derive(Debug, Default)]
@@ -12,14 +13,39 @@ pub struct SessionState {
 #[derive(Debug, Clone)]
 pub struct SimplePlan<TI:TensorInfo, M: Borrow<Model<TI>>> {
     pub model: M,
+    pub outputs: Vec<OutletId>,
     pub order: Vec<usize>,
     pub flush_lists: Vec<TVec<usize>>,
     _casper: PhantomData<TI>,
 }
 
 impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
+    /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<TI, M>> {
-        let order = eval_order(model.borrow())?;
+        let outputs = model.borrow()
+            .outputs()?
+            .iter()
+            .cloned()
+            .collect::<Vec<OutletId>>();
+        Self::new_for_outputs(model, &outputs)
+    }
+    /// This contructor returns a plan that will compute the specified output.
+    pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<TI, M>> {
+        Self::new_for_outputs(model, &[output])
+    }
+    /// This contructor returns a plan that will compute all specified outputs in one pass.
+    pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<TI, M>> {
+        let inputs = model
+            .borrow()
+            .inputs()?
+            .iter()
+            .map(|n| n.node)
+            .collect::<Vec<usize>>();
+        let outputs_nodes = outputs
+            .iter()
+            .map(|n| n.node)
+            .collect::<Vec<usize>>();
+        let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes)?;
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for step in 0..order.len() {
             for i in &model.borrow().node(order[step]).inputs {
@@ -39,6 +65,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
             model,
             order,
             flush_lists,
+            outputs: outputs.to_vec(),
             _casper: PhantomData,
         })
     }
@@ -55,7 +82,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
 
 #[derive(Debug)]
 pub struct SimpleState<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> {
-    plan: P,
+    plans: Vec<P>,
     pub states: Vec<Option<Box<OpState>>>,
     pub session_state: SessionState,
     pub values: Vec<Option<TVec<SharedTensor>>>,
@@ -72,7 +99,7 @@ impl<TI:TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>> + Clone> 
             })
             .collect();
         SimpleState {
-            plan: self.plan.clone(),
+            plans: self.plans.clone(),
             states,
             session_state: SessionState::default(),
             values: self.values.clone(),
@@ -83,8 +110,12 @@ impl<TI:TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>> + Clone> 
 
 impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleState<TI, M, P> {
     pub fn new(plan: P) -> TractResult<SimpleState<TI, M, P>> {
-        let values = vec![None; plan.borrow().model.borrow().nodes().len()];
-        let states = plan
+        Self::new_multiplan(vec!(plan))
+    }
+
+    pub fn new_multiplan(plans: Vec<P>) -> TractResult<SimpleState<TI, M, P>> {
+        let values = vec![None; plans[0].borrow().model.borrow().nodes().len()];
+        let states = plans[0]
             .borrow()
             .model()
             .nodes()
@@ -92,9 +123,9 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             .map(|n| n.op().state())
             .collect::<TractResult<_>>()?;
         Ok(SimpleState {
+            plans,
             states,
             session_state: SessionState::default(),
-            plan,
             values,
             _phantom: PhantomData,
         })
@@ -109,7 +140,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     /// Reset wires state.
     pub fn reset_op_states(&mut self) -> TractResult<()> {
         self.states = self
-            .plan
+            .plans[0]
             .borrow()
             .model()
             .nodes()
@@ -120,21 +151,23 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     }
 
     pub fn run(&mut self, inputs: TVec<Tensor>) -> TractResult<TVec<SharedTensor>> {
+        self.run_plan(inputs, 0)
+    }
+
+    pub fn run_plan(&mut self, inputs: TVec<Tensor>, plan: usize) -> TractResult<TVec<SharedTensor>> {
         use crate::ops::source::Source;
         let mut result = tvec!();
         {
+            self.set_inputs(inputs)?;
             let &mut SimpleState {
-                ref plan,
+                ref plans,
                 ref mut session_state,
                 ref mut states,
                 ref mut values,
                 ..
             } = self;
-            let model = plan.borrow().model();
-            for (input, v) in model.inputs()?.iter().zip(inputs.into_iter()) {
-                values[input.node] = Some(tvec!(v.into()));
-            }
-            let plan = plan.borrow();
+            let plan = plans[plan].borrow();
+            let model = plan.model().borrow();
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
@@ -164,7 +197,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                     values[*flush] = None;
                 }
             }
-            for output in model.outputs()? {
+            for output in &plan.outputs {
                 result.push(values[output.node].as_ref().unwrap()[output.slot].clone())
             }
         }
@@ -174,11 +207,11 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
 
     pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TractResult<()> {
         let SimpleState {
-            ref plan,
+            ref plans,
             ref mut values,
             ..
         } = self;
-        plan.borrow()
+        plans[0].borrow()
             .model()
             .inputs()?
             .iter()
@@ -195,16 +228,16 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
 
     pub fn take_outputs(&mut self) -> TractResult<Vec<SharedTensor>> {
         let SimpleState {
-            ref plan,
+            ref plans,
             ref mut values,
             ..
         } = self;
         let mut v = vec![];
-        for o in plan.borrow().model().outputs()?.iter() {
+        for o in plans[0].borrow().model().outputs()?.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
                 format!(
                     "SharedTensor for {:?} is not computed",
-                    &plan.borrow().model().nodes()[o.node]
+                    &plans[0].borrow().model().nodes()[o.node]
                 )
             })?;
             v.push(vs[o.slot].clone())
@@ -223,12 +256,12 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
 
     pub fn compute_one(&mut self, node: usize) -> TractResult<()> {
         let SimpleState {
-            ref plan,
+            ref plans,
             ref mut session_state,
             ref mut values,
             ..
         } = self;
-        let plan = plan.borrow();
+        let plan = plans[0].borrow();
         let nodes = plan.model().nodes();
         let node = &nodes[node];
         let mut inputs: TVec<SharedTensor> = tvec![];
@@ -273,11 +306,12 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             let Self {
                 ref mut states,
                 ref mut session_state,
-                ref plan,
+                ref plans,
                 ..
             } = self;
+            let plan = plans[0].borrow();
             match states[node] {
-                Some(ref mut state) => state.eval(session_state, plan.borrow().model().nodes()[node].op(), inputs),
+                Some(ref mut state) => state.eval(session_state, plans[0].borrow().model().nodes()[node].op(), inputs),
                 None => plan.borrow().model().nodes()[node]
                     .op()
                     .as_stateless()
@@ -305,7 +339,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     }
 
     pub fn plan(&self) -> &SimplePlan<TI, M> {
-        &self.plan.borrow()
+        &self.plans[0].borrow()
     }
 
     pub fn model(&self) -> &Model<TI> {
