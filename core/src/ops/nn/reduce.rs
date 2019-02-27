@@ -232,19 +232,17 @@ impl Reduce {
     }
 
     fn resolve_axis(axis: i64, rank: i64) -> TractResult<usize> {
-        let axis = {
-            let axis_res: TractResult<i64> = {
-                if 0 <= axis && axis <= rank - 1 {
-                    Ok(axis)
-                } else if -rank <= axis && axis < 0 {
-                    Ok(axis + rank)
-                } else {
-                    bail!("Illegal combination of values for rank and axis")
-                }
-            };
-            axis_res? as usize
-        };
-        Ok(axis)
+        if 0 <= axis && axis <= rank - 1 {
+            Ok(axis as usize)
+        } else if -rank <= axis && axis < 0 {
+            Ok((axis + rank) as usize)
+        } else {
+            bail!(
+                "Illegal combination of values for rank and axis: {} and {}",
+                rank,
+                axis
+            )
+        }
     }
 }
 
