@@ -1,5 +1,6 @@
-use crate::ops::prelude::*;
 use ndarray::*;
+
+use crate::ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct ConstantOfShape {
@@ -12,6 +13,7 @@ impl ConstantOfShape {
         T: Datum + Copy,
     {
         let shape: TVec<usize> = shape
+            .cast_to::<i64>()?
             .as_slice::<i64>()?
             .iter()
             .map(|&x| x as usize)
@@ -44,15 +46,16 @@ impl InferenceRulesOp for ConstantOfShape {
     ) -> InferenceResult {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, i64::datum_type())?;
+        s.equals(&outputs[0].datum_type, self.value.datum_type())?;
         s.equals(&inputs[0].rank, 1)?;
         s.equals(&inputs[0].shape[0], outputs[0].rank.bex().to_dim())?;
-        s.given(&outputs[0].rank, move |s, rank| {
-            for idx in 0..(rank as usize) {
-                s.equals(inputs[0].value[idx].bex().to_dim(), &outputs[0].shape[idx])?;
-            }
-            Ok(())
-        })?;
+        // FIXME: inputs[0] is int64 and to_dim only works on i32.
+        //        s.given(&outputs[0].rank, move |s, rank| {
+        //            for idx in 0..(rank as usize) {
+        //                s.equals(inputs[0].value[idx].bex().to_dim(), &outputs[0].shape[idx])?;
+        //            }
+        //            Ok(())
+        //        })?;
         Ok(())
     }
 }
