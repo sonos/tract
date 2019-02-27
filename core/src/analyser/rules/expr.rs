@@ -48,7 +48,7 @@ impl_output!(IntFact, Int, "Int");
 impl_output!(TypeFact, Type, "DatumType");
 impl_output!(ShapeFact, Shape, "Shape");
 impl_output!(ValueFact, SharedTensor, "Tensor");
-impl_output!(DimFact, Dim, "Dim");
+impl_output!(DimFact, Dim, "TDim");
 
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {

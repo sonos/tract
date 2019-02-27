@@ -117,11 +117,8 @@ pub trait Op:
                     .iter()
                     .map(|i| i.value.concretize().unwrap().clone().into())
                     .collect(); // checked
-                trace!("Fully determined inputs: running eval");
-                let output_value = stateless.eval(input_values)?.pop().unwrap();
-                // FIXME: return all output values. Assert consistency with Facts.
-                trace!("Eval returned {:?}", output_value);
-                return Ok((infered_inputs, tvec![output_value.into(),]));
+                let output_values = stateless.eval(input_values)?.into_iter().map(|t| t.into()).collect::<TVec<_>>();
+                return Ok((infered_inputs, output_values));
             }
         }
 

@@ -11,6 +11,7 @@ pub mod logic;
 pub mod math;
 pub mod nn;
 pub mod quant;
+pub mod rec;
 pub mod vars;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
@@ -19,6 +20,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
+    rec::register_all_ops(&mut reg);
     vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
@@ -67,7 +69,7 @@ impl Op for Noop {
 
 impl StatelessOp for Noop {
     fn eval(&self, _inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        Ok(tvec!())
+        Ok(tvec!(Tensor::from(false).into()))
     }
 }
 

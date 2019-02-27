@@ -303,10 +303,15 @@ fn get_value_path(value: &ValueFact, path: &[isize]) -> TractResult<Wrapped> {
         return Ok(value.clone().wrap());
     }
 
-    match value.concretize() {
+    let returns = match value.concretize() {
         None => Ok(IntFact::default().wrap()),
-        Some(tensor) => Ok(tensor.cast_to::<i32>()?.into_owned().into_tensor().wrap()),
-    }
+        Some(tensor) => {
+            let path = path.iter().map(|i| *i as usize).collect::<TVec<usize>>();
+            Ok(tensor.cast_to::<i32>()?.to_array_view::<i32>()?[&*path].wrap())
+        }
+    };
+    trace!("returns: {:?}", returns);
+    returns
 }
 
 fn debug_value_path(path: &[isize], formatter: &mut fmt::Formatter) -> fmt::Result {
