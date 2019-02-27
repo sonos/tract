@@ -28,12 +28,14 @@ impl Concat {
         inputs: TVec<SharedTensor>,
     ) -> TractResult<TVec<SharedTensor>> {
         let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
-        // FIXME: too many copies
-        let mats: Vec<ArrayD<T>> = inputs
+        let mats: Vec<Cow<Tensor>> = inputs
             .iter()
-            .map(|mat| Ok(mat.cast_to::<T>()?.into_owned().into_array::<T>()?))
+            .map(|mat| mat.cast_to::<T>())
             .collect::<TractResult<_>>()?;
-        let views: Vec<_> = mats.iter().map(|mat| mat.view()).collect();
+        let views: Vec<_> = mats
+            .iter()
+            .map(|mat| mat.to_array_view::<T>())
+            .collect::<TractResult<_>>()?;
         let result = ::ndarray::stack(Axis(axis), &views)?;
         Ok(tvec![result.into()])
     }
