@@ -450,7 +450,15 @@ impl fmt::Debug for ShapeFact {
             if ix != 0 {
                 write!(formatter, ",")?
             }
-            write!(formatter, "{:?}", d)?;
+            if let Some(stream) = self.stream {
+                if stream.axis == ix {
+                    write!(formatter, "{:?}", stream.len)?;
+                } else {
+                    write!(formatter, "{:?}", d)?;
+                }
+            } else {
+                write!(formatter, "{:?}", d)?;
+            }
         }
         if self.open {
             write!(formatter, "..")
