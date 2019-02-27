@@ -1,6 +1,6 @@
 use crate::pb::*;
+use tract_core::ops::prelude::*;
 use tract_core::*;
-use tract_linalg::f16::f16;
 
 impl Tractify<TensorProto_DataType> for DatumType {
     fn tractify(t: &TensorProto_DataType) -> TractResult<DatumType> {
@@ -45,12 +45,18 @@ impl Tractify<TypeProto_Tensor> for TensorFact {
         }
         if t.has_shape() {
             let shape = t.get_shape();
-            let shape: Vec<usize> = shape
+            let shape: TVec<DimFact> = shape
                 .get_dim()
                 .iter()
-                .map(|d| d.get_dim_value() as usize)
+                .map(|d| {
+                    if d.get_dim_value() as usize == 0 {
+                        DimFact::default()
+                    } else {
+                        DimFact::from(d.get_dim_value().to_dim())
+                    }
+                })
                 .collect();
-            fact = fact.with_shape(shape)
+            fact = fact.with_shape(ShapeFact::closed(shape));
         }
         Ok(fact)
     }
