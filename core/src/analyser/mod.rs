@@ -93,7 +93,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let unified = old_fact.unify(inferred_fact)?;
 
                 if &unified != old_fact {
-                    debug!(" Refined {} input #{} to {:?}", node.name, ix, unified);
+                    debug!(" Refined {} output #{} to {:?}", node.name, ix, unified);
                     changed_edges.push((OutletId::new(node.id, ix), unified));
                 }
             }
