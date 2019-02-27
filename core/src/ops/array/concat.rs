@@ -9,19 +9,17 @@ pub struct Concat {
 
 impl Concat {
     fn resolve_axis(&self, rank: i64) -> TractResult<usize> {
-        let axis = {
-            let axis_res: TractResult<i64> = {
-                if 0 <= self.axis && self.axis <= rank - 1 {
-                    Ok(self.axis)
-                } else if -rank <= self.axis && self.axis < 0 {
-                    Ok(self.axis + rank)
-                } else {
-                    bail!("Illegal combination of values for rank and axis")
-                }
-            };
-            axis_res? as usize
-        };
-        Ok(axis)
+        if 0 <= self.axis && self.axis <= rank - 1 {
+            Ok(self.axis as usize)
+        } else if -rank <= self.axis && self.axis < 0 {
+            Ok((self.axis + rank) as usize)
+        } else {
+            bail!(
+                "Illegal combination of values for rank and axis: {} and {}",
+                rank,
+                self.axis
+            )
+        }
     }
 
     /// Evaluates the operation given the input tensors.
