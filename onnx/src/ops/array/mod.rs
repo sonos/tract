@@ -107,13 +107,13 @@ pub fn gather(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
-    let mode = node.get_attr_opt_str("mode")?;
     let value = node.get_attr_opt("value")?;
-    let mode = match mode {
-        Some("reflect") => tractops::array::PadMode::Reflect,
-        Some("edge") => tractops::array::PadMode::Edge,
-        _ => tractops::array::PadMode::Constant(value.unwrap_or(0.)),
-    };
+    let mode = match node.get_attr_opt("mode")? {
+        None | Some("constant") => None,
+        Some(mode) => Some(node.parse_str("mode", mode)?),
+    }.unwrap_or_else(||
+        tractops::array::PadMode::Constant(value.unwrap_or(0.))
+    );
     let pads = node.get_attr_ints("pads")?;
     let rank = pads.len() / 2;
     let pads = (0..rank)

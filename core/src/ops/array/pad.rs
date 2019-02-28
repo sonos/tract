@@ -1,6 +1,7 @@
 use crate::ops::prelude::*;
 use ndarray::*;
 use num_traits::AsPrimitive;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PadMode {
@@ -8,6 +9,19 @@ pub enum PadMode {
     Reflect,
     Edge,
 }
+
+impl FromStr for PadMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "reflect" => Ok(PadMode::Reflect),
+            "edge" => Ok(PadMode::Edge),
+            _ => Err(())
+        }
+    }
+}
+
 impl Default for PadMode {
     fn default() -> PadMode {
         PadMode::Constant(0.0)

@@ -4,6 +4,7 @@ use tract_core::ops::prelude::*;
 
 use crate::ops::OpRegister;
 use crate::pb::NodeProto;
+use crate::pb_helpers::OptionExt;
 
 macro_rules! reduce {
     ($id:ident) => {
@@ -81,13 +82,9 @@ fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
             pads.iter().skip(len / 2).map(|&i| i as usize).collect(),
         ));
     }
-    match node.get_attr_opt_str("auto_pad")?.unwrap_or("NOTSET") {
-        "NOTSET" => Ok(PaddingSpec::Valid),
-        "VALID" => Ok(PaddingSpec::Valid),
-        "SAME_UPPER" => Ok(PaddingSpec::SameUpper),
-        "SAME_LOWER" => Ok(PaddingSpec::SameLower),
-        e => bail!("Unexpected auto_pad value {}", e),
-    }
+    Ok(node.get_attr_opt("auto_pad")?.and_try(|s| {
+        node.parse_str("auto_pad", s)
+    })?.unwrap_or(PaddingSpec::Valid))
 }
 
 fn dilations(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {

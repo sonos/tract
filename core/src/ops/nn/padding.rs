@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::ops::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -6,6 +8,20 @@ pub enum PaddingSpec {
     Valid,
     SameUpper,
     SameLower,
+}
+
+impl FromStr for PaddingSpec {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "NOTSET" => Ok(PaddingSpec::Valid),
+            "VALID" => Ok(PaddingSpec::Valid),
+            "SAME_UPPER" => Ok(PaddingSpec::SameUpper),
+            "SAME_LOWER" => Ok(PaddingSpec::SameLower),
+            _ => Err(()),
+        }
+    }
 }
 
 impl Default for PaddingSpec {
