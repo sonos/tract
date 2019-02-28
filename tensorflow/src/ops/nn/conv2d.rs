@@ -1,28 +1,10 @@
 use tract_core::ops::prelude::*;
+use tract_core::ops::nn::*;
 
 pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
-    use tract_core::ops::nn::*;
-    let data_format = if pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC") == b"NHWC" {
-        DataFormat::NHWC
-    } else {
-        DataFormat::NCHW
-    };
-    let strides: Vec<usize> = pb.get_attr_list_int("strides")?;
-    if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
-        Err(format!(
-            "strides must be of the form [1, h, v, 1], found {:?}",
-            strides
-        ))?
-    };
-    let padding = pb.get_attr_raw_str("padding")?;
-    let padding = match padding {
-        b"VALID" => ::tract_core::ops::nn::PaddingSpec::Valid,
-        b"SAME" => ::tract_core::ops::nn::PaddingSpec::SameUpper,
-        s => Err(format!(
-            "unsupported Padding {}",
-            String::from_utf8_lossy(s)
-        ))?,
-    };
+    let data_format = super::data_format(pb)?;
+    let padding = super::padding(pb)?;
+    let strides = super::strides(pb)?;
     Ok(Box::new(Conv::new(
         data_format,
         KernelFormat::HWIO,
