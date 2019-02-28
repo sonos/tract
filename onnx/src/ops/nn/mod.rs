@@ -11,7 +11,7 @@ macro_rules! reduce {
             let axes = node
                 .get_attr_opt_ints("axes")?
                 .map(|axes| axes.iter().map(|&i| i as usize).collect());
-            let keep_dims = node.get_attr_opt_int("keepdims")?.unwrap_or(1i64) == 1;
+            let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(true);
             Ok(Box::new(tractops::nn::Reduce::new(
                 axes,
                 keep_dims,
@@ -104,17 +104,14 @@ fn strides(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
 
 pub fn arg_max_min(node: &NodeProto) -> TractResult<Box<Op>> {
     let max = node.get_op_type() == "ArgMax";
-    let axis = node
-        .get_attr_opt_int("axis")?
-        .map(|i| i as usize)
-        .unwrap_or(0);
-    let keepdims = node.get_attr_opt_int("keepdims")?.unwrap_or(1i64) == 1;
+    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
+    let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
     Ok(Box::new(tractops::nn::ArgMaxMin::new(max, axis, keepdims)))
 }
 
 pub fn batch_normalization(node: &NodeProto) -> TractResult<Box<Op>> {
     let epsilon = node.get_attr_opt_float("epsilon")?.unwrap_or(1e-5);
-    let spatial = node.get_attr_opt_int("spatial")?.unwrap_or(0);
+    let spatial = node.get_attr_opt("spatial")?.unwrap_or(0);
     assert_eq!(spatial, 0);
     Ok(Box::new(tractops::nn::BatchNorm::new(
         DataFormat::NCHW,
@@ -127,7 +124,7 @@ pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
     let kernel_shape = node
         .get_attr_opt_ints("kernel_shape")?
         .map(|i| i.iter().map(|&i| i as usize).collect());
-    let group = node.get_attr_opt_int("group")?.unwrap_or(1);
+    let group = node.get_attr_opt("group")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::Conv::new(
         DataFormat::NCHW,
         KernelFormat::OIHW,
@@ -135,7 +132,7 @@ pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
         kernel_shape,
         pad(node)?,
         strides(node)?,
-        group as usize,
+        group,
     )))
 }
 
@@ -147,7 +144,7 @@ pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
         .collect();
     let pad = pad(node)?;
     let strides = strides(node)?;
-    let count_include_pad = node.get_attr_opt_int("count_include_pad")?.unwrap_or(0) != 0;
+    let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
     Ok(Box::new(tractops::nn::AvgPool::new(
         DataFormat::NCHW,
         kernel_shape,
@@ -163,7 +160,7 @@ pub fn elu(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn global_lp_pool(node: &NodeProto) -> TractResult<Box<Op>> {
-    let p: usize = node.get_attr_opt_int("p")?.map(|i| i as usize).unwrap_or(2);
+    let p: usize = node.get_attr_opt("p")?.unwrap_or(2);
     Ok(Box::new(tractops::nn::GlobalLpPool::new(p)))
 }
 
@@ -174,26 +171,17 @@ pub fn hard_sigmoid(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn layer_hard_max(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis: isize = node
-        .get_attr_opt_int("axis")?
-        .map(|i| i as isize)
-        .unwrap_or(1);
+    let axis = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::LayerHardmax::new(axis)))
 }
 
 pub fn layer_log_soft_max(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis: isize = node
-        .get_attr_opt_int("axis")?
-        .map(|i| i as isize)
-        .unwrap_or(1);
+    let axis = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::LayerLogSoftmax::new(axis)))
 }
 
 pub fn layer_soft_max(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis: isize = node
-        .get_attr_opt_int("axis")?
-        .map(|i| i as isize)
-        .unwrap_or(1);
+    let axis = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::LayerSoftmax::new(axis)))
 }
 
@@ -206,7 +194,7 @@ pub fn lrn(node: &NodeProto) -> TractResult<Box<Op>> {
     let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(0.0001);
     let beta = node.get_attr_opt_float("beta")?.unwrap_or(0.75);
     let bias = node.get_attr_opt_float("bias")?.unwrap_or(1.0);
-    let size: usize = node.get_attr_int("size")? as usize;
+    let size = node.get_attr("size")?;
     Ok(Box::new(tractops::nn::Lrn::new(alpha, beta, bias, size)))
 }
 
