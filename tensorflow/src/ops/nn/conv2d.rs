@@ -1,12 +1,4 @@
-use std::marker::PhantomData;
-
-use super::local_patch::*;
-use ndarray::prelude::*;
-use ndarray::LinalgScalar;
 use tract_core::ops::prelude::*;
-
-#[derive(Debug, Clone, new)]
-pub struct Conv2D<T: Datum + LinalgScalar>(LocalPatch, PhantomData<T>);
 
 pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     use tract_core::ops::nn::*;
@@ -42,117 +34,11 @@ pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     )))
 }
 
-impl<T: Datum + LinalgScalar> Conv2D<T> {
-    /// Performs a 2D convolution on an input tensor and a filter.
-    fn convolve(
-        &self,
-        data: &Array4<T>,
-        filter: ArrayViewD<T>,
-        pad_rows: bool,
-        pad_cols: bool,
-    ) -> TractResult<(Array4<T>)> {
-        let images = BatchImageWrapper(data.view());
-
-        let filter_rows = filter.shape()[0];
-        let filter_cols = filter.shape()[1];
-        let out_depth = filter.shape()[3];
-
-        let out_height = self
-            .0
-            .adjusted_rows(images.h().into(), filter_rows)
-            .to_integer()? as usize;
-        let out_width = self
-            .0
-            .adjusted_cols(images.w().into(), filter_cols)
-            .to_integer()? as usize;
-
-        let filter = filter
-            .view()
-            .into_shape((filter_rows * filter_cols * images.d(), out_depth))?;
-
-        let mut transformed: Vec<T> =
-            Vec::with_capacity(images.n() * out_height * out_width * out_depth);
-
-        // Loop over each batch.
-        for image in data.outer_iter() {
-            let patches =
-                self.0
-                    .mk_patches(image, (filter_rows, filter_cols), pad_rows, pad_cols)?;
-            transformed.extend(patches.dot(&filter).into_iter());
-        }
-
-        let transformed = Array::from_vec(transformed).into_shape((
-            images.n(),
-            out_height,
-            out_width,
-            out_depth,
-        ))?;
-
-        Ok(transformed)
-    }
-}
-
-impl<T: Datum + LinalgScalar> Op for Conv2D<T> {
-    fn name(&self) -> Cow<str> {
-        "tf.Conv2D".into()
-    }
-}
-
-impl<T: Datum + LinalgScalar> StatelessOp for Conv2D<T> {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let (m_data, m_filter) = args_2!(inputs);
-        let data = m_data.to_array()?;
-        let filter = m_filter.to_array_view()?;
-        let data = into_4d(data)?;
-
-        Ok(tvec![self
-            .convolve(&data, filter, true, true)?
-            .into_dyn()
-            .into(),])
-    }
-}
-
-impl<T: Datum + LinalgScalar> InferenceRulesOp for Conv2D<T> {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 2)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, T::datum_type())?;
-        s.equals(&inputs[1].datum_type, T::datum_type())?;
-        s.equals(&outputs[0].datum_type, T::datum_type())?;
-        s.equals(&inputs[0].rank, 4)?;
-        s.equals(&inputs[1].rank, 4)?;
-        s.equals(&outputs[0].rank, 4)?;
-        s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
-        s.equals(&inputs[0].shape[3], &inputs[1].shape[2])?;
-        s.equals(&outputs[0].shape[3], &inputs[1].shape[3])?;
-        s.given_2(&inputs[0].shape[1], &inputs[1].shape[0], move |s, h, kh| {
-            if let Ok(kh) = kh.to_integer() {
-                let oh = self.0.adjusted_rows(h, kh as usize);
-                s.equals(&outputs[0].shape[1], oh)?;
-            }
-            Ok(())
-        })?;
-        s.given_2(&inputs[0].shape[2], &inputs[1].shape[1], move |s, w, kw| {
-            if let Ok(kw) = kw.to_integer() {
-                let ow = self.0.adjusted_cols(w, kw as usize);
-                s.equals(&outputs[0].shape[2], ow)?;
-            }
-            Ok(())
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
+    use ndarray::*;
     use tract_core::ops::nn::{Conv, DataFormat, KernelFormat, PaddingSpec};
     use tract_core::Tensor;
 
@@ -163,22 +49,19 @@ mod tests {
             .into()
     }
 
-    fn make_conv(h_stride: usize, v_stride: usize, padding: Padding) -> Box<Op> {
+    fn make_conv(h_stride: usize, v_stride: usize, padding: PaddingSpec) -> Box<Op> {
         Box::new(Conv::new(
             DataFormat::NHWC,
             KernelFormat::HWIO,
             None,
             None,
-            match padding {
-                Padding::Valid => PaddingSpec::Valid,
-                Padding::Same => PaddingSpec::SameUpper,
-            },
+            padding,
             Some(tvec![v_stride, h_stride]),
             1,
         ))
     }
 
-    fn verify(input: Tensor, filter: Tensor, stride: usize, padding: Padding, expect: &[f32]) {
+    fn verify(input: Tensor, filter: Tensor, stride: usize, padding: PaddingSpec, expect: &[f32]) {
         let result = make_conv(stride, stride, padding)
             .as_stateless()
             .unwrap()
@@ -197,7 +80,7 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             arr4(&[[[[1.0f32, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]]).into(),
             1,
-            Padding::Valid,
+            PaddingSpec::Valid,
             &[
                 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
                 16.0, 17.0, 18.0,
@@ -211,7 +94,7 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             mk(&[1, 1, 3, 3]),
             1,
-            Padding::Valid,
+            PaddingSpec::Valid,
             &[
                 30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0, 204.0,
                 174.0, 216.0, 258.0, 210.0, 261.0, 312.0,
@@ -225,7 +108,7 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             mk(&[1, 2, 3, 3]),
             1,
-            Padding::Valid,
+            PaddingSpec::Valid,
             &[
                 231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0, 936.0,
                 1029.0,
@@ -239,7 +122,7 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             mk(&[2, 1, 3, 3]),
             1,
-            Padding::Valid,
+            PaddingSpec::Valid,
             &[
                 465.0, 504.0, 543.0, 618.0, 675.0, 732.0, 771.0, 846.0, 921.0,
             ],
@@ -252,7 +135,7 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             mk(&[2, 2, 3, 3]),
             1,
-            Padding::Valid,
+            PaddingSpec::Valid,
             &[2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0],
         )
     }
@@ -263,7 +146,7 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             mk(&[2, 2, 3, 3]),
             2,
-            Padding::Valid,
+            PaddingSpec::Valid,
             &[2271.0, 2367.0, 2463.0],
         )
     }
@@ -274,14 +157,14 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             mk(&[2, 2, 3, 3]),
             2,
-            Padding::Same,
+            PaddingSpec::SameUpper,
             &[2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0],
         );
     }
 
     #[test]
     fn test_conv_1() {
-        let conv = make_conv(1, 1, Padding::Same);
+        let conv = make_conv(1, 1, PaddingSpec::SameUpper);
         // NHWC
         let data: SharedTensor = arr4(&[[[[1f32]]]]).into();
         // HWIO
@@ -299,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_conv_2() {
-        let conv = make_conv(1, 1, Padding::Same);
+        let conv = make_conv(1, 1, PaddingSpec::SameUpper);
         let data: SharedTensor =
             arr4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]).into();
         let filter: SharedTensor = arr4(&[
@@ -321,7 +204,7 @@ mod tests {
 
     #[test]
     fn inference_1() {
-        let op = make_conv(1, 3, Padding::Valid);
+        let op = make_conv(1, 3, PaddingSpec::Valid);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
         let any = TensorFact::default();
@@ -339,7 +222,7 @@ mod tests {
 
     #[test]
     fn inference_2() {
-        let op = make_conv(1, 1, Padding::Same);
+        let op = make_conv(1, 1, PaddingSpec::SameUpper);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
         let any = TensorFact::default();
