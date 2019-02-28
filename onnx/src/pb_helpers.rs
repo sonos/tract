@@ -256,7 +256,9 @@ impl NodeProto {
             Some(attr) => attr,
             _ => return Ok(None),
         };
-        self.expect_attr(name, attr.get_field_type() == ty, || format!("{:?}", ty))?;
+        self.expect_attr(name, attr.get_field_type() == ty, || {
+            format!("{}, got {}", ty, attr.get_field_type())
+        })?;
         Ok(Some(attr))
     }
 
