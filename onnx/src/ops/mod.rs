@@ -45,8 +45,8 @@ fn konst(node: &NodeProto) -> TractResult<Box<Op>> {
 fn cast(node: &NodeProto) -> TractResult<Box<Op>> {
     use protobuf::ProtobufEnum;
     use tract_core::ToTract;
-    let to = node.get_attr_int("to")?;
-    let to = pb::TensorProto_DataType::from_i32(to as i32)
-        .ok_or_else(|| format!("Can not convert integer {} into a TensorProto_DataType", to))?;
+    let to = node.get_attr("to")?;
+    let to = pb::TensorProto_DataType::from_i32(to)
+        .ok_or_else(|| format!("Cannot convert integer {} into a TensorProto_DataType", to))?;
     Ok(Box::new(::tract_core::ops::cast::Cast::new(to.tractify()?)))
 }

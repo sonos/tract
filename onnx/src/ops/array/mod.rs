@@ -36,8 +36,8 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 }
 
 pub fn concat(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis = node.get_attr_int("axis")?;
-    Ok(Box::new(tractops::array::Concat::new(axis as usize)))
+    let axis = node.get_attr("axis")?;
+    Ok(Box::new(tractops::array::Concat::new(axis)))
 }
 
 pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<SharedTensor>
@@ -52,8 +52,8 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
     let value = node.get_attr_opt_float("value")?.unwrap_or(0.0);
     if node.get_input().len() == 0 {
         use protobuf::ProtobufEnum;
-        let dt = match node.get_attr_opt_int("dtype")? {
-            Some(dt) => pb::TensorProto_DataType::from_i32(dt as i32)
+        let dt = match node.get_attr_opt("dtype")? {
+            Some(dt) => pb::TensorProto_DataType::from_i32(dt)
                 .ok_or_else(|| {
                     format!("Can not convert integer {} into a TensorProto_DataType", dt)
                 })?
@@ -82,9 +82,9 @@ pub fn constant_of_shape(node: &NodeProto) -> TractResult<Box<Op>> {
 
 pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
     use protobuf::ProtobufEnum;
-    let dt = match node.get_attr_opt_int("dtype")? {
+    let dt = match node.get_attr_opt("dtype")? {
         Some(dt) => Some(
-            pb::TensorProto_DataType::from_i32(dt as i32)
+            pb::TensorProto_DataType::from_i32(dt)
                 .ok_or_else(|| {
                     format!("Can not convert integer {} into a TensorProto_DataType", dt)
                 })?
@@ -92,17 +92,17 @@ pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
         ),
         None => None,
     };
-    let k = node.get_attr_opt_int("k")?.unwrap_or(0);
-    Ok(Box::new(tractops::array::EyeLike::new(dt, k as isize)))
+    let k = node.get_attr_opt("k")?.unwrap_or(0);
+    Ok(Box::new(tractops::array::EyeLike::new(dt, k)))
 }
 
 pub fn flatten(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis = node.get_attr_opt_int("axis")?.unwrap_or(1);
-    Ok(Box::new(tractops::array::Flatten::new(axis as usize)))
+    let axis = node.get_attr_opt("axis")?.unwrap_or(1);
+    Ok(Box::new(tractops::array::Flatten::new(axis)))
 }
 
 pub fn gather(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis = node.get_attr_opt_int("axis")?.unwrap_or(0);
+    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     Ok(Box::new(tractops::array::Gather::new(axis)))
 }
 
@@ -134,7 +134,7 @@ pub fn slice(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn split(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axis = node.get_attr_opt_int("axis")?.unwrap_or(0);
+    let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let split = node.get_attr_opt_ints("split")?;
     Ok(Box::new(tractops::array::Split::new(
         axis as usize,

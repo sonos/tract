@@ -63,14 +63,8 @@ pub fn clip(node: &NodeProto) -> TractResult<Box<Op>> {
 pub fn gemm(node: &NodeProto) -> TractResult<Box<Op>> {
     let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
     let beta = node.get_attr_opt_float("beta")?.unwrap_or(1.0);
-    let trans_a = node
-        .get_attr_opt_int("transA")?
-        .map(|a| a != 0)
-        .unwrap_or(false);
-    let trans_b = node
-        .get_attr_opt_int("transB")?
-        .map(|a| a != 0)
-        .unwrap_or(false);
+    let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
+    let trans_b = node.get_attr_opt("transB")?.unwrap_or(false);
     Ok(Box::new(tractops::math::Gemm::new(
         alpha, beta, trans_a, trans_b, true,
     )))
