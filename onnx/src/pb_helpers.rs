@@ -240,6 +240,13 @@ impl NodeProto {
         Ok(())
     }
 
+    pub fn expect_ok_or_else<T, R: Reason>(&self, result: Option<T>, what: R) -> TractResult<T> {
+        match result {
+            Some(v) => Ok(v),
+            None => Err(self.expect(false, what).unwrap_err()),
+        }
+    }
+
     pub fn expect_attr_ok_or_else<T, R: Reason>(
         &self, attr: &str, result: Option<T>, what: R,
     ) -> TractResult<T> {
@@ -260,6 +267,48 @@ impl NodeProto {
             format!("{}, got {}", ty, attr.get_field_type())
         })?;
         Ok(Some(attr))
+    }
+
+    pub fn get_attr_opt<'a, T>(&'a self, name: &str) -> TractResult<Option<T>>
+    where
+        T: AttrScalarType<'a>,
+    {
+        T::get_attr_opt_scalar(self, name)
+    }
+
+    pub fn get_attr<'a, T>(&'a self, name: &str) -> TractResult<T>
+    where
+        T: AttrScalarType<'a>,
+    {
+        self.expect_ok_or_else(self.get_attr_opt(name)?, || format!("attribute '{}'", name))
+    }
+
+    pub fn get_attr_opt_slice<'a, T>(&'a self, name: &str) -> TractResult<Option<&'a [T]>>
+    where
+        T: AttrSliceType<'a>,
+    {
+        T::get_attr_opt_slice(self, name)
+    }
+
+    pub fn get_attr_slice<'a, T>(&'a self, name: &str) -> TractResult<&'a [T]>
+    where
+        T: AttrSliceType<'a>,
+    {
+        self.expect_ok_or_else(self.get_attr_opt_slice(name)?, || format!("attribute '{}'", name))
+    }
+
+    pub fn get_attr_opt_tvec<'a, T>(&'a self, name: &str) -> TractResult<Option<TVec<T>>>
+    where
+        T: AttrTVecType<'a>,
+    {
+        T::get_attr_opt_tvec(self, name)
+    }
+
+    pub fn get_attr_tvec<'a, T>(&'a self, name: &str) -> TractResult<TVec<T>>
+    where
+        T: AttrTVecType<'a>,
+    {
+        self.expect_ok_or_else(self.get_attr_opt_tvec(name)?, || format!("attribute '{}'", name))
     }
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
