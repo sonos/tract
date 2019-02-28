@@ -3,7 +3,7 @@ use tract_core::*;
 
 use std::borrow::Cow;
 use std::fmt::{self, Display};
-use std::str;
+use std::str::{self, FromStr};
 
 pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
     #[must_use]
@@ -37,7 +37,7 @@ where
     }
 }
 
-trait OptionExt {
+pub trait OptionExt {
     type Item;
 
     fn and_try<F, T>(self, f: F) -> TractResult<Option<T>>
@@ -251,27 +251,28 @@ impl<'a> AttrTVecType<'a> for usize {
 }
 
 impl NodeProto {
+    pub fn bail<T>(&self, msg: &str) -> TractResult<T> {
+        bail!("Node {} ({}): {}", self.get_name(), self.get_op_type(), msg)
+    }
+
+    pub fn bail_attr<T>(&self, attr: &str, msg: &str) -> TractResult<T> {
+        bail!("Node {} ({}), attribute '{}': {}", self.get_name(), self.get_op_type(), attr, msg)
+    }
+
     pub fn expect<R: Reason>(&self, cond: bool, what: R) -> TractResult<()> {
-        ensure!(
-            cond,
-            "Node {} ({}): expected {}",
-            self.get_name(),
-            self.get_op_type(),
-            what.reason()
-        );
-        Ok(())
+        if !cond {
+            self.bail(&format!("expected {}", what.reason()))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn expect_attr<R: Reason>(&self, attr: &str, cond: bool, what: R) -> TractResult<()> {
-        ensure!(
-            cond,
-            "Node {} ({}), attribute '{}': expected {}",
-            self.get_name(),
-            self.get_op_type(),
-            attr,
-            what.reason()
-        );
-        Ok(())
+        if !cond {
+            self.bail_attr(attr, &format!("expected {}", what.reason()))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn expect_ok_or_else<T, R: Reason>(&self, result: Option<T>, what: R) -> TractResult<T> {
@@ -315,6 +316,16 @@ impl NodeProto {
         T: AttrScalarType<'a>,
     {
         self.expect_ok_or_else(self.get_attr_opt(name)?, || format!("attribute '{}'", name))
+    }
+
+    pub fn parse_str<T>(&self, attr: &str, s: &str) -> TractResult<T>
+    where
+        T: FromStr,
+    {
+        if let Ok(v) = T::from_str(s) {
+            return Ok(v);
+        }
+        self.bail_attr(attr, &format!("unexpected value: {:?}", s))
     }
 
     pub fn get_attr_opt_slice<'a, T>(&'a self, name: &str) -> TractResult<Option<&'a [T]>>
