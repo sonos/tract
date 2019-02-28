@@ -2,6 +2,7 @@ use crate::pb::*;
 use tract_core::*;
 
 use std::borrow::Cow;
+use std::fmt::{self, Display};
 use std::str;
 
 pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
@@ -66,6 +67,24 @@ impl<A> OptionExt for Option<A> {
         F: Fn(Self::Item) -> T,
     {
         Ok(self.map(f))
+    }
+}
+
+impl Display for AttributeProto_AttributeType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            AttributeProto_AttributeType::INT => "int",
+            AttributeProto_AttributeType::FLOAT => "float",
+            AttributeProto_AttributeType::TENSOR => "tensor",
+            AttributeProto_AttributeType::STRING => "string",
+            AttributeProto_AttributeType::INTS => "list of ints",
+            AttributeProto_AttributeType::FLOATS => "list of floats",
+            AttributeProto_AttributeType::TENSORS => "list of tensors",
+            AttributeProto_AttributeType::STRINGS => "list of strings",
+            AttributeProto_AttributeType::GRAPH => "graph",
+            AttributeProto_AttributeType::GRAPHS => "graphs",
+            _ => "<undefined>",
+        })
     }
 }
 
