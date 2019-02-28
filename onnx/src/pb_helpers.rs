@@ -311,17 +311,6 @@ impl NodeProto {
         self.expect_ok_or_else(self.get_attr_opt_tvec(name)?, || format!("attribute '{}'", name))
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<Tensor>> {
-        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)? {
-            Some(attr) => Ok(Some(attr.get_t().tractify()?)),
-            None => Ok(None),
-        }
-    }
-
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<Tensor> {
-        self.expect_attr_ok_or_else(name, self.get_attr_opt_tensor(name)?, "tensor")
-    }
-
     pub fn get_attr_opt_str(&self, name: &str) -> TractResult<Option<&str>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::STRING)? {
             Some(attr) => Ok(Some(::std::str::from_utf8(attr.get_s())?)),

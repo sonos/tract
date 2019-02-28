@@ -38,7 +38,7 @@ impl OpBuilder {
 }
 
 fn konst(node: &NodeProto) -> TractResult<Box<Op>> {
-    let v = node.get_attr_tensor("value")?;
+    let v = node.get_attr("value")?;
     Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(v)))
 }
 

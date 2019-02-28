@@ -73,7 +73,7 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn constant_of_shape(node: &NodeProto) -> TractResult<Box<Op>> {
-    let value = match node.get_attr_opt_tensor("value")? {
+    let value = match node.get_attr_opt::<Tensor>("value")? {
         Some(val) => val.into_tensor(),
         None => make_const::<f32>(&vec![1], 0.0 as f32)?,
     };
