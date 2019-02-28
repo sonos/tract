@@ -127,6 +127,16 @@ impl<'a> AttrScalarType<'a> for i64 {
     }
 }
 
+impl<'a> AttrScalarType<'a> for bool {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        let int: Option<i64> = AttrScalarType::get_attr_opt_scalar(node, name)?;
+        int.and_try(|int| {
+            node.expect_attr(name, int == 0 || int == 1, "boolean (0 or 1)")?;
+            Ok(int == 1)
+        })
+    }
+}
+
 impl<'a> AttrScalarType<'a> for usize {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
         let int: Option<i64> = AttrScalarType::get_attr_opt_scalar(node, name)?;
