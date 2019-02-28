@@ -110,7 +110,7 @@ pub fn arg_max_min(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn batch_normalization(node: &NodeProto) -> TractResult<Box<Op>> {
-    let epsilon = node.get_attr_opt_float("epsilon")?.unwrap_or(1e-5);
+    let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5);
     let spatial = node.get_attr_opt("spatial")?.unwrap_or(0);
     assert_eq!(spatial, 0);
     Ok(Box::new(tractops::nn::BatchNorm::new(
@@ -155,7 +155,7 @@ pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn elu(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
     Ok(Box::new(tractops::nn::Elu::new(alpha)))
 }
 
@@ -165,8 +165,8 @@ pub fn global_lp_pool(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn hard_sigmoid(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(0.2);
-    let beta = node.get_attr_opt_float("beta")?.unwrap_or(0.5);
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.2);
+    let beta = node.get_attr_opt("beta")?.unwrap_or(0.5);
     Ok(Box::new(tractops::nn::Hardsigmoid::new(alpha, beta)))
 }
 
@@ -186,14 +186,14 @@ pub fn layer_soft_max(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn leaky_relu(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(0.01);
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.01);
     Ok(Box::new(tractops::nn::LeakyRelu::new(alpha)))
 }
 
 pub fn lrn(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(0.0001);
-    let beta = node.get_attr_opt_float("beta")?.unwrap_or(0.75);
-    let bias = node.get_attr_opt_float("bias")?.unwrap_or(1.0);
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.0001);
+    let beta = node.get_attr_opt("beta")?.unwrap_or(0.75);
+    let bias = node.get_attr_opt("bias")?.unwrap_or(1.);
     let size = node.get_attr("size")?;
     Ok(Box::new(tractops::nn::Lrn::new(alpha, beta, bias, size)))
 }
@@ -220,8 +220,8 @@ pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn parametric_softplus(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_float("alpha")?;
-    let beta = node.get_attr_float("beta")?;
+    let alpha = node.get_attr("alpha")?;
+    let beta = node.get_attr("beta")?;
     Ok(Box::new(tractops::nn::ParametricSoftplus::new(alpha, beta)))
 }
 
@@ -235,8 +235,8 @@ element_bin!(Prelu, match
 );
 
 pub fn scaled_tanh(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_float("alpha")?;
-    let beta = node.get_attr_float("beta")?;
+    let alpha = node.get_attr("alpha")?;
+    let beta = node.get_attr("beta")?;
     Ok(Box::new(tractops::nn::ScaledTanh::new(alpha, beta)))
 }
 
@@ -250,18 +250,18 @@ element_map_with_params!(Shrink, [f16, f32, f64], { bias: f32, lambd: f32 },
 );
 
 pub fn shrink(node: &NodeProto) -> TractResult<Box<Op>> {
-    let bias = node.get_attr_opt_float("bias")?.unwrap_or(0.0);
-    let lambd = node.get_attr_opt_float("lambd")?.unwrap_or(0.5);
+    let bias = node.get_attr_opt("bias")?.unwrap_or(0.0);
+    let lambd = node.get_attr_opt("lambd")?.unwrap_or(0.5);
     Ok(Box::new(Shrink::new(bias, lambd)))
 }
 
 pub fn selu(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.67326);
-    let gamma = node.get_attr_opt_float("gamma")?.unwrap_or(1.0507);
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.67326);
+    let gamma = node.get_attr_opt("gamma")?.unwrap_or(1.0507);
     Ok(Box::new(tractops::nn::Selu::new(alpha, gamma)))
 }
 
 pub fn thresholded_relu(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
     Ok(Box::new(tractops::nn::ThresholdedRelu::new(alpha)))
 }

@@ -356,17 +356,6 @@ impl NodeProto {
         self.expect_attr_ok_or_else(name, self.get_attr_opt_str(name)?, "string")
     }
 
-    pub fn get_attr_opt_float(&self, name: &str) -> TractResult<Option<f32>> {
-        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOAT)? {
-            Some(attr) => Ok(Some(attr.get_f())),
-            None => Ok(None),
-        }
-    }
-
-    pub fn get_attr_float(&self, name: &str) -> TractResult<f32> {
-        self.expect_attr_ok_or_else(name, self.get_attr_opt_float(name)?, "float")
-    }
-
     pub fn get_attr_opt_ints(&self, name: &str) -> TractResult<Option<&[i64]>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)? {
             Some(attr) => Ok(Some(attr.get_ints())),

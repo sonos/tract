@@ -49,7 +49,7 @@ where
 }
 
 pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
-    let value = node.get_attr_opt_float("value")?.unwrap_or(0.0);
+    let value = node.get_attr_opt("value")?.unwrap_or(0.);
     if node.get_input().len() == 0 {
         use protobuf::ProtobufEnum;
         let dt = match node.get_attr_opt("dtype")? {
@@ -108,11 +108,11 @@ pub fn gather(node: &NodeProto) -> TractResult<Box<Op>> {
 
 pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
     let mode = node.get_attr_opt_str("mode")?;
-    let value = node.get_attr_opt_float("value")?;
+    let value = node.get_attr_opt("value")?;
     let mode = match mode {
         Some("reflect") => tractops::array::PadMode::Reflect,
         Some("edge") => tractops::array::PadMode::Edge,
-        _ => tractops::array::PadMode::Constant(value.unwrap_or(0.0)),
+        _ => tractops::array::PadMode::Constant(value.unwrap_or(0.)),
     };
     let pads = node.get_attr_ints("pads")?;
     let rank = pads.len() / 2;
