@@ -147,6 +147,30 @@ impl<'a> AttrScalarType<'a> for usize {
     }
 }
 
+macro_rules! impl_attr_scalar_type_int {
+    ($ty:ident) => {
+        impl<'a> AttrScalarType<'a> for $ty {
+            fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+                let int: Option<i64> = AttrScalarType::get_attr_opt_scalar(node, name)?;
+                int.and_try(|int| {
+                    node.expect_attr(name, int <= $ty::max_value() as i64, || {
+                        format!("int <= {}", $ty::max_value())
+                    })?;
+                    node.expect_attr(name, int >= $ty::min_value() as i64, || {
+                        format!("int >= {}", $ty::min_value())
+                    })?;
+                    Ok(int as $ty)
+                })
+            }
+        }
+    };
+}
+
+impl_attr_scalar_type_int!(i8);
+impl_attr_scalar_type_int!(i16);
+impl_attr_scalar_type_int!(i32);
+impl_attr_scalar_type_int!(isize);
+
 impl<'a> AttrScalarType<'a> for f32 {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
         node.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOAT)?
