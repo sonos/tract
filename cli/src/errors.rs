@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use ndarray;
 use tract_core;
 
