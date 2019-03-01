@@ -389,17 +389,6 @@ impl NodeProto {
         self.get_attr_tvec(name).map(TVec::into_vec)
     }
 
-    pub fn get_attr_opt_ints(&self, name: &str) -> TractResult<Option<&[i64]>> {
-        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)? {
-            Some(attr) => Ok(Some(attr.get_ints())),
-            None => Ok(None),
-        }
-    }
-
-    pub fn get_attr_ints(&self, name: &str) -> TractResult<&[i64]> {
-        self.expect_attr_ok_or_else(name, self.get_attr_opt_ints(name)?, "list of ints")
-    }
-
     pub fn get_attr_opt_floats(&self, name: &str) -> TractResult<Option<&[f32]>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOATS)? {
             Some(attr) => Ok(Some(attr.get_floats())),
@@ -409,22 +398,6 @@ impl NodeProto {
 
     pub fn get_attr_floats(&self, name: &str) -> TractResult<&[f32]> {
         self.expect_attr_ok_or_else(name, self.get_attr_opt_floats(name)?, "list of floats")
-    }
-
-    pub fn get_attr_usize_tvec(&self, name: &str) -> TractResult<TVec<usize>> {
-        let ints = self.get_attr_ints(name)?;
-        for i in ints.iter() {
-            self.expect_attr(name, *i >= 0, "list of non-negative ints")?;
-        }
-        Ok(ints.iter().map(|&x| x as _).collect())
-    }
-
-    pub fn get_attr_opt_int_tvec(&self, name: &str) -> TractResult<Option<TVec<i64>>> {
-        Ok(self.get_attr_opt_ints(name)?.map(Into::into))
-    }
-
-    pub fn get_attr_int_tvec(&self, name: &str) -> TractResult<TVec<i64>> {
-        Ok(self.get_attr_ints(name)?.into())
     }
 
     pub fn get_attr_opt_float_tvec(&self, name: &str) -> TractResult<Option<TVec<f32>>> {
