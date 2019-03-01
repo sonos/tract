@@ -388,23 +388,4 @@ impl NodeProto {
     {
         self.get_attr_tvec(name).map(TVec::into_vec)
     }
-
-    pub fn get_attr_opt_floats(&self, name: &str) -> TractResult<Option<&[f32]>> {
-        match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::FLOATS)? {
-            Some(attr) => Ok(Some(attr.get_floats())),
-            None => Ok(None),
-        }
-    }
-
-    pub fn get_attr_floats(&self, name: &str) -> TractResult<&[f32]> {
-        self.expect_attr_ok_or_else(name, self.get_attr_opt_floats(name)?, "list of floats")
-    }
-
-    pub fn get_attr_opt_float_tvec(&self, name: &str) -> TractResult<Option<TVec<f32>>> {
-        Ok(self.get_attr_opt_floats(name)?.map(Into::into))
-    }
-
-    pub fn get_attr_float_tvec(&self, name: &str) -> TractResult<TVec<f32>> {
-        Ok(self.get_attr_floats(name)?.into())
-    }
 }
