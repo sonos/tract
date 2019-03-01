@@ -566,7 +566,7 @@ macro_rules! dispatch_numbers {
 macro_rules! dispatch_floatlike {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
-            DatumType::F16  => $($path)::*::<f32>($($args),*),
+            DatumType::F16  => $($path)::*::<f32>($($args),*), // FIXME !!!
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             _ => bail!("{:?} is not float-like", $dt)
