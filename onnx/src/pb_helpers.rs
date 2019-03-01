@@ -356,6 +356,20 @@ impl NodeProto {
         self.expect_ok_or_else(self.get_attr_opt_tvec(name)?, || format!("attribute '{}'", name))
     }
 
+    pub fn get_attr_opt_vec<'a, T>(&'a self, name: &str) -> TractResult<Option<Vec<T>>>
+    where
+        T: AttrTVecType<'a>,
+    {
+        Ok(self.get_attr_opt_tvec(name)?.map(TVec::into_vec))
+    }
+
+    pub fn get_attr_vec<'a, T>(&'a self, name: &str) -> TractResult<Vec<T>>
+    where
+        T: AttrTVecType<'a>,
+    {
+        self.get_attr_tvec(name).map(TVec::into_vec)
+    }
+
     pub fn get_attr_opt_ints(&self, name: &str) -> TractResult<Option<&[i64]>> {
         match self.get_attr_opt_with_type(name, AttributeProto_AttributeType::INTS)? {
             Some(attr) => Ok(Some(attr.get_ints())),
