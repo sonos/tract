@@ -85,4 +85,12 @@ where
     pub fn hw_dims(&self) -> &[D] {
         &self.shape.as_ref()[self.h_axis()..][..self.hw_rank()]
     }
+
+    pub fn n(&self) -> D {
+        self.shape.as_ref()[self.n_axis()]
+    }
+
+    pub fn c(&self) -> D {
+        self.shape.as_ref()[self.c_axis()]
+    }
 }
