@@ -113,6 +113,57 @@ where
     _phantom: PhantomData<T>,
 }
 
+impl<T: Datum + Float> FixedAvgPool<T>
+where
+    T: Datum + Float,
+    usize: AsPrimitive<T>,
+{
+    #[inline(never)]
+    fn valid_2d(
+        &self,
+        input: &ArrayView4<T>,
+        output: &mut ArrayViewMut4<T>,
+    ) {
+        unsafe {
+            let stride_in_y = input.strides()[self.patch.input_shape.hw_axes()][0]
+                * self.patch.kernel_strides[0] as isize;
+            let stride_in_x = input.strides()[self.patch.input_shape.hw_axes()][1]
+                * self.patch.kernel_strides[1] as isize;
+            let stride_out_y = output.strides()[self.patch.input_shape.hw_axes()][0];
+            let stride_out_x = output.strides()[self.patch.input_shape.hw_axes()][1];
+            let stride_in_c = input.strides()[self.patch.input_shape.c_axis()] as isize;
+            let stride_out_c = output.strides()[self.patch.input_shape.c_axis()] as isize;
+            let k_len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>().as_();
+            for i in 0..self.patch.input_shape.n() {
+                let p_in_i = input
+                    .slice_axis(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
+                    .as_ptr();
+                let p_out_i = output
+                    .slice_axis_mut(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
+                    .as_mut_ptr();
+                for c in 0..self.patch.input_shape.c() {
+                    let p_in_ic = p_in_i.offset(c as isize * stride_in_c);
+                    let p_out_ic = p_out_i.offset(c as isize * stride_out_c);
+                    for y in 0..self.patch.output_spatial_shape[0] {
+                        let p_in_icy = p_in_ic.offset(stride_in_y * y as isize);
+                        let p_out_icy = p_out_ic.offset(stride_out_y * y as isize);
+                        for x in 0..self.patch.output_spatial_shape[1] {
+                            let p_in_icyx = p_in_icy.offset(stride_in_x * x as isize);
+                            let p_out_icyx = p_out_icy.offset(stride_out_x * x as isize);
+                            let mut v = T::zero();
+                            for k in &self.patch.standard_layout_data_field {
+                                v = v + *p_in_icyx.offset(*k);
+                            }
+                            *p_out_icyx = v / k_len;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
+
 impl<T: Datum + Float> Op for FixedAvgPool<T>
 where
     T: Datum + Float,
@@ -131,10 +182,19 @@ where
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let input = input.to_array_view::<T>()?;
-        let visitor = self.patch.wrap(&input);
-        let shape: TVec<usize> = self.patch.output_full_shape(self.patch.input_shape.c_dim());
+        let output_shape: TVec<usize> = self.patch.output_full_shape(self.patch.input_shape.c_dim());
 
-        let output = ArrayD::from_shape_fn(&*shape, |coords| -> T {
+        if self.patch.kernel_spatial_shape.len() == 2 && !self.patch.padded {
+            unsafe {
+                let input = input.into_dimensionality()?;
+                let mut output = ArrayD::uninitialized(&*output_shape).into_dimensionality()?;
+                self.valid_2d(&input, &mut output.view_mut());
+                return Ok(tvec!(output.into()))
+            }
+        }
+
+        let visitor = self.patch.wrap(&input);
+        let output = ArrayD::from_shape_fn(&*output_shape, |coords| -> T {
             let pair = visitor
                 .at(&coords.slice())
                 .map(|ov| ov.map(|v| (v, true)).unwrap_or((T::zero(), false)))
