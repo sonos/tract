@@ -3,6 +3,7 @@ use ndarray::prelude::*;
 use num_traits::{AsPrimitive, Float};
 
 use super::{DataFormat, PaddingSpec, Patch};
+use crate::ops::nn::patches::PatchVisitor;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
@@ -50,9 +51,12 @@ impl Op for AvgPool {
         if phase == ReductionPhase::Normalize {
             return Ok(None);
         }
-        if let (Some(shape), Some(dt)) = (inputs[0].shape.as_concrete_finite()?, inputs[0].datum_type.concretize()) {
+        if let (Some(shape), Some(dt)) = (
+            inputs[0].shape.as_concrete_finite()?,
+            inputs[0].datum_type.concretize(),
+        ) {
             let patch = self.patch(&*shape);
-            fn fixed<T>(patch: Patch, count_include_pad: bool) -> Box<Op> 
+            fn fixed<T>(patch: Patch, count_include_pad: bool) -> Box<Op>
             where
                 T: Datum + Float,
                 usize: AsPrimitive<T>,
@@ -119,21 +123,23 @@ where
     usize: AsPrimitive<T>,
 {
     #[inline(never)]
-    fn valid_2d(
-        &self,
-        input: &ArrayView4<T>,
-        output: &mut ArrayViewMut4<T>,
-    ) {
+    fn valid_2d(&self, input: &ArrayView4<T>, output: &mut ArrayViewMut4<T>) {
         unsafe {
+            let stride_in_c = input.strides()[self.patch.input_shape.c_axis()] as isize;
             let stride_in_y = input.strides()[self.patch.input_shape.hw_axes()][0]
                 * self.patch.kernel_strides[0] as isize;
             let stride_in_x = input.strides()[self.patch.input_shape.hw_axes()][1]
                 * self.patch.kernel_strides[1] as isize;
+            let stride_out_c = output.strides()[self.patch.input_shape.c_axis()] as isize;
             let stride_out_y = output.strides()[self.patch.input_shape.hw_axes()][0];
             let stride_out_x = output.strides()[self.patch.input_shape.hw_axes()][1];
-            let stride_in_c = input.strides()[self.patch.input_shape.c_axis()] as isize;
-            let stride_out_c = output.strides()[self.patch.input_shape.c_axis()] as isize;
-            let k_len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>().as_();
+            let k_len = self
+                .patch
+                .kernel_spatial_shape
+                .iter()
+                .cloned()
+                .product::<usize>()
+                .as_();
             for i in 0..self.patch.input_shape.n() {
                 let p_in_i = input
                     .slice_axis(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
@@ -144,10 +150,10 @@ where
                 for c in 0..self.patch.input_shape.c() {
                     let p_in_ic = p_in_i.offset(c as isize * stride_in_c);
                     let p_out_ic = p_out_i.offset(c as isize * stride_out_c);
-                    for y in 0..self.patch.output_spatial_shape[0] {
+                    for y in 0..*self.patch.output_spatial_shape.get_unchecked(0) {
                         let p_in_icy = p_in_ic.offset(stride_in_y * y as isize);
                         let p_out_icy = p_out_ic.offset(stride_out_y * y as isize);
-                        for x in 0..self.patch.output_spatial_shape[1] {
+                        for x in 0..*self.patch.output_spatial_shape.get_unchecked(1) {
                             let p_in_icyx = p_in_icy.offset(stride_in_x * x as isize);
                             let p_out_icyx = p_out_icy.offset(stride_out_x * x as isize);
                             let mut v = T::zero();
@@ -162,6 +168,85 @@ where
         }
     }
 
+
+    pub fn two_d(&self, input: &ArrayView4<T>) -> TractResult<Array4<T>> {
+        let output_shape: TVec<usize> =
+            self.patch.output_full_shape(self.patch.input_shape.c_dim());
+        let mut output = unsafe { ArrayD::uninitialized(&*output_shape).into_dimensionality()? }; 
+        if !self.patch.padded {
+            self.valid_2d(&input, &mut output.view_mut());
+        } else {
+            let h_axis = self.patch.input_shape.h_axis();
+            let non_valid_top = self.patch.pad_before[0].div_ceil(self.patch.kernel_strides[0]);
+            let non_valid_bottom = self.patch.pad_after[0].div_ceil(self.patch.kernel_strides[0]);
+            let non_valid_left = self.patch.pad_before[1].div_ceil(self.patch.kernel_strides[1]);
+            let non_valid_right = self.patch.pad_after[1].div_ceil(self.patch.kernel_strides[1]);
+
+            let start_non_valid_y = self.patch.output_spatial_shape[0] - non_valid_bottom;
+            let start_non_valid_x = self.patch.output_spatial_shape[1] - non_valid_right;
+
+            let mut valid_output = output.view_mut();
+            valid_output.slice_axis_inplace(Axis(h_axis), (non_valid_top..start_non_valid_y).into());
+            valid_output.slice_axis_inplace(Axis(h_axis+1), (non_valid_left..start_non_valid_x).into());
+            let mut valid_input = input.view();
+            valid_input.slice_axis_inplace(Axis(h_axis), (non_valid_top*self.patch.kernel_strides[0]..).into());
+            valid_input.slice_axis_inplace(Axis(h_axis+1), (non_valid_left*self.patch.kernel_strides[1]..).into());
+            self.valid_2d(&valid_input, &mut valid_output);
+
+            use ndarray::IntoDimension;
+            let i = input.view().into_dimensionality()?;
+            let visitor = self.patch.wrap(&i);
+            output
+                .slice_axis_mut(Axis(h_axis), (0..non_valid_top).into())
+                .indexed_iter_mut()
+                .for_each(|(coords, it)| {
+                    *it = self.compute_one(&visitor, coords.into_dimension().slice());
+                });
+            output
+                .slice_axis_mut(Axis(h_axis), (start_non_valid_y..).into())
+                .indexed_iter_mut()
+                .for_each(|(coords, it)| {
+                    let mut coords = coords.into_dimension().into_dyn();
+                    coords[h_axis] += start_non_valid_y;
+                    *it = self.compute_one(&visitor, coords.slice());
+                });
+            output
+                .slice_axis_mut(Axis(h_axis + 1), (0..non_valid_left).into())
+                .indexed_iter_mut()
+                .for_each(|(coords, it)| {
+                    *it = self.compute_one(&visitor, coords.into_dimension().slice());
+                });
+            output
+                .slice_axis_mut(Axis(h_axis + 1), (start_non_valid_x..).into())
+                .indexed_iter_mut()
+                .for_each(|(coords, it)| {
+                    let mut coords = coords.into_dimension().into_dyn();
+                    coords[h_axis + 1] += start_non_valid_x;
+                    *it = self.compute_one(&visitor, coords.slice());
+                });
+        }
+        Ok(output)
+    }
+
+    pub fn generic(&self, input: &ArrayViewD<T>) -> TractResult<ArrayD<T>> {
+        let output_shape: TVec<usize> =
+            self.patch.output_full_shape(self.patch.input_shape.c_dim());
+        let input = input.view();
+        let visitor = self.patch.wrap(&input);
+        let output = ArrayD::from_shape_fn(&*output_shape, |coords| {
+            self.compute_one(&visitor, coords.slice())
+        });
+        Ok(output)
+    }
+
+    fn compute_one<'v>(&self, visitor: &'v PatchVisitor<T>, coords: &[usize]) -> T {
+        let pair = visitor
+            .at(&coords)
+            .map(|ov| ov.map(|v| (v, true)).unwrap_or((T::zero(), false)))
+            .filter(|pair| pair.1 || self.count_include_pad)
+            .fold((T::zero(), 0), |acc, pair| (acc.0 + pair.0, acc.1 + 1));
+        pair.0 / (pair.1.as_())
+    }
 }
 
 impl<T: Datum + Float> Op for FixedAvgPool<T>
@@ -182,28 +267,14 @@ where
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let input = input.to_array_view::<T>()?;
-        let output_shape: TVec<usize> = self.patch.output_full_shape(self.patch.input_shape.c_dim());
 
-        if self.patch.kernel_spatial_shape.len() == 2 && !self.patch.padded {
-            unsafe {
-                let input = input.into_dimensionality()?;
-                let mut output = ArrayD::uninitialized(&*output_shape).into_dimensionality()?;
-                self.valid_2d(&input, &mut output.view_mut());
-                return Ok(tvec!(output.into()))
-            }
-        }
+        let result = if self.patch.kernel_spatial_shape.len() == 2 {
+            self.two_d(&input.into_dimensionality()?)?.into_dyn()
+        } else {
+            self.generic(&input)?
+        };
 
-        let visitor = self.patch.wrap(&input);
-        let output = ArrayD::from_shape_fn(&*output_shape, |coords| -> T {
-            let pair = visitor
-                .at(&coords.slice())
-                .map(|ov| ov.map(|v| (v, true)).unwrap_or((T::zero(), false)))
-                .filter(|pair| pair.1 || self.count_include_pad)
-                .fold((T::zero(), 0), |acc, pair| (acc.0 + pair.0, acc.1 + 1));
-            pair.0 / (pair.1.as_())
-        });
-
-        Ok(tvec!(output.into()))
+        Ok(tvec!(result.into()))
     }
 }
 
@@ -223,9 +294,16 @@ where
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&outputs[0].datum_type, T::datum_type())?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        s.equals(&inputs[0].shape, ShapeFact::from(&*self.patch.input_shape.shape))?;
+        s.equals(
+            &inputs[0].shape,
+            ShapeFact::from(&*self.patch.input_shape.shape),
+        )?;
         let shape: TVec<usize> = self.patch.output_full_shape(self.patch.input_shape.c_dim());
         s.equals(&outputs[0].shape, ShapeFact::from(shape))?;
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod tests {
 }
