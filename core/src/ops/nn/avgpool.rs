@@ -125,6 +125,8 @@ where
     #[inline(never)]
     fn valid_2d(&self, input: &ArrayView4<T>, output: &mut ArrayViewMut4<T>) {
         unsafe {
+            let out_h = output.shape()[self.patch.input_shape.hw_axes()][0];
+            let out_w = output.shape()[self.patch.input_shape.hw_axes()][1];
             let stride_in_c = input.strides()[self.patch.input_shape.c_axis()] as isize;
             let stride_in_y = input.strides()[self.patch.input_shape.hw_axes()][0]
                 * self.patch.kernel_strides[0] as isize;
@@ -150,10 +152,10 @@ where
                 for c in 0..self.patch.input_shape.c() {
                     let p_in_ic = p_in_i.offset(c as isize * stride_in_c);
                     let p_out_ic = p_out_i.offset(c as isize * stride_out_c);
-                    for y in 0..*self.patch.output_spatial_shape.get_unchecked(0) {
+                    for y in 0..out_h {
                         let p_in_icy = p_in_ic.offset(stride_in_y * y as isize);
                         let p_out_icy = p_out_ic.offset(stride_out_y * y as isize);
-                        for x in 0..*self.patch.output_spatial_shape.get_unchecked(1) {
+                        for x in 0..out_w {
                             let p_in_icyx = p_in_icy.offset(stride_in_x * x as isize);
                             let p_out_icyx = p_out_icy.offset(stride_out_x * x as isize);
                             let mut v = T::zero();
@@ -168,11 +170,10 @@ where
         }
     }
 
-
     pub fn two_d(&self, input: &ArrayView4<T>) -> TractResult<Array4<T>> {
         let output_shape: TVec<usize> =
             self.patch.output_full_shape(self.patch.input_shape.c_dim());
-        let mut output = unsafe { ArrayD::uninitialized(&*output_shape).into_dimensionality()? }; 
+        let mut output = unsafe { ArrayD::uninitialized(&*output_shape).into_dimensionality()? };
         if !self.patch.padded {
             self.valid_2d(&input, &mut output.view_mut());
         } else {
@@ -186,11 +187,19 @@ where
             let start_non_valid_x = self.patch.output_spatial_shape[1] - non_valid_right;
 
             let mut valid_output = output.view_mut();
-            valid_output.slice_axis_inplace(Axis(h_axis), (non_valid_top..start_non_valid_y).into());
-            valid_output.slice_axis_inplace(Axis(h_axis+1), (non_valid_left..start_non_valid_x).into());
+            valid_output
+                .slice_axis_inplace(Axis(h_axis), (non_valid_top..start_non_valid_y).into());
+            valid_output
+                .slice_axis_inplace(Axis(h_axis + 1), (non_valid_left..start_non_valid_x).into());
             let mut valid_input = input.view();
-            valid_input.slice_axis_inplace(Axis(h_axis), (non_valid_top*self.patch.kernel_strides[0]..).into());
-            valid_input.slice_axis_inplace(Axis(h_axis+1), (non_valid_left*self.patch.kernel_strides[1]..).into());
+            valid_input.slice_axis_inplace(
+                Axis(h_axis),
+                (non_valid_top * self.patch.kernel_strides[0]..).into(),
+            );
+            valid_input.slice_axis_inplace(
+                Axis(h_axis + 1),
+                (non_valid_left * self.patch.kernel_strides[1]..).into(),
+            );
             self.valid_2d(&valid_input, &mut valid_output);
 
             use ndarray::IntoDimension;
@@ -306,4 +315,60 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest::*;
+
+    pub fn patch_2d() -> BoxedStrategy<Patch> {
+        (
+            Just(DataFormat::NCHW),
+            (1usize..3, 1usize..3),
+            1usize..3,
+            (1usize..3, 1usize..3),
+            Just(PaddingSpec::SameLower),
+            (1usize..4, 1usize..4),
+        )
+            .prop_flat_map(|p| {
+                let size = p.3;
+                (Just(p), (size.0 + 5 ..= size.0 + 10, size.1 + 5 ..= size.1 + 10))
+            })
+            .prop_map(|((fmt, dil, c, ks, pad, strides), inp)| {
+                Patch::new(
+                    fmt,
+                    tvec!(dil.0, dil.1),
+                    tvec!(ks.0, ks.1),
+                    &pad,
+                    tvec![strides.0, strides.1],
+                    tvec!(1, c, inp.0, inp.1),
+                )
+            })
+            .boxed()
+    }
+
+    pub fn patch_2d_and_data() -> BoxedStrategy<(Patch, Array4<f32>)> {
+        patch_2d()
+            .prop_flat_map(|p| {
+                let len = p.input_shape.shape.iter().cloned().product();
+                let vec = vec(-5.0..5.0f32, len..=len);
+                (Just(p), vec)
+            })
+            .prop_map(|(p, v)| {
+                let data = ndarray::ArrayD::from_shape_vec(&*p.input_shape.shape, v)
+                    .unwrap()
+                    .into_dimensionality()
+                    .unwrap();
+                (p, data)
+            })
+            .boxed()
+    }
+
+    proptest! {
+        #[test]
+        #[ignore]
+        fn test_2d((p, d) in patch_2d_and_data()) {
+            let op = FixedAvgPool::new(p, true);
+            prop_assert_eq!(op.generic(&d.view().into_dyn()).unwrap(), op.two_d(&d.view()).unwrap().into_dyn())
+        }
+    }
 }
