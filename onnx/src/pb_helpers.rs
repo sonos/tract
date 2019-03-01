@@ -301,15 +301,6 @@ impl NodeProto {
         }
     }
 
-    pub fn expect_attr_ok_or_else<T, R: Reason>(
-        &self, attr: &str, result: Option<T>, what: R,
-    ) -> TractResult<T> {
-        match result {
-            Some(v) => Ok(v),
-            None => Err(self.expect_attr(attr, false, what).unwrap_err()),
-        }
-    }
-
     fn get_attr_opt_with_type(
         &self, name: &str, ty: AttributeProto_AttributeType,
     ) -> TractResult<Option<&AttributeProto>> {
