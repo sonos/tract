@@ -60,11 +60,7 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
                 .tractify()?,
             None => f32::datum_type(),
         };
-        let shape: Vec<usize> = node
-            .get_attr_ints("shape")?
-            .iter()
-            .map(|&d| d as usize)
-            .collect();
+        let shape: Vec<usize> = node.get_attr_vec("shape")?;
         let tensor = dispatch_numbers!(self::make_const(dt)(&shape, value))?;
         Ok(Box::new(tractops::konst::Const::new(tensor)))
     } else {
@@ -114,54 +110,38 @@ pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
     }.unwrap_or_else(||
         tractops::array::PadMode::Constant(value.unwrap_or(0.))
     );
-    let pads = node.get_attr_ints("pads")?;
+    let pads = node.get_attr_tvec("pads")?;
     let rank = pads.len() / 2;
     let pads = (0..rank)
-        .map(|ax| (pads[ax] as usize, pads[ax + rank] as usize))
+        .map(|ax| (pads[ax], pads[ax + rank]))
         .collect();
     Ok(Box::new(tractops::array::Pad::new(pads, mode)))
 }
 
 pub fn slice(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axes = node.get_attr_opt_ints("axes")?;
-    let begin = node.get_attr_ints("starts")?;
-    let end = node.get_attr_ints("ends")?;
-    Ok(Box::new(slice::Slice::new(
-        axes.map(|a| a.into_iter().map(|&d| d as _).collect()),
-        begin.iter().map(|&d| d as _).collect(),
-        end.iter().map(|&d| d as _).collect(),
-    )))
+    let axes = node.get_attr_opt_vec("axes")?;
+    let begin = node.get_attr_vec("starts")?;
+    let end = node.get_attr_vec("ends")?;
+    Ok(Box::new(slice::Slice::new(axes, begin, end)))
 }
 
 pub fn split(node: &NodeProto) -> TractResult<Box<Op>> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
-    let split = node.get_attr_opt_ints("split")?;
-    Ok(Box::new(tractops::array::Split::new(
-        axis as usize,
-        node.get_output().len(),
-        split.map(|a| a.into_iter().map(|&d| d as _).collect()),
-    )))
+    let split = node.get_attr_opt_vec("split")?;
+    Ok(Box::new(tractops::array::Split::new(axis, node.get_output().len(), split)))
 }
 
 pub fn squeeze(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axes = node
-        .get_attr_opt_ints("axes")?
-        .map(|l| l.iter().map(|&a| a as usize).collect());
+    let axes = node.get_attr_opt_vec("axes")?;
     Ok(Box::new(tractops::array::Squeeze::new(axes)))
 }
 
 pub fn transpose(node: &NodeProto) -> TractResult<Box<Op>> {
-    let perm = node
-        .get_attr_opt_ints("perm")?
-        .map(|axes| axes.iter().map(|&a| a as usize).collect());
+    let perm = node.get_attr_opt_vec("perm")?;
     Ok(Box::new(tractops::array::PermuteAxes::new(perm)))
 }
 
 pub fn unsqueeze(node: &NodeProto) -> TractResult<Box<Op>> {
-    let axes = node
-        .get_attr_ints("axes")?
-        .iter()
-        .map(|&a| a as usize)
-        .collect();
+    let axes = node.get_attr_vec("axes")?;
     Ok(Box::new(tractops::array::AddDims::new(axes)))
 }

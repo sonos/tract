@@ -9,15 +9,9 @@ use crate::pb_helpers::OptionExt;
 macro_rules! reduce {
     ($id:ident) => {
         |node| {
-            let axes = node
-                .get_attr_opt_ints("axes")?
-                .map(|axes| axes.iter().map(|&i| i as usize).collect());
-            let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(true);
-            Ok(Box::new(tractops::nn::Reduce::new(
-                axes,
-                keep_dims,
-                tractops::nn::Reducer::$id,
-            )))
+            let axes = node.get_attr_opt_vec("axes")?;
+            let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
+            Ok(Box::new(tractops::nn::Reduce::new(axes, keepdims, tractops::nn::Reducer::$id)))
         }
     };
 }
@@ -75,11 +69,11 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 }
 
 fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
-    if let Some(pads) = node.get_attr_opt_ints("pads")? {
+    if let Some(pads) = node.get_attr_opt_tvec("pads")? {
         let len = pads.len();
         return Ok(PaddingSpec::Explicit(
-            pads.iter().take(len / 2).map(|&i| i as usize).collect(),
-            pads.iter().skip(len / 2).map(|&i| i as usize).collect(),
+            pads.iter().cloned().take(len / 2).collect(),
+            pads.iter().cloned().skip(len / 2).collect(),
         ));
     }
     Ok(node.get_attr_opt("auto_pad")?.and_try(|s| {
@@ -88,15 +82,11 @@ fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
 }
 
 fn dilations(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
-    Ok(node
-        .get_attr_opt_ints("dilations")?
-        .map(|i| i.iter().map(|&i| i as usize).collect()))
+    node.get_attr_opt_tvec("dilations")
 }
 
 fn strides(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
-    Ok(node
-        .get_attr_opt_ints("strides")?
-        .map(|i| i.iter().map(|&i| i as usize).collect()))
+    node.get_attr_opt_tvec("strides")
 }
 
 pub fn arg_max_min(node: &NodeProto) -> TractResult<Box<Op>> {
@@ -118,9 +108,7 @@ pub fn batch_normalization(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
-    let kernel_shape = node
-        .get_attr_opt_ints("kernel_shape")?
-        .map(|i| i.iter().map(|&i| i as usize).collect());
+    let kernel_shape = node.get_attr_opt_tvec("kernel_shape")?;
     let group = node.get_attr_opt("group")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::Conv::new(
         DataFormat::NCHW,
@@ -134,11 +122,7 @@ pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
-    let kernel_shape: TVec<usize> = node
-        .get_attr_ints("kernel_shape")?
-        .iter()
-        .map(|&i| i as usize)
-        .collect();
+    let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node)?;
     let strides = strides(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
@@ -196,11 +180,7 @@ pub fn lrn(node: &NodeProto) -> TractResult<Box<Op>> {
 }
 
 pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
-    let kernel_shape: TVec<usize> = node
-        .get_attr_ints("kernel_shape")?
-        .iter()
-        .map(|&i| i as usize)
-        .collect();
+    let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node)?;
     let strides = strides(node)?;
     Ok(Box::new(tractops::nn::MaxPool::new(
