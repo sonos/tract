@@ -1,6 +1,8 @@
 use crate::pb::*;
 use tract_core::*;
 
+use num_traits::{AsPrimitive, Bounded};
+
 use std::borrow::Cow;
 use std::fmt::{self, Display};
 use std::str::{self, FromStr};
@@ -147,19 +149,36 @@ impl<'a> AttrScalarType<'a> for usize {
     }
 }
 
+fn check_int<T>(node: &NodeProto, attr: &str, int: i64, is_list: bool) -> TractResult<T>
+where
+    T: AsPrimitive<i64> + Bounded + Display,
+    i64: AsPrimitive<T>,
+{
+    let desc = if is_list { "list of ints" } else { "int" };
+    node.expect_attr(attr, int <= T::max_value().as_(), || {
+        format!("{} <= {}, got {}", desc, T::max_value(), int)
+    })?;
+    node.expect_attr(attr, int >= T::min_value().as_(), || {
+        format!("{} >= {}, got {}", desc, T::min_value(), int)
+    })?;
+    Ok(int.as_())
+}
+
 macro_rules! impl_attr_scalar_type_int {
     ($ty:ident) => {
         impl<'a> AttrScalarType<'a> for $ty {
             fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
-                let int: Option<i64> = AttrScalarType::get_attr_opt_scalar(node, name)?;
-                int.and_try(|int| {
-                    node.expect_attr(name, int <= $ty::max_value() as i64, || {
-                        format!("int <= {}", $ty::max_value())
-                    })?;
-                    node.expect_attr(name, int >= $ty::min_value() as i64, || {
-                        format!("int >= {}", $ty::min_value())
-                    })?;
-                    Ok(int as $ty)
+                AttrScalarType::get_attr_opt_scalar(node, name)?
+                    .and_try(|int| check_int(node, name, int, false))
+            }
+        }
+
+        impl<'a> AttrTVecType<'a> for $ty {
+            fn get_attr_opt_tvec(
+                node: &'a NodeProto, name: &str,
+            ) -> TractResult<Option<TVec<Self>>> {
+                AttrTVecType::get_attr_opt_tvec(node, name)?.and_try(|ints| {
+                    ints.into_iter().map(|int| check_int(node, name, int, true)).try_collect()
                 })
             }
         }
