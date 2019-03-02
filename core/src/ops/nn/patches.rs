@@ -193,6 +193,7 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
     }
 }
 
+#[derive(Debug)]
 pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
     Fast(FastPatchIterator<'i, 'p, 'v, T>),
     Safe(SafePatchIterator<'i, 'p, 'v, T>),
@@ -209,6 +210,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for PatchIterator
     }
 }
 
+#[derive(Debug)]
 pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
     visitor: &'v PatchVisitor<'i, 'p, T>,
     ptr: *const T,
@@ -239,6 +241,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
     }
 }
 
+#[derive(Debug)]
 pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
     visitor: &'v PatchVisitor<'i, 'p, T>,
     item: usize,
@@ -258,8 +261,8 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
             if self.item == patch.standard_layout_data_field.len() {
                 return None;
             }
-            let img_offset = patch.data_field.as_ptr().offset(2 * self.item as isize);
             let input_shape = &patch.input_shape;
+            let img_offset = patch.data_field.as_ptr().offset((self.item * (input_shape.shape.len() - 2)) as isize);
 
             for ix in 0..(input_shape.shape.len() - 2) {
                 let ax = input_shape.h_axis() + ix;
