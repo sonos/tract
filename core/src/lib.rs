@@ -76,6 +76,8 @@ extern crate num_traits;
 extern crate maplit;
 #[cfg(test)]
 extern crate matrixmultiply;
+#[cfg(not(debug_assertions))]
+extern crate no_panic;
 #[macro_use]
 extern crate objekt;
 #[cfg(test)]
