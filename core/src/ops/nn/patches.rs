@@ -228,18 +228,16 @@ pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
 
 impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for SafePatchIterator<'i, 'p, 'v, T> {
     type Item = Option<T>;
-    #[inline(never)]
     fn next(&mut self) -> Option<Option<T>> {
-        if self.item == self.visitor.patch.data_field.rows() {
-            return None;
-        }
-        let img_offset = self.visitor.patch.data_field.row(self.item);
-        self.item += 1;
-
         unsafe {
+            if self.item == self.visitor.patch.standard_layout_data_field.len() {
+                return None;
+            }
+            let img_offset = self.visitor.patch.data_field.as_ptr().offset(2*self.item as isize);
+            self.item += 1;
 
-            for (ax, offset) in self.visitor.patch.input_shape.hw_axes().zip(img_offset.iter()) {
-                let pos = *self.input_patch_center.get_unchecked(ax) as isize + *offset;
+            for (ix, ax) in self.visitor.patch.input_shape.hw_axes().enumerate() {
+                let pos = *self.input_patch_center.get_unchecked(ax) as isize + *img_offset.offset(ix as isize);
                 if pos < 0 || pos as usize >= *self.visitor.patch.input_shape.shape.get_unchecked(ax) {
                     return Some(None)
                 }
