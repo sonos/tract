@@ -257,6 +257,18 @@ impl<'a> AttrTVecType<'a> for String {
     }
 }
 
+impl<'a> AttrTVecType<'a> for bool {
+    fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
+        let ints: Option<&[i64]> = AttrSliceType::get_attr_opt_slice(node, name)?;
+        ints.and_try(|ints| {
+            for int in ints.iter() {
+                node.expect_attr(name, *int == 0 || *int == 0, "list of booleans (0 or 1)")?;
+            }
+            Ok(ints.iter().map(|&x| x == 1).collect())
+        })
+    }
+}
+
 impl<'a> AttrTVecType<'a> for usize {
     fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
         let ints: Option<&[i64]> = AttrSliceType::get_attr_opt_slice(node, name)?;
