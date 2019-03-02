@@ -77,7 +77,13 @@ fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
         ));
     }
     Ok(node.get_attr_opt("auto_pad")?.and_try(|s| {
-        node.parse_str("auto_pad", s)
+        node.check_value("auto_pad", match s {
+            "NOTSET" => Ok(PaddingSpec::Valid),
+            "VALID" => Ok(PaddingSpec::Valid),
+            "SAME_UPPER" => Ok(PaddingSpec::SameUpper),
+            "SAME_LOWER" => Ok(PaddingSpec::SameLower),
+            _ => Err(s),
+        })
     })?.unwrap_or(PaddingSpec::Valid))
 }
 

@@ -4,8 +4,8 @@ use tract_core::*;
 use num_traits::{AsPrimitive, Bounded};
 
 use std::borrow::Cow;
-use std::fmt::{self, Display};
-use std::str::{self, FromStr};
+use std::fmt::{self, Debug, Display};
+use std::str;
 
 pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
     #[must_use]
@@ -328,14 +328,11 @@ impl NodeProto {
         self.expect_ok_or_else(self.get_attr_opt(name)?, || format!("attribute '{}'", name))
     }
 
-    pub fn parse_str<T>(&self, attr: &str, s: &str) -> TractResult<T>
-    where
-        T: FromStr,
-    {
-        if let Ok(v) = T::from_str(s) {
-            return Ok(v);
+    pub fn check_value<T, V: Debug>(&self, attr: &str, value: Result<T, V>) -> TractResult<T> {
+        match value {
+            Ok(value) => Ok(value),
+            Err(err) => self.bail_attr(attr, &format!("unexpected value: {:?}", err)),
         }
-        self.bail_attr(attr, &format!("unexpected value: {:?}", s))
     }
 
     pub fn get_attr_opt_slice<'a, T>(&'a self, name: &str) -> TractResult<Option<&'a [T]>>

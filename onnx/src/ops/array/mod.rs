@@ -106,7 +106,11 @@ pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
     let value = node.get_attr_opt("value")?;
     let mode = match node.get_attr_opt("mode")? {
         None | Some("constant") => None,
-        Some(mode) => Some(node.parse_str("mode", mode)?),
+        Some(mode) => node.check_value("mode", match mode {
+            "reflect" => Ok(Some(tractops::array::PadMode::Reflect)),
+            "edge" => Ok(Some(tractops::array::PadMode::Edge)),
+            _ => Err(mode)
+        })?
     }.unwrap_or_else(||
         tractops::array::PadMode::Constant(value.unwrap_or(0.))
     );
