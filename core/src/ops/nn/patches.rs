@@ -106,7 +106,7 @@ impl Patch {
         input: &'i ArrayViewD<'i, T>,
     ) -> PatchVisitor<'i, 'p, T> {
         let valid = !self.padded; //input.is_standard_layout() && !self.padded;
-        let mut fast_strides = input.strides().to_vec();
+        let mut fast_strides:TVec<_> = input.strides().into();
         fast_strides[self.input_shape.hw_axes()]
             .iter_mut()
             .zip(self.kernel_strides.iter())
@@ -125,7 +125,7 @@ pub struct PatchVisitor<'i, 'p, T: Copy + Datum> {
     patch: &'p Patch,
     input: &'i ArrayViewD<'i, T>,
     valid: bool,
-    fast_strides: Vec<isize>, // kernel strides * storage strides
+    fast_strides: TVec<isize>, // kernel strides * storage strides
 }
 
 impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
@@ -134,15 +134,15 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
         'i: 'v,
         'p: 'v,
     {
+        let center = coords
+            .iter()
+            .zip(self.fast_strides.iter())
+            .map(|(&a, &b)| b * a as isize)
+            .sum();
         if self.valid || coords[self.patch.input_shape.hw_axes()].iter().enumerate().all(|(ix,&c)| {
             (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].0 >= 0 &&
             (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].1 < self.patch.input_shape.hw_dims()[ix] as isize
         }) {
-            let center = coords
-                .iter()
-                .zip(self.fast_strides.iter())
-                .map(|(&a, &b)| b * a as isize)
-                .sum();
             PatchIterator::Fast(FastPatchIterator {
                 visitor: &self,
                 ptr: self.input.as_ptr(),
@@ -150,17 +150,17 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
                 item: 0,
             })
         } else {
-            let mut input_patch_center = coords.to_vec();
+            let mut input_patch_center:TVec<_> = coords.into();
             input_patch_center[self.patch.input_shape.hw_axes()]
                 .iter_mut()
                 .zip(self.patch.kernel_strides.iter())
                 .for_each(|(a, &b)| *a *= b as usize);
-            let input_patch_current = vec![0; coords.len()];
             PatchIterator::Safe(SafePatchIterator {
                 visitor: self,
                 item: 0,
                 input_patch_center,
-                input_patch_current,
+                center,
+                ptr: self.input.as_ptr(),
             })
         }
     }
@@ -221,8 +221,9 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for FastPatchIter
 pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
     visitor: &'v PatchVisitor<'i, 'p, T>,
     item: usize,
-    input_patch_center: Vec<usize>,
-    input_patch_current: Vec<usize>,
+    input_patch_center: TVec<usize>,
+    ptr: *const T,
+    center: isize,
 }
 
 impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for SafePatchIterator<'i, 'p, 'v, T> {
@@ -235,12 +236,22 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for SafePatchIter
         let img_offset = self.visitor.patch.data_field.row(self.item);
         self.item += 1;
 
-        (&mut *self.input_patch_current).copy_from_slice(&self.input_patch_center);
-        self.input_patch_current[self.visitor.patch.input_shape.hw_axes()]
-            .iter_mut()
-            .zip(img_offset.iter())
-            .for_each(|(x, &i)| *x = (*x as isize + i as isize) as usize);
-        Some(self.visitor.input.get(&*self.input_patch_current).cloned())
+        unsafe {
+
+            for (ax, offset) in self.visitor.patch.input_shape.hw_axes().zip(img_offset.iter()) {
+                let pos = *self.input_patch_center.get_unchecked(ax) as isize + *offset;
+                if pos < 0 || pos as usize >= *self.visitor.patch.input_shape.shape.get_unchecked(ax) {
+                    return Some(None)
+                }
+            }
+            let position = self.center
+                + self
+                    .visitor
+                    .patch
+                    .standard_layout_data_field
+                    .get_unchecked(self.item-1);
+            Some(Some(*(self.ptr.offset(position))))
+        }
     }
 }
 
