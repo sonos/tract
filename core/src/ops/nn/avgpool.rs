@@ -122,6 +122,67 @@ where
     T: Datum + Float,
     usize: AsPrimitive<T>,
 {
+
+    #[inline(never)]
+    fn valid_2d_nhwc(&self, input: &ArrayView4<T>, output: &mut ArrayViewMut4<T>) {
+        unsafe {
+            let out_h = output.shape()[self.patch.input_shape.hw_axes()][0];
+            let out_w = output.shape()[self.patch.input_shape.hw_axes()][1];
+            let stride_in_y = input.strides()[self.patch.input_shape.hw_axes()][0]
+                * self.patch.kernel_strides[0] as isize;
+            let stride_in_x = input.strides()[self.patch.input_shape.hw_axes()][1]
+                * self.patch.kernel_strides[1] as isize;
+            let stride_out_y = output.strides()[self.patch.input_shape.hw_axes()][0];
+            let stride_out_x = output.strides()[self.patch.input_shape.hw_axes()][1];
+            let k_len = self
+                .patch
+                .kernel_spatial_shape
+                .iter()
+                .cloned()
+                .product::<usize>()
+                .as_();
+            for i in 0..self.patch.input_shape.n() {
+                let p_in = input
+                    .slice_axis(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
+                    .as_ptr();
+                let p_out = output
+                    .slice_axis_mut(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
+                    .as_mut_ptr();
+                for y in 0..out_h {
+                    let p_in = p_in.offset(stride_in_y * y as isize);
+                    let p_out = p_out.offset(stride_out_y * y as isize);
+                    for x in 0..out_w {
+                        let p_in = p_in.offset(stride_in_x * x as isize);
+                        let p_out = p_out.offset(stride_out_x * x as isize);
+                        let max_c = self.patch.input_shape.c();
+                        for c in 0..max_c / 8 {
+                            let p_in = p_in.offset(8 * c as isize);
+                            let mut v = [T::zero(); 8];
+                            for k in &self.patch.standard_layout_data_field {
+                                let input = std::slice::from_raw_parts(p_in.offset(*k), 8);
+                                for (v, i) in v.iter_mut().zip(input.iter()) {
+                                    *v = *v + *i;
+                                }
+                            }
+                            for (ix, v) in v.iter_mut().enumerate() {
+                                *p_out.offset((c * 8 + ix) as isize) = *v / k_len;
+                            }
+                        }
+                        for c in 0..max_c % 8 {
+                            let p_in = p_in.offset((max_c / 8 * 8 + c) as isize);
+                            let mut v = T::zero();
+                            for k in &self.patch.standard_layout_data_field {
+                                v = v + *p_in.offset(*k);
+                            }
+                            let p_out = p_out.offset((max_c / 8 * 8 + c) as isize);
+                            *p_out = v / k_len;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[inline(never)]
     fn valid_2d(&self, input: &ArrayView4<T>, output: &mut ArrayViewMut4<T>) {
         unsafe {
@@ -175,7 +236,11 @@ where
             self.patch.output_full_shape(self.patch.input_shape.c_dim());
         let mut output = unsafe { ArrayD::uninitialized(&*output_shape).into_dimensionality()? };
         if !self.patch.padded {
-            self.valid_2d(&input, &mut output.view_mut());
+            if self.patch.input_shape.fmt == DataFormat::NHWC {
+                self.valid_2d_nhwc(&input, &mut output.view_mut());
+            } else {
+                self.valid_2d(&input, &mut output.view_mut());
+            }
         } else {
             let h_axis = self.patch.input_shape.h_axis();
             let non_valid_top = self.patch.pad_before[0].div_ceil(self.patch.kernel_strides[0]);
@@ -200,7 +265,11 @@ where
                 Axis(h_axis + 1),
                 (non_valid_left * self.patch.kernel_strides[1]..).into(),
             );
-            self.valid_2d(&valid_input, &mut valid_output);
+            if self.patch.input_shape.fmt == DataFormat::NHWC {
+                self.valid_2d_nhwc(&valid_input, &mut valid_output);
+            } else {
+                self.valid_2d(&valid_input, &mut valid_output);
+            }
 
             use ndarray::IntoDimension;
             let i = input.view().into_dimensionality()?;
