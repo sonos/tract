@@ -12,7 +12,7 @@ edition = "2018"
 
 [dependencies]
 half = "1.3"
-lazy_static = "1.2"
+lazy_static = "1.3"
 libc = "0.2"
 log = "0.4"
 num-traits = "0.2"

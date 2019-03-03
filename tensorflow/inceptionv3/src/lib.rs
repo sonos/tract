@@ -86,10 +86,6 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> ::tract::Tensor {
 #[cfg(test)]
 mod tests {
     extern crate dinghy_test;
-    extern crate simplelog;
-
-    #[allow(unused_imports)]
-    use self::simplelog::{Config, LevelFilter, TermLogger};
 
     use self::dinghy_test::test_project_path;
     use super::*;
@@ -100,10 +96,17 @@ mod tests {
         test_project_path().join(HOPPER)
     }
 
+    #[allow(dead_code)]
+    pub fn setup_test_logger() {
+        env_logger::Builder::from_default_env()
+            .filter_level(log::LevelFilter::Trace)
+            .init();
+    }
+
     #[test]
     fn grace_hopper_is_a_military_uniform() {
         download();
-        // TermLogger::init(LevelFilter::Trace, Config::default()).unwrap();
+        // setup_test_logger();
         let tfd = ::tract_tensorflow::for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan = ::tract::SimplePlan::new(&tfd).unwrap();
         let input = load_image(hopper());

@@ -3,7 +3,7 @@
 #[macro_use]
 extern crate log;
 extern crate ndarray;
-extern crate pretty_env_logger;
+extern crate env_logger;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;

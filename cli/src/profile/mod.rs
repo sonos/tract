@@ -51,7 +51,7 @@ impl ProfileData {
                     .partial_cmp(&b.avg_real())
                     .unwrap_or(::std::cmp::Ordering::Greater)
             })
-            .iter()
+            .into_iter()
             .rev()
             .take(5)
             .map(|a| *a.0)

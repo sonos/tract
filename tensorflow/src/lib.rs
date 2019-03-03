@@ -43,7 +43,7 @@ extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
 #[cfg(test)]
-extern crate simplelog;
+extern crate env_logger;
 #[macro_use]
 extern crate tract_core;
 #[cfg(feature = "conform")]
@@ -67,7 +67,8 @@ pub trait ToSharedTensor<Tf>: Sized {
 
 #[cfg(test)]
 #[allow(dead_code)]
-fn setup_test_logger() {
-    use simplelog::{Config, LevelFilter, TermLogger};
-    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+pub fn setup_test_logger() {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Trace)
+        .init();
 }
