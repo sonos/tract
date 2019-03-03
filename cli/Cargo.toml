@@ -28,15 +28,17 @@ env_logger = "0.5"
 terminal_size = "0.1.7"
 textwrap = "0.10"
 tract-core = { path = "../core" }
-tract-tensorflow = { path = "../tensorflow" }
-tract-onnx = { path = "../onnx" }
+tract-tensorflow = { path = "../tensorflow", optional = true }
+tract-onnx = { path = "../onnx", optional = true }
 pbr = "1.0"
 atty = "0.2"
 itertools = "0.7"
 libc = "0.2"
 
 [features]
-default = []
+default = ["tf", "onnx"]
+tf = [ "tract-tensorflow" ]
+onnx = [ "tract-onnx" ]
 conform = [ "tract-tensorflow/conform"  ]
 blis = ["tract-core/blis"]
 

@@ -19,15 +19,19 @@ extern crate terminal_size;
 extern crate textwrap;
 #[macro_use]
 extern crate tract_core;
+#[cfg(feature="onnx")]
 extern crate tract_onnx;
+#[cfg(feature="tf")]
 extern crate tract_tensorflow;
 
 use std::process;
 use std::str::FromStr;
 
+#[cfg(feature="tf")]
 use crate::tfpb::graph::GraphDef;
 use insideout::InsideOut;
 use tract_core::ops::prelude::*;
+#[cfg(feature="tf")]
 use tract_tensorflow::tfpb;
 
 use crate::display_graph::DisplayOptions;
@@ -242,8 +246,11 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
 
 #[derive(Debug)]
 pub enum SomeGraphDef {
+    #[cfg(feature="tf")]
     Tf(GraphDef),
+    #[cfg(feature="onnx")]
     Onnx(tract_onnx::pb::ModelProto),
+    _NoGraph, // here to avoid "irrefutable patterns" in match statements
 }
 
 /// Structure holding the parsed parameters.
@@ -279,13 +286,23 @@ impl Parameters {
                 "tf"
             });
         let (graph, mut tract_model) = if format == "onnx" {
-            let graph = tract_onnx::model::model_proto_for_path(&name)?;
-            let tract = tract_onnx::for_path(&name)?;
-            (SomeGraphDef::Onnx(graph), tract)
+            #[cfg(not(feature="onnx"))] {
+                panic!("Tract compiled without onnx feature");
+            }
+            #[cfg(feature="onnx")] {
+                let graph = tract_onnx::model::model_proto_for_path(&name)?;
+                let tract = tract_onnx::for_path(&name)?;
+                (SomeGraphDef::Onnx(graph), tract)
+            }
         } else {
-            let graph = tract_tensorflow::model::graphdef_for_path(&name)?;
-            let tract_model = tract_tensorflow::for_path(&name)?;
-            (SomeGraphDef::Tf(graph), tract_model)
+            #[cfg(not(feature="tf"))] {
+                panic!("Tract compiled without tensorflow feature");
+            }
+            #[cfg(feature="tf")] {
+                let graph = tract_tensorflow::model::graphdef_for_path(&name)?;
+                let tract_model = tract_tensorflow::for_path(&name)?;
+                (SomeGraphDef::Tf(graph), tract_model)
+            }
         };
 
         info!("Model {:?} loaded", name);
