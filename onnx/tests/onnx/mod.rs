@@ -6,11 +6,9 @@ use tract_onnx::*;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
-    use simplelog::{Config, LevelFilter, TermLogger};
-    use std::sync::Once;
-
-    static START: Once = Once::new();
-    START.call_once(|| TermLogger::init(LevelFilter::Trace, Config::default()).unwrap());
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Trace)
+        .init();
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {

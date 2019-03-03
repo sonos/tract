@@ -16,9 +16,10 @@ tract-tensorflow = { path = ".." }
 conform = [ "tract-tensorflow/conform" ]
 
 [dev-dependencies]
-dinghy-test = "0.3"
 criterion = "0.2"
-simplelog = "0.5"
+dinghy-test = "0.3"
+env_logger = "0.6"
+log = "0.4"
 
 [[bench]]
 harness = false

@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+extern crate env_logger;
 extern crate flate2;
 extern crate fs2;
 #[macro_use]
@@ -9,7 +10,6 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
-extern crate simplelog;
 extern crate tar;
 extern crate tract_core;
 extern crate tract_onnx;

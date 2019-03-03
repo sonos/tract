@@ -1,9 +1,9 @@
 #![cfg(feature = "conform")]
 #![allow(non_snake_case)]
+extern crate env_logger;
 #[macro_use]
 extern crate log;
 extern crate ndarray;
-extern crate pretty_env_logger;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;

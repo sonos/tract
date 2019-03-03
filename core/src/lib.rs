@@ -85,7 +85,7 @@ extern crate proptest;
 #[cfg(feature = "serialize")]
 extern crate serde;
 #[cfg(test)]
-extern crate simplelog;
+extern crate env_logger;
 extern crate smallvec;
 #[cfg(feature = "serialize")]
 #[macro_use]
@@ -124,8 +124,9 @@ pub use crate::tensor::{SharedTensor, Tensor};
 #[cfg(test)]
 #[allow(dead_code)]
 fn setup_test_logger() {
-    use simplelog::{Config, LevelFilter, TermLogger};
-    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Trace)
+        .init();
 }
 
 pub trait Tractify<Other>: Sized {
