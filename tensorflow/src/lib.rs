@@ -42,7 +42,7 @@ extern crate log;
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
-#[cfg(test)]
+#[cfg(any(test, featutre="conform"))]
 extern crate env_logger;
 #[macro_use]
 extern crate tract_core;
