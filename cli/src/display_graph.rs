@@ -6,7 +6,9 @@ use ansi_term::Style;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use tract_core::{Model, Node, Tractify};
+#[cfg(feature="onnx")]
 use tract_onnx::pb::ModelProto;
+#[cfg(feature="tf")]
 use tract_tensorflow::tfpb::graph::GraphDef;
 
 #[derive(Debug, Clone, Default)]
@@ -172,8 +174,11 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
 
     pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<M>> {
         match graph_def {
+            #[cfg(feature="tf")]
             SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
+            #[cfg(feature="onnx")]
             SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
+            SomeGraphDef::_NoGraph => unreachable!(),
         }
     }
 
@@ -187,6 +192,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
         Ok(())
     }
 
+    #[cfg(feature="tf")]
     pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<M>> {
         let bold = Style::new().bold();
         for gnode in graph_def.get_node().iter() {
@@ -211,6 +217,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
         Ok(self)
     }
 
+    #[cfg(feature="onnx")]
     pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<M>> {
         let bold = Style::new().bold();
         for gnode in model_proto.get_graph().get_node().iter() {
