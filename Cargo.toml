@@ -9,7 +9,7 @@ members = [
 ]
 
 [profile.release]
-lto = "thin"
+lto = true
 
 [profile.bench]
 debug = true
