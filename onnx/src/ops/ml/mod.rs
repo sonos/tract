@@ -285,6 +285,42 @@ impl InferenceRulesOp for TreeEnsembleClassifier {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self, s: &mut Solver<'r>, inputs: &'p [TensorProxy], outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 2)?;
+
+        s.equals(&inputs[0].rank, 2)?;
+        s.equals(&outputs[0].rank, 1)?;
+        s.equals(&outputs[0].rank, 1)?;
+
+        s.given_3(
+            &inputs[0].shape,
+            &outputs[0].shape,
+            &outputs[1].shape,
+            move |s, s_in0, s_out0, s_out1| {
+                s.equals(s_in0[0], s_out0[0])?;
+                s.equals(s_out0[0], s_out1[0])?;
+                if let Ok(k) = s_in0[1].to_integer() {
+                    self.ensemble.check_n_features(k as _)?;
+                }
+                if let Ok(k) = s_out1[1].to_integer() {
+                    s.equals(k, self.ensemble.n_classes() as i32)?;
+                }
+                Ok(())
+            },
+        )?;
+
+        s.given(&inputs[0].datum_type, move |_, dt| {
+            Ok(match dt {
+                DatumType::F32 | DatumType::F64 | DatumType::I64 | DatumType::I32 => (),
+                _ => bail!("invalid input type for tree ensemble classifier: {:?}", dt),
+            })
+        })?;
+        match self.class_labels {
+            ClassLabels::Ints(_) => s.equals(&outputs[0].datum_type, &DatumType::I64)?,
+            ClassLabels::Strings(_) => s.equals(&outputs[0].datum_type, &DatumType::String)?,
+        };
+        s.equals(&outputs[1].datum_type, DatumType::F32)?;
+
         Ok(())
     }
 }
