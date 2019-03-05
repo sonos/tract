@@ -12,9 +12,9 @@ macro_rules! reduce {
     ($id:ident) => {
         |node| {
             let axes = node
-                .get_attr_opt_ints("axes")?
-                .map(|axes| axes.iter().map(|&i| i as i64).collect());
-            let keep_dims = node.get_attr_opt_int("keepdims")?.unwrap_or(1i64) == 1;
+                .get_attr_opt_vec("axes")?;
+//                .map(|axes| axes.iter().map(|&i| i as i64).collect());
+            let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
             Ok(Box::new(tractops::nn::Reduce::new(
                 axes,
                 keep_dims,
