@@ -273,6 +273,10 @@ impl Op for TreeEnsembleClassifier {
     fn name(&self) -> Cow<str> {
         "TreeEnsembleClassifier".into()
     }
+
+    fn noutputs(&self) -> usize {
+        2
+    }
 }
 
 impl StatelessOp for TreeEnsembleClassifier {
