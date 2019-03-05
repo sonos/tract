@@ -74,7 +74,7 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
 
     let (n_classes, attr) = if is_classifier {
         let n_ints = node.get_attr_opt_slice::<i64>("classlabels_int64s")?.map(|l| l.len());
-        let n_strs = node.get_attr_opt_slice::<Vec<u8>>("classlabels_strings")?.map(|l| l.len());
+        let n_strs = node.get_attr_opt_tvec::<&str>("classlabels_strings")?.map(|l| l.len());
         match (n_ints, n_strs) {
             (Some(n), None) => (n, "classlabels_ints64s"),
             (None, Some(n)) => (n, "classlabels_strings"),
@@ -243,15 +243,29 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("TreeEnsembleClassifier", TreeEnsembleClassifier::parse);
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ClassLabels {
+    Ints(Vec<i64>),
+    Strings(Vec<String>),
+}
+
 #[derive(Debug, Clone)]
 pub struct TreeEnsembleClassifier {
     ensemble: TreeEnsemble,
+    class_labels: ClassLabels,
 }
 
 impl TreeEnsembleClassifier {
     fn parse(node: &NodeProto) -> TractResult<Box<Op>> {
         let ensemble = parse_tree_ensemble(node, true)?;
-        Ok(Box::new(Self { ensemble }))
+        let class_labels = match node.get_attr_opt_slice::<i64>("classlabels_int64s")? {
+            Some(int_labels) => ClassLabels::Ints(int_labels.into()),
+            _ => {
+                let str_labels = node.get_attr_opt_vec::<String>("classlabels_strings")?;
+                ClassLabels::Strings(str_labels.unwrap())
+            }
+        };
+        Ok(Box::new(Self { ensemble, class_labels }))
     }
 }
 
