@@ -36,23 +36,20 @@ impl Op for BatchNorm {
         "BatchNorm".into()
     }
 
-    fn reduce(
+    fn codegen(
         &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            return Ok(None);
-        }
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        let dt = inputs[1].datum_type;
 
-        if let (Some(x_shape), Some(dt), Some(scale), Some(beta), Some(mean), Some(var)) = (
-            inputs[0].shape.as_concrete_finite()?,
-            inputs[1].datum_type.concretize(),
-            inputs[1].concretize(),
-            inputs[2].concretize(),
-            inputs[3].concretize(),
-            inputs[4].concretize(),
+        if let (Some(x_shape), Some(scale), Some(beta), Some(mean), Some(var)) = (
+            inputs[0].shape.as_finite(),
+            inputs[1].konst.as_ref(),
+            inputs[2].konst.as_ref(),
+            inputs[3].konst.as_ref(),
+            inputs[4].konst.as_ref(),
         ) {
             let c_axis = self.data_format.shape(&x_shape).c_axis();
             let c_dim = self.data_format.shape(&x_shape).c_dim();
@@ -81,13 +78,13 @@ impl Op for BatchNorm {
             let op = dispatch_floatlike!(fixed(dt)(
                 c_axis,
                 c_dim,
-                scale,
-                beta,
-                mean,
-                var,
+                scale.clone(),
+                beta.clone(),
+                mean.clone(),
+                var.clone(),
                 self.epsilon
             ))?;
-            return Ok(Some(ReducedOpRewire::unary(op)));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }

@@ -35,11 +35,7 @@ impl Concat {
         } else if -rank <= self.axis && self.axis < 0 {
             Ok((self.axis + rank) as usize)
         } else {
-            bail!(
-                "Illegal combination of values for rank and axis: {} and {}",
-                rank,
-                self.axis
-            )
+            bail!("Illegal combination of values for rank and axis: {} and {}", rank, self.axis)
         }
     }
 
@@ -63,59 +59,56 @@ impl Op for Concat {
         "Concat".into()
     }
 
-    fn reduce(
+    fn codegen(
         &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            return Ok(None);
-        }
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut inputs = model.node_input_facts(node.id)?;
+
         for input in inputs.iter() {
-            if input.datum_type.concretize().is_none()
-                || input.shape.as_concrete_finite()?.is_none()
-            {
+            if input.shape.as_finite().is_none() {
                 return Ok(None);
             }
         }
 
-        if let Some(super_type) =
-            DatumType::super_type_for(inputs.iter().map(|x| x.datum_type.concretize().unwrap()))
-        {
-            let shapes: TVec<TVec<usize>> = inputs
-                .iter()
-                .map(|x| x.shape.as_concrete_finite().unwrap().unwrap())
-                .collect();
-            let axis = self.resolve_axis(shapes[0].len() as i64)?;
+        if let Some(super_type) = DatumType::super_type_for(inputs.iter().map(|x| x.datum_type)) {
+
+            let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
+
             fn fixed<T: Datum + Copy>(
                 axis: usize,
-                inputs: TVec<&TensorFact>,
-                shapes: TVec<TVec<usize>>,
-            ) -> TractResult<ReducedOpRewire> {
+                inputs: &[&TypedTensorInfo],
+            ) -> TractResult<Box<Op>> {
                 let mut slices: TVec<FixedConcatSlice<T>> = tvec![];
-                let mut rewired: TVec<usize> = tvec![];
-                for (idx, input) in inputs.iter().enumerate() {
-                    match input.concretize() {
+                for input in inputs.iter() {
+                    match input.konst.as_ref() {
                         Some(c_input) => {
                             slices.push(FixedConcatSlice::Const(
                                 c_input.cast_to::<T>()?.into_owned().into_array()?,
                             ));
                         }
                         None => {
-                            slices.push(FixedConcatSlice::Var(shapes[idx].clone()));
-                            rewired.push(idx);
+                            slices.push(FixedConcatSlice::Var(input.shape.as_finite().unwrap().into()));
                         }
                     }
                 }
-                Ok(ReducedOpRewire::new(
-                    vec![Box::new(FixedConcat::<T>::new(axis, slices))],
-                    rewired,
-                ))
+                Ok(Box::new(FixedConcat::<T>::new(axis, slices)))
             }
-            return Ok(Some(dispatch_copy!(fixed(super_type)(
-                axis, inputs, shapes
-            ))?));
+
+            let op = dispatch_copy!(fixed(super_type)(axis, &*inputs))?;
+            let mut patch = TypedModelPatch::default();
+            let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
+            let mut inlet_slot = 0;
+            for (ix, input) in inputs.iter().enumerate() {
+                if input.konst.is_none() {
+                    let tap = patch.tap_model(model, node.inputs[ix])?;
+                    patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
+                    inlet_slot += 1;
+                }
+            }
+            patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
+            return Ok(Some(patch))
         }
         Ok(None)
     }
@@ -134,10 +127,8 @@ impl StatelessOp for Concat {
 impl<T: Datum + Copy> StatelessOp for FixedConcat<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let casted_inputs: TVec<Cow<Tensor>> = inputs
-            .iter()
-            .map(|x| x.cast_to::<T>())
-            .collect::<TractResult<_>>()?;
+        let casted_inputs: TVec<Cow<Tensor>> =
+            inputs.iter().map(|x| x.cast_to::<T>()).collect::<TractResult<_>>()?;
         let mut mats: TVec<ArrayViewD<T>> = tvec![];
         let mut input_idx = 0;
         for slice in &self.slices {
