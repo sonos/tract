@@ -62,6 +62,63 @@ impl Op for Gemm {
     fn name(&self) -> Cow<str> {
         "Gemm".into()
     }
+
+    fn reduce(
+        &self,
+        inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+        phase: ReductionPhase,
+    ) -> TractResult<Option<ReducedOpRewire>> {
+//        if phase == ReductionPhase::Normalize {
+//            return Ok(None);
+//        }
+        if self.have_c {
+            if let (Some(b), Some(c)) = (inputs[1].concretize(), inputs[2].concretize()) {
+                return Ok(Some(ReducedOpRewire::unary(GemmUnaryA {
+                    alpha: self.alpha,
+                    beta: self.beta,
+                    trans_a: self.trans_a,
+                    trans_b: self.trans_b,
+                    b: b.to_tensor(),
+                    c: c.to_tensor(),
+                })));
+            }
+
+            if let (Some(a), Some(c)) = (inputs[0].concretize(), inputs[2].concretize()) {
+                return Ok(Some(ReducedOpRewire::unary(GemmUnaryB {
+                    alpha: self.alpha,
+                    beta: self.beta,
+                    trans_a: self.trans_a,
+                    trans_b: self.trans_b,
+                    a: a.to_tensor(),
+                    c: c.to_tensor(),
+                })));
+            }
+        } else {
+            if let Some(b) = inputs[1].concretize() {
+                return Ok(Some(ReducedOpRewire::unary(GemmUnaryA {
+                    alpha: self.alpha,
+                    beta: 0.0,
+                    trans_a: self.trans_a,
+                    trans_b: self.trans_b,
+                    b: b.to_tensor(),
+                    c: Tensor::from(0.0),
+                })));
+            }
+            if let Some(a) = inputs[0].concretize() {
+                return Ok(Some(ReducedOpRewire::unary(GemmUnaryB {
+                    alpha: self.alpha,
+                    beta: 0.0,
+                    trans_a: self.trans_a,
+                    trans_b: self.trans_b,
+                    a: a.to_tensor(),
+                    c: Tensor::from(0.0),
+                })));
+            }
+        }
+
+        Ok(None)
+    }
 }
 
 impl StatelessOp for Gemm {
@@ -159,8 +216,6 @@ impl InferenceRulesOp for GemmUnaryA {
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].rank, 2)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
         let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
         let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
         s.equals(&inputs[0].shape[ra], &outputs[0].shape[0])?;
@@ -227,8 +282,6 @@ impl InferenceRulesOp for GemmUnaryB {
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].rank, 2)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[2].datum_type, &outputs[0].datum_type)?;
         let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
         let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
         s.equals(self.a.shape()[ra].to_dim(), &outputs[0].shape[0])?;
