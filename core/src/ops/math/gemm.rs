@@ -67,11 +67,9 @@ impl Op for Gemm {
         &self,
         inputs: TVec<&TensorFact>,
         _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
+        _phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
-//        if phase == ReductionPhase::Normalize {
-//            return Ok(None);
-//        }
+
         if self.have_c {
             if let (Some(b), Some(c)) = (inputs[1].concretize(), inputs[2].concretize()) {
                 return Ok(Some(ReducedOpRewire::unary(GemmUnaryA {
