@@ -34,6 +34,17 @@ impl Op for PermuteAxes {
     fn name(&self) -> Cow<str> {
         "PermuteAxes".into()
     }
+
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
+        let input = args_1!(inputs);
+        let mut fact = input.clone();
+        if let Some(axes) = &self.axes {
+            fact.axis = axes.iter().position(|x| x == &fact.axis).ok_or_else(|| {
+                format!("Could not find streaming axis {} if permute axes {:?}", fact.axis, axes)
+            })?;
+        }
+        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![fact])])
+    }
 }
 
 impl StatelessOp for PermuteAxes {
