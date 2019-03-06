@@ -13,6 +13,12 @@ pub enum FixedConcatSlice<T> {
     Var(TVec<usize>),
 }
 
+#[derive(Debug, Clone)]
+pub enum NormConcatSlice<T> {
+    Const(ArrayD<T>),
+    Var(TVec<TDim>),
+}
+
 impl<T> FixedConcatSlice<T> {
     pub fn shape(&self) -> &[usize] {
         match self {
@@ -26,6 +32,12 @@ impl<T> FixedConcatSlice<T> {
 pub struct FixedConcat<T> {
     axis: usize,
     slices: TVec<FixedConcatSlice<T>>,
+}
+
+#[derive(new, Debug, Clone)]
+pub struct NormConcat<T> {
+    axis: usize,
+    slices: TVec<NormConcatSlice<T>>,
 }
 
 impl Concat {
@@ -84,7 +96,7 @@ impl Op for Concat {
                 for input in inputs.iter() {
                     match input.konst.as_ref() {
                         Some(c_input) => {
-                            slices.push(FixedConcatSlice::Const(
+                            slices.push(NormConcatSlice::Const(
                                 c_input.cast_to::<T>()?.into_owned().into_array()?,
                             ));
                         }
@@ -114,6 +126,61 @@ impl Op for Concat {
     }
 }
 
+impl<T: Datum + Copy> Op for NormConcat<T> {
+    fn name(&self) -> Cow<str> {
+        format!("NormConcat<{:?}>", T::datum_type()).into()
+    }
+
+    // Reduce to FixedConcat<T>
+    fn reduce(
+        &self,
+        inputs: TVec<&TensorFact>,
+        _outputs: TVec<&TensorFact>,
+        phase: ReductionPhase,
+    ) -> TractResult<Option<ReducedOpRewire>> {
+        if phase != ReductionPhase::Codegen {
+            return Ok(None);
+        }
+
+        trace!("  Entering reducer for Concat");
+
+        for input in inputs.iter() {
+            if input.shape.as_concrete_finite()?.is_none() {
+                return Ok(None);
+            }
+        }
+
+        trace!("  Input has concrete shape");
+        let shapes: TVec<TVec<usize>> =
+            inputs.iter().map(|x| x.shape.as_concrete_finite().unwrap().unwrap()).collect();
+
+        let mut fixed_slices: TVec<FixedConcatSlice<T>> = tvec![];
+
+        let mut input_idx = 0;
+        for slice in &self.slices {
+            match slice {
+                NormConcatSlice::Const(c) => fixed_slices.push(FixedConcatSlice::Const(c.clone())),
+                NormConcatSlice::Var(shape) => {
+                    if &inputs[input_idx].shape.concretize().unwrap() != shape {
+                        bail!(
+                            "Incompatible shapes {:?} and {:?}",
+                            &inputs[input_idx].shape.concretize().unwrap(),
+                            shape
+                        )
+                    }
+                    fixed_slices.push(FixedConcatSlice::Var(shapes[input_idx].clone()));
+                    input_idx += 1;
+                }
+            }
+        }
+
+        Ok(Some(ReducedOpRewire::new(
+            vec![Box::new(FixedConcat::new(self.axis, fixed_slices))],
+            (0..inputs.len()).collect(),
+        )))
+    }
+}
+
 impl StatelessOp for Concat {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
@@ -121,6 +188,44 @@ impl StatelessOp for Concat {
             DatumType::super_type_for(inputs.iter().map(|x| x.datum_type()))
                 .ok_or_else(|| format!("No supertype found"))?;
         dispatch_copy!(Self::eval_t(super_type)(self, inputs))
+    }
+}
+
+impl<T: Datum + Copy> StatelessOp for NormConcat<T> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let casted_inputs: TVec<Cow<Tensor>> =
+            inputs.iter().map(|x| x.cast_to::<T>()).collect::<TractResult<_>>()?;
+        let mut mats: TVec<ArrayViewD<T>> = tvec![];
+        let mut input_idx = 0;
+        for slice in &self.slices {
+            match slice {
+                NormConcatSlice::Const(c) => mats.push(c.view()),
+                NormConcatSlice::Var(shape) => {
+                    let inp_view = casted_inputs[input_idx].to_array_view::<T>()?;
+                    if &inp_view.shape().iter().map(|x| TDim::from(x)).collect::<TVec<_>>() != shape
+                    {
+                        bail!(
+                            "Unexpected input shape. Expected {:?}, found {:?}",
+                            shape,
+                            inp_view.shape()
+                        );
+                    }
+                    mats.push(inp_view);
+                    input_idx += 1
+                }
+            }
+        }
+        if input_idx != inputs.len() {
+            bail!(
+                "Unexpected number of variable inputs to NormConcat. Expected {}, got {}",
+                input_idx,
+                inputs.len()
+            );
+        }
+
+        let result = ::ndarray::stack(Axis(self.axis), &mats)?;
+        Ok(tvec![result.into()])
     }
 }
 
@@ -252,6 +357,34 @@ impl<T: Datum + Copy> InferenceRulesOp for FixedConcat<T> {
         };
         s.equals(axis_dim.to_dim(), &outputs[0].shape[self.axis])?;
 
+        Ok(())
+    }
+}
+
+impl<T: Datum + Copy> InferenceRulesOp for NormConcat<T> {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_output_arity(&outputs, 1)?;
+        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
+        s.equals(&outputs[0].rank, &inputs[0].rank)?;
+        let n = inputs.len() as usize;
+        s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
+        let mut input_idx = 0;
+        for slice in &self.slices {
+            match slice {
+                NormConcatSlice::Var(shape) => {
+                    for (dim_idx, dim) in shape.iter().enumerate() {
+                        s.equals(dim.to_dim(), &inputs[input_idx].shape[dim_idx])?;
+                    }
+                    input_idx += 1;
+                }
+                _ => {}
+            }
+        }
         Ok(())
     }
 }
