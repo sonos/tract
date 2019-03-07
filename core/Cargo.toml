@@ -54,5 +54,9 @@ env_logger = "0.6"
 proptest = "0.8"
 
 [[bench]]
+name = "conv_direct_vs_im2col"
+harness = false
+
+[[bench]]
 name = "im2col_inception"
 harness = false

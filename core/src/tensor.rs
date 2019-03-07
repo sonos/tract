@@ -414,9 +414,6 @@ impl PartialEq for Tensor {
         if self.dt != other.dt || self.shape != other.shape {
             return false;
         }
-        if &*self.data == &*other.data {
-            return true;
-        }
         self.eq_dt(other).unwrap_or(false)
     }
 }

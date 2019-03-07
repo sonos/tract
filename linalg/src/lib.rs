@@ -50,10 +50,15 @@ pub fn best() -> Ops {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("fma") {
-            log::info!("x86_64/fma activated for smm");
+            log::info!("x86_64/fma activated for smm and sconv");
             ops.smm = Box::new(|m, k, n| {
                 Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(
                     m, k, n,
+                ))
+            });
+            ops.sconv = Box::new(|co, kernel_offsets, data_offsets| {
+                Box::new(PackedConv::<x86_64_fma::conv::SConvFma16x6, f32>::new(
+                    co, kernel_offsets, data_offsets
                 ))
             });
         }
