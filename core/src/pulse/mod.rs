@@ -117,6 +117,7 @@ impl PulsedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ndarray::*;
 
     #[test]
     fn test_source_must_stream() {
@@ -164,10 +165,52 @@ mod tests {
         );
     }
 
+    fn test_regular_against_pulse(
+        model: InferenceModel,
+        input_array: ArrayD<f32>,
+        axis: usize,
+        expected_nodes_in_pulsed_net: usize,
+        expected_delay: usize,
+    ) {
+        let model = model.into_normalized().unwrap();
+        let input = Tensor::from(input_array.clone());
+
+        assert_eq!(model.nodes().len(), 2);
+        let plan = crate::plan::SimplePlan::new(&model).unwrap();
+        let outputs = plan.run(tvec!(input.clone())).unwrap();
+
+        let pulse = 4;
+        let pulsed = PulsedModel::new(&model, pulse).unwrap();
+        assert_eq!(pulsed.nodes().len(), expected_nodes_in_pulsed_net);
+        let output_fact = pulsed.output_fact().unwrap().clone();
+        assert_eq!(output_fact.delay, expected_delay);
+        let output_stream_axis = output_fact.axis;
+        let mut initial_output_shape = output_fact.shape.clone();
+        initial_output_shape[output_stream_axis] = 0;
+
+        let pulsed_plan = crate::plan::SimplePlan::new(pulsed).unwrap();
+        let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
+
+        let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
+
+        for p in 0..(input.shape()[axis] / pulse) {
+            let chunk = input_array.slice_axis(Axis(axis), ((p * pulse)..((p + 1) * pulse)).into());
+            let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
+            got = stack(
+                Axis(output_stream_axis),
+                &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
+            )
+            .unwrap();
+        }
+
+        let pulsed_output = got.slice_axis(Axis(output_stream_axis), (output_fact.delay..).into());
+
+        assert_eq!(pulsed_output, outputs[0].to_array_view::<f32>().unwrap());
+    }
+
     #[test]
     fn test_simple_conv() {
         use crate::ops::nn::*;
-        use ndarray::*;
 
         let mut model = Model::default();
         let ker = model.add_const("kernel", arr3(&[[[0.5f32, 1.0, -0.1]]]).into()).unwrap();
@@ -176,39 +219,20 @@ mod tests {
             .unwrap();
         let conv = model.chain_default("conv", Conv::default()).unwrap();
         model.add_edge(OutletId::new(ker, 0), InletId::new(conv, 1)).unwrap();
-        model.analyse().unwrap();
-        assert_eq!(model.nodes().len(), 3);
 
-        let input = [1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
-        let t_input = Tensor::from(arr3(&[[input]]));
+        let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
+        test_regular_against_pulse(model, input.into_dyn(), 2, 3, 2);
+    }
 
-        let model = model.into_typed().unwrap().declutter().unwrap();
+    #[test]
+    fn test_crop_at_start() {
+        let mut model = Model::default();
+        let _ = model
+            .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
+            .unwrap();
+        model.chain_default("slice", crate::ops::array::Slice::new(vec![(1, 0)])).unwrap();
 
-        println!("model: {:#?}", model);
-
-        assert_eq!(model.nodes().len(), 2);
-        let plan = crate::plan::SimplePlan::new(&model).unwrap();
-        let outputs = plan.run(tvec!(t_input.clone())).unwrap();
-
-        let pulse = 4;
-        let pulsed = PulsedModel::new(&model.into_normalized().unwrap(), pulse).unwrap();
-        assert_eq!(pulsed.nodes().len(), 3); // source - delay - conv
-        assert_eq!(pulsed.fact(OutletId::new(2, 0)).unwrap().delay, 2);
-
-        let pulsed_plan = crate::plan::SimplePlan::new(pulsed).unwrap();
-        let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
-        let mut got: Vec<f32> = vec![];
-
-        for p in 0..(input.len() / pulse) {
-            let chunk = &input[(p * pulse)..((p + 1) * pulse)];
-            let mut outputs = state
-                .run(tvec!(ndarray::Array::from_shape_vec((1usize, 1, 4), chunk.to_vec())
-                    .unwrap()
-                    .into()))
-                .unwrap();
-            got.extend(outputs.remove(0).to_array_view::<f32>().unwrap().iter());
-        }
-
-        assert_eq!(&got[2..], outputs[0].to_array_view::<f32>().unwrap().as_slice().unwrap());
+        let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0]);
+        test_regular_against_pulse(model, input.into_dyn(), 0, 2, 1);
     }
 }
