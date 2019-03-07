@@ -194,6 +194,11 @@ impl Op for GemmUnaryA {
     fn name(&self) -> Cow<str> {
         "GemmUnaryA".into()
     }
+
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
+        let input = args_1!(inputs);
+        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![input.clone()])])
+    }
 }
 
 impl StatelessOp for GemmUnaryA {

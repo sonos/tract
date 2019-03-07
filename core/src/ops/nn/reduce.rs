@@ -250,6 +250,11 @@ impl Op for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()
     }
+
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
+        let input = args_1!(inputs);
+        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![input.clone()])])
+    }
 }
 
 impl StatelessOp for Reduce {
