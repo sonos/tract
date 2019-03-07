@@ -94,7 +94,7 @@ impl ConvUnary {
         }
     }
 
-    fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
+    pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
         let patch = self.patch(input_full_shape);
         let ref input_spatial_dims_strides: TVec<usize> = patch
             .input_shape
@@ -270,7 +270,7 @@ impl ConvUnary {
         Ok((im2col, conv_gemm))
     }
 
-    fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Box<Op>, Box<Op>)>
+    pub fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Box<Op>, Box<Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {

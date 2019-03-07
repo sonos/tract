@@ -10,7 +10,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co:usize) {
         let data_offsets = (0..pulse).map(|x| x as isize).collect();
         let kernel_offsets = (0..ci).flat_map(|ici| (0..3).map(move |x| (ici * t * 3 + x * t) as isize)).collect();
         let conv = (tract_linalg::ops().sconv)(co, kernel_offsets, data_offsets);
-        let a = vec![0.0; conv.packed_a_len()];
+        let a = tract_linalg::align::realign_vec(vec![0.0; conv.packed_a_len()], conv.packed_a_alignment());
         let input = vec![0.0; ci*t];
         let mut output = vec![0.0; co*t];
         be.iter(move || conv.conv(a.as_ptr(), input.as_ptr(), output.as_mut_ptr(), n as _, 1))

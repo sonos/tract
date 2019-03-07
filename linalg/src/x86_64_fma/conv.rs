@@ -4,21 +4,21 @@ use crate::frame;
 struct SixteenAlignedF32([f32; 16]);
 
 #[derive(Copy, Clone, Debug)]
-pub struct KerFma16x6;
+pub struct SConvFma16x6;
 
 #[target_feature(enable = "fma")]
-unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
+unsafe fn fma(k: usize, a: *const f32, b_tops: *const *const f32, b_down_offsets: *const isize, c: *mut f32, rsc: usize, csc: usize) {
     use std::arch::x86_64::*;
     assert!(a as usize % 32 == 0);
-    assert!(b as usize % 4 == 0);
-    assert!(c as usize % 4 == 0);
     let mut ab1 = [_mm256_setzero_ps(); 6];
     let mut ab2 = [_mm256_setzero_ps(); 6];
     for i in 0..k {
+        let down_offset = *b_down_offsets.offset(i as isize) >> 2;
         let ar1 = _mm256_load_ps(a.offset((i * 16) as isize));
         let ar2 = _mm256_load_ps(a.offset((i * 16 + 8) as isize));
         for j in 0usize..6 {
-            let br = _mm256_set1_ps(*b.offset((i * 6 + j) as isize));
+            let bp = *(*b_tops.offset(j as isize)).offset(down_offset);
+            let br = _mm256_set1_ps(bp);
             ab1[j] = _mm256_fmadd_ps(ar1, br, ab1[j]);
             ab2[j] = _mm256_fmadd_ps(ar2, br, ab2[j]);
         }
@@ -33,7 +33,7 @@ unsafe fn fma(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, c
     }
 }
 
-impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
+impl frame::conv::ConvKer<f32> for SConvFma16x6 {
     #[inline(always)]
     fn name() -> &'static str {
         "fma"
@@ -53,8 +53,16 @@ impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
         4
     }
     #[inline(always)]
-    fn kernel(k: usize, a: *const f32, b: *const f32, c: *mut f32, rsc: usize, csc: usize) {
-        unsafe { fma(k, a, b, c, rsc, csc) }
+    fn kernel(
+        k: usize,
+        a: *const f32,
+        b_tops: *const *const f32,
+        b_down_offsets: *const isize,
+        c: *mut f32,
+        rsc: usize,
+        csc: usize,
+    ) {
+        unsafe { fma(k, a, b_tops, b_down_offsets, c, rsc, csc) }
     }
 }
 
@@ -64,18 +72,19 @@ impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
 ))]
 mod test {
     use super::*;
-    use crate::frame::matmul::test::*;
-    use crate::frame::PackedMatMul;
+    use crate::frame::conv::test::*;
+    use crate::frame::PackedConv;
     use proptest::*;
 
     proptest! {
         #[test]
-        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
-            if !is_x86_feature_detected!("fma") {
-                return Ok(())
-            }
-            let mm = PackedMatMul::<KerFma16x6, f32>::new(m, k, n);
-            test_mat_mul_prep_f32(mm, m, k, n, a, b)?
+        fn conv(pb in strat_conv_1d()) {
+            let (kernel_offsets, data_offsets) = pb.offsets();
+            let conv = PackedConv::<SConvFma16x6, f32>::new(pb.co, kernel_offsets, data_offsets);
+            let found = pb.run(&conv);
+            let expected = pb.expected();
+            let dist = found.iter().zip(expected.iter()).map(|(f,e)| (f - e).abs()).sum::<f32>();
+            prop_assert!(dist < 0.00001, "Expected: {:?} found, {:?}", expected, found);
         }
     }
 }

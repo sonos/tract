@@ -339,6 +339,12 @@ pub mod test {
                     proptest::collection::vec((-10..10).prop_map(|a| a as f32), MM::nr() * k),
                 )
             })
+            .prop_map(|(k, a, b)| {
+                (k,
+                 align::realign_vec(a, MM::alignment_bytes_a()),
+                 align::realign_vec(b, MM::alignment_bytes_b()),
+                 )
+            })
             .boxed()
     }
 

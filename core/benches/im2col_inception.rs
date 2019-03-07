@@ -58,7 +58,7 @@ fn b(
         .unwrap()
         .ops
         .remove(0);
-    assert!(im2col.name() == "Im2col");
+    assert_eq!(im2col.name(), "Im2col");
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {
         let ref op = im2col.as_stateless().unwrap();
