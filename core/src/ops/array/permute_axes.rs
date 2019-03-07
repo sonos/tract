@@ -42,6 +42,7 @@ impl Op for PermuteAxes {
             fact.axis = axes.iter().position(|x| x == &fact.axis).ok_or_else(|| {
                 format!("Could not find streaming axis {} if permute axes {:?}", fact.axis, axes)
             })?;
+            fact.shape = axes.iter().map(|idx| fact.shape[*idx]).collect();
         }
         Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![fact])])
     }

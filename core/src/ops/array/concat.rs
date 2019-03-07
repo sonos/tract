@@ -126,9 +126,66 @@ impl Op for Concat {
     }
 }
 
+pub struct PulsedNormAxisConcat<T> {
+    axis: usize,
+    pre_slice: ArrayD<T>,
+    post_slice: ArrayD<T>,
+    delay: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct PulsedNormAxisConcatState {
+    counter: usize
+}
+
+impl OpState for PulsedNormAxisConcatState {
+    fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        unimplemented!()
+    }
+}
+
+impl<T: Datum + Copy> StatefullOp for PulsedNormAxisConcat<T> {
+    fn state(&self) -> TractResult<Option<Box<OpState>>> {
+        unimplemented!()
+    }
+}
+
 impl<T: Datum + Copy> Op for NormConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("NormConcat<{:?}>", T::datum_type()).into()
+    }
+
+    fn pulsify(&self, inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
+
+        if inputs.len() > 1 {
+            bail!("Pulsification not implemented for more than one input to Concat")
+        }
+
+        let mut fact = inputs[0].clone();
+
+        if fact.axis == self.axis {
+            let mut input_seen = false;
+            for slice in &self.slices {
+                match slice {
+                    NormConcatSlice::Const(c) => {
+                        fact.dim += TDim::from(c.shape()[fact.axis]);
+                        if !input_seen {
+                            fact.delay -= c.shape()[fact.axis];
+                        }
+                    },
+                    NormConcatSlice::Var(_) => {input_seen = true;}
+                }
+            }
+            unimplemented!()
+        } else {
+            for slice in &self.slices {
+                if let NormConcatSlice::Const(c) = slice {
+                    fact.shape[self.axis] += c.shape()[self.axis];
+                }
+        }
+            return Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![fact])])
+
+        }
     }
 
     // Reduce to FixedConcat<T>
@@ -142,7 +199,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
             return Ok(None);
         }
 
-        trace!("  Entering reducer for Concat");
+        trace!("  Entering reducer for NormConcat");
 
         for input in inputs.iter() {
             if input.shape.as_concrete_finite()?.is_none() {
@@ -150,7 +207,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
             }
         }
 
-        trace!("  Input has concrete shape");
+        trace!("  Input has concrete finite shape");
         let shapes: TVec<TVec<usize>> =
             inputs.iter().map(|x| x.shape.as_concrete_finite().unwrap().unwrap()).collect();
 

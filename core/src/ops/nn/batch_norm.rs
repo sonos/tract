@@ -180,6 +180,11 @@ where
     fn name(&self) -> Cow<str> {
         format!("FixedBatchNorm<{:?}>", T::datum_type()).into()
     }
+
+    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
+        let input = args_1!(inputs);
+        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![input.clone()])])
+    }
 }
 
 impl<T> StatelessOp for FixedBatchNorm<T>
