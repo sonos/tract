@@ -188,22 +188,49 @@ mod tests {
         let mut initial_output_shape = output_fact.shape.clone();
         initial_output_shape[output_stream_axis] = 0;
 
+
         let pulsed_plan = crate::plan::SimplePlan::new(pulsed).unwrap();
         let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
 
         let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
+        let mut output_len = None;
 
-        for p in 0..(input.shape()[axis] / pulse) {
-            let chunk = input_array.slice_axis(Axis(axis), ((p * pulse)..((p + 1) * pulse)).into());
+        let mut written = 0;
+        loop {
+            let to_write_in_chunk = pulse.min(input_array.shape()[axis].saturating_sub(written));
+            let mut chunk: ArrayD<f32> = input_array
+                .slice_axis(Axis(axis), (written..written + to_write_in_chunk).into())
+                .to_owned();
+            written += to_write_in_chunk;
+            if to_write_in_chunk < pulse {
+                let mut filler_shape = input_array.shape().to_vec();
+                filler_shape[axis] = pulse - to_write_in_chunk;
+                chunk =
+                    stack(Axis(axis), &[chunk.view(), ArrayD::zeros(filler_shape).view()]).unwrap();
+                dbg!(&output_fact.dim);
+                output_len = output_fact.dim.eval(written as _);
+                dbg!(&output_len);
+            }
+            dbg!(&written);
             let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
+            dbg!(&outputs);
             got = stack(
                 Axis(output_stream_axis),
                 &[got.view(), outputs.remove(0).to_array_view::<f32>().unwrap()],
             )
             .unwrap();
+            dbg!(&got);
+            if let Some(output_len) = output_len {
+                if got.shape()[output_stream_axis] >= output_len as usize + expected_delay {
+                    break;
+                }
+            }
         }
 
-        let pulsed_output = got.slice_axis(Axis(output_stream_axis), (output_fact.delay..).into());
+        let pulsed_output = got.slice_axis(
+            Axis(output_stream_axis),
+            (output_fact.delay..output_fact.delay + output_len.unwrap() as usize).into(),
+        );
 
         assert_eq!(pulsed_output, outputs[0].to_array_view::<f32>().unwrap());
     }
@@ -233,6 +260,26 @@ mod tests {
         model.chain_default("slice", crate::ops::array::Slice::new(vec![(1, 0)])).unwrap();
 
         let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0]);
+        test_regular_against_pulse(model.clone(), input.into_dyn(), 0, 2, 1);
+/*
+        let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]);
         test_regular_against_pulse(model, input.into_dyn(), 0, 2, 1);
+*/
+    }
+
+    #[test]
+    fn test_crop_at_end() {
+        let mut model = Model::default();
+        let _ = model
+            .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
+            .unwrap();
+        model.chain_default("slice", crate::ops::array::Slice::new(vec![(0, 1)])).unwrap();
+
+        let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0]);
+        test_regular_against_pulse(model.clone(), input.into_dyn(), 0, 2, 0);
+/*
+        let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        test_regular_against_pulse(model, input.into_dyn(), 0, 2, 0);
+*/
     }
 }

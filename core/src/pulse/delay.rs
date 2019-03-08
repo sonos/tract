@@ -1,4 +1,5 @@
 use crate::ops::prelude::*;
+use crate::pulse::PulsedTensorFact;
 use ndarray::*;
 
 #[derive(Debug, new, Clone)]
@@ -49,7 +50,7 @@ impl DelayState {
 }
 
 impl OpState for DelayState {
-    fn eval(&mut self, op: &Op, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&mut self, _state: &mut SessionState, op: &Op, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
         Ok(tvec!(dispatch_copy!(Self::eval_t(input.datum_type())(self, op, input))?))
