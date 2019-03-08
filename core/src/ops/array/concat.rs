@@ -260,13 +260,16 @@ impl<T: Datum + Copy> StatelessOp for NormConcat<T> {
                 NormConcatSlice::Const(c) => mats.push(c.view()),
                 NormConcatSlice::Var(shape) => {
                     let inp_view = casted_inputs[input_idx].to_array_view::<T>()?;
-                    if &inp_view.shape().iter().map(|x| TDim::from(x)).collect::<TVec<_>>() != shape
-                    {
-                        bail!(
-                            "Unexpected input shape. Expected {:?}, found {:?}",
-                            shape,
-                            inp_view.shape()
-                        );
+                    for (i_dim, e_dim) in inp_view.shape().iter().zip(shape.iter()) {
+                        if let Ok(e_dim) = e_dim.to_integer() {
+                            if e_dim != *i_dim as i32 {
+                                bail!(
+                                    "Unexpected input shape. Expected {:?}, found {:?}",
+                                    shape,
+                                    inp_view.shape()
+                                );
+                            }
+                        }
                     }
                     mats.push(inp_view);
                     input_idx += 1
