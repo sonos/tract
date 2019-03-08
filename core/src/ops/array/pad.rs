@@ -173,8 +173,6 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<PulsePad<T>>().ok_or("Wrong Op type")?;
         let current_pos = self.current_pos;
-        dbg!(op);
-        dbg!(self.current_pos);
         self.current_pos += op.pulse;
         // pulse is entirely before or after input, emit padding constant
         // (if the session has not seen the end of input stream, then
@@ -188,8 +186,6 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
             return Ok(tvec!(ArrayD::from_elem(input.shape(), op.constant).into()));
         }
         let mut data = input.to_tensor().into_array::<T>()?;
-        dbg!(&op.constant);
-        dbg!(&data);
         if current_pos < op.begin_input {
             data.slice_axis_mut(Axis(op.axis), (0..op.begin_input - current_pos).into()).fill(op.constant);
         }
