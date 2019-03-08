@@ -8,7 +8,7 @@ use crate::pb;
 use crate::pb::NodeProto;
 use num_traits::AsPrimitive;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut OpRegister<NodeProto>) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);

@@ -33,13 +33,13 @@ pub fn optimize(model: Model) -> TractResult<Model> {
 impl Tractify<GraphDef> for Model {
     fn tractify(graph: &GraphDef) -> TractResult<Model> {
         let mut model = Model::default().with_context(Arc::new(crate::optim::TensorflowContext));
-        let op_builder = crate::ops::OpBuilder::new();
+        let op_builder = crate::ops::op_register();
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
             let node_id = model.add_node(
                 name.clone(),
                 op_builder
-                    .build(pbnode)
+                    .build(&*pbnode.get_op(), pbnode)
                     .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
             )?;
 

@@ -1,6 +1,5 @@
 use tract_core::ops::prelude::*;
-
-use crate::ops::OpRegister;
+use crate::tfpb::node_def::NodeDef;
 
 mod concatv2;
 mod expand_dims;
@@ -11,7 +10,7 @@ mod reshape;
 mod squeeze;
 mod strided_slice;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut OpRegister<NodeDef>) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", expand_dims::build);
     reg.insert("Identity", |_| {
