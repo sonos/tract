@@ -29,8 +29,10 @@ pub mod prelude {
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::Framework;
+    pub use crate::model::TVec;
     pub use crate::model::*;
-    pub use crate::pulse::{PulsedModel, PulsedTensorFact};
+    pub use crate::plan::SessionState;
+    pub use crate::pulse::PulsedModel;
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;
     pub use crate::TractResult;
@@ -59,7 +61,12 @@ pub mod prelude {
 use self::prelude::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
-    fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &Op,
+        inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>>;
 }
 
 pub trait StatelessOp {

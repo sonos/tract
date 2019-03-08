@@ -4,6 +4,11 @@ use std::marker::PhantomData;
 use crate::model::{eval_order, Model, TensorInfo};
 use crate::ops::prelude::*;
 
+#[derive(Debug, Default)]
+pub struct SessionState {
+    known_stream_len: Option<usize>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SimplePlan<TI:TensorInfo, M: Borrow<Model<TI>>> {
     pub model: M,
@@ -49,6 +54,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
 pub struct SimpleState<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> {
     plan: P,
     pub states: Vec<Option<Box<OpState>>>,
+    pub session_state: SessionState,
     pub values: Vec<Option<TVec<SharedTensor>>>,
     _phantom: PhantomData<(M,TI)>,
 }
@@ -65,6 +71,7 @@ impl<TI:TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>> + Clone> 
         SimpleState {
             plan: self.plan.clone(),
             states,
+            session_state: SessionState::default(),
             values: self.values.clone(),
             _phantom: PhantomData,
         }
@@ -83,6 +90,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             .collect::<TractResult<_>>()?;
         Ok(SimpleState {
             states,
+            session_state: SessionState::default(),
             plan,
             values,
             _phantom: PhantomData,
@@ -114,6 +122,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
         {
             let &mut SimpleState {
                 ref plan,
+                ref mut session_state,
                 ref mut states,
                 ref mut values,
                 ..
@@ -140,7 +149,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                         inputs.push(prec[i.slot].clone().into())
                     }
                     let vs = match states[node.id] {
-                        Some(ref mut state) => state.eval(node.op(), inputs),
+                        Some(ref mut state) => state.eval(session_state, node.op(), inputs),
                         None => node.op().as_stateless().unwrap().eval(inputs),
                     }
                     .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
@@ -212,6 +221,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     pub fn compute_one(&mut self, node: usize) -> TractResult<()> {
         let SimpleState {
             ref plan,
+            ref mut session_state,
             ref mut values,
             ..
         } = self;
@@ -230,7 +240,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             inputs.push(prec[i.slot].clone().into())
         }
         let vs = match self.states[node.id] {
-            Some(ref mut state) => state.eval(node.op(), inputs),
+            Some(ref mut state) => state.eval(session_state, node.op(), inputs),
             None => node.op().as_stateless().unwrap().eval(inputs),
         }
         .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
@@ -259,11 +269,12 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             }
             let Self {
                 ref mut states,
+                ref mut session_state,
                 ref plan,
                 ..
             } = self;
             match states[node] {
-                Some(ref mut state) => state.eval(plan.borrow().model().nodes()[node].op(), inputs),
+                Some(ref mut state) => state.eval(session_state, plan.borrow().model().nodes()[node].op(), inputs),
                 None => plan.borrow().model().nodes()[node]
                     .op()
                     .as_stateless()
