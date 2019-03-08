@@ -183,22 +183,18 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
                 .map(|s| current_pos >= op.end_input.eval(s as i32).unwrap() as usize)
                 .unwrap_or(false)
         {
-            dbg!(("padding pulse", &input.shape()));
             return Ok(tvec!(ArrayD::from_elem(input.shape(), op.constant).into()));
         }
         let mut data = input.to_tensor().into_array::<T>()?;
-        dbg!(("data pulse 0 ", &data));
         if current_pos < op.begin_input {
             data.slice_axis_mut(Axis(op.axis), (0..op.begin_input - current_pos).into()).fill(op.constant);
         }
-        dbg!(("data pulse 1 ", &data));
         if let Some(s) = session.known_stream_len {
             let end_input = op.end_input.eval(s as i32).unwrap() as usize;
             if current_pos + op.pulse > end_input {
                 data.slice_axis_mut(Axis(op.axis), (end_input - current_pos..op.pulse).into()).fill(op.constant);
             }
         }
-        dbg!(("data pulse 2 ", &data));
         Ok(tvec!(data.into()))
     }
 }
