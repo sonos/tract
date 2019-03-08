@@ -52,7 +52,7 @@ impl Op for Slice {
             let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
             return Ok(tvec!(OutletId::new(id, 0)))
         }
-        unimplemented!();
+        bail!("Slice only support pulsify on streaming axis")
     }
 }
 
