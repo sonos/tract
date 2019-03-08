@@ -69,7 +69,6 @@ impl Op for Gemm {
         _outputs: TVec<&TensorFact>,
         _phase: ReductionPhase,
     ) -> TractResult<Option<ReducedOpRewire>> {
-
         if self.have_c {
             if let (Some(b), Some(c)) = (inputs[1].concretize(), inputs[2].concretize()) {
                 return Ok(Some(ReducedOpRewire::unary(GemmUnaryA {
@@ -180,11 +179,19 @@ impl GemmUnaryA {
         let at = if self.trans_a { a.t() } else { a };
         let b = self.b.to_array_view::<T>()?.into_dimensionality()?;
         let bt = if self.trans_b { b.t() } else { b };
-        let mut c = self
-            .c
-            .to_array_view::<T>()?
-            .into_dimensionality()?
-            .to_owned();
+        let c_shape = (at.rows(), bt.cols());
+        let mut c = if self.beta != 0.0 {
+            if self.c.shape() == &[c_shape.0, c_shape.1]  {
+                self.c.to_array_view::<T>()?.into_dimensionality()?.to_owned()
+            } else {
+                self.c.to_array_view::<T>()?
+                    .broadcast(c_shape)
+                    .ok_or_else(|| format!("Incompatible broadcast: {:?} to {:?}", self.c.shape(), c_shape))?
+                    .to_owned()
+            }
+        } else {
+            unsafe { Array::uninitialized((c_shape.0, c_shape.1)) }
+        };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
         Ok(tvec!(c.into()))
     }
@@ -251,11 +258,19 @@ impl GemmUnaryB {
         let a = self.a.to_array_view::<T>()?.into_dimensionality()?;
         let at = if self.trans_a { a.t() } else { a };
         let bt = if self.trans_b { b.t() } else { b };
-        let mut c = self
-            .c
-            .to_array_view::<T>()?
-            .into_dimensionality()?
-            .to_owned();
+        let c_shape = (at.rows(), bt.cols());
+        let mut c = if self.beta != 0.0 {
+            if self.c.shape() == &[c_shape.0, c_shape.1]  {
+                self.c.to_array_view::<T>()?.into_dimensionality()?.to_owned()
+            } else {
+                self.c.to_array_view::<T>()?
+                    .broadcast(c_shape)
+                    .ok_or_else(|| format!("Incompatible broadcast: {:?} to {:?}", self.c.shape(), c_shape))?
+                    .to_owned()
+            }
+        } else {
+            unsafe { Array::uninitialized((c_shape.0, c_shape.1)) }
+        };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
         Ok(tvec!(c.into()))
     }
