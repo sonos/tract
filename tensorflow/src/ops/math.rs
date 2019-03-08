@@ -1,10 +1,9 @@
 use tract_core::ops as tractops;
+use tract_core::ops::prelude::*;
 
-use crate::ops::OpRegister;
 use crate::tfpb::node_def::NodeDef;
-use tract_core::TractResult;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut OpRegister<NodeDef>) {
     reg.insert("Abs", with_T!(tractops::math::Abs));
     reg.insert("Add", with_T!(tractops::math::Add::Bin));
     reg.insert("AddN", add_n);

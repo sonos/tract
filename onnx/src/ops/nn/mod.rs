@@ -16,7 +16,7 @@ macro_rules! reduce {
     };
 }
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut OpRegister<NodeProto>) {
     reg.insert("ArgMax", arg_max_min);
     reg.insert("ArgMin", arg_max_min);
     reg.insert("AveragePool", average_pool);

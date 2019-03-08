@@ -29,7 +29,7 @@ pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<pb::M
 impl Tractify<pb::ModelProto> for Model {
     fn tractify(proto: &pb::ModelProto) -> TractResult<Model> {
         let mut model = Model::default();
-        let op_builder = super::ops::OpBuilder::new();
+        let op_builder = super::ops::op_register();
         let graph = proto.get_graph();
         let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
@@ -61,7 +61,7 @@ impl Tractify<pb::ModelProto> for Model {
             } else {
                 format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
             };
-            let id = model.add_node(name, op_builder.build(pbnode)?)?;
+            let id = model.add_node(name, op_builder.build(pbnode.get_op_type(), pbnode)?)?;
             for (ix, output) in pbnode.get_output().iter().enumerate() {
                 outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
             }

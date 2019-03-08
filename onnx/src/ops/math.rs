@@ -4,7 +4,7 @@ use crate::ops::OpRegister;
 use crate::pb::NodeProto;
 use tract_core::ops::prelude::*;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut OpRegister<NodeProto>) {
     reg.insert("Add", |_| Ok(Box::new(tractops::math::Add::default())));
     reg.insert("Sub", |_| Ok(Box::new(tractops::math::Sub::default())));
     reg.insert("Mul", |_| Ok(Box::new(tractops::math::Mul::default())));

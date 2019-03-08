@@ -7,35 +7,24 @@ mod logic;
 mod math;
 mod nn;
 
-pub type OpRegister = HashMap<&'static str, fn(&NodeProto) -> TractResult<Box<Op>>>;
-
-pub struct OpBuilder(OpRegister);
-
-impl OpBuilder {
-    pub fn new() -> OpBuilder {
-        let mut reg = OpRegister::new();
-        reg.insert("Cast", cast);
-        reg.insert("Constant", konst);
-        reg.insert("Identity", |_| {
-            Ok(Box::new(::tract_core::ops::identity::Identity::default()))
-        });
-        logic::register_all_ops(&mut reg);
-        math::register_all_ops(&mut reg);
-        nn::register_all_ops(&mut reg);
-        array::register_all_ops(&mut reg);
-        OpBuilder(reg)
-    }
-
-    pub fn build(&self, pb: &NodeProto) -> TractResult<Box<Op>> {
-        match self.0.get(pb.get_op_type()) {
-            Some(builder) => builder(pb),
-            None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp::new(
-                pb.get_op_type(),
-                format!("{:?}", pb),
-            ))),
-        }
-    }
+pub fn op_register() -> OpRegister<NodeProto> {
+    let mut reg = OpRegister::default();
+    register_all_ops(&mut reg);
+    reg
 }
+
+pub fn register_all_ops(reg: &mut OpRegister<NodeProto>) {
+    reg.insert("Cast", cast);
+    reg.insert("Constant", konst);
+    reg.insert("Identity", |_| {
+        Ok(Box::new(::tract_core::ops::identity::Identity::default()))
+    });
+    logic::register_all_ops(reg);
+    math::register_all_ops(reg);
+    nn::register_all_ops(reg);
+    array::register_all_ops(reg);
+}
+
 
 fn konst(node: &NodeProto) -> TractResult<Box<Op>> {
     let v = node.get_attr("value")?;
