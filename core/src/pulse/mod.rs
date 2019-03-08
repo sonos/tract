@@ -1,7 +1,7 @@
-use std::fmt;
 use crate::datum::TryInto;
 use crate::ops::prelude::*;
 use crate::ops::source::Source;
+use std::fmt;
 
 pub mod delay;
 
@@ -17,7 +17,15 @@ pub struct PulsedTensorFact {
 impl fmt::Debug for PulsedTensorFact {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use itertools::Itertools;
-        write!(fmt, "Pulse:{}x{:?}{{ax:{},d:{},dim:{:?}}}", self.shape.iter().join("x"), self.dt, self.axis, self.delay, self.dim)
+        write!(
+            fmt,
+            "Pulse:{}x{:?}{{ax:{},d:{},dim:{:?}}}",
+            self.shape.iter().join("x"),
+            self.dt,
+            self.axis,
+            self.delay,
+            self.dim
+        )
     }
 }
 
@@ -190,7 +198,6 @@ mod tests {
         let mut initial_output_shape = output_fact.shape.clone();
         initial_output_shape[output_stream_axis] = 0;
 
-
         let pulsed_plan = crate::plan::SimplePlan::new(pulsed).unwrap();
         let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
 
@@ -207,8 +214,11 @@ mod tests {
             if to_write_in_chunk < pulse {
                 let mut filler_shape = input_array.shape().to_vec();
                 filler_shape[axis] = pulse - to_write_in_chunk;
-                chunk =
-                    stack(Axis(axis), &[chunk.view(), ArrayD::zeros(filler_shape).view()]).unwrap();
+                chunk = stack(
+                    Axis(axis),
+                    &[chunk.view(), ArrayD::from_elem(filler_shape, std::f32::NAN).view()],
+                )
+                .unwrap();
                 dbg!(&output_fact.dim);
                 output_len = output_fact.dim.eval(written as _);
                 dbg!(&output_len);
@@ -256,32 +266,51 @@ mod tests {
     #[test]
     fn test_crop_at_start() {
         let mut model = Model::default();
-        let _ = model
-            .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
-            .unwrap();
+        let _ =
+            model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("slice", crate::ops::array::Slice::new(vec![(1, 0)])).unwrap();
 
         let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0]);
         test_regular_against_pulse(model.clone(), input.into_dyn(), 0, 2, 1);
-/*
-        let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]);
-        test_regular_against_pulse(model, input.into_dyn(), 0, 2, 1);
-*/
+        /*
+                let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]);
+                test_regular_against_pulse(model, input.into_dyn(), 0, 2, 1);
+        */
     }
 
     #[test]
     fn test_crop_at_end() {
         let mut model = Model::default();
-        let _ = model
-            .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
-            .unwrap();
+        let _ =
+            model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("slice", crate::ops::array::Slice::new(vec![(0, 1)])).unwrap();
 
         let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0]);
         test_regular_against_pulse(model.clone(), input.into_dyn(), 0, 2, 0);
-/*
-        let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]);
-        test_regular_against_pulse(model, input.into_dyn(), 0, 2, 0);
-*/
+        /*
+                let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]);
+                test_regular_against_pulse(model, input.into_dyn(), 0, 2, 0);
+        */
+    }
+
+    #[test]
+    fn test_pad_at_start() {
+        use crate::ops::array::PadMode;
+        let mut model = Model::default();
+        let _ =
+            model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+        model
+            .chain_default(
+                "pad",
+                crate::ops::array::Pad::new(vec![(1, 0)], PadMode::Constant(12.0)),
+            )
+            .unwrap();
+
+        let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0]);
+        test_regular_against_pulse(model.clone(), input.into_dyn(), 0, 3, 0);
+        /*
+                let input = arr1(&[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]);
+                test_regular_against_pulse(model, input.into_dyn(), 0, 2, 1);
+        */
     }
 }

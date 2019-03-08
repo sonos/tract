@@ -6,7 +6,7 @@ use crate::ops::prelude::*;
 
 #[derive(Debug, Default)]
 pub struct SessionState {
-    known_stream_len: Option<usize>,
+    pub known_stream_len: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
