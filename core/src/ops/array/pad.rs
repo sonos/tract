@@ -180,7 +180,7 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
         if current_pos + op.pulse < op.begin_input
             || session
                 .known_stream_len
-                .map(|s| current_pos > op.end_input.eval(s as i32).unwrap() as usize)
+                .map(|s| current_pos >= op.end_input.eval(s as i32).unwrap() as usize)
                 .unwrap_or(false)
         {
             return Ok(tvec!(ArrayD::from_elem(input.shape(), op.constant).into()));
