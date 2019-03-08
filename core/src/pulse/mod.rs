@@ -187,6 +187,7 @@ mod tests {
         assert_eq!(output_fact.delay, expected_delay);
 
         let pulsed = PulsifiedModel::new(&model, pulse).unwrap();
+        dbg!(&pulsed);
         let output_outlet_id = pulsed.model.outputs().unwrap()[0];
         let output_fact = &pulsed.facts[&output_outlet_id];
 
@@ -217,6 +218,7 @@ mod tests {
                 )
                 .unwrap();
                 output_len = output_fact.dim.eval(written as _);
+                state.session_state.known_stream_len = Some(written)
             }
             let mut outputs = state.run(tvec!(Tensor::from(chunk.to_owned()).into())).unwrap();
             got = stack(
@@ -251,8 +253,8 @@ mod tests {
                 .unwrap();
             model.chain("slice", Box::new(Slice::new(vec![(begin as usize, end as usize)]))).unwrap();
 
-            let input = arr1(&*(0..input_len).map(|x| x as f32).collect::<Vec<_>>());
-            proptest_regular_against_pulse(model.clone(), pulse as _, input.into_dyn(), 0)?;
+            let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
+            proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
         }
 
         #[test]
@@ -262,10 +264,10 @@ mod tests {
             let _ = model
                 .add_source_fact("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
                 .unwrap();
-            model.chain("pad", Box::new(Pad::new(vec![(begin as _, end as _)], PadMode::Constant(12.0)))).unwrap();
+            model.chain("pad", Box::new(Pad::new(vec![(begin as _, end as _)], PadMode::Constant(-1.0)))).unwrap();
 
-            let input = arr1(&*(0..input_len).map(|x| x as f32).collect::<Vec<_>>());
-            proptest_regular_against_pulse(model.clone(), pulse as _, input.into_dyn(), 0)?;
+            let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
+            proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
         }
 
     }
@@ -285,5 +287,19 @@ mod tests {
         let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
         proptest_regular_against_pulse(model, 4, input.into_dyn(), 2).unwrap();
     }
+
+    #[test]
+    fn test_pad_after_1() {
+        use crate::ops::array::{ Pad, PadMode };
+        let mut model = Model::default();
+        let _ = model
+            .add_source_fact("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
+            .unwrap();
+        model.chain("pad", Box::new(Pad::new(vec![(0, 1)], PadMode::Constant(-1.0)))).unwrap();
+
+        let input = arr1(&[]);
+        proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
+    }
+
 
 }
