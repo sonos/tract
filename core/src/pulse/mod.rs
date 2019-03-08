@@ -180,10 +180,12 @@ mod tests {
         let outputs = plan.run(tvec!(input.clone())).unwrap();
 
         let pulse = 4;
+
         let pulsed = PulsedModel::new(&model, pulse).unwrap();
         assert_eq!(pulsed.nodes().len(), expected_nodes_in_pulsed_net);
         let output_fact = pulsed.output_fact().unwrap().clone();
         assert_eq!(output_fact.delay, expected_delay);
+
         let output_stream_axis = output_fact.axis;
         let mut initial_output_shape = output_fact.shape.clone();
         initial_output_shape[output_stream_axis] = 0;

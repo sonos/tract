@@ -45,10 +45,10 @@ impl Op for Slice {
             .enumerate()
             .all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
         {
-            let delay = self.prune[fact.axis].0;
+            let (before, after) = self.prune[fact.axis];
             let mut fact = fact.clone();
-            fact.delay += delay;
-            fact.dim -= delay.to_dim();
+            fact.delay += before;
+            fact.dim -= before.to_dim() + after.to_dim();
             let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
             return Ok(tvec!(OutletId::new(id, 0)))
         }
