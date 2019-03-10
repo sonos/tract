@@ -95,6 +95,12 @@ impl ConvUnary {
     }
 
     pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
+        assert!(
+            (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax))
+                && self.group == 1
+                && self.bias.is_none()
+        );
+
         let patch = self.patch(input_full_shape);
         let ref input_spatial_dims_strides: TVec<usize> = patch
             .input_shape
