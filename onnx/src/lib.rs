@@ -23,3 +23,13 @@ pub mod tensor;
 
 pub use self::model::for_path;
 pub use self::model::for_reader;
+
+use tract_core::model::Framework;
+use crate::pb::NodeProto;
+
+pub fn onnx() -> Framework<NodeProto> {
+    let mut reg = Framework::default();
+    ops::register_all_ops(&mut reg);
+    reg
+}
+

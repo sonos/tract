@@ -8,7 +8,7 @@ pub mod fused_batch_norm;
 pub mod pools;
 pub mod s2b;
 
-pub fn register_all_ops(reg: &mut OpRegister<NodeDef>) {
+pub fn register_all_ops(reg: &mut Framework<NodeDef>) {
     reg.insert("AvgPool", pools::avgpool);
     reg.insert("Conv2D", conv2d::conv2d);
     reg.insert("FusedBatchNorm", fused_batch_norm::fused_batch_norm);

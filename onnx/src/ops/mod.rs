@@ -7,13 +7,13 @@ mod logic;
 mod math;
 mod nn;
 
-pub fn op_register() -> OpRegister<NodeProto> {
-    let mut reg = OpRegister::default();
+pub fn onnx() -> Framework<NodeProto> {
+    let mut reg = Framework::default();
     register_all_ops(&mut reg);
     reg
 }
 
-pub fn register_all_ops(reg: &mut OpRegister<NodeProto>) {
+pub fn register_all_ops(reg: &mut Framework<NodeProto>) {
     reg.insert("Cast", cast);
     reg.insert("Constant", konst);
     reg.insert("Identity", |_| {

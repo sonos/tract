@@ -65,6 +65,15 @@ pub trait ToSharedTensor<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
 }
 
+use tract_core::model::Framework;
+use crate::tfpb::node_def::NodeDef;
+
+pub fn tensorflow() -> Framework<NodeDef> {
+    let mut reg = Framework::default();
+    ops::register_all_ops(&mut reg);
+    reg
+}
+
 #[cfg(test)]
 #[allow(dead_code)]
 pub fn setup_test_logger() {

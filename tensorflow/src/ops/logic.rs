@@ -3,7 +3,7 @@ use tract_core::ops::prelude::*;
 
 use crate::tfpb::node_def::NodeDef;
 
-pub fn register_all_ops(reg: &mut OpRegister<NodeDef>) {
+pub fn register_all_ops(reg: &mut Framework<NodeDef>) {
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_| Ok(Box::new(Switch)));
