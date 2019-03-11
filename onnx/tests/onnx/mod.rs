@@ -82,10 +82,11 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     };
     let model_file = path.join("model.onnx");
     debug!("Loading {:?}", model_file);
-    let mut model = for_path(&model_file).unwrap();
+    let onnx = onnx();
+    let mut model = onnx.model_for_path(&model_file).unwrap();
     trace!(
         "Model: {:#?}",
-        tract_onnx::model::model_proto_for_path(&model_file)
+        onnx.proto_model_for_path(&model_file)
     );
     trace!("Model: {:#?}", model);
     model.analyse().unwrap();

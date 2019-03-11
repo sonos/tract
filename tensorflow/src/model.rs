@@ -1,36 +1,8 @@
 use std::sync::Arc;
-use std::{fs, path};
 
 use crate::tfpb::graph::GraphDef;
 use tract_core::model::{InletId, Model, OutletId};
-use tract_core::{ToTract, TractResult, Tractify};
-
-/*
-/// Load a SharedTensor protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {
-    for_reader(fs::File::open(p)?)
-}
-
-/// Load a Tract model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> TractResult<Model> {
-    graphdef_for_reader(r)?.tractify()
-}
-
-/// Load a SharedTensor protobuf graph def from a reader.
-pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<GraphDef> {
-    Ok(::protobuf::parse_from_reader::<GraphDef>(&mut r).map_err(|e| format!("{:?}", e))?)
-}
-
-/// Load a SharedTensor protobuf graph def from a path
-pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TractResult<GraphDef> {
-    graphdef_for_reader(fs::File::open(p)?)
-}
-
-pub fn optimize(model: Model) -> TractResult<Model> {
-    let model = model.into_optimized()?;
-    model.into_optimized()
-}
-*/
+use tract_core::TractResult;
 
 pub fn load(r: &mut std::io::Read) -> TractResult<GraphDef> {
     Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
@@ -57,14 +29,7 @@ pub fn build(graph: &GraphDef, framework: &crate::Tensorflow) -> TractResult<Mod
                 (&i[1..], 0)
             } else {
                 let splits: Vec<_> = i.splitn(2, ':').collect();
-                (
-                    splits[0],
-                    if splits.len() > 1 {
-                        splits[1].parse::<usize>()?
-                    } else {
-                        0
-                    },
-                )
+                (splits[0], if splits.len() > 1 { splits[1].parse::<usize>()? } else { 0 })
             };
             let prec = model.node_by_name(input.0)?.id;
             model.add_edge(OutletId::new(prec, input.1), InletId::new(node_id, ix))?;

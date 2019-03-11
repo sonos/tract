@@ -39,15 +39,19 @@ extern crate error_chain;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
+#[cfg(any(test, featutre = "conform"))]
+extern crate env_logger;
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
-#[cfg(any(test, featutre="conform"))]
-extern crate env_logger;
 #[macro_use]
 extern crate tract_core;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
+
+use crate::tfpb::graph::GraphDef;
+use crate::tfpb::node_def::NodeDef;
+use tract_core::{Model, TractResult};
 
 #[cfg(feature = "conform")]
 pub mod conform;
@@ -58,17 +62,10 @@ mod optim;
 pub mod tensor;
 pub mod tfpb;
 
-/*
-pub use self::model::for_path;
-pub use self::model::for_reader;
-*/
-
 pub trait ToSharedTensor<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
 }
 
-use crate::tfpb::node_def::NodeDef;
-use crate::tfpb::graph::GraphDef;
 type Tensorflow = tract_core::model::Framework<NodeDef, GraphDef>;
 
 pub fn tensorflow() -> Tensorflow {
@@ -82,10 +79,16 @@ pub fn tensorflow() -> Tensorflow {
     fw
 }
 
+pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<Model> {
+    tensorflow().model_for_path(p)
+}
+
+pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<Model> {
+    tensorflow().model_for_reader(&mut r)
+}
+
 #[cfg(test)]
 #[allow(dead_code)]
 pub fn setup_test_logger() {
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Trace)
-        .init();
+    env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).init();
 }
