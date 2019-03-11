@@ -1,9 +1,9 @@
 use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
-use crate::Tensorflow;
+use crate::model::TfOpRegister;
 
-pub fn register_all_ops(reg: &mut Tensorflow) {
+pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_| Ok(Box::new(Switch)));

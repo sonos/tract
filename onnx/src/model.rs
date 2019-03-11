@@ -1,15 +1,26 @@
 use std::collections::HashMap;
 
 use tract_core::model::{InletId, Model, OutletId};
+use tract_core::framework::{Framework, OpRegister, OpBuilder};
 use tract_core::*;
 
 use crate::pb;
 
-pub fn load(r: &mut std::io::Read) -> TractResult<pb::ModelProto> {
+pub type OnnxOpRegister = OpRegister<pb::NodeProto>;
+
+pub struct Onnx {
+    pub op_register: OnnxOpRegister
+}
+
+impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
+    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<pb::NodeProto>> {
+        self.op_register.get(name)
+    }
+fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<pb::ModelProto> {
     Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
 }
 
-pub fn build(proto: &pb::ModelProto, framework: &crate::Onnx) -> TractResult<Model> {
+fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<Model> {
     let mut model = Model::default();
     let graph = proto.get_graph();
     let mut initializers: HashMap<&str, Tensor> = graph
@@ -42,7 +53,7 @@ pub fn build(proto: &pb::ModelProto, framework: &crate::Onnx) -> TractResult<Mod
         } else {
             format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
         };
-        let id = model.add_node(name, framework.build_op(pbnode.get_op_type(), pbnode)?)?;
+        let id = model.add_node(name, self.build_op(pbnode.get_op_type(), pbnode)?)?;
         for (ix, output) in pbnode.get_output().iter().enumerate() {
             outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
         }
@@ -58,4 +69,5 @@ pub fn build(proto: &pb::ModelProto, framework: &crate::Onnx) -> TractResult<Mod
     }
     model.set_outputs_outlets(&outputs)?;
     Ok(model)
+}
 }

@@ -21,20 +21,23 @@ pub mod pb;
 pub mod pb_helpers;
 pub mod tensor;
 
-/*
-pub use self::model::for_path;
-pub use self::model::for_reader;
-*/
+pub use model::Onnx;
+use tract_core::{ Framework, Model, TractResult };
 
-type Onnx = tract_core::model::Framework<pb::NodeProto, pb::ModelProto>;
+#[deprecated(note="Please use onnx().model_for_path(..)")]
+pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<Model> {
+    onnx().model_for_path(p)
+}
+
+#[deprecated(note="Please use onnx().model_for_read(..)")]
+pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<Model> {
+    onnx().model_for_read(&mut r)
+}
+
 
 pub fn onnx() -> Onnx {
-    let mut reg = tract_core::model::Framework {
-        ops: std::collections::HashMap::new(),
-        model_builder: Box::new(model::build),
-        model_loader: Box::new(model::load),
-    };
-    ops::register_all_ops(&mut reg);
-    reg
+    let mut ops = tract_core::framework::OpRegister::default();
+    ops::register_all_ops(&mut ops);
+    Onnx { op_register: ops }
 }
 

@@ -1,4 +1,4 @@
-use crate::Onnx;
+use crate::model::OnnxOpRegister;
 use crate::pb;
 use crate::pb::NodeProto;
 use tract_core::ops::prelude::*;
@@ -8,7 +8,7 @@ mod logic;
 mod math;
 mod nn;
 
-pub fn register_all_ops(reg: &mut Onnx) {
+pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast);
     reg.insert("Constant", konst);
     reg.insert("Identity", |_| {
