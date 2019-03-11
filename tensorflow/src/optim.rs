@@ -114,7 +114,6 @@ fn undo_space_to_batch(model: &mut Model, node_id: usize) -> TractResult<bool> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::sync::Arc;
     use tract_core::model::*;
 
     fn mk(sizes: &[usize]) -> Tensor {
@@ -144,7 +143,7 @@ mod test {
     #[test]
     fn conv2d_unarization() {
         //        ::setup_test_logger();
-        let mut model = Model::default().with_context(Arc::new(TensorflowContext));
+        let mut model = Model::default().with_norm_optims(Some(normalization()));
         model
             .add_source_fact(
                 "source",

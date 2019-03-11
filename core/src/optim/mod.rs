@@ -12,7 +12,7 @@ pub use self::push_split_down::PushSplitDown;
 pub use self::reduce::Reduce;
 pub use crate::ops::ReductionPhase;
 
-pub trait OptimizerPass: Debug {
+pub trait OptimizerPass: Debug + Send + Sync {
     fn pass(&self, model: &mut Model) -> TractResult<bool>;
 }
 
