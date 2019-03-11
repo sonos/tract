@@ -107,7 +107,7 @@ mod tests {
     fn grace_hopper_is_a_military_uniform() {
         download();
         // setup_test_logger();
-        let tfd = ::tract_tensorflow::for_path(inception_v3_2016_08_28_frozen()).unwrap();
+        let tfd = ::tract_tensorflow::tensorflow().model_for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan = ::tract::SimplePlan::new(&tfd).unwrap();
         let input = load_image(hopper());
         let outputs = plan.run(tvec![input]).unwrap();

@@ -290,8 +290,9 @@ impl Parameters {
                 panic!("Tract compiled without onnx feature");
             }
             #[cfg(feature="onnx")] {
-                let graph = tract_onnx::model::model_proto_for_path(&name)?;
-                let tract = tract_onnx::for_path(&name)?;
+                let onnx = tract_onnx::onnx();
+                let graph = onnx.proto_model_for_path(&name)?;
+                let tract = onnx.model_for_proto_model(&graph)?;
                 (SomeGraphDef::Onnx(graph), tract)
             }
         } else {
@@ -299,9 +300,10 @@ impl Parameters {
                 panic!("Tract compiled without tensorflow feature");
             }
             #[cfg(feature="tf")] {
-                let graph = tract_tensorflow::model::graphdef_for_path(&name)?;
-                let tract_model = tract_tensorflow::for_path(&name)?;
-                (SomeGraphDef::Tf(graph), tract_model)
+                let tf = tract_tensorflow::tensorflow();
+                let graph = tf.proto_model_for_path(&name)?;
+                let tract = tf.model_for_proto_model(&graph)?;
+                (SomeGraphDef::Tf(graph), tract)
             }
         };
 
