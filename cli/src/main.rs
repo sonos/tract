@@ -26,6 +26,7 @@ extern crate tract_tensorflow;
 
 use std::process;
 use std::str::FromStr;
+use itertools::Itertools;
 
 #[cfg(feature="tf")]
 use crate::tfpb::graph::GraphDef;
@@ -65,10 +66,9 @@ fn main() {
         (about: "Tract command line interface")
 
         (@setting UnifiedHelpMessage)
-        (@setting SubcommandRequired)
         (@setting DeriveDisplayOrder)
 
-        (@arg model: +required +takes_value "Sets the model to use")
+        (@arg model: +takes_value "Sets the model to use")
 
         (@arg format: +takes_value
             "Hint the model format ('onnx' or 'tf') instead of guess from extension.")
@@ -92,6 +92,8 @@ fn main() {
         (@arg verbosity: -v ... "Sets the level of verbosity.")
 
         (@arg machine_friendly: --("machine-friendly") "Machine friendly output")
+
+        (@arg list_ops: --("list-ops") "List all known operators")
     );
 
     let compare = clap::SubCommand::with_name("compare")
@@ -476,6 +478,25 @@ impl Assertions {
 
 /// Handles the command-line input.
 fn handle(matches: clap::ArgMatches) -> CliResult<()> {
+
+    if matches.is_present("list_ops") {
+        #[cfg(feature="onnx")] {
+            let onnx = tract_onnx::onnx();
+            let names = onnx.op_register.names().sorted().into_iter().join(", ");
+            println!("Onnx:\n");
+            println!("{}", names);
+            println!("\n");
+        }
+        #[cfg(feature="tf")] {
+            let tf = tract_tensorflow::tensorflow();
+            let names = tf.op_register.names().sorted().into_iter().join(", ");
+            println!("Tensorflow:\n");
+            println!("{}", names);
+            println!("\n");
+        }
+        return Ok(())
+    }
+
     let mut params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
@@ -499,6 +520,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             params.assertions = Some(Assertions::from_clap(m)?);
             dump::handle(params, display_options_from_clap(m)?)
         }
+
 
         ("profile", Some(m)) => profile::handle(
             params,
