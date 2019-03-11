@@ -1,8 +1,7 @@
 use tract_core::ops as tractops;
-use tract_core::ops::prelude::*;
-use crate::pb::NodeProto;
+use crate::Onnx;
 
-pub fn register_all_ops(reg: &mut Framework<NodeProto>) {
+pub fn register_all_ops(reg: &mut Onnx) {
     reg.insert("Not", |_| Ok(Box::new(tractops::logic::Not::default())));
     reg.insert("And", |_| Ok(Box::new(tractops::logic::And::default())));
     reg.insert("Or", |_| Ok(Box::new(tractops::logic::Or::default())));

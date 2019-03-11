@@ -3,11 +3,12 @@ mod slice;
 use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
+use crate::Onnx;
 use crate::pb;
 use crate::pb::NodeProto;
 use num_traits::AsPrimitive;
 
-pub fn register_all_ops(reg: &mut Framework<NodeProto>) {
+pub fn register_all_ops(reg: &mut Onnx) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);

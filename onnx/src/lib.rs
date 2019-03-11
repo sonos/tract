@@ -21,14 +21,19 @@ pub mod pb;
 pub mod pb_helpers;
 pub mod tensor;
 
+/*
 pub use self::model::for_path;
 pub use self::model::for_reader;
+*/
 
-use tract_core::model::Framework;
-use crate::pb::NodeProto;
+type Onnx = tract_core::model::Framework<pb::NodeProto, pb::ModelProto>;
 
-pub fn onnx() -> Framework<NodeProto> {
-    let mut reg = Framework::default();
+pub fn onnx() -> Onnx {
+    let mut reg = tract_core::model::Framework {
+        ops: std::collections::HashMap::new(),
+        model_builder: Box::new(model::build),
+        model_loader: Box::new(model::load),
+    };
     ops::register_all_ops(&mut reg);
     reg
 }

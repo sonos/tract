@@ -47,7 +47,8 @@ pub mod prelude {
     pub use crate::analyser::types::*;
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
-    pub use crate::model::{ Framework, TVec };
+    pub use crate::framework::Framework;
+    pub use crate::model::TVec;
     pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;

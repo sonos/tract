@@ -1,5 +1,6 @@
 use tract_core::ops::prelude::*;
 use crate::tfpb::node_def::NodeDef;
+use crate::Tensorflow;
 
 #[macro_use]
 mod macros;
@@ -10,7 +11,7 @@ pub mod math;
 pub mod nn;
 pub mod quant;
 
-pub fn register_all_ops(reg: &mut Framework<NodeDef>) {
+pub fn register_all_ops(reg: &mut Tensorflow) {
     array::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);

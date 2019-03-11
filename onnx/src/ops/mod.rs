@@ -1,3 +1,4 @@
+use crate::Onnx;
 use crate::pb;
 use crate::pb::NodeProto;
 use tract_core::ops::prelude::*;
@@ -7,13 +8,7 @@ mod logic;
 mod math;
 mod nn;
 
-pub fn onnx() -> Framework<NodeProto> {
-    let mut reg = Framework::default();
-    register_all_ops(&mut reg);
-    reg
-}
-
-pub fn register_all_ops(reg: &mut Framework<NodeProto>) {
+pub fn register_all_ops(reg: &mut Onnx) {
     reg.insert("Cast", cast);
     reg.insert("Constant", konst);
     reg.insert("Identity", |_| {

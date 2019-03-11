@@ -1,5 +1,5 @@
 use tract_core::ops::prelude::*;
-use crate::tfpb::node_def::NodeDef;
+use crate::Tensorflow;
 
 mod concatv2;
 mod expand_dims;
@@ -10,7 +10,7 @@ mod reshape;
 mod squeeze;
 mod strided_slice;
 
-pub fn register_all_ops(reg: &mut Framework<NodeDef>) {
+pub fn register_all_ops(reg: &mut Tensorflow) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", expand_dims::build);
     reg.insert("Identity", |_| {
