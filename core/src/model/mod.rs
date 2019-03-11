@@ -6,10 +6,10 @@ pub mod dsl;
 mod order;
 pub use self::order::eval_order;
 pub use crate::analyser::types::TensorFact;
-use crate::context::Context;
 
 pub use self::dsl::ModelDsl;
 pub use crate::framework::*;
+use crate::optim::OptimizerPass;
 use crate::{ops, TractResult};
 
 #[derive(Debug, Clone)]
@@ -79,7 +79,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 /// Model is Tract workhouse.
 #[derive(Clone, Debug)]
 pub struct Model {
-    ctx: Arc<crate::context::Context>,
+    norm: Option<Arc<Vec<Box<OptimizerPass>>>>,
     nodes: Vec<Node>,
     nodes_by_name: HashMap<String, usize>,
     pub(crate) inputs: Vec<OutletId>,
@@ -89,7 +89,7 @@ pub struct Model {
 impl Default for Model {
     fn default() -> Model {
         Model {
-            ctx: Arc::new(crate::context::DefaultContext),
+            norm: None,
             nodes: vec![],
             nodes_by_name: HashMap::new(),
             inputs: vec![],
@@ -99,8 +99,8 @@ impl Default for Model {
 }
 
 impl Model {
-    pub fn with_context(self, ctx: Arc<Context>) -> Model {
-        Model { ctx, ..self }
+    pub fn with_norm_optims(self, norm: Option<Arc<Vec<Box<OptimizerPass>>>>) -> Model {
+        Model { norm, ..self }
     }
 
     pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TractResult<usize> {
@@ -108,13 +108,7 @@ impl Model {
         self.nodes_by_name.insert(name.clone(), id);
         let is_input = op.name() == "Source";
         let noutputs = op.noutputs();
-        let node = Node {
-            id,
-            name,
-            op,
-            inputs: vec![],
-            outputs: tvec!(OutletFact::default()),
-        };
+        let node = Node { id, name, op, inputs: vec![], outputs: tvec!(OutletFact::default()) };
         if is_input {
             self.inputs.push(OutletId::new(id, 0));
         }
@@ -168,10 +162,7 @@ impl Model {
         use crate::ops::source::Source;
         let ids: Vec<OutletId> = inputs
             .into_iter()
-            .map(|s| {
-                self.node_by_name(s.as_ref())
-                    .map(|n| OutletId::new(n.id, 0))
-            })
+            .map(|s| self.node_by_name(s.as_ref()).map(|n| OutletId::new(n.id, 0)))
             .collect::<TractResult<_>>()?;
         self.inputs = ids;
         for &i in &self.inputs {
@@ -187,10 +178,7 @@ impl Model {
     ) -> TractResult<()> {
         let ids: Vec<OutletId> = outputs
             .into_iter()
-            .map(|s| {
-                self.node_by_name(s.as_ref())
-                    .map(|n| OutletId::new(n.id, 0))
-            })
+            .map(|s| self.node_by_name(s.as_ref()).map(|n| OutletId::new(n.id, 0)))
             .collect::<TractResult<_>>()?;
         self.outputs = ids;
         Ok(())
@@ -267,22 +255,54 @@ impl Model {
             .collect())
     }
 
-    pub fn into_optimized(mut self) -> TractResult<Model> {
+    pub fn into_normalized(mut self) -> TractResult<Model> {
         self.analyse()?;
-        let passes = self.ctx.optimizer_passes();
-        for pass in passes {
-            info!("Optization pass: {:?}", pass);
-            pass.pass(&mut self)?;
-            if cfg!(debug_assertions) {
-                self.check_edges()?;
+        loop {
+            let mut done_something = false;
+            if let Some(passes) = self.norm.clone() {
+                for p in passes.iter() {
+                    done_something = done_something || p.pass(&mut self)?;
+                    if cfg!(debug_assertions) {
+                        self.check_edges()?;
+                    }
+                }
+            }
+            for p in crate::optim::normalization() {
+                done_something = done_something || p.pass(&mut self)?;
+                if cfg!(debug_assertions) {
+                    self.check_edges()?;
+                }
+            }
+            if !done_something {
+                break;
             }
         }
         let mut model = crate::optim::compact(&self)?;
-        if cfg!(debug_assertions) {
-            model.check_edges()?;
-        }
         model.analyse()?;
         Ok(model)
+    }
+
+    pub fn into_codegen(mut self) -> TractResult<Model> {
+        self.analyse()?;
+        loop {
+            let mut done_something = false;
+            for p in crate::optim::codegen() {
+                done_something = done_something || p.pass(&mut self)?;
+                if cfg!(debug_assertions) {
+                    self.check_edges()?;
+                }
+            }
+            if !done_something {
+                break;
+            }
+        }
+        let mut model = crate::optim::compact(&self)?;
+        model.analyse()?;
+        Ok(model)
+    }
+
+    pub fn into_optimized(self) -> TractResult<Model> {
+        self.into_normalized()?.into_codegen()
     }
 
     pub fn eval_order(&self) -> TractResult<Vec<usize>> {
@@ -290,10 +310,8 @@ impl Model {
     }
 
     pub fn node_by_name(&self, name: &str) -> TractResult<&Node> {
-        let id: &usize = self
-            .nodes_by_name
-            .get(name)
-            .ok_or_else(|| format!("Node named {} not found", name))?;
+        let id: &usize =
+            self.nodes_by_name.get(name).ok_or_else(|| format!("Node named {} not found", name))?;
         Ok(&self.nodes[*id])
     }
 
@@ -357,10 +375,7 @@ impl Model {
             let node = &self.nodes[node];
             for (ix, input) in node.inputs.iter().enumerate() {
                 let prec = &self.nodes[input.node];
-                if !prec.outputs[input.slot]
-                    .successors
-                    .contains(&InletId::new(node.id, ix))
-                {
+                if !prec.outputs[input.slot].successors.contains(&InletId::new(node.id, ix)) {
                     bail!(
                         "Mismatched oncoming edge, node:{} input:{} to {:?} not reciprocated",
                         node.id,

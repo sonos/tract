@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::path::Path;
 use crate::ops::prelude::*;
 use crate::model::Model;
+use crate::ops::unimpl::UnimplementedOp;
 
 pub type OpBuilder<ProtoOp> = fn(&ProtoOp) -> TractResult<Box<Op>>;
 
@@ -41,12 +42,11 @@ pub trait Framework<ProtoOp: Debug, ProtoModel: Debug> {
     fn build_op(&self, name: &str, payload: &ProtoOp) -> TractResult<Box<Op>> {
         match self.op_builder_for_name(name) {
             Some(builder) => builder(payload),
-            None => Ok(Box::new(crate::ops::unimpl::UnimplementedOp::new(
+            None => Ok(Box::new(UnimplementedOp::new(
                 name,
                 format!("{:?}", payload),
             ))),
         }
     }
-
 }
 
