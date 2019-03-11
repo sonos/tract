@@ -1,6 +1,5 @@
 use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
-use std::sync::Arc;
 use tract_core::framework::{Framework, OpRegister, OpBuilder};
 use tract_core::model::{InletId, Model, OutletId};
 use tract_core::TractResult;
@@ -20,7 +19,7 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
     }
 
     fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<Model> {
-        let mut model = Model::default().with_context(Arc::new(crate::optim::TensorflowContext));
+        let mut model = Model::default().with_norm_optims(Some(crate::optim::normalization()));
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
             let node_id = model.add_node(

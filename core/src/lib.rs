@@ -99,7 +99,6 @@ pub mod analyser;
 pub mod ops;
 
 pub mod broadcast;
-pub mod context;
 pub mod datum;
 pub mod dim;
 pub mod errors;

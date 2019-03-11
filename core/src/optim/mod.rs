@@ -12,6 +12,10 @@ pub use self::push_split_down::PushSplitDown;
 pub use self::reduce::Reduce;
 pub use crate::ops::ReductionPhase;
 
+pub trait OptimizerPass: Debug {
+    fn pass(&self, model: &mut Model) -> TractResult<bool>;
+}
+
 pub fn normalization() -> Vec<Box<OptimizerPass>> {
     vec![
         Box::new(PropConst) as Box<OptimizerPass>,
@@ -26,6 +30,3 @@ pub fn codegen() -> Vec<Box<OptimizerPass>> {
     ]
 }
 
-pub trait OptimizerPass: Debug {
-    fn pass(&self, model: &mut Model) -> TractResult<bool>;
-}

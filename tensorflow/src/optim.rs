@@ -1,22 +1,12 @@
-use tract_core::context::Context;
+use std::sync::Arc;
 use tract_core::model::ModelDsl;
 use tract_core::ops::nn::ConvUnary;
 use tract_core::ops::prelude::*;
 use tract_core::optim::OptimizerPass;
 use tract_core::*;
 
-#[derive(Debug)]
-pub struct TensorflowContext;
-
-impl TensorflowContext {}
-
-impl Context for TensorflowContext {
-    fn optimizer_passes(&self) -> Vec<Box<OptimizerPass>> {
-        let mut passes = optim::normalization();
-        passes.push(Box::new(UntensorflowConv));
-        passes.extend(optim::codegen().into_iter());
-        passes
-    }
+pub fn normalization() -> Arc<Vec<Box<OptimizerPass>>> {
+    Arc::new(vec!(Box::new(UntensorflowConv)))
 }
 
 #[derive(Debug)]
