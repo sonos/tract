@@ -12,7 +12,8 @@
 //! use tract_core::*;
 //!
 //! // build a simple model that just add 3 to each input component
-//! let model = tract_tensorflow::for_path("tests/models/plus3.pb").unwrap();
+//! let tf = tract_tensorflow::tensorflow();
+//! let model = tf.model_for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // we build an execution plan. default input and output are inferred from
 //! // the model graph
@@ -49,10 +50,6 @@ extern crate tract_core;
 #[cfg(feature = "conform")]
 extern crate tensorflow;
 
-use crate::tfpb::graph::GraphDef;
-use crate::tfpb::node_def::NodeDef;
-use tract_core::{Model, TractResult};
-
 #[cfg(feature = "conform")]
 pub mod conform;
 
@@ -66,25 +63,23 @@ pub trait ToSharedTensor<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
 }
 
-type Tensorflow = tract_core::model::Framework<NodeDef, GraphDef>;
+pub use model::Tensorflow;
+use tract_core::{Framework, Model, TractResult};
 
 pub fn tensorflow() -> Tensorflow {
-    let ops = std::collections::HashMap::default();
-    let mut fw = tract_core::model::Framework {
-        ops,
-        model_builder: Box::new(model::build),
-        model_loader: Box::new(model::load),
-    };
-    ops::register_all_ops(&mut fw);
-    fw
+    let mut ops = tract_core::framework::OpRegister::default();
+    ops::register_all_ops(&mut ops);
+    Tensorflow { op_register: ops }
 }
 
+#[deprecated(note = "Please use tensorflow().model_for_path(..)")]
 pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<Model> {
     tensorflow().model_for_path(p)
 }
 
+#[deprecated(note = "Please use tensorflow().model_for_read(..)")]
 pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<Model> {
-    tensorflow().model_for_reader(&mut r)
+    tensorflow().model_for_read(&mut r)
 }
 
 #[cfg(test)]

@@ -116,6 +116,7 @@ pub use crate::errors::*;
 pub use crate::analyser::types::TensorFact;
 pub use crate::datum::DatumType;
 pub use crate::dim::TDim;
+pub use crate::framework::Framework;
 pub use crate::model::{Model, Node, TVec};
 pub use crate::plan::{SimplePlan, SimpleState};
 pub use crate::tensor::{SharedTensor, Tensor};
