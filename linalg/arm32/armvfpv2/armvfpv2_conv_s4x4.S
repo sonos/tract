@@ -68,34 +68,82 @@ arm_vfpv2_conv_s4x4:
     cmp r0, #0
     beq .STORE
 
+    // r0=loop, r1=pa
+
     ldm             r2, { r5, r6, r7, r8 }
+
+    ldr             r9, [r3], #4
+    add             r5, r5, r9
+    add             r6, r6, r9
+    add             r7, r7, r9
+    add             r8, r8, r9
 
     .LOOP:
 
-    ldr             r4, [r3], #4
-    ldr             r2, [r3]
     vldmia          r1!, { s0, s1, s2, s3 }
-    pld             [r3, #4]
-    pld             [r1]
-    pld             [r1, #8]
 
-    add             r9, r4, r5
-    vldr            s8, [r9]
-    add             r10, r4, r6
-    vldr            s9, [r10]
-    add             r9, r4, r7
-    vldr            s10, [r9]
-    add             r10, r4, r8
-    vldr            s11, [r10]
+    ldr             r10, [r3], #4
+    pld             [r3]
 
-    add             r9, r2, r5
-    pld             [r9]
-    add             r10, r2, r6
-    pld             [r10]
-    add             r9, r2, r7
-    pld             [r9]
-    add             r10, r2, r8
-    pld             [r10]
+    vldr            s8, [r5]
+    vldr            s9, [r6]
+    vldr            s10, [r7]
+    vldr            s11, [r8]
+
+    sub             r4, r10, r9
+    add             r5, r5, r4
+    add             r6, r6, r4
+    add             r7, r7, r4
+    add             r8, r8, r4
+
+    pld             [r5]
+    pld             [r6]
+    pld             [r7]
+    pld             [r8]
+
+    vmla.f32        s16, s0, s8
+    vmla.f32        s17, s1, s8
+    vmla.f32        s18, s2, s8
+    vmla.f32        s19, s3, s8
+
+    vmla.f32        s20, s0, s9
+    vmla.f32        s21, s1, s9
+    vmla.f32        s22, s2, s9
+    vmla.f32        s23, s3, s9
+
+    vmla.f32        s24, s0, s10
+    vmla.f32        s25, s1, s10
+    vmla.f32        s26, s2, s10
+    vmla.f32        s27, s3, s10
+
+    vmla.f32        s28, s0, s11
+    vmla.f32        s29, s1, s11
+    vmla.f32        s30, s2, s11
+    vmla.f32        s31, s3, s11
+
+    subs r0, r0, #1
+    ble .STORE
+
+    vldmia          r1!, { s0, s1, s2, s3 }
+
+    ldr             r9, [r3], #4
+    pld             [r3]
+
+    vldr            s8, [r5]
+    vldr            s9, [r6]
+    vldr            s10, [r7]
+    vldr            s11, [r8]
+
+    sub             r4, r9, r10
+    add             r5, r5, r4
+    add             r6, r6, r4
+    add             r7, r7, r4
+    add             r8, r8, r4
+
+    pld             [r5]
+    pld             [r6]
+    pld             [r7]
+    pld             [r8]
 
     vmla.f32        s16, s0, s8
     vmla.f32        s17, s1, s8
