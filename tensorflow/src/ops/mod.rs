@@ -10,13 +10,7 @@ pub mod math;
 pub mod nn;
 pub mod quant;
 
-pub fn op_register() -> OpRegister<NodeDef> {
-    let mut reg = OpRegister::default();
-    register_all_ops(&mut reg);
-    reg
-}
-
-pub fn register_all_ops(reg: &mut OpRegister<NodeDef>) {
+pub fn register_all_ops(reg: &mut Framework<NodeDef>) {
     array::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);

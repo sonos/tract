@@ -36,7 +36,7 @@ pub enum ReductionPhase {
 
 pub mod prelude {
     pub use super::{
-        InferenceOp, Op,  OpRegister, OpState, ReducedOpRewire, ReductionPhase, StatefullOp, StatelessOp,
+        InferenceOp, Op,  OpState, ReducedOpRewire, ReductionPhase, StatefullOp, StatelessOp,
         StreamInfo,
     };
     pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
@@ -47,7 +47,7 @@ pub mod prelude {
     pub use crate::analyser::types::*;
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
-    pub use crate::model::TVec;
+    pub use crate::model::{ Framework, TVec };
     pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;
@@ -75,27 +75,6 @@ pub mod prelude {
 }
 
 use self::prelude::*;
-
-#[derive(Default)]
-pub struct OpRegister<T: Debug> {
-    register: HashMap<String, fn(&T) -> TractResult<Box<Op>>>
-}
-
-impl<T: Debug> OpRegister<T> {
-    pub fn build(&self, name: &str, payload: &T) -> TractResult<Box<Op>> {
-        match self.register.get(name) {
-            Some(builder) => builder(payload),
-            None => Ok(Box::new(crate::ops::unimpl::UnimplementedOp::new(
-                name,
-                format!("{:?}", payload),
-            ))),
-        }
-    }
-
-    pub fn insert(&mut self, name: &str, builder: fn(&T) -> TractResult<Box<Op>>) {
-        self.register.insert(name.to_string(), builder);
-    }
-}
 
 pub trait OpState: Debug + Send + objekt::Clone {
     fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;

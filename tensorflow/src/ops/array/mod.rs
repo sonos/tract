@@ -10,7 +10,7 @@ mod reshape;
 mod squeeze;
 mod strided_slice;
 
-pub fn register_all_ops(reg: &mut OpRegister<NodeDef>) {
+pub fn register_all_ops(reg: &mut Framework<NodeDef>) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", expand_dims::build);
     reg.insert("Identity", |_| {

@@ -2,7 +2,6 @@ use tract_core::ops as tractops;
 use tract_core::ops::nn::{DataFormat, KernelFormat, PaddingSpec};
 use tract_core::ops::prelude::*;
 
-use crate::ops::OpRegister;
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
@@ -16,7 +15,7 @@ macro_rules! reduce {
     };
 }
 
-pub fn register_all_ops(reg: &mut OpRegister<NodeProto>) {
+pub fn register_all_ops(reg: &mut Framework<NodeProto>) {
     reg.insert("ArgMax", arg_max_min);
     reg.insert("ArgMin", arg_max_min);
     reg.insert("AveragePool", average_pool);

@@ -3,12 +3,14 @@ use std::str;
 use std::sync::Arc;
 
 pub mod dsl;
+mod framework;
 mod order;
 pub use self::order::eval_order;
 pub use crate::analyser::types::TensorFact;
 use crate::context::Context;
 
 pub use self::dsl::ModelDsl;
+pub use self::framework::*;
 use crate::{ops, TractResult};
 
 #[derive(Debug, Clone)]
