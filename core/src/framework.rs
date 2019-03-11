@@ -17,6 +17,9 @@ impl<ProtoOp> OpRegister<ProtoOp> {
     pub fn insert(&mut self, name: impl AsRef<str>, b: OpBuilder<ProtoOp>) {
         self.0.insert(name.as_ref().to_string(), b);
     }
+    pub fn names(&self) -> impl Iterator<Item=&str> {
+        self.0.keys().map(|s| &**s)
+    }
 }
 
 pub trait Framework<ProtoOp: Debug, ProtoModel: Debug> {
