@@ -1,6 +1,7 @@
 use tract_core::ops::nn::{DataFormat, PaddingSpec};
 use tract_core::ops::prelude::*;
 
+use crate::Tensorflow;
 use crate::tfpb::node_def::NodeDef;
 
 pub mod conv2d;
@@ -8,7 +9,7 @@ pub mod fused_batch_norm;
 pub mod pools;
 pub mod s2b;
 
-pub fn register_all_ops(reg: &mut Framework<NodeDef>) {
+pub fn register_all_ops(reg: &mut Tensorflow) {
     reg.insert("AvgPool", pools::avgpool);
     reg.insert("Conv2D", conv2d::conv2d);
     reg.insert("FusedBatchNorm", fused_batch_norm::fused_batch_norm);

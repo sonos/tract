@@ -58,20 +58,28 @@ mod optim;
 pub mod tensor;
 pub mod tfpb;
 
+/*
 pub use self::model::for_path;
 pub use self::model::for_reader;
+*/
 
 pub trait ToSharedTensor<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
 }
 
-use tract_core::model::Framework;
 use crate::tfpb::node_def::NodeDef;
+use crate::tfpb::graph::GraphDef;
+type Tensorflow = tract_core::model::Framework<NodeDef, GraphDef>;
 
-pub fn tensorflow() -> Framework<NodeDef> {
-    let mut reg = Framework::default();
-    ops::register_all_ops(&mut reg);
-    reg
+pub fn tensorflow() -> Tensorflow {
+    let ops = std::collections::HashMap::default();
+    let mut fw = tract_core::model::Framework {
+        ops,
+        model_builder: Box::new(model::build),
+        model_loader: Box::new(model::load),
+    };
+    ops::register_all_ops(&mut fw);
+    fw
 }
 
 #[cfg(test)]
