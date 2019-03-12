@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 pub mod dsl;
 mod order;
+pub mod patch;
+
 pub use self::order::eval_order;
 pub use crate::analyser::types::TensorFact;
 
