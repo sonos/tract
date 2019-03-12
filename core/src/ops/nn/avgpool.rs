@@ -42,15 +42,8 @@ impl Op for AvgPool {
         "AvgPool".into()
     }
 
-    fn reduce(
-        &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            return Ok(None);
-        }
+    fn codegen(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
         if let (Some(shape), Some(dt)) = (
             inputs[0].shape.as_concrete_finite()?,
             inputs[0].datum_type.concretize(),
@@ -64,7 +57,7 @@ impl Op for AvgPool {
                 Box::new(FixedAvgPool::new(patch, count_include_pad))
             }
             let op = dispatch_floatlike!(fixed(dt)(patch, self.count_include_pad));
-            return Ok(Some(ReducedOpRewire::unary(op)));
+            return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }

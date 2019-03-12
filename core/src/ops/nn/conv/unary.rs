@@ -38,16 +38,10 @@ impl ConvUnary {
         group: usize,
     ) -> TractResult<ConvUnary> {
         let spatial_rank = full_input_shape.len() - 2;
-        let dilations = conv
-            .dilations
-            .as_ref()
-            .map(|a| TVec::from(&**a))
-            .unwrap_or(tvec!(1; spatial_rank));
-        let strides = conv
-            .strides
-            .as_ref()
-            .map(|a| TVec::from(&**a))
-            .unwrap_or(tvec!(1; spatial_rank));
+        let dilations =
+            conv.dilations.as_ref().map(|a| TVec::from(&**a)).unwrap_or(tvec!(1; spatial_rank));
+        let strides =
+            conv.strides.as_ref().map(|a| TVec::from(&**a)).unwrap_or(tvec!(1; spatial_rank));
 
         let unary = ConvUnary {
             data_fmt: conv.data_fmt,
@@ -105,20 +99,12 @@ impl ConvUnary {
         let ref input_spatial_dims_strides: TVec<usize> = patch
             .input_shape
             .hw_axes()
-            .map(|ax| {
-                input_full_shape
-                    .iter()
-                    .skip(1 + ax)
-                    .cloned()
-                    .product::<usize>()
-            })
+            .map(|ax| input_full_shape.iter().skip(1 + ax).cloned().product::<usize>())
             .collect();
-        let channel_stride = input_full_shape
-            .iter()
-            .skip(1 + patch.input_shape.c_axis())
-            .product::<usize>();
+        let channel_stride =
+            input_full_shape.iter().skip(1 + patch.input_shape.c_axis()).product::<usize>();
         let rpatch = &patch;
-        let data_offsets:Vec<isize> = ndarray::indices(&*patch.output_spatial_shape)
+        let data_offsets: Vec<isize> = ndarray::indices(&*patch.output_spatial_shape)
             .into_iter()
             .map(move |coords| {
                 coords
@@ -129,7 +115,7 @@ impl ConvUnary {
                     .sum::<usize>() as isize
             })
             .collect();
-        let kernel_offsets:Vec<isize> = (0..self.input_channels())
+        let kernel_offsets: Vec<isize> = (0..self.input_channels())
             .flat_map(|ici| {
                 rpatch
                     .standard_layout_data_field
@@ -161,10 +147,7 @@ impl ConvUnary {
 
     fn kernel_reshaped<T: Datum>(&self) -> TractResult<Array2<T>> {
         let kernel = self.kernel.to_array_view::<T>()?;
-        let kernel_reshaped = (
-            self.output_channels(),
-            kernel.len() / self.output_channels(),
-        );
+        let kernel_reshaped = (self.output_channels(), kernel.len() / self.output_channels());
         let k = match self.kernel_fmt {
             KernelFormat::HWIO => {
                 let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
@@ -190,11 +173,7 @@ impl ConvUnary {
 
         let m = self.output_channels() / self.group;
         let k = kernel.len() / self.output_channels();
-        let n = patch
-            .output_spatial_shape
-            .iter()
-            .cloned()
-            .product::<usize>();
+        let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
 
         let mm: Arc<MatMul<T>> = T::packed_mat_mul(m, k, n)
             .ok_or_else(|| {
@@ -207,13 +186,7 @@ impl ConvUnary {
 
         let packed_b_len = mm.packed_b_len();
 
-        trace!(
-            "Gemm iters={} m={} k={} n={}",
-            patch.input_shape.n_dim() * self.group,
-            m,
-            k,
-            n
-        );
+        trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
 
         let kernel = self.kernel_reshaped()?;
 
@@ -241,23 +214,12 @@ impl ConvUnary {
             .map(|bias| -> TractResult<_> {
                 let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
                 bias_shape[1] = self.output_channels();
-                Ok(bias
-                    .to_array_view::<T>()?
-                    .into_shape(&*bias_shape)?
-                    .to_owned())
+                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
             })
             .inside_out()?;
 
-        let im2col = Im2Col::new(
-            patch.clone(),
-            m,
-            k,
-            n,
-            self.group,
-            ci_per_group,
-            packed_b_len,
-            mm.clone(),
-        );
+        let im2col =
+            Im2Col::new(patch.clone(), m, k, n, self.group, ci_per_group, packed_b_len, mm.clone());
         trace!("im2col: {:?}", im2col);
         let conv_gemm = ConvGemm::new(
             patch,
@@ -276,7 +238,10 @@ impl ConvUnary {
         Ok((im2col, conv_gemm))
     }
 
-    pub fn to_boxed_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Box<Op>, Box<Op>)>
+    pub fn to_boxed_im2col_pair<T>(
+        &self,
+        input_full_shape: &[usize],
+    ) -> TractResult<(Box<Op>, Box<Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
@@ -316,17 +281,10 @@ impl ConvUnary {
             return Ok(None);
         }
         fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
-            input
-                .iter()
-                .enumerate()
-                .filter(|&(ax, _)| ax != nth)
-                .map(|(_, &d)| d)
-                .collect()
+            input.iter().enumerate().filter(|&(ax, _)| ax != nth).map(|(_, &d)| d).collect()
         }
-        let kernel_shape: TVec<usize> = copy_rm_nth(
-            self.kernel.shape().clone(),
-            geo_axis + self.kernel_fmt.h_axis(),
-        );
+        let kernel_shape: TVec<usize> =
+            copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
         let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
         let new_op = ConvUnary {
             data_fmt: self.data_fmt,
@@ -349,15 +307,9 @@ impl Op for ConvUnary {
         "ConvUnary".into()
     }
 
-    fn reduce(
-        &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            return Ok(None);
-        }
+    fn codegen(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+        use crate::model::dsl::ModelDsl;
+        let inputs = model.node_input_facts(node.id)?;
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if kernel_spatial_shape.iter().product::<usize>() == 1
@@ -371,31 +323,34 @@ impl Op for ConvUnary {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
-                return Ok(Some(ReducedOpRewire::unary(MatMulUnaryA::new(kernel))));
+                return Ok(Some(ModelPatch::single_unary_op(
+                    model,
+                    node,
+                    MatMulUnaryA::new(kernel),
+                )?));
             }
-        } else if let (Some(shape), Some(dt)) = (
-            inputs[0].shape.concretize(),
-            inputs[0].datum_type.concretize(),
-        ) {
+        } else if let (Some(shape), Some(dt)) =
+            (inputs[0].shape.concretize(), inputs[0].datum_type.concretize())
+        {
             if inputs[0].stream_info()?.is_none() {
-                let shape: Vec<usize> = shape
-                    .iter()
-                    .map(|d| d.to_integer().unwrap() as usize)
-                    .collect();
+                let shape: Vec<usize> =
+                    shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
                 if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
                     && dt == f32::datum_type()
                     && self.group == 1
                     && self.bias.is_none()
                 {
                     let op = self.to_direct(&*shape)?;
-                    return Ok(Some(ReducedOpRewire::unary(op)));
+                    return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
                 } else {
                     let (op1, op2) =
                         dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
-                    return Ok(Some(ReducedOpRewire {
-                        ops: vec![op1, op2],
-                        rewired: tvec!(0),
-                    }));
+                    let mut patch = ModelPatch::default();
+                    let _ = patch.tap_model(&model, node.inputs[0])?;
+                    patch.chain(format!("{}-im2col", node.name), op1)?;
+                    let mm = patch.chain(format!("{}-convmm", node.name), op2)?;
+                    patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
+                    return Ok(Some(patch));
                 }
             }
         }
@@ -460,11 +415,7 @@ impl Op for ConvUnary {
             conv_fact.dim -= kernel_len.to_dim();
 
             let memory = PulsifiedOp::new(
-                Box::new(crate::pulse::delay::Delay::new(
-                    input.clone(),
-                    0,
-                    kernel_len,
-                )),
+                Box::new(crate::pulse::delay::Delay::new(input.clone(), 0, kernel_len)),
                 tvec!(augmented_fact),
             );
 

@@ -3,7 +3,6 @@ use tract_core::model::ModelDsl;
 use tract_core::ops::nn::ConvUnary;
 use tract_core::ops::prelude::*;
 use tract_core::optim::OptimizerPass;
-use tract_core::*;
 
 pub fn normalization() -> Arc<Vec<Box<OptimizerPass>>> {
     Arc::new(vec!(Box::new(UntensorflowConv)))
@@ -114,7 +113,6 @@ fn undo_space_to_batch(model: &mut Model, node_id: usize) -> TractResult<bool> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tract_core::model::*;
 
     fn mk(sizes: &[usize]) -> Tensor {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)

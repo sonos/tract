@@ -3,8 +3,6 @@ use std::fmt::Debug;
 
 use downcast_rs::Downcast;
 
-use crate::model::TVec;
-
 use objekt;
 
 #[macro_use]
@@ -28,27 +26,25 @@ pub struct StreamInfo {
     pub len: TDim,
 }
 
+/*
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum ReductionPhase {
     Normalize,
     Codegen,
 }
+*/
 
 pub mod prelude {
-    pub use super::{
-        InferenceOp, Op,  OpState, ReducedOpRewire, ReductionPhase, StatefullOp, StatelessOp,
-        StreamInfo,
-    };
+    pub use super::{InferenceOp, Op, OpState, StatefullOp, StatelessOp, StreamInfo};
     pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
-    pub use crate::analyser::rules::{
-        InferenceResult, InferenceRulesOp, TensorProxy, Solver,
-    };
+    pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::analyser::types::TypeFact;
     pub use crate::analyser::types::*;
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::Framework;
-    pub use crate::model::TVec;
+    pub use crate::model::patch::ModelPatch;
+    pub use crate::model::{InletId, Model, Node, OutletId, TVec};
     pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;
@@ -137,12 +133,7 @@ pub trait Op:
         Ok((infered_inputs, infered_outputs))
     }
 
-    fn reduce(
-        &self,
-        _inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        _phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
+    fn normalize(&self, _model: &Model, _node: &Node) -> TractResult<Option<ModelPatch>> {
         Ok(None)
     }
 
@@ -151,6 +142,10 @@ pub trait Op:
         _inputs: TVec<&PulsedTensorFact>,
     ) -> TractResult<Vec<crate::pulse::PulsifiedOp>> {
         bail!("Operator {} do not support pulsification", self.name())
+    }
+
+    fn codegen(&self, _model: &Model, _node: &Node) -> TractResult<Option<ModelPatch>> {
+        Ok(None)
     }
 
     fn const_value(&self) -> Option<SharedTensor> {
@@ -190,6 +185,7 @@ impl<O: Op> From<O> for Box<Op> {
     }
 }
 
+/*
 #[derive(Clone, Debug, new)]
 pub struct ReducedOpRewire {
     pub ops: Vec<Box<Op>>,
@@ -198,9 +194,7 @@ pub struct ReducedOpRewire {
 
 impl ReducedOpRewire {
     pub fn unary<O: Into<Box<Op>>>(op: O) -> ReducedOpRewire {
-        ReducedOpRewire {
-            ops: vec![op.into()],
-            rewired: tvec!(0),
-        }
+        ReducedOpRewire { ops: vec![op.into()], rewired: tvec!(0) }
     }
 }
+*/

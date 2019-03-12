@@ -6,9 +6,9 @@ use tract_onnx::*;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
-    env_logger::Builder::from_default_env()
+    let _ = env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Trace)
-        .init();
+        .try_init();
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {

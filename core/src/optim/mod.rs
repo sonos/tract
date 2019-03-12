@@ -10,7 +10,7 @@ pub use self::compact::compact;
 pub use self::prop_const::PropConst;
 pub use self::push_split_down::PushSplitDown;
 pub use self::reduce::Reduce;
-pub use crate::ops::ReductionPhase;
+pub use self::reduce::ReductionPhase;
 
 pub trait OptimizerPass: Debug + Send + Sync {
     fn pass(&self, model: &mut Model) -> TractResult<bool>;

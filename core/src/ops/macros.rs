@@ -164,18 +164,15 @@ macro_rules! element_bin {
                     concat!(stringify!($name), "::Binary").into()
                 }
 
-                fn reduce(&self, inputs: TVec<&TensorFact>, _outputs: TVec<&TensorFact>,
-                          phase: ReductionPhase
-                ) -> TractResult<Option<ReducedOpRewire>> {
-                    if phase == ReductionPhase::Normalize {
-                        if let Some(b) = inputs[1].value.concretize() {
-                            return Ok(Some(ReducedOpRewire::unary(
-                                UnaryA {
-                                    dt: self.0,
-                                    b: b.into(),
-                                },
-                            )))
-                        }
+                fn normalize(&self, model: &$crate::model::Model, node: &$crate::model::Node)
+                 -> TractResult<Option<ModelPatch>> {
+                     let inputs = model.node_input_facts(node.id)?;
+                    if let Some(b) = inputs[1].value.concretize() {
+                        let op = UnaryA {
+                                dt: self.0,
+                                b: b.into(),
+                            };
+                        return Ok(Some(ModelPatch::single_unary_op(&model, &node, op)?));
                     }
                     Ok(None)
                 }
@@ -415,11 +412,7 @@ macro_rules! args_3 {
             Err("Expected 3 args")?
         }
         $inputs.reverse();
-        let result = (
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-        );
+        let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap(), $inputs.pop().unwrap());
         ::std::mem::drop($inputs);
         result
     }};
