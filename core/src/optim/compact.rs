@@ -3,7 +3,7 @@ use crate::{Model, TractResult};
 use std::collections::HashMap;
 
 pub fn compact(old: &Model) -> TractResult<Model> {
-    let mut model = Model::default();
+    let mut model = Model::default().with_norm_optims(old.norm_optims().map(|o| o.clone()));
     let mut map = HashMap::new();
     for old_id in old.eval_order()? {
         let old_node = &old.nodes()[old_id];
@@ -16,22 +16,12 @@ pub fn compact(old: &Model) -> TractResult<Model> {
             continue;
         }
         for (ix, input) in old_node.inputs.iter().enumerate() {
-            model.add_edge(
-                OutletId::new(map[&input.node], input.slot),
-                InletId::new(new_id, ix),
-            )?;
+            model
+                .add_edge(OutletId::new(map[&input.node], input.slot), InletId::new(new_id, ix))?;
         }
     }
     // maintaining order of i/o interface
-    model.inputs = old
-        .inputs()?
-        .iter()
-        .map(|i| OutletId::new(map[&i.node], i.slot))
-        .collect();
-    model.outputs = old
-        .outputs()?
-        .iter()
-        .map(|o| OutletId::new(map[&o.node], o.slot))
-        .collect();
+    model.inputs = old.inputs()?.iter().map(|i| OutletId::new(map[&i.node], i.slot)).collect();
+    model.outputs = old.outputs()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
     Ok(model)
 }
