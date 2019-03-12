@@ -105,6 +105,10 @@ impl Model {
         Model { norm, ..self }
     }
 
+    pub fn norm_optims(&self) -> Option<&Arc<Vec<Box<OptimizerPass>>>> {
+        self.norm.as_ref()
+    }
+
     pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TractResult<usize> {
         self.add_node_disable_output_guess(name, op, false)
     }
@@ -265,28 +269,29 @@ impl Model {
 
     pub fn into_normalized(mut self) -> TractResult<Model> {
         self.analyse()?;
+        let mut model = self;
         loop {
             let mut done_something = false;
-            if let Some(passes) = self.norm.clone() {
+            if let Some(passes) = model.norm.clone() {
                 for p in passes.iter() {
-                    done_something = done_something || p.pass(&mut self)?;
+                    done_something = done_something || p.pass(&mut model)?;
                     if cfg!(debug_assertions) {
-                        self.check_edges()?;
+                        model.check_edges()?;
                     }
                 }
             }
             for p in crate::optim::normalization() {
-                done_something = done_something || p.pass(&mut self)?;
+                done_something = done_something || p.pass(&mut model)?;
                 if cfg!(debug_assertions) {
-                    self.check_edges()?;
+                    model.check_edges()?;
                 }
             }
             if !done_something {
                 break;
             }
+            model = crate::optim::compact(&model)?;
+            model.analyse()?;
         }
-        let mut model = crate::optim::compact(&self)?;
-        model.analyse()?;
         Ok(model)
     }
 
