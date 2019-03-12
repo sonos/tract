@@ -34,16 +34,9 @@ impl Op for Squeeze {
         "Squeeze".into()
     }
 
-    fn reduce(
-        &self,
-        _inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            if let Some(dims) = &self.axes {
-                return Ok(Some(ReducedOpRewire::unary(RmDims::new(dims.clone()))));
-            }
+    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+        if let Some(dims) = &self.axes {
+            return Ok(Some(ModelPatch::single_unary_op(model, node, RmDims::new(dims.clone()))?));
         }
         Ok(None)
     }
@@ -67,10 +60,7 @@ impl InferenceRulesOp for Squeeze {
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if let Some(ref axes) = self.axes {
-            s.equals(
-                &outputs[0].rank,
-                (&inputs[0].rank).bex() - axes.len() as i32,
-            )?;
+            s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - axes.len() as i32)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape)?;

@@ -123,9 +123,9 @@ pub use crate::tensor::{SharedTensor, Tensor};
 #[cfg(test)]
 #[allow(dead_code)]
 fn setup_test_logger() {
-    env_logger::Builder::from_default_env()
+    let _ = env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Trace)
-        .init();
+        .try_init();
 }
 
 pub trait Tractify<Other>: Sized {

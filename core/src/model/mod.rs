@@ -106,6 +106,10 @@ impl Model {
     }
 
     pub fn add_node(&mut self, name: String, op: Box<ops::Op>) -> TractResult<usize> {
+        self.add_node_disable_output_guess(name, op, false)
+    }
+
+    pub(crate) fn add_node_disable_output_guess(&mut self, name: String, op: Box<ops::Op>, disable_output_guess: bool) -> TractResult<usize> {
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
         let is_input = op.name() == "Source";
@@ -114,8 +118,10 @@ impl Model {
         if is_input {
             self.inputs.push(OutletId::new(id, 0));
         }
-        for o in 0..noutputs {
-            self.outputs.push(OutletId::new(id, o));
+        if !disable_output_guess {
+            for o in 0..noutputs {
+                self.outputs.push(OutletId::new(id, o));
+            }
         }
         self.nodes.push(node);
         Ok(id)
@@ -309,6 +315,14 @@ impl Model {
 
     pub fn eval_order(&self) -> TractResult<Vec<usize>> {
         eval_order(&self)
+    }
+
+    pub fn node_input_facts(&self, node_id: usize) -> TractResult<TVec<&TensorFact>> {
+        self.nodes[node_id].inputs.iter().map(|o| self.fact(*o)).collect()
+    }
+
+    pub fn node_output_facts(&self, node_id: usize) -> TractResult<TVec<&TensorFact>> {
+        Ok(self.nodes[node_id].outputs.iter().map(|o| &o.fact).collect())
     }
 
     pub fn node_by_name(&self, name: &str) -> TractResult<&Node> {

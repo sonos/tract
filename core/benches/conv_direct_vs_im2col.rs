@@ -69,13 +69,8 @@ impl Problem {
         );
         let kernel_fact = TensorFact::from(kernel);
         let image_fact = self.image_fact();
-        let unary = conv
-            .reduce(tvec!(&image_fact, &kernel_fact), tvec!(), ReductionPhase::Normalize)
-            .unwrap()
-            .unwrap()
-            .ops
-            .remove(0);
-        unary.downcast::<ConvUnary>().unwrap()
+        let unary = conv.to_unary(tvec!(&image_fact, &kernel_fact)).unwrap();
+        Box::new(unary.unwrap())
     }
 
     pub fn to_direct(&self) -> SimplePlan<Model> {

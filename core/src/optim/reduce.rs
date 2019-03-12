@@ -2,6 +2,9 @@ use crate::ops::prelude::*;
 use crate::Model;
 
 #[derive(Debug)]
+pub enum ReductionPhase { Normalize, Codegen }
+
+#[derive(Debug)]
 pub struct Reduce(pub ReductionPhase);
 
 impl super::OptimizerPass for Reduce {
@@ -19,6 +22,7 @@ impl super::OptimizerPass for Reduce {
                         node.id,
                         node.op().name()
                     );
+                    /*
                     let input_facts: TVec<&TensorFact> = node
                         .inputs
                         .iter()
@@ -27,11 +31,29 @@ impl super::OptimizerPass for Reduce {
                         .collect::<TractResult<_>>()?;
                     let output_facts: TVec<&TensorFact> =
                         node.outputs.iter().map(|o| &o.fact).collect();
-                    node.op
-                        .reduce(input_facts, output_facts, self.0)
-                        .map_err(|e| format!("Reduce {:?} node {:?}, {:?}", self.0, node, e))?
+                    */
+                    match self.0 {
+                        ReductionPhase::Normalize => node.op.normalize(&model, &node),
+                        ReductionPhase::Codegen => node.op.codegen(&model, &node),
+                    }.map_err(|e| format!("{:?} node {:?}, {:?}", self.0, node, e))?
                 };
                 if let Some(red) = reduced {
+                    {
+                        let node = &model.nodes()[id];
+                        debug!(
+                            "Apply a model patch for {:?} {} #{} ({})",
+                            self,
+                            node.name,
+                            node.id,
+                            node.op().name()
+                        );
+                    }
+                    red.apply(model)?;
+                    if cfg!(debug_assertions) {
+                        model.check_edges()?;
+                    }
+                    done_something_this_time = true
+                        /*
                     debug!("  Unarize to {:?}", red);
                     use crate::model::dsl::ModelDsl;
                     use crate::model::{InletId, OutletId};
@@ -61,10 +83,7 @@ impl super::OptimizerPass for Reduce {
                         model.clear_inputs(id)?;
                         model.add_edge(OutletId::new(created_node_id, 0), InletId::new(id, 0))?;
                     }
-                    if cfg!(debug_assertions) {
-                        model.check_edges()?;
-                    }
-                    done_something_this_time = true
+                    */
                 }
             }
             done_something = done_something || done_something_this_time;

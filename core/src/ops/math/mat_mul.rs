@@ -105,10 +105,7 @@ impl<T: Copy + Datum + Add + Mul + Zero> Geo<T> {
         let k = bc_a_shape[bc_a_shape.len() - 1];
         let n = bc_b_shape[bc_b_shape.len() - 1];
         let mm = T::packed_mat_mul(m, k, n).ok_or_else(|| {
-            format!(
-                "Can not perfom matmul on {:?} (not a linear algebra type)",
-                T::datum_type()
-            )
+            format!("Can not perfom matmul on {:?} (not a linear algebra type)", T::datum_type())
         })?;
         let a_stride_prefix = bc_a_shape
             .iter()
@@ -186,14 +183,10 @@ impl InferenceRulesOp for MatMul {
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
-        s.given_2(
-            &inputs[0].shape,
-            &inputs[1].shape,
-            move |s, ashape, bshape| {
-                let (_, _, cshape) = infer_shapes(ashape, bshape)?;
-                s.equals(&outputs[0].shape, cshape)
-            },
-        )?;
+        s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ashape, bshape| {
+            let (_, _, cshape) = infer_shapes(ashape, bshape)?;
+            s.equals(&outputs[0].shape, cshape)
+        })?;
         Ok(())
     }
 }
@@ -207,13 +200,14 @@ impl MatMulUnaryA {
     pub fn codegen<T: Copy + Datum + Add + Mul + Zero>(
         &self,
         a_shape: &[usize],
-    ) -> TractResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<Box<Op>>> {
         if self.b.shape().len() == 2 {
-            return Ok(Some(ReducedOpRewire::unary(
-                MatMulUnaryImplASimpleB::<T>::new(a_shape, &self.b.to_array_view()?)?,
-            )));
+            return Ok(Some(Box::new(MatMulUnaryImplASimpleB::<T>::new(
+                a_shape,
+                &self.b.to_array_view()?,
+            )?)));
         } else {
-            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<T>::new(
+            return Ok(Some(Box::new(MatMulUnaryImplA::<T>::new(
                 a_shape,
                 &self.b.to_array_view()?,
             )?)));
@@ -242,20 +236,14 @@ impl Op for MatMulUnaryA {
         Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))])
     }
 
-    fn reduce(
-        &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            return Ok(None);
-        }
-        if let (Some(a_shape), Some(dt)) = (
-            inputs[0].shape.as_concrete_finite()?,
-            inputs[0].datum_type.concretize(),
-        ) {
-            return dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape));
+    fn codegen(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if let (Some(a_shape), Some(dt)) =
+            (inputs[0].shape.as_concrete_finite()?, inputs[0].datum_type.concretize())
+        {
+            if let Some(op) = dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape))? {
+                return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+            }
         }
         Ok(None)
     }
@@ -309,18 +297,8 @@ impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
         let mut packed_b = unsafe {
             Tensor::uninitialized_aligned::<T>(&[packed_b_len], geo.mm.packed_b_alignment())?
         };
-        geo.mm.pack_b(
-            packed_b.as_ptr_mut()?,
-            b.as_ptr(),
-            b.strides()[0],
-            b.strides()[1],
-        );
-        Ok(MatMulUnaryImplASimpleB {
-            geo,
-            packed_b,
-            c_shape,
-            a_shape: a_shape.into(),
-        })
+        geo.mm.pack_b(packed_b.as_ptr_mut()?, b.as_ptr(), b.strides()[0], b.strides()[1]);
+        Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
     }
 }
 
@@ -348,9 +326,7 @@ impl<T: Copy + Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB
             )?
         };
 
-        self.geo
-            .mm
-            .pack_a(pa.as_ptr_mut()?, a.as_ptr(), self.geo.k as isize, 1);
+        self.geo.mm.pack_a(pa.as_ptr_mut()?, a.as_ptr(), self.geo.k as isize, 1);
         self.geo.mm.mat_mul_prepacked(
             pa.as_ptr()?,
             self.packed_b.as_ptr()?,
@@ -397,19 +373,14 @@ impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
         let mut packed_bs = unsafe {
             Tensor::uninitialized_aligned::<T>(&packed_bs_shape, geo.mm.packed_b_alignment())?
         };
-        for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2])
-            .into_iter()
-            .enumerate()
-        {
+        for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2]).into_iter().enumerate() {
             let mut b = b.view();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
                 b.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
             unsafe {
                 geo.mm.pack_b(
-                    packed_bs
-                        .as_ptr_mut::<T>()?
-                        .offset((ix * packed_b_len) as isize),
+                    packed_bs.as_ptr_mut::<T>()?.offset((ix * packed_b_len) as isize),
                     b.as_ptr(),
                     b.strides()[prefix.ndim()],
                     b.strides()[prefix.ndim() + 1],

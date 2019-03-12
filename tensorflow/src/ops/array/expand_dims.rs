@@ -12,24 +12,18 @@ impl Op for ExpandDims {
         "tf.ExpandDims".into()
     }
 
-    fn reduce(
-        &self,
-        mut inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            let (_, dims) = args_2!(inputs);
-            if let Some(dims) = dims.concretize() {
-                let dims = dims.cast_to::<i64>()?;
-                let op = ::tract_core::ops::array::AddDims::new(
-                    dims.to_array_view::<i64>()?
-                        .iter()
-                        .map(|&i| i as usize)
-                        .collect(),
-                );
-                return Ok(Some(ReducedOpRewire::unary(op)));
-            }
+    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+        let mut inputs = model.node_input_facts(node.id)?;
+        let (_, dims) = args_2!(inputs);
+        if let Some(dims) = dims.concretize() {
+            let dims = dims.cast_to::<i64>()?;
+            let op = ::tract_core::ops::array::AddDims::new(
+                dims.to_array_view::<i64>()?
+                    .iter()
+                    .map(|&i| i as usize)
+                    .collect(),
+            );
+            return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
