@@ -105,7 +105,7 @@ pub mod errors;
 pub mod framework;
 pub mod model;
 mod ndarray_dummy_packed_mm;
-pub mod optim;
+mod optim;
 pub mod plan;
 pub mod pulse;
 pub mod tensor;

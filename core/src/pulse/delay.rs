@@ -118,7 +118,7 @@ mod test {
             delay: 0,
         };
         model
-            .add_source_fact("source", fact.to_pulse_fact())
+            .add_source_fact("source", fact.to_pulse_fact().to_tensor_fact())
             .unwrap();
         model
             .chain("delay", Box::new(Delay::new(fact, delay, overlap)))
@@ -172,7 +172,7 @@ mod test {
             delay: 0,
         };
         model
-            .add_source_fact("source", fact.to_pulse_fact())
+            .add_source_fact("source", fact.to_pulse_fact().to_tensor_fact())
             .unwrap();
         model
             .chain("delay-1", Box::new(Delay::new(fact, 2, 0)))

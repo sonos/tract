@@ -1,23 +1,15 @@
-use crate::model::Node;
+use crate::model::{Node, TensorInfo};
 use crate::TractResult;
 use bit_set;
 
-pub fn eval_order(model: &super::Model) -> TractResult<Vec<usize>> {
-    let inputs = model
-        .inputs()?
-        .iter()
-        .map(|n| n.node)
-        .collect::<Vec<usize>>();
-    let targets = model
-        .outputs()?
-        .iter()
-        .map(|n| n.node)
-        .collect::<Vec<usize>>();
+pub fn eval_order<TI: TensorInfo>(model: &super::Model<TI>) -> TractResult<Vec<usize>> {
+    let inputs = model.inputs()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let targets = model.outputs()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 
-pub fn eval_order_for_nodes(
-    nodes: &[Node],
+pub fn eval_order_for_nodes<TI: TensorInfo>(
+    nodes: &[Node<TI>],
     inputs: &[usize],
     targets: &[usize],
 ) -> TractResult<Vec<usize>> {
@@ -49,7 +41,7 @@ pub fn eval_order_for_nodes(
 
 #[cfg(test)]
 mod tests {
-    use crate::model::dsl::ModelDsl;
+    use crate::model::dsl::*;
     use crate::model::*;
     use crate::ops::math::Add;
     use crate::*;
@@ -60,9 +52,7 @@ mod tests {
         model.add_source("a").unwrap();
         model.chain("add", Box::new(Add::default())).unwrap();
         model.add_const("b", Tensor::from(12.0f32).into()).unwrap();
-        model
-            .add_edge(OutletId::new(2, 0), InletId::new(1, 1))
-            .unwrap();
+        model.add_edge(OutletId::new(2, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 2, 1));
     }
 
@@ -71,9 +61,7 @@ mod tests {
         let mut model = Model::default();
         model.add_source("a").unwrap();
         model.chain("add", Box::new(Add::default())).unwrap();
-        model
-            .add_edge(OutletId::new(0, 0), InletId::new(1, 1))
-            .unwrap();
+        model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 1));
     }
 }

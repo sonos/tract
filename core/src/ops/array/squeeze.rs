@@ -34,9 +34,13 @@ impl Op for Squeeze {
         "Squeeze".into()
     }
 
-    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn normalize(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(dims) = &self.axes {
-            return Ok(Some(ModelPatch::single_unary_op(model, node, RmDims::new(dims.clone()))?));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, RmDims::new(dims.clone()))?));
         }
         Ok(None)
     }

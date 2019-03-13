@@ -16,64 +16,37 @@ pub struct PulsedTensorFact {
 }
 
 impl PulsedTensorFact {
-    pub fn from_tensor_fact_pulse(tf: &TensorFact, pulse: usize) -> TractResult<PulsedTensorFact> {
-        let dt = tf
-            .datum_type
-            .concretize()
-            .ok_or("Can not use pulse a tensor with no type")?;
-        let axis = tf
-            .stream_info()?
-            .ok_or("Can not pulse a tensor with no streaming dim")?
-            .axis;
-        let shape = tf
-            .shape
-            .concretize()
-            .ok_or("Can not pulse a tensor with unknown shape")?;
-        let dim = shape[axis];
-        let shape = shape
-            .iter()
-            .enumerate()
-            .map(|(ix, &d)| {
-                if ix == axis {
-                    Ok(pulse)
-                } else {
-                    d.to_integer().map(|d| d as usize)
-                }
-            })
-            .collect::<TractResult<_>>()?;
-        Ok(PulsedTensorFact {
-            dt,
-            shape,
-            axis,
-            dim,
-            delay: 0,
-        })
+    pub fn from_tensor_fact_pulse(
+        tf: &NormalizedTensorInfo,
+        pulse: usize,
+    ) -> TractResult<PulsedTensorFact> {
+        let dt = tf.datum_type;
+        let stream = tf.shape.stream_info.ok_or("Can not pulse a tensor with no streaming dim")?;
+        let shape =
+            tf.shape.iter().map(|d| d.to_integer().map(|d| d as usize).unwrap_or(pulse)).collect();
+        Ok(PulsedTensorFact { dt, shape, axis: stream.axis, dim: stream.len, delay: 0 })
     }
 
     pub fn pulse(&self) -> usize {
         self.shape[self.axis]
     }
 
-    pub fn to_pulse_fact(&self) -> TensorFact {
-        TensorFact::dt_shape(self.dt, self.shape.clone())
+    pub fn to_pulse_fact(&self) -> NormalizedTensorInfo {
+        NormalizedTensorInfo { datum_type: self.dt, shape: ShapeInfo::from(&*self.shape) }
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {
         self.shape
             .iter()
             .enumerate()
-            .map(|(ix, &d)| {
-                if ix == self.axis {
-                    self.dim
-                } else {
-                    d.to_dim()
-                }
-            })
+            .map(|(ix, &d)| if ix == self.axis { self.dim } else { d.to_dim() })
             .collect()
     }
 
-    pub fn to_streaming_fact(&self) -> TensorFact {
-        TensorFact::dt_shape(self.dt, self.streaming_shape())
+    pub fn to_streaming_fact(&self) -> NormalizedTensorInfo {
+        let mut info = self.to_pulse_fact();
+        info.shape.stream_info = Some(StreamInfo { axis: self.axis, len: self.dim });
+        info
     }
 }
 
@@ -84,9 +57,9 @@ pub struct PulsifiedOp {
 }
 
 pub fn pulsify(
-    old: &Model,
+    old: &NormalizedModel,
     pulse: usize,
-) -> TractResult<(Model, PulsedTensorFact, PulsedTensorFact)> {
+) -> TractResult<(NormalizedModel, PulsedTensorFact, PulsedTensorFact)> {
     let mut p_model = PulsifiedModel::new(old, pulse)?;
     let in_id = p_model.model.inputs()?[0];
     let out_id = p_model.model.outputs()?[0];
@@ -97,13 +70,13 @@ pub fn pulsify(
 
 #[derive(Clone, Debug)]
 struct PulsifiedModel {
-    model: Model,
+    model: NormalizedModel,
     facts: HashMap<OutletId, PulsedTensorFact>,
 }
 
 impl PulsifiedModel {
-    fn new(old: &Model, pulse: usize) -> TractResult<PulsifiedModel> {
-        let mut model = Model::default();
+    fn new(old: &NormalizedModel, pulse: usize) -> TractResult<PulsifiedModel> {
+        let mut model = NormalizedModel::default();
         let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
         let mut facts: HashMap<OutletId, PulsedTensorFact> = HashMap::new();
         for old_id in old.eval_order()? {
@@ -116,12 +89,8 @@ impl PulsifiedModel {
                 mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
             } else {
                 let pulsed_chain = {
-                    let inputs = old
-                        .node(old_id)
-                        .inputs
-                        .iter()
-                        .map(|i| &facts[&mapping[i]])
-                        .collect();
+                    let inputs =
+                        old.node(old_id).inputs.iter().map(|i| &facts[&mapping[i]]).collect();
                     trace!("  inputs: {:?}", inputs);
                     old.node(old_id).op().pulsify(inputs)?
                 };
@@ -134,7 +103,11 @@ impl PulsifiedModel {
                     } else {
                         format!("{}#{}", old.node(old_id).name, ix)
                     };
-                    let new_id = model.add_node(name, op)?;
+                    let new_id = model.add_node(
+                        name,
+                        op,
+                        outputs.iter().map(|o| o.to_pulse_fact()).collect(),
+                    )?;
                     if let Some(prev) = previous {
                         model.add_edge(OutletId::new(prev, 0), InletId::new(new_id, 0))?;
                     } else {
@@ -165,7 +138,7 @@ mod tests {
         let _a = model
             .add_source_fact("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3]))
             .unwrap();
-        assert!(PulsifiedModel::new(&model, 4).is_err());
+        assert!(PulsifiedModel::new(&model.into_normalized().unwrap(), 4).is_err());
 
         let mut model = Model::default();
         let _a = model
@@ -174,11 +147,10 @@ mod tests {
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
             .unwrap();
-        let mut pulse = PulsifiedModel::new(&model, 4).unwrap();
-        pulse.model.analyse().unwrap();
+        let mut pulse = PulsifiedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
-            pulse.model.fact(OutletId::new(0, 0)).unwrap(),
-            &TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
+            pulse.model.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
+            TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
         );
     }
 
@@ -192,15 +164,15 @@ mod tests {
             )
             .unwrap();
 
-        let pulse = PulsifiedModel::new(&model, 4).unwrap();
+        let pulse = PulsifiedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
 
         assert_eq!(
-            pulse.model.input_fact().unwrap(),
-            &TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
+            pulse.model.input_fact().unwrap().to_tensor_fact(),
+            TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
         assert_eq!(
-            pulse.model.output_fact().unwrap(),
-            &TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
+            pulse.model.output_fact().unwrap().to_tensor_fact(),
+            TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
     }
 
@@ -210,23 +182,19 @@ mod tests {
         use ndarray::*;
 
         let mut model = Model::default();
-        let ker = model
-            .add_const("kernel", arr3(&[[[0.5f32, 1.0, -0.1]]]).into())
-            .unwrap();
+        let ker = model.add_const("kernel", arr3(&[[[0.5f32, 1.0, -0.1]]]).into()).unwrap();
         let _ = model
             .add_source_fact("a", TensorFact::shape(shapefact!(1, 1, S))) // NCT
             .unwrap();
         let conv = model.chain("conv", Box::new(Conv::default())).unwrap();
-        model
-            .add_edge(OutletId::new(ker, 0), InletId::new(conv, 1))
-            .unwrap();
+        model.add_edge(OutletId::new(ker, 0), InletId::new(conv, 1)).unwrap();
         model.analyse().unwrap();
         assert_eq!(model.nodes().len(), 3);
 
         let input = [1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
         let t_input = Tensor::from(arr3(&[[input]]));
 
-        let model = model.into_optimized().unwrap();
+        let model = model.into_normalized().unwrap();
 
         assert_eq!(model.nodes().len(), 2);
         let plan = crate::plan::SimplePlan::new(&model).unwrap();
@@ -244,23 +212,13 @@ mod tests {
         for p in 0..(input.len() / pulse) {
             let chunk = &input[(p * pulse)..((p + 1) * pulse)];
             let mut outputs = state
-                .run(tvec!(ndarray::Array::from_shape_vec(
-                    (1usize, 1, 4),
-                    chunk.to_vec()
-                )
-                .unwrap()
-                .into()))
+                .run(tvec!(ndarray::Array::from_shape_vec((1usize, 1, 4), chunk.to_vec())
+                    .unwrap()
+                    .into()))
                 .unwrap();
             got.extend(outputs.remove(0).to_array_view::<f32>().unwrap().iter());
         }
 
-        assert_eq!(
-            &got[2..],
-            outputs[0]
-                .to_array_view::<f32>()
-                .unwrap()
-                .as_slice()
-                .unwrap()
-        );
+        assert_eq!(&got[2..], outputs[0].to_array_view::<f32>().unwrap().as_slice().unwrap());
     }
 }

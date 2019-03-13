@@ -236,13 +236,16 @@ impl Op for MatMulUnaryA {
         Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))])
     }
 
-    fn codegen(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn codegen(
+        &self,
+        model: &NormalizedModel,
+        node: &NormalizedNode,
+    ) -> TractResult<Option<NormalizedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let (Some(a_shape), Some(dt)) =
-            (inputs[0].shape.as_concrete_finite()?, inputs[0].datum_type.concretize())
-        {
+        if let Some(a_shape) = inputs[0].shape.as_finite() {
+            let dt = inputs[0].datum_type;
             if let Some(op) = dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape))? {
-                return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+                return Ok(Some(NormalizedModelPatch::single_unary_op(model, node, op)?));
             }
         }
         Ok(None)

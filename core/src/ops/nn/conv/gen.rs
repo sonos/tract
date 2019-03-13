@@ -57,16 +57,15 @@ impl Conv {
         result
     }
 
-    pub fn to_unary(&self, mut inputs: TVec<&TensorFact>) -> TractResult<Option<ConvUnary>> {
+    pub fn to_norm(&self, mut inputs: TVec<&TypedTensorInfo>) -> TractResult<Option<ConvUnary>> {
         if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
-            if let (Some(ishape), Some(kvalue)) =
-                (input.shape.concretize(), kernel.value.concretize())
-            {
+            if let Some(kvalue) = kernel.konst.clone() {
+                let ishape:TVec<TDim> = input.shape.iter().collect();
                 let reduced = ConvUnary::new(
                     &self,
                     &ishape,
-                    &self.output_shape(&ishape, kvalue.shape()),
+                    &self.output_shape(&*ishape, kvalue.shape()),
                     kvalue.to_tensor(),
                     None,
                     self.group,
@@ -75,9 +74,8 @@ impl Conv {
             }
         } else {
             let (input, kernel, bias) = args_3!(inputs);
-            if let (Some(ishape), Some(kvalue), Some(bias)) =
-                (input.shape.concretize(), kernel.value.concretize(), bias.value.concretize())
-            {
+            if let (Some(kvalue), Some(bias)) = (kernel.konst.clone(), bias.konst.clone()) {
+                let ishape:TVec<TDim> = input.shape.iter().collect();
                 let reduced = ConvUnary::new(
                     &self,
                     &ishape,
@@ -98,10 +96,10 @@ impl Op for Conv {
         "Conv".into()
     }
 
-    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let Some(op) = self.to_unary(inputs)? {
-            return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+        if let Some(op) = self.to_norm(inputs)? {
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         } else {
             Ok(None)
         }

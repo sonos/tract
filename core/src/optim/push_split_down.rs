@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::model::{InletId, OutletId};
+use crate::model::{InletId, NormalizedModel, OutletId};
 use crate::ops::prelude::*;
 use crate::Model;
 
@@ -9,8 +9,8 @@ use itertools::Itertools;
 #[derive(Debug)]
 pub struct PushSplitDown;
 
-impl super::OptimizerPass for PushSplitDown {
-    fn pass(&self, model: &mut Model) -> TractResult<bool> {
+impl super::CodegenPass for PushSplitDown {
+    fn pass(&self, model: &mut NormalizedModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
             let mut remap = HashMap::<usize, usize>::new();
