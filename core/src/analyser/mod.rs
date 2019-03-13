@@ -14,11 +14,11 @@ pub mod helpers;
 pub mod rules;
 
 /// A graph analyser, along with its current state.
-pub struct Analyser<M: BorrowMut<Model>> {
+pub struct Analyser<M: BorrowMut<InferenceModel>> {
     model: M,
 }
 
-impl<M: BorrowMut<Model>> Analyser<M> {
+impl<M: BorrowMut<InferenceModel>> Analyser<M> {
     pub fn new(model: M) -> TractResult<Analyser<M>> {
         Ok(Analyser { model })
     }

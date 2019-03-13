@@ -163,7 +163,10 @@ impl ConvUnary {
         Ok(k)
     }
 
-    fn to_im2col_pair<T>(&self, input_full_shape: &[usize]) -> TractResult<(Im2Col<T>, ConvGemm<T>)>
+    fn to_im2col_pair<T>(
+        &self,
+        input_full_shape: &[usize],
+    ) -> TractResult<(Im2Col<T>, TVec<usize>, ConvGemm<T>)>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq,
     {
@@ -220,6 +223,7 @@ impl ConvUnary {
 
         let im2col =
             Im2Col::new(patch.clone(), m, k, n, self.group, ci_per_group, packed_b_len, mm.clone());
+        let intermediary_shape = im2col.output_shape()?;
         trace!("im2col: {:?}", im2col);
         let conv_gemm = ConvGemm::new(
             patch,
@@ -235,18 +239,18 @@ impl ConvUnary {
         );
         trace!("cvgemm: {:?}", conv_gemm);
 
-        Ok((im2col, conv_gemm))
+        Ok((im2col, intermediary_shape, conv_gemm))
     }
 
     pub fn to_boxed_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
-    ) -> TractResult<(Box<Op>, Box<Op>)>
+    ) -> TractResult<(Box<Op>, TVec<usize>, Box<Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
-        let (op1, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
-        Ok((Box::new(op1), Box::new(op2)))
+        let (op1, shape, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
+        Ok((Box::new(op1), shape, Box::new(op2)))
     }
 
     fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
@@ -254,7 +258,7 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
         let input = args_1!(inputs);
-        let (im2col, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
+        let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
         let output = conv_gemm.conv_gemm(&mega.to_array_view::<T>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into()))
@@ -307,7 +311,11 @@ impl Op for ConvUnary {
         "ConvUnary".into()
     }
 
-    fn codegen(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn codegen(
+        &self,
+        model: &NormalizedModel,
+        node: &NormalizedNode,
+    ) -> TractResult<Option<NormalizedModelPatch>> {
         use crate::model::dsl::ModelDsl;
         let inputs = model.node_input_facts(node.id)?;
         let spatial_rank = self.full_input_shape.len() - 2;
@@ -323,32 +331,33 @@ impl Op for ConvUnary {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
-                return Ok(Some(ModelPatch::single_unary_op(
+                return Ok(Some(NormalizedModelPatch::single_unary_op(
                     model,
                     node,
                     MatMulUnaryA::new(kernel),
                 )?));
             }
-        } else if let (Some(shape), Some(dt)) =
-            (inputs[0].shape.concretize(), inputs[0].datum_type.concretize())
-        {
-            if inputs[0].stream_info()?.is_none() {
-                let shape: Vec<usize> =
-                    shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+        } else {
+            if let Some(shape) = inputs[0].shape.as_finite() {
+                let dt = inputs[0].datum_type;
                 if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
                     && dt == f32::datum_type()
                     && self.group == 1
                     && self.bias.is_none()
                 {
                     let op = self.to_direct(&*shape)?;
-                    return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+                    return Ok(Some(NormalizedModelPatch::single_unary_op(model, node, op)?));
                 } else {
-                    let (op1, op2) =
+                    let (op1, shape, op2) =
                         dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
-                    let mut patch = ModelPatch::default();
+                    let mut patch = NormalizedModelPatch::default();
                     let _ = patch.tap_model(&model, node.inputs[0])?;
-                    patch.chain(format!("{}-im2col", node.name), op1)?;
-                    let mm = patch.chain(format!("{}-convmm", node.name), op2)?;
+                    patch.chain_facts(
+                        format!("{}-im2col", node.name),
+                        op1,
+                        tvec!(NormalizedTensorInfo { shape: ShapeInfo::from(&*shape), datum_type: dt }),
+                    )?;
+                    let mm = patch.chain_facts(format!("{}-convmm", node.name), op2, tvec!(node.outputs[0].fact.clone()))?;
                     patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
                     return Ok(Some(patch));
                 }

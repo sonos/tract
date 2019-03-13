@@ -20,22 +20,8 @@ pub mod nn;
 pub mod source;
 pub mod unimpl;
 
-#[derive(Debug, Copy, Clone, Default, PartialEq)]
-pub struct StreamInfo {
-    pub axis: usize,
-    pub len: TDim,
-}
-
-/*
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum ReductionPhase {
-    Normalize,
-    Codegen,
-}
-*/
-
 pub mod prelude {
-    pub use super::{InferenceOp, Op, OpState, StatefullOp, StatelessOp, StreamInfo};
+    pub use super::{InferenceOp, Op, OpState, StatefullOp, StatelessOp};
     pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
     pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::analyser::types::TypeFact;
@@ -43,8 +29,10 @@ pub mod prelude {
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::Framework;
-    pub use crate::model::patch::ModelPatch;
     pub use crate::model::{InletId, Model, Node, OutletId, TVec};
+    pub use crate::model::{NormalizedModel, NormalizedNode, TypedModel, TypedNode};
+    pub use crate::model::{NormalizedModelPatch, TypedModelPatch};
+    pub use crate::model::{NormalizedTensorInfo, TensorInfo, TypedTensorInfo, ShapeInfo, StreamInfo};
     pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;
@@ -133,7 +121,11 @@ pub trait Op:
         Ok((infered_inputs, infered_outputs))
     }
 
-    fn normalize(&self, _model: &Model, _node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn normalize(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }
 
@@ -144,7 +136,11 @@ pub trait Op:
         bail!("Operator {} do not support pulsification", self.name())
     }
 
-    fn codegen(&self, _model: &Model, _node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn codegen(
+        &self,
+        _model: &NormalizedModel,
+        _node: &NormalizedNode,
+    ) -> TractResult<Option<NormalizedModelPatch>> {
         Ok(None)
     }
 
@@ -184,17 +180,3 @@ impl<O: Op> From<O> for Box<Op> {
         Box::new(it)
     }
 }
-
-/*
-#[derive(Clone, Debug, new)]
-pub struct ReducedOpRewire {
-    pub ops: Vec<Box<Op>>,
-    pub rewired: TVec<usize>,
-}
-
-impl ReducedOpRewire {
-    pub fn unary<O: Into<Box<Op>>>(op: O) -> ReducedOpRewire {
-        ReducedOpRewire { ops: vec![op.into()], rewired: tvec!(0) }
-    }
-}
-*/

@@ -1,17 +1,22 @@
-use crate::model::{InletId, OutletId};
-use crate::{Model, TractResult};
+use crate::model::{InletId, OutletId, TensorInfo};
+use crate::{Model, TVec, TractResult};
 use std::collections::HashMap;
+use crate::datum::TryInto;
 
-pub fn compact(old: &Model) -> TractResult<Model> {
-    let mut model = Model::default().with_norm_optims(old.norm_optims().map(|o| o.clone()));
+pub(crate) fn compact<TI1, TI2>(old: &Model<TI1>) -> TractResult<Model<TI2>>
+where
+    TI1: TensorInfo,
+    TI2: TensorInfo,
+    TI1: TryInto<TI2>,
+{
+    let mut model = Model::default();
     let mut map = HashMap::new();
     for old_id in old.eval_order()? {
         let old_node = &old.nodes()[old_id];
-        let new_id = model.add_node(old_node.name.clone(), old_node.op.clone())?;
+        let facts =
+            old_node.outputs.iter().map(|of| of.fact.try_into()).collect::<TractResult<TVec<_>>>()?;
+        let new_id = model.add_node(old_node.name.clone(), old_node.op.clone(), facts)?;
         map.insert(old_id, new_id);
-        for (ix, output) in old_node.outputs.iter().enumerate() {
-            model.set_fact(OutletId::new(new_id, ix), output.fact.clone())?;
-        }
         if old.inputs()?.contains(&OutletId::new(old_node.id, 0)) {
             continue;
         }

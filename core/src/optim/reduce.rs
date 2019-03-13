@@ -1,5 +1,5 @@
 use crate::ops::prelude::*;
-use crate::Model;
+use crate::{ Model, TensorFact };
 
 #[derive(Debug)]
 pub enum ReductionPhase { Normalize, Codegen }
@@ -8,7 +8,7 @@ pub enum ReductionPhase { Normalize, Codegen }
 pub struct Reduce(pub ReductionPhase);
 
 impl super::OptimizerPass for Reduce {
-    fn pass(&self, model: &mut Model) -> TractResult<bool> {
+    fn pass(&self, model: &mut Model<TensorFact>) -> TractResult<bool> {
         let mut done_something = false;
         loop {
             let mut done_something_this_time = false;

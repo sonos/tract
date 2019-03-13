@@ -67,6 +67,11 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         }
     }
 
+    pub(super) fn output_shape(&self) -> TractResult<TVec<usize>> {
+        let input_shape = &self.patch.input_shape;
+        Ok(tvec!(input_shape.n_dim(), self.group, self.mm.packed_b_len()))
+    }
+
     pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, T>) -> TractResult<Tensor> {
         let input_shape = &self.patch.input_shape;
 

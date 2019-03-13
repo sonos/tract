@@ -164,15 +164,12 @@ macro_rules! element_bin {
                     concat!(stringify!($name), "::Binary").into()
                 }
 
-                fn normalize(&self, model: &$crate::model::Model, node: &$crate::model::Node)
-                 -> TractResult<Option<ModelPatch>> {
+                fn normalize(&self, model: &$crate::model::TypedModel, node: &$crate::model::TypedNode)
+                 -> TractResult<Option<TypedModelPatch>> {
                      let inputs = model.node_input_facts(node.id)?;
-                    if let Some(b) = inputs[1].value.concretize() {
-                        let op = UnaryA {
-                                dt: self.0,
-                                b: b.into(),
-                            };
-                        return Ok(Some(ModelPatch::single_unary_op(&model, &node, op)?));
+                    if let Some(b) = inputs[1].konst.clone() {
+                        let op = UnaryA { dt: self.0, b };
+                        return Ok(Some(TypedModelPatch::single_unary_op(&model, &node, op)?));
                     }
                     Ok(None)
                 }

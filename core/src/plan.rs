@@ -1,18 +1,19 @@
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
-use crate::model::{eval_order, Model, Node};
+use crate::model::{eval_order, Model, Node, TensorInfo};
 use crate::ops::prelude::*;
 
 #[derive(Debug, Clone)]
-pub struct SimplePlan<M: Borrow<Model>> {
+pub struct SimplePlan<TI:TensorInfo, M: Borrow<Model<TI>>> {
     pub model: M,
     pub order: Vec<usize>,
     pub flush_lists: Vec<TVec<usize>>,
+    _casper: PhantomData<TI>,
 }
 
-impl<M: Borrow<Model>> SimplePlan<M> {
-    pub fn new(model: M) -> TractResult<SimplePlan<M>> {
+impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
+    pub fn new(model: M) -> TractResult<SimplePlan<TI, M>> {
         let order = eval_order(model.borrow())?;
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for step in 0..order.len() {
@@ -30,6 +31,7 @@ impl<M: Borrow<Model>> SimplePlan<M> {
             model,
             order,
             flush_lists,
+            _casper: PhantomData,
         })
     }
 
@@ -38,21 +40,21 @@ impl<M: Borrow<Model>> SimplePlan<M> {
         state.run(inputs)
     }
 
-    pub fn model(&self) -> &Model {
+    pub fn model(&self) -> &Model<TI> {
         self.model.borrow()
     }
 }
 
 #[derive(Debug)]
-pub struct SimpleState<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> {
+pub struct SimpleState<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> {
     plan: P,
     pub states: Vec<Option<Box<OpState>>>,
     pub values: Vec<Option<TVec<SharedTensor>>>,
-    _phantom: PhantomData<M>,
+    _phantom: PhantomData<(M,TI)>,
 }
 
-impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M, P> {
-    fn clone(&self) -> SimpleState<M, P> {
+impl<TI:TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>> + Clone> Clone for SimpleState<TI, M, P> {
+    fn clone(&self) -> SimpleState<TI, M, P> {
         let states = self
             .states
             .iter()
@@ -69,8 +71,8 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M
     }
 }
 
-impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
-    pub fn new(plan: P) -> TractResult<SimpleState<M, P>> {
+impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleState<TI, M, P> {
+    pub fn new(plan: P) -> TractResult<SimpleState<TI, M, P>> {
         let values = vec![None; plan.borrow().model.borrow().nodes().len()];
         let states = plan
             .borrow()
@@ -122,7 +124,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             }
             let plan = plan.borrow();
             for (step, n) in plan.order.iter().enumerate() {
-                let node: &Node = model.node(*n);
+                let node = model.node(*n);
                 trace!("Running step {}, node {} ({})", step, n, node.name);
                 if node.op_as::<Source>().is_none() {
                     let mut inputs: TVec<SharedTensor> = tvec![];
@@ -215,7 +217,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
-        let node: &Node = &nodes[node];
+        let node = &nodes[node];
         let mut inputs: TVec<SharedTensor> = tvec![];
         for i in &node.inputs {
             let prec_node = &nodes[i.node];
@@ -250,7 +252,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             }
             let mut inputs: TVec<SharedTensor> = tvec![];
             {
-                let node: &Node = &self.model().nodes()[node];
+                let node = &self.model().nodes()[node];
                 for i in &node.inputs {
                     inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
                 }
@@ -288,11 +290,11 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             .collect())
     }
 
-    pub fn plan(&self) -> &SimplePlan<M> {
+    pub fn plan(&self) -> &SimplePlan<TI, M> {
         &self.plan.borrow()
     }
 
-    pub fn model(&self) -> &Model {
+    pub fn model(&self) -> &Model<TI> {
         self.plan().model()
     }
 }
