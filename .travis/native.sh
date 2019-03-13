@@ -25,17 +25,11 @@ cargo test --release --all --features serialize
 
 if [ -z "$ONNX_CHECKOUT" ]
 then
-    ONNX_CHECKOUT=`find target -name onnx | grep 'out/onnx$' | head -1`
+    ONNX_CHECKOUT=target
 fi
 
-ONNX_TEST_DATA=$ONNX_CHECKOUT/onnx/backend/test/data
-
 ./target/release/tract \
-    $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
-    dump -q --assert-output 1x1000x1x1xf32
-
-./target/release/tract \
-    $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
+    `find target -name model.onnx | grep squeezenet` \
     dump -q --assert-output 1x1000x1x1xf32
 
 ./target/release/tract \
