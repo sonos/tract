@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::model::{InletId, NormalizedModel, OutletId};
 use crate::ops::prelude::*;
-use crate::Model;
 
 use itertools::Itertools;
 

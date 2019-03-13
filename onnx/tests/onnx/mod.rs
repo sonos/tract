@@ -1,6 +1,7 @@
 use std::{fs, path};
 
 use tract_core::*;
+use tract_core::model::{ Model, TensorInfo };
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
 
@@ -90,13 +91,18 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     );
     trace!("Model: {:#?}", model);
     model.analyse().unwrap();
-    debug!("Loaded {:?}", model_file);
-    if optim {
-        model = model.into_optimized().unwrap();
-    }
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
+    debug!("Loaded {:?}", model_file);
+    if optim {
+        run_model(model.into_typed().unwrap(), &path)
+    } else {
+        run_model(model, &path)
+    };
+}
+
+fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
     trace!("Optimized model: {:#?}", model);
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {

@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
-use crate::model::{eval_order, Model, Node, TensorInfo};
+use crate::model::{eval_order, Model, TensorInfo};
 use crate::ops::prelude::*;
 
 #[derive(Debug, Clone)]
