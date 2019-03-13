@@ -8,7 +8,7 @@ pub fn dir() -> path::PathBuf {
         _ => {
             let out_dir = std::env::var("OUT_DIR").unwrap();
             let out_dir = path::PathBuf::from(out_dir);
-            out_dir.join("onnx")
+            out_dir.join("onnx-checkout")
         }
     }
 }
@@ -18,12 +18,14 @@ pub fn ensure_onnx_git_checkout() {
     static START: Once = Once::new();
     START.call_once(|| {
         if !dir().exists() {
-            println!("DEBUG ensure_onnx_git_checkout 1");
             let _ = fs::create_dir_all(dir().parent().unwrap());
-            println!("DEBUG ensure_onnx_git_checkout 2");
             let url = "https://github.com/onnx/onnx";
-            println!("DEBUG ensure_onnx_git_checkout 4");
-            ::git2::Repository::clone(url, dir()).unwrap();
+            let repo = git2::Repository::clone(url, dir()).unwrap();
+            let tag: git2::Oid = repo.refname_to_id("refs/tags/v1.4.1").unwrap();
+            let tag: git2::Object = repo.find_object(tag, None).unwrap();
+            let mut options = git2::build::CheckoutBuilder::new();
+            options.safe();
+            repo.checkout_tree(&tag, Some(&mut options)).unwrap();
         }
     });
 }
