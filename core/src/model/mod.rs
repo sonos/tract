@@ -14,7 +14,6 @@ use crate::analyser::types::ShapeFact;
 use crate::datum::TryInto;
 use crate::dim::ToDim;
 pub use crate::framework::*;
-use crate::optim::{CodegenPass, NormalizationPass};
 use crate::{ops, DatumType, SharedTensor, TDim, TractResult};
 use patch::ModelPatch;
 
@@ -548,6 +547,10 @@ impl InferenceModel {
 
     pub fn into_normalized(self) -> TractResult<NormalizedModel> {
         self.into_typed()?.into_normalized()
+    }
+
+    pub fn into_optimized(self) -> TractResult<NormalizedModel> {
+        self.into_normalized()?.into_codegen()
     }
 }
 

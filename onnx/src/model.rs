@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use tract_core::model::{InletId, Model, OutletId};
+use tract_core::model::dsl::*;
 use tract_core::framework::{Framework, OpRegister, OpBuilder};
 use tract_core::*;
 
@@ -20,7 +21,7 @@ fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<pb::ModelPr
     Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
 }
 
-fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<Model> {
+fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {
     let mut model = Model::default();
     let graph = proto.get_graph();
     let mut initializers: HashMap<&str, Tensor> = graph
@@ -31,17 +32,11 @@ fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<Model> {
     let mut outlets_by_name = HashMap::<String, OutletId>::new();
     for input in graph.get_input().iter() {
         if let Some(init) = initializers.remove(input.get_name()) {
-            let id = model.add_node(
-                input.get_name().to_owned(),
-                Box::new(::tract_core::ops::konst::Const::new(init.into())),
-            )?;
+            let id = model.add_const(input.get_name().to_owned(), init.into())?;
             outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
         } else {
             let fact = input.get_field_type().get_tensor_type().tractify()?;
-            let id = model.add_node(
-                input.get_name().to_owned(),
-                Box::new(::tract_core::ops::source::Source::new(fact)),
-            )?;
+            let id = model.add_source_fact(input.get_name().to_owned(), fact)?;
             outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
         }
     }
@@ -53,7 +48,8 @@ fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<Model> {
         } else {
             format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
         };
-        let id = model.add_node(name, self.build_op(pbnode.get_op_type(), pbnode)?)?;
+        let facts = (0..pbnode.get_output().len()).map(|_| TensorFact::default()).collect();
+        let id = model.add_node(name, self.build_op(pbnode.get_op_type(), pbnode)?, facts)?;
         for (ix, output) in pbnode.get_output().iter().enumerate() {
             outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
         }

@@ -1,5 +1,5 @@
-use crate::model::{InletId, OutletId, TensorInfo};
-use crate::{Model, TVec, TractResult};
+use crate::model::{InletId, OutletId, TensorInfo, Model};
+use crate::{TVec, TractResult};
 use std::collections::HashMap;
 use crate::datum::TryInto;
 

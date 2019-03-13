@@ -18,7 +18,9 @@
 //! let input = model.add_source("input").unwrap();
 //! let three = model.add_const("three".to_string(), 3f32.into()).unwrap();
 //! let add = model.add_node("add".to_string(),
-//!     Box::new(tract_core::ops::math::Add::default())).unwrap();
+//!     Box::new(tract_core::ops::math::Add::default()),
+//!     tvec!(TensorFact::default())
+//!     ).unwrap();
 //!
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
 //! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();
@@ -116,7 +118,8 @@ pub use crate::analyser::types::TensorFact;
 pub use crate::datum::DatumType;
 pub use crate::dim::TDim;
 pub use crate::framework::Framework;
-pub use crate::model::{Model, Node, TVec};
+pub use crate::model::TVec;
+pub use crate::model::{InferenceModel, InferenceNode};
 pub use crate::plan::{SimplePlan, SimpleState};
 pub use crate::tensor::{SharedTensor, Tensor};
 

@@ -147,7 +147,7 @@ mod tests {
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
             .unwrap();
-        let mut pulse = PulsifiedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
+        let pulse = PulsifiedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
             pulse.model.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))

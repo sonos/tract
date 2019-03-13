@@ -22,15 +22,15 @@ pub mod pb_helpers;
 pub mod tensor;
 
 pub use model::Onnx;
-use tract_core::{ Framework, Model, TractResult };
+use tract_core::{ Framework, InferenceModel, TractResult };
 
 #[deprecated(note="Please use onnx().model_for_path(..)")]
-pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<Model> {
+pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<InferenceModel> {
     onnx().model_for_path(p)
 }
 
 #[deprecated(note="Please use onnx().model_for_read(..)")]
-pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<Model> {
+pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<InferenceModel> {
     onnx().model_for_read(&mut r)
 }
 
