@@ -29,7 +29,7 @@ then
 fi
 
 ./target/release/tract \
-    `find target -name model.onnx | grep squeezenet` \
+    `find $ONNX_CHECKOUT -name model.onnx | grep squeezenet` \
     dump -q --assert-output 1x1000x1x1xf32
 
 ./target/release/tract \
