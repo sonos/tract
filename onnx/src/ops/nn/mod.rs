@@ -6,6 +6,8 @@ use crate::model::OnnxOpRegister;
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
+mod dropout;
+
 macro_rules! reduce {
     ($id:ident) => {
         |node| {
@@ -22,9 +24,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
-    reg.insert("Dropout", |_| {
-        Ok(Box::new(tractops::identity::Identity::default()))
-    });
+    reg.insert("Dropout", |_| Ok(Box::new(dropout::Dropout)) );
     reg.insert("Elu", elu);
     reg.insert("GlobalAveragePool", |_| {
         Ok(Box::new(tractops::nn::GlobalAvgPool::default()))

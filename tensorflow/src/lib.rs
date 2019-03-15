@@ -55,7 +55,7 @@ pub mod conform;
 
 pub mod model;
 pub mod ops;
-mod optim;
+// mod optim;
 pub mod tensor;
 pub mod tfpb;
 
@@ -64,7 +64,7 @@ pub trait ToSharedTensor<Tf>: Sized {
 }
 
 pub use model::Tensorflow;
-use tract_core::{Framework, Model, TractResult};
+use tract_core::{Framework, InferenceModel, TractResult};
 
 pub fn tensorflow() -> Tensorflow {
     let mut ops = tract_core::framework::OpRegister::default();
@@ -73,12 +73,12 @@ pub fn tensorflow() -> Tensorflow {
 }
 
 #[deprecated(note = "Please use tensorflow().model_for_path(..)")]
-pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<Model> {
+pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<InferenceModel> {
     tensorflow().model_for_path(p)
 }
 
 #[deprecated(note = "Please use tensorflow().model_for_read(..)")]
-pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<Model> {
+pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<InferenceModel> {
     tensorflow().model_for_read(&mut r)
 }
 

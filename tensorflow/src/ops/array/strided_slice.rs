@@ -254,14 +254,13 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
         "tf.StridedSlice".into()
     }
 
-    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let (input, begin, end, strides) = args_4!(inputs);
-        if let (Some(input_shape), Some(begin), Some(end), Some(strides)) = (
-            input.shape.concretize(),
-            begin.value.concretize(),
-            end.value.concretize(),
-            strides.value.concretize(),
+        if let (Some(ref begin), Some(ref end), Some(ref strides)) = (
+            begin.konst.as_ref(),
+            end.konst.as_ref(),
+            strides.konst.as_ref(),
         ) {
             if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
                 info!("Failed to unarize StridedSlices because of strides");
@@ -274,21 +273,21 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
             let strides = strides.cast_to::<i32>()?;
             let strides_view = strides.to_array_view::<i32>()?.into_dimensionality()?;
             let mut prunes = vec![];
-            for ix in 0..input_shape.len() {
+            for ix in 0..input.shape.rank() {
                 let dim = self.base.prepare_one_dim(
                     ix,
-                    input_shape[ix],
+                    input.shape.dim(ix),
                     &begin_view.view(),
                     &end_view.view(),
                     &strides_view.view(),
                 );
                 prunes.push((
                     dim.begin.to_integer()? as usize,
-                    (input_shape[ix] - dim.end).to_integer()? as usize,
+                    (input.shape.dim(ix) - dim.end).to_integer()? as usize,
                 ));
             }
             let op = ::tract_core::ops::array::Slice::new(prunes);
-            return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }

@@ -19,15 +19,6 @@ pub trait ModelDsl<TI: TensorInfo> {
         facts: TVec<TI>,
     ) -> TractResult<usize>;
 
-    fn replace_nodes(
-        &mut self,
-        node: usize,
-        before: usize,
-        after: usize,
-        nodes: Vec<(String, Box<Op>)>,
-    ) -> TractResult<()>;
-
-    fn unlink_node(&mut self, node: usize) -> TractResult<()>;
 }
 
 impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
@@ -106,47 +97,6 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
         Ok(id)
     }
 
-    fn replace_nodes(
-        &mut self,
-        node: usize,
-        before: usize,
-        after: usize,
-        nodes: Vec<(String, Box<Op>)>,
-    ) -> TractResult<()> {
-        unimplemented!()
-        /*
-        let first_replaced = self
-            .single_prec_at(node, before)?
-            .ok_or("Failed to replace, geometry is not right")?
-            .id;
-        let mut tap = self.node(first_replaced).inputs[0];
-        for (name, op) in nodes.into_iter() {
-            let id = self.tap_and_chain(tap, name, op)?;
-            tap = OutletId::new(id, 0);
-        }
-        self.unlink_node(first_replaced)?;
-        let successors = self
-            .single_succ_at(node, after)?
-            .ok_or("Failed to replace, geometry is not right")?
-            .outputs[0]
-            .successors
-            .clone();
-        for &succ in &successors {
-            self.add_edge(tap, succ)?;
-        }
-        Ok(())
-        */
-    }
-
-    fn unlink_node(&mut self, node: usize) -> TractResult<()> {
-        let inputs = self.nodes[node].inputs.clone();
-        for (ix, &input) in inputs.iter().enumerate() {
-            self.nodes[input.node].outputs[input.slot]
-                .successors
-                .retain(|&mut wire| wire != InletId::new(node, ix));
-        }
-        Ok(())
-    }
 }
 
 pub trait ModelDslConst {

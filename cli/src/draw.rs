@@ -1,10 +1,17 @@
-use crate::CliResult;
+use crate::{ CliResult, SomeModel };
 use ansi_term::{Color, Style};
 use box_drawing::light::*;
-use tract_core::model::OutletId;
-use tract_core::Model;
+use tract_core::model::{ Model, OutletId, TensorInfo };
 
-pub fn render(model: &Model) -> CliResult<()> {
+pub fn render(model: &SomeModel) -> CliResult<()> {
+    match model {
+        SomeModel::Inference(m) => render_t(m),
+        SomeModel::Typed(m) => render_t(m),
+        SomeModel::Normalized(m) => render_t(m),
+    }
+}
+
+fn render_t<TI:TensorInfo>(model: &Model<TI>) -> CliResult<()> {
     let colors: &[Style] = &[
         Color::Red.normal(),
         Color::Green.normal(),

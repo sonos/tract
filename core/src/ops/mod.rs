@@ -1,4 +1,4 @@
-//! SharedTensorFlow Ops
+//! oharedTensorFlow Ops
 use std::fmt::Debug;
 
 use downcast_rs::Downcast;
@@ -44,7 +44,7 @@ pub mod prelude {
 
     pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
         if inputs.len() != expected {
-            bail!("Wrong input number. Expected {}, got {}.", expected, inputs.len())
+            bail!("Wrong input number. Rules expect {}, node has {}.", expected, inputs.len())
         } else {
             Ok(())
         }
@@ -52,7 +52,7 @@ pub mod prelude {
 
     pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResult<()> {
         if outputs.len() != expected {
-            bail!("Wrong output number. Expected {}, got {}.", expected, outputs.len())
+            bail!("Wrong output number. Rules expect {}, node has {}.", expected, outputs.len())
         } else {
             Ok(())
         }

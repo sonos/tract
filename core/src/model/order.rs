@@ -44,7 +44,6 @@ mod tests {
     use crate::model::dsl::*;
     use crate::model::*;
     use crate::ops::math::Add;
-    use crate::*;
 
     #[test]
     fn test_simple() {

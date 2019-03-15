@@ -1,4 +1,4 @@
-use tract_core::{TVec, Tensor, TensorFact};
+use tract_core::{Framework, TVec, Tensor, TensorFact};
 
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
@@ -6,7 +6,7 @@ pub fn compare<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let mut model = tract_tensorflow::for_reader(&*graph)?;
+    let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_inputs(
         &inputs
             .iter()
@@ -19,7 +19,7 @@ pub fn compare<S: AsRef<str>>(
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }
-    let output = &model.node_by_name(output)?;
+    let output = model.node_by_name(output)?;
     info!("Checking {} behaviour against tensorflow", output.name);
     state.compute_one(output.id)?;
     let found = &state.values[output.id].as_ref().unwrap();
@@ -48,7 +48,7 @@ pub fn infer<S: AsRef<str>>(
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
-    let mut model = tract_tensorflow::for_reader(&*graph)?;
+    let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_inputs(
         &inputs
             .iter()
@@ -61,7 +61,7 @@ pub fn infer<S: AsRef<str>>(
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }
-    let output = &model.node_by_name(output)?;
+    let output = model.node_by_name(output)?;
     info!("Checking {} behaviour against tensorflow", output.name);
     state.compute_one(output.id)?;
     let _found = &state.values[output.id].as_ref().unwrap();

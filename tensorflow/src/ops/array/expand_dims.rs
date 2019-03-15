@@ -12,10 +12,10 @@ impl Op for ExpandDims {
         "tf.ExpandDims".into()
     }
 
-    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let (_, dims) = args_2!(inputs);
-        if let Some(dims) = dims.concretize() {
+        if let Some(ref dims) = dims.konst {
             let dims = dims.cast_to::<i64>()?;
             let op = ::tract_core::ops::array::AddDims::new(
                 dims.to_array_view::<i64>()?
@@ -23,7 +23,7 @@ impl Op for ExpandDims {
                     .map(|&i| i as usize)
                     .collect(),
             );
-            return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
