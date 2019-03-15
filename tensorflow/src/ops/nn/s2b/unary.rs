@@ -23,7 +23,7 @@ impl Op for SpaceToBatchUnary {
         "SpaceToBatchUnary".into()
     }
 
-    fn normalize(
+    fn declutter(
         &self,
         model: &TypedModel,
         node: &TypedNode,

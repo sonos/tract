@@ -12,7 +12,7 @@ impl Op for ExpandDims {
         "tf.ExpandDims".into()
     }
 
-    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let (_, dims) = args_2!(inputs);
         if let Some(ref dims) = dims.konst {

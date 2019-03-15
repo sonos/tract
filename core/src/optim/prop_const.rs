@@ -5,7 +5,7 @@ use bit_set;
 #[derive(Debug)]
 pub struct PropConst;
 
-impl super::NormalizationPass for PropConst {
+impl super::DeclutterPass for PropConst {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut replaced = 0;
         let mut done = bit_set::BitSet::with_capacity(model.nodes().len());

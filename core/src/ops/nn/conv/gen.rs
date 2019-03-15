@@ -96,7 +96,7 @@ impl Op for Conv {
         "Conv".into()
     }
 
-    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(op) = self.to_unary(inputs)? {
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));

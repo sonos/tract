@@ -33,7 +33,7 @@ impl super::OptimizerPass for Reduce {
                         node.outputs.iter().map(|o| &o.fact).collect();
                     */
                     match self.0 {
-                        ReductionPhase::Normalize => node.op.normalize(&model, &node),
+                        ReductionPhase::Normalize => node.op.declutter(&model, &node),
                         ReductionPhase::Codegen => node.op.codegen(&model, &node),
                     }.map_err(|e| format!("{:?} node {:?}, {:?}", self.0, node, e))?
                 };

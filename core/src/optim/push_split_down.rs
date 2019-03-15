@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::model::{InletId, NormalizedModel, OutletId};
+use crate::model::{InletId, OutletId};
 use crate::ops::prelude::*;
 
 use itertools::Itertools;
@@ -9,7 +9,7 @@ use itertools::Itertools;
 pub struct PushSplitDown;
 
 impl super::CodegenPass for PushSplitDown {
-    fn pass(&self, model: &mut NormalizedModel) -> TractResult<bool> {
+    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
             let mut remap = HashMap::<usize, usize>::new();

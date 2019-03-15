@@ -10,7 +10,7 @@ impl Op for Dropout {
         "onnx.Dropout".into()
     }
 
-    fn normalize(
+    fn declutter(
         &self,
         model: &TypedModel,
         node: &TypedNode,

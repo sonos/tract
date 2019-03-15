@@ -42,7 +42,7 @@ impl Op for AvgPool {
         "AvgPool".into()
     }
 
-    fn codegen(&self, model: &NormalizedModel, node: &NormalizedNode) -> TractResult<Option<NormalizedModelPatch>> {
+    fn codegen(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(shape) = inputs[0].shape.as_finite() {
             let dt = inputs[0].datum_type;
@@ -55,7 +55,7 @@ impl Op for AvgPool {
                 Box::new(FixedAvgPool::new(patch, count_include_pad))
             }
             let op = dispatch_floatlike!(fixed(dt)(patch, self.count_include_pad));
-            return Ok(Some(NormalizedModelPatch::single_unary_op(model, node, op)?));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
