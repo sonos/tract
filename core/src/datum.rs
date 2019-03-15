@@ -129,7 +129,7 @@ pub trait Datum:
     fn packed_mat_mul(m: usize, k: usize, n: usize) -> Option<Box<tract_linalg::MatMul<Self>>>;
 }
 
-pub(crate) trait TryInto<D> {
+pub trait TryInto<D> {
     fn try_into(&self) -> TractResult<D>;
 }
 

@@ -6,7 +6,8 @@ extern crate ndarray;
 extern crate tract_core;
 use criterion::Criterion;
 
-use tract_core::model::ModelDsl;
+use tract_core::model::dsl::*;
+use tract_core::model::TypedTensorInfo;
 use tract_core::*;
 
 use tract_core::ops::nn::ConvUnary;
@@ -67,31 +68,31 @@ impl Problem {
             Some(tvec!(self.stride_h, self.stride_w)),
             1,
         );
-        let kernel_fact = TensorFact::from(kernel);
-        let image_fact = self.image_fact();
+        let kernel_fact:TypedTensorInfo = TypedTensorInfo::from(kernel);
+        let image_fact:TypedTensorInfo = self.image_fact().try_into().unwrap();
         let unary = conv.to_unary(tvec!(&image_fact, &kernel_fact)).unwrap();
         Box::new(unary.unwrap())
     }
 
-    pub fn to_direct(&self) -> SimplePlan<Model> {
+    pub fn to_direct(&self) -> SimplePlan<TypedTensorInfo, TypedModel> {
         let unary = self.to_unary();
 
         let direct = unary.to_direct(&*self.image_shape()).unwrap();
-        let mut model_direct = Model::default();
+        let mut model_direct = InferenceModel::default();
         model_direct.add_source("input").unwrap();
         model_direct.chain("conv", Box::new(direct)).unwrap();
-        SimplePlan::new(model_direct).unwrap()
+        SimplePlan::new(model_direct.into_typed().unwrap()).unwrap()
     }
 
-    pub fn to_im2col(&self) -> SimplePlan<Model> {
+    pub fn to_im2col(&self) -> SimplePlan<TypedTensorInfo, TypedModel> {
         let unary = self.to_unary();
 
-        let (im2col, cvgemm) = unary.to_boxed_im2col_pair::<f32>(&*self.image_shape()).unwrap();
-        let mut model_im2col = Model::default();
+        let (im2col, _, cvgemm) = unary.to_boxed_im2col_pair::<f32>(&*self.image_shape()).unwrap();
+        let mut model_im2col = InferenceModel::default();
         model_im2col.add_source("input").unwrap();
         model_im2col.chain("im2col", im2col).unwrap();
         model_im2col.chain("gemm", cvgemm).unwrap();
-        SimplePlan::new(model_im2col).unwrap()
+        SimplePlan::new(model_im2col.into_typed().unwrap()).unwrap()
     }
 }
 

@@ -13,6 +13,7 @@ pub use self::dsl::ModelDsl;
 use crate::analyser::types::ShapeFact;
 use crate::datum::TryInto;
 use crate::dim::ToDim;
+use crate::tensor::Tensor;
 pub use crate::framework::*;
 use crate::{ops, DatumType, SharedTensor, TDim, TractResult};
 use patch::ModelPatch;
@@ -73,6 +74,19 @@ impl PartialEq for ShapeInfo {
 }
 
 impl ShapeInfo {
+    pub fn rank(&self) -> usize {
+        self.shape.len()
+    }
+
+    pub fn dim(&self, i:usize) -> TDim {
+        if let Some(stream) = self.stream_info {
+            if stream.axis == i {
+                return stream.len
+            }
+        }
+        self.shape[i].to_dim()
+    }
+
     pub fn as_finite(&self) -> Option<&[usize]> {
         match self.stream_info {
             None => Some(&*self.shape),
@@ -118,6 +132,18 @@ impl TensorInfo for TypedTensorInfo {
     }
 }
 
+impl From<Tensor> for TypedTensorInfo {
+    fn from(t: Tensor) -> TypedTensorInfo {
+        TypedTensorInfo::from(SharedTensor::from(t))
+    }
+}
+
+impl<'t> From<&'t Tensor> for TypedTensorInfo {
+    fn from(t: &'t Tensor) -> TypedTensorInfo {
+        TypedTensorInfo::from(t.clone())
+    }
+}
+
 impl From<SharedTensor> for TypedTensorInfo {
     fn from(t: SharedTensor) -> TypedTensorInfo {
         TypedTensorInfo {
@@ -148,6 +174,12 @@ pub struct NormalizedTensorInfo {
 impl TensorInfo for NormalizedTensorInfo {
     fn to_tensor_fact(&self) -> TensorFact {
         TensorFact::dt_shape(self.datum_type, self.shape.to_shape_fact())
+    }
+}
+
+impl TryInto<TypedTensorInfo> for NormalizedTensorInfo {
+    fn try_into(&self) -> TractResult<TypedTensorInfo> {
+        Ok(TypedTensorInfo { shape: self.shape.clone(), datum_type: self.datum_type, konst: None })
     }
 }
 
@@ -555,7 +587,7 @@ impl InferenceModel {
 }
 
 impl TypedModel {
-    pub fn into_normalized(self) -> TractResult<NormalizedModel> {
+    pub fn optimize(self) -> TractResult<TypedModel> {
         let mut model = self;
         loop {
             let mut done_something = false;
@@ -580,11 +612,19 @@ impl TypedModel {
             }
             model = crate::optim::compact(&model)?;
         }
+        Ok(model)
+    }
+
+    pub fn into_normalized(self) -> TractResult<NormalizedModel> {
+        let model = self.optimize()?;
         crate::optim::compact(&model)
     }
 }
 
 impl NormalizedModel {
+    pub fn into_typed(self) -> TractResult<TypedModel> {
+        crate::optim::compact(&self)
+    }
     pub fn into_codegen(mut self) -> TractResult<NormalizedModel> {
         loop {
             let mut done_something = false;

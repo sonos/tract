@@ -57,7 +57,7 @@ impl Conv {
         result
     }
 
-    pub fn to_norm(&self, mut inputs: TVec<&TypedTensorInfo>) -> TractResult<Option<ConvUnary>> {
+    pub fn to_unary(&self, mut inputs: TVec<&TypedTensorInfo>) -> TractResult<Option<ConvUnary>> {
         if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
             if let Some(kvalue) = kernel.konst.clone() {
@@ -98,7 +98,7 @@ impl Op for Conv {
 
     fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
-        if let Some(op) = self.to_norm(inputs)? {
+        if let Some(op) = self.to_unary(inputs)? {
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         } else {
             Ok(None)

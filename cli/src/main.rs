@@ -31,6 +31,7 @@ use itertools::Itertools;
 #[cfg(feature="tf")]
 use crate::tfpb::graph::GraphDef;
 use insideout::InsideOut;
+use tract_core::model::{InferenceModel, TypedModel, NormalizedModel};
 use tract_core::ops::prelude::*;
 #[cfg(feature="tf")]
 use tract_tensorflow::tfpb;
@@ -255,11 +256,18 @@ pub enum SomeGraphDef {
     _NoGraph, // here to avoid "irrefutable patterns" in match statements
 }
 
+#[derive(Debug)]
+pub enum SomeModel {
+    Inference(InferenceModel),
+    Typed(TypedModel),
+    Normalized(NormalizedModel),
+}
+
 /// Structure holding the parsed parameters.
 pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
-    tract_model: tract_core::Model,
+    tract_model: SomeModel,
     pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
     #[cfg(feature = "conform")]
@@ -287,7 +295,7 @@ impl Parameters {
             } else {
                 "tf"
             });
-        let (graph, mut tract_model) = if format == "onnx" {
+        let (graph, mut raw_model) = if format == "onnx" {
             #[cfg(not(feature="onnx"))] {
                 panic!("Tract compiled without onnx feature");
             }
@@ -322,11 +330,11 @@ impl Parameters {
         let tf_model = ();
 
         if let Some(inputs) = matches.values_of("input_node") {
-            tract_model.set_inputs(inputs)?;
+            raw_model.set_inputs(inputs)?;
         };
 
         if let Some(outputs) = matches.values_of("output_node") {
-            tract_model.set_outputs(outputs)?;
+            raw_model.set_outputs(outputs)?;
         };
 
         let machine_friendly = matches.is_present("machine_friendly");
@@ -359,36 +367,41 @@ impl Parameters {
                     fact.shape = shape;
                 }
                 vs.push(t.value.concretize());
-                let outlet = tract_model.inputs()?[ix];
-                tract_model.set_fact(outlet, fact)?;
+                let outlet = raw_model.inputs()?[ix];
+                raw_model.set_fact(outlet, fact)?;
             }
             Some(vs)
         } else {
             None
         };
 
-        if !matches.is_present("skip_analyse") {
+        let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
-            tract_model.analyse()?;
+            SomeModel::Typed(raw_model.into_typed()?)
         } else {
             info!("Skipping analyse");
-        }
+            SomeModel::Inference(raw_model)
+        };
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
 
         if matches.is_present("optimize") || pulse.is_some() {
-            info!("Optimize");
-            tract_model = tract_model.into_optimized()?;
+            if let SomeModel::Typed(typed) = tract_model {
+                info!("Optimize");
+                tract_model = SomeModel::Typed(typed.optimize()?);
+            } else {
+                bail!("Can not run optimize without analyse")
+            }
         }
 
-        let pulse_facts = if let Some(pulse) = pulse {
+        let pulse_facts = if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model)  {
             info!("Pulsify {}", pulse);
-            let (model, ifact, ofact) = ::tract_core::pulse::pulsify(&tract_model, pulse)?;
+            let (model, ifact, ofact) = ::tract_core::pulse::pulsify(&model.clone().into_normalized()?, pulse)?;
             if matches.is_present("optimize") {
                 info!("Optimize pulsing network");
-                tract_model = model.into_optimized()?;
+                tract_model = SomeModel::Typed(model.into_typed()?.optimize()?);
             } else {
-                tract_model = model;
+                tract_model = SomeModel::Typed(model.into_typed()?);
             };
             Some((ifact, ofact))
         } else {

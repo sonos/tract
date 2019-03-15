@@ -13,16 +13,14 @@ impl Op for SpaceToBatch {
         "SpaceToBatch".into()
     }
 
-    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let mut outputs = model.node_output_facts(node.id)?;
         let (input, block_shape, paddings) = args_3!(inputs);
         let output = args_1!(outputs);
-        if let (Some(input_shape), Some(block_shape), Some(paddings), Some(output_shape)) = (
-            input.shape.concretize(),
-            block_shape.value.concretize(),
-            paddings.value.concretize(),
-            output.shape.concretize(),
+        if let (Some(block_shape), Some(paddings)) = (
+            block_shape.konst.as_ref(),
+            paddings.konst.as_ref(),
         ) {
             let paddings = paddings.cast_to::<TDim>()?;
             let paddings_view = paddings
@@ -45,12 +43,12 @@ impl Op for SpaceToBatch {
             }
             let op = super::unary::SpaceToBatchUnary::new(
                 self.datum_type,
-                input_shape,
-                output_shape,
-                block_shape.to_array::<i32>()?.into_dimensionality()?,
+                input.shape.iter().collect(),
+                output.shape.iter().collect(),
+                block_shape.clone().to_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
-            return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
@@ -103,16 +101,14 @@ impl Op for BatchToSpace {
         "BatchToSpace".into()
     }
 
-    fn normalize(&self, model: &Model, node: &Node) -> TractResult<Option<ModelPatch>> {
+    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let mut outputs = model.node_output_facts(node.id)?;
         let (input, block_shape, paddings) = args_3!(inputs);
         let output = args_1!(outputs);
-        if let (Some(input_shape), Some(block_shape), Some(paddings), Some(output_shape)) = (
-            input.shape.concretize(),
-            block_shape.value.concretize(),
-            paddings.value.concretize(),
-            output.shape.concretize(),
+        if let (Some(block_shape), Some(paddings)) = (
+            block_shape.konst.as_ref(),
+            paddings.konst.as_ref(),
         ) {
             let paddings = paddings.cast_to::<TDim>()?;
             let paddings = paddings
@@ -133,12 +129,12 @@ impl Op for BatchToSpace {
                 .collect::<TractResult<_>>()?;
             let op = super::unary::BatchToSpaceUnary::new(
                 self.datum_type,
-                input_shape,
-                output_shape,
-                block_shape.to_array::<i32>()?.into_dimensionality()?,
+                input.shape.iter().collect(),
+                output.shape.iter().collect(),
+                block_shape.clone().to_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
-            return Ok(Some(ModelPatch::single_unary_op(model, node, op)?));
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
