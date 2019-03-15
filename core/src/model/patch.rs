@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug)]
 pub struct ModelPatch<TI: TensorInfo> {
-    model: Model<TI>,
+    pub model: Model<TI>,
     incoming: HashMap<OutletId, OutletId>,
     shunt_outlet_by: HashMap<OutletId, OutletId>,
 }

@@ -9,7 +9,7 @@ pub trait ModelDsl<TI: TensorInfo> {
     fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<TI>>>;
 
     fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TI) -> TractResult<usize>;
-    fn chain_facts<S: AsRef<str>>(&mut self, name: S, op: Box<Op>, facts:TVec<TI>) -> TractResult<usize>;
+    fn chain_facts<BO: Into<Box<Op>>, S: AsRef<str>>(&mut self, name: S, op: BO, facts:TVec<TI>) -> TractResult<usize>;
 
     fn tap_and_chain<S: AsRef<str>>(
         &mut self,
@@ -31,9 +31,9 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
         Ok(id)
     }
 
-    fn chain_facts<S: AsRef<str>>(&mut self, name: S, op: Box<Op>, facts: TVec<TI>) -> TractResult<usize> {
+    fn chain_facts<BO: Into<Box<Op>>, S: AsRef<str>>(&mut self, name: S, op: BO, facts:TVec<TI>) -> TractResult<usize> {
         let previous_id = self.nodes.len() - 1;
-        self.tap_and_chain(OutletId::new(previous_id, 0), name, op, facts)
+        self.tap_and_chain(OutletId::new(previous_id, 0), name, op.into(), facts)
     }
 
     fn single_prec(&self, id: usize) -> TractResult<Option<&Node<TI>>> {
