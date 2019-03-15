@@ -1,5 +1,4 @@
-use crate::model::dsl::ModelDslConst;
-use crate::model::{InletId, OutletId, TypedModel};
+use crate::model::*;
 use crate::TractResult;
 use bit_set;
 

@@ -105,7 +105,6 @@ impl InferenceRulesOp for Delay {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::model::dsl::*;
     use crate::*;
 
     fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {

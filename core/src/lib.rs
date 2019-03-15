@@ -10,7 +10,6 @@
 //! # fn main() {
 //! use tract_core::*;
 //! use tract_core::model::*;
-//! use tract_core::model::dsl::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let mut model = Model::default();
