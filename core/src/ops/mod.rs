@@ -118,7 +118,7 @@ pub trait Op:
         Ok((infered_inputs, infered_outputs))
     }
 
-    fn normalize(
+    fn declutter(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
@@ -135,9 +135,9 @@ pub trait Op:
 
     fn codegen(
         &self,
-        _model: &NormalizedModel,
-        _node: &NormalizedNode,
-    ) -> TractResult<Option<NormalizedModelPatch>> {
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }
 

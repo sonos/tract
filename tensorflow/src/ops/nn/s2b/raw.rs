@@ -13,7 +13,7 @@ impl Op for SpaceToBatch {
         "SpaceToBatch".into()
     }
 
-    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let mut outputs = model.node_output_facts(node.id)?;
         let (input, block_shape, paddings) = args_3!(inputs);
@@ -101,7 +101,7 @@ impl Op for BatchToSpace {
         "BatchToSpace".into()
     }
 
-    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let mut outputs = model.node_output_facts(node.id)?;
         let (input, block_shape, paddings) = args_3!(inputs);

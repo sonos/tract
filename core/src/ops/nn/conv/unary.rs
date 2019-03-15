@@ -312,7 +312,7 @@ impl Op for ConvUnary {
         "ConvUnary".into()
     }
 
-    fn normalize(
+    fn declutter(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -337,9 +337,9 @@ impl Op for ConvUnary {
 
     fn codegen(
         &self,
-        model: &NormalizedModel,
-        node: &NormalizedNode,
-    ) -> TractResult<Option<NormalizedModelPatch>> {
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
@@ -354,7 +354,7 @@ impl Op for ConvUnary {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
-                return Ok(Some(NormalizedModelPatch::single_unary_op(
+                return Ok(Some(TypedModelPatch::single_unary_op(
                     model,
                     node,
                     MatMulUnaryA::new(kernel),
@@ -369,18 +369,19 @@ impl Op for ConvUnary {
                     && self.bias.is_none()
                 {
                     let op = self.to_direct(&*shape)?;
-                    return Ok(Some(NormalizedModelPatch::single_unary_op(model, node, op)?));
+                    return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
                 } else {
                     let (op1, shape, op2) =
                         dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
-                    let mut patch = NormalizedModelPatch::default();
+                    let mut patch = TypedModelPatch::default();
                     let _ = patch.tap_model(&model, node.inputs[0])?;
                     patch.chain_facts(
                         format!("{}-im2col", node.name),
                         op1,
-                        tvec!(NormalizedTensorInfo {
+                        tvec!(TypedTensorInfo {
                             shape: ShapeInfo::from(&*shape),
-                            datum_type: dt
+                            datum_type: dt,
+                            konst: None,
                         }),
                     )?;
                     let mm = patch.chain_facts(

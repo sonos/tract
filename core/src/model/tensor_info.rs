@@ -146,7 +146,7 @@ impl TryInto<NormalizedTensorInfo> for TypedTensorInfo {
             None => {
                 Ok(NormalizedTensorInfo { shape: self.shape.clone(), datum_type: self.datum_type })
             }
-            _ => bail!("Constant tensor are excluded from normalized stage: {:?}", self),
+            _ => bail!("Constant tensor are excluded from declutterd stage: {:?}", self),
         }
     }
 }

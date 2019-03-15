@@ -34,7 +34,7 @@ impl Op for Squeeze {
         "Squeeze".into()
     }
 
-    fn normalize(
+    fn declutter(
         &self,
         model: &TypedModel,
         node: &TypedNode,

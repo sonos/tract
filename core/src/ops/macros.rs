@@ -164,7 +164,7 @@ macro_rules! element_bin {
                     concat!(stringify!($name), "::Binary").into()
                 }
 
-                fn normalize(&self, model: &$crate::model::TypedModel, node: &$crate::model::TypedNode)
+                fn declutter(&self, model: &$crate::model::TypedModel, node: &$crate::model::TypedNode)
                  -> TractResult<Option<TypedModelPatch>> {
                      let inputs = model.node_input_facts(node.id)?;
                     if let Some(b) = inputs[1].konst.clone() {

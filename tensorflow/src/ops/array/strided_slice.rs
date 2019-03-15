@@ -254,7 +254,7 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
         "tf.StridedSlice".into()
     }
 
-    fn normalize(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let (input, begin, end, strides) = args_4!(inputs);
         if let (Some(ref begin), Some(ref end), Some(ref strides)) = (

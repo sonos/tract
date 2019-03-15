@@ -375,6 +375,8 @@ impl Parameters {
             None
         };
 
+        let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
+
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
             SomeModel::Typed(raw_model.into_typed()?)
@@ -383,12 +385,10 @@ impl Parameters {
             SomeModel::Inference(raw_model)
         };
 
-        let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
-
         if matches.is_present("optimize") || pulse.is_some() {
             if let SomeModel::Typed(typed) = tract_model {
                 info!("Optimize");
-                tract_model = SomeModel::Typed(typed.optimize()?);
+                tract_model = SomeModel::Typed(typed.declutter()?);
             } else {
                 bail!("Can not run optimize without analyse")
             }
@@ -397,16 +397,17 @@ impl Parameters {
         let pulse_facts = if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model)  {
             info!("Pulsify {}", pulse);
             let (model, ifact, ofact) = ::tract_core::pulse::pulsify(&model.clone().into_normalized()?, pulse)?;
-            if matches.is_present("optimize") {
-                info!("Optimize pulsing network");
-                tract_model = SomeModel::Typed(model.into_typed()?.optimize()?);
-            } else {
-                tract_model = SomeModel::Typed(model.into_typed()?);
-            };
+            tract_model = SomeModel::Typed(model.into_typed()?);
             Some((ifact, ofact))
         } else {
             None
         };
+
+        if matches.is_present("optimize") {
+            if let SomeModel::Typed(typed) = tract_model {
+                tract_model = SomeModel::Typed(typed.codegen()?);
+            }
+        }
 
         info!("Model ready");
 

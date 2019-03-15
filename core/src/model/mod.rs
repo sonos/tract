@@ -62,21 +62,35 @@ impl InferenceModel {
         compact::compact(&mut self)
     }
 
-    pub fn into_normalized(self) -> TractResult<NormalizedModel> {
-        self.into_typed()?.into_normalized()
-    }
-
-    pub fn into_optimized(self) -> TractResult<NormalizedModel> {
-        self.into_normalized()?.into_codegen()
+    pub fn into_optimized(self) -> TractResult<TypedModel> {
+        self.into_typed()?.declutter()?.codegen()
     }
 }
 
 impl TypedModel {
-    pub fn optimize(self) -> TractResult<TypedModel> {
+    pub fn declutter(self) -> TractResult<TypedModel> {
         let mut model = self;
         loop {
             let mut done_something = false;
-            for p in crate::optim::normalization() {
+            for p in crate::optim::declutter() {
+                done_something = done_something || p.pass(&mut model)?;
+                if cfg!(debug_assertions) {
+                    model.check_edges()?;
+                }
+            }
+            if !done_something {
+                break;
+            }
+            model = compact::compact(&model)?;
+        }
+        Ok(model)
+    }
+
+    pub fn codegen(self) -> TractResult<TypedModel> {
+        let mut model = self;
+        loop {
+            let mut done_something = false;
+            for p in crate::optim::codegen() {
                 done_something = done_something || p.pass(&mut model)?;
                 if cfg!(debug_assertions) {
                     model.check_edges()?;
@@ -91,28 +105,18 @@ impl TypedModel {
     }
 
     pub fn into_normalized(self) -> TractResult<NormalizedModel> {
-        let model = self.optimize()?;
+        let model = self.declutter()?;
+        compact::compact(&model)
+    }
+
+    pub fn into_optimized(self) -> TractResult<TypedModel> {
+        let model = self.codegen()?;
         compact::compact(&model)
     }
 }
 
 impl NormalizedModel {
     pub fn into_typed(self) -> TractResult<TypedModel> {
-        compact::compact(&self)
-    }
-    pub fn into_codegen(mut self) -> TractResult<NormalizedModel> {
-        loop {
-            let mut done_something = false;
-            for p in crate::optim::codegen() {
-                done_something = done_something || p.pass(&mut self)?;
-                if cfg!(debug_assertions) {
-                    self.check_edges()?;
-                }
-            }
-            if !done_something {
-                break;
-            }
-        }
         compact::compact(&self)
     }
 }

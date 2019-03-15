@@ -1,4 +1,4 @@
-use crate::model::{NormalizedModel, TypedModel};
+use crate::model::TypedModel;
 use crate::TractResult;
 use std::fmt::Debug;
 
@@ -8,15 +8,15 @@ mod push_split_down;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
 
-pub trait NormalizationPass: Debug + Send + Sync {
+pub trait DeclutterPass: Debug + Send + Sync {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
 }
 
 pub trait CodegenPass: Debug + Send + Sync {
-    fn pass(&self, model: &mut NormalizedModel) -> TractResult<bool>;
+    fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
 }
 
-pub fn normalization() -> Vec<Box<NormalizationPass>> {
+pub fn declutter() -> Vec<Box<DeclutterPass>> {
     vec![Box::new(PropConst) as _, Box::new(NormalizeOps)]
 }
 
@@ -27,7 +27,7 @@ pub fn codegen() -> Vec<Box<CodegenPass>> {
 #[derive(Debug)]
 pub struct NormalizeOps;
 
-impl NormalizationPass for NormalizeOps {
+impl DeclutterPass for NormalizeOps {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
@@ -42,7 +42,7 @@ impl NormalizationPass for NormalizeOps {
                         node.op().name()
                     );
                     node.op
-                        .normalize(model, node)
+                        .declutter(model, node)
                         .map_err(|e| format!("{:?} node {:?}, {:?}", self, node, e))?
                 };
                 if let Some(red) = reduced {
@@ -76,7 +76,7 @@ impl NormalizationPass for NormalizeOps {
 pub struct CodegenOps;
 
 impl CodegenPass for CodegenOps {
-    fn pass(&self, model: &mut NormalizedModel) -> TractResult<bool> {
+    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
             let mut done_something_this_time = false;
