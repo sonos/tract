@@ -1,5 +1,6 @@
 use ndarray::*;
 
+use crate::model::*;
 use crate::ops::prelude::*;
 use insideout::InsideOut;
 
@@ -339,7 +340,6 @@ impl Op for ConvUnary {
         model: &NormalizedModel,
         node: &NormalizedNode,
     ) -> TractResult<Option<NormalizedModelPatch>> {
-        use crate::model::dsl::ModelDsl;
         let inputs = model.node_input_facts(node.id)?;
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];

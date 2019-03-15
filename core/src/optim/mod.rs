@@ -2,11 +2,9 @@ use crate::model::{NormalizedModel, TypedModel};
 use crate::TractResult;
 use std::fmt::Debug;
 
-mod compact;
 mod prop_const;
 mod push_split_down;
 
-pub(crate) use self::compact::compact;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
 

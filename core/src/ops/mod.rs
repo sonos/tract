@@ -29,11 +29,7 @@ pub mod prelude {
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::Framework;
-    pub use crate::model::{InletId, Model, Node, OutletId, TVec};
-    pub use crate::model::{NormalizedModel, NormalizedNode, TypedModel, TypedNode};
-    pub use crate::model::{NormalizedModelPatch, TypedModelPatch};
-    pub use crate::model::{NormalizedTensorInfo, TensorInfo, TypedTensorInfo, ShapeInfo, StreamInfo};
-    pub use crate::model::dsl::*;
+    pub use crate::model::*;
     pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;

@@ -41,7 +41,7 @@ pub fn eval_order_for_nodes<TI: TensorInfo>(
 
 #[cfg(test)]
 mod tests {
-    use crate::model::dsl::*;
+    use crate::Tensor;
     use crate::model::*;
     use crate::ops::math::Add;
 

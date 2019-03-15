@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 
 use tract_core::framework::{Framework, OpBuilder, OpRegister};
-use tract_core::model::dsl::*;
-use tract_core::model::{InletId, Model, OutletId};
+use tract_core::model::*;
 use tract_core::*;
 
 use crate::pb;

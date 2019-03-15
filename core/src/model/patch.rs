@@ -83,7 +83,7 @@ impl<TI: TensorInfo> ModelPatch<TI> {
         }
         for (outlet, by) in shunt_outlet_by {
             let fixed_by = mapping[&by];
-            let succs = model.nodes[outlet.node].outputs[outlet.slot].successors.clone();
+            let succs = model.nodes()[outlet.node].outputs[outlet.slot].successors.clone();
             for succ in succs {
                 model.add_edge(fixed_by, succ)?;
             }

@@ -32,16 +32,16 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
     }
 
     fn chain_facts<BO: Into<Box<Op>>, S: AsRef<str>>(&mut self, name: S, op: BO, facts:TVec<TI>) -> TractResult<usize> {
-        let previous_id = self.nodes.len() - 1;
+        let previous_id = self.nodes().len() - 1;
         self.tap_and_chain(OutletId::new(previous_id, 0), name, op.into(), facts)
     }
 
     fn single_prec(&self, id: usize) -> TractResult<Option<&Node<TI>>> {
-        let node = &self.nodes[id];
+        let node = &self.nodes()[id];
         if node.inputs.len() != 1 {
             return Ok(None);
         }
-        let prec = &self.nodes[node.inputs[0].node];
+        let prec = &self.nodes()[node.inputs[0].node];
         if prec.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
             return Ok(None);
         }
@@ -73,12 +73,12 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
     }
 
     fn single_succ(&self, id: usize) -> TractResult<Option<&Node<TI>>> {
-        let node = &self.nodes[id];
+        let node = &self.nodes()[id];
         if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
             return Ok(None);
         }
         let succ = node.outputs[0].successors[0];
-        let succ = &self.nodes[succ.node];
+        let succ = &self.nodes()[succ.node];
         if succ.inputs.len() != 1 {
             return Ok(None);
         }

@@ -6,8 +6,7 @@ extern crate ndarray;
 extern crate tract_core;
 use criterion::Criterion;
 
-use tract_core::model::dsl::*;
-use tract_core::model::TypedTensorInfo;
+use tract_core::model::*;
 use tract_core::*;
 
 use tract_core::ops::nn::ConvUnary;
