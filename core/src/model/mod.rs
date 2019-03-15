@@ -261,7 +261,6 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 /// Model is Tract workhouse.
 #[derive(Clone, Debug)]
 pub struct Model<TI: TensorInfo> {
-    //    norm: Option<Arc<Vec<Box<OptimizerPass>>>>,
     nodes: Vec<Node<TI>>,
     nodes_by_name: HashMap<String, usize>,
     pub(crate) inputs: Vec<OutletId>,
@@ -283,15 +282,6 @@ impl<TI: TensorInfo> Default for Model<TI> {
 }
 
 impl<TI: TensorInfo> Model<TI> {
-    /*
-    pub fn with_norm_optims(self, norm: Option<Arc<Vec<Box<OptimizerPass>>>>) -> Model<TI> {
-        Model { norm, ..self }
-    }
-
-    pub fn norm_optims(&self) -> Option<&Arc<Vec<Box<OptimizerPass>>>> {
-        self.norm.as_ref()
-    }
-    */
 
     pub fn add_node(
         &mut self,
@@ -434,12 +424,6 @@ impl<TI: TensorInfo> Model<TI> {
 
         Ok((inputs, outputs))
     }
-
-    /*
-    pub fn into_optimized(self) -> TractResult<Model<TI>> {
-        self.into_normalized()?.into_codegen()
-    }
-    */
 
     pub fn eval_order(&self) -> TractResult<Vec<usize>> {
         eval_order(&self)
@@ -591,16 +575,6 @@ impl TypedModel {
         let mut model = self;
         loop {
             let mut done_something = false;
-            /*
-            if let Some(passes) = model.norm.clone() {
-                for p in passes.iter() {
-                    done_something = done_something || p.pass(&mut model)?;
-                    if cfg!(debug_assertions) {
-                        model.check_edges()?;
-                    }
-                }
-            }
-            */
             for p in crate::optim::normalization() {
                 done_something = done_something || p.pass(&mut model)?;
                 if cfg!(debug_assertions) {

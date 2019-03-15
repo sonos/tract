@@ -311,6 +311,29 @@ impl Op for ConvUnary {
         "ConvUnary".into()
     }
 
+    fn normalize(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        use crate::ops::array::{AddDims, RmDims};
+        if let (Some(add_node), Some(rm_node)) = (model.single_prec(node.id)?, model.single_succ(node.id)?) {
+            if let (Some(add_op), Some(rm_op)) = (add_node.op_as::<AddDims>(), rm_node.op_as::<RmDims>()) {
+                if add_op.axes.len() == 1 && rm_op.axes == add_op.axes {
+                    let axis = add_op.axes[0];
+                    if let Some(op) = self.rm_dummy_axis(axis)? {
+                        let mut patch = TypedModelPatch::default();
+                        patch.tap_model(&model, model.single_prec(node.id)?.unwrap().inputs[0])?;
+                        let out = patch.model.chain_facts(&node.name, op, tvec!(rm_node.outputs[0].fact.clone()))?;
+                        patch.shunt_outside(OutletId::new(rm_node.id, 0), OutletId::new(out, 0))?;
+                        return Ok(Some(patch))
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     fn codegen(
         &self,
         model: &NormalizedModel,
@@ -355,9 +378,16 @@ impl Op for ConvUnary {
                     patch.chain_facts(
                         format!("{}-im2col", node.name),
                         op1,
-                        tvec!(NormalizedTensorInfo { shape: ShapeInfo::from(&*shape), datum_type: dt }),
+                        tvec!(NormalizedTensorInfo {
+                            shape: ShapeInfo::from(&*shape),
+                            datum_type: dt
+                        }),
                     )?;
-                    let mm = patch.chain_facts(format!("{}-convmm", node.name), op2, tvec!(node.outputs[0].fact.clone()))?;
+                    let mm = patch.chain_facts(
+                        format!("{}-convmm", node.name),
+                        op2,
+                        tvec!(node.outputs[0].fact.clone()),
+                    )?;
                     patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
                     return Ok(Some(patch));
                 }

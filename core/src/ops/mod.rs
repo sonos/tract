@@ -33,6 +33,7 @@ pub mod prelude {
     pub use crate::model::{NormalizedModel, NormalizedNode, TypedModel, TypedNode};
     pub use crate::model::{NormalizedModelPatch, TypedModelPatch};
     pub use crate::model::{NormalizedTensorInfo, TensorInfo, TypedTensorInfo, ShapeInfo, StreamInfo};
+    pub use crate::model::dsl::*;
     pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;
