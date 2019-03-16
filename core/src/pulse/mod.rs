@@ -1,5 +1,5 @@
-use crate::ops::source::Source;
 use crate::ops::prelude::*;
+use crate::ops::source::Source;
 
 pub mod delay;
 
@@ -135,7 +135,8 @@ mod tests {
         let _a = model
             .add_source_fact("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3]))
             .unwrap();
-        assert!(PulsifiedModel::new(&model.into_declutterd().unwrap(), 4).is_err());
+        assert!(PulsifiedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
+            .is_err());
 
         let mut model = Model::default();
         let _a = model
@@ -144,7 +145,8 @@ mod tests {
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
             .unwrap();
-        let pulse = PulsifiedModel::new(&model.into_declutterd().unwrap(), 4).unwrap();
+        let pulse = PulsifiedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
+            .unwrap();
         assert_eq!(
             pulse.model.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
@@ -161,7 +163,7 @@ mod tests {
             )
             .unwrap();
 
-        let pulse = PulsifiedModel::new(&model.into_declutterd().unwrap(), 4).unwrap();
+        let pulse = PulsifiedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
 
         assert_eq!(
             pulse.model.input_fact().unwrap().to_tensor_fact(),
@@ -191,14 +193,14 @@ mod tests {
         let input = [1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
         let t_input = Tensor::from(arr3(&[[input]]));
 
-        let model = model.into_declutterd().unwrap();
+        let model = model.into_typed().unwrap();
 
         assert_eq!(model.nodes().len(), 2);
         let plan = crate::plan::SimplePlan::new(&model).unwrap();
         let outputs = plan.run(tvec!(t_input.clone())).unwrap();
 
         let pulse = 4;
-        let pulsed = PulsifiedModel::new(&model, pulse).unwrap();
+        let pulsed = PulsifiedModel::new(&model.into_normalized().unwrap(), pulse).unwrap();
         assert_eq!(pulsed.model.nodes().len(), 3); // source - delay - conv
         assert_eq!(pulsed.facts[&OutletId::new(2, 0)].delay, 2);
 
