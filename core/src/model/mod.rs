@@ -62,6 +62,10 @@ impl InferenceModel {
         compact::compact(&mut self)
     }
 
+    pub fn into_normalized(self) -> TractResult<NormalizedModel> {
+        self.into_typed()?.into_normalized()
+    }
+
     pub fn into_optimized(self) -> TractResult<TypedModel> {
         self.into_typed()?.declutter()?.codegen()
     }
