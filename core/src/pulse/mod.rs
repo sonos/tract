@@ -193,7 +193,9 @@ mod tests {
         let input = [1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
         let t_input = Tensor::from(arr3(&[[input]]));
 
-        let model = model.into_typed().unwrap();
+        let model = model.into_typed().unwrap().declutter().unwrap();
+
+        println!("model: {:#?}", model);
 
         assert_eq!(model.nodes().len(), 2);
         let plan = crate::plan::SimplePlan::new(&model).unwrap();
