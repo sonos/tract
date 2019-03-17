@@ -196,6 +196,7 @@ macro_rules! element_bin {
                         fact.dt = <$to>::datum_type().into();
                     })*
                     let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+                    target.add_edge(mapping[&node.inputs[1]], InletId::new(id, 1))?;
                     Ok(tvec!(OutletId::new(id, 0)))
                 }
             }
@@ -335,7 +336,10 @@ macro_rules! element_nary {
                 $(if fact.dt == <$type>::datum_type() {
                     fact.dt = <$to>::datum_type().into();
                 })*
-                let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+                let id = target.add_node(node.name.clone(), self.clone(), tvec!(fact))?;
+                for (ix, i) in node.inputs.iter().enumerate() {
+                    target.add_edge(mapping[i], InletId::new(id, ix))?;
+                }
                 Ok(tvec!(OutletId::new(id, 0)))
             }
 
