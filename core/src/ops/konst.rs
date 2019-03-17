@@ -17,10 +17,6 @@ impl Op for Const {
     fn name(&self) -> Cow<str> {
         "Const".into()
     }
-
-    fn const_value(&self) -> Option<SharedTensor> {
-        Some(self.value.clone())
-    }
 }
 
 impl StatelessOp for Const {

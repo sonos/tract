@@ -36,7 +36,7 @@ impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             } else {
                 let fact = input.get_field_type().get_tensor_type().tractify()?;
-                let id = model.add_source_fact(input.get_name().to_owned(), fact)?;
+                let id = model.add_source(input.get_name(), fact)?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             }
         }

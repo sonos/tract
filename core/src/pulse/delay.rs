@@ -34,9 +34,7 @@ impl DelayState {
                 .assign(&input.slice_axis(axis, Slice::from(..from_input)));
             output
         } else {
-            buffer
-                .slice_axis(axis, Slice::from(..output_pulse))
-                .to_owned()
+            buffer.slice_axis(axis, Slice::from(..output_pulse)).to_owned()
         };
         // maintain buffer
         if buffered < input_pulse {
@@ -44,9 +42,7 @@ impl DelayState {
         } else {
             let stride = buffer.strides()[op.input_fact.axis] as usize * input_pulse;
             buffer.as_slice_mut().unwrap().rotate_left(stride);
-            buffer
-                .slice_axis_mut(axis, Slice::from((buffered - input_pulse)..))
-                .assign(&input);
+            buffer.slice_axis_mut(axis, Slice::from((buffered - input_pulse)..)).assign(&input);
         }
         Ok(output.into())
     }
@@ -56,9 +52,7 @@ impl OpState for DelayState {
     fn eval(&mut self, op: &Op, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
-        Ok(tvec!(dispatch_copy!(Self::eval_t(input.datum_type())(
-            self, op, input
-        ))?))
+        Ok(tvec!(dispatch_copy!(Self::eval_t(input.datum_type())(self, op, input))?))
     }
 }
 
@@ -116,12 +110,8 @@ mod test {
             dim: TDim::s(),
             delay: 0,
         };
-        model
-            .add_source_fact("source", fact.to_pulse_fact().to_tensor_fact())
-            .unwrap();
-        model
-            .chain("delay", Box::new(Delay::new(fact, delay, overlap)))
-            .unwrap();
+        model.add_source("source", fact.to_pulse_fact().to_tensor_fact()).unwrap();
+        model.chain_default("delay", Delay::new(fact, delay, overlap)).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = crate::plan::SimpleState::new(plan).unwrap();
@@ -132,10 +122,7 @@ mod test {
                 .map(|i| i.saturating_sub(delay + overlap) as u8)
                 .collect();
             let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
-            assert_eq!(
-                output[0].to_array_view::<u8>().unwrap().as_slice().unwrap(),
-                &*expect
-            );
+            assert_eq!(output[0].to_array_view::<u8>().unwrap().as_slice().unwrap(), &*expect);
         }
     }
 
@@ -170,12 +157,8 @@ mod test {
             dim: TDim::s(),
             delay: 0,
         };
-        model
-            .add_source_fact("source", fact.to_pulse_fact().to_tensor_fact())
-            .unwrap();
-        model
-            .chain("delay-1", Box::new(Delay::new(fact, 2, 0)))
-            .unwrap();
+        model.add_source("source", fact.to_pulse_fact().to_tensor_fact()).unwrap();
+        model.chain_default("delay-1", Delay::new(fact, 2, 0)).unwrap();
         let fact = PulsedTensorFact {
             dt: u8::datum_type(),
             shape: tvec![pulse],
@@ -183,23 +166,17 @@ mod test {
             dim: TDim::s(),
             delay: 2,
         };
-        model
-            .chain("delay-2", Box::new(Delay::new(fact, 2, 0)))
-            .unwrap();
+        model.chain_default("delay-2", Delay::new(fact, 2, 0)).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = crate::plan::SimpleState::new(plan).unwrap();
 
         for i in 0..5 {
             let input: Vec<u8> = (pulse * i..(pulse * (i + 1))).map(|a| a as u8).collect();
-            let expect: Vec<u8> = (pulse * i..(pulse * (i + 1)))
-                .map(|i| i.saturating_sub(4) as u8)
-                .collect();
+            let expect: Vec<u8> =
+                (pulse * i..(pulse * (i + 1))).map(|i| i.saturating_sub(4) as u8).collect();
             let output = state.run(tvec!(Tensor::from(arr1(&input)))).unwrap();
-            assert_eq!(
-                output[0].to_array_view::<u8>().unwrap().as_slice().unwrap(),
-                &*expect
-            );
+            assert_eq!(output[0].to_array_view::<u8>().unwrap().as_slice().unwrap(), &*expect);
         }
     }
 }

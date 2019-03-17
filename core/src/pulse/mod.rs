@@ -77,7 +77,7 @@ impl PulsedModel {
                 let node = source.node(old_id);
                 let pulsed_fact =
                     PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
-                let id = target.add_source_fact(node.name.clone(), pulsed_fact)?;
+                let id = target.add_source(node.name.clone(), pulsed_fact)?;
                 mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
             } else {
                 let node = &source.nodes()[old_id];
@@ -106,16 +106,15 @@ mod tests {
     #[test]
     fn test_source_must_stream() {
         let mut model = Model::default();
-        let _a = model
-            .add_source_fact("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3]))
-            .unwrap();
+        let _a =
+            model.add_source("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3])).unwrap();
         assert!(
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).is_err()
         );
 
         let mut model = Model::default();
         let _a = model
-            .add_source_fact(
+            .add_source(
                 "a",
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
@@ -132,7 +131,7 @@ mod tests {
     fn test_immediate() {
         let mut model = Model::default();
         let _a = model
-            .add_source_fact(
+            .add_source(
                 "a",
                 TensorFact::dt_shape(DatumType::F32, vec![TDim::s(), 2.to_dim(), 3.to_dim()]),
             )
@@ -158,9 +157,9 @@ mod tests {
         let mut model = Model::default();
         let ker = model.add_const("kernel", arr3(&[[[0.5f32, 1.0, -0.1]]]).into()).unwrap();
         let _ = model
-            .add_source_fact("a", TensorFact::shape(shapefact!(1, 1, S))) // NCT
+            .add_source("a", TensorFact::shape(shapefact!(1, 1, S))) // NCT
             .unwrap();
-        let conv = model.chain("conv", Box::new(Conv::default())).unwrap();
+        let conv = model.chain_default("conv", Conv::default()).unwrap();
         model.add_edge(OutletId::new(ker, 0), InletId::new(conv, 1)).unwrap();
         model.analyse().unwrap();
         assert_eq!(model.nodes().len(), 3);

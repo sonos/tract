@@ -41,15 +41,15 @@ pub fn eval_order_for_nodes<TI: TensorInfo>(
 
 #[cfg(test)]
 mod tests {
-    use crate::Tensor;
     use crate::model::*;
     use crate::ops::math::Add;
+    use crate::Tensor;
 
     #[test]
     fn test_simple() {
         let mut model = Model::default();
-        model.add_source("a").unwrap();
-        model.chain("add", Box::new(Add::default())).unwrap();
+        model.add_source_default("a").unwrap();
+        model.chain_default("add", Add::default()).unwrap();
         model.add_const("b", Tensor::from(12.0f32).into()).unwrap();
         model.add_edge(OutletId::new(2, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 2, 1));
@@ -58,8 +58,8 @@ mod tests {
     #[test]
     fn test_diamond() {
         let mut model = Model::default();
-        model.add_source("a").unwrap();
-        model.chain("add", Box::new(Add::default())).unwrap();
+        model.add_source_default("a").unwrap();
+        model.chain_default("add", Add::default()).unwrap();
         model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 1));
     }

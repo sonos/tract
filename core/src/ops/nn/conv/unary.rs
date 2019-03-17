@@ -325,7 +325,7 @@ impl Op for ConvUnary {
                     if let Some(op) = self.rm_dummy_axis(axis)? {
                         let mut patch = TypedModelPatch::default();
                         patch.tap_model(&model, model.single_prec(node.id)?.unwrap().inputs[0])?;
-                        let out = patch.model.chain_facts(&node.name, op, tvec!(rm_node.outputs[0].fact.clone()))?;
+                        let out = patch.model.chain(&*node.name, op, tvec!(rm_node.outputs[0].fact.clone()))?;
                         patch.shunt_outside(OutletId::new(rm_node.id, 0), OutletId::new(out, 0))?;
                         return Ok(Some(patch))
                     }
@@ -375,7 +375,7 @@ impl Op for ConvUnary {
                         dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
                     let mut patch = TypedModelPatch::default();
                     let _ = patch.tap_model(&model, node.inputs[0])?;
-                    patch.chain_facts(
+                    patch.chain(
                         format!("{}-im2col", node.name),
                         op1,
                         tvec!(TypedTensorInfo {
@@ -384,7 +384,7 @@ impl Op for ConvUnary {
                             konst: None,
                         }),
                     )?;
-                    let mm = patch.chain_facts(
+                    let mm = patch.chain(
                         format!("{}-convmm", node.name),
                         op2,
                         tvec!(node.outputs[0].fact.clone()),
@@ -422,7 +422,7 @@ impl Op for ConvUnary {
                     }
                 })
                 .collect();
-            let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+            let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
             Ok(tvec!(OutletId::new(id, 0)))
         } else if fact.axis == shape.c_axis() {
             bail!("Can not pulsify convolution alongs the input channel axis");
@@ -460,7 +460,7 @@ impl Op for ConvUnary {
 
             let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_len);
             target.chain_after(input,format!("{}/Delay", node.name), delay, tvec!(augmented_fact))?;
-            let id = target.chain_facts(format!("{}/Conv", node.name), conv_op, tvec!(conv_fact))?;
+            let id = target.chain(format!("{}/Conv", node.name), conv_op, tvec!(conv_fact))?;
 
             Ok(tvec!(OutletId::new(id, 0)))
         }

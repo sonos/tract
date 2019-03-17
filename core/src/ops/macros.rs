@@ -38,7 +38,7 @@ macro_rules! element_map {
             ) -> TractResult<TVec<OutletId>> {
                 let input = mapping[&node.inputs[0]];
                 let fact = target.fact(input)?.clone();
-                let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
                 Ok(tvec!(OutletId::new(id, 0)))
             }
 
@@ -195,7 +195,7 @@ macro_rules! element_bin {
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
                     })*
-                    let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+                    let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
                     target.add_edge(mapping[&node.inputs[1]], InletId::new(id, 1))?;
                     Ok(tvec!(OutletId::new(id, 0)))
                 }
@@ -265,7 +265,7 @@ macro_rules! element_bin {
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
                     })*
-                    let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+                    let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
                     Ok(tvec!(OutletId::new(id, 0)))
                 }
             }
@@ -336,7 +336,7 @@ macro_rules! element_nary {
                 $(if fact.dt == <$type>::datum_type() {
                     fact.dt = <$to>::datum_type().into();
                 })*
-                let id = target.add_node(node.name.clone(), self.clone(), tvec!(fact))?;
+                let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
                 for (ix, i) in node.inputs.iter().enumerate() {
                     target.add_edge(mapping[i], InletId::new(id, ix))?;
                 }
