@@ -399,53 +399,57 @@ impl Op for ConvUnary {
 
     fn pulsify(
         &self,
-        mut inputs: TVec<&PulsedTensorFact>,
-    ) -> TractResult<Vec<crate::pulse::PulsifiedOp>> {
-        let input = args_1!(inputs);
-        let shape = self.data_fmt.shape(&input.shape);
-        if input.axis == shape.n_axis() {
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.fact(input)?.clone();
+        let shape = self.data_fmt.shape(&fact.shape);
+        if fact.axis == shape.n_axis() {
             let mut op = self.clone();
-            op.full_output_shape[input.axis] = input.pulse().to_dim();
-            let mut fact = input.clone();
+            op.full_output_shape[fact.axis] = fact.pulse().to_dim();
             fact.shape = op
                 .full_output_shape
                 .iter()
                 .enumerate()
                 .map(|(ax, &d)| {
-                    if ax == input.axis {
-                        input.pulse()
+                    if ax == fact.axis {
+                        fact.pulse()
                     } else {
                         d.to_integer().unwrap() as usize
                     }
                 })
                 .collect();
-            Ok(vec![PulsifiedOp::new(Box::new(op), tvec!(fact))])
-        } else if input.axis == shape.c_axis() {
+            let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+            Ok(tvec!(OutletId::new(id, 0)))
+        } else if fact.axis == shape.c_axis() {
             bail!("Can not pulsify convolution alongs the input channel axis");
         } else {
             let spatial_rank = self.full_input_shape.len() - 2;
-            let geo_axis = input.axis - shape.h_axis();
+            let geo_axis = fact.axis - shape.h_axis();
             let kernel_spatial_shape =
                 &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
             let kernel_len = (kernel_spatial_shape[geo_axis] - 1)
-                * self.strides[geo_axis]
+                * self.strides[geo_axis] // TODO do we really need * strides here ?
                 * self.dilations[geo_axis];
-            let mut augmented_fact = input.clone();
+            let mut augmented_fact = fact.clone();
             augmented_fact.shape[augmented_fact.axis] += kernel_len;
             augmented_fact.delay += kernel_len;
 
             let mut conv_op = self.clone();
-            conv_op.full_input_shape[input.axis] = augmented_fact.pulse().to_dim();
-            conv_op.full_output_shape[input.axis] =
+            conv_op.full_input_shape[fact.axis] = augmented_fact.pulse().to_dim();
+            conv_op.full_output_shape[fact.axis] =
                 (augmented_fact.pulse() - kernel_len / self.strides[geo_axis]).to_dim();
-            let mut conv_fact = input.clone();
+            let mut conv_fact = fact.clone();
             conv_fact.shape = self
                 .full_output_shape
                 .iter()
                 .enumerate()
                 .map(|(ax, &d)| {
-                    if ax == input.axis {
-                        input.pulse() / self.strides[geo_axis]
+                    if ax == fact.axis {
+                        fact.pulse() / self.strides[geo_axis]
                     } else {
                         d.to_integer().unwrap() as usize
                     }
@@ -454,13 +458,11 @@ impl Op for ConvUnary {
             conv_fact.delay += kernel_len;
             conv_fact.dim -= kernel_len.to_dim();
 
-            let memory = PulsifiedOp::new(
-                Box::new(crate::pulse::delay::Delay::new(input.clone(), 0, kernel_len)),
-                tvec!(augmented_fact),
-            );
+            let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_len);
+            target.chain_after(input,format!("{}/Delay", node.name), delay, tvec!(augmented_fact))?;
+            let id = target.chain_facts(format!("{}/Conv", node.name), conv_op, tvec!(conv_fact))?;
 
-            let conv = PulsifiedOp::new(Box::new(conv_op), tvec!(conv_fact));
-            Ok(vec![memory, conv])
+            Ok(tvec!(OutletId::new(id, 0)))
         }
     }
 }

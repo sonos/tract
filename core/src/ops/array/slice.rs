@@ -29,22 +29,27 @@ impl Op for Slice {
         "Slice".into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.fact(input)?;
         if self
             .prune
             .iter()
             .enumerate()
-            .all(|(ax, &(a, b))| ax == input.axis || (a == 0 && b == 0))
+            .all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
         {
-            let delay = self.prune[input.axis].0;
-            let mut fact = input.clone();
+            let delay = self.prune[fact.axis].0;
+            let mut fact = fact.clone();
             fact.delay += delay;
             fact.dim -= delay.to_dim();
-            return Ok(vec![PulsifiedOp::new(
-                Box::new(crate::ops::identity::Identity::default()),
-                tvec!(fact),
-            )]);
+            let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+            return Ok(tvec!(OutletId::new(id, 0)))
         }
         unimplemented!();
     }

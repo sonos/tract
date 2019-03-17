@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str;
 use std::sync::Arc;
 
-mod compact;
+pub mod compact;
 mod dsl;
 mod model;
 mod node;
@@ -19,13 +19,20 @@ pub use crate::analyser::types::TensorFact;
 
 use crate::TractResult;
 
+/// A model with partially types and shapes, as produced by parsing ONNX or
+/// Tensorflow graphs.
 pub type InferenceModel = Model<TensorFact>;
+/// Node for InferenceModel graph
 pub type InferenceNode = Node<TensorFact>;
 
+/// A model with completely determined types and shapes.
 pub type TypedModel = Model<TypedTensorInfo>;
+/// Node for TypedModel graph
 pub type TypedNode = Node<TypedTensorInfo>;
 pub type TypedModelPatch = patch::ModelPatch<TypedTensorInfo>;
 
+/// A model with determined types and shapes, where constant have been
+/// eleminated from the graph.
 pub type NormalizedModel = Model<NormalizedTensorInfo>;
 pub type NormalizedNode = Node<NormalizedTensorInfo>;
 pub type NormalizedModelPatch = patch::ModelPatch<NormalizedTensorInfo>;

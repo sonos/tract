@@ -220,20 +220,27 @@ impl Op for MatMulUnaryA {
         "MatMulUnaryA".into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
-        if input.axis >= input.shape.len() - 1 {
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.fact(input)?.clone();
+        if fact.axis >= fact.shape.len() - 1 {
             bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
         }
-        let (_, _, cshape_pulse) = infer_shapes(input.shape.clone(), self.b.shape().into())?;
+        let (_, _, cshape_pulse) = infer_shapes(fact.shape.clone(), self.b.shape().into())?;
         let (_, _, cshape_full) = infer_shapes(
-            input.streaming_shape().into(),
+            fact.streaming_shape().into(),
             self.b.shape().iter().map(|d| d.to_dim()).collect(),
         )?;
-        let mut fact = input.clone();
         fact.shape = cshape_pulse;
         fact.dim = cshape_full[fact.axis];
-        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))])
+        let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 
     fn codegen(

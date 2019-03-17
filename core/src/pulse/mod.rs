@@ -1,3 +1,4 @@
+use crate::datum::TryInto;
 use crate::ops::prelude::*;
 use crate::ops::source::Source;
 
@@ -10,6 +11,18 @@ pub struct PulsedTensorFact {
     pub axis: usize,
     pub dim: TDim,
     pub delay: usize,
+}
+
+impl TensorInfo for PulsedTensorFact {
+    fn to_tensor_fact(&self) -> TensorFact {
+        TensorFact::dt_shape(self.dt, &self.shape)
+    }
+}
+
+impl TryInto<TypedTensorInfo> for PulsedTensorFact {
+    fn try_into(&self) -> TractResult<TypedTensorInfo> {
+        Ok(TypedTensorInfo { shape: (&self.shape).into(), datum_type: self.dt, konst: None })
+    }
 }
 
 impl PulsedTensorFact {
@@ -47,81 +60,35 @@ impl PulsedTensorFact {
     }
 }
 
-#[derive(Clone, Debug, new)]
-pub struct PulsifiedOp {
-    pub op: Box<Op>,
-    pub outputs: TVec<PulsedTensorFact>,
-}
+pub type PulsedModel = Model<PulsedTensorFact>;
 
-pub fn pulsify(
-    old: &NormalizedModel,
-    pulse: usize,
-) -> TractResult<(NormalizedModel, PulsedTensorFact, PulsedTensorFact)> {
-    let mut p_model = PulsifiedModel::new(old, pulse)?;
-    let in_id = p_model.model.inputs()?[0];
-    let out_id = p_model.model.outputs()?[0];
-    let in_fact: PulsedTensorFact = p_model.facts.remove(&in_id).unwrap();
-    let out_fact: PulsedTensorFact = p_model.facts.remove(&out_id).unwrap();
-    Ok((p_model.model, in_fact, out_fact))
-}
-
-#[derive(Clone, Debug)]
-struct PulsifiedModel {
-    model: NormalizedModel,
-    facts: HashMap<OutletId, PulsedTensorFact>,
-}
-
-impl PulsifiedModel {
-    fn new(old: &NormalizedModel, pulse: usize) -> TractResult<PulsifiedModel> {
-        let mut model = NormalizedModel::default();
-        let mut mapping: HashMap<OutletId, OutletId> = HashMap::new();
-        let mut facts: HashMap<OutletId, PulsedTensorFact> = HashMap::new();
-        for old_id in old.eval_order()? {
-            if old.node(old_id).op_as::<Source>().is_some() {
-                let node = old.node(old_id);
+impl PulsedModel {
+    pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
+        let mut target = PulsedModel::default();
+        let mut mapping = HashMap::new();
+        for old_id in source.eval_order()? {
+            if source.node(old_id).op_as::<Source>().is_some() {
+                let node = source.node(old_id);
                 let pulsed_fact =
                     PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
-                let id = model.add_source_fact(node.name.clone(), pulsed_fact.to_pulse_fact())?;
-                facts.insert(OutletId::new(id, 0), pulsed_fact);
+                let id = target.add_source_fact(node.name.clone(), pulsed_fact)?;
                 mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
             } else {
-                let pulsed_chain = {
-                    let inputs =
-                        old.node(old_id).inputs.iter().map(|i| &facts[&mapping[i]]).collect();
-                    trace!("  inputs: {:?}", inputs);
-                    old.node(old_id).op().pulsify(inputs)?
-                };
-                let mut previous = None;
-                let count = pulsed_chain.len();
-                for (ix, pulsed) in pulsed_chain.into_iter().enumerate() {
-                    let PulsifiedOp { op, outputs } = pulsed;
-                    let name = if ix == count - 1 {
-                        old.node(old_id).name.clone()
-                    } else {
-                        format!("{}#{}", old.node(old_id).name, ix)
-                    };
-                    let new_id = model.add_node(
-                        name,
-                        op,
-                        outputs.iter().map(|o| o.to_pulse_fact()).collect(),
-                    )?;
-                    if let Some(prev) = previous {
-                        model.add_edge(OutletId::new(prev, 0), InletId::new(new_id, 0))?;
-                    } else {
-                        for (ix, input) in old.node(old_id).inputs.iter().enumerate() {
-                            model.add_edge(mapping[&input], InletId::new(new_id, ix))?;
-                        }
-                    };
-                    previous = Some(new_id);
-                    for (ix, output_fact) in outputs.into_iter().enumerate() {
-                        model.set_fact(OutletId::new(new_id, ix), output_fact.to_pulse_fact())?;
-                        facts.insert(OutletId::new(new_id, ix), output_fact);
-                        mapping.insert(OutletId::new(old_id, ix), OutletId::new(new_id, ix));
-                    }
+                let node = &source.nodes()[old_id];
+                let outlets = node.op().pulsify(&source, &node, &mut target, &mapping)?;
+                for (ix, outlet) in outlets.into_iter().enumerate() {
+                    mapping.insert(OutletId::new(node.id, ix), outlet);
                 }
             }
         }
-        Ok(PulsifiedModel { model, facts })
+        // maintaining order of i/o interface
+        target.inputs = source.inputs()?.iter().map(|i| mapping[&i]).collect();
+        target.outputs = source.outputs()?.iter().map(|o| mapping[&o]).collect();
+        Ok(target)
+    }
+
+    pub fn into_typed(self) -> TractResult<TypedModel> {
+        crate::model::compact::compact(&self)
     }
 }
 
@@ -135,7 +102,7 @@ mod tests {
         let _a = model
             .add_source_fact("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3]))
             .unwrap();
-        assert!(PulsifiedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
+        assert!(PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
             .is_err());
 
         let mut model = Model::default();
@@ -145,10 +112,10 @@ mod tests {
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
             .unwrap();
-        let pulse = PulsifiedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
+        let pulse = PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
             .unwrap();
         assert_eq!(
-            pulse.model.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
+            pulse.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
         );
     }
@@ -163,14 +130,14 @@ mod tests {
             )
             .unwrap();
 
-        let pulse = PulsifiedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
+        let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
 
         assert_eq!(
-            pulse.model.input_fact().unwrap().to_tensor_fact(),
+            pulse.input_fact().unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
         assert_eq!(
-            pulse.model.output_fact().unwrap().to_tensor_fact(),
+            pulse.output_fact().unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
     }
@@ -202,11 +169,11 @@ mod tests {
         let outputs = plan.run(tvec!(t_input.clone())).unwrap();
 
         let pulse = 4;
-        let pulsed = PulsifiedModel::new(&model.into_normalized().unwrap(), pulse).unwrap();
-        assert_eq!(pulsed.model.nodes().len(), 3); // source - delay - conv
-        assert_eq!(pulsed.facts[&OutletId::new(2, 0)].delay, 2);
+        let pulsed = PulsedModel::new(&model.into_normalized().unwrap(), pulse).unwrap();
+        assert_eq!(pulsed.nodes().len(), 3); // source - delay - conv
+        assert_eq!(pulsed.fact(OutletId::new(2, 0)).unwrap().delay, 2);
 
-        let pulsed_plan = crate::plan::SimplePlan::new(pulsed.model).unwrap();
+        let pulsed_plan = crate::plan::SimplePlan::new(pulsed).unwrap();
         let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
         let mut got: Vec<f32> = vec![];
 
