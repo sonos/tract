@@ -35,12 +35,7 @@ impl DeclutterPass for NormalizeOps {
             for id in model.eval_order()? {
                 let reduced = {
                     let node = &model.nodes()[id];
-                    debug!(
-                        "Consider normalization for {} #{} ({})",
-                        node.name,
-                        node.id,
-                        node.op().name()
-                    );
+                    debug!("Decluttering {} #{} ({})", node.name, node.id, node.op().name());
                     node.op
                         .declutter(model, node)
                         .map_err(|e| format!("{:?} node {:?}, {:?}", self, node, e))?
@@ -83,12 +78,7 @@ impl CodegenPass for CodegenOps {
             for id in model.eval_order()? {
                 let reduced = {
                     let node = &model.nodes()[id];
-                    debug!(
-                        "Consider codegen for {} #{} ({})",
-                        node.name,
-                        node.id,
-                        node.op().name()
-                    );
+                    debug!("Codegen {} #{} ({})", node.name, node.id, node.op().name());
                     node.op
                         .codegen(model, node)
                         .map_err(|e| format!("{:?} node {:?}, {:?}", self, node, e))?

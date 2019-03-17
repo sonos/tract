@@ -67,6 +67,12 @@ impl PulsedModel {
         let mut target = PulsedModel::default();
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {
+            trace!(
+                "Pulsify node {} {} ({})",
+                old_id,
+                source.node(old_id).name,
+                source.node(old_id).op().name()
+            );
             if source.node(old_id).op_as::<Source>().is_some() {
                 let node = source.node(old_id);
                 let pulsed_fact =
@@ -80,6 +86,7 @@ impl PulsedModel {
                     mapping.insert(OutletId::new(node.id, ix), outlet);
                 }
             }
+            trace!("Target is now {}", target.nodes().len());
         }
         // maintaining order of i/o interface
         target.inputs = source.inputs()?.iter().map(|i| mapping[&i]).collect();
@@ -102,8 +109,9 @@ mod tests {
         let _a = model
             .add_source_fact("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3]))
             .unwrap();
-        assert!(PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
-            .is_err());
+        assert!(
+            PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).is_err()
+        );
 
         let mut model = Model::default();
         let _a = model
@@ -112,8 +120,8 @@ mod tests {
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
             .unwrap();
-        let pulse = PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4)
-            .unwrap();
+        let pulse =
+            PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
             pulse.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
