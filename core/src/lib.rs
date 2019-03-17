@@ -17,7 +17,7 @@
 //! let input = model.add_source("input").unwrap();
 //! let three = model.add_const("three".to_string(), 3f32.into()).unwrap();
 //! let add = model.add_node("add".to_string(),
-//!     Box::new(tract_core::ops::math::Add::default()),
+//!     tract_core::ops::math::Add::default(),
 //!     tvec!(TensorFact::default())
 //!     ).unwrap();
 //!

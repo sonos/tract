@@ -5,8 +5,8 @@ use crate::ops::Op;
 pub struct Model<TI: TensorInfo> {
     pub(super) nodes: Vec<Node<TI>>,
     nodes_by_name: HashMap<String, usize>,
-    pub(super) inputs: Vec<OutletId>,
-    pub(super) outputs: Vec<OutletId>,
+    pub(crate) inputs: Vec<OutletId>,
+    pub(crate) outputs: Vec<OutletId>,
 }
 
 impl<TI: TensorInfo> Default for Model<TI> {
@@ -22,22 +22,23 @@ impl<TI: TensorInfo> Default for Model<TI> {
 
 impl<TI: TensorInfo> Model<TI> {
 
-    pub fn add_node(
+    pub fn add_node<BO: Into<Box<Op>>>(
         &mut self,
         name: String,
-        op: Box<Op>,
+        op: BO,
         outputs_fact: TVec<TI>,
     ) -> TractResult<usize> {
         self.add_node_disable_output_guess(name, op, outputs_fact, false)
     }
 
-    pub(crate) fn add_node_disable_output_guess(
+    pub(crate) fn add_node_disable_output_guess<BO: Into<Box<Op>>>(
         &mut self,
         name: String,
-        op: Box<Op>,
+        op: BO,
         outputs_fact: TVec<TI>,
         disable_output_guess: bool,
     ) -> TractResult<usize> {
+        let op = op.into();
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
         let is_input = op.name() == "Source";

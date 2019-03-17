@@ -1,4 +1,4 @@
-//! oharedTensorFlow Ops
+//! Ops
 use std::fmt::Debug;
 
 use downcast_rs::Downcast;
@@ -30,7 +30,7 @@ pub mod prelude {
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::Framework;
     pub use crate::model::*;
-    pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
+    pub use crate::pulse::{PulsedModel, PulsedTensorFact};
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;
     pub use crate::TractResult;
@@ -128,8 +128,11 @@ pub trait Op:
 
     fn pulsify(
         &self,
-        _inputs: TVec<&PulsedTensorFact>,
-    ) -> TractResult<Vec<crate::pulse::PulsifiedOp>> {
+        _source: &NormalizedModel,
+        _node: &NormalizedNode,
+        _target: &mut PulsedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
         bail!("Operator {} do not support pulsification", self.name())
     }
 

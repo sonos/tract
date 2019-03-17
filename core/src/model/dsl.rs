@@ -11,11 +11,11 @@ pub trait ModelDsl<TI: TensorInfo> {
     fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TI) -> TractResult<usize>;
     fn chain_facts<BO: Into<Box<Op>>, S: AsRef<str>>(&mut self, name: S, op: BO, facts:TVec<TI>) -> TractResult<usize>;
 
-    fn tap_and_chain<S: AsRef<str>>(
+    fn chain_after<S: AsRef<str>, BO: Into<Box<Op>>>(
         &mut self,
         tap: OutletId,
         name: S,
-        op: Box<Op>,
+        op: BO,
         facts: TVec<TI>,
     ) -> TractResult<usize>;
 
@@ -25,7 +25,7 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
     fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TI) -> TractResult<usize> {
         let id = self.add_node(
             name.as_ref().to_owned(),
-            Box::new(crate::ops::source::Source::new(fact.to_tensor_fact())),
+            crate::ops::source::Source::new(fact.to_tensor_fact()),
             tvec!(fact),
         )?;
         Ok(id)
@@ -33,7 +33,7 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
 
     fn chain_facts<BO: Into<Box<Op>>, S: AsRef<str>>(&mut self, name: S, op: BO, facts:TVec<TI>) -> TractResult<usize> {
         let previous_id = self.nodes().len() - 1;
-        self.tap_and_chain(OutletId::new(previous_id, 0), name, op.into(), facts)
+        self.chain_after(OutletId::new(previous_id, 0), name, op.into(), facts)
     }
 
     fn single_prec(&self, id: usize) -> TractResult<Option<&Node<TI>>> {
@@ -85,14 +85,14 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
         Ok(Some(succ))
     }
 
-    fn tap_and_chain<S: AsRef<str>>(
+    fn chain_after<S: AsRef<str>, BO: Into<Box<Op>>>(
         &mut self,
         tap: OutletId,
         name: S,
-        op: Box<Op>,
+        op: BO,
         facts: TVec<TI>,
     ) -> TractResult<usize> {
-        let id = self.add_node(name.as_ref().to_owned(), op.into(), facts)?;
+        let id = self.add_node(name.as_ref().to_owned(), op, facts)?;
         self.add_edge(tap, InletId::new(id, 0))?;
         Ok(id)
     }
@@ -106,14 +106,14 @@ pub trait ModelDslConst {
 impl ModelDslConst for super::InferenceModel {
     fn add_const<S: AsRef<str>>(&mut self, name: S, v: SharedTensor) -> TractResult<usize> {
         let facts = tvec!(v.clone().into());
-        self.add_node(name.as_ref().to_owned(), Box::new(crate::ops::konst::Const::new(v)), facts)
+        self.add_node(name.as_ref().to_owned(), crate::ops::konst::Const::new(v), facts)
     }
 }
 
 impl ModelDslConst for super::TypedModel {
     fn add_const<S: AsRef<str>>(&mut self, name: S, v: SharedTensor) -> TractResult<usize> {
         let facts = tvec!(v.clone().into());
-        self.add_node(name.as_ref().to_owned(), Box::new(crate::ops::konst::Const::new(v)), facts)
+        self.add_node(name.as_ref().to_owned(), crate::ops::konst::Const::new(v), facts)
     }
 }
 
