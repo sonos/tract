@@ -19,10 +19,6 @@ impl Op for FusedBatchNorm {
     fn rounding_errors(&self) -> bool {
         true
     }
-
-    fn noutputs(&self) -> usize {
-        1
-    }
 }
 
 impl StatelessOp for FusedBatchNorm {

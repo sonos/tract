@@ -14,11 +14,10 @@
 //! // build a simple model that just add 3 to each input component
 //! let mut model = Model::default();
 //!
-//! let input = model.add_source("input").unwrap();
+//! let input = model.add_source_default("input").unwrap();
 //! let three = model.add_const("three".to_string(), 3f32.into()).unwrap();
-//! let add = model.add_node("add".to_string(),
+//! let add = model.add_node_default("add".to_string(),
 //!     tract_core::ops::math::Add::default(),
-//!     tvec!(TensorFact::default())
 //!     ).unwrap();
 //!
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();

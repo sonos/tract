@@ -22,27 +22,28 @@ impl<TI: TensorInfo> Default for Model<TI> {
 
 impl<TI: TensorInfo> Model<TI> {
 
-    pub fn add_node<BO: Into<Box<Op>>>(
+    pub fn add_node(
         &mut self,
-        name: String,
-        op: BO,
+        name: impl Into<String>,
+        op: impl Into<Box<Op>>,
         outputs_fact: TVec<TI>,
     ) -> TractResult<usize> {
         self.add_node_disable_output_guess(name, op, outputs_fact, false)
     }
 
-    pub(crate) fn add_node_disable_output_guess<BO: Into<Box<Op>>>(
+    pub(crate) fn add_node_disable_output_guess(
         &mut self,
-        name: String,
-        op: BO,
+        name: impl Into<String>,
+        op: impl Into<Box<Op>>,
         outputs_fact: TVec<TI>,
         disable_output_guess: bool,
     ) -> TractResult<usize> {
         let op = op.into();
+        let name = name.into();
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
         let is_input = op.name() == "Source";
-        let noutputs = op.noutputs();
+        let noutputs = outputs_fact.len();
         let outputs =
             outputs_fact.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
         let node = Node { id, name, op, inputs: vec![], outputs };

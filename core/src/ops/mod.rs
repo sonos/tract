@@ -144,16 +144,8 @@ pub trait Op:
         Ok(None)
     }
 
-    fn const_value(&self) -> Option<SharedTensor> {
-        None
-    }
-
     fn rounding_errors(&self) -> bool {
         false
-    }
-
-    fn noutputs(&self) -> usize {
-        1
     }
 
     fn same_as(&self, _other: &Op) -> bool {

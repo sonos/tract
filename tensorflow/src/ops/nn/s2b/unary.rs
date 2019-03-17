@@ -1,6 +1,6 @@
 use ndarray::*;
-use tract_core::ops::prelude::*;
 use tract_core::ops::nn::ConvUnary;
+use tract_core::ops::prelude::*;
 
 #[derive(Debug, Copy, Clone)]
 pub enum PaddingStrat {
@@ -47,9 +47,13 @@ impl Op for SpaceToBatchUnary {
                     };
                     let mut patch = TypedModelPatch::default();
                     patch.tap_model(&model, node.inputs[0])?;
-                    let out = patch.model.chain_facts(&conv_node.name, op, tvec!(b2s_node.outputs[0].fact.clone()))?;
+                    let out = patch.model.chain(
+                        &*conv_node.name,
+                        op,
+                        tvec!(b2s_node.outputs[0].fact.clone()),
+                    )?;
                     patch.shunt_outside(OutletId::new(b2s_node.id, 0), OutletId::new(out, 0))?;
-                    return Ok(Some(patch))
+                    return Ok(Some(patch));
                 }
             }
         }

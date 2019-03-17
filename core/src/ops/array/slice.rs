@@ -49,7 +49,7 @@ impl Op for Slice {
             let mut fact = fact.clone();
             fact.delay += delay;
             fact.dim -= delay.to_dim();
-            let id = target.chain_after(input, &node.name, Identity::default(), tvec!(fact))?;
+            let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
             return Ok(tvec!(OutletId::new(id, 0)))
         }
         unimplemented!();

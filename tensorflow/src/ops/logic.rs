@@ -16,10 +16,6 @@ impl Op for Switch {
     fn name(&self) -> Cow<str> {
         "tf.Switch".into()
     }
-
-    fn noutputs(&self) -> usize {
-        2
-    }
 }
 
 impl StatelessOp for Switch {
@@ -65,10 +61,6 @@ pub struct Merge {
 impl Op for Merge {
     fn name(&self) -> Cow<str> {
         "tf.Merge".into()
-    }
-
-    fn noutputs(&self) -> usize {
-        2
     }
 }
 

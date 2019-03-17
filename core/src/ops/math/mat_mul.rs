@@ -239,7 +239,7 @@ impl Op for MatMulUnaryA {
         )?;
         fact.shape = cshape_pulse;
         fact.dim = cshape_full[fact.axis];
-        let id = target.chain_after(input, &node.name, self.clone(), tvec!(fact))?;
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
 

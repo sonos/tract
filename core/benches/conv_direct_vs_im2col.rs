@@ -78,8 +78,8 @@ impl Problem {
 
         let direct = unary.to_direct(&*self.image_shape()).unwrap();
         let mut model_direct = InferenceModel::default();
-        model_direct.add_source("input").unwrap();
-        model_direct.chain("conv", Box::new(direct)).unwrap();
+        model_direct.add_source_default("input").unwrap();
+        model_direct.chain_default("conv", direct).unwrap();
         SimplePlan::new(model_direct.into_typed().unwrap()).unwrap()
     }
 
@@ -88,9 +88,9 @@ impl Problem {
 
         let (im2col, _, cvgemm) = unary.to_boxed_im2col_pair::<f32>(&*self.image_shape()).unwrap();
         let mut model_im2col = InferenceModel::default();
-        model_im2col.add_source("input").unwrap();
-        model_im2col.chain("im2col", im2col).unwrap();
-        model_im2col.chain("gemm", cvgemm).unwrap();
+        model_im2col.add_source_default("input").unwrap();
+        model_im2col.chain_default("im2col", im2col).unwrap();
+        model_im2col.chain_default("gemm", cvgemm).unwrap();
         SimplePlan::new(model_im2col.into_typed().unwrap()).unwrap()
     }
 }
