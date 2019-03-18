@@ -1,3 +1,4 @@
+use std::fmt;
 use crate::{DatumType, SharedTensor, TDim, TractResult, TVec};
 use crate::analyser::types::{ShapeFact, TensorFact};
 use crate::datum::TryInto;
@@ -47,7 +48,7 @@ pub struct StreamInfo {
     pub len: TDim,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ShapeInfo {
     shape: TVec<usize>,
     pub stream_info: Option<StreamInfo>,
@@ -102,7 +103,14 @@ impl<T: AsRef<[usize]>> From<T> for ShapeInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+impl fmt::Debug for ShapeInfo {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use itertools::Itertools;
+        write!(fmt, "{}", self.iter().join("x"))
+    }
+}
+
+#[derive(Clone)]
 pub struct TypedTensorInfo {
     pub datum_type: DatumType,
     pub shape: ShapeInfo,
@@ -151,7 +159,16 @@ impl TryInto<NormalizedTensorInfo> for TypedTensorInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl fmt::Debug for TypedTensorInfo {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.konst {
+            Some(ref k) => write!(fmt, "{:?}", k),
+            None => write!(fmt, "{:?}x{:?}", self.shape, self.datum_type)
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
 pub struct NormalizedTensorInfo {
     pub datum_type: DatumType,
     pub shape: ShapeInfo,
@@ -166,5 +183,11 @@ impl TensorInfo for NormalizedTensorInfo {
 impl TryInto<TypedTensorInfo> for NormalizedTensorInfo {
     fn try_into(&self) -> TractResult<TypedTensorInfo> {
         Ok(TypedTensorInfo { shape: self.shape.clone(), datum_type: self.datum_type, konst: None })
+    }
+}
+
+impl fmt::Debug for NormalizedTensorInfo {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}x{:?}", self.shape, self.datum_type)
     }
 }

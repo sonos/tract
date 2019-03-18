@@ -1,16 +1,24 @@
+use std::fmt;
 use crate::datum::TryInto;
 use crate::ops::prelude::*;
 use crate::ops::source::Source;
 
 pub mod delay;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct PulsedTensorFact {
     pub dt: DatumType,
     pub shape: TVec<usize>,
     pub axis: usize,
     pub dim: TDim,
     pub delay: usize,
+}
+
+impl fmt::Debug for PulsedTensorFact {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use itertools::Itertools;
+        write!(fmt, "Pulse:{}x{:?}{{ax:{},d:{},dim:{:?}}}", self.shape.iter().join("x"), self.dt, self.axis, self.delay, self.dim)
+    }
 }
 
 impl TensorInfo for PulsedTensorFact {
@@ -64,6 +72,13 @@ pub type PulsedModel = Model<PulsedTensorFact>;
 
 impl PulsedModel {
     pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
+        Ok(PulsedModel::new_with_mapping(source, pulse)?.0)
+    }
+
+    pub fn new_with_mapping(
+        source: &NormalizedModel,
+        pulse: usize,
+    ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
         let mut target = PulsedModel::default();
         let mut mapping = HashMap::new();
         for old_id in source.eval_order()? {
@@ -91,7 +106,7 @@ impl PulsedModel {
         // maintaining order of i/o interface
         target.inputs = source.inputs()?.iter().map(|i| mapping[&i]).collect();
         target.outputs = source.outputs()?.iter().map(|o| mapping[&o]).collect();
-        Ok(target)
+        Ok((target, mapping))
     }
 
     pub fn into_typed(self) -> TractResult<TypedModel> {

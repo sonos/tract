@@ -65,7 +65,7 @@ impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
             outputs.push(outlets_by_name[output.get_name()]);
             model.set_fact(outlets_by_name[output.get_name()], fact)?;
         }
-        model.set_outputs_outlets(&outputs)?;
+        model.set_output_outlets(&outputs)?;
         Ok(model)
     }
 }

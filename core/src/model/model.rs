@@ -121,7 +121,7 @@ impl<TI: TensorInfo> Model<TI> {
         Ok(())
     }
 
-    pub fn set_outputs_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
+    pub fn set_output_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
         self.outputs = outputs.to_vec();
         Ok(())
     }

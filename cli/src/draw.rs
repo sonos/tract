@@ -8,6 +8,7 @@ pub fn render(model: &SomeModel) -> CliResult<()> {
         SomeModel::Inference(m) => render_t(m),
         SomeModel::Typed(m) => render_t(m),
         SomeModel::Normalized(m) => render_t(m),
+        SomeModel::Pulsed(_, m) => render_t(m),
     }
 }
 

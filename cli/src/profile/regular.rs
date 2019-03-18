@@ -21,7 +21,8 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
         SomeModel::Inference(m) => handle_benching_t(m, &params, profiling),
         SomeModel::Typed(m) => handle_benching_t(m, &params, profiling),
         SomeModel::Normalized(m) => handle_benching_t(m, &params, profiling),
-    }
+        SomeModel::Pulsed(_, m) => handle_benching_t(m, &params, profiling),
+   }
 }
 
 fn handle_benching_t<TI:TensorInfo>(model: &Model<TI>, params: &Parameters, profiling: ProfilingMode) -> CliResult<()> {
@@ -62,6 +63,7 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, display_options: Dis
         SomeModel::Inference(ref m) => handle_t(m, &params, profiling, display_options),
         SomeModel::Typed(ref m) => handle_t(m, &params, profiling, display_options),
         SomeModel::Normalized(ref m) => handle_t(m, &params, profiling, display_options),
+        SomeModel::Pulsed(_, ref m) => handle_t(m, &params, profiling, display_options),
     }
 }
 

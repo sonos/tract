@@ -4,8 +4,13 @@ use tract_core::ops::prelude::*;
 use tract_core::SimplePlan;
 
 pub fn handle(params: Parameters) -> CliResult<()> {
-    let outputs =
-        if params.pulse_facts.is_some() { run_pulse(&params)? } else { run_regular(&params)? };
+
+    let outputs = match &params.tract_model {
+        SomeModel::Inference(ref m) => run_regular_t(m, &params)?,
+        SomeModel::Typed(ref m) => run_regular_t(m, &params)?,
+        SomeModel::Normalized(ref m) => run_regular_t(m, &params)?,
+        SomeModel::Pulsed(_, m) => run_pulse_t(m, &params)?,
+    };
 
     for (ix, output) in outputs.iter().enumerate() {
         println!("output #{}\n{}\n", ix, output.dump(true)?);
@@ -23,14 +28,6 @@ pub fn handle(params: Parameters) -> CliResult<()> {
     }
 
     Ok(())
-}
-
-fn run_regular(params: &Parameters) -> CliResult<TVec<SharedTensor>> {
-    match &params.tract_model {
-        SomeModel::Inference(ref m) => run_regular_t(m, params),
-        SomeModel::Typed(ref m) => run_regular_t(m, params),
-        SomeModel::Normalized(ref m) => run_regular_t(m, params),
-    }
 }
 
 fn run_regular_t<TI: TensorInfo>(
@@ -52,17 +49,11 @@ fn run_regular_t<TI: TensorInfo>(
     Ok(plan.run(inputs)?)
 }
 
-fn run_pulse(params: &Parameters) -> CliResult<TVec<SharedTensor>> {
-    match &params.tract_model {
-        SomeModel::Inference(ref m) => run_pulse_t(m, params),
-        SomeModel::Typed(ref m) => run_pulse_t(m, params),
-        SomeModel::Normalized(ref m) => run_pulse_t(m, params),
-    }
-}
 
+fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<SharedTensor>> {
+    let input_fact = model.input_fact()?;
+    let output_fact = model.output_fact()?;
 
-fn run_pulse_t<TI:TensorInfo>(tract: &Model<TI>, params: &Parameters) -> CliResult<TVec<SharedTensor>> {
-    let (input_fact, output_fact) = params.pulse_facts.clone().unwrap();
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
@@ -74,7 +65,7 @@ fn run_pulse_t<TI:TensorInfo>(tract: &Model<TI>, params: &Parameters) -> CliResu
     let mut output_shape = output_fact.shape.to_vec();
     output_shape[output_fact.axis] =
         output_dim as usize + output_fact.delay + 4 * output_fact.pulse();
-    let plan = SimplePlan::new(tract)?;
+    let plan = SimplePlan::new(model)?;
     let mut state = ::tract_core::plan::SimpleState::new(&plan)?;
     //    println!("output_shape: {:?}", output_shape);
     let pulse = input_fact.pulse();
