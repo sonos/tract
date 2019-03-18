@@ -114,7 +114,7 @@ impl Op for Pad {
                 prec = OutletId::new(id, 0);
             }
             fact.dim += (before + after).to_dim();
-            fact.delay -= before - input.delay;
+            fact.delay -= before;
             let op = PulsePad::<f32>::new(
                 input_fact.axis,
                 input_fact.pulse(),
