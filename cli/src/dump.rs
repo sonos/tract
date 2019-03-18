@@ -9,6 +9,7 @@ pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
         SomeModel::Inference(m) => handle_t(m, &params, options),
         SomeModel::Typed(m) => handle_t(m, &params, options),
         SomeModel::Normalized(m) => handle_t(m, &params, options),
+        SomeModel::Pulsed(_, m) => handle_t(m, &params, options),
     }
 }
 

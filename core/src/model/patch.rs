@@ -55,11 +55,7 @@ impl<TI: TensorInfo> ModelPatch<TI> {
         let mut patch = ModelPatch::default();
         patch.tap_model(&patched_model, node.inputs[0])?;
         let new_op = new_op.into();
-        let by = patch.chain(
-            format!("{}-as-{}", node.name, new_op.name()),
-            new_op,
-            tvec!(node.outputs[0].fact.clone()),
-        )?;
+        let by = patch.chain(&*node.name, new_op, tvec!(node.outputs[0].fact.clone()))?;
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(by, 0))?;
         Ok(patch)
     }

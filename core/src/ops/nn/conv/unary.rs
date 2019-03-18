@@ -460,7 +460,7 @@ impl Op for ConvUnary {
 
             let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_len);
             target.chain_after(input,format!("{}/Delay", node.name), delay, tvec!(augmented_fact))?;
-            let id = target.chain(format!("{}/Conv", node.name), conv_op, tvec!(conv_fact))?;
+            let id = target.chain(&*node.name, conv_op, tvec!(conv_fact))?;
 
             Ok(tvec!(OutletId::new(id, 0)))
         }

@@ -49,7 +49,7 @@ mod format;
 mod profile;
 mod run;
 mod rusage;
-// mod stream_check;
+mod stream_check;
 mod tensor;
 mod utils;
 
@@ -241,6 +241,7 @@ pub enum SomeModel {
     Inference(InferenceModel),
     Typed(TypedModel),
     Normalized(NormalizedModel),
+    Pulsed(NormalizedModel, PulsedModel),
 }
 
 /// Structure holding the parsed parameters.
@@ -248,7 +249,6 @@ pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
     tract_model: SomeModel,
-    pulse_facts: Option<(PulsedTensorFact, PulsedTensorFact)>,
 
     #[cfg(feature = "conform")]
     tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
@@ -373,22 +373,19 @@ impl Parameters {
             }
         }
 
-        let pulse_facts = if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model)
+        if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model)
         {
             info!("Pulsify {}", pulse);
-            let model =
-                ::tract_core::pulse::PulsedModel::new(&model.clone().into_normalized()?, pulse)?;
-            let ifact = model.input_fact().unwrap().clone();
-            let ofact = model.output_fact().unwrap().clone();
-            tract_model = SomeModel::Typed(model.into_typed().unwrap());
-            Some((ifact, ofact))
-        } else {
-            None
+            let normalized = model.clone().into_normalized()?;
+            let pulsed = ::tract_core::pulse::PulsedModel::new(&normalized, pulse)?;
+            tract_model = SomeModel::Pulsed(normalized, pulsed);
         };
 
         if matches.is_present("optimize") {
             if let SomeModel::Typed(typed) = tract_model {
                 tract_model = SomeModel::Typed(typed.codegen()?);
+            } else if let SomeModel::Pulsed(_, pulsed) = tract_model {
+                tract_model = SomeModel::Typed(pulsed.into_typed()?.codegen()?);
             }
         }
 
@@ -399,7 +396,6 @@ impl Parameters {
             graph,
             tract_model,
             tf_model,
-            pulse_facts,
             inputs,
             assertions: None,
             machine_friendly,
@@ -498,9 +494,10 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("optimize-check", Some(m)) => {
             optimize_check::handle(params, display_options_from_clap(m)?)
         }
+        */
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
-        */
+
         ("draw", _) => crate::draw::render(&params.tract_model),
 
         ("dump", Some(m)) => {
