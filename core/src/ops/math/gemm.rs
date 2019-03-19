@@ -63,54 +63,74 @@ impl Op for Gemm {
         "Gemm".into()
     }
 
-    fn reduce(
+    fn declutter(
         &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        _phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
         if self.have_c {
-            if let (Some(b), Some(c)) = (inputs[1].concretize(), inputs[2].concretize()) {
-                return Ok(Some(ReducedOpRewire::unary(GemmUnaryA {
-                    alpha: self.alpha,
-                    beta: self.beta,
-                    trans_a: self.trans_a,
-                    trans_b: self.trans_b,
-                    b: b.to_tensor(),
-                    c: c.to_tensor(),
-                })));
+            if let (Some(b), Some(c)) = (inputs[1].konst.clone(), inputs[2].konst.clone()) {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    tvec!(node.inputs[0]),
+                    GemmUnaryA {
+                        alpha: self.alpha,
+                        beta: self.beta,
+                        trans_a: self.trans_a,
+                        trans_b: self.trans_b,
+                        b: b.clone(),
+                        c: c.clone(),
+                    },
+                )?));
             }
 
-            if let (Some(a), Some(c)) = (inputs[0].concretize(), inputs[2].concretize()) {
-                return Ok(Some(ReducedOpRewire::unary(GemmUnaryB {
-                    alpha: self.alpha,
-                    beta: self.beta,
-                    trans_a: self.trans_a,
-                    trans_b: self.trans_b,
-                    a: a.to_tensor(),
-                    c: c.to_tensor(),
-                })));
+            if let (Some(a), Some(c)) = (inputs[0].konst.clone(), inputs[2].konst.clone()) {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    tvec!(node.inputs[1]),
+                    GemmUnaryB {
+                        alpha: self.alpha,
+                        beta: self.beta,
+                        trans_a: self.trans_a,
+                        trans_b: self.trans_b,
+                        a,
+                        c,
+                    },
+                )?));
             }
         } else {
-            if let Some(b) = inputs[1].concretize() {
-                return Ok(Some(ReducedOpRewire::unary(GemmUnaryA {
-                    alpha: self.alpha,
-                    beta: 0.0,
-                    trans_a: self.trans_a,
-                    trans_b: self.trans_b,
-                    b: b.to_tensor(),
-                    c: Tensor::from(0.0),
-                })));
+            if let Some(b) = inputs[1].konst.clone() {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    tvec!(node.inputs[0]),
+                    GemmUnaryA {
+                        alpha: self.alpha,
+                        beta: 0.0,
+                        trans_a: self.trans_a,
+                        trans_b: self.trans_b,
+                        b,
+                        c: Tensor::from(0.0).into(),
+                    },
+                )?));
             }
-            if let Some(a) = inputs[0].concretize() {
-                return Ok(Some(ReducedOpRewire::unary(GemmUnaryB {
-                    alpha: self.alpha,
-                    beta: 0.0,
-                    trans_a: self.trans_a,
-                    trans_b: self.trans_b,
-                    a: a.to_tensor(),
-                    c: Tensor::from(0.0),
-                })));
+            if let Some(a) = inputs[0].konst.clone() {
+                return Ok(Some(TypedModelPatch::replace_single_op(
+                    model,
+                    node,
+                    tvec!(node.inputs[1]),
+                    GemmUnaryB {
+                        alpha: self.alpha,
+                        beta: 0.0,
+                        trans_a: self.trans_a,
+                        trans_b: self.trans_b,
+                        a,
+                        c: Tensor::from(0.0).into(),
+                    },
+                )?));
             }
         }
 
@@ -162,8 +182,8 @@ pub struct GemmUnaryA {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    b: Tensor,
-    c: Tensor,
+    b: SharedTensor,
+    c: SharedTensor,
 }
 
 impl GemmUnaryA {
@@ -181,12 +201,15 @@ impl GemmUnaryA {
         let bt = if self.trans_b { b.t() } else { b };
         let c_shape = (at.rows(), bt.cols());
         let mut c = if self.beta != 0.0 {
-            if self.c.shape() == &[c_shape.0, c_shape.1]  {
+            if self.c.shape() == &[c_shape.0, c_shape.1] {
                 self.c.to_array_view::<T>()?.into_dimensionality()?.to_owned()
             } else {
-                self.c.to_array_view::<T>()?
+                self.c
+                    .to_array_view::<T>()?
                     .broadcast(c_shape)
-                    .ok_or_else(|| format!("Incompatible broadcast: {:?} to {:?}", self.c.shape(), c_shape))?
+                    .ok_or_else(|| {
+                        format!("Incompatible broadcast: {:?} to {:?}", self.c.shape(), c_shape)
+                    })?
                     .to_owned()
             }
         } else {
@@ -202,9 +225,17 @@ impl Op for GemmUnaryA {
         "GemmUnaryA".into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
-        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![input.clone()])])
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.fact(input)?.clone();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 }
 
@@ -241,8 +272,8 @@ pub struct GemmUnaryB {
     beta: f32,
     trans_a: bool,
     trans_b: bool,
-    a: Tensor,
-    c: Tensor,
+    a: SharedTensor,
+    c: SharedTensor,
 }
 
 impl GemmUnaryB {
@@ -260,12 +291,15 @@ impl GemmUnaryB {
         let bt = if self.trans_b { b.t() } else { b };
         let c_shape = (at.rows(), bt.cols());
         let mut c = if self.beta != 0.0 {
-            if self.c.shape() == &[c_shape.0, c_shape.1]  {
+            if self.c.shape() == &[c_shape.0, c_shape.1] {
                 self.c.to_array_view::<T>()?.into_dimensionality()?.to_owned()
             } else {
-                self.c.to_array_view::<T>()?
+                self.c
+                    .to_array_view::<T>()?
                     .broadcast(c_shape)
-                    .ok_or_else(|| format!("Incompatible broadcast: {:?} to {:?}", self.c.shape(), c_shape))?
+                    .ok_or_else(|| {
+                        format!("Incompatible broadcast: {:?} to {:?}", self.c.shape(), c_shape)
+                    })?
                     .to_owned()
             }
         } else {
