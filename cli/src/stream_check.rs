@@ -1,9 +1,12 @@
-use crate::display_graph;
-use crate::{CliResult, Parameters, SomeModel};
+use itertools::Itertools;
 use ndarray::ArrayD;
 use ndarray::Axis;
+
 use tract_core::model::{OutletId, TensorInfo};
 use tract_core::plan::{SimplePlan, SimpleState};
+
+use crate::display_graph;
+use crate::{CliResult, Parameters, SomeModel};
 
 pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
     let (fixed, pulsed) = if let SomeModel::Pulsed(n, p) = params.tract_model {
@@ -29,6 +32,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
             _ => continue,
         };
         for output in 0..fixed.node(fixed_node).outputs.len() {
+            debug!("checking node: {} output: {}", fixed.node(fixed_node).name, output);
             let fixed_outlet = OutletId::new(fixed_node, output);
             let pulsed_outlet = OutletId::new(pulsed_node, output);
 
@@ -68,7 +72,10 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
                             (offset..offset + count).into(),
                         ));
                 };
-                // FIXME set session state!
+                if offset + pulse > stream_dim {
+                    debug!("Set known_stream_len: {}", stream_dim);
+                    state.session_state.known_stream_len = Some(stream_dim)
+                };
                 let output = state.run(tvec!(pulsed_input.into()))?.remove(0);
                 let output = output.to_array_view::<f32>()?;
                 let output_offset = i * output_pulse;
@@ -95,6 +102,21 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
                     fixed_result.slice_axis(Axis(output_axis), (f_o..f_o + count).into());
                 if valid_pulse_result != valid_fixed_result {
                     display_graph.render_node(pulsed.node(pulsed_node))?;
+                    println!("pulse: {} ({}..{})", i, i * output_pulse, (i + 1) * output_pulse);
+                    println!(
+                        "expected: {}",
+                        valid_fixed_result
+                            .axis_iter(Axis(output_axis))
+                            .map(|s| *s.iter().next().unwrap())
+                            .join(" ")
+                    );
+                    println!(
+                        "got: {}",
+                        valid_pulse_result
+                            .axis_iter(Axis(output_axis))
+                            .map(|s| *s.iter().next().unwrap())
+                            .join(" ")
+                    );
                     bail!("Error checking pulse mode")
                 }
             }

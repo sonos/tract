@@ -116,8 +116,7 @@ impl TypedModel {
     }
 
     pub fn into_normalized(self) -> TractResult<NormalizedModel> {
-        let model = self.declutter()?;
-        compact::compact(&model)
+        compact::compact(&self)
     }
 
     pub fn into_optimized(self) -> TractResult<TypedModel> {

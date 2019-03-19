@@ -190,13 +190,40 @@ macro_rules! element_bin {
                     target: &mut PulsedModel,
                     mapping: &HashMap<OutletId, OutletId>,
                 ) -> TractResult<TVec<OutletId>> {
-                    let input = mapping[&node.inputs[0]];
-                    let mut fact = target.fact(input)?.clone();
+                    use $crate::pulse::delay::Delay;
+                    let a = mapping[&node.inputs[0]];
+                    let b = mapping[&node.inputs[1]];
+                    let a_fact = target.fact(a)?.clone();
+                    let b_fact = target.fact(b)?.clone();
+                    let delay = a_fact.delay.max(b_fact.delay);
+                    let mut fact = target.fact(a)?.clone();
+                    fact.delay = delay;
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
                     })*
-                    let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-                    target.add_edge(mapping[&node.inputs[1]], InletId::new(id, 1))?;
+                    let a_source = if a_fact.delay < delay {
+                        let add_delay = delay - a_fact.delay;
+                        let mut fixed_fact = a_fact.clone();
+                        fixed_fact.delay += add_delay;
+                        let id = target.chain_after(a, 
+                            format!("{}/Delay", &*node.name), Delay::new(a_fact.clone(), add_delay, 0), tvec!(fixed_fact))?;
+                        OutletId::new(id, 0)
+                    } else {
+                        a
+                    };
+                    let b_source = if b_fact.delay < delay {
+                        let add_delay = delay - b_fact.delay;
+                        let mut fixed_fact = b_fact.clone();
+                        fixed_fact.delay += add_delay;
+                        let id = target.chain_after(b,
+                            format!("{}/Delay", &*node.name), Delay::new(b_fact.clone(), add_delay, 0), tvec!(fixed_fact))?;
+                        OutletId::new(id, 0)
+                    } else {
+                        b
+                    };
+                    let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
+                    target.add_edge(a_source, InletId::new(id, 0))?;
+                    target.add_edge(b_source, InletId::new(id, 1))?;
                     Ok(tvec!(OutletId::new(id, 0)))
                 }
             }
