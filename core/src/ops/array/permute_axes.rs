@@ -35,16 +35,23 @@ impl Op for PermuteAxes {
         "PermuteAxes".into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
-        let mut fact = input.clone();
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.fact(input)?.clone();
         if let Some(axes) = &self.axes {
             fact.axis = axes.iter().position(|x| x == &fact.axis).ok_or_else(|| {
                 format!("Could not find streaming axis {} if permute axes {:?}", fact.axis, axes)
             })?;
             fact.shape = axes.iter().map(|idx| fact.shape[*idx]).collect();
         }
-        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![fact])])
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 }
 

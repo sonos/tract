@@ -181,9 +181,17 @@ where
         format!("FixedBatchNorm<{:?}>", T::datum_type()).into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
-        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![input.clone()])])
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.fact(input)?.clone();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 }
 

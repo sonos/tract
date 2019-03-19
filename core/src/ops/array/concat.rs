@@ -76,7 +76,7 @@ impl Op for Concat {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut inputs = model.node_input_facts(node.id)?;
+        let inputs = model.node_input_facts(node.id)?;
 
         for input in inputs.iter() {
             if input.shape.as_finite().is_none() {
@@ -96,7 +96,7 @@ impl Op for Concat {
                 for input in inputs.iter() {
                     match input.konst.as_ref() {
                         Some(c_input) => {
-                            slices.push(NormConcatSlice::Const(
+                            slices.push(FixedConcatSlice::Const(
                                 c_input.cast_to::<T>()?.into_owned().into_array()?,
                             ));
                         }
@@ -139,7 +139,7 @@ pub struct PulsedNormAxisConcatState {
 }
 
 impl OpState for PulsedNormAxisConcatState {
-    fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&mut self, session: &mut SessionState, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         unimplemented!()
     }
 }
@@ -155,13 +155,20 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
         format!("NormConcat<{:?}>", T::datum_type()).into()
     }
 
-    fn pulsify(&self, inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
 
-        if inputs.len() > 1 {
+        if node.inputs.len() > 1 {
             bail!("Pulsification not implemented for more than one input to Concat")
         }
 
-        let mut fact = inputs[0].clone();
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.fact(input)?.clone();
 
         if fact.axis == self.axis {
             let mut input_seen = false;
@@ -182,34 +189,28 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
                 if let NormConcatSlice::Const(c) = slice {
                     fact.shape[self.axis] += c.shape()[self.axis];
                 }
+            }
         }
-            return Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec![fact])])
-
-        }
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 
-    // Reduce to FixedConcat<T>
-    fn reduce(
+    fn codegen(
         &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase != ReductionPhase::Codegen {
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+
+        trace!("  Entering codegen for NormConcat");
+
+        if inputs.iter().any(|i| i.shape.as_finite().is_none()) {
             return Ok(None);
-        }
-
-        trace!("  Entering reducer for NormConcat");
-
-        for input in inputs.iter() {
-            if input.shape.as_concrete_finite()?.is_none() {
-                return Ok(None);
-            }
         }
 
         trace!("  Input has concrete finite shape");
         let shapes: TVec<TVec<usize>> =
-            inputs.iter().map(|x| x.shape.as_concrete_finite().unwrap().unwrap()).collect();
+            inputs.iter().map(|x| x.shape.as_finite().unwrap().into()).collect();
 
         let mut fixed_slices: TVec<FixedConcatSlice<T>> = tvec![];
 
@@ -218,10 +219,10 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
             match slice {
                 NormConcatSlice::Const(c) => fixed_slices.push(FixedConcatSlice::Const(c.clone())),
                 NormConcatSlice::Var(shape) => {
-                    if &inputs[input_idx].shape.concretize().unwrap() != shape {
+                    if &inputs[input_idx].shape.iter().collect::<TVec<_>>() != shape {
                         bail!(
                             "Incompatible shapes {:?} and {:?}",
-                            &inputs[input_idx].shape.concretize().unwrap(),
+                            &inputs[input_idx].shape,
                             shape
                         )
                     }
@@ -231,10 +232,16 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
             }
         }
 
-        Ok(Some(ReducedOpRewire::new(
-            vec![Box::new(FixedConcat::new(self.axis, fixed_slices))],
-            (0..inputs.len()).collect(),
-        )))
+        let op:Box<Op> = Box::new(FixedConcat::new(self.axis, fixed_slices));
+
+        let mut patch = TypedModelPatch::default();
+        let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
+        for (ix, input) in inputs.iter().enumerate() {
+            let tap = patch.tap_model(model, node.inputs[ix])?;
+            patch.add_edge(tap, InletId::new(node_id, ix))?;
+        }
+        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
+        return Ok(Some(patch))
     }
 }
 

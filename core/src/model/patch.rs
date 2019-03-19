@@ -47,17 +47,29 @@ impl<TI: TensorInfo> ModelPatch<TI> {
         Ok(())
     }
 
+    pub fn replace_single_op<O: Into<Box<Op>>>(
+        patched_model: &Model<TI>,
+        node: &Node<TI>,
+        inputs: TVec<OutletId>,
+        new_op: O,
+    ) -> TractResult<ModelPatch<TI>> {
+        let mut patch = ModelPatch::default();
+        let new_op = new_op.into();
+        let by = patch.add_node(&*node.name, new_op, tvec!(node.outputs[0].fact.clone()))?;
+        for (ix, i) in inputs.iter().enumerate() {
+            let o = patch.tap_model(&patched_model, *i)?;
+            patch.add_edge(o, InletId::new(by, ix))?;
+        }
+        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(by, 0))?;
+        Ok(patch)
+    }
+
     pub fn single_unary_op<O: Into<Box<Op>>>(
         patched_model: &Model<TI>,
         node: &Node<TI>,
         new_op: O,
     ) -> TractResult<ModelPatch<TI>> {
-        let mut patch = ModelPatch::default();
-        patch.tap_model(&patched_model, node.inputs[0])?;
-        let new_op = new_op.into();
-        let by = patch.chain(&*node.name, new_op, tvec!(node.outputs[0].fact.clone()))?;
-        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(by, 0))?;
-        Ok(patch)
+        Self::replace_single_op(patched_model, node, tvec!(node.inputs[0]), new_op)
     }
 
     pub fn apply(self, model: &mut Model<TI>) -> TractResult<()> {
