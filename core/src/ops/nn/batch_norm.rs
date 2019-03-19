@@ -36,7 +36,7 @@ impl Op for BatchNorm {
         "BatchNorm".into()
     }
 
-    fn codegen(
+    fn declutter(
         &self,
         model: &TypedModel,
         node: &TypedNode,

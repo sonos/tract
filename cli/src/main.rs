@@ -87,6 +87,7 @@ fn main() {
             "Override output nodes name (auto-detects otherwise).")
 
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
+        (@arg declutter: --declutter "Declutter model after load")
         (@arg optimize: -O --optimize "Optimize after model load")
         (@arg pulse: --pulse +takes_value "Translate to pulse network")
 
@@ -364,9 +365,9 @@ impl Parameters {
             SomeModel::Inference(raw_model)
         };
 
-        if matches.is_present("optimize") || pulse.is_some() {
+        if matches.is_present("optimize") || matches.is_present("declutter") || pulse.is_some() {
             if let SomeModel::Typed(typed) = tract_model {
-                info!("Optimize");
+                info!("Declutter");
                 tract_model = SomeModel::Typed(typed.declutter()?);
             } else {
                 bail!("Can not run optimize without analyse")
@@ -375,8 +376,9 @@ impl Parameters {
 
         if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model)
         {
-            info!("Pulsify {}", pulse);
+            info!("Convert to normalized net");
             let normalized = model.clone().into_normalized()?;
+            info!("Pulsify {}", pulse);
             let pulsed = ::tract_core::pulse::PulsedModel::new(&normalized, pulse)?;
             tract_model = SomeModel::Pulsed(normalized, pulsed);
         };
