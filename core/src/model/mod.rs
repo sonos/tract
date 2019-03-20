@@ -70,7 +70,7 @@ impl InferenceModel {
     }
 
     pub fn into_normalized(self) -> TractResult<NormalizedModel> {
-        self.into_typed()?.into_normalized()
+        self.into_typed()?.declutter()?.into_normalized()
     }
 
     pub fn into_optimized(self) -> TractResult<TypedModel> {

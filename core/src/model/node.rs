@@ -1,5 +1,7 @@
+use std::fmt;
 use super::*;
 use crate::ops::Op;
+use itertools::Itertools;
 
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
@@ -12,6 +14,12 @@ pub struct Node<TI: TensorInfo> {
     #[cfg_attr(feature = "serialize", serde(skip))]
     pub op: Box<Op>,
     pub outputs: TVec<OutletFact<TI>>,
+}
+
+impl<TI:TensorInfo> fmt::Display for Node<TI> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op().name())
+    }
 }
 
 impl<TI: TensorInfo> Node<TI> {
@@ -32,14 +40,20 @@ impl<TI: TensorInfo> Node<TI> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct OutletFact<TI: TensorInfo> {
     pub fact: TI,
     pub successors: TVec<InletId>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+impl<TI: TensorInfo> fmt::Debug for OutletFact<TI> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?} {}", self.fact, self.successors.iter().map(|o| format!("{:?}", o)).join(" "))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct OutletId {
     pub node: usize,
@@ -52,7 +66,13 @@ impl OutletId {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+impl fmt::Debug for OutletId {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}/{}>", self.node, self.slot)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct InletId {
     pub node: usize,
@@ -62,6 +82,12 @@ pub struct InletId {
 impl InletId {
     pub fn new(node: usize, slot: usize) -> InletId {
         InletId { node, slot }
+    }
+}
+
+impl fmt::Debug for InletId {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, ">{}/{}", self.node, self.slot)
     }
 }
 

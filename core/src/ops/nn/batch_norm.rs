@@ -23,11 +23,10 @@ impl BatchNorm {
     {
         let (x, scale, beta, mean, var) = args_5!(&mut inputs);
 
-        let x = x.to_array::<T>()?;
         let c_axis = self.data_format.shape(x.shape()).c_axis();
         let c_dim = self.data_format.shape(x.shape()).c_dim();
 
-        FixedBatchNorm::new(c_axis, c_dim, scale, beta, mean, var, self.epsilon)?.eval(inputs)
+        FixedBatchNorm::new(c_axis, c_dim, scale, beta, mean, var, self.epsilon)?.eval(tvec!(x))
     }
 }
 

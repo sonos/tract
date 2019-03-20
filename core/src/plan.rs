@@ -134,7 +134,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             let plan = plan.borrow();
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
-                trace!("Running step {}, node {} ({})", step, n, node.name);
+                trace!("Running step {}, node {}", step, node);
                 if node.op_as::<Source>().is_none() {
                     let mut inputs: TVec<SharedTensor> = tvec![];
                     for i in &node.inputs {
@@ -143,7 +143,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                         let prec = values[i.node].as_ref().ok_or_else(|| {
                             format!(
                                 "Computing {}, precursor {} not done:",
-                                node.name, prec_node.name
+                                node, prec_node
                             )
                         })?;
                         inputs.push(prec[i.slot].clone().into())
@@ -152,12 +152,12 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                         Some(ref mut state) => state.eval(session_state, node.op(), inputs),
                         None => node.op().as_stateless().unwrap().eval(inputs),
                     }
-                    .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+                    .map_err(|e| format!("Evaluating {}: {}", node, e))?;
 
                     values[node.id] = Some(vs);
                 }
                 for flush in &plan.flush_lists[step] {
-                    trace!("  flushing node {} {}", flush, model.node(*flush).name);
+                    trace!("  flushing node {} {}", flush, node);
                     values[*flush] = None;
                 }
             }
@@ -233,8 +233,8 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             let prec_node = &nodes[i.node];
             let prec = values[i.node].as_ref().ok_or_else(|| {
                 format!(
-                    "Computing {}, precursor {} not done:",
-                    node.name, prec_node.name
+                    "Computing {}, precursor {} not done.",
+                    node, prec_node
                 )
             })?;
             inputs.push(prec[i.slot].clone().into())
@@ -243,7 +243,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             Some(ref mut state) => state.eval(session_state, node.op(), inputs),
             None => node.op().as_stateless().unwrap().eval(inputs),
         }
-        .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+        .map_err(|e| format!("Evaluating {}: {}", node, e))?;
         values[node.id] = Some(vs);
         Ok(())
     }
