@@ -26,7 +26,10 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
                 values_needed_until_step[i.node] = step;
             }
         }
-        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len()];
+        for o in model.borrow().outputs()? {
+            values_needed_until_step[o.node] = order.len();
+        }
+        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
         for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
             if flush_at != 0 {
                 flush_lists[flush_at].push(node)
