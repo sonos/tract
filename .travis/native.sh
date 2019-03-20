@@ -42,5 +42,11 @@ if [ -n "$RUN_ALL_TEST" -a -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/r
 then
     (cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR)
     ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb -O -i 49x10xf32 \
-        --input-node Mfcc run
+        --input-node Mfcc run > /dev/null
+
+    ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-float.pb \
+    -O -i 200x10xf32 run > /dev/null
+
+    ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
+    -O -i 200x10xf32 run > /dev/null
 fi
