@@ -15,7 +15,7 @@
 ## Testing locally
 
 ```
-cargo build --release -p tract && .travis/run-bundle.sh `.travis/make_bundle.sh`
+cargo build --release -p tract && cargo bench -p tract-linalg --no-run && .travis/run-bundle.sh `.travis/make_bundle.sh`
 ```
 
 ## minion setup
