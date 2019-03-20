@@ -35,21 +35,15 @@ impl DeclutterPass for NormalizeOps {
             for id in model.eval_order()? {
                 let reduced = {
                     let node = &model.nodes()[id];
-                    debug!("Decluttering {} #{} ({})", node.name, node.id, node.op().name());
+                    debug!("Decluttering {}", node);
                     node.op
                         .declutter(model, node)
-                        .map_err(|e| format!("{:?} node {:?}, {:?}", self, node, e))?
+                        .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
                 };
                 if let Some(red) = reduced {
                     {
                         let node = &model.nodes()[id];
-                        debug!(
-                            "Apply a model patch for {:?} {} #{} ({})",
-                            self,
-                            node.name,
-                            node.id,
-                            node.op().name()
-                        );
+                        debug!("Apply a model patch for {:?}: {}", self, node);
                     }
                     red.apply(model)?;
                     if cfg!(debug_assertions) {
@@ -78,21 +72,15 @@ impl CodegenPass for CodegenOps {
             for id in model.eval_order()? {
                 let reduced = {
                     let node = &model.nodes()[id];
-                    debug!("Codegen {} #{} ({})", node.name, node.id, node.op().name());
+                    debug!("Codegen {}", node);
                     node.op
                         .codegen(model, node)
-                        .map_err(|e| format!("{:?} node {:?}, {:?}", self, node, e))?
+                        .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
                 };
                 if let Some(red) = reduced {
                     {
                         let node = &model.nodes()[id];
-                        debug!(
-                            "Apply a model patch for {:?} {} #{} ({})",
-                            self,
-                            node.name,
-                            node.id,
-                            node.op().name()
-                        );
+                        debug!("Apply a model patch for {:?} {}", self, node);
                     }
                     red.apply(model)?;
                     if cfg!(debug_assertions) {

@@ -86,24 +86,25 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     let onnx = onnx();
     let mut model = onnx.model_for_path(&model_file).unwrap();
     trace!(
-        "Model: {:#?}",
+        "Proto Model:\n{:#?}",
         onnx.proto_model_for_path(&model_file)
     );
-    trace!("Model: {:#?}", model);
+    trace!("Model:\n{:#?}", model);
     model.analyse().unwrap();
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
-    debug!("Loaded {:?}", model_file);
     if optim {
-        run_model(model.into_typed().unwrap(), &path)
+        let optimized = model.into_optimized().unwrap();
+        trace!("Run optimized model:\n{:#?}", optimized);
+        run_model(optimized, &path)
     } else {
+        trace!("Run analysed model:\n{:#?}", model);
         run_model(model, &path)
     };
 }
 
 fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
-    trace!("Optimized model: {:#?}", model);
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
