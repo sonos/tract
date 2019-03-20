@@ -153,12 +153,6 @@ impl<T> NormConcatSlice<T> {
             NormConcatSlice::Var(_) => true,
         }
     }
-    pub fn dim(&self, axis: usize) -> TDim {
-        match self {
-            NormConcatSlice::Const(ref a) => a.shape()[axis].to_dim(),
-            NormConcatSlice::Var(a) => a.dim(axis),
-        }
-    }
 }
 
 #[derive(new, Debug, Clone)]
@@ -184,42 +178,15 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
         }
 
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.fact(input)?.clone();
+        let fact = target.fact(input)?;
 
         if fact.axis == self.axis {
             self.pulsify_along_concat_axis(source, node, target, mapping)
         } else {
-            unimplemented!();
+            bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
         }
-        /*
-            let mut input_seen = false;
-            for slice in &self.slices {
-                match slice {
-                    NormConcatSlice::Const(c) => {
-                        fact.dim += TDim::from(c.shape()[fact.axis]);
-                        if !input_seen {
-                            fact.delay -= c.shape()[fact.axis];
-                        }
-                    }
-                    NormConcatSlice::Var(_) => {
-                        input_seen = true;
-                    }
-                }
-            }
-            unimplemented!()
-        } else {
-            for slice in &self.slices {
-                if let NormConcatSlice::Const(c) = slice {
-                    fact.shape[self.axis] += c.shape()[self.axis];
-                }
-            }
-        }
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
-        */
     }
 
-    /*
     fn codegen(
         &self,
         model: &TypedModel,
@@ -244,7 +211,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
             match slice {
                 NormConcatSlice::Const(c) => fixed_slices.push(FixedConcatSlice::Const(c.clone())),
                 NormConcatSlice::Var(shape) => {
-                    if &inputs[input_idx].shape.iter().collect::<TVec<_>>() != shape {
+                    if &inputs[input_idx].shape != shape {
                         bail!(
                             "Incompatible shapes {:?} and {:?}",
                             &inputs[input_idx].shape,
@@ -268,7 +235,6 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
         return Ok(Some(patch))
     }
-    */
 }
 
 impl<T: Datum + Copy> StatelessOp for NormConcat<T> {
@@ -401,15 +367,11 @@ pub fn overwrite_part_of_pulse<T: Datum + Copy>(
     let const_length = const_data.shape()[axis];
     let const_range = const_offset..const_offset + const_length;
     let pulse_range = current_pos..current_pos + pulse;
-    println!("pulse: {:?} const: {:?}", pulse_range, const_range);
     let axis = Axis(axis);
-
-    println!("rir: {:?}", range_in_range(&pulse_range, &const_range));
 
     match range_in_range(&pulse_range, &const_range) {
         RangeInRange::Before(_) | RangeInRange::After(_) => (),
         RangeInRange::Begin(offset) => {
-            println!("offset:{} pulse:{}", offset, pulse);
             // ----[<----->HHH]HH----
             pulse_data
                 .slice_axis_mut(axis, (offset..pulse).into())
@@ -496,9 +458,7 @@ impl<T: Datum + Copy> OpState for PulsedSameAxisConcatState<T> {
             &op.pre_slice.view(),
             pre_offset,
         );
-        trace!("session: {:?}", session);
         if let Some(l) = session.known_stream_len {
-            debug!("known_stream_len: {}", l);
             let input_length = op.input_len.eval(l as i32).unwrap() as usize;
             let post_offset = op.input_delay + input_length;
             overwrite_part_of_pulse(
@@ -526,15 +486,6 @@ pub struct FixedConcat<T> {
 pub enum FixedConcatSlice<T> {
     Const(ArrayD<T>),
     Var(TVec<usize>),
-}
-
-impl<T> FixedConcatSlice<T> {
-    pub fn shape(&self) -> &[usize] {
-        match self {
-            FixedConcatSlice::Const(c) => c.shape(),
-            FixedConcatSlice::Var(shape) => &shape,
-        }
-    }
 }
 
 impl<T: Datum + Copy> StatelessOp for FixedConcat<T> {
@@ -583,88 +534,21 @@ impl<T: Datum + Copy> Op for FixedConcat<T> {
 impl<T: Datum + Copy> InferenceRulesOp for FixedConcat<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
+        _s: &mut Solver<'r>,
+        _inputs: &'p [TensorProxy],
+        _outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         unreachable!();
-        /*
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        let n = inputs.len() as usize;
-        s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
-        let mut input_idx = 0;
-        for slice in &self.slices {
-            match slice {
-                FixedConcatSlice::Var(shape) => {
-                    for (dim_idx, dim) in shape.iter().enumerate() {
-                        s.equals(dim.to_dim(), &inputs[input_idx].shape[dim_idx])?;
-                    }
-                    input_idx += 1;
-                }
-                _ => {}
-            }
-        }
-
-        let common_shape = self.slices[0].shape();
-        for slice in &self.slices {
-            let shape = slice.shape();
-            for (dim_idx, dim) in shape.iter().enumerate() {
-                if dim_idx != self.axis {
-                    s.equals(dim.to_dim(), common_shape[dim_idx].to_dim())?;
-                }
-            }
-        }
-
-        let axis_dim = {
-            let mut rep = 0;
-            for slice in &self.slices {
-                match slice {
-                    FixedConcatSlice::Var(shape) => {
-                        rep += shape[self.axis];
-                    }
-                    FixedConcatSlice::Const(c) => {
-                        rep += c.shape()[self.axis];
-                    }
-                }
-            }
-            rep
-        };
-        s.equals(axis_dim.to_dim(), &outputs[0].shape[self.axis])?;
-
-        Ok(())
-        */
     }
 }
 
 impl<T: Datum + Copy> InferenceRulesOp for NormConcat<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
+        _s: &mut Solver<'r>,
+        _inputs: &'p [TensorProxy],
+        _outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         unreachable!();
-        /*
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        let n = inputs.len() as usize;
-        s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
-        let mut input_idx = 0;
-        for slice in &self.slices {
-            match slice {
-                NormConcatSlice::Var(shape) => {
-                    for (dim_idx, dim) in shape.iter().enumerate() {
-                        s.equals(dim.to_dim(), &inputs[input_idx].shape[dim_idx])?;
-                    }
-                    input_idx += 1;
-                }
-                _ => {}
-            }
-        }
-        Ok(())
-        */
     }
 }
