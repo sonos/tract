@@ -2,12 +2,6 @@
 
 export CI=true
 
-if [ `uname` = "Darwin" ]
-then
-    system_profiler SPHardwareDataType
-    sysctl -n machdep.cpu.brand_string
-fi
-
 set -ex
 
 TF_INCEPTIONV3=`pwd`/tensorflow/inceptionv3/.inception-v3-2016_08_28
@@ -41,3 +35,12 @@ fi
     $TF_INCEPTIONV3/inception_v3_2016_08_28_frozen.pb \
     -i 1x299x299x3xf32 -O \
     dump -q --assert-output-fact 1x1001xf32
+
+CACHEDIR=${CACHEDIR:-$HOME/.cache}
+
+if [ -n "$RUN_ALL_TEST" -a -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
+then
+    (cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR)
+    ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb -O -i 49x10xf32 \
+        --input-node Mfcc run
+fi
