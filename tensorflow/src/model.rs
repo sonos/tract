@@ -13,6 +13,11 @@ pub struct Tensorflow {
 }
 
 impl Tensorflow {
+    // From the node_def.proto documentation:
+    // Each input is "node:src_output" with "node" being a string name and
+    // "src_output" indicating which output tensor to use from "node". If
+    // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
+    // optionally be followed by control inputs that have the format "^node".
     fn parse_input(i: &str) -> TractResult<(&str, usize)> {
         let pair = if i.starts_with("^") {
             (&i[1..], 0)
@@ -40,7 +45,7 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
             for i in pbnode.get_input().iter() {
                 let (node, slot) = Self::parse_input(i)?;
                 let arity = arities.entry(node).or_insert(1);
-                *arity = (*arity).max(slot);
+                *arity = (*arity).max(slot+1);
             }
         }
         for pbnode in graph.get_node().iter() {
@@ -54,15 +59,12 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
                 facts
             )?;
 
-            // From the node_def.proto documentation:
-            // Each input is "node:src_output" with "node" being a string name and
-            // "src_output" indicating which output tensor to use from "node". If
-            // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
-            // optionally be followed by control inputs that have the format "^node".
             for (ix, i) in pbnode.get_input().iter().enumerate() {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
-                model.add_edge(OutletId::new(prec, input.1), InletId::new(node_id, ix))?;
+                let outlet = OutletId::new(prec, input.1);
+                let inlet = InletId::new(node_id, ix);
+                model.add_edge(outlet, inlet)?;
             }
         }
         Ok(model)
