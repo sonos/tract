@@ -90,7 +90,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
         onnx.proto_model_for_path(&model_file)
     );
     trace!("Model:\n{:#?}", model);
-    model.analyse().unwrap();
+    model.analyse(false).unwrap();
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
