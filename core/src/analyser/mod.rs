@@ -83,14 +83,14 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             let (inputs, outputs) = self.model.borrow().facts(node.id)?;
 
             let inferred = node.op.infer(inputs, outputs).map_err(|e| {
-                format!("while running inference : {}", e)
+                format!("while running inference on {} : {}", node,  e)
             })?;
 
             for (ix, &outlet) in node.inputs.iter().enumerate() {
                 let inferred_fact = &inferred.0[ix];
                 let old_fact = self.model.borrow().fact(outlet)?;
                 let unified = inferred_fact.unify(&old_fact).map_err(|e| {
-                    format!("while unifying inputs of : {}", e)
+                    format!("while unifying inputs of {} : {}", node, e)
                 })?;
 
                 if &unified != old_fact {

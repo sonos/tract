@@ -87,6 +87,7 @@ fn main() {
             "Override output nodes name (auto-detects otherwise).")
 
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
+        (@arg skip_type: --("skip_type") "Analyse as much as possible, do not enforce full typing")
         (@arg declutter: --declutter "Declutter model after load")
         (@arg optimize: -O --optimize "Optimize after model load")
         (@arg pulse: --pulse +takes_value "Translate to pulse network")
@@ -362,6 +363,8 @@ impl Parameters {
             if let Err(e) = raw_model.analyse(true) {
                 // do not stop on mere analyse error
                 error!("{}", e);
+            }
+            if matches.is_present("skip_type") {
                 SomeModel::Inference(raw_model)
             } else {
                 SomeModel::Typed(raw_model.into_typed()?)

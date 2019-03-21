@@ -15,7 +15,6 @@ mod transpose;
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", expand_dims::build);
-    reg.insert("Identity", |_| Ok(Box::new(::tract_core::ops::identity::Identity::default())));
     reg.insert("Fill", fill::fill);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);

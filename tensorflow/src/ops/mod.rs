@@ -11,7 +11,7 @@ pub mod logic;
 pub mod math;
 pub mod nn;
 pub mod quant;
-// pub mod rec;
+pub mod rec;
 pub mod vars;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
@@ -20,10 +20,11 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
-//    rec::register_all_ops(&mut reg);
+    rec::register_all_ops(reg);
     vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
+    reg.insert("Identity", |_| Ok(Box::new(Identity::default())));
     reg.insert("NoOp", |_| Ok(Box::new(Noop)));
     reg.insert("Placeholder", placeholder);
 }
@@ -80,6 +81,35 @@ impl InferenceRulesOp for Noop {
         _inputs: &'p [TensorProxy],
         _outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, new, Default)]
+struct Identity;
+
+impl Op for Identity {
+    fn name(&self) -> Cow<str> {
+        "tf.Identity".into()
+    }
+}
+
+impl StatelessOp for Identity {
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        Ok(tvec!(inputs.remove(0)))
+    }
+}
+
+impl InferenceRulesOp for Identity {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_output_arity(&outputs, 1)?;
+        s.equals(&outputs[0].shape, &inputs[0].shape)?;
+        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         Ok(())
     }
 }

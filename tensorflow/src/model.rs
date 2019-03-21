@@ -50,7 +50,13 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
         }
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
-            let facts = tvec!(TensorFact::default(); arities.get(&*name).cloned().unwrap_or(1));
+            // variable -> assign rewire
+            let output_arity = if pbnode.get_op() == "VariableV2" {
+                2
+            } else {
+                arities.get(&*name).cloned().unwrap_or(1)
+            };
+            let facts = tvec!(TensorFact::default(); output_arity);
             let node_id = model.add_node(
                 name.clone(),
                 self
