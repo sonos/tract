@@ -38,9 +38,8 @@ fi
 
 CACHEDIR=${CACHEDIR:-$HOME/.cache}
 
-if [ -n "$RUN_ALL_TEST" -a -n "$AWS_ACCESS_KEY_ID" -a -e "target/$RUSTC_TRIPLE/release/tract" ]
+if [ -n "$RUN_ALL_TESTS" ] && (cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR)
 then
-    (cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR)
     ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb -O -i 49x10xf32 \
         --input-node Mfcc run > /dev/null
 
