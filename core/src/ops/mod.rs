@@ -74,14 +74,20 @@ pub trait StatelessOp: Op {
 }
 
 pub trait StatefullOp {
-    fn state(&self) -> TractResult<Option<Box<OpState>>>;
+    fn state(
+        &self,
+        _session: &mut SessionState,
+    ) -> TractResult<Option<Box<OpState>>>;
     fn as_stateless(&self) -> Option<&StatelessOp> {
         None
     }
 }
 
 impl<O: StatelessOp + Clone> StatefullOp for O {
-    fn state(&self) -> TractResult<Option<Box<OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+    ) -> TractResult<Option<Box<OpState>>> {
         Ok(None)
     }
 
@@ -117,7 +123,11 @@ pub trait Op:
                     .iter()
                     .map(|i| i.value.concretize().unwrap().clone().into())
                     .collect(); // checked
-                let output_values = stateless.eval(input_values)?.into_iter().map(|t| t.into()).collect::<TVec<_>>();
+                let output_values = stateless
+                    .eval(input_values)?
+                    .into_iter()
+                    .map(|t| t.into())
+                    .collect::<TVec<_>>();
                 return Ok((infered_inputs, output_values));
             }
         }

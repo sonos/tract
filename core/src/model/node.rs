@@ -31,6 +31,10 @@ impl<TI: TensorInfo> Node<TI> {
         self.op().downcast_ref::<O>()
     }
 
+    pub fn op_as_mut<O: Op>(&mut self) -> Option<&mut O> {
+        self.op.downcast_mut::<O>()
+    }
+
     pub fn op_is<O: Op>(&self) -> bool {
         self.op_as::<O>().is_some()
     }

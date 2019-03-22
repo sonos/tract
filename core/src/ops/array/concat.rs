@@ -213,11 +213,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
                 NormConcatSlice::Const(c) => fixed_slices.push(FixedConcatSlice::Const(c.clone())),
                 NormConcatSlice::Var(shape) => {
                     if &inputs[input_idx].shape != shape {
-                        bail!(
-                            "Incompatible shapes {:?} and {:?}",
-                            &inputs[input_idx].shape,
-                            shape
-                        )
+                        bail!("Incompatible shapes {:?} and {:?}", &inputs[input_idx].shape, shape)
                     }
                     fixed_slices.push(FixedConcatSlice::Var(shapes[input_idx].clone()));
                     input_idx += 1;
@@ -225,7 +221,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
             }
         }
 
-        let op:Box<Op> = Box::new(FixedConcat::new(self.axis, fixed_slices));
+        let op: Box<Op> = Box::new(FixedConcat::new(self.axis, fixed_slices));
 
         let mut patch = TypedModelPatch::default();
         let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
@@ -234,7 +230,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
             patch.add_edge(tap, InletId::new(node_id, ix))?;
         }
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
-        return Ok(Some(patch))
+        return Ok(Some(patch));
     }
 }
 
@@ -414,7 +410,10 @@ impl<T: Datum + Copy> Op for PulsedSameAxisConcat<T> {
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsedSameAxisConcat<T> {
-    fn state(&self) -> TractResult<Option<Box<OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+    ) -> TractResult<Option<Box<OpState>>> {
         return Ok(Some(Box::new(PulsedSameAxisConcatState::<T>::default())));
     }
 }

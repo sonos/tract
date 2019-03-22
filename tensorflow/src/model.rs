@@ -38,7 +38,7 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
     }
 
     fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
-        let mut model = InferenceModel::default(); //.with_norm_optims(Some(crate::optim::normalization()));
+        let mut model = InferenceModel::default();
         // compute min output arity for all nodes
         let mut arities = HashMap::new();
         for pbnode in graph.get_node().iter() {
@@ -51,11 +51,7 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
             // variable -> assign rewire
-            let output_arity = if pbnode.get_op() == "VariableV2" {
-                2
-            } else {
-                arities.get(&*name).cloned().unwrap_or(1)
-            };
+            let output_arity = arities.get(&*name).cloned().unwrap_or(1);
             let facts = tvec!(TensorFact::default(); output_arity);
             let node_id = model.add_node(
                 name.clone(),
@@ -88,12 +84,13 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
         //      output #1 to access the opaque ptr
         for id in 0..model.nodes().len() {
             use crate::ops::vars::*;
-            if model.node(id).op_is::<Assign>() {
+            if  model.node(id).op_is::<Assign>() {
                 let prec = model.node(id).inputs[0];
-                if model.node(prec.node).op_is::<VariableV2>() && prec.slot == 0 {
-                    model.add_edge(OutletId::new(prec.node, 1), InletId::new(id, 2))?;
+                let var_id = model.node(prec.node).op_as::<VariableV2>().map(|v| v.id.clone());
+                if let (Some(var_id), Some(assign)) = (var_id,  model.node_mut(id).op_as_mut::<Assign>()) {
+                     assign.var_id = Some(var_id);
                 } else {
-                    bail!("Model contains Assign/Variable2");
+                    bail!("Model contains unlinked Assign/Variable2");
                 }
             }
         }

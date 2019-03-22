@@ -8,6 +8,7 @@ use crate::ops::prelude::*;
 #[derive(Debug, Default)]
 pub struct SessionState {
     pub known_stream_len: Option<usize>,
+    pub tensors: HashMap<String, Tensor>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,17 +116,16 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
 
     pub fn new_multiplan(plans: Vec<P>) -> TractResult<SimpleState<TI, M, P>> {
         let values = vec![None; plans[0].borrow().model.borrow().nodes().len()];
-        let states = plans[0]
-            .borrow()
-            .model()
-            .nodes()
+        let mut session = SessionState::default();
+        let model = plans[0].borrow().model();
+        let states = model.nodes()
             .iter()
-            .map(|n| n.op().state())
+            .map(|n| n.op().state(&mut session))
             .collect::<TractResult<_>>()?;
         Ok(SimpleState {
             plans,
             states,
-            session_state: SessionState::default(),
+            session_state: session,
             values,
             _phantom: PhantomData,
         })
@@ -139,13 +139,18 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
 
     /// Reset wires state.
     pub fn reset_op_states(&mut self) -> TractResult<()> {
-        self.states = self
-            .plans[0]
+        let &mut SimpleState {
+            ref plans,
+            ref mut session_state,
+            ref mut states,
+            ..
+        } = self;
+        *states = plans[0]
             .borrow()
             .model()
             .nodes()
             .iter()
-            .map(|n| n.op().state())
+            .map(|n| n.op().state(session_state))
             .collect::<TractResult<_>>()?;
         Ok(())
     }

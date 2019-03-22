@@ -50,7 +50,12 @@ impl DelayState {
 }
 
 impl OpState for DelayState {
-    fn eval(&mut self, _state: &mut SessionState, op: &Op, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(
+        &mut self,
+        _state: &mut SessionState,
+        op: &Op,
+        mut inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
         Ok(tvec!(dispatch_copy!(Self::eval_t(input.datum_type())(self, op, input))?))
@@ -77,7 +82,10 @@ fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
 }
 
 impl StatefullOp for Delay {
-    fn state(&self) -> TractResult<Option<Box<OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+    ) -> TractResult<Option<Box<OpState>>> {
         let mut buffer_shape: TVec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
         let buffer = dispatch_copy!(self::make_buffer(self.input_fact.dt)(&buffer_shape));

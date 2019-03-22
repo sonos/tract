@@ -1,12 +1,10 @@
-use std::sync::{Arc, Mutex};
-
 use tract_core::ops::prelude::*;
 
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Assign", |_| Ok(Box::new(Assign {})));
+    reg.insert("Assign", |_| Ok(Box::new(Assign::default())));
     reg.insert("VariableV2", variable_v2);
 }
 
@@ -16,31 +14,30 @@ fn variable_v2(node: &NodeDef) -> TractResult<Box<Op>> {
     let container = node.get_attr_str("container")?;
     let container = if container != "" { Some(container) } else { None };
     let name = node.get_name().to_string();
+    let id = format!("{:?}#{:?}#{}", container, shared_name, name);
     let shape = node.get_attr_shape("shape")?;
     let dt = node.get_attr_datum_type("dtype")?;
-    Ok(Box::new(VariableV2::new(container, shared_name, name, shape, dt)))
+    Ok(Box::new(VariableV2::new(container, shared_name, name, id, shape, dt)))
 }
 
 #[derive(Clone, Debug, new)]
-struct VariableV2State(Arc<Mutex<Tensor>>);
-
-fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
-    ::ndarray::ArrayD::<T>::default(shape).into()
-}
+struct VariableV2State;
 
 impl OpState for VariableV2State {
     fn eval(
         &mut self,
-        _session: &mut SessionState,
+        session: &mut SessionState,
         op: &Op,
         _inputs: TVec<SharedTensor>,
     ) -> TractResult<TVec<SharedTensor>> {
         let op = op
             .downcast_ref::<VariableV2>()
-            .ok_or_else(|| format!("wrong of for variable state"))?;
-        let state_ref = Tensor::from(self.0.as_ref() as *const _ as isize as i64);
-        let locked = self.0.lock().map_err(|_| format!("poisoned lock on variable {}", op.name))?;
-        Ok(tvec!(locked.clone().into(), state_ref.into()))
+            .ok_or_else(|| format!("wrong op for variable state"))?;
+        let tensor = session
+            .tensors
+            .get(&op.id)
+            .ok_or_else(|| format!("Could not find state for variable {}", op.id))?;
+        Ok(tvec!(tensor.clone().into()))
     }
 }
 
@@ -49,6 +46,7 @@ pub struct VariableV2 {
     container: Option<String>,
     shared_name: Option<String>,
     name: String,
+    pub id: String,
     shape: TVec<usize>,
     dt: DatumType,
 }
@@ -60,9 +58,14 @@ impl Op for VariableV2 {
 }
 
 impl StatefullOp for VariableV2 {
-    fn state(&self) -> TractResult<Option<Box<OpState>>> {
-        let tensor = dispatch_copy!(self::make_buffer(self.dt)(&self.shape));
-        Ok(Some(Box::new(VariableV2State(Arc::new(Mutex::new(tensor))))))
+    fn state(&self, state: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+        fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
+            ::ndarray::ArrayD::<T>::default(shape).into()
+        }
+
+        let tensor = dispatch_copy!(make_buffer(self.dt)(&self.shape));
+        state.tensors.insert(self.id.clone(), tensor);
+        Ok(Some(Box::new(VariableV2State)))
     }
 }
 
@@ -89,7 +92,9 @@ impl InferenceRulesOp for VariableV2 {
 struct AssignState;
 
 #[derive(Clone, Debug, new, Default)]
-pub struct Assign {}
+pub struct Assign {
+    pub var_id: Option<String>,
+}
 
 impl Op for Assign {
     fn name(&self) -> Cow<str> {
@@ -100,24 +105,38 @@ impl Op for Assign {
 impl OpState for AssignState {
     fn eval(
         &mut self,
-        _session: &mut SessionState,
-        _op: &Op,
+        session: &mut SessionState,
+        op: &Op,
         mut inputs: TVec<SharedTensor>,
     ) -> TractResult<TVec<SharedTensor>> {
-        let (_current, new, var_state) = args_3!(inputs);
-        let var_state = *var_state.to_scalar::<i64>()? as isize;
-        let var_state = unsafe {
-            (var_state as *const Mutex<Tensor>).as_ref().ok_or("null pointer received from var")?
+        let (_current, new) = args_2!(inputs);
+        let op =
+            op.downcast_ref::<Assign>().ok_or_else(|| format!("wrong op for variable state"))?;
+        let var_id = if let Some(ref var_id) = op.var_id {
+            var_id
+        } else {
+            bail!("Assign has not been linked to var")
         };
-        println!("assigning {:?}", new);
-        let mut lock = var_state.lock().map_err(|_| "poisoned lock for assignment")?;
-        *lock = new.clone().to_tensor();
+        fn assign<T: Copy + Datum>(
+            session: &mut SessionState,
+            var_id: &str,
+            t: &Tensor,
+        ) -> TractResult<()> {
+            session
+                .tensors
+                .get_mut(var_id)
+                .unwrap()
+                .to_array_view_mut::<T>()?
+                .assign(&t.to_array_view::<T>()?);
+            Ok(())
+        }
+        dispatch_copy!(assign(new.datum_type())(session, var_id, &new))?;
         Ok(tvec!(new))
     }
 }
 
 impl StatefullOp for Assign {
-    fn state(&self) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _state: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
         Ok(Some(Box::new(AssignState)))
     }
 }
@@ -152,22 +171,19 @@ mod tests {
         let mut model = Model::default();
 
         let var = model
-            .add_node(
+            .add_node_default(
                 "var",
-                VariableV2::new(None, None, "var".into(), tvec![], f32::datum_type()),
-                tvec!(TensorFact::default(), TensorFact::default()),
+                VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type()),
             )
             .unwrap();
         let zero = model.add_const("zero".to_string(), 0f32.into()).unwrap();
         let one = model.add_const("one".to_string(), 1f32.into()).unwrap();
-        let reset = model.add_node_default("reset", Assign::default()).unwrap();
+        let reset = model.add_node_default("reset", Assign::new(Some("xxx".into()))).unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(reset, 0)).unwrap();
         model.add_edge(OutletId::new(zero, 0), InletId::new(reset, 1)).unwrap();
-        model.add_edge(OutletId::new(var, 1), InletId::new(reset, 2)).unwrap();
-        let set = model.add_node_default("set", Assign::default()).unwrap();
+        let set = model.add_node_default("set", Assign::new(Some("xxx".into()))).unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(set, 0)).unwrap();
         model.add_edge(OutletId::new(one, 0), InletId::new(set, 1)).unwrap();
-        model.add_edge(OutletId::new(var, 1), InletId::new(set, 2)).unwrap();
         let model = std::rc::Rc::new(model);
         let plan_read = SimplePlan::new_for_output(model.clone(), OutletId::new(var, 0)).unwrap();
         let plan_set = SimplePlan::new_for_output(model.clone(), OutletId::new(set, 0)).unwrap();
