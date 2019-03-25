@@ -39,6 +39,7 @@ use tract_tensorflow::tfpb;
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
 
+#[cfg(feature = "conform")]
 mod compare;
 mod display_graph;
 mod draw;
@@ -494,7 +495,11 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     let mut params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
+
+        #[cfg(feature = "conform")]
         ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
+        #[cfg(not(feature = "conform"))]
+        ("compare", _) => bail!("Need conform feature to be able to run comparison"),
 
         ("run", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);
