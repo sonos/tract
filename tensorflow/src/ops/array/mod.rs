@@ -4,6 +4,7 @@ use tract_core::ops::prelude::*;
 mod concatv2;
 mod expand_dims;
 mod fill;
+mod gather;
 mod pack;
 mod pad;
 mod range;
@@ -16,6 +17,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("ConcatV2", concatv2::build);
     reg.insert("ExpandDims", expand_dims::build);
     reg.insert("Fill", fill::fill);
+    reg.insert("GatherNd", gather::gather_nd);
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
     reg.insert("Range", range::range);
