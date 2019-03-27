@@ -7,21 +7,33 @@ pub fn build(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 #[derive(Debug, Clone)]
 pub struct ExpandDims;
 
+impl ExpandDims {
+    fn eval_t<T: Datum + Copy>(
+        &self,
+        data: SharedTensor,
+        shape: &[usize],
+    ) -> TractResult<TVec<SharedTensor>> {
+        let data = data.to_array::<T>()?;
+        Ok(tvec![Tensor::from(data.into_shape(&*shape)?).into()])
+    }
+}
+
 impl Op for ExpandDims {
     fn name(&self) -> Cow<str> {
         "tf.ExpandDims".into()
     }
 
-    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let (_, dims) = args_2!(inputs);
         if let Some(ref dims) = dims.konst {
             let dims = dims.cast_to::<i64>()?;
             let op = ::tract_core::ops::array::AddDims::new(
-                dims.to_array_view::<i64>()?
-                    .iter()
-                    .map(|&i| i as usize)
-                    .collect(),
+                dims.to_array_view::<i64>()?.iter().map(|&i| i as usize).collect(),
             );
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
@@ -32,17 +44,13 @@ impl Op for ExpandDims {
 impl StatelessOp for ExpandDims {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (data, dims) = args_2!(inputs);
-        let data = data.to_array::<f32>()?;
         let dims = dims.to_array_view::<i32>()?;
-        let mut shape = data.shape().to_vec();
+        let mut shape: TVec<usize> = data.shape().into();
         for d in dims.iter() {
-            if *d >= 0 {
-                shape.insert(*d as usize, 1);
-            } else {
-                Err(format!("unimplemented ExpandDims with negative parameter"))?
-            }
+            let d = if *d >= 0 { *d } else { *d + 1 + data.shape().len() as i32 } as usize;
+            shape.insert(d, 1);
         }
-        Ok(tvec![Tensor::from(data.into_shape(shape)?).into()])
+        dispatch_copy!(Self::eval_t(data.datum_type())(self, data, &*shape))
     }
 }
 

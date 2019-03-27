@@ -1,6 +1,9 @@
-use crate::tfpb::*;
+use ndarray::*;
+
 use crate::tfpb::node_def::NodeDef;
 use tract_core::ops::prelude::*;
+use tract_core::ops::nn::sigmoid::sigmoid_f32;
+use tract_core::ops::nn::tanh::tanh_f32;
 
 pub fn block_lstm(node: &NodeDef) -> TractResult<Box<Op>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);
@@ -26,7 +29,73 @@ impl Op for BlockLSTM {
 
 impl StatelessOp for BlockLSTM {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        unimplemented!()
+        let len = *inputs[0].cast_to::<i32>()?.to_scalar::<i32>()? as usize;
+
+        let x = inputs[1].to_array_view::<f32>()?.into_dimensionality::<Ix3>()?;
+        let cell_size = x.shape()[2];
+        let cs_prev = inputs[2].to_array_view::<f32>()?;
+        let h_prev = inputs[3].to_array_view::<f32>()?.into_dimensionality::<Ix2>()?;
+        let w = inputs[4].to_array_view::<f32>()?.into_dimensionality::<Ix2>()?;
+        let bias = inputs[8].to_array_view::<f32>()?;
+
+        let outputs_shape = x.shape();
+        let mut i = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
+        let mut cs = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
+        let mut f = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
+        let mut o = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
+        let mut ci = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
+        let mut co = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
+        let mut h = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
+        let mut h_prev = h_prev.to_owned();
+        let mut cs_prev = cs_prev.to_owned();
+        for n in 0..len {
+            let x = x.index_axis(Axis(0),n);
+            let mut i = i.index_axis_mut(Axis(0), n);
+            let mut cs = cs.index_axis_mut(Axis(0), n);
+            let mut f = f.index_axis_mut(Axis(0), n);
+            let mut o = o.index_axis_mut(Axis(0), n);
+            let mut ci = ci.index_axis_mut(Axis(0), n);
+            let mut co = co.index_axis_mut(Axis(0), n);
+            let mut h = h.index_axis_mut(Axis(0), n);
+
+            println!("x: {:?}", x.iter().take(9).collect::<Vec<_>>());
+            let xh = ndarray::stack(Axis(1), &[x, h_prev.view()])?;
+
+            let i_ci_f_o = xh.dot(&w) + &bias;
+
+            i.assign(&i_ci_f_o.slice_axis(Axis(1), (0..cell_size).into()));
+            i.mapv_inplace(sigmoid_f32); // TODO: peepholes
+
+//            println!("i: {:?}", i.iter().take(6).collect::<Vec<_>>());
+
+            f.assign(&i_ci_f_o.slice_axis(Axis(1), (2*cell_size..3*cell_size).into()));
+            f.mapv_inplace(|x| sigmoid_f32(x + self.forget_bias)); // TODO: peepholes
+//            println!("f: {:?}", f.iter().take(6).collect::<Vec<_>>());
+
+            ci.assign(&i_ci_f_o.slice_axis(Axis(1), (cell_size..2*cell_size).into()));
+            ci.mapv_inplace(tanh_f32);
+//            println!("ci: {:?}", ci.iter().take(6).collect::<Vec<_>>());
+
+            cs_prev *= &f;
+            cs_prev += &(ci.to_owned() * &i);
+            // TODO: clip cs
+            cs.assign(&cs_prev);
+
+            o.assign(&i_ci_f_o.slice_axis(Axis(1), (3*cell_size..4*cell_size).into()));
+            o.mapv_inplace(sigmoid_f32); // TODO: peephole
+//            println!("o: {:?}", o.iter().take(6).collect::<Vec<_>>());
+
+            co.assign(&cs);
+            co.mapv_inplace(tanh_f32);
+//            println!("co: {:?}", co.iter().take(6).collect::<Vec<_>>());
+
+            h_prev.assign(&co);
+            h_prev *= &o;
+            h.assign(&h_prev);
+            println!("h: {:?}", h.iter().take(6).collect::<Vec<_>>());
+            println!("cs: {:?}", cs.iter().take(6).collect::<Vec<_>>());
+        }
+        Ok(tvec!(i.into(), cs.into(), f.into(), o.into(), ci.into(), co.into(), h.into()))
     }
 }
 
@@ -40,22 +109,28 @@ impl InferenceRulesOp for BlockLSTM {
         check_input_arity(&inputs, 9)?;
         check_input_arity(&outputs, 7)?;
 
-        // seq_len_max
-        s.equals(&inputs[0].rank, 0)?;
+        s.equals(&inputs[0].rank, 0)?; // seq_len_max
         s.equals(&inputs[0].datum_type, i64::datum_type())?;
 
+        // other inputs and outputs are consistent float-like
         s.equals_all((1..=7).map(move |i| (&inputs[i].datum_type).bex()).collect())?;
-        s.equals_all((0..=6).map(move |i| (&outputs[i].datum_type).bex()).collect())?;
-        s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
 
-        s.equals(&inputs[1].rank, 3)?;
-        s.equals(&inputs[2].rank, 2)?;
-        s.equals(&inputs[3].rank, 2)?;
-        s.equals(&inputs[4].rank, 2)?;
-        s.equals(&inputs[5].rank, 1)?;
-        s.equals(&inputs[6].rank, 1)?;
-        s.equals(&inputs[7].rank, 1)?;
-        s.equals(&inputs[8].rank, 1)?;
+        s.equals(&inputs[1].rank, 3)?; // x:  [ time, batch, cell_size ]
+        s.equals(&inputs[2].rank, 2)?; // cs_prev: [batch, cell_size]
+        s.equals(&inputs[3].rank, 2)?; // h_prev: [batch, cell_size]
+        s.equals(&inputs[4].rank, 2)?; // w: []
+        s.equals(&inputs[5].rank, 1)?; // peephole input
+        s.equals(&inputs[6].rank, 1)?; // peephole forget
+        s.equals(&inputs[7].rank, 1)?; // peephole output
+        s.equals(&inputs[8].rank, 1)?; // bias: [ 4*cell_size ]
+        s.equals(&inputs[8].shape[0], 4 * inputs[1].shape[2].bex())?; // bias: [ 4*cell_size ]
+
+        // i, cs, f, o, ci, co, h
+        for i in 0..7 {
+            s.equals(&inputs[1].datum_type, &outputs[i].datum_type)?;
+            s.equals(&outputs[i].shape, &inputs[1].shape)?;
+        }
+
         Ok(())
     }
 }

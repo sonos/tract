@@ -57,7 +57,7 @@ extern crate derive_new;
 #[macro_use]
 extern crate downcast_rs;
 #[macro_use]
-extern crate error_chain;
+pub extern crate error_chain;
 #[cfg(feature = "image_ops")]
 extern crate image;
 extern crate insideout;

@@ -306,6 +306,7 @@ impl Parameters {
 
         #[cfg(feature = "conform")]
         let tf_model = if format == "tf" {
+            info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
             Some(tract_tensorflow::conform::tf::for_path(&name)?)
         } else {
             None

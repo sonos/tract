@@ -87,6 +87,12 @@ impl Clone for Tensor {
     }
 }
 
+impl Default for Tensor {
+    fn default() -> Tensor {
+        Tensor::from(arr0(0f32))
+    }
+}
+
 impl Tensor {
     pub unsafe fn uninitialized_aligned<T: Datum>(
         shape: &[usize],

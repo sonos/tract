@@ -1,4 +1,4 @@
-element_map!(Tanh, [f32], tanh);
+element_map!(Tanh, [f32], tanh_f32);
 
 const LOW: f32 = -9.0;
 const HIGH: f32 = 9.0;
@@ -14,7 +14,7 @@ const BETA_4: f32 = 1.18534705686654e-04;
 const BETA_2: f32 = 2.26843463243900e-03;
 const BETA_0: f32 = 4.89352518554385e-03;
 
-fn tanh(x: f32) -> f32 {
+pub fn tanh_f32(x: f32) -> f32 {
     if x <= LOW {
         return -1.0;
     }

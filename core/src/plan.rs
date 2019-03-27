@@ -189,11 +189,36 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                         })?;
                         inputs.push(prec[i.slot].clone().into())
                     }
+
+                    if cfg!(debug_assertions) {
+                        let facts = model.node_input_facts(node.id)?;
+                        if facts.len() != inputs.len() {
+                            bail!("Evaluating {}: expected {} inputs, got {}", node, facts.len(), inputs.len());
+                        }
+                        for (ix, (v,f)) in inputs.iter().zip(facts.iter()).enumerate() {
+                            if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
+                                bail!("Evaluating {}: input {:?}, expected {:?}, got {:?} ({})", node, ix, f, v, e);
+                            }
+                        }
+                    }
+
                     let vs = match states[node.id] {
                         Some(ref mut state) => state.eval(session_state, node.op(), inputs),
                         None => node.op().as_stateless().unwrap().eval(inputs),
                     }
                     .map_err(|e| format!("Evaluating {}: {}", node, e))?;
+
+                    if cfg!(debug_assertions) {
+                        let facts = model.node_output_facts(node.id)?;
+                        if facts.len() != vs.len() {
+                            bail!("Evaluating {}: expected {} outputs, got {}", node, facts.len(), vs.len());
+                        }
+                        for (ix, (v,f)) in vs.iter().zip(facts.iter()).enumerate() {
+                            if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
+                                bail!("Evaluating {}: output {:?}, expected {:?}, got {:?} ({})", node, ix, f, v, e);
+                            }
+                        }
+                    }
 
                     values[node.id] = Some(vs);
                 }
