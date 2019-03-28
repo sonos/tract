@@ -1,12 +1,12 @@
-use crate::model::{InletId, OutletId};
-use crate::{Model, TractResult};
+use crate::model::*;
+use crate::TractResult;
 use bit_set;
 
 #[derive(Debug)]
 pub struct PropConst;
 
-impl super::OptimizerPass for PropConst {
-    fn pass(&self, model: &mut Model) -> TractResult<bool> {
+impl super::DeclutterPass for PropConst {
+    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut replaced = 0;
         let mut done = bit_set::BitSet::with_capacity(model.nodes().len());
         let mut needed: Vec<usize> = vec![];
@@ -18,23 +18,17 @@ impl super::OptimizerPass for PropConst {
                 needed.pop();
                 continue;
             }
-            if model.nodes()[node]
-                .inputs
-                .iter()
-                .all(|i| done.contains(i.node))
-            {
+            if model.nodes()[node].inputs.iter().all(|i| done.contains(i.node)) {
                 needed.pop();
                 done.insert(node);
             } else {
                 trace!("Looking at node {} inputs", node);
                 for ix in 0..model.nodes()[node].inputs.len() {
-                    use crate::analyser::types::Fact;
                     let source = model.nodes()[node].inputs[ix];
                     if model.nodes()[source.node].op().name() != "Const"
-                        && model.fact(source)?.is_concrete()
+                        && model.fact(source)?.konst.is_some()
                     {
-                        use crate::model::ModelDsl;
-                        let konst = model.fact(source)?.concretize().unwrap();
+                        let konst = model.fact(source)?.konst.clone().unwrap();
                         let id = model.nodes().len();
                         trace!(
                             "   Replacing node {} input {} by a constant instead of {:?}",

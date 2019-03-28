@@ -1,69 +1,70 @@
-use std::sync::Arc;
-use std::{fs, path};
-
 use crate::tfpb::graph::GraphDef;
-use tract_core::model::{InletId, Model, OutletId};
-use tract_core::{ToTract, TractResult, Tractify};
+use crate::tfpb::node_def::NodeDef;
+use tract_core::framework::{Framework, OpRegister, OpBuilder};
+use tract_core::model::{InletId, OutletId};
+use tract_core::InferenceModel;
+use tract_core::ops::prelude::*;
+use std::collections::HashMap;
 
-/// Load a SharedTensor protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {
-    for_reader(fs::File::open(p)?)
+pub type TfOpRegister = OpRegister<NodeDef>;
+
+pub struct Tensorflow {
+    pub op_register: TfOpRegister
 }
 
-/// Load a Tract model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> TractResult<Model> {
-    graphdef_for_reader(r)?.tractify()
+impl Tensorflow {
+    // From the node_def.proto documentation:
+    // Each input is "node:src_output" with "node" being a string name and
+    // "src_output" indicating which output tensor to use from "node". If
+    // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
+    // optionally be followed by control inputs that have the format "^node".
+    fn parse_input(i: &str) -> TractResult<(&str, usize)> {
+        let pair = if i.starts_with("^") {
+            (&i[1..], 0)
+        } else {
+            let splits: Vec<_> = i.splitn(2, ':').collect();
+            (splits[0], if splits.len() > 1 { splits[1].parse::<usize>()? } else { 0 })
+        };
+        Ok(pair)
+    }
 }
 
-/// Load a SharedTensor protobuf graph def from a reader.
-pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<GraphDef> {
-    Ok(::protobuf::parse_from_reader::<GraphDef>(&mut r).map_err(|e| format!("{:?}", e))?)
-}
+impl Framework<NodeDef, GraphDef> for Tensorflow {
+    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<NodeDef>> {
+        self.op_register.get(name)
+    }
+    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<GraphDef> {
+        Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
+    }
 
-/// Load a SharedTensor protobuf graph def from a path
-pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TractResult<GraphDef> {
-    graphdef_for_reader(fs::File::open(p)?)
-}
-
-pub fn optimize(model: Model) -> TractResult<Model> {
-    let model = model.into_optimized()?;
-    model.into_optimized()
-}
-
-impl Tractify<GraphDef> for Model {
-    fn tractify(graph: &GraphDef) -> TractResult<Model> {
-        let mut model = Model::default().with_context(Arc::new(crate::optim::TensorflowContext));
-        let op_builder = crate::ops::OpBuilder::new();
+    fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
+        let mut model = InferenceModel::default(); //.with_norm_optims(Some(crate::optim::normalization()));
+        // compute min output arity for all nodes
+        let mut arities = HashMap::new();
+        for pbnode in graph.get_node().iter() {
+            for i in pbnode.get_input().iter() {
+                let (node, slot) = Self::parse_input(i)?;
+                let arity = arities.entry(node).or_insert(1);
+                *arity = (*arity).max(slot+1);
+            }
+        }
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
+            let facts = tvec!(TensorFact::default(); arities.get(&*name).cloned().unwrap_or(1));
             let node_id = model.add_node(
                 name.clone(),
-                op_builder
-                    .build(pbnode)
+                self
+                    .build_op(&*pbnode.get_op(), pbnode)
                     .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
+                facts
             )?;
 
-            // From the node_def.proto documentation:
-            // Each input is "node:src_output" with "node" being a string name and
-            // "src_output" indicating which output tensor to use from "node". If
-            // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
-            // optionally be followed by control inputs that have the format "^node".
             for (ix, i) in pbnode.get_input().iter().enumerate() {
-                let input: (&str, usize) = if i.starts_with("^") {
-                    (&i[1..], 0)
-                } else {
-                    let splits: Vec<_> = i.splitn(2, ':').collect();
-                    (
-                        splits[0],
-                        if splits.len() > 1 {
-                            splits[1].parse::<usize>()?
-                        } else {
-                            0
-                        },
-                    )
-                };
+                let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
-                model.add_edge(OutletId::new(prec, input.1), InletId::new(node_id, ix))?;
+                let outlet = OutletId::new(prec, input.1);
+                let inlet = InletId::new(node_id, ix);
+                model.add_edge(outlet, inlet)?;
             }
         }
         Ok(model)

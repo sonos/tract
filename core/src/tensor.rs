@@ -244,6 +244,13 @@ impl Tensor {
     }
 
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -252,6 +259,13 @@ impl Tensor {
     }
 
     pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -259,6 +273,13 @@ impl Tensor {
     }
 
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -272,7 +293,13 @@ impl Tensor {
     }
 
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
-        assert_eq!(D::datum_type(), self.datum_type());
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -289,6 +316,13 @@ impl Tensor {
     }
 
     pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -302,6 +336,13 @@ impl Tensor {
     }
 
     pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -309,7 +350,13 @@ impl Tensor {
     }
 
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
-        assert_eq!(D::datum_type(), self.datum_type());
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -326,7 +373,14 @@ impl Tensor {
         }
     }
 
-    pub fn to_scalar<'a, D>(&'a self) -> TractResult<&D> {
+    pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<&D> {
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
         if self.is_null() {
             bail!("Null tensor")
         }
@@ -364,7 +418,9 @@ impl Tensor {
         }
         let target = match (self.dt, dt) {
             (TDim, I32) => self.cast::<crate::dim::TDim, i32>()?,
+            (TDim, I64) => self.cast::<crate::dim::TDim, i64>()?,
             (I32, TDim) => self.cast::<i32, crate::dim::TDim>()?,
+            (I64, TDim) => self.cast::<i64, crate::dim::TDim>()?,
 
             (F16, F32) => self.cast::<f16, f32>()?,
             (F32, F16) => self.cast::<f32, f16>()?,
@@ -413,9 +469,6 @@ impl PartialEq for Tensor {
     fn eq(&self, other: &Tensor) -> bool {
         if self.dt != other.dt || self.shape != other.shape {
             return false;
-        }
-        if &*self.data == &*other.data {
-            return true;
         }
         self.eq_dt(other).unwrap_or(false)
     }

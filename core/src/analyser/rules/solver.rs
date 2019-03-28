@@ -638,29 +638,18 @@ impl<'rules> Solver<'rules> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DatumType;
 
-    fn bootstrap<'s>() -> (Solver<'s>, SharedTensorsProxy, SharedTensorsProxy) {
+    fn bootstrap<'s>() -> (Solver<'s>, TVec<TensorProxy>, TVec<TensorProxy>) {
         (
             Solver::default(),
-            SharedTensorsProxy::new(tvec![0].into()),
-            SharedTensorsProxy::new(tvec![1].into()),
+            tvec!(TensorProxy::new(tvec![0,0].into())),
+            tvec!(TensorProxy::new(tvec![1,0].into())),
         )
     }
 
     #[test]
     #[should_panic]
     fn solver_wrong_size_1() {
-        let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs.len, 2).unwrap();
-        solver
-            .infer_facts((tvec![].into(), tvec![].into()))
-            .unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn solver_wrong_size_2() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 2).unwrap();
         solver
@@ -670,37 +659,13 @@ mod tests {
 
     #[test]
     fn solver_exact_size() {
-        let (mut solver, inputs, _) = bootstrap();
-        solver.equals(&inputs.len, 1).unwrap();
+        let (solver, _, _) = bootstrap();
         let any = TensorFact::new();
 
         let facts = solver
             .infer_facts((tvec![&any].into(), tvec![].into()))
             .unwrap();
         assert_eq!(facts, (tvec![TensorFact::new()].into(), tvec![].into()));
-    }
-
-    #[test]
-    fn solver_dynamic_size() {
-        let (mut solver, inputs, _) = bootstrap();
-        solver
-            .equals(&inputs[1].datum_type, DatumType::I32)
-            .unwrap();
-
-        let any = TensorFact::new();
-        let facts = solver.infer_facts((tvec![&any, &any], tvec![])).unwrap();
-        let expected = (
-            tvec![
-                TensorFact::new(),
-                TensorFact {
-                    datum_type: typefact!(DatumType::I32),
-                    ..TensorFact::new()
-                },
-            ],
-            tvec![],
-        );
-
-        assert_eq!(facts, expected);
     }
 
     #[test]

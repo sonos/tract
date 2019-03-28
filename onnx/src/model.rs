@@ -1,35 +1,28 @@
 use std::collections::HashMap;
-use std::{fs, path};
 
-use tract_core::model::{InletId, Model, OutletId};
+use tract_core::framework::{Framework, OpBuilder, OpRegister};
+use tract_core::model::*;
 use tract_core::*;
 
 use crate::pb;
 
-/// Load a ONNX protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {
-    for_reader(fs::File::open(p)?)
+pub type OnnxOpRegister = OpRegister<pb::NodeProto>;
+
+pub struct Onnx {
+    pub op_register: OnnxOpRegister,
 }
 
-/// Load a ONNX model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> TractResult<Model> {
-    model_proto_for_reader(r)?.tractify()
-}
+impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
+    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<pb::NodeProto>> {
+        self.op_register.get(name)
+    }
 
-/// Load a ONNX protobuf graph def from a path
-pub fn model_proto_for_path<P: AsRef<path::Path>>(p: P) -> TractResult<pb::ModelProto> {
-    model_proto_for_reader(fs::File::open(p)?)
-}
+    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<pb::ModelProto> {
+        Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
+    }
 
-/// Load a ONNX protobuf graph def from a reader.
-pub fn model_proto_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<pb::ModelProto> {
-    Ok(::protobuf::parse_from_reader(&mut r).map_err(|e| format!("{:?}", e))?)
-}
-
-impl Tractify<pb::ModelProto> for Model {
-    fn tractify(proto: &pb::ModelProto) -> TractResult<Model> {
+    fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {
         let mut model = Model::default();
-        let op_builder = super::ops::OpBuilder::new();
         let graph = proto.get_graph();
         let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
@@ -39,17 +32,11 @@ impl Tractify<pb::ModelProto> for Model {
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.get_input().iter() {
             if let Some(init) = initializers.remove(input.get_name()) {
-                let id = model.add_node(
-                    input.get_name().to_owned(),
-                    Box::new(::tract_core::ops::konst::Const::new(init.into())),
-                )?;
+                let id = model.add_const(input.get_name().to_owned(), init.into())?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             } else {
                 let fact = input.get_field_type().get_tensor_type().tractify()?;
-                let id = model.add_node(
-                    input.get_name().to_owned(),
-                    Box::new(::tract_core::ops::source::Source::new(fact)),
-                )?;
+                let id = model.add_source(input.get_name(), fact)?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             }
         }
@@ -61,7 +48,10 @@ impl Tractify<pb::ModelProto> for Model {
             } else {
                 format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
             };
-            let id = model.add_node(name, op_builder.build(pbnode)?)?;
+            trace!("Creating node {}", name);
+            let facts = (0..pbnode.get_output().len()).map(|_| TensorFact::default()).collect();
+            trace!("  outputs {:?}", pbnode.get_output());
+            let id = model.add_node(name, self.build_op(pbnode.get_op_type(), pbnode)?, facts)?;
             for (ix, output) in pbnode.get_output().iter().enumerate() {
                 outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
             }
@@ -75,7 +65,7 @@ impl Tractify<pb::ModelProto> for Model {
             outputs.push(outlets_by_name[output.get_name()]);
             model.set_fact(outlets_by_name[output.get_name()], fact)?;
         }
-        model.set_outputs_outlets(&outputs)?;
+        model.set_output_outlets(&outputs)?;
         Ok(model)
     }
 }

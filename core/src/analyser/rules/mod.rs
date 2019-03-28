@@ -6,7 +6,7 @@
 //!
 //! Take these rules for instance:
 //! ```text
-//! solver.equals(inputs.len, 2);
+//! solver.equals(inputs.len(), 2);
 //! solver.equals(inputs[0].datum_type, outputs[0].datum_type);
 //! ```
 //! Here, `inputs.len`, `inputs[0].datum_type` and `outputs[0].datum_type` don't
@@ -40,8 +40,8 @@ pub trait InferenceRulesOp {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult;
 }
 
@@ -51,8 +51,8 @@ impl<O: InferenceRulesOp> crate::ops::InferenceOp for O {
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let inputs_proxy = SharedTensorsProxy::new(vec![0].into());
-        let outputs_proxy = SharedTensorsProxy::new(vec![1].into());
+        let inputs_proxy:TVec<TensorProxy> = (0..inputs.len()).map(|ix| TensorProxy::new(tvec!(0, ix as isize).into())).collect();
+        let outputs_proxy:TVec<TensorProxy> = (0..outputs.len()).map(|ix| TensorProxy::new(tvec!(1, ix as isize).into())).collect();
 
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;

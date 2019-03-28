@@ -38,3 +38,4 @@ git tag -f "$CRATE/$VERSION"
 git push -f --tags
 
 (cd $CRATE ; cargo publish --allow-dirty)
+cargo update

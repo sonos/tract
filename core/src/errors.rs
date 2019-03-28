@@ -1,4 +1,5 @@
 //! error_chain generated types
+#![allow(deprecated)]
 
 error_chain! {
     types {

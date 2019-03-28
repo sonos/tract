@@ -61,21 +61,21 @@ impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
 #[cfg(test)]
 #[cfg(all(
     any(target_arch = "x86", target_arch = "x86_64"),
-    target_feature = "fma"
 ))]
 mod test {
     use super::*;
+    use crate::frame::matmul::test::*;
+    use crate::frame::PackedMatMul;
+    use proptest::*;
 
-    #[test]
-    fn t_kernel_16x6() {
-        let mut a = vec![0.0; 16];
-        a[0] = 2.0;
-        let mut b = vec![0.0; 6];
-        b[0] = -1.0;
-        let mut c = vec![0.0; 16 * 6];
-        KerFma16x6::kernel(1, a.as_ptr(), b.as_ptr(), c.as_mut_ptr(), 6);
-        let mut exp = vec![0.0; 16 * 6];
-        exp[0] = -2.0;
-        assert_eq!(c, exp);
+    proptest! {
+        #[test]
+        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
+            if !is_x86_feature_detected!("fma") {
+                return Ok(())
+            }
+            let mm = PackedMatMul::<KerFma16x6, f32>::new(m, k, n);
+            test_mat_mul_prep_f32(mm, m, k, n, a, b)?
+        }
     }
 }

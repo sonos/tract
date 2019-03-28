@@ -12,24 +12,18 @@ impl Op for ExpandDims {
         "tf.ExpandDims".into()
     }
 
-    fn reduce(
-        &self,
-        mut inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            let (_, dims) = args_2!(inputs);
-            if let Some(dims) = dims.concretize() {
-                let dims = dims.cast_to::<i64>()?;
-                let op = ::tract_core::ops::array::AddDims::new(
-                    dims.to_array_view::<i64>()?
-                        .iter()
-                        .map(|&i| i as usize)
-                        .collect(),
-                );
-                return Ok(Some(ReducedOpRewire::unary(op)));
-            }
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        let mut inputs = model.node_input_facts(node.id)?;
+        let (_, dims) = args_2!(inputs);
+        if let Some(ref dims) = dims.konst {
+            let dims = dims.cast_to::<i64>()?;
+            let op = ::tract_core::ops::array::AddDims::new(
+                dims.to_array_view::<i64>()?
+                    .iter()
+                    .map(|&i| i as usize)
+                    .collect(),
+            );
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
@@ -56,15 +50,15 @@ impl InferenceRulesOp for ExpandDims {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         let data = &inputs[0];
         let dims = &inputs[1];
         let output = &outputs[0];
 
-        s.equals(&inputs.len, 2)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 2)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&dims.datum_type, DatumType::I32)?;
         s.equals(&dims.rank, 0)?;
         s.equals(&data.datum_type, &output.datum_type)?;

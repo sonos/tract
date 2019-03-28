@@ -20,6 +20,7 @@ env:
 matrix:
   include:
     - rust: stable
+      env: RUN_ALL_TEST=true
     - rust: stable
       os: osx
       osx_image: xcode8.3

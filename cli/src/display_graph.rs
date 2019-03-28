@@ -5,8 +5,11 @@ use ansi_term::Color::*;
 use ansi_term::Style;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use tract_core::{Model, Node, Tractify};
+use tract_core::model::{Model, Node, TensorInfo};
+use tract_core::Tractify;
+#[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
+#[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::graph::GraphDef;
 
 #[derive(Debug, Clone, Default)]
@@ -21,14 +24,15 @@ pub struct DisplayOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct DisplayGraph<M: Borrow<Model>> {
+pub struct DisplayGraph<TI: TensorInfo, M: Borrow<Model<TI>>> {
     model: M,
     pub options: DisplayOptions,
     node_labels: HashMap<usize, Vec<String>>,
     node_sections: HashMap<usize, Vec<Vec<Row>>>,
+    _bloody_baron: ::std::marker::PhantomData<TI>,
 }
 
-impl<M: Borrow<Model>> DisplayGraph<M> {
+impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
     pub fn render(&self) -> CliResult<()> {
         if self.options.quiet {
             return Ok(());
@@ -54,13 +58,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
             if node.op().name() == "Const" && !self.options.konst {
                 continue;
             }
-            if self
-                .options
-                .op_name
-                .as_ref()
-                .map(|name| name != &*node.op.name())
-                .unwrap_or(false)
-            {
+            if self.options.op_name.as_ref().map(|name| name != &*node.op.name()).unwrap_or(false) {
                 continue;
             }
             if self
@@ -77,21 +75,12 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
         Ok(())
     }
 
-    pub fn render_node(&self, node: &Node) -> CliResult<()> {
+    pub fn render_node(&self, node: &Node<TI>) -> CliResult<()> {
         let bold = Style::new().bold();
         let mut sections: Vec<Vec<Row>> = vec![];
-        if let Some(id) = self
-            .model
-            .borrow()
-            .inputs()?
-            .iter()
-            .position(|n| n.node == node.id)
-        {
+        if let Some(id) = self.model.borrow().inputs()?.iter().position(|n| n.node == node.id) {
             sections.push(vec![Row::Simple(
-                Yellow
-                    .bold()
-                    .paint(format!("MODEL INPUT {}", id))
-                    .to_string(),
+                Yellow.bold().paint(format!("MODEL INPUT {}", id)).to_string(),
             )]);
         }
         sections.push(
@@ -152,28 +141,29 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
             &node.id.to_string(),
             &node.op.name(),
             &node.name,
-            self.node_labels
-                .get(&node.id)
-                .map(|v| v.as_slice())
-                .unwrap_or(&[]),
+            self.node_labels.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]),
             sections,
         );
         Ok(())
     }
 
-    pub fn from_model_and_options(model: M, options: DisplayOptions) -> CliResult<DisplayGraph<M>> {
+    pub fn from_model_and_options(model: M, options: DisplayOptions) -> CliResult<DisplayGraph<TI, M>> {
         Ok(DisplayGraph {
             model,
             options,
             node_labels: HashMap::new(),
             node_sections: HashMap::new(),
+            _bloody_baron: std::marker::PhantomData,
         })
     }
 
-    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<M>> {
+    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<TI, M>> {
         match graph_def {
+            #[cfg(feature = "tf")]
             SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
+            #[cfg(feature = "onnx")]
             SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
+            SomeGraphDef::_NoGraph => unreachable!(),
         }
     }
 
@@ -187,15 +177,11 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
         Ok(())
     }
 
-    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<M>> {
+    #[cfg(feature = "tf")]
+    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<TI, M>> {
         let bold = Style::new().bold();
         for gnode in graph_def.get_node().iter() {
-            if let Ok(node_id) = self
-                .model
-                .borrow()
-                .node_by_name(gnode.get_name())
-                .map(|n| n.id)
-            {
+            if let Ok(node_id) = self.model.borrow().node_by_name(gnode.get_name()).map(|n| n.id) {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
@@ -211,7 +197,8 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
         Ok(self)
     }
 
-    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<M>> {
+    #[cfg(feature = "onnx")]
+    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<TI, M>> {
         let bold = Style::new().bold();
         for gnode in model_proto.get_graph().get_node().iter() {
             let mut node_name = gnode.get_name();
@@ -226,10 +213,7 @@ impl<M: Borrow<Model>> DisplayGraph<M> {
                     } else {
                         format!("{:?}", a)
                     };
-                    v.push(Row::Double(
-                        format!("Attr {}:", bold.paint(a.get_name())),
-                        value,
-                    ));
+                    v.push(Row::Double(format!("Attr {}:", bold.paint(a.get_name())), value));
                 }
                 self.add_node_section(id, v)?;
             }

@@ -77,13 +77,13 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
             continue;
         }
 
-        debug!("Computing {} in tensorflow", node.name);
+        debug!("Computing {} in tensorflow", node);
         let tf_output = match tf_outputs.remove(&*node.name) {
             Some(it) => it,
             None => continue,
         };
 
-        debug!("Computing {} in tract", node.name);
+        debug!("Computing {} in tract", node);
         match state.compute_recursively(n) {
             Err(e) => {
                 failing.push(n);

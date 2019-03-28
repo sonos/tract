@@ -67,6 +67,11 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         }
     }
 
+    pub(super) fn output_shape(&self) -> TractResult<TVec<usize>> {
+        let input_shape = &self.patch.input_shape;
+        Ok(tvec!(input_shape.n_dim(), self.group, self.mm.packed_b_len()))
+    }
+
     pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, T>) -> TractResult<Tensor> {
         let input_shape = &self.patch.input_shape;
 
@@ -114,11 +119,11 @@ impl<T: Copy + Datum + Mul + Zero> InferenceRulesOp for Im2Col<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(

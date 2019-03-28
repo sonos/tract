@@ -1,10 +1,10 @@
 use tract_core::ops as tractops;
 
-use crate::ops::OpRegister;
+use crate::model::OnnxOpRegister;
 use crate::pb::NodeProto;
 use tract_core::ops::prelude::*;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Add", |_| Ok(Box::new(tractops::math::Add::default())));
     reg.insert("Sub", |_| Ok(Box::new(tractops::math::Sub::default())));
     reg.insert("Mul", |_| Ok(Box::new(tractops::math::Mul::default())));
@@ -55,22 +55,16 @@ pub fn register_all_ops(reg: &mut OpRegister) {
 }
 
 pub fn clip(node: &NodeProto) -> TractResult<Box<Op>> {
-    let min = node.get_attr_opt_float("min")?.unwrap_or(::std::f32::MIN);
-    let max = node.get_attr_opt_float("max")?.unwrap_or(::std::f32::MAX);
+    let min = node.get_attr_opt("min")?.unwrap_or(::std::f32::MIN);
+    let max = node.get_attr_opt("max")?.unwrap_or(::std::f32::MAX);
     Ok(Box::new(tractops::math::Clip::new(min, max)))
 }
 
 pub fn gemm(node: &NodeProto) -> TractResult<Box<Op>> {
-    let alpha = node.get_attr_opt_float("alpha")?.unwrap_or(1.0);
-    let beta = node.get_attr_opt_float("beta")?.unwrap_or(1.0);
-    let trans_a = node
-        .get_attr_opt_int("transA")?
-        .map(|a| a != 0)
-        .unwrap_or(false);
-    let trans_b = node
-        .get_attr_opt_int("transB")?
-        .map(|a| a != 0)
-        .unwrap_or(false);
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
+    let beta = node.get_attr_opt("beta")?.unwrap_or(1.);
+    let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
+    let trans_b = node.get_attr_opt("transB")?.unwrap_or(false);
     Ok(Box::new(tractops::math::Gemm::new(
         alpha, beta, trans_a, trans_b, true,
     )))

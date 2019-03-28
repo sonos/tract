@@ -2,80 +2,53 @@ use crate::ops::prelude::*;
 
 pub use super::{InletId, Model, Node, OutletId};
 
-pub trait ModelDsl {
-    fn single_prec(&self, id: usize) -> TractResult<Option<&Node>>;
-    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node>>;
-    fn single_succ(&self, id: usize) -> TractResult<Option<&Node>>;
-    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node>>;
+pub trait ModelDsl<TI: TensorInfo> {
+    fn single_prec(&self, id: usize) -> TractResult<Option<&Node<TI>>>;
+    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<TI>>>;
+    fn single_succ(&self, id: usize) -> TractResult<Option<&Node<TI>>>;
+    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<TI>>>;
 
-    fn add_source<S: AsRef<str>>(&mut self, name: S) -> TractResult<usize>;
-    fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TractResult<usize>;
-    fn add_const<S: AsRef<str>>(&mut self, name: S, v: SharedTensor) -> TractResult<usize>;
-    fn chain<S: AsRef<str>>(&mut self, name: S, op: Box<Op>) -> TractResult<usize>;
+    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize>;
+    fn chain(&mut self, name: impl Into<String>, op: impl Into<Box<Op>>, facts:TVec<TI>) -> TractResult<usize>;
 
-    fn tap_and_chain<S: AsRef<str>>(
+    fn chain_after(
         &mut self,
         tap: OutletId,
-        name: S,
-        op: Box<Op>,
+        name: impl Into<String>,
+        op: impl Into<Box<Op>>,
+        facts: TVec<TI>,
     ) -> TractResult<usize>;
 
-    fn replace_nodes(
-        &mut self,
-        node: usize,
-        before: usize,
-        after: usize,
-        nodes: Vec<(String, Box<Op>)>,
-    ) -> TractResult<()>;
-
-    fn unlink_node(&mut self, node: usize) -> TractResult<()>;
 }
 
-impl ModelDsl for crate::model::Model {
-    fn add_source<S: AsRef<str>>(&mut self, name: S) -> TractResult<usize> {
-        self.add_source_fact(name, TensorFact::default())
-    }
-
-    fn add_source_fact<S: AsRef<str>>(&mut self, name: S, fact: TensorFact) -> TractResult<usize> {
+impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
+    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize> {
         let id = self.add_node(
-            name.as_ref().to_owned(),
-            Box::new(crate::ops::source::Source::new(fact.clone())),
+            name,
+            crate::ops::source::Source::new(fact.to_tensor_fact()),
+            tvec!(fact),
         )?;
-        self.set_fact(OutletId::new(id, 0), fact)?;
         Ok(id)
     }
 
-    fn add_const<S: AsRef<str>>(&mut self, name: S, v: SharedTensor) -> TractResult<usize> {
-        self.add_node(
-            name.as_ref().to_owned(),
-            Box::new(crate::ops::konst::Const::new(v)),
-        )
+    fn chain(&mut self, name:impl Into<String>, op: impl Into<Box<Op>>, facts:TVec<TI>) -> TractResult<usize> {
+        let previous_id = self.nodes().len() - 1;
+        self.chain_after(OutletId::new(previous_id, 0), name, op.into(), facts)
     }
 
-    fn chain<S: AsRef<str>>(&mut self, name: S, op: Box<Op>) -> TractResult<usize> {
-        let previous_id = self.nodes.len() - 1;
-        self.tap_and_chain(OutletId::new(previous_id, 0), name, op)
-    }
-
-    fn single_prec(&self, id: usize) -> TractResult<Option<&Node>> {
-        let node = &self.nodes[id];
+    fn single_prec(&self, id: usize) -> TractResult<Option<&Node<TI>>> {
+        let node = &self.nodes()[id];
         if node.inputs.len() != 1 {
             return Ok(None);
         }
-        let prec = &self.nodes[node.inputs[0].node];
-        if prec
-            .outputs
-            .iter()
-            .map(|of| of.successors.len())
-            .sum::<usize>()
-            != 1
-        {
+        let prec = &self.nodes()[node.inputs[0].node];
+        if prec.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
             return Ok(None);
         }
         Ok(Some(prec))
     }
 
-    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node>> {
+    fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<TI>>> {
         let mut node = self.node(id);
         for _ in 0..count {
             if let Some(next) = self.single_prec(node.id)? {
@@ -87,7 +60,7 @@ impl ModelDsl for crate::model::Model {
         Ok(Some(node))
     }
 
-    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node>> {
+    fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<TI>>> {
         let mut node = self.node(id);
         for _ in 0..count {
             if let Some(next) = self.single_succ(node.id)? {
@@ -99,72 +72,65 @@ impl ModelDsl for crate::model::Model {
         Ok(Some(node))
     }
 
-    fn single_succ(&self, id: usize) -> TractResult<Option<&Node>> {
-        let node = &self.nodes[id];
-        if node
-            .outputs
-            .iter()
-            .map(|of| of.successors.len())
-            .sum::<usize>()
-            != 1
-        {
+    fn single_succ(&self, id: usize) -> TractResult<Option<&Node<TI>>> {
+        let node = &self.nodes()[id];
+        if node.outputs.iter().map(|of| of.successors.len()).sum::<usize>() != 1 {
             return Ok(None);
         }
         let succ = node.outputs[0].successors[0];
-        let succ = &self.nodes[succ.node];
+        let succ = &self.nodes()[succ.node];
         if succ.inputs.len() != 1 {
             return Ok(None);
         }
         Ok(Some(succ))
     }
 
-    fn tap_and_chain<S: AsRef<str>>(
+    fn chain_after(
         &mut self,
         tap: OutletId,
-        name: S,
-        op: Box<Op>,
+        name: impl Into<String>,
+        op: impl Into<Box<Op>>,
+        facts: TVec<TI>,
     ) -> TractResult<usize> {
-        let id = self.add_node(name.as_ref().to_owned(), op.into())?;
+        let id = self.add_node(name, op, facts)?;
         self.add_edge(tap, InletId::new(id, 0))?;
         Ok(id)
     }
 
-    fn replace_nodes(
-        &mut self,
-        node: usize,
-        before: usize,
-        after: usize,
-        nodes: Vec<(String, Box<Op>)>,
-    ) -> TractResult<()> {
-        let first_replaced = self
-            .single_prec_at(node, before)?
-            .ok_or("Failed to replace, geometry is not right")?
-            .id;
-        let mut tap = self.node(first_replaced).inputs[0];
-        for (name, op) in nodes.into_iter() {
-            let id = self.tap_and_chain(tap, name, op)?;
-            tap = OutletId::new(id, 0);
-        }
-        self.unlink_node(first_replaced)?;
-        let successors: Vec<InletId> = self
-            .single_succ_at(node, after)?
-            .ok_or("Failed to replace, geometry is not right")?
-            .outputs[0]
-            .successors
-            .clone();
-        for &succ in &successors {
-            self.add_edge(tap, succ)?;
-        }
-        Ok(())
-    }
+}
 
-    fn unlink_node(&mut self, node: usize) -> TractResult<()> {
-        let inputs = self.nodes[node].inputs.clone();
-        for (ix, &input) in inputs.iter().enumerate() {
-            self.nodes[input.node].outputs[input.slot]
-                .successors
-                .retain(|&wire| wire != InletId::new(node, ix));
-        }
-        Ok(())
+pub trait ModelDslConst {
+    fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize>;
+}
+
+impl ModelDslConst for super::InferenceModel {
+    fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize> {
+        let facts = tvec!(v.clone().into());
+        self.add_node(name, crate::ops::konst::Const::new(v), facts)
+    }
+}
+
+impl ModelDslConst for super::TypedModel {
+    fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize> {
+        let facts = tvec!(v.clone().into());
+        self.add_node(name, crate::ops::konst::Const::new(v), facts)
+    }
+}
+
+pub trait ModelDslInfer {
+    fn add_source_default(&mut self, name: impl Into<String>) -> TractResult<usize>;
+    fn add_node_default(&mut self, name: impl Into<String>, op: impl Into<Box<Op>>,) -> TractResult<usize>;
+    fn chain_default(&mut self, name: impl Into<String>, op: impl Into<Box<Op>>) -> TractResult<usize>;
+}
+
+impl ModelDslInfer for super::InferenceModel {
+    fn add_source_default(&mut self, name: impl Into<String>) -> TractResult<usize> {
+        self.add_source(name, TensorFact::default())
+    }
+    fn add_node_default(&mut self, name: impl Into<String>, op: impl Into<Box<Op>>,) -> TractResult<usize> {
+        self.add_node(name, op, tvec!(TensorFact::default()))
+    }
+    fn chain_default(&mut self, name: impl Into<String>, op: impl Into<Box<Op>>) -> TractResult<usize> {
+        self.chain(name, op, tvec!(TensorFact::default()))
     }
 }

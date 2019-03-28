@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-
-use tract_core::ops::Op;
-use tract_core::TractResult;
-
+use tract_core::ops::prelude::*;
 use crate::tfpb::node_def::NodeDef;
+use crate::model::TfOpRegister;
 
 #[macro_use]
 mod macros;
@@ -14,33 +11,16 @@ pub mod math;
 pub mod nn;
 pub mod quant;
 
-pub type OpRegister = HashMap<&'static str, fn(&NodeDef) -> TractResult<Box<Op>>>;
-
-pub struct OpBuilder(OpRegister);
-
-impl OpBuilder {
-    pub fn new() -> OpBuilder {
-        let mut reg = OpRegister::new();
-        array::register_all_ops(&mut reg);
-        logic::register_all_ops(&mut reg);
-        math::register_all_ops(&mut reg);
-        nn::register_all_ops(&mut reg);
-        quant::register_all_ops(&mut reg);
-        reg.insert("Const", konst);
-        reg.insert("Placeholder", placeholder);
-        OpBuilder(reg)
-    }
-
-    pub fn build(&self, pb: &NodeDef) -> TractResult<Box<Op>> {
-        match self.0.get(pb.get_op()) {
-            Some(builder) => builder(pb),
-            None => Ok(Box::new(::tract_core::ops::unimpl::UnimplementedOp::new(
-                pb.get_op(),
-                format!("{:?}", pb),
-            ))),
-        }
-    }
+pub fn register_all_ops(reg: &mut TfOpRegister) {
+    array::register_all_ops(reg);
+    logic::register_all_ops(reg);
+    math::register_all_ops(reg);
+    nn::register_all_ops(reg);
+    quant::register_all_ops(reg);
+    reg.insert("Const", konst);
+    reg.insert("Placeholder", placeholder);
 }
+
 
 pub fn konst(node: &NodeDef) -> TractResult<Box<Op>> {
     let dtype = node.get_attr_datum_type("dtype")?;

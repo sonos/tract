@@ -26,12 +26,19 @@ impl Op for AddDims {
         "AddDims".into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
-        let mut fact = input.clone();
-        fact.shape = self.compute_shape(&input.shape);
-        fact.axis += self.axes.iter().filter(|&ax| *ax <= input.axis).count();
-        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))])
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.fact(input)?.clone();
+        fact.shape = self.compute_shape(&fact.shape);
+        fact.axis += self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 }
 
@@ -46,15 +53,12 @@ impl InferenceRulesOp for AddDims {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&outputs.len, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
-        s.equals(
-            &outputs[0].rank,
-            (&inputs[0].rank).bex() + self.axes.len() as i32,
-        )?;
+        s.equals(&outputs[0].rank, (&inputs[0].rank).bex() + self.axes.len() as i32)?;
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape);
             s.equals(&outputs[0].shape, output_shape)

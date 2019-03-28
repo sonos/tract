@@ -4,6 +4,7 @@ mod armv7neon;
 
 use crate::Ops;
 use crate::frame::PackedMatMul;
+use crate::frame::PackedConv;
 
 fn has_neon_cpuinfo() -> std::io::Result<bool>  {
     let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
@@ -24,10 +25,18 @@ pub fn plug(ops: &mut Ops) {
             log::info!("armv7neon activated for smm");
             Box::new(PackedMatMul::<armv7neon::SMatMul8x4, f32>::new(m, k, n))
         });
+        ops.sconv = Box::new(|m, k, n| {
+            log::info!("arm7neon activated for sconv");
+            Box::new(PackedConv::<armv7neon::SConv8x4, f32>::new(m, k, n))
+        });
     } else {
         ops.smm = Box::new(|m, k, n| {
             log::info!("armvfpv2 activated for smm");
             Box::new(PackedMatMul::<armvfpv2::SMatMul4x4, f32>::new(m, k, n))
+        });
+        ops.sconv = Box::new(|m, k, n| {
+            log::info!("armvfpv2 activated for sconv");
+            Box::new(PackedConv::<armvfpv2::SConv4x4, f32>::new(m, k, n))
         });
     }
 }

@@ -1,10 +1,9 @@
 use tract_core::ops as tractops;
 use tract_core::ops::prelude::*;
 
-use crate::ops::OpRegister;
-use crate::tfpb::node_def::NodeDef;
+use crate::model::TfOpRegister;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_| Ok(Box::new(Switch)));
@@ -16,10 +15,6 @@ pub struct Switch;
 impl Op for Switch {
     fn name(&self) -> Cow<str> {
         "tf.Switch".into()
-    }
-
-    fn noutputs(&self) -> usize {
-        2
     }
 }
 
@@ -39,19 +34,17 @@ impl InferenceRulesOp for Switch {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 2)?;
+        check_input_arity(&inputs, 2)?;
         s.equals(&inputs[1].datum_type, DatumType::Bool)?;
         s.equals(&inputs[1].shape, shapefact!())?;
-        s.given(&outputs.len, move |s, len| {
-            for i in 0..(len as usize) {
-                s.equals(&inputs[0].datum_type, &outputs[i].datum_type)?;
-                s.equals(&inputs[0].shape, &outputs[i].shape)?;
-            }
-            Ok(())
-        })
+        for i in 0..outputs.len() {
+            s.equals(&inputs[0].datum_type, &outputs[i].datum_type)?;
+            s.equals(&inputs[0].shape, &outputs[i].shape)?;
+        }
+        Ok(())
     }
 }
 
@@ -68,10 +61,6 @@ pub struct Merge {
 impl Op for Merge {
     fn name(&self) -> Cow<str> {
         "tf.Merge".into()
-    }
-
-    fn noutputs(&self) -> usize {
-        2
     }
 }
 
@@ -92,11 +81,11 @@ impl InferenceRulesOp for Merge {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, self.n as i32)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, self.n)?;
+        check_output_arity(&outputs, 1)?;
         for i in 1..self.n {
             s.equals(&inputs[0].datum_type, &inputs[i].datum_type)?;
             s.equals(&inputs[0].shape, &inputs[i].shape)?;

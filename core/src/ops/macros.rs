@@ -29,8 +29,17 @@ macro_rules! element_map {
                 stringify!($Name).into()
             }
 
-            fn pulsify( &self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
-                Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(inputs[0].clone()))))
+            fn pulsify(
+                &self,
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let fact = target.fact(input)?.clone();
+                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+                Ok(tvec!(OutletId::new(id, 0)))
             }
 
         }
@@ -40,11 +49,11 @@ macro_rules! element_map {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p SharedTensorsProxy,
-                outputs: &'p SharedTensorsProxy,
+                inputs: &'p [TensorProxy],
+                outputs: &'p [TensorProxy],
             ) -> InferenceResult {
-                s.equals(&inputs.len, 1)?;
-                s.equals(&outputs.len, 1)?;
+                check_input_arity(&inputs, 1)?;
+                check_output_arity(&outputs, 1)?;
                 s.given(&inputs[0].datum_type, move |s, dt| {
                     $(if dt == <$type>::datum_type() {
                         s.equals(&outputs[0].datum_type, <$to>::datum_type())?;
@@ -93,11 +102,11 @@ macro_rules! element_map_with_params {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p SharedTensorsProxy,
-                outputs: &'p SharedTensorsProxy,
+                inputs: &'p [TensorProxy],
+                outputs: &'p [TensorProxy],
             ) -> InferenceResult {
-                s.equals(&inputs.len, 1)?;
-                s.equals(&outputs.len, 1)?;
+                check_input_arity(&inputs, 1)?;
+                check_output_arity(&outputs, 1)?;
                 s.equals_all(wrap![
                     &inputs[0].datum_type,
                     &outputs[0].datum_type,
@@ -164,28 +173,58 @@ macro_rules! element_bin {
                     concat!(stringify!($name), "::Binary").into()
                 }
 
-                fn reduce(&self, inputs: TVec<&TensorFact>, _outputs: TVec<&TensorFact>,
-                          phase: ReductionPhase
-                ) -> TractResult<Option<ReducedOpRewire>> {
-                    if phase == ReductionPhase::Normalize {
-                        if let Some(b) = inputs[1].value.concretize() {
-                            return Ok(Some(ReducedOpRewire::unary(
-                                UnaryA {
-                                    dt: self.0,
-                                    b: b.into(),
-                                },
-                            )))
-                        }
+                fn declutter(&self, model: &$crate::model::TypedModel, node: &$crate::model::TypedNode)
+                 -> TractResult<Option<TypedModelPatch>> {
+                     let inputs = model.node_input_facts(node.id)?;
+                    if let Some(b) = inputs[1].konst.clone() {
+                        let op = UnaryA { dt: self.0, b };
+                        return Ok(Some(TypedModelPatch::single_unary_op(&model, &node, op)?));
                     }
                     Ok(None)
                 }
 
-                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
-                    let mut fact = inputs[0].clone();
+                fn pulsify(
+                    &self,
+                    _source: &NormalizedModel,
+                    node: &NormalizedNode,
+                    target: &mut PulsedModel,
+                    mapping: &HashMap<OutletId, OutletId>,
+                ) -> TractResult<TVec<OutletId>> {
+                    use $crate::pulse::delay::Delay;
+                    let a = mapping[&node.inputs[0]];
+                    let b = mapping[&node.inputs[1]];
+                    let a_fact = target.fact(a)?.clone();
+                    let b_fact = target.fact(b)?.clone();
+                    let delay = a_fact.delay.max(b_fact.delay);
+                    let mut fact = target.fact(a)?.clone();
+                    fact.delay = delay;
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
                     })*
-                    Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))))
+                    let a_source = if a_fact.delay < delay {
+                        let add_delay = delay - a_fact.delay;
+                        let mut fixed_fact = a_fact.clone();
+                        fixed_fact.delay += add_delay;
+                        let id = target.chain_after(a, 
+                            format!("{}/Delay", &*node.name), Delay::new(a_fact.clone(), add_delay, 0), tvec!(fixed_fact))?;
+                        OutletId::new(id, 0)
+                    } else {
+                        a
+                    };
+                    let b_source = if b_fact.delay < delay {
+                        let add_delay = delay - b_fact.delay;
+                        let mut fixed_fact = b_fact.clone();
+                        fixed_fact.delay += add_delay;
+                        let id = target.chain_after(b,
+                            format!("{}/Delay", &*node.name), Delay::new(b_fact.clone(), add_delay, 0), tvec!(fixed_fact))?;
+                        OutletId::new(id, 0)
+                    } else {
+                        b
+                    };
+                    let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
+                    target.add_edge(a_source, InletId::new(id, 0))?;
+                    target.add_edge(b_source, InletId::new(id, 1))?;
+                    Ok(tvec!(OutletId::new(id, 0)))
                 }
             }
 
@@ -194,25 +233,24 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p SharedTensorsProxy,
-                    outputs: &'p SharedTensorsProxy,
+                    inputs: &'p [TensorProxy],
+                    outputs: &'p [TensorProxy],
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let b = &inputs[1];
                     let c = &outputs[0];
 
-                    s.given(&inputs.len, move |s, n|
-                        s.given_all((0..n).map(|i| &inputs[i as usize].datum_type), move |s, dts| {
-                            let dt:DatumType = DatumType::super_type_for(dts.iter().cloned())
-                                .ok_or_else(|| format!("No supertype for {:?}", dts))?;
-                            $(if dt == <$type>::datum_type() {
-                                return s.equals(&outputs[0].datum_type, <$to>::datum_type());
-                            })*
-                            bail!("{} not covering {:?}", stringify!($name), dt)
-                        })
-                    )?;
-                    s.equals(&inputs.len, 2)?;
-                    s.equals(&outputs.len, 1)?;
+                    let n = inputs.len();
+                    s.given_all((0..n).map(|i| &inputs[i as usize].datum_type), move |s, dts| {
+                        let dt:DatumType = DatumType::super_type_for(dts.iter().cloned())
+                            .ok_or_else(|| format!("No supertype for {:?}", dts))?;
+                        $(if dt == <$type>::datum_type() {
+                            return s.equals(&outputs[0].datum_type, <$to>::datum_type());
+                        })*
+                        bail!("{} not covering {:?}", stringify!($name), dt)
+                    })?;
+                    check_input_arity(&inputs, 2)?;
+                    check_output_arity(&outputs, 1)?;
                     s.with(&a.shape, move |s, a_shape| {
                         s.with(&b.shape, move |s, b_shape| {
                             if let Ok(Some(c_shape)) = $crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape]) {
@@ -242,12 +280,20 @@ macro_rules! element_bin {
                     concat!(stringify!($name), "::UnaryA").into()
                 }
 
-                fn pulsify(&self, inputs: TVec<&PulsedTensorFact>,) -> TractResult<Vec<PulsifiedOp>> {
-                    let mut fact = inputs[0].clone();
+                fn pulsify(
+                    &self,
+                    _source: &NormalizedModel,
+                    node: &NormalizedNode,
+                    target: &mut PulsedModel,
+                    mapping: &HashMap<OutletId, OutletId>,
+                ) -> TractResult<TVec<OutletId>> {
+                    let input = mapping[&node.inputs[0]];
+                    let mut fact = target.fact(input)?.clone();
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
                     })*
-                    Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))))
+                    let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+                    Ok(tvec!(OutletId::new(id, 0)))
                 }
             }
 
@@ -256,8 +302,8 @@ macro_rules! element_bin {
                 fn rules<'r, 'p: 'r, 's: 'r>(
                     &'s self,
                     s: &mut Solver<'r>,
-                    inputs: &'p SharedTensorsProxy,
-                    outputs: &'p SharedTensorsProxy,
+                    inputs: &'p [TensorProxy],
+                    outputs: &'p [TensorProxy],
                 ) -> InferenceResult {
                     let a = &inputs[0];
                     let c = &outputs[0];
@@ -268,8 +314,8 @@ macro_rules! element_bin {
                         })*
                         bail!("{} not covering {:?}", stringify!($name), dt)
                     })?;
-                    s.equals(&inputs.len, 1)?;
-                    s.equals(&outputs.len, 1)?;
+                    check_input_arity(&inputs, 1)?;
+                    check_output_arity(&outputs, 1)?;
                     s.with(&a.shape, move |s, a_shape| {
                         let b_shape = self.b.shape();
                         if let Ok(Some(c_shape)) = $crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape.into()]) {
@@ -307,14 +353,23 @@ macro_rules! element_nary {
 
             fn pulsify(
                 &self,
-                inputs: TVec<&PulsedTensorFact>,
-            ) -> TractResult<Vec<PulsifiedOp>> {
-                let mut fact = inputs[0].clone();
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let mut fact = target.fact(input)?.clone();
                 $(if fact.dt == <$type>::datum_type() {
                     fact.dt = <$to>::datum_type().into();
                 })*
-                Ok(vec!(PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))))
+                let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
+                for (ix, i) in node.inputs.iter().enumerate() {
+                    target.add_edge(mapping[i], InletId::new(id, ix))?;
+                }
+                Ok(tvec!(OutletId::new(id, 0)))
             }
+
         }
 
         impl StatelessOp for $Name {
@@ -355,30 +410,28 @@ macro_rules! element_nary {
             fn rules<'r, 'p: 'r, 's: 'r>(
                 &'s self,
                 s: &mut Solver<'r>,
-                inputs: &'p SharedTensorsProxy,
-                outputs: &'p SharedTensorsProxy,
+                inputs: &'p [TensorProxy],
+                outputs: &'p [TensorProxy],
             ) -> InferenceResult {
                 if let Some(n) = self.n {
-                    s.equals(&inputs.len, n as i32)?;
+                    check_input_arity(&inputs, n)?;
                 }
-                s.equals(&outputs.len, 1)?;
+                check_output_arity(&outputs, 1)?;
                 s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
                 s.equals(&inputs[0].rank, &outputs[0].rank)?;
-                s.given(&inputs.len, move |s, n| {
-                    let n = n as usize;
-                    s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
-                    s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
-                    s.given(&inputs[0].rank, move |s, rank: i32| {
-                        for dim in 0..(rank as usize) {
-                            s.equals(&inputs[0].shape[dim], &outputs[0].shape[dim])?;
-                            s.equals_all(
-                                (0..n as usize)
-                                    .map(|i| inputs[i].shape[dim].bex())
-                                    .collect(),
-                            )?;
-                        }
-                        Ok(())
-                    })
+                let n = inputs.len();
+                s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
+                s.equals_all((0..n).map(|i| inputs[i].rank.bex()).collect())?;
+                s.given(&inputs[0].rank, move |s, rank: i32| {
+                    for dim in 0..(rank as usize) {
+                        s.equals(&inputs[0].shape[dim], &outputs[0].shape[dim])?;
+                        s.equals_all(
+                            (0..n as usize)
+                                .map(|i| inputs[i].shape[dim].bex())
+                                .collect(),
+                        )?;
+                    }
+                    Ok(())
                 })
             }
         }
@@ -389,7 +442,7 @@ macro_rules! element_nary {
 macro_rules! args_1 {
     ($inputs:expr) => {{
         if $inputs.len() != 1 {
-            Err("Expected 1 arg")?
+            bail!("Expected 1 arg, got {:?}", $inputs)
         }
         let result = $inputs.pop().unwrap();
         ::std::mem::drop($inputs);
@@ -401,7 +454,7 @@ macro_rules! args_1 {
 macro_rules! args_2 {
     ($inputs:expr) => {{
         if $inputs.len() != 2 {
-            Err("Expected 2 args")?
+            bail!("Expected 2 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap());
@@ -415,14 +468,10 @@ macro_rules! args_2 {
 macro_rules! args_3 {
     ($inputs:expr) => {{
         if $inputs.len() != 3 {
-            Err("Expected 3 args")?
+            bail!("Expected 3 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
-        let result = (
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-            $inputs.pop().unwrap(),
-        );
+        let result = ($inputs.pop().unwrap(), $inputs.pop().unwrap(), $inputs.pop().unwrap());
         ::std::mem::drop($inputs);
         result
     }};
@@ -433,7 +482,7 @@ macro_rules! args_3 {
 macro_rules! args_4 {
     ($inputs:expr) => {{
         if $inputs.len() != 4 {
-            Err("Expected 4 args")?
+            bail!("Expected 4 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = (
@@ -452,7 +501,7 @@ macro_rules! args_4 {
 macro_rules! args_5 {
     ($inputs:expr) => {{
         if $inputs.len() != 5 {
-            Err("Expected 5 args")?
+            bail!("Expected 5 arg, got {:?}", $inputs)
         }
         $inputs.reverse();
         let result = (
@@ -569,7 +618,7 @@ macro_rules! dispatch_numbers {
 macro_rules! dispatch_floatlike {
     ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
         match $dt {
-            DatumType::F16  => $($path)::*::<f32>($($args),*),
+            DatumType::F16  => $($path)::*::<f32>($($args),*), // FIXME !!!
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             _ => bail!("{:?} is not float-like", $dt)

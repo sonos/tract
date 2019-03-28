@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use tract_core::ops::prelude::*;
 
-use tract_core::analyser::rules::SharedTensorProxy;
+use tract_core::analyser::rules::TensorProxy;
 
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatch {
@@ -13,49 +13,42 @@ impl Op for SpaceToBatch {
         "SpaceToBatch".into()
     }
 
-    fn reduce(
-        &self,
-        mut inputs: TVec<&TensorFact>,
-        mut outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            let (input, block_shape, paddings) = args_3!(inputs);
-            let output = args_1!(outputs);
-            if let (Some(input_shape), Some(block_shape), Some(paddings), Some(output_shape)) = (
-                input.shape.concretize(),
-                block_shape.value.concretize(),
-                paddings.value.concretize(),
-                output.shape.concretize(),
-            ) {
-                let paddings = paddings.cast_to::<TDim>()?;
-                let paddings_view = paddings
-                    .to_array_view::<TDim>()?
-                    .into_dimensionality::<Ix2>()?;
-                let mut paddings = tvec![];
-                for p in paddings_view.outer_iter() {
-                    let pad = match (p[0].to_integer(), p[1].to_integer()) {
-                        (Ok(bef), Ok(aft)) => {
-                            super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
-                        }
-                        (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
-                        (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
-                        _ => {
-                            info!("Failed to unarize SpaceToBatch because of padding");
-                            return Ok(None);
-                        }
-                    };
-                    paddings.push(pad);
-                }
-                let op = super::unary::SpaceToBatchUnary::new(
-                    self.datum_type,
-                    input_shape,
-                    output_shape,
-                    block_shape.to_array::<i32>()?.into_dimensionality()?,
-                    paddings,
-                );
-                return Ok(Some(ReducedOpRewire::unary(op)));
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        let mut inputs = model.node_input_facts(node.id)?;
+        let mut outputs = model.node_output_facts(node.id)?;
+        let (input, block_shape, paddings) = args_3!(inputs);
+        let output = args_1!(outputs);
+        if let (Some(block_shape), Some(paddings)) = (
+            block_shape.konst.as_ref(),
+            paddings.konst.as_ref(),
+        ) {
+            let paddings = paddings.cast_to::<TDim>()?;
+            let paddings_view = paddings
+                .to_array_view::<TDim>()?
+                .into_dimensionality::<Ix2>()?;
+            let mut paddings = tvec![];
+            for p in paddings_view.outer_iter() {
+                let pad = match (p[0].to_integer(), p[1].to_integer()) {
+                    (Ok(bef), Ok(aft)) => {
+                        super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
+                    }
+                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
+                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                    _ => {
+                        info!("Failed to unarize SpaceToBatch because of padding");
+                        return Ok(None);
+                    }
+                };
+                paddings.push(pad);
             }
+            let op = super::unary::SpaceToBatchUnary::new(
+                self.datum_type,
+                input.shape.iter().collect(),
+                output.shape.iter().collect(),
+                block_shape.clone().to_array::<i32>()?.into_dimensionality()?,
+                paddings,
+            );
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
@@ -82,11 +75,11 @@ impl InferenceRulesOp for SpaceToBatch {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 3)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 3)?;
+        check_output_arity(&outputs, 1)?;
         rules(
             s,
             self.datum_type,
@@ -108,47 +101,40 @@ impl Op for BatchToSpace {
         "BatchToSpace".into()
     }
 
-    fn reduce(
-        &self,
-        mut inputs: TVec<&TensorFact>,
-        mut outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            let (input, block_shape, paddings) = args_3!(inputs);
-            let output = args_1!(outputs);
-            if let (Some(input_shape), Some(block_shape), Some(paddings), Some(output_shape)) = (
-                input.shape.concretize(),
-                block_shape.value.concretize(),
-                paddings.value.concretize(),
-                output.shape.concretize(),
-            ) {
-                let paddings = paddings.cast_to::<TDim>()?;
-                let paddings = paddings
-                    .to_array_view::<TDim>()?
-                    .into_dimensionality::<Ix2>()?;
-                let paddings = paddings
-                    .outer_iter()
-                    .map(|p| {
-                        Ok(match (p[0].to_integer(), p[1].to_integer()) {
-                            (Ok(bef), Ok(aft)) => {
-                                super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
-                            }
-                            (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
-                            (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
-                            _ => bail!("Failed to unarize SpaceToBatch because of padding"),
-                        })
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        let mut inputs = model.node_input_facts(node.id)?;
+        let mut outputs = model.node_output_facts(node.id)?;
+        let (input, block_shape, paddings) = args_3!(inputs);
+        let output = args_1!(outputs);
+        if let (Some(block_shape), Some(paddings)) = (
+            block_shape.konst.as_ref(),
+            paddings.konst.as_ref(),
+        ) {
+            let paddings = paddings.cast_to::<TDim>()?;
+            let paddings = paddings
+                .to_array_view::<TDim>()?
+                .into_dimensionality::<Ix2>()?;
+            let paddings = paddings
+                .outer_iter()
+                .map(|p| {
+                    Ok(match (p[0].to_integer(), p[1].to_integer()) {
+                        (Ok(bef), Ok(aft)) => {
+                            super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
+                        }
+                        (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
+                        (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                        _ => bail!("Failed to unarize SpaceToBatch because of padding"),
                     })
-                    .collect::<TractResult<_>>()?;
-                let op = super::unary::BatchToSpaceUnary::new(
-                    self.datum_type,
-                    input_shape,
-                    output_shape,
-                    block_shape.to_array::<i32>()?.into_dimensionality()?,
-                    paddings,
-                );
-                return Ok(Some(ReducedOpRewire::unary(op)));
-            }
+                })
+                .collect::<TractResult<_>>()?;
+            let op = super::unary::BatchToSpaceUnary::new(
+                self.datum_type,
+                input.shape.iter().collect(),
+                output.shape.iter().collect(),
+                block_shape.clone().to_array::<i32>()?.into_dimensionality()?,
+                paddings,
+            );
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
@@ -176,11 +162,11 @@ impl InferenceRulesOp for BatchToSpace {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 3)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 3)?;
+        check_output_arity(&outputs, 1)?;
         rules(
             s,
             self.datum_type,
@@ -195,10 +181,10 @@ impl InferenceRulesOp for BatchToSpace {
 fn rules<'r, 'p: 'r>(
     s: &mut Solver<'r>,
     datum_type: DatumType,
-    batch: &'p SharedTensorProxy,
-    space: &'p SharedTensorProxy,
-    block_shape: &'p SharedTensorProxy,
-    paddings: &'p SharedTensorProxy,
+    batch: &'p TensorProxy,
+    space: &'p TensorProxy,
+    block_shape: &'p TensorProxy,
+    paddings: &'p TensorProxy,
 ) -> InferenceResult {
     s.equals(&batch.datum_type, datum_type)?;
     s.equals(&batch.datum_type, &space.datum_type)?;

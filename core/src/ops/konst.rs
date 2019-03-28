@@ -17,10 +17,6 @@ impl Op for Const {
     fn name(&self) -> Cow<str> {
         "Const".into()
     }
-
-    fn const_value(&self) -> Option<SharedTensor> {
-        Some(self.value.clone())
-    }
 }
 
 impl StatelessOp for Const {
@@ -32,11 +28,12 @@ impl StatelessOp for Const {
 impl InferenceRulesOp for Const {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        _s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 0)?;
-        s.equals(&outputs.len, 1)
+        check_input_arity(&inputs, 0)?;
+        check_output_arity(&outputs, 1)?;
+        Ok(())
     }
 }

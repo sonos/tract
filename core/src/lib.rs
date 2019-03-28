@@ -10,15 +10,15 @@
 //! # fn main() {
 //! use tract_core::*;
 //! use tract_core::model::*;
-//! use tract_core::model::dsl::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let mut model = Model::default();
 //!
-//! let input = model.add_source("input").unwrap();
+//! let input = model.add_source_default("input").unwrap();
 //! let three = model.add_const("three".to_string(), 3f32.into()).unwrap();
-//! let add = model.add_node("add".to_string(),
-//!     Box::new(tract_core::ops::math::Add::default())).unwrap();
+//! let add = model.add_node_default("add".to_string(),
+//!     tract_core::ops::math::Add::default(),
+//!     ).unwrap();
 //!
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
 //! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();
@@ -74,8 +74,8 @@ extern crate num_integer;
 extern crate num_traits;
 #[macro_use]
 extern crate maplit;
-#[cfg(test)]
-extern crate matrixmultiply;
+#[cfg(not(debug_assertions))]
+extern crate no_panic;
 #[macro_use]
 extern crate objekt;
 #[cfg(test)]
@@ -83,7 +83,7 @@ extern crate proptest;
 #[cfg(feature = "serialize")]
 extern crate serde;
 #[cfg(test)]
-extern crate simplelog;
+extern crate env_logger;
 extern crate smallvec;
 #[cfg(feature = "serialize")]
 #[macro_use]
@@ -99,13 +99,13 @@ pub mod analyser;
 pub mod ops;
 
 pub mod broadcast;
-pub mod context;
 pub mod datum;
 pub mod dim;
 pub mod errors;
+pub mod framework;
 pub mod model;
 mod ndarray_dummy_packed_mm;
-pub mod optim;
+mod optim;
 pub mod plan;
 pub mod pulse;
 pub mod tensor;
@@ -113,17 +113,20 @@ pub mod tensor;
 pub use crate::errors::*;
 
 pub use crate::analyser::types::TensorFact;
-pub use crate::datum::DatumType;
+pub use crate::datum::{ DatumType, TryInto };
 pub use crate::dim::TDim;
-pub use crate::model::{Model, Node, TVec};
+pub use crate::framework::Framework;
+pub use crate::model::TVec;
+pub use crate::model::{InferenceModel, InferenceNode};
 pub use crate::plan::{SimplePlan, SimpleState};
 pub use crate::tensor::{SharedTensor, Tensor};
 
 #[cfg(test)]
 #[allow(dead_code)]
 fn setup_test_logger() {
-    use simplelog::{Config, LevelFilter, TermLogger};
-    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+    let _ = env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Trace)
+        .try_init();
 }
 
 pub trait Tractify<Other>: Sized {

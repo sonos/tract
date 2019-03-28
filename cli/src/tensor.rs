@@ -85,8 +85,13 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 /// Parses the `data` command-line argument.
 fn for_data(filename: &str) -> CliResult<TensorFact> {
     let tensor = if filename.ends_with(".pb") {
-        let file = fs::File::open(filename)?;
-        ::tract_onnx::tensor::from_reader(file)?
+        #[cfg(feature="onnx")] {
+            let file = fs::File::open(filename)?;
+            ::tract_onnx::tensor::from_reader(file)?
+        }
+        #[cfg(not(feature="onnx"))] {
+            panic!("Loading tensor from protobuf requires onnx features");
+        }
     } else {
         tensor_for_text_data(filename)?
     };

@@ -1,4 +1,5 @@
 use ndarray::*;
+use tract_core::ops::nn::ConvUnary;
 use tract_core::ops::prelude::*;
 
 #[derive(Debug, Copy, Clone)]
@@ -20,6 +21,43 @@ pub struct SpaceToBatchUnary {
 impl Op for SpaceToBatchUnary {
     fn name(&self) -> Cow<str> {
         "SpaceToBatchUnary".into()
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(conv_node) = model.single_succ(node.id)? {
+            if let Some(b2s_node) = model.single_succ(conv_node.id)? {
+                if let (Some(conv_op), Some(_)) =
+                    (conv_node.op_as::<ConvUnary>(), b2s_node.op_as::<BatchToSpaceUnary>())
+                {
+                    let op = ConvUnary {
+                        data_fmt: conv_op.data_fmt,
+                        kernel_fmt: conv_op.kernel_fmt,
+                        padding: conv_op.padding.clone(), // FIXME
+                        dilations: self.block_shape.iter().map(|&i| i as usize).collect(),
+                        strides: conv_op.strides.clone(),
+                        kernel: conv_op.kernel.clone(),
+                        bias: conv_op.bias.clone(),
+                        full_input_shape: model.fact(node.inputs[0])?.shape.iter().collect(),
+                        full_output_shape: b2s_node.outputs[0].fact.shape.iter().collect(),
+                        group: conv_op.group,
+                    };
+                    let mut patch = TypedModelPatch::default();
+                    patch.tap_model(&model, node.inputs[0])?;
+                    let out = patch.model.chain(
+                        &*conv_node.name,
+                        op,
+                        tvec!(b2s_node.outputs[0].fact.clone()),
+                    )?;
+                    patch.shunt_outside(OutletId::new(b2s_node.id, 0), OutletId::new(out, 0))?;
+                    return Ok(Some(patch));
+                }
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -53,11 +91,11 @@ impl InferenceRulesOp for SpaceToBatchUnary {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, self.datum_type)?;
         s.equals(&outputs[0].datum_type, self.datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
@@ -112,11 +150,11 @@ impl InferenceRulesOp for BatchToSpaceUnary {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, self.datum_type)?;
         s.equals(&outputs[0].datum_type, self.datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;

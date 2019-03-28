@@ -1,9 +1,7 @@
-//! SharedTensorFlow Ops
+//! Ops
 use std::fmt::Debug;
 
 use downcast_rs::Downcast;
-
-use crate::model::TVec;
 
 use objekt;
 
@@ -22,33 +20,19 @@ pub mod nn;
 pub mod source;
 pub mod unimpl;
 
-#[derive(Debug, Copy, Clone, Default, PartialEq)]
-pub struct StreamInfo {
-    pub axis: usize,
-    pub len: TDim,
-}
-
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum ReductionPhase {
-    Normalize,
-    Codegen,
-}
-
 pub mod prelude {
-    pub use super::{
-        InferenceOp, Op, OpState, ReducedOpRewire, ReductionPhase, StatefullOp, StatelessOp,
-        StreamInfo,
-    };
+    pub use super::{InferenceOp, Op, OpState, StatefullOp, StatelessOp};
     pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
-    pub use crate::analyser::rules::{
-        InferenceResult, InferenceRulesOp, SharedTensorsProxy, Solver,
-    };
+    pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::analyser::types::TypeFact;
     pub use crate::analyser::types::*;
     pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
+    pub use crate::framework::Framework;
     pub use crate::model::TVec;
-    pub use crate::pulse::{PulsedTensorFact, PulsifiedOp};
+    pub use crate::model::*;
+    pub use crate::plan::SessionState;
+    pub use crate::pulse::PulsedModel;
     pub use crate::tensor::{arr4, SharedTensor, Tensor};
     pub use crate::ToTract;
     pub use crate::TractResult;
@@ -56,12 +40,33 @@ pub mod prelude {
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
+
+    pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
+        if inputs.len() != expected {
+            bail!("Wrong input number. Rules expect {}, node has {}.", expected, inputs.len())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResult<()> {
+        if outputs.len() != expected {
+            bail!("Wrong output number. Rules expect {}, node has {}.", expected, outputs.len())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 use self::prelude::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
-    fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        op: &Op,
+        inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>>;
 }
 
 pub trait StatelessOp {
@@ -112,7 +117,10 @@ pub trait Op:
                     .iter()
                     .map(|i| i.value.concretize().unwrap().clone().into())
                     .collect(); // checked
+                trace!("Fully determined inputs: running eval");
                 let output_value = stateless.eval(input_values)?.pop().unwrap();
+                // FIXME: return all output values. Assert consistency with Facts.
+                trace!("Eval returned {:?}", output_value);
                 return Ok((infered_inputs, tvec![output_value.into(),]));
             }
         }
@@ -120,32 +128,34 @@ pub trait Op:
         Ok((infered_inputs, infered_outputs))
     }
 
-    fn reduce(
+    fn declutter(
         &self,
-        _inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        _phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
     }
 
     fn pulsify(
         &self,
-        _inputs: TVec<&PulsedTensorFact>,
-    ) -> TractResult<Vec<crate::pulse::PulsifiedOp>> {
+        _source: &NormalizedModel,
+        _node: &NormalizedNode,
+        _target: &mut PulsedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
         bail!("Operator {} do not support pulsification", self.name())
     }
 
-    fn const_value(&self) -> Option<SharedTensor> {
-        None
+    fn codegen(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
     }
 
     fn rounding_errors(&self) -> bool {
         false
-    }
-
-    fn noutputs(&self) -> usize {
-        1
     }
 
     fn same_as(&self, _other: &Op) -> bool {
@@ -170,20 +180,5 @@ clone_trait_object!(Op);
 impl<O: Op> From<O> for Box<Op> {
     fn from(it: O) -> Box<Op> {
         Box::new(it)
-    }
-}
-
-#[derive(Clone, Debug, new)]
-pub struct ReducedOpRewire {
-    pub ops: Vec<Box<Op>>,
-    pub rewired: TVec<usize>,
-}
-
-impl ReducedOpRewire {
-    pub fn unary<O: Into<Box<Op>>>(op: O) -> ReducedOpRewire {
-        ReducedOpRewire {
-            ops: vec![op.into()],
-            rewired: tvec!(0),
-        }
     }
 }

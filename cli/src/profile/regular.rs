@@ -6,7 +6,7 @@ use log::Level::Info;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
-use crate::{Parameters, ProfilingMode};
+use crate::{Parameters, ProfilingMode, SomeModel};
 
 use crate::format::*;
 use crate::profile::ProfileData;
@@ -14,8 +14,18 @@ use crate::rusage::{Duration, Instant};
 use crate::tensor::make_inputs;
 
 use tract_core::plan::{SimplePlan, SimpleState};
+use tract_core::model::{Model, TensorInfo};
 
 pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
+    match &params.tract_model {
+        SomeModel::Inference(m) => handle_benching_t(m, &params, profiling),
+        SomeModel::Typed(m) => handle_benching_t(m, &params, profiling),
+        SomeModel::Normalized(m) => handle_benching_t(m, &params, profiling),
+        SomeModel::Pulsed(_, m) => handle_benching_t(m, &params, profiling),
+   }
+}
+
+fn handle_benching_t<TI:TensorInfo>(model: &Model<TI>, params: &Parameters, profiling: ProfilingMode) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::RegularBenching {
         max_iters,
         max_time,
@@ -26,14 +36,13 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
         bail!("Expecting bench profile mode")
     };
 
-    let model = &params.tract_model;
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
     info!("Starting bench itself");
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        state.run(make_inputs(&[model.input_fact()?.clone()])?)?;
+        state.run(make_inputs(&[model.input_fact()?.to_tensor_fact()])?)?;
         iters += 1;
     }
     let dur = Duration::since(&start, iters);
@@ -49,9 +58,19 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
     Ok(())
 }
 
+pub fn handle(params: Parameters, profiling: ProfilingMode, display_options: DisplayOptions) -> CliResult<()> {
+    match &params.tract_model {
+        SomeModel::Inference(ref m) => handle_t(m, &params, profiling, display_options),
+        SomeModel::Typed(ref m) => handle_t(m, &params, profiling, display_options),
+        SomeModel::Normalized(ref m) => handle_t(m, &params, profiling, display_options),
+        SomeModel::Pulsed(_, ref m) => handle_t(m, &params, profiling, display_options),
+    }
+}
+
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle(
-    params: Parameters,
+pub fn handle_t<TI:TensorInfo>(
+    model: &Model<TI>,
+    params: &Parameters,
     profiling: ProfilingMode,
     display_options: DisplayOptions,
 ) -> CliResult<()> {
@@ -65,14 +84,12 @@ pub fn handle(
         bail!("Expecting regular profile mode")
     };
 
-    let ref model = params.tract_model;
-
     info!("Running entire network");
     let plan = SimplePlan::new(model)?;
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(make_inputs(&[params.tract_model.input_fact()?.clone()])?)?;
+        let _ = plan.run(make_inputs(&[model.input_fact()?.to_tensor_fact()])?)?;
         iters += 1;
     }
     let entire = Duration::since(&start, iters);
@@ -81,7 +98,7 @@ pub fn handle(
     info!("Running for {} ms max. for each node.", max_time);
 
     let mut state = SimpleState::new(&plan)?;
-    state.set_inputs(make_inputs(&[params.tract_model.input_fact()?.clone()])?)?;
+    state.set_inputs(make_inputs(&[model.input_fact()?.to_tensor_fact()])?)?;
     debug!("Using execution plan: {:?}", plan);
 
     let mut profile = ProfileData::new(model);
@@ -146,10 +163,10 @@ pub fn handle(
 
     print_header(format!("Summary for {}:", params.name), &White.normal());
 
-    profile.print_most_consuming_nodes(&params.tract_model, &params.graph, display_options)?;
+    profile.print_most_consuming_nodes(model, &params.graph, display_options)?;
     println!();
 
-    profile.print_most_consuming_ops(&params.tract_model)?;
+    profile.print_most_consuming_ops(model)?;
     println!();
 
     println!("Entire network performance: {}", dur_avg_oneline(entire));

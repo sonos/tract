@@ -1,19 +1,16 @@
 use tract_core::ops::prelude::*;
 
-use crate::ops::OpRegister;
+use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("FakeQuantWithMinMaxVars", fake_quant_with_min_max_vars);
 }
 
 fn fake_quant_with_min_max_vars(node: &NodeDef) -> TractResult<Box<Op>> {
     let narrow_range = node.get_attr_bool("narrow_range")?;
     let num_bits = node.get_attr_int("num_bits")?;
-    Ok(Box::new(FakeQuantWithMinMaxVars::new(
-        narrow_range,
-        num_bits,
-    )))
+    Ok(Box::new(FakeQuantWithMinMaxVars::new(narrow_range, num_bits)))
 }
 
 #[derive(Clone, Debug, new)]
@@ -46,11 +43,11 @@ impl InferenceRulesOp for FakeQuantWithMinMaxVars {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 3)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 3)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[1].shape, shapefact!())?;

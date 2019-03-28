@@ -1,18 +1,24 @@
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
-use crate::model::{eval_order, Model, Node};
+use crate::model::{eval_order, Model, TensorInfo};
 use crate::ops::prelude::*;
 
+#[derive(Debug, Default)]
+pub struct SessionState {
+    pub known_stream_len: Option<usize>,
+}
+
 #[derive(Debug, Clone)]
-pub struct SimplePlan<M: Borrow<Model>> {
+pub struct SimplePlan<TI:TensorInfo, M: Borrow<Model<TI>>> {
     pub model: M,
     pub order: Vec<usize>,
     pub flush_lists: Vec<TVec<usize>>,
+    _casper: PhantomData<TI>,
 }
 
-impl<M: Borrow<Model>> SimplePlan<M> {
-    pub fn new(model: M) -> TractResult<SimplePlan<M>> {
+impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
+    pub fn new(model: M) -> TractResult<SimplePlan<TI, M>> {
         let order = eval_order(model.borrow())?;
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
         for step in 0..order.len() {
@@ -20,7 +26,10 @@ impl<M: Borrow<Model>> SimplePlan<M> {
                 values_needed_until_step[i.node] = step;
             }
         }
-        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len()];
+        for o in model.borrow().outputs()? {
+            values_needed_until_step[o.node] = order.len();
+        }
+        let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
         for (node, &flush_at) in values_needed_until_step.iter().enumerate() {
             if flush_at != 0 {
                 flush_lists[flush_at].push(node)
@@ -30,6 +39,7 @@ impl<M: Borrow<Model>> SimplePlan<M> {
             model,
             order,
             flush_lists,
+            _casper: PhantomData,
         })
     }
 
@@ -38,21 +48,22 @@ impl<M: Borrow<Model>> SimplePlan<M> {
         state.run(inputs)
     }
 
-    pub fn model(&self) -> &Model {
+    pub fn model(&self) -> &Model<TI> {
         self.model.borrow()
     }
 }
 
 #[derive(Debug)]
-pub struct SimpleState<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> {
+pub struct SimpleState<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> {
     plan: P,
     pub states: Vec<Option<Box<OpState>>>,
+    pub session_state: SessionState,
     pub values: Vec<Option<TVec<SharedTensor>>>,
-    _phantom: PhantomData<M>,
+    _phantom: PhantomData<(M,TI)>,
 }
 
-impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M, P> {
-    fn clone(&self) -> SimpleState<M, P> {
+impl<TI:TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>> + Clone> Clone for SimpleState<TI, M, P> {
+    fn clone(&self) -> SimpleState<TI, M, P> {
         let states = self
             .states
             .iter()
@@ -63,14 +74,15 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>> + Clone> Clone for SimpleState<M
         SimpleState {
             plan: self.plan.clone(),
             states,
+            session_state: SessionState::default(),
             values: self.values.clone(),
             _phantom: PhantomData,
         }
     }
 }
 
-impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
-    pub fn new(plan: P) -> TractResult<SimpleState<M, P>> {
+impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleState<TI, M, P> {
+    pub fn new(plan: P) -> TractResult<SimpleState<TI, M, P>> {
         let values = vec![None; plan.borrow().model.borrow().nodes().len()];
         let states = plan
             .borrow()
@@ -81,6 +93,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             .collect::<TractResult<_>>()?;
         Ok(SimpleState {
             states,
+            session_state: SessionState::default(),
             plan,
             values,
             _phantom: PhantomData,
@@ -112,6 +125,7 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
         {
             let &mut SimpleState {
                 ref plan,
+                ref mut session_state,
                 ref mut states,
                 ref mut values,
                 ..
@@ -122,8 +136,8 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             }
             let plan = plan.borrow();
             for (step, n) in plan.order.iter().enumerate() {
-                let node: &Node = model.node(*n);
-                trace!("Running step {}, node {} ({})", step, n, node.name);
+                let node = model.node(*n);
+                trace!("Running step {}, node {}", step, node);
                 if node.op_as::<Source>().is_none() {
                     let mut inputs: TVec<SharedTensor> = tvec![];
                     for i in &node.inputs {
@@ -132,21 +146,21 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
                         let prec = values[i.node].as_ref().ok_or_else(|| {
                             format!(
                                 "Computing {}, precursor {} not done:",
-                                node.name, prec_node.name
+                                node, prec_node
                             )
                         })?;
                         inputs.push(prec[i.slot].clone().into())
                     }
                     let vs = match states[node.id] {
-                        Some(ref mut state) => state.eval(node.op(), inputs),
+                        Some(ref mut state) => state.eval(session_state, node.op(), inputs),
                         None => node.op().as_stateless().unwrap().eval(inputs),
                     }
-                    .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+                    .map_err(|e| format!("Evaluating {}: {}", node, e))?;
 
                     values[node.id] = Some(vs);
                 }
                 for flush in &plan.flush_lists[step] {
-                    trace!("  flushing node {} {}", flush, model.node(*flush).name);
+                    trace!("  flushing node {} {}", flush, node);
                     values[*flush] = None;
                 }
             }
@@ -210,28 +224,29 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
     pub fn compute_one(&mut self, node: usize) -> TractResult<()> {
         let SimpleState {
             ref plan,
+            ref mut session_state,
             ref mut values,
             ..
         } = self;
         let plan = plan.borrow();
         let nodes = plan.model().nodes();
-        let node: &Node = &nodes[node];
+        let node = &nodes[node];
         let mut inputs: TVec<SharedTensor> = tvec![];
         for i in &node.inputs {
             let prec_node = &nodes[i.node];
             let prec = values[i.node].as_ref().ok_or_else(|| {
                 format!(
-                    "Computing {}, precursor {} not done:",
-                    node.name, prec_node.name
+                    "Computing {}, precursor {} not done.",
+                    node, prec_node
                 )
             })?;
             inputs.push(prec[i.slot].clone().into())
         }
         let vs = match self.states[node.id] {
-            Some(ref mut state) => state.eval(node.op(), inputs),
+            Some(ref mut state) => state.eval(session_state, node.op(), inputs),
             None => node.op().as_stateless().unwrap().eval(inputs),
         }
-        .map_err(|e| format!("Evaluating {} ({}): {}", node.id, node.name, e))?;
+        .map_err(|e| format!("Evaluating {}: {}", node, e))?;
         values[node.id] = Some(vs);
         Ok(())
     }
@@ -250,18 +265,19 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             }
             let mut inputs: TVec<SharedTensor> = tvec![];
             {
-                let node: &Node = &self.model().nodes()[node];
+                let node = &self.model().nodes()[node];
                 for i in &node.inputs {
                     inputs.push(self.values[i.node].as_ref().unwrap()[i.slot].clone().into())
                 }
             }
             let Self {
                 ref mut states,
+                ref mut session_state,
                 ref plan,
                 ..
             } = self;
             match states[node] {
-                Some(ref mut state) => state.eval(plan.borrow().model().nodes()[node].op(), inputs),
+                Some(ref mut state) => state.eval(session_state, plan.borrow().model().nodes()[node].op(), inputs),
                 None => plan.borrow().model().nodes()[node]
                     .op()
                     .as_stateless()
@@ -288,11 +304,11 @@ impl<M: Borrow<Model>, P: Borrow<SimplePlan<M>>> SimpleState<M, P> {
             .collect())
     }
 
-    pub fn plan(&self) -> &SimplePlan<M> {
+    pub fn plan(&self) -> &SimplePlan<TI, M> {
         &self.plan.borrow()
     }
 
-    pub fn model(&self) -> &Model {
+    pub fn model(&self) -> &Model<TI> {
         self.plan().model()
     }
 }

@@ -4,14 +4,16 @@ extern crate ndarray;
 extern crate tract_core;
 use criterion::Criterion;
 
+use tract_core::datum::TryInto;
 use tract_core::ops::nn::PaddingSpec;
-use tract_core::ops::nn::PaddingSpec::Valid;
 use tract_core::ops::nn::PaddingSpec::SameUpper as Same;
+use tract_core::ops::nn::PaddingSpec::Valid;
 use tract_core::ops::prelude::*;
 use tract_core::tvec;
 use tract_core::DatumType;
 use tract_core::Tensor;
 use tract_core::TensorFact;
+use tract_core::model::TypedTensorInfo;
 
 fn b(
     c: &mut Criterion,
@@ -36,29 +38,17 @@ fn b(
         Some(tvec!(stride, stride)),
         1,
     );
-    let input_fact = TensorFact::dt_shape(DatumType::F32, image.shape());
-    let kernel_fact = TensorFact::from(kernel);
+    let input_fact:TypedTensorInfo = TensorFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();
+    let kernel_fact:TypedTensorInfo = TensorFact::from(kernel).try_into().unwrap();
     let unary = conv
-        .reduce(
-            tvec!(&input_fact, &kernel_fact),
-            tvec!(),
-            ReductionPhase::Normalize,
-        )
+        .to_unary(tvec!(&input_fact, &kernel_fact))
         .unwrap()
-        .unwrap()
-        .ops
-        .remove(0);
+        .unwrap();
     let im2col = unary
-        .reduce(
-            tvec!(&input_fact, &kernel_fact),
-            tvec!(),
-            ReductionPhase::Codegen,
-        )
+        .to_boxed_im2col_pair::<f32>(&*input_fact.shape.as_finite().unwrap())
         .unwrap()
-        .unwrap()
-        .ops
-        .remove(0);
-    assert!(im2col.name() == "Im2col");
+        .0;
+    assert_eq!(im2col.name(), "Im2col");
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {
         let ref op = im2col.as_stateless().unwrap();
@@ -78,8 +68,5 @@ macro_rules! b {
 b!(Conv2d_2a_3x3, 149, 149, 32, 3, 3, 32, 1, Valid);
 b!(Conv2d_2b_3x3, 147, 147, 32, 3, 3, 64, 1, Same);
 
-criterion_group!(benches,
-    Conv2d_2a_3x3,
-    Conv2d_2b_3x3,
-);
+criterion_group!(benches, Conv2d_2a_3x3, Conv2d_2b_3x3,);
 criterion_main!(benches);

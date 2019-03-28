@@ -1,8 +1,8 @@
 #!/bin/sh
 
-set -ex
-
 export CI=true
+
+set -ex
 
 TF_INCEPTIONV3=`pwd`/tensorflow/inceptionv3/.inception-v3-2016_08_28
 if [ -n "$TRAVIS" ]
@@ -10,7 +10,6 @@ then
     ONNX_CHECKOUT=$TRAVIS_BUILD_DIR/cached/onnx-checkout
     TF_INCEPTIONV3=$TRAVIS_BUILD_DIR/cached/inception-v3-2016_08_28
 fi
-
 
 cargo check --benches --all --features serialize # running benches on travis is useless
 cargo test --release --all --features serialize
@@ -20,17 +19,11 @@ cargo test --release --all --features serialize
 
 if [ -z "$ONNX_CHECKOUT" ]
 then
-    ONNX_CHECKOUT=`find target -name onnx | grep 'out/onnx$' | head -1`
+    ONNX_CHECKOUT=target
 fi
 
-ONNX_TEST_DATA=$ONNX_CHECKOUT/onnx/backend/test/data
-
 ./target/release/tract \
-    $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
-    dump -q --assert-output 1x1000x1x1xf32
-
-./target/release/tract \
-    $ONNX_TEST_DATA/real/test_squeezenet/squeezenet/model.onnx \
+    `find $ONNX_CHECKOUT -name model.onnx | grep squeezenet` \
     dump -q --assert-output 1x1000x1x1xf32
 
 ./target/release/tract \
@@ -42,3 +35,17 @@ ONNX_TEST_DATA=$ONNX_CHECKOUT/onnx/backend/test/data
     $TF_INCEPTIONV3/inception_v3_2016_08_28_frozen.pb \
     -i 1x299x299x3xf32 -O \
     dump -q --assert-output-fact 1x1001xf32
+
+CACHEDIR=${CACHEDIR:-$HOME/.cache}
+
+if [ -n "$RUN_ALL_TESTS" ] && (cd $CACHEDIR ; aws s3 sync s3://tract-ci-builds/model $CACHEDIR)
+then
+    ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb -O -i 49x10xf32 \
+        --input-node Mfcc run > /dev/null
+
+    ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-float.pb \
+    -O -i 200x10xf32 run > /dev/null
+
+    ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
+    -O -i 200x10xf32 run > /dev/null
+fi

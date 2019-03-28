@@ -196,11 +196,11 @@ impl BaseStridedSlice {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 4)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 4)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].rank, 1)?;
         s.equals(&inputs[2].rank, 1)?;
@@ -254,47 +254,40 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
         "tf.StridedSlice".into()
     }
 
-    fn reduce(
-        &self,
-        mut inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            let (input, begin, end, strides) = args_4!(inputs);
-            if let (Some(input_shape), Some(begin), Some(end), Some(strides)) = (
-                input.shape.concretize(),
-                begin.value.concretize(),
-                end.value.concretize(),
-                strides.value.concretize(),
-            ) {
-                if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
-                    info!("Failed to unarize StridedSlices because of strides");
-                    return Ok(None);
-                }
-                let begin = begin.cast_to::<TDim>()?;
-                let begin_view = begin.to_array_view::<TDim>()?.into_dimensionality()?;
-                let end = end.cast_to::<TDim>()?;
-                let end_view = end.to_array_view::<TDim>()?.into_dimensionality()?;
-                let strides = strides.cast_to::<i32>()?;
-                let strides_view = strides.to_array_view::<i32>()?.into_dimensionality()?;
-                let mut prunes = vec![];
-                for ix in 0..input_shape.len() {
-                    let dim = self.base.prepare_one_dim(
-                        ix,
-                        input_shape[ix],
-                        &begin_view.view(),
-                        &end_view.view(),
-                        &strides_view.view(),
-                    );
-                    prunes.push((
-                        dim.begin.to_integer()? as usize,
-                        (input_shape[ix] - dim.end).to_integer()? as usize,
-                    ));
-                }
-                let op = ::tract_core::ops::array::Slice::new(prunes);
-                return Ok(Some(ReducedOpRewire::unary(op)));
+    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        let mut inputs = model.node_input_facts(node.id)?;
+        let (input, begin, end, strides) = args_4!(inputs);
+        if let (Some(ref begin), Some(ref end), Some(ref strides)) = (
+            begin.konst.as_ref(),
+            end.konst.as_ref(),
+            strides.konst.as_ref(),
+        ) {
+            if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
+                info!("Failed to unarize StridedSlices because of strides");
+                return Ok(None);
             }
+            let begin = begin.cast_to::<TDim>()?;
+            let begin_view = begin.to_array_view::<TDim>()?.into_dimensionality()?;
+            let end = end.cast_to::<TDim>()?;
+            let end_view = end.to_array_view::<TDim>()?.into_dimensionality()?;
+            let strides = strides.cast_to::<i32>()?;
+            let strides_view = strides.to_array_view::<i32>()?.into_dimensionality()?;
+            let mut prunes = vec![];
+            for ix in 0..input.shape.rank() {
+                let dim = self.base.prepare_one_dim(
+                    ix,
+                    input.shape.dim(ix),
+                    &begin_view.view(),
+                    &end_view.view(),
+                    &strides_view.view(),
+                );
+                prunes.push((
+                    dim.begin.to_integer()? as usize,
+                    (input.shape.dim(ix) - dim.end).to_integer()? as usize,
+                ));
+            }
+            let op = ::tract_core::ops::array::Slice::new(prunes);
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
@@ -304,8 +297,8 @@ impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
@@ -337,8 +330,8 @@ impl InferenceRulesOp for StridedSliceD {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         solver: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }

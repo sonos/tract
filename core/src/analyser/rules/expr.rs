@@ -27,7 +27,7 @@ pub trait Output: fmt::Debug + Clone + PartialEq {
 }
 
 macro_rules! impl_output {
-    ($type:ty, $constr:ident) => {
+    ($type:ty, $constr:ident, $name:expr) => {
         impl Output for $type {
             fn into_wrapped(source: Self) -> Wrapped {
                 Wrapped::$constr(source)
@@ -37,18 +37,18 @@ macro_rules! impl_output {
                 if let Wrapped::$constr(v) = wrapped {
                     Ok(v)
                 } else {
-                    bail!("Tried to get a {} from {:?}.", stringify!($ty), wrapped);
+                    bail!("Tried to get a {} from {:?}.", $name, wrapped);
                 }
             }
         }
     };
 }
 
-impl_output!(IntFact, Int);
-impl_output!(TypeFact, Type);
-impl_output!(ShapeFact, Shape);
-impl_output!(ValueFact, SharedTensor);
-impl_output!(DimFact, Dim);
+impl_output!(IntFact, Int, "Int");
+impl_output!(TypeFact, Type, "DatumType");
+impl_output!(ShapeFact, Shape, "Shape");
+impl_output!(ValueFact, SharedTensor, "Tensor");
+impl_output!(DimFact, Dim, "Dim");
 
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {

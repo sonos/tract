@@ -62,8 +62,8 @@ test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
 test_cast_FLOAT_to_FLOAT16
-test_cast_FLOAT_to_STRING
-test_cast_STRING_to_FLOAT
+# test_cast_FLOAT_to_STRING example strings look invalid
+# test_cast_STRING_to_FLOAT
 test_ceil
 test_ceil_example
 test_clip
@@ -85,6 +85,8 @@ test_constant_pad
 test_constantlike_ones_with_input
 test_constantlike_threes_with_shape_and_dtype
 test_constantlike_zeros_without_input_dtype
+test_constantofshape_float_ones
+test_constantofshape_int_zeros
 test_conv_with_strides_and_asymmetric_padding
 test_conv_with_strides_no_padding
 test_conv_with_strides_padding
@@ -117,6 +119,8 @@ test_flatten_axis3
 test_flatten_default_axis
 test_floor
 test_floor_example
+test_gather_0
+test_gather_1
 test_gemm_broadcast
 test_gemm_nobroadcast
 test_globalaveragepool
@@ -193,12 +197,12 @@ test_or_bcast3v2d
 test_or_bcast4v2d
 test_or_bcast4v3d
 test_or_bcast4v4d
-test_prelu_broadcast
-test_prelu_example
 test_pow
 test_pow_bcast_array
 test_pow_bcast_scalar
 test_pow_example
+test_prelu_broadcast
+test_prelu_example
 test_reciprocal
 test_reciprocal_example
 test_reduce_l1_default_axes_keepdims_example

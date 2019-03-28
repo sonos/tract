@@ -30,14 +30,6 @@ impl Op for MaxPool {
     fn name(&self) -> Cow<str> {
         "MaxPool".into()
     }
-
-    fn noutputs(&self) -> usize {
-        if self.with_index_outputs.is_some() {
-            2
-        } else {
-            1
-        }
-    }
 }
 
 impl StatelessOp for MaxPool {
@@ -88,10 +80,10 @@ impl InferenceRulesOp for MaxPool {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&outputs.len, self.noutputs() as i32)?;
+        check_output_arity(&outputs, 1 + self.with_index_outputs.is_some() as usize)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         if let Some(idt) = self.with_index_outputs {
@@ -107,7 +99,7 @@ impl InferenceRulesOp for MaxPool {
                 &ones,
                 self.strides.as_ref().unwrap_or(&ones),
             );
-            for o in 0..self.noutputs() {
+            for o in 0..outputs.len() {
                 for (ix, &d) in computed.output.iter().enumerate() {
                     s.equals(&outputs[o].shape[ix + ishape.h_axis()], d)?;
                 }

@@ -9,12 +9,13 @@ use prettytable::Table;
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tract_core;
+use tract_core::model::{ Model, Node, TensorInfo };
 use tract_core::plan::{SimplePlan, SimpleState};
-use tract_core::{Model, Node};
 
 use crate::format;
 use crate::rusage::Duration;
 
+#[allow(unused_imports)]
 use itertools::Itertools;
 
 use crate::SomeGraphDef;
@@ -192,35 +193,38 @@ pub fn print_box(
 }
 
 /// Returns information about a node.
-fn node_info<M, P>(
-    node: &tract_core::Node,
+#[allow(unused_variables, unused_mut)]
+fn node_info<TI: TensorInfo, M, P>(
+    node: &tract_core::model::Node<TI>,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState<M, P>>,
+    state: Option<&SimpleState<TI, M, P>>,
 ) -> Vec<Vec<Row>>
 where
-    M: Borrow<Model>,
-    P: Borrow<SimplePlan<M>>,
+    M: Borrow<Model<TI>>,
+    P: Borrow<SimplePlan<TI, M>>,
 {
     // First section: node attributes.
     let mut attributes = Vec::new();
-    if let SomeGraphDef::Tf(graph) = graph {
-        let proto_node = graph.get_node().iter().find(|n| n.get_name() == node.name);
+    #[cfg(features="tf")] {
+        if let SomeGraphDef::Tf(graph) = graph {
+            let proto_node = graph.get_node().iter().find(|n| n.get_name() == node.name);
 
-        if let Some(proto_node) = proto_node {
-            for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
-                attributes.push(Row::Double(
-                    format!("Attribute {}:", Style::new().bold().paint(attr.0)),
-                    if attr.1.has_tensor() {
-                        let tensor = attr.1.get_tensor();
-                        format!(
-                            "Tensor: {:?} {:?}",
-                            tensor.get_dtype(),
-                            tensor.get_tensor_shape().get_dim()
-                        )
-                    } else {
-                        format!("{:?}", attr.1)
-                    },
-                ));
+            if let Some(proto_node) = proto_node {
+                for attr in proto_node.get_attr().iter().sorted_by_key(|a| a.0) {
+                    attributes.push(Row::Double(
+                        format!("Attribute {}:", Style::new().bold().paint(attr.0)),
+                        if attr.1.has_tensor() {
+                            let tensor = attr.1.get_tensor();
+                            format!(
+                                "Tensor: {:?} {:?}",
+                                tensor.get_dtype(),
+                                tensor.get_tensor_shape().get_dim()
+                            )
+                        } else {
+                            format!("{:?}", attr.1)
+                        },
+                    ));
+                }
             }
         }
     }
@@ -246,15 +250,16 @@ where
 }
 
 /// Prints information about a node.
-pub fn print_node<M, P>(
-    node: &Node,
+pub fn print_node<TI, M, P>(
+    node: &Node<TI>,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState<M, P>>,
+    state: Option<&SimpleState<TI, M, P>>,
     status: &[impl AsRef<str>],
     sections: Vec<Vec<Row>>,
 ) where
-    M: Borrow<Model>,
-    P: Borrow<SimplePlan<M>>,
+    TI: TensorInfo,
+    M: Borrow<Model<TI>>,
+    P: Borrow<SimplePlan<TI, M>>,
 {
     format::print_box(
         &format!("{}", node.id),

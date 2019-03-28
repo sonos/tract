@@ -1,16 +1,15 @@
 use std::{fs, path};
 
 use tract_core::*;
+use tract_core::model::{ Model, TensorInfo };
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
-    use simplelog::{Config, LevelFilter, TermLogger};
-    use std::sync::Once;
-
-    static START: Once = Once::new();
-    START.call_once(|| TermLogger::init(LevelFilter::Trace, Config::default()).unwrap());
+    let _ = env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Trace)
+        .try_init();
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
@@ -84,21 +83,28 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     };
     let model_file = path.join("model.onnx");
     debug!("Loading {:?}", model_file);
-    let mut model = for_path(&model_file).unwrap();
+    let onnx = onnx();
+    let mut model = onnx.model_for_path(&model_file).unwrap();
     trace!(
-        "Model: {:#?}",
-        tract_onnx::model::model_proto_for_path(&model_file)
+        "Proto Model:\n{:#?}",
+        onnx.proto_model_for_path(&model_file)
     );
-    trace!("Model: {:#?}", model);
+    trace!("Model:\n{:#?}", model);
     model.analyse().unwrap();
-    debug!("Loaded {:?}", model_file);
-    if optim {
-        model = model.into_optimized().unwrap();
-    }
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
-    trace!("Optimized model: {:#?}", model);
+    if optim {
+        let optimized = model.into_optimized().unwrap();
+        trace!("Run optimized model:\n{:#?}", optimized);
+        run_model(optimized, &path)
+    } else {
+        trace!("Run analysed model:\n{:#?}", model);
+        run_model(model, &path)
+    };
+}
+
+fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();

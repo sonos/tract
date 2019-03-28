@@ -31,8 +31,8 @@ impl InferenceRulesOp for UnimplementedOp {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         _: &mut Solver<'r>,
-        _: &'p SharedTensorsProxy,
-        _: &'p SharedTensorsProxy,
+        _: &'p [TensorProxy],
+        _: &'p [TensorProxy],
     ) -> InferenceResult {
         Ok(())
     }

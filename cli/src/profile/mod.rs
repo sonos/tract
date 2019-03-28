@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::errors::*;
 use crate::format::*;
 use itertools::Itertools;
-use tract_core::{Model, Node};
+use tract_core::model::{Model, Node, TensorInfo};
 
 use crate::display_graph::DisplayOptions;
 use crate::{Parameters, ProfilingMode, SomeGraphDef};
@@ -19,20 +19,20 @@ pub struct ProfileData {
 }
 
 impl ProfileData {
-    pub fn new(model: &Model) -> ProfileData {
+    pub fn new<TI:TensorInfo>(model: &Model<TI>) -> ProfileData {
         ProfileData {
             nodes: HashMap::with_capacity(model.nodes().len()),
         }
     }
 
-    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tract_core::TractResult<()> {
+    pub fn add<TI:TensorInfo>(&mut self, node: &Node<TI>, dur: Duration) -> ::tract_core::TractResult<()> {
         *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
         Ok(())
     }
 
-    pub fn print_most_consuming_nodes(
+    pub fn print_most_consuming_nodes<TI: TensorInfo>(
         &mut self,
-        model: &Model,
+        model: &Model<TI>,
         graph: &SomeGraphDef,
         display_options: DisplayOptions,
     ) -> CliResult<()> {
@@ -51,7 +51,7 @@ impl ProfileData {
                     .partial_cmp(&b.avg_real())
                     .unwrap_or(::std::cmp::Ordering::Greater)
             })
-            .iter()
+            .into_iter()
             .rev()
             .take(5)
             .map(|a| *a.0)
@@ -62,7 +62,7 @@ impl ProfileData {
         Ok(())
     }
 
-    pub fn print_most_consuming_ops(&self, model: &Model) -> CliResult<()> {
+    pub fn print_most_consuming_ops<TI:TensorInfo>(&self, model: &Model<TI>) -> CliResult<()> {
         let sum = self.summed();
         println!("Most time consuming operations:");
         let mut operations = HashMap::new();

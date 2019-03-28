@@ -14,11 +14,11 @@ pub mod helpers;
 pub mod rules;
 
 /// A graph analyser, along with its current state.
-pub struct Analyser<M: BorrowMut<Model>> {
+pub struct Analyser<M: BorrowMut<InferenceModel>> {
     model: M,
 }
 
-impl<M: BorrowMut<Model>> Analyser<M> {
+impl<M: BorrowMut<InferenceModel>> Analyser<M> {
     pub fn new(model: M) -> TractResult<Analyser<M>> {
         Ok(Analyser { model })
     }
@@ -33,14 +33,19 @@ impl<M: BorrowMut<Model>> Analyser<M> {
                 None => return Ok(()),
                 Some(n) => *n,
             };
-            let changed_edges = self
-                .analyse_one(node)
-                .map_err(|e| format!("Analysing node {:?}, {:?}", node, e))?;
+            let changed_edges = self.analyse_one(node).map_err(|e| {
+                format!(
+                    "Analysing node #{} {} ({}), {}",
+                    node,
+                    self.model.borrow().nodes()[node].name,
+                    self.model.borrow().nodes()[node].op.name(),
+                    e
+                )
+            })?;
             for (edge, _fact) in changed_edges {
                 trace!("Changed edge: {:?}", edge);
-                for dst in self.model.borrow().nodes()[edge.node].outputs[edge.slot]
-                    .successors
-                    .iter()
+                for dst in
+                    self.model.borrow().nodes()[edge.node].outputs[edge.slot].successors.iter()
                 {
                     if dst.node != edge.node {
                         trace!("Inserting node dn {:?}", dst.node);
@@ -62,30 +67,19 @@ impl<M: BorrowMut<Model>> Analyser<M> {
         let mut changed_edges = vec![];
         {
             let node = &self.model.borrow().nodes()[node];
-            debug!(
-                "Starting step for #{} {} ({})",
-                node.id,
-                node.name,
-                node.op.name(),
-            );
+            debug!("Starting step for #{} {} ({})", node.id, node.name, node.op.name(),);
 
             let (inputs, outputs) = self.model.borrow().facts(node.id)?;
 
             let inferred = node.op.infer(inputs, outputs).map_err(|e| {
-                format!(
-                    "While inferring forward for #{} {}: {}",
-                    node.id, node.name, e
-                )
+                format!("while running inference : {}", e)
             })?;
 
             for (ix, &outlet) in node.inputs.iter().enumerate() {
                 let inferred_fact = &inferred.0[ix];
                 let old_fact = self.model.borrow().fact(outlet)?;
                 let unified = inferred_fact.unify(&old_fact).map_err(|e| {
-                    format!(
-                        "While unifying inputs of node #{} {}: {}",
-                        node.id, node.name, e
-                    )
+                    format!("while unifying inputs of : {}", e)
                 })?;
 
                 if &unified != old_fact {
@@ -99,7 +93,7 @@ impl<M: BorrowMut<Model>> Analyser<M> {
                 let unified = old_fact.unify(inferred_fact)?;
 
                 if &unified != old_fact {
-                    debug!(" Refined {} input #{} to {:?}", node.name, ix, unified);
+                    debug!(" Refined {} output #{} to {:?}", node.name, ix, unified);
                     changed_edges.push((OutletId::new(node.id, ix), unified));
                 }
             }

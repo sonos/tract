@@ -21,18 +21,19 @@ ndarray = { version = "0.12" }
 num-integer = "0.1"
 num-traits = "0.2"
 protobuf = "2.0"
-tract-linalg = { path = "../linalg" }
+smallvec = "0.6"
 tract-core = { path = "../core" }
+tract-linalg = { path = "../linalg" }
 
 [build-dependencies]
 git2 = "0.7"
 
 [dev-dependencies]
+env_logger = "0.6"
 flate2 = "1"
 fs2 = "0.4"
 mio_httpc = { version = "0.6", features = ["rtls"] }
 serde = "1"
-serde_json = "1"
 serde_derive = "1"
-simplelog = "0.5"
+serde_json = "1"
 tar = "0.4"

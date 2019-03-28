@@ -22,24 +22,9 @@ pub unsafe fn uninitialized<T>(size: usize, alignment_bytes:usize) -> Vec<T> {
     Vec::from_raw_parts(aligned_buffer as _, size, size)
 }
 
-pub fn realign_slice<T:Copy>(v: &[T], alignment: usize) -> Vec<T> {
-    assert!(
-        (alignment as u32).count_ones() == 1,
-        "Invalid alignment required ({})",
-        alignment
-    );
-    if v.len() == 0 {
-        return vec![];
-    }
-    unsafe {
-        let aligned_buffer = alloc_bytes(v.len() * mem::size_of::<T>(), alignment);
-        let mut output = Vec::from_raw_parts(aligned_buffer as _, v.len(), v.len());
-        output.copy_from_slice(v);
-        output
-    }
-}
 
-pub fn realign_bytes(v: &[u8], alignment: usize) -> Vec<u8> {
+/*
+fn realign_slice_bytes(v: &[u8], alignment: usize) -> Vec<u8> {
     assert!(
         (alignment as u32).count_ones() == 1,
         "Invalid alignment required ({})",
@@ -55,8 +40,22 @@ pub fn realign_bytes(v: &[u8], alignment: usize) -> Vec<u8> {
         output
     }
 }
+*/
 
-pub fn realign_vec(v: Vec<u8>, alignment: usize) -> Vec<u8> {
+pub fn realign_slice<T:Copy>(v: &[T], alignment: usize) -> Vec<T> {
+    if v.len() == 0 {
+        return vec![];
+    }
+    unsafe {
+        let t = mem::size_of::<T>();
+        let aligned = alloc_bytes(v.len() * t, alignment);
+        let mut result = Vec::from_raw_parts(aligned as _, v.len(), v.len());
+        result.copy_from_slice(&v);
+        result
+    }
+}
+
+pub fn realign_vec<T:Copy>(v: Vec<T>, alignment: usize) -> Vec<T> {
     if v.len() == 0 || v.as_ptr() as usize % alignment == 0 {
         return v;
     }

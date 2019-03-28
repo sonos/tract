@@ -12,7 +12,8 @@
 //! use tract_core::*;
 //!
 //! // build a simple model that just add 3 to each input component
-//! let model = tract_tensorflow::for_path("tests/models/plus3.pb").unwrap();
+//! let tf = tract_tensorflow::tensorflow();
+//! let model = tf.model_for_path("tests/models/plus3.pb").unwrap();
 //!
 //! // we build an execution plan. default input and output are inferred from
 //! // the model graph
@@ -39,11 +40,11 @@ extern crate error_chain;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
+#[cfg(any(test, featutre = "conform"))]
+extern crate env_logger;
 extern crate ndarray;
 extern crate num_traits;
 extern crate protobuf;
-#[cfg(test)]
-extern crate simplelog;
 #[macro_use]
 extern crate tract_core;
 #[cfg(feature = "conform")]
@@ -54,20 +55,35 @@ pub mod conform;
 
 pub mod model;
 pub mod ops;
-mod optim;
+// mod optim;
 pub mod tensor;
 pub mod tfpb;
-
-pub use self::model::for_path;
-pub use self::model::for_reader;
 
 pub trait ToSharedTensor<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
 }
 
+pub use model::Tensorflow;
+use tract_core::{Framework, InferenceModel, TractResult};
+
+pub fn tensorflow() -> Tensorflow {
+    let mut ops = tract_core::framework::OpRegister::default();
+    ops::register_all_ops(&mut ops);
+    Tensorflow { op_register: ops }
+}
+
+#[deprecated(note = "Please use tensorflow().model_for_path(..)")]
+pub fn for_path(p: impl AsRef<std::path::Path>) -> TractResult<InferenceModel> {
+    tensorflow().model_for_path(p)
+}
+
+#[deprecated(note = "Please use tensorflow().model_for_read(..)")]
+pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<InferenceModel> {
+    tensorflow().model_for_read(&mut r)
+}
+
 #[cfg(test)]
 #[allow(dead_code)]
-fn setup_test_logger() {
-    use simplelog::{Config, LevelFilter, TermLogger};
-    TermLogger::init(LevelFilter::Trace, Config::default()).unwrap()
+pub fn setup_test_logger() {
+    env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).init();
 }

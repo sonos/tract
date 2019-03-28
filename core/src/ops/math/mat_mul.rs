@@ -105,10 +105,7 @@ impl<T: Copy + Datum + Add + Mul + Zero> Geo<T> {
         let k = bc_a_shape[bc_a_shape.len() - 1];
         let n = bc_b_shape[bc_b_shape.len() - 1];
         let mm = T::packed_mat_mul(m, k, n).ok_or_else(|| {
-            format!(
-                "Can not perfom matmul on {:?} (not a linear algebra type)",
-                T::datum_type()
-            )
+            format!("Can not perfom matmul on {:?} (not a linear algebra type)", T::datum_type())
         })?;
         let a_stride_prefix = bc_a_shape
             .iter()
@@ -179,21 +176,17 @@ impl InferenceRulesOp for MatMul {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 2)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 2)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, &outputs[0].datum_type)?;
-        s.given_2(
-            &inputs[0].shape,
-            &inputs[1].shape,
-            move |s, ashape, bshape| {
-                let (_, _, cshape) = infer_shapes(ashape, bshape)?;
-                s.equals(&outputs[0].shape, cshape)
-            },
-        )?;
+        s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ashape, bshape| {
+            let (_, _, cshape) = infer_shapes(ashape, bshape)?;
+            s.equals(&outputs[0].shape, cshape)
+        })?;
         Ok(())
     }
 }
@@ -207,13 +200,14 @@ impl MatMulUnaryA {
     pub fn codegen<T: Copy + Datum + Add + Mul + Zero>(
         &self,
         a_shape: &[usize],
-    ) -> TractResult<Option<ReducedOpRewire>> {
+    ) -> TractResult<Option<Box<Op>>> {
         if self.b.shape().len() == 2 {
-            return Ok(Some(ReducedOpRewire::unary(
-                MatMulUnaryImplASimpleB::<T>::new(a_shape, &self.b.to_array_view()?)?,
-            )));
+            return Ok(Some(Box::new(MatMulUnaryImplASimpleB::<T>::new(
+                a_shape,
+                &self.b.to_array_view()?,
+            )?)));
         } else {
-            return Ok(Some(ReducedOpRewire::unary(MatMulUnaryImplA::<T>::new(
+            return Ok(Some(Box::new(MatMulUnaryImplA::<T>::new(
                 a_shape,
                 &self.b.to_array_view()?,
             )?)));
@@ -226,36 +220,40 @@ impl Op for MatMulUnaryA {
         "MatMulUnaryA".into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
-        if input.axis >= input.shape.len() - 1 {
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.fact(input)?.clone();
+        if fact.axis >= fact.shape.len() - 1 {
             bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
         }
-        let (_, _, cshape_pulse) = infer_shapes(input.shape.clone(), self.b.shape().into())?;
+        let (_, _, cshape_pulse) = infer_shapes(fact.shape.clone(), self.b.shape().into())?;
         let (_, _, cshape_full) = infer_shapes(
-            input.streaming_shape().into(),
+            fact.streaming_shape().into(),
             self.b.shape().iter().map(|d| d.to_dim()).collect(),
         )?;
-        let mut fact = input.clone();
         fact.shape = cshape_pulse;
         fact.dim = cshape_full[fact.axis];
-        Ok(vec![PulsifiedOp::new(Box::new(self.clone()), tvec!(fact))])
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 
-    fn reduce(
+    fn codegen(
         &self,
-        inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            return Ok(None);
-        }
-        if let (Some(a_shape), Some(dt)) = (
-            inputs[0].shape.as_concrete_finite()?,
-            inputs[0].datum_type.concretize(),
-        ) {
-            return dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape));
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        if let Some(a_shape) = inputs[0].shape.as_finite() {
+            let dt = inputs[0].datum_type;
+            if let Some(op) = dispatch_floatlike!(Self::codegen(dt)(self, &*a_shape))? {
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            }
         }
         Ok(None)
     }
@@ -273,11 +271,11 @@ impl InferenceRulesOp for MatMulUnaryA {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, ashape| {
             let bshape: TVec<TDim> = self.b.shape().iter().map(|x| x.to_dim()).collect();
@@ -309,18 +307,8 @@ impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
         let mut packed_b = unsafe {
             Tensor::uninitialized_aligned::<T>(&[packed_b_len], geo.mm.packed_b_alignment())?
         };
-        geo.mm.pack_b(
-            packed_b.as_ptr_mut()?,
-            b.as_ptr(),
-            b.strides()[0],
-            b.strides()[1],
-        );
-        Ok(MatMulUnaryImplASimpleB {
-            geo,
-            packed_b,
-            c_shape,
-            a_shape: a_shape.into(),
-        })
+        geo.mm.pack_b(packed_b.as_ptr_mut()?, b.as_ptr(), b.strides()[0], b.strides()[1]);
+        Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
     }
 }
 
@@ -348,9 +336,7 @@ impl<T: Copy + Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB
             )?
         };
 
-        self.geo
-            .mm
-            .pack_a(pa.as_ptr_mut()?, a.as_ptr(), self.geo.k as isize, 1);
+        self.geo.mm.pack_a(pa.as_ptr_mut()?, a.as_ptr(), self.geo.k as isize, 1);
         self.geo.mm.mat_mul_prepacked(
             pa.as_ptr()?,
             self.packed_b.as_ptr()?,
@@ -367,11 +353,11 @@ impl<T: Copy + Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplASi
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, ShapeFact::from(&*self.a_shape))?;
@@ -397,19 +383,14 @@ impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
         let mut packed_bs = unsafe {
             Tensor::uninitialized_aligned::<T>(&packed_bs_shape, geo.mm.packed_b_alignment())?
         };
-        for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2])
-            .into_iter()
-            .enumerate()
-        {
+        for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2]).into_iter().enumerate() {
             let mut b = b.view();
             for (axis, &dim) in prefix.slice().iter().enumerate() {
                 b.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
             unsafe {
                 geo.mm.pack_b(
-                    packed_bs
-                        .as_ptr_mut::<T>()?
-                        .offset((ix * packed_b_len) as isize),
+                    packed_bs.as_ptr_mut::<T>()?.offset((ix * packed_b_len) as isize),
                     b.as_ptr(),
                     b.strides()[prefix.ndim()],
                     b.strides()[prefix.ndim() + 1],
@@ -478,11 +459,11 @@ impl<T: Copy + Datum + Add + Mul + Zero> InferenceRulesOp for MatMulUnaryImplA<T
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, ShapeFact::from(&*self.geo.a_shape))?;
@@ -514,11 +495,11 @@ impl InferenceRulesOp for MatMulUnaryB {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, bshape| {
             let ashape: TVec<TDim> = self.a.shape().iter().map(|x| x.to_dim()).collect();

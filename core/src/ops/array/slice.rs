@@ -1,4 +1,5 @@
 use crate::ops::prelude::*;
+use crate::ops::identity::Identity;
 use ndarray::*;
 
 #[derive(Debug, Clone, new, Default)]
@@ -29,24 +30,29 @@ impl Op for Slice {
         "Slice".into()
     }
 
-    fn pulsify(&self, mut inputs: TVec<&PulsedTensorFact>) -> TractResult<Vec<PulsifiedOp>> {
-        let input = args_1!(inputs);
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.fact(input)?;
         if self
             .prune
             .iter()
             .enumerate()
-            .all(|(ax, &(a, b))| ax == input.axis || (a == 0 && b == 0))
+            .all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
         {
-            let delay = self.prune[input.axis].0;
-            let mut fact = input.clone();
-            fact.delay += delay;
-            fact.dim -= delay.to_dim();
-            return Ok(vec![PulsifiedOp::new(
-                Box::new(crate::ops::identity::Identity::default()),
-                tvec!(fact),
-            )]);
+            let (before, after) = self.prune[fact.axis];
+            let mut fact = fact.clone();
+            fact.delay += before;
+            fact.dim -= before.to_dim() + after.to_dim();
+            let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
+            return Ok(tvec!(OutletId::new(id, 0)))
         }
-        unimplemented!();
+        bail!("Slice only support pulsify on streaming axis")
     }
 }
 
@@ -64,11 +70,11 @@ impl InferenceRulesOp for Slice {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
-        inputs: &'p SharedTensorsProxy,
-        outputs: &'p SharedTensorsProxy,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        s.equals(&inputs.len, 1)?;
-        s.equals(&outputs.len, 1)?;
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         for (ix, &(a, b)) in self.prune.iter().enumerate() {
