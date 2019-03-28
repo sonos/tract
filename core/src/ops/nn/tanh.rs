@@ -16,7 +16,7 @@ const BETA_0: f32 = 4.89352518554385e-03;
 
 fn tanh(x: f32) -> f32 {
     if x <= LOW {
-        return 0.0;
+        return -1.0;
     }
     if x >= HIGH {
         return 1.0;
