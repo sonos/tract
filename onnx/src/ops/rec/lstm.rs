@@ -139,16 +139,16 @@ impl OpState for LSTMState {
             // x -> batch_size x input_size
             // Wt -> k=input_size x n=4*hidden_size
             // iofc -> batch_size x 4 * hidden_size
-            dbg!(&x);
-            dbg!(&ht);
+            //dbg!(&x);
+            //dbg!(&ht);
             let mut iofc = x.dot(&w.t()) + ht.dot(&r.t()); // batch_size x 4*hidden_size
             if let Some(bias) = bias {
                 iofc += &bias.slice(s!(0, 0..4 * hidden_size));
                 iofc += &bias.slice(s!(0, 4 * hidden_size..8 * hidden_size));
             }
-            dbg!(&iofc);
+          //  dbg!(&iofc);
             let iofc = iofc.into_shape((batch_size, 4, hidden_size))?;
-            dbg!(&iofc);
+           // dbg!(&iofc);
             let i =
                 op.f.eval(tvec!(iofc.slice_axis(Axis(1), (0..=0).into()).to_owned().into()))?;
             // dbg!(&i);
@@ -156,11 +156,11 @@ impl OpState for LSTMState {
                 op.f.eval(tvec!(iofc.slice_axis(Axis(1), (1..=1).into()).to_owned().into()))?;
             let f =
                 op.f.eval(tvec!(iofc.slice_axis(Axis(1), (2..=2).into()).to_owned().into()))?;
-            dbg!(&iofc.slice_axis(Axis(1), (3..=3).into()));
+           // dbg!(&iofc.slice_axis(Axis(1), (3..=3).into()));
 
             let c =
                 op.g.eval(tvec!(iofc.slice_axis(Axis(1), (3..=3).into()).to_owned().into()))?;
-            dbg!(&c);
+           // dbg!(&c);
             let i = i[0]
                 .to_array_view::<f32>()?
                 .to_owned()
@@ -179,7 +179,7 @@ impl OpState for LSTMState {
                 .into_dimensionality::<Ix3>()?
                 .into_shape((batch_size, hidden_size))?;
 
-            dbg!(&c);
+            // dbg!(&c);
             let c = c[0]
                 .to_array_view::<f32>()?
                 .to_owned()
@@ -189,16 +189,16 @@ impl OpState for LSTMState {
             dbg!(&f);
             dbg!(&ct);
             dbg!(&i);
-*/
             dbg!(&c);
+*/
             let big_c = f * &ct + i * c;
-            dbg!(&big_c);
+            // dbg!(&big_c);
             let big_h = o * op.h.eval(tvec!(big_c.clone().into()))?[0]
                 .to_array_view::<f32>()?
                 .to_owned()
                 .into_dimensionality::<Ix2>()?;
             ht.assign(&big_h);
-            dbg!(&big_h);
+            // dbg!(&big_h);
             ht_list.slice_axis_mut(Axis(0), (ix..=ix).into()).assign(&ht);
             // dbg!(&ht_list);
             ct.assign(&big_c);

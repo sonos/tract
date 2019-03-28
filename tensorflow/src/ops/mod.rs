@@ -77,10 +77,12 @@ impl StatelessOp for Noop {
 impl InferenceRulesOp for Noop {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        _s: &mut Solver<'r>,
+        s: &mut Solver<'r>,
         _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        s.equals(&outputs[0].datum_type, bool::datum_type())?;
+        s.equals(&outputs[0].rank, 0)?;
         Ok(())
     }
 }

@@ -120,6 +120,7 @@ impl OpState for AssignState {
             var_id: &str,
             t: &Tensor,
         ) -> TractResult<()> {
+            println!("assign to {}: {:?}", var_id, t);
             session
                 .tensors
                 .get_mut(var_id)
