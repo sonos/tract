@@ -14,7 +14,7 @@ pub fn block_lstm(node: &NodeDef) -> TractResult<Box<Op>> {
 }
 
 #[derive(Clone, Debug, new)]
-struct BlockLSTM {
+pub struct BlockLSTM {
     forget_bias: f32,
     cell_clip: f32,
     t: DatumType,
@@ -48,6 +48,8 @@ impl StatelessOp for BlockLSTM {
         let mut h = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
         let mut h_prev = h_prev.to_owned();
         let mut cs_prev = cs_prev.to_owned();
+        // dbg!(&cs_prev);
+        // dbg!(&h_prev);
         for n in 0..len {
             let x = x.index_axis(Axis(0),n);
             let mut i = i.index_axis_mut(Axis(0), n);
@@ -58,13 +60,18 @@ impl StatelessOp for BlockLSTM {
             let mut co = co.index_axis_mut(Axis(0), n);
             let mut h = h.index_axis_mut(Axis(0), n);
 
-            println!("x: {:?}", x.iter().take(9).collect::<Vec<_>>());
+            // dbg!(x);
+
+            // println!("x: {:?}", x.iter().take(9).collect::<Vec<_>>());
             let xh = ndarray::stack(Axis(1), &[x, h_prev.view()])?;
+            dbg!(&xh);
 
             let i_ci_f_o = xh.dot(&w) + &bias;
+            dbg!(&i_ci_f_o);
 
             i.assign(&i_ci_f_o.slice_axis(Axis(1), (0..cell_size).into()));
             i.mapv_inplace(sigmoid_f32); // TODO: peepholes
+            // dbg!(&i);
 
 //            println!("i: {:?}", i.iter().take(6).collect::<Vec<_>>());
 
@@ -75,14 +82,21 @@ impl StatelessOp for BlockLSTM {
             ci.assign(&i_ci_f_o.slice_axis(Axis(1), (cell_size..2*cell_size).into()));
             ci.mapv_inplace(tanh_f32);
 //            println!("ci: {:?}", ci.iter().take(6).collect::<Vec<_>>());
-
+/*
+            dbg!(&f);
+            dbg!(&cs_prev);
+            dbg!(&i);
+*/
+            dbg!(&ci);
             cs_prev *= &f;
             cs_prev += &(ci.to_owned() * &i);
             // TODO: clip cs
             cs.assign(&cs_prev);
+            dbg!(&cs);
 
             o.assign(&i_ci_f_o.slice_axis(Axis(1), (3*cell_size..4*cell_size).into()));
             o.mapv_inplace(sigmoid_f32); // TODO: peephole
+            // dbg!(&o);
 //            println!("o: {:?}", o.iter().take(6).collect::<Vec<_>>());
 
             co.assign(&cs);
@@ -92,8 +106,9 @@ impl StatelessOp for BlockLSTM {
             h_prev.assign(&co);
             h_prev *= &o;
             h.assign(&h_prev);
-            println!("h: {:?}", h.iter().take(6).collect::<Vec<_>>());
-            println!("cs: {:?}", cs.iter().take(6).collect::<Vec<_>>());
+            dbg!(&h);
+            // println!("h: {:?}", h.iter().take(6).collect::<Vec<_>>());
+            // println!("cs: {:?}", cs.iter().take(6).collect::<Vec<_>>());
         }
         Ok(tvec!(i.into(), cs.into(), f.into(), o.into(), ci.into(), co.into(), h.into()))
     }

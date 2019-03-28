@@ -7,7 +7,7 @@ mod array;
 mod logic;
 mod math;
 mod nn;
-mod rec;
+pub mod rec;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast);

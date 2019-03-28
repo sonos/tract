@@ -101,6 +101,7 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
 
 pub trait ModelDslConst {
     fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize>;
+    fn plug_const(&mut self, inlet: InletId, name: impl Into<String>, v: SharedTensor) -> TractResult<()>;
 }
 
 impl ModelDslConst for super::InferenceModel {
@@ -108,12 +109,22 @@ impl ModelDslConst for super::InferenceModel {
         let facts = tvec!(v.clone().into());
         self.add_node(name, crate::ops::konst::Const::new(v), facts)
     }
+    fn plug_const(&mut self, inlet: InletId, name: impl Into<String>, v: SharedTensor) -> TractResult<()> {
+        let cst = self.add_const(name, v)?;
+        self.add_edge(OutletId::new(cst, 0), inlet);
+        Ok(())
+    }
 }
 
 impl ModelDslConst for super::TypedModel {
     fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize> {
         let facts = tvec!(v.clone().into());
         self.add_node(name, crate::ops::konst::Const::new(v), facts)
+    }
+    fn plug_const(&mut self, inlet: InletId, name: impl Into<String>, v: SharedTensor) -> TractResult<()> {
+        let cst = self.add_const(name, v)?;
+        self.add_edge(OutletId::new(cst, 0), inlet);
+        Ok(())
     }
 }
 

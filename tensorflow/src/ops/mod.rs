@@ -60,7 +60,7 @@ pub fn placeholder(node: &NodeDef) -> TractResult<Box<Op>> {
 }
 
 #[derive(Clone, Debug, new)]
-struct Noop;
+pub struct Noop;
 
 impl Op for Noop {
     fn name(&self) -> Cow<str> {
