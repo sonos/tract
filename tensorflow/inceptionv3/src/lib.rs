@@ -34,6 +34,7 @@ fn do_download() -> TractResult<()> {
     }
     fs::create_dir_all(&dir_partial)?;
     let resp = mio_httpc::CallBuilder::get()
+        .timeout_ms(3600_000)
         .max_response(200_000_000)
         .url("http://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz")
         .and_then(|r| r.exec())

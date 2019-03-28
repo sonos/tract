@@ -7,7 +7,7 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 flate2 = "1"
 image = "0.19"
 ndarray = "0.12"
-mio_httpc = "0.6.22"
+mio_httpc = "0.8.6"
 tar = "0.4"
 tract-core = { path = "../../core" }
 tract-tensorflow = { path = ".." }
