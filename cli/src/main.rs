@@ -75,20 +75,21 @@ fn main() {
         (@arg format: +takes_value
             "Hint the model format ('onnx' or 'tf') instead of guess from extension.")
 
-        (@arg input: -i --input +takes_value
+        (@arg input: -i --input +takes_value +multiple number_of_values(1)
             "Set input value (@file or 3x4xi32)")
 
         (@arg stream_axis: -s --("stream-axis") +takes_value
             "Set Axis number to stream upon (first is 0)")
 
-        (@arg input_node: --("input-node") +takes_value
+        (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
             "Override input nodes names (auto-detects otherwise).")
 
         (@arg output_node: --("output-node") +takes_value
             "Override output nodes name (auto-detects otherwise).")
 
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
-        (@arg skip_type: --("skip_type") "Analyse as much as possible, do not enforce full typing")
+        (@arg skip_type: --("skip-type") "Analyse as much as possible, but do not enforce full typing")
+
         (@arg declutter: --declutter "Declutter model after load")
         (@arg optimize: -O --optimize "Optimize after model load")
         (@arg pulse: --pulse +takes_value "Translate to pulse network")
