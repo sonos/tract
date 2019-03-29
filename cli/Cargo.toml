@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.2.9-pre"
+version = "0.2.10-pre"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -30,7 +30,7 @@ pbr = "1.0"
 prettytable-rs = "0.8"
 rand = "0.6.5"
 terminal_size = "0.1.7"
-textwrap = "0.11"
+textwrap = "0.10"
 tract-core = { path = "../core" }
 tract-onnx = { path = "../onnx", optional = true }
 tract-tensorflow = { path = "../tensorflow", optional = true }
