@@ -28,7 +28,7 @@ impl Op for BlockLSTM {
 }
 
 impl StatelessOp for BlockLSTM {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let len = *inputs[0].cast_to::<i32>()?.to_scalar::<i32>()? as usize;
 
         let x = inputs[1].to_array_view::<f32>()?.into_dimensionality::<Ix3>()?;

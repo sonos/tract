@@ -111,7 +111,7 @@ impl ModelDslConst for super::InferenceModel {
     }
     fn plug_const(&mut self, inlet: InletId, name: impl Into<String>, v: SharedTensor) -> TractResult<()> {
         let cst = self.add_const(name, v)?;
-        self.add_edge(OutletId::new(cst, 0), inlet);
+        self.add_edge(OutletId::new(cst, 0), inlet)?;
         Ok(())
     }
 }
@@ -123,7 +123,7 @@ impl ModelDslConst for super::TypedModel {
     }
     fn plug_const(&mut self, inlet: InletId, name: impl Into<String>, v: SharedTensor) -> TractResult<()> {
         let cst = self.add_const(name, v)?;
-        self.add_edge(OutletId::new(cst, 0), inlet);
+        self.add_edge(OutletId::new(cst, 0), inlet)?;
         Ok(())
     }
 }

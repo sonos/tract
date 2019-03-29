@@ -4,7 +4,7 @@ export CI=true
 
 set -ex
 
-TF_INCEPTIONV3=`pwd`/tensorflow/inceptionv3/.inception-v3-2016_08_28
+TF_INCEPTIONV3=`pwd`/examples/tf-inceptionv3/.inception-v3-2016_08_28
 if [ -n "$TRAVIS" ]
 then
     ONNX_CHECKOUT=$TRAVIS_BUILD_DIR/cached/onnx-checkout
@@ -15,6 +15,7 @@ cargo check --benches --all --features serialize # running benches on travis is 
 cargo test --release --all --features serialize
 
 (cd tensorflow; cargo test --release --features conform)
+(cd examples/tf-inceptionv3; cargo test --release)
 (cd cli; cargo build --release)
 
 if [ -z "$ONNX_CHECKOUT" ]

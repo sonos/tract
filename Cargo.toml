@@ -3,8 +3,6 @@ members = [
     "linalg",
     "core",
     "tensorflow",
-    "tensorflow/inceptionv3",
-    "tensorflow/deepspeech",
     "onnx",
     "cli"
 ]
