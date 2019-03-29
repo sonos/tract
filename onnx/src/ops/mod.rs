@@ -19,7 +19,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
     array::register_all_ops(reg);
-    rec::register_all_ops(&mut reg);
+    rec::register_all_ops(reg);
 }
 
 fn konst(node: &NodeProto) -> TractResult<Box<Op>> {
