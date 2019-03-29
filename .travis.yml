@@ -21,7 +21,12 @@ env:
 matrix:
   include:
     - rust: stable
-      env: RUN_ALL_TEST=true
+    - rust: stable
+      env: TRACT_TEST=tf-inceptionv3
+    - rust: stable
+      env: TRACT_TEST=lstm-proptest-onnx-vs-tf
+    - rust: stable
+      env: TRACT_TEST=tf-moz-deepspeech
     - rust: stable
       os: osx
       osx_image: xcode8.3

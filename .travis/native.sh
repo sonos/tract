@@ -15,7 +15,7 @@ cargo test --release --all --features serialize
 (cd tensorflow; cargo test --release --features conform)
 (cd examples/tf-inceptionv3; cargo test --release)
 (cd examples/lstm-proptest-onnx-vs-tf; cargo test --release)
-(cd examples/tf-moz-deepspeecht ; cargo test --release)
+(cd examples/tf-moz-deepspeech ; cargo test --release)
 (cd cli; cargo build --release)
 
 ./.travis/cache_file.sh \

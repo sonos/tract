@@ -2,9 +2,15 @@
 
 set -ex
 
-if [ -z "$PLATFORM" ]
+if [ -n "$TRACT_TEST" ]
 then
-    .travis/native.sh
+  cd examples/$TRACT_TEST
+  cargo test --release
 else
-    .travis/cross.sh
+  if [ -z "$PLATFORM" ]
+  then
+      .travis/native.sh
+  else
+      .travis/cross.sh
+  fi
 fi
