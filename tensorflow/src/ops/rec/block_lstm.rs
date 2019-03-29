@@ -48,8 +48,12 @@ impl StatelessOp for BlockLSTM {
         let mut h = unsafe { ArrayD::<f32>::uninitialized(&*outputs_shape) };
         let mut h_prev = h_prev.to_owned();
         let mut cs_prev = cs_prev.to_owned();
+
+        /*
         dbg!(&h_prev);
         dbg!(&cs_prev);
+        */
+
         for n in 0..len {
             let x = x.index_axis(Axis(0),n);
             let mut i = i.index_axis_mut(Axis(0), n);
@@ -109,8 +113,10 @@ impl StatelessOp for BlockLSTM {
             // println!("h: {:?}", h.iter().take(6).collect::<Vec<_>>());
             // println!("cs: {:?}", cs.iter().take(6).collect::<Vec<_>>());
         }
+        /*
         dbg!(&h_prev);
         dbg!(&cs_prev);
+        */
         if x.shape()[0] > len as usize {
             i.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
             cs.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);

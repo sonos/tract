@@ -19,15 +19,17 @@ impl Split {
     fn eval_t<T: Datum>(&self, input: SharedTensor) -> TractResult<TVec<SharedTensor>> {
         let mut current = 0;
         let input = input.to_array_view::<T>()?;
-        println!("shape: {:?}", input.shape());
         Ok(self
             .split_dims(input.shape()[self.axis])?
             .iter()
-            .map(|d| {
-                println!("axis:{} split {:?}", self.axis, current..current+d);
-                let slice = input
-                    .slice_axis(Axis(self.axis), (current..current + d).into())
-                    .to_owned();
+            .map(|&d| {
+                let slice = if d > 0 {
+                    input.slice_axis(Axis(self.axis), (current..current + d).into()).to_owned()
+                } else {
+                    let mut shape:TVec<usize> = input.shape().into();
+                    shape[self.axis] = 0;
+                    ArrayD::<T>::default(&*shape)
+                };
                 current += d;
                 slice.into()
             })

@@ -1,6 +1,5 @@
 use ndarray::*;
 
-use proptest::num;
 use proptest::prelude::*;
 use proptest::*;
 
@@ -195,7 +194,7 @@ impl LstmProblem {
         model.set_outputs(&["lstm", "init", "memo"])?;
 
         model.analyse(false)?;
-        println!("{:#?}", model);
+        // println!("{:#?}", model);
         Ok(model.into_typed()?)
     }
 

@@ -9,6 +9,6 @@ members = []
 
 [dependencies]
 proptest = "0.8"
-tract-core = { path = "../core" }
-tract-tensorflow = { path = "../tensorflow" }
-tract-onnx = { path = "../onnx" }
+tract-core = { path = "../../core" }
+tract-tensorflow = { path = "../../tensorflow" }
+tract-onnx = { path = "../../onnx" }
