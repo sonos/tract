@@ -1,40 +1,50 @@
 use std::fs;
 use std::io::Read;
+use std::str::FromStr;
 
 use crate::CliResult;
 use tract_core::ops::prelude::*;
 
-pub fn for_size(size: &str) -> CliResult<TensorFact> {
+pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
     let splits = size.split("x").collect::<Vec<_>>();
 
     if splits.len() < 1 {
         bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
     }
 
-    let (datum_type, shape) = splits.split_last().unwrap();
+    let (datum_type, shape) = if splits.last().unwrap().parse::<i32>().is_ok() {
+        (None, &*splits)
+    } else {
+        let datum_type = match splits.last().unwrap().to_lowercase().as_str() {
+            "f64" => DatumType::F64,
+            "f32" => DatumType::F32,
+            "i32" => DatumType::I32,
+            "i8" => DatumType::I8,
+            "u8" => DatumType::U8,
+            _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
+        };
+        (Some(datum_type), &splits[0..splits.len() - 1])
+    };
 
-    let shape = shape
-        .iter()
-        .map(|s| match *s {
-            "S" => Ok(TDim::stream()),         // Streaming dimension.
-            _ => Ok(s.parse::<i32>()?.into()), // Regular dimension.
-        })
-        .collect::<TractResult<Vec<TDim>>>()?;
+    let shape = shape.iter().map(|s| Ok(s.parse()?)).collect::<TractResult<Vec<TDim>>>()?;
 
     if shape.iter().filter(|o| o.is_stream()).count() > 1 {
         bail!("The <size> argument doesn't support more than one streaming dimension.");
     }
 
-    let datum_type = match datum_type.to_lowercase().as_str() {
-        "f64" => DatumType::F64,
-        "f32" => DatumType::F32,
-        "i32" => DatumType::I32,
-        "i8" => DatumType::I8,
-        "u8" => DatumType::U8,
-        _ => bail!("Type of the input should be f64, f32, i32, i8 or u8."),
-    };
+    if let Some(dt) = datum_type {
+        Ok(TensorFact::dt_shape(dt, shape))
+    } else {
+        Ok(TensorFact::shape(shape))
+    }
+}
 
-    Ok(TensorFact::dt_shape(datum_type, shape))
+fn parse_values<'a, T: Datum + FromStr>(shape: &[usize], it: Vec<&'a str>) -> CliResult<Tensor> {
+    let values = it
+        .into_iter()
+        .map(|v| Ok(v.parse::<T>().map_err(|_| format!("Failed to parse {}", v))?))
+        .collect::<CliResult<Vec<T>>>()?;
+    Ok(::ndarray::Array::from_shape_vec(shape, values)?.into())
 }
 
 fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
@@ -44,52 +54,31 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
     file.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
-    let proto = for_size(lines.next().ok_or("Empty data file")?)?;
+    let proto = parse_spec(lines.next().ok_or("Empty data file")?)?;
     let shape = proto.shape.concretize().unwrap();
 
-    let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<_>>();
+    let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<&str>>();
 
     // We know there is at most one streaming dimension, so we can deduce the
     // missing value with a simple division.
-    let product: usize = shape
-        .iter()
-        .map(|o| o.to_integer().unwrap_or(1) as usize)
-        .product();
+    let product: usize = shape.iter().map(|o| o.to_integer().unwrap_or(1) as usize).product();
     let missing = values.len() / product;
 
-    macro_rules! for_type {
-        ($t:ty) => {{
-            let array =
-                ::ndarray::Array::from_iter(values.iter().map(|v| v.parse::<$t>().unwrap()));
-
-            array.into_shape(
-                shape
-                    .iter()
-                    .map(|i| i.to_integer().unwrap_or(missing as i32) as usize)
-                    .collect::<Vec<_>>(),
-            )?
-        }};
-    }
-
-    let tensor = match proto.datum_type.concretize().unwrap() {
-        DatumType::F64 => for_type!(f64).into(),
-        DatumType::F32 => for_type!(f32).into(),
-        DatumType::I32 => for_type!(i32).into(),
-        DatumType::I8 => for_type!(i8).into(),
-        DatumType::U8 => for_type!(u8).into(),
-        _ => unimplemented!(),
-    };
-    Ok(tensor)
+    let shape: Vec<_> =
+        shape.iter().map(|d| d.to_integer().map(|i| i as usize).unwrap_or(missing)).collect();
+    dispatch_copy!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
 }
 
 /// Parses the `data` command-line argument.
 fn for_data(filename: &str) -> CliResult<TensorFact> {
     let tensor = if filename.ends_with(".pb") {
-        #[cfg(feature="onnx")] {
+        #[cfg(feature = "onnx")]
+        {
             let file = fs::File::open(filename)?;
             ::tract_onnx::tensor::from_reader(file)?
         }
-        #[cfg(not(feature="onnx"))] {
+        #[cfg(not(feature = "onnx"))]
+        {
             panic!("Loading tensor from protobuf requires onnx features");
         }
     } else {
@@ -103,7 +92,17 @@ pub fn for_string(value: &str) -> CliResult<TensorFact> {
     if value.starts_with("@") {
         for_data(&value[1..])
     } else {
-        for_size(value)
+        if value.contains("=") {
+            let mut split = value.split("=");
+            let spec = parse_spec(split.next().unwrap())?;
+            let value = split.next().unwrap().split(",");
+            let dt = spec.datum_type.concretize().ok_or("Must specify type when giving tensor value")?;
+            let shape = spec.shape.as_concrete_finite()?.ok_or("Must specify concrete shape when giving tensor value")?;
+            let tensor = dispatch_copy!(parse_values(dt)(&*shape, value.collect()))?;
+            Ok(tensor.into())
+        } else {
+            parse_spec(value)
+        }
     }
 }
 
@@ -123,13 +122,7 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
                 .concretize()
                 .unwrap()
                 .iter()
-                .map(|d| {
-                    d.to_integer()
-                        .ok()
-                        .map(|d| d as usize)
-                        .or(streaming_dim)
-                        .unwrap()
-                })
+                .map(|d| d.to_integer().ok().map(|d| d as usize).or(streaming_dim).unwrap())
                 .collect(),
             fact.datum_type.concretize().unwrap(),
         ))

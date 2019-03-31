@@ -258,3 +258,10 @@ impl<'a> std::iter::Sum<&'a f16> for f16 {
         iter.fold(0.0f32, |acc, i| acc + i.0.to_f32()).into()
     }
 }
+
+impl std::str::FromStr for f16 {
+    type Err = std::num::ParseFloatError;
+    fn from_str(s: &str) -> Result<f16, Self::Err> {
+        s.parse::<f32>().map(|f| f.into())
+    }
+}

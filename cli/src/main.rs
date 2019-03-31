@@ -330,6 +330,7 @@ impl Parameters {
             let mut vs = vec![];
             for (ix, v) in inputs.enumerate() {
                 let t = tensor::for_string(v)?;
+                /*
                 // obliterate value in input (the analyser/optimizer would fold
                 // the graph)
                 let mut fact = TensorFact { value: Default::default(), ..t };
@@ -351,8 +352,9 @@ impl Parameters {
                     fact.shape = shape;
                 }
                 vs.push(t.value.concretize());
+                */
                 let outlet = raw_model.inputs()?[ix];
-                raw_model.set_fact(outlet, fact)?;
+                raw_model.set_fact(outlet, t)?;
             }
             Some(vs)
         } else {
@@ -516,7 +518,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
 
-        ("draw", _) => crate::draw::render(&params.tract_model),
+        ("draw", Some(m)) => crate::draw::render(&params.tract_model, display_options_from_clap(m)?),
 
         ("dump", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);

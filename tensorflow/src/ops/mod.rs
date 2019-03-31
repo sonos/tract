@@ -1,7 +1,7 @@
 use tract_core::ops::prelude::*;
 
-use crate::tfpb::node_def::NodeDef;
 use crate::model::TfOpRegister;
+use crate::tfpb::node_def::NodeDef;
 
 #[macro_use]
 mod macros;
@@ -29,7 +29,6 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Placeholder", placeholder);
 }
 
-
 pub fn cast(node: &NodeDef) -> TractResult<Box<Op>> {
     let dtype = node.get_attr_datum_type("DstT")?;
     Ok(Box::new(::tract_core::ops::cast::Cast::new(dtype)))
@@ -40,11 +39,7 @@ pub fn konst(node: &NodeDef) -> TractResult<Box<Op>> {
     let mat = node.get_attr_tensor("value")?;
 
     if mat.datum_type() != dtype {
-        bail!(
-            "Const node {:?} doesn't have the expected {:?} type.",
-            mat,
-            dtype
-        );
+        bail!("Const node {:?} doesn't have the expected {:?} type.", mat, dtype);
     }
 
     Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(mat)))
@@ -93,6 +88,22 @@ struct Identity;
 impl Op for Identity {
     fn name(&self) -> Cow<str> {
         "tf.Identity".into()
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if node.inputs.len() == 1 {
+            Ok(Some(TypedModelPatch::single_unary_op(
+                model,
+                node,
+                tract_core::ops::identity::Identity::default(),
+            )?))
+        } else {
+            Ok(None)
+        }
     }
 }
 

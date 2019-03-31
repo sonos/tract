@@ -1,5 +1,6 @@
 use std::fmt;
 use std::ops;
+use std::str::FromStr;
 
 use num_traits::cast::AsPrimitive;
 use num_traits::One;
@@ -270,5 +271,16 @@ impl From<usize> for TDim {
 impl<'a> From<&'a usize> for TDim {
     fn from(it: &'a usize) -> TDim {
         TDim((*it as i32).into())
+    }
+}
+
+impl FromStr for TDim {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<TDim, Self::Err> {
+        if s == "S" {
+            Ok(TDim::s())
+        } else {
+            s.parse::<i32>().map(|i| i.into())
+        }
     }
 }
