@@ -70,6 +70,7 @@ hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_mo
     -O -i Sx20xf32 --pulse 8 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
+echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
 echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
 echo net.voicecom_float.evaltime.2sec $voicecom_float >> metrics
