@@ -30,7 +30,7 @@ where
         }
     }
     // maintaining order of i/o interface
-    model.inputs = old.inputs()?.iter().map(|i| OutletId::new(map[&i.node], i.slot)).collect();
+    model.inputs = old.inputs()?.iter().filter_map(|i| map.get(&i.node).map(|&n| OutletId::new(n, i.slot))).collect();
     model.outputs = old.outputs()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
     Ok(model)
 }

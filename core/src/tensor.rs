@@ -18,7 +18,7 @@ use std::sync::Arc;
 use crate::datum::TryInto;
 use crate::ops::prelude::*;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SharedTensor(Arc<Tensor>);
 
 impl SharedTensor {
@@ -61,6 +61,12 @@ impl ::std::ops::Deref for SharedTensor {
 impl PartialEq for SharedTensor {
     fn eq(&self, other: &SharedTensor) -> bool {
         self.as_tensor() == other.as_tensor()
+    }
+}
+
+impl fmt::Debug for SharedTensor {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(fmt)
     }
 }
 
@@ -181,24 +187,16 @@ impl Tensor {
 
     pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
         use itertools::Itertools;
-        let s = if self.shape.len() == 0 {
-            let data = self.to_scalar::<D>()?;
-            format!("Scalar: {} ({})", data, D::name())
-        } else if self.shape().iter().product::<usize>() > 8 {
-            let data = self.to_array_view::<D>()?;
-            if force_full {
-                format!("shape:{:?} ({}) {:?}", self.shape, D::name(), data)
-            } else {
-                format!(
-                    "shape:{:?} ({}) {}...",
-                    self.shape(),
-                    D::name(),
-                    data.iter().take(4).map(|v| format!("{:?}", v)).join(", ")
-                )
-            }
+        let spec = TensorFact::dt_shape(D::datum_type(), &*self.shape);
+        let data = self.to_array_view::<D>()?;
+        let s = if force_full || data.len() <= 4 {
+            format!("{} {}", spec.format_dt_shape(), data.iter().join(", "))
         } else {
-            let data = self.to_array_view::<D>()?;
-            format!("shape:{:?} ({}) {:?}", self.shape, D::name(), data)
+            format!(
+                "{} {}...",
+                spec.format_dt_shape(),
+                data.iter().take(4).join(", ")
+            )
         };
         Ok(s)
     }

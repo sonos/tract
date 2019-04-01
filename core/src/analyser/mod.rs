@@ -94,7 +94,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 })?;
 
                 if &unified != old_fact {
-                    debug!(" Refined {} input #{} to {:?}", node.name, ix, unified);
+                    debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);
                     changed_edges.push((outlet, unified));
                 }
             }
@@ -104,8 +104,9 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let unified = old_fact.unify(inferred_fact)?;
 
                 if &unified != old_fact {
-                    debug!(" Refined {} output #{} to {:?}", node.name, ix, unified);
-                    changed_edges.push((OutletId::new(node.id, ix), unified));
+                    let outlet = OutletId::new(node.id, ix);
+                    debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);
+                    changed_edges.push((outlet, unified));
                 }
             }
         }

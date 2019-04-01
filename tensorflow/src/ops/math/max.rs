@@ -99,22 +99,24 @@ impl InferenceRulesOp for Max {
                 inputs[1].shape[0].bex() + outputs[0].rank.bex().to_dim(),
             )?;
         }
-        s.given_2(&inputs[0].rank, &outputs[0].value, move |s, rank, axes| {
+        s.given_3(&inputs[0].rank, &outputs[0].rank, &inputs[1].value, move |s, irank, orank, axes| {
             let axes: TVec<usize> = axes
                 .cast_to::<i32>()?
                 .as_slice::<i32>()?
                 .iter()
-                .map(|&ax| if ax > 0 { ax } else { ax + rank } as usize)
+                .map(|&ax| if ax > 0 { ax } else { ax + irank } as usize)
                 .collect();
             let mut od = 0;
-            for id in 0..(rank as usize) {
+            for id in 0..(irank as usize) {
                 if axes.contains(&id) {
                     if self.keep_dims {
                         s.equals(&outputs[0].shape[od], 1.to_dim())?;
                         od += 1;
                     }
                 } else {
-                    s.equals(&outputs[0].shape[od], &inputs[0].shape[id])?;
+                    if od < orank as usize {
+                        s.equals(&outputs[0].shape[od], &inputs[0].shape[id])?;
+                    }
                 }
             }
             Ok(())

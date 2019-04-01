@@ -351,9 +351,9 @@ impl Parameters {
                     );
                     fact.shape = shape;
                 }
-                vs.push(t.value.concretize());
                 */
                 let outlet = raw_model.inputs()?[ix];
+                vs.push(t.value.concretize());
                 raw_model.set_fact(outlet, t)?;
             }
             Some(vs)
@@ -362,6 +362,8 @@ impl Parameters {
         };
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
+
+//        println!("{:?}", raw_model);
 
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
