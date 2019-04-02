@@ -78,9 +78,9 @@ then
     # raspi 3 can run official tflite builds
     if [ "$cpu" = "a22082" ]
     then
-        tflites="rpitools official_rpi"
+        tflites="rpitools official_rpi rpitools_2019_03 official_rpi_2019_03"
     else
-        tflites=rpitools
+        tflites="rpitools rpitools_2019_03"
     fi
 elif [ -e /etc/issue ] && ( cat /etc/issue | grep i.MX )
 then
@@ -89,7 +89,7 @@ then
         tflites=aarch64_unknown_linux_gnu
     elif [ `uname -m` = "armv7l" ]
     then
-        tflites=official_rpi
+        tflites="official_rpi official_rpi_2019_03"
     fi
 
 fi
