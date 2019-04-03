@@ -120,7 +120,7 @@ pub mod prelude {
     pub use crate::dim::TDim;
     pub use crate::errors::*;
     pub use crate::framework::Framework;
-    pub use crate::model::TVec;
+    pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use crate::tensor::{SharedTensor, Tensor};
     pub use crate::tvec;
