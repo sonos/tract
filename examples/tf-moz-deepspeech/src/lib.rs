@@ -1,14 +1,12 @@
-#![allow(unused_imports,dead_code)]
+#![allow(unused_imports, dead_code)]
 use std::fs;
 use std::path;
-use std::str::FromStr;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use ndarray::*;
 
-use tract_core::datum::Datum;
-use tract_core::model::OutletId;
-use tract_core::*;
+use tract_core::internal::*;
 
 fn download() {
     use std::sync::{Once, ONCE_INIT};
@@ -51,26 +49,25 @@ fn cachedir() -> path::PathBuf {
 fn deepspeech() -> TractResult<()> {
     download();
     let tf = tract_tensorflow::tensorflow();
-//    let mut model = tf.model_for_path("deepspeech-0.4.1-models/output_graph.pb")?;
+    //    let mut model = tf.model_for_path("deepspeech-0.4.1-models/output_graph.pb")?;
     let mut model = tf.model_for_path(cachedir().join("deepspeech-0.4.1.pb"))?;
-    model.set_inputs(&["input_node", "input_lengths"])?;
+    model.set_input_names(&["input_node", "input_lengths"])?;
     model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), tvec!(1, 16, 19, 26)))?;
     model.set_input_fact(1, TensorFact::dt_shape(i32::datum_type(), tvec!(1)))?;
     let model = model.into_typed()?;
     let model = Rc::new(model);
 
     let init_node = model.node_by_name("initialize_state")?.id;
-    let init_plan =
-        tract_core::SimplePlan::new_for_output(model.clone(), OutletId::new(init_node, 0))?;
+    let init_plan = SimplePlan::new_for_output(model.clone(), OutletId::new(init_node, 0))?;
     //    let logit_node = model.node_by_name("logits")?.id;
     let logit_node = model.node_by_name("logits")?.id;
     let lstm_node = model.node_by_name("lstm_fused_cell/BlockLSTM")?.id;
-    let logit_plan = tract_core::SimplePlan::new_for_outputs(
+    let logit_plan = SimplePlan::new_for_outputs(
         model.clone(),
         &[OutletId::new(logit_node, 0), OutletId::new(lstm_node, 1), OutletId::new(lstm_node, 6)],
     )?;
 
-    let mut state = tract_core::SimpleState::new_multiplan(vec![init_plan, logit_plan])?;
+    let mut state = SimpleState::new_multiplan(vec![init_plan, logit_plan])?;
 
     // initialize_state
     state.run_plan(tvec!(), 0)?;
@@ -99,7 +96,9 @@ fn deepspeech() -> TractResult<()> {
         }
         if h.is_some() && cs.is_some() && logits.is_some() {
             let mut outputs = state.run_plan(inputs.clone(), 1)?;
-            let (logits_, cs_, h_) = args_3!(outputs);
+            let logits_ = outputs.remove(0);
+            let cs_ = outputs.remove(0);
+            let h_ = outputs.remove(0);
             assert!(h.take().unwrap().close_enough(&h_, true));
             assert!(cs.take().unwrap().close_enough(&cs_, true));
             assert!(logits.take().unwrap().close_enough(&logits_, true));
