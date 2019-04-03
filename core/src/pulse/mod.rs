@@ -281,6 +281,7 @@ mod tests {
         let _ = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S))) // NCT
             .unwrap();
+
         let conv = model.chain_default("conv", Conv::default()).unwrap();
         model.add_edge(OutletId::new(ker, 0), InletId::new(conv, 1)).unwrap();
 

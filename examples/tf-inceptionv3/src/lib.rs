@@ -1,10 +1,7 @@
 #[cfg(features = "conform")]
 extern crate conform;
-extern crate flate2;
 extern crate image;
-extern crate mio_httpc;
 extern crate ndarray;
-extern crate tar;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate tract_core as tract;
@@ -22,26 +19,10 @@ fn download() {
 }
 
 fn do_download() -> TractResult<()> {
-    let dir = inception_v3_2016_08_28();
-    let dir_partial = dir.clone().with_extension("partial");
-    if fs::metadata(&dir).is_ok() {
-        println!("Found inception_v3 model: {:?}", dir);
-        return Ok(());
+    let run = ::std::process::Command::new("./download.sh").status().unwrap();
+    if !run.success() {
+        Err("Failed to download inception model files")?
     }
-    println!("Downloading inception_v3 model in {:?}", dir);
-    if fs::metadata(&dir_partial).is_ok() {
-        fs::remove_dir_all(&dir_partial).unwrap();
-    }
-    fs::create_dir_all(&dir_partial)?;
-    let resp = mio_httpc::CallBuilder::get()
-        .timeout_ms(3600_000)
-        .max_response(200_000_000)
-        .url("http://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz")
-        .and_then(|r| r.exec())
-        .map_err(|e| format!("http error {:?}", e))?;
-    let mut archive = ::tar::Archive::new(::flate2::read::GzDecoder::new(&*resp.1));
-    archive.unpack(&dir_partial)?;
-    fs::rename(dir_partial, dir)?;
     Ok(())
 }
 
@@ -54,12 +35,7 @@ pub fn load_labels() -> Vec<String> {
 }
 
 fn inception_v3_2016_08_28() -> path::PathBuf {
-    match ::std::env::var("TRAVIS_BUILD_DIR") {
-        Ok(t) => path::Path::new(&t)
-            .join("cached")
-            .join("inception-v3-2016_08_28"),
-        _ => ".inception-v3-2016_08_28".into(),
-    }
+    ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string()).into()
 }
 
 pub fn inception_v3_2016_08_28_frozen() -> path::PathBuf {
@@ -109,6 +85,7 @@ mod tests {
     fn grace_hopper_is_a_military_uniform() {
         download();
         // setup_test_logger();
+        println!("{:?}", inception_v3_2016_08_28_frozen());
         let tfd = ::tract_tensorflow::tensorflow().model_for_path(inception_v3_2016_08_28_frozen()).unwrap();
         let plan = ::tract::SimplePlan::new(&tfd).unwrap();
         let input = load_image(hopper());

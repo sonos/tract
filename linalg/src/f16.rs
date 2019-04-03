@@ -140,6 +140,12 @@ impl num_traits::ToPrimitive for f16 {
     }
 }
 
+impl num_traits::AsPrimitive<usize> for f16 {
+    fn as_(self) -> usize {
+        self.0.to_f32() as usize
+    }
+}
+
 impl num_traits::AsPrimitive<f32> for f16 {
     fn as_(self) -> f32 {
         self.0.to_f32()
@@ -168,6 +174,11 @@ impl num_traits::NumCast for f16 {
     fn from<T: num_traits::ToPrimitive>(n: T) -> Option<Self> {
         n.to_f32().map(|f| f16(half::f16::from_f32(f)))
     }
+}
+
+impl num_traits::Bounded for f16 {
+    fn min_value() -> f16 { f16(half::consts::MIN) }
+    fn max_value() -> f16 { f16(half::consts::MAX) }
 }
 
 impl ops::Neg for f16 {
@@ -245,5 +256,12 @@ impl<'a> std::iter::Sum<&'a f16> for f16 {
         I: Iterator<Item = &'a f16>,
     {
         iter.fold(0.0f32, |acc, i| acc + i.0.to_f32()).into()
+    }
+}
+
+impl std::str::FromStr for f16 {
+    type Err = std::num::ParseFloatError;
+    fn from_str(s: &str) -> Result<f16, Self::Err> {
+        s.parse::<f32>().map(|f| f.into())
     }
 }

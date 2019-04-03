@@ -1,31 +1,20 @@
-use std::marker::PhantomData;
-
 use tract_core::ops::prelude::*;
 
-#[derive(Debug, Clone, Default, new)]
-pub struct Fill<T: Copy + Datum> {
-    _phantom: PhantomData<T>,
+#[derive(Debug, Clone, new)]
+pub struct Fill {
+    dt: DatumType,
 }
 
 pub fn fill(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
-    Ok(boxed_new!(Fill(dtype)()))
+    Ok(Box::new(Fill::new(dtype)))
 }
 
-impl<T> Op for Fill<T>
-where
-    T: Copy + Datum,
-{
-    fn name(&self) -> Cow<str> {
-        "tf.Fill".into()
-    }
-}
-
-impl<T: Copy + Datum> StatelessOp for Fill<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+impl Fill {
+    fn eval_t<T:Datum + Copy>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (shape, value) = args_2!(inputs);
-        let value = value.to_array_view()?;
-        let value: T = value[[]];
+        let value = *value.to_scalar::<T>()?;
+        let shape = shape.cast_to::<i32>()?;
         let shape = shape.to_array_view::<i32>()?;
         let array = ::ndarray::Array::from_elem(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
@@ -35,7 +24,21 @@ impl<T: Copy + Datum> StatelessOp for Fill<T> {
     }
 }
 
-impl<T: Copy + Datum> InferenceRulesOp for Fill<T> {
+impl Op for Fill {
+    fn name(&self) -> Cow<str> {
+        "tf.Fill".into()
+    }
+}
+
+
+
+impl StatelessOp for Fill {
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        dispatch_copy!(Self::eval_t(self.dt)(self, inputs))
+    }
+}
+
+impl InferenceRulesOp for Fill {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -44,7 +47,8 @@ impl<T: Copy + Datum> InferenceRulesOp for Fill<T> {
     ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, T::datum_type())?;
+        s.equals(&outputs[0].datum_type, self.dt)?;
+        s.equals(&inputs[1].datum_type, self.dt)?;
         s.equals(&inputs[0].rank, 1)?;
         s.equals(&inputs[1].rank, 0)?;
         s.equals(outputs[0].rank.bex().to_dim(), &inputs[0].shape[0])?;

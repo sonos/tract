@@ -1,0 +1,92 @@
+diff --git a/native_client/deepspeech.cc b/native_client/deepspeech.cc
+index d9c9e1d..851ef16 100644
+--- a/native_client/deepspeech.cc
++++ b/native_client/deepspeech.cc
+@@ -286,6 +286,11 @@ StreamingState::processAudioWindow(const vector<float>& buf)
+                           LOWFREQ, SAMPLE_RATE/2, 0.f, CEP_LIFTER, 1, hamming_window.data(),
+                           &mfcc);
+   assert(n_frames == 1);
++  std::cout << "FEAT ";
++  for(int i = 0; i < model->mfcc_feats_per_timestep; i++) {
++      std::cout << mfcc_buffer[i] << " ";
++  }
++  std::cout << std::endl;
+ 
+   pushMfccBuffer(mfcc, n_frames * MFCC_FEATURES);
+   free(mfcc);
+@@ -309,6 +314,12 @@ StreamingState::pushMfccBuffer(const float* buf, unsigned int len)
+     assert(mfcc_buffer.size() <= model->mfcc_feats_per_timestep);
+ 
+     if (mfcc_buffer.size() == model->mfcc_feats_per_timestep) {
++      std::cout << "WIN ";
++      for(int i = 0; i < model->mfcc_feats_per_timestep; i++) {
++          std::cout << mfcc_buffer[i] << " ";
++      }
++      std::cout << std::endl;
++
+       processMfccWindow(mfcc_buffer);
+       // Shift data by one step of one mfcc feature vector
+       std::rotate(mfcc_buffer.begin(), mfcc_buffer.begin() + MFCC_FEATURES, mfcc_buffer.end());
+@@ -338,6 +349,11 @@ StreamingState::processMfccWindow(const vector<float>& buf)
+ void
+ StreamingState::processBatch(const vector<float>& buf, unsigned int n_steps)
+ {
++  std::cout << "BATCH ";
++  for(int i = 0; i < batch_buffer.size() ; i++) {
++      std::cout << batch_buffer[i] << " ";
++  }
++  std::cout << std::endl;
+   model->infer(buf.data(), n_steps, accumulated_logits);
+ }
+ 
+@@ -358,13 +374,21 @@ ModelState::infer(const float* aMfcc, unsigned int n_frames, vector<float>& logi
+     input_mapped(i) = 0;
+   }
+ 
++  std::cout << "INPUT_NODE: " << input.shape() << " ";
++  for(int i = 0; i < input_mapped.size() ; i++) {
++      std::cout << input_mapped(i) << " ";
++  }
++  std::cout << std::endl;
++
+   Tensor input_lengths(DT_INT32, TensorShape({1}));
+   input_lengths.scalar<int>()() = n_frames;
+ 
++  std::cout << "INPUT_LENGTH: " << n_frames << std::endl;
++
+   vector<Tensor> outputs;
+   Status status = session->Run(
+     {{"input_node", input}, {"input_lengths", input_lengths}},
+-    {"logits"}, {}, &outputs);
++    {"logits", "lstm_fused_cell/BlockLSTM:1", "lstm_fused_cell/BlockLSTM:6"}, {}, &outputs);
+ 
+   if (!status.ok()) {
+     std::cerr << "Error running session: " << status << "\n";
+@@ -376,6 +400,27 @@ ModelState::infer(const float* aMfcc, unsigned int n_frames, vector<float>& logi
+   for (int t = 0; t < n_frames * BATCH_SIZE * num_classes; ++t) {
+     logits_output.push_back(logits_mapped(t));
+   }
++  std::cout << "LOGITS: " << outputs[0].shape() << " ";
++  for(int i = 0; i < logits_mapped.size() ; i++) {
++      std::cout << logits_mapped(i) << " ";
++  }
++  std::cout << std::endl;
++
++  auto cs_mapped = outputs[1].flat<float>();
++  std::cout << "CS: " << outputs[1].shape() << " ";
++  for(int i = 0; i < cs_mapped.size() ; i++) {
++      std::cout << cs_mapped(i) << " ";
++  }
++  std::cout << std::endl;
++
++  auto h_mapped = outputs[2].flat<float>();
++  std::cout << "H: " << outputs[2].shape() << " ";
++  for(int i = 0; i < h_mapped.size() ; i++) {
++      std::cout << h_mapped(i) << " ";
++  }
++  std::cout << std::endl;
++
++
+ #else // USE_TFLITE
+   // Feeding input_node
+   float* input_node = interpreter->typed_tensor<float>(input_node_idx);

@@ -1,33 +1,29 @@
-#![allow(unused_imports)]
-
 use ansi_term::Color::*;
 
 use log::Level::Info;
 use tract_core::model::OutletId;
 use tract_core::plan::{SimplePlan, SimpleState};
-use tract_core::{SharedTensor, Tensor, TensorFact};
+use tract_core::{SharedTensor, TensorFact};
 
 use crate::display_graph::DisplayOptions;
-use crate::errors::*;
-use crate::format::*;
 use crate::utils::*;
-use crate::Parameters;
+use crate::*;
 
-/// Handles the `compare` subcommand.
-#[cfg(not(feature = "conform"))]
-pub fn handle(_params: Parameters, _: DisplayOptions) -> CliResult<()> {
-    bail!("Comparison requires the `tensorflow` feature.")
+pub fn handle(mut params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
+    let tf = params.tf_model.take().unwrap();
+    match &params.tract_model {
+        SomeModel::Inference(m) => handle_t(m, tf, &params, output_params),
+        SomeModel::Typed(m) => handle_t(m, tf, &params, output_params),
+        SomeModel::Normalized(m) => handle_t(m, tf, &params, output_params),
+        SomeModel::Pulsed(_, m) => handle_t(m, tf, &params, output_params),
+   }
 }
 
-#[cfg(feature = "conform")]
-pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
-    use format::Row;
-
-    let tract = params.tract_model;
-    let tf = params.tf_model;
+pub fn handle_t<TI: TensorInfo>(tract: &Model<TI>, mut tf: tract_tensorflow::conform::tf::Tensorflow,  params: &Parameters, output_params: DisplayOptions) -> CliResult<()> {
+    use crate::format::Row;
 
     // First generate random values for the inputs.
-    let generated = ::tensor::make_inputs(&[tract.input_fact()?.clone()])?;
+    let generated = crate::tensor::make_inputs(&[tract.input_fact()?.to_tensor_fact()])?;
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
@@ -47,17 +43,17 @@ pub fn handle(params: Parameters, output_params: DisplayOptions) -> CliResult<()
         .filter(|&n| !tract.inputs().unwrap().contains(&OutletId::new(*n, 0)))
         .map(|&n| &*nodes[n].name)
         .collect();
-    let mut tf_outputs = tf.unwrap().run_get_many(pairs, wanted_outputs)?;
+    let mut tf_outputs = tf.run_get_many(pairs, wanted_outputs)?;
 
     // Execute the model step-by-step on tract.
-    let plan = SimplePlan::new(&tract)?;
+    let plan = SimplePlan::new(tract)?;
     let mut state = SimpleState::new(plan)?;
     for (ix, input) in generated.clone().into_iter().enumerate() {
         state.set_input(ix, input)?;
     }
 
     let mut display_graph =
-        ::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?
+        crate::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?
             .with_graph_def(&params.graph)?;
 
     let mut failing = vec![];

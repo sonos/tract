@@ -1,0 +1,14 @@
+[package]
+name = "lstm_test"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+edition = "2018"
+
+[workspace]
+members = []
+
+[dependencies]
+proptest = "0.8"
+tract-core = { path = "../../core" }
+tract-tensorflow = { path = "../../tensorflow" }
+tract-onnx = { path = "../../onnx" }

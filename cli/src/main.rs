@@ -39,6 +39,7 @@ use tract_tensorflow::tfpb;
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
 
+#[cfg(feature = "conform")]
 mod compare;
 mod display_graph;
 mod draw;
@@ -74,19 +75,21 @@ fn main() {
         (@arg format: +takes_value
             "Hint the model format ('onnx' or 'tf') instead of guess from extension.")
 
-        (@arg input: -i --input +takes_value
+        (@arg input: -i --input +takes_value +multiple number_of_values(1)
             "Set input value (@file or 3x4xi32)")
 
         (@arg stream_axis: -s --("stream-axis") +takes_value
             "Set Axis number to stream upon (first is 0)")
 
-        (@arg input_node: --("input-node") +takes_value
+        (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
             "Override input nodes names (auto-detects otherwise).")
 
         (@arg output_node: --("output-node") +takes_value
             "Override output nodes name (auto-detects otherwise).")
 
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
+        (@arg skip_type: --("skip-type") "Analyse as much as possible, but do not enforce full typing")
+
         (@arg declutter: --declutter "Declutter model after load")
         (@arg optimize: -O --optimize "Optimize after model load")
         (@arg pulse: --pulse +takes_value "Translate to pulse network")
@@ -304,6 +307,7 @@ impl Parameters {
 
         #[cfg(feature = "conform")]
         let tf_model = if format == "tf" {
+            info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
             Some(tract_tensorflow::conform::tf::for_path(&name)?)
         } else {
             None
@@ -326,6 +330,7 @@ impl Parameters {
             let mut vs = vec![];
             for (ix, v) in inputs.enumerate() {
                 let t = tensor::for_string(v)?;
+                /*
                 // obliterate value in input (the analyser/optimizer would fold
                 // the graph)
                 let mut fact = TensorFact { value: Default::default(), ..t };
@@ -346,9 +351,10 @@ impl Parameters {
                     );
                     fact.shape = shape;
                 }
-                vs.push(t.value.concretize());
+                */
                 let outlet = raw_model.inputs()?[ix];
-                raw_model.set_fact(outlet, fact)?;
+                vs.push(t.value.concretize());
+                raw_model.set_fact(outlet, t)?;
             }
             Some(vs)
         } else {
@@ -357,9 +363,19 @@ impl Parameters {
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
 
+//        println!("{:?}", raw_model);
+
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
-            SomeModel::Typed(raw_model.into_typed()?)
+            if let Err(e) = raw_model.analyse(true) {
+                // do not stop on mere analyse error
+                error!("{}", e);
+            }
+            if matches.is_present("skip_type") {
+                SomeModel::Inference(raw_model)
+            } else {
+                SomeModel::Typed(raw_model.into_typed()?)
+            }
         } else {
             info!("Skipping analyse");
             SomeModel::Inference(raw_model)
@@ -485,7 +501,11 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     let mut params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
+
+        #[cfg(feature = "conform")]
         ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
+        #[cfg(not(feature = "conform"))]
+        ("compare", _) => bail!("Need conform feature to be able to run comparison"),
 
         ("run", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);
@@ -500,7 +520,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
 
-        ("draw", _) => crate::draw::render(&params.tract_model),
+        ("draw", Some(m)) => crate::draw::render(&params.tract_model, display_options_from_clap(m)?),
 
         ("dump", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);

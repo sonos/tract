@@ -22,6 +22,10 @@ pub struct Tensorflow {
     graph: Graph,
 }
 
+pub fn version() -> String {
+    tf::version().unwrap()
+}
+
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
     use std::io::Read;
     let mut model = vec![];

@@ -69,19 +69,25 @@ pub trait OpState: Debug + Send + objekt::Clone {
     ) -> TractResult<TVec<SharedTensor>>;
 }
 
-pub trait StatelessOp {
+pub trait StatelessOp: Op {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
 }
 
 pub trait StatefullOp {
-    fn state(&self) -> TractResult<Option<Box<OpState>>>;
+    fn state(
+        &self,
+        _session: &mut SessionState,
+    ) -> TractResult<Option<Box<OpState>>>;
     fn as_stateless(&self) -> Option<&StatelessOp> {
         None
     }
 }
 
 impl<O: StatelessOp + Clone> StatefullOp for O {
-    fn state(&self) -> TractResult<Option<Box<OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+    ) -> TractResult<Option<Box<OpState>>> {
         Ok(None)
     }
 
@@ -117,11 +123,12 @@ pub trait Op:
                     .iter()
                     .map(|i| i.value.concretize().unwrap().clone().into())
                     .collect(); // checked
-                trace!("Fully determined inputs: running eval");
-                let output_value = stateless.eval(input_values)?.pop().unwrap();
-                // FIXME: return all output values. Assert consistency with Facts.
-                trace!("Eval returned {:?}", output_value);
-                return Ok((infered_inputs, tvec![output_value.into(),]));
+                let output_values = stateless
+                    .eval(input_values)?
+                    .into_iter()
+                    .map(|t| t.into())
+                    .collect::<TVec<_>>();
+                return Ok((infered_inputs, output_values));
             }
         }
 
@@ -176,6 +183,7 @@ pub trait InferenceOp {
 }
 
 clone_trait_object!(Op);
+clone_trait_object!(StatelessOp);
 
 impl<O: Op> From<O> for Box<Op> {
     fn from(it: O) -> Box<Op> {

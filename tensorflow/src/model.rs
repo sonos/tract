@@ -38,7 +38,7 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
     }
 
     fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
-        let mut model = InferenceModel::default(); //.with_norm_optims(Some(crate::optim::normalization()));
+        let mut model = InferenceModel::default();
         // compute min output arity for all nodes
         let mut arities = HashMap::new();
         for pbnode in graph.get_node().iter() {
@@ -50,7 +50,9 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
         }
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
-            let facts = tvec!(TensorFact::default(); arities.get(&*name).cloned().unwrap_or(1));
+            // variable -> assign rewire
+            let output_arity = arities.get(&*name).cloned().unwrap_or(1);
+            let facts = tvec!(TensorFact::default(); output_arity);
             let node_id = model.add_node(
                 name.clone(),
                 self
@@ -65,6 +67,31 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
                 let outlet = OutletId::new(prec, input.1);
                 let inlet = InletId::new(node_id, ix);
                 model.add_edge(outlet, inlet)?;
+            }
+        }
+
+        // variable -> assign rewire
+        // in protobuf:
+        //  * VariableV2 has a single output (a byref tensor)
+        //  * Assign consumes this by_ref tensor on #0 and somehow performs
+        //      updates on it (it has a second input on #1 for the value to
+        //      assign)
+        //
+        // in tract:
+        //  * VariableV2 has two outputs: first is the value, second is an
+        //      opaque ptr to be used by Assign (pointing to the state)
+        //  * Assign will plug a third input (#2) into the VariableV2
+        //      output #1 to access the opaque ptr
+        for id in 0..model.nodes().len() {
+            use crate::ops::vars::*;
+            if  model.node(id).op_is::<Assign>() {
+                let prec = model.node(id).inputs[0];
+                let var_id = model.node(prec.node).op_as::<VariableV2>().map(|v| v.id.clone());
+                if let (Some(var_id), Some(assign)) = (var_id,  model.node_mut(id).op_as_mut::<Assign>()) {
+                     assign.var_id = Some(var_id);
+                } else {
+                    bail!("Model contains unlinked Assign/Variable2");
+                }
             }
         }
         Ok(model)

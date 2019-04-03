@@ -7,6 +7,7 @@ mod array;
 mod logic;
 mod math;
 mod nn;
+pub mod rec;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast);
@@ -18,8 +19,8 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
     array::register_all_ops(reg);
+    rec::register_all_ops(reg);
 }
-
 
 fn konst(node: &NodeProto) -> TractResult<Box<Op>> {
     let v = node.get_attr("value")?;

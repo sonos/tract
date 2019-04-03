@@ -29,6 +29,8 @@ test_operator_reduced_mean
 test_operator_reduced_mean_keepdim
 test_operator_reduced_sum
 test_operator_reduced_sum_keepdim
+test_operator_repeat
+test_operator_repeat_dim_overflow
 test_operator_selu
 test_operator_sqrt
 test_operator_symbolic_override_nested

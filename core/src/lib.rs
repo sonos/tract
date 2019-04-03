@@ -57,7 +57,7 @@ extern crate derive_new;
 #[macro_use]
 extern crate downcast_rs;
 #[macro_use]
-extern crate error_chain;
+pub extern crate error_chain;
 #[cfg(feature = "image_ops")]
 extern crate image;
 extern crate insideout;
@@ -121,9 +121,11 @@ pub use crate::model::{InferenceModel, InferenceNode};
 pub use crate::plan::{SimplePlan, SimpleState};
 pub use crate::tensor::{SharedTensor, Tensor};
 
+/*
 #[cfg(test)]
 #[allow(dead_code)]
-fn setup_test_logger() {
+*/
+pub fn setup_test_logger() {
     let _ = env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Trace)
         .try_init();

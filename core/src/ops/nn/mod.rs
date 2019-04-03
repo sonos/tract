@@ -10,8 +10,8 @@ mod maxpool;
 mod padding;
 mod patches;
 mod reduce;
-mod sigmoid;
-mod tanh;
+pub mod sigmoid;
+pub mod tanh;
 
 pub use self::arg_max_min::ArgMaxMin;
 pub use self::avgpool::AvgPool;

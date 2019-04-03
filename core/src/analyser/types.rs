@@ -67,17 +67,11 @@ impl TensorFact {
     }
 
     pub fn with_datum_type(self, dt: DatumType) -> TensorFact {
-        TensorFact {
-            datum_type: dt.into(),
-            ..self
-        }
+        TensorFact { datum_type: dt.into(), ..self }
     }
 
     pub fn with_shape<S: Into<ShapeFact>>(self, shape: S) -> TensorFact {
-        TensorFact {
-            shape: shape.into(),
-            ..self
-        }
+        TensorFact { shape: shape.into(), ..self }
     }
 
     pub fn with_streaming_shape<S: IntoIterator<Item = Option<usize>>>(
@@ -94,6 +88,21 @@ impl TensorFact {
 
     pub fn stream_info(&self) -> TractResult<Option<StreamInfo>> {
         self.shape.stream_info()
+    }
+
+    pub fn format_dt_shape(&self) -> String {
+        if !self.shape.open && self.shape.dims.len() == 0 {
+            format!(
+                "{}",
+                self.datum_type.concretize().map(|dt| format!("{:?}", dt)).unwrap_or("___".to_string())
+            )
+        } else {
+            format!(
+                "{:?}x{}",
+                self.shape,
+                self.datum_type.concretize().map(|dt| format!("{:?}", dt)).unwrap_or("___".to_string())
+            )
+        }
     }
 }
 
@@ -133,14 +142,9 @@ impl<V: Into<SharedTensor>> From<V> for TensorFact {
 impl fmt::Debug for TensorFact {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         if let Some(t) = self.value.concretize() {
-            write!(formatter, "Fully determined tensor: {:?}", t)
+            write!(formatter, "{:?}", t)
         } else {
-            write!(formatter, "Tensor")?;
-            if let Some(t) = self.datum_type.concretize() {
-                write!(formatter, ", {:?}", t)?;
-            }
-            write!(formatter, ", shape={:?}", self.shape)?;
-            Ok(())
+            write!(formatter, "{}", self.format_dt_shape())
         }
     }
 }
@@ -228,10 +232,7 @@ impl ShapeFact {
             .enumerate()
             .find(|(_ix, d)| d.concretize().map(|d| d.is_stream()).unwrap_or(false))
         {
-            let stream = Some(StreamInfo {
-                axis: ix,
-                len: d.concretize().unwrap(),
-            });
+            let stream = Some(StreamInfo { axis: ix, len: d.concretize().unwrap() });
             ShapeFact {
                 open: true,
                 dims: dims
@@ -265,19 +266,11 @@ impl ShapeFact {
 
     /// Constructs a closed shape fact.
     pub fn closed(dims: TVec<DimFact>) -> ShapeFact {
-        ShapeFact {
-            open: false,
-            ..Self::open(dims)
-        }
+        ShapeFact { open: false, ..Self::open(dims) }
     }
 
     pub fn rank(&self) -> IntFact {
-        if self.open {
-            GenericFact::Any
-        } else {
-            GenericFact::Only(self.dims.len() as i32)
-        }
-        .into()
+        if self.open { GenericFact::Any } else { GenericFact::Only(self.dims.len() as i32) }.into()
     }
 
     pub fn dims(&self) -> impl Iterator<Item = DimFact> {
@@ -311,12 +304,7 @@ impl ShapeFact {
         if !self.is_concrete() || self.stream_info()?.is_some() {
             return Ok(None);
         }
-        Ok(Some(
-            self.dims
-                .iter()
-                .map(|i| i.concretize().unwrap() as usize)
-                .collect(),
-        ))
+        Ok(Some(self.dims.iter().map(|i| i.concretize().unwrap() as usize).collect()))
     }
 }
 
@@ -326,14 +314,12 @@ impl Fact for ShapeFact {
     /// Tries to transform the fact into a `Vec<usize>`, or returns `None`.
     fn concretize(self: &ShapeFact) -> Option<TVec<TDim>> {
         if self.open {
-            debug!("Impossible to concretize an open shape.");
             return None;
         }
 
         let dims: TVec<_> = self.dims().filter_map(|d| d.concretize()).collect();
 
         if dims.len() < self.dims.len() {
-            debug!("Impossible to concretize a shape with unknown dimensions.");
             None
         } else {
             Some(dims)
@@ -391,64 +377,21 @@ impl FromIterator<TDim> for ShapeFact {
 impl FromIterator<usize> for ShapeFact {
     /// Converts an iterator over usize into a closed shape.
     fn from_iter<I: IntoIterator<Item = usize>>(iter: I) -> ShapeFact {
-        ShapeFact::closed(
-            iter.into_iter()
-                .map(|d| GenericFact::Only(d.to_dim()))
-                .collect(),
-        )
+        ShapeFact::closed(iter.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
     }
 }
 
 impl<D: ToDim, I: IntoIterator<Item = D>> From<I> for ShapeFact {
     fn from(it: I) -> ShapeFact {
-        ShapeFact::closed(
-            it.into_iter()
-                .map(|d| GenericFact::Only(d.to_dim()))
-                .collect(),
-        )
+        ShapeFact::closed(it.into_iter().map(|d| GenericFact::Only(d.to_dim())).collect())
     }
 }
-
-/*
-impl<'a> From<&'a [usize]> for ShapeFact {
-    /// Converts an usize slice into a closed shape.
-    fn from(slice: &'a [usize]) -> ShapeFact {
-        slice.into_iter().map(|i| TDim::from(*i)).collect()
-    }
-}
-
-impl From<Option<Vec<usize>>> for ShapeFact {
-    /// Converts an vector of usize into a closed shape.
-    fn from(shape: Option<Vec<usize>>) -> ShapeFact {
-        shape
-            .map(|s| ShapeFact::from(s))
-            .unwrap_or(ShapeFact::default())
-    }
-}
-*/
-
-/*
-impl From<Vec<usize>> for ShapeFact {
-    /// Converts an vector of usize into a closed shape.
-    fn from(shape: Vec<usize>) -> ShapeFact {
-        shape.into_iter().map(|i| TDim::from(i)).collect()
-    }
-}
-
-impl From<Vec<TDim>> for ShapeFact {
-    /// Converts an vector of usize into a closed shape.
-    fn from(shape: Vec<TDim>) -> ShapeFact {
-        shape.into_iter().collect()
-    }
-}
-*/
 
 impl fmt::Debug for ShapeFact {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "[")?;
         for (ix, d) in self.dims.iter().enumerate() {
             if ix != 0 {
-                write!(formatter, ",")?
+                write!(formatter, "x")?
             }
             if let Some(stream) = self.stream {
                 if stream.axis == ix {
@@ -461,10 +404,13 @@ impl fmt::Debug for ShapeFact {
             }
         }
         if self.open {
-            write!(formatter, "..")
-        } else {
-            write!(formatter, "]")
+            if self.dims.len() == 0 {
+                write!(formatter, "..")?;
+            } else {
+                write!(formatter, "x..")?;
+            }
         }
+        Ok(())
     }
 }
 

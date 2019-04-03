@@ -1,4 +1,4 @@
-element_map!(Sigmoid, [f32], sigmoid);
+element_map!(Sigmoid, [f32], sigmoid_f32);
 
 const LOW: f32 = -18.0;
 const HIGH: f32 = 18.0;
@@ -14,7 +14,7 @@ const BETA_4: f32 = 1.70198817374094e-03;
 const BETA_2: f32 = 1.16817656904453e-01;
 const BETA_0: f32 = 9.93151921023180e-01;
 
-fn sigmoid(x: f32) -> f32 {
+pub fn sigmoid_f32(x: f32) -> f32 {
     if x <= LOW {
         return 0.0;
     }

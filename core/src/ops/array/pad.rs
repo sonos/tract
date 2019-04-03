@@ -99,7 +99,11 @@ impl Op for Pad {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let input_fact = target.fact(input)?.clone();
-        if !self.pads.iter().enumerate().all(|(ax, &(a, b))| ax == input_fact.axis || (a == 0 && b == 0))
+        if !self
+            .pads
+            .iter()
+            .enumerate()
+            .all(|(ax, &(a, b))| ax == input_fact.axis || (a == 0 && b == 0))
         {
             bail!("Pad pulse only implemented for streaming dim");
         }
@@ -110,7 +114,12 @@ impl Op for Pad {
             if fact.delay < before {
                 let buffer_op = Delay::new(fact.clone(), before - fact.delay, 0);
                 fact.delay = before;
-                let id = target.chain_after(input, format!("{}/Delay", node.name), buffer_op, tvec!(fact.clone()))?;
+                let id = target.chain_after(
+                    input,
+                    format!("{}/Delay", node.name),
+                    buffer_op,
+                    tvec!(fact.clone()),
+                )?;
                 prec = OutletId::new(id, 0);
             }
             fact.dim += (before + after).to_dim();
@@ -124,7 +133,7 @@ impl Op for Pad {
             );
             let id = target.chain_after(prec, &*node.name, op, tvec!(fact))?;
 
-            Ok(tvec!(OutletId::new(id,0)))
+            Ok(tvec!(OutletId::new(id, 0)))
         } else {
             bail!("Pad pulse only implemented for constant");
         }
@@ -187,12 +196,14 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
         }
         let mut data = input.to_tensor().into_array::<T>()?;
         if current_pos < op.begin_input {
-            data.slice_axis_mut(Axis(op.axis), (0..op.begin_input - current_pos).into()).fill(op.constant);
+            data.slice_axis_mut(Axis(op.axis), (0..op.begin_input - current_pos).into())
+                .fill(op.constant);
         }
         if let Some(s) = session.known_stream_len {
             let end_input = op.end_input.eval(s as i32).unwrap() as usize;
             if current_pos + op.pulse > end_input {
-                data.slice_axis_mut(Axis(op.axis), (end_input - current_pos..op.pulse).into()).fill(op.constant);
+                data.slice_axis_mut(Axis(op.axis), (end_input - current_pos..op.pulse).into())
+                    .fill(op.constant);
             }
         }
         Ok(tvec!(data.into()))
@@ -215,7 +226,10 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
-    fn state(&self) -> TractResult<Option<Box<OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+    ) -> TractResult<Option<Box<OpState>>> {
         Ok(Some(Box::new(PulsePadOpState::<T>::default())))
     }
 }

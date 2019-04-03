@@ -65,7 +65,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                 .options
                 .successors
                 .as_ref()
-                .map(|id| !node.inputs.iter().any(|i| i.slot == *id))
+                .map(|id| !node.inputs.iter().any(|i| i.node == *id))
                 .unwrap_or(false)
             {
                 continue;

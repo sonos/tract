@@ -4,6 +4,8 @@ use tract_core::ops::prelude::*;
 use crate::tfpb::node_def::NodeDef;
 use crate::model::TfOpRegister;
 
+mod max;
+
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Abs", with_T!(tractops::math::Abs));
     reg.insert("Add", with_T!(tractops::math::Add::Bin));
@@ -13,6 +15,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Div", with_T!(tractops::math::Div::Bin));
     reg.insert("FloorMod", with_T!(tractops::math::Rem::Bin));
     reg.insert("MatMul", mat_mul);
+    reg.insert("Max", max::max);
     reg.insert("Maximum", with_T!(tractops::math::Max::Bin));
     reg.insert("Minimum", with_T!(tractops::math::Min::Bin));
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
