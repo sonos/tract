@@ -21,11 +21,7 @@ impl StatelessOp for MultiBroadcastTo {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, dims) = args_2!(inputs);
-        let dims: Vec<usize> = dims
-            .to_array_view::<i64>()?
-            .iter()
-            .map(|i| *i as usize)
-            .collect();
+        let dims: Vec<usize> = dims.to_array_view::<i64>()?.iter().map(|i| *i as usize).collect();
         let dims = crate::broadcast::multi_broadcast(&[&*dims, &*input.shape()])
             .ok_or("incompatible shapes")?;
         dispatch_datum!(Self::eval_t(input.datum_type())(input.as_tensor(), &*dims))
@@ -46,12 +42,8 @@ impl InferenceRulesOp for MultiBroadcastTo {
         s.equals(&inputs[1].rank, 1)?;
         s.given(&inputs[0].shape, move |s, shape| {
             s.given(&inputs[1].value, move |s, dims| {
-                let dims: Vec<TDim> = dims
-                    .to_array_view::<i64>()
-                    .unwrap()
-                    .iter()
-                    .map(|i| TDim::from(*i))
-                    .collect();
+                let dims: Vec<TDim> =
+                    dims.to_array_view::<i64>().unwrap().iter().map(|i| TDim::from(*i)).collect();
                 let dims = crate::broadcast::multi_broadcast(&[&*dims, &*shape])
                     .ok_or("incompatible shapes")
                     .unwrap();

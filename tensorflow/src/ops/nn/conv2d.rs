@@ -1,5 +1,5 @@
-use tract_core::ops::prelude::*;
 use tract_core::ops::nn::*;
+use tract_core::ops::prelude::*;
 
 pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let data_format = super::data_format(pb)?;
@@ -91,10 +91,7 @@ mod tests {
             mk(&[1, 2, 3, 3]),
             1,
             PaddingSpec::Valid,
-            &[
-                231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0, 936.0,
-                1029.0,
-            ],
+            &[231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0, 936.0, 1029.0],
         )
     }
 
@@ -105,9 +102,7 @@ mod tests {
             mk(&[2, 1, 3, 3]),
             1,
             PaddingSpec::Valid,
-            &[
-                465.0, 504.0, 543.0, 618.0, 675.0, 732.0, 771.0, 846.0, 921.0,
-            ],
+            &[465.0, 504.0, 543.0, 618.0, 675.0, 732.0, 771.0, 846.0, 921.0],
         );
     }
 
@@ -153,12 +148,7 @@ mod tests {
         let filter: SharedTensor = arr4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]).into();
         let exp: SharedTensor = arr4(&[[[[1f32]]]]).into();
 
-        let result = conv
-            .as_stateless()
-            .unwrap()
-            .eval(tvec![data, filter])
-            .unwrap()
-            .remove(0);
+        let result = conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap().remove(0);
         assert_eq!(exp, result);
     }
 
@@ -167,18 +157,11 @@ mod tests {
         let conv = make_conv(1, 1, PaddingSpec::SameUpper);
         let data: SharedTensor =
             arr4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]).into();
-        let filter: SharedTensor = arr4(&[
-            [[[160.72833f32]], [[107.84076]]],
-            [[[247.50552]], [[-38.738464]]],
-        ])
-        .into();
+        let filter: SharedTensor =
+            arr4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]).into();
         let exp: SharedTensor =
             arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
-        let got = &conv
-            .as_stateless()
-            .unwrap()
-            .eval(tvec![data, filter])
-            .unwrap()[0];
+        let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
         println!("{:?}", got);
         println!("{:?}", exp);
         assert!(exp.close_enough(&got, true));
@@ -195,10 +178,7 @@ mod tests {
 
         assert_eq!(
             output_facts,
-            tvec![TensorFact::dt_shape(
-                DatumType::F32,
-                shapefact!(1, 1, (7 - 3 + 1), 1)
-            )]
+            tvec![TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, (7 - 3 + 1), 1))]
         );
     }
 

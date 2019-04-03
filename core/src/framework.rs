@@ -1,9 +1,9 @@
-use std::io::Read;
-use std::fmt::Debug;
-use std::path::Path;
-use crate::ops::prelude::*;
 use crate::model::InferenceModel;
+use crate::ops::prelude::*;
 use crate::ops::unimpl::UnimplementedOp;
+use std::fmt::Debug;
+use std::io::Read;
+use std::path::Path;
 
 pub type OpBuilder<ProtoOp> = fn(&ProtoOp) -> TractResult<Box<Op>>;
 
@@ -17,7 +17,7 @@ impl<ProtoOp> OpRegister<ProtoOp> {
     pub fn insert(&mut self, name: impl AsRef<str>, b: OpBuilder<ProtoOp>) {
         self.0.insert(name.as_ref().to_string(), b);
     }
-    pub fn names(&self) -> impl Iterator<Item=&str> {
+    pub fn names(&self) -> impl Iterator<Item = &str> {
         self.0.keys().map(|s| &**s)
     }
 }
@@ -45,11 +45,7 @@ pub trait Framework<ProtoOp: Debug, ProtoModel: Debug> {
     fn build_op(&self, name: &str, payload: &ProtoOp) -> TractResult<Box<Op>> {
         match self.op_builder_for_name(name) {
             Some(builder) => builder(payload),
-            None => Ok(Box::new(UnimplementedOp::new(
-                name,
-                format!("{:?}", payload),
-            ))),
+            None => Ok(Box::new(UnimplementedOp::new(name, format!("{:?}", payload)))),
         }
     }
 }
-

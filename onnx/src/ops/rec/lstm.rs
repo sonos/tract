@@ -120,13 +120,15 @@ impl OpState for LSTMState {
         let r = r.index_axis_move(Axis(0), 0);
 
         if self.h_c.is_none() {
-            let h = op.initial_h.clone().unwrap_or_else(||
-                Array2::<f32>::zeros((batch_size, hidden_size)).into(),
-            );
-            let c = op.initial_c.clone().unwrap_or_else(||
-                Array2::<f32>::zeros((batch_size, hidden_size)).into(),
-            );
-            self.h_c = Some((h,c))
+            let h = op
+                .initial_h
+                .clone()
+                .unwrap_or_else(|| Array2::<f32>::zeros((batch_size, hidden_size)).into());
+            let c = op
+                .initial_c
+                .clone()
+                .unwrap_or_else(|| Array2::<f32>::zeros((batch_size, hidden_size)).into());
+            self.h_c = Some((h, c))
         }
         let (ht, ct) = self.h_c.as_mut().unwrap();
         let mut ht: ArrayViewMut2<f32> = ht.to_array_view_mut::<f32>()?.into_dimensionality()?;
@@ -146,21 +148,17 @@ impl OpState for LSTMState {
                 iofc += &bias.slice(s!(0, 0..4 * hidden_size));
                 iofc += &bias.slice(s!(0, 4 * hidden_size..8 * hidden_size));
             }
-          //  dbg!(&iofc);
+            //  dbg!(&iofc);
             let iofc = iofc.into_shape((batch_size, 4, hidden_size))?;
-           // dbg!(&iofc);
-            let i =
-                op.f.eval(tvec!(iofc.slice_axis(Axis(1), (0..=0).into()).to_owned().into()))?;
+            // dbg!(&iofc);
+            let i = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (0..=0).into()).to_owned().into()))?;
             // dbg!(&i);
-            let o =
-                op.f.eval(tvec!(iofc.slice_axis(Axis(1), (1..=1).into()).to_owned().into()))?;
-            let f =
-                op.f.eval(tvec!(iofc.slice_axis(Axis(1), (2..=2).into()).to_owned().into()))?;
-           // dbg!(&iofc.slice_axis(Axis(1), (3..=3).into()));
+            let o = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (1..=1).into()).to_owned().into()))?;
+            let f = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (2..=2).into()).to_owned().into()))?;
+            // dbg!(&iofc.slice_axis(Axis(1), (3..=3).into()));
 
-            let c =
-                op.g.eval(tvec!(iofc.slice_axis(Axis(1), (3..=3).into()).to_owned().into()))?;
-           // dbg!(&c);
+            let c = op.g.eval(tvec!(iofc.slice_axis(Axis(1), (3..=3).into()).to_owned().into()))?;
+            // dbg!(&c);
             let i = i[0]
                 .to_array_view::<f32>()?
                 .to_owned()
@@ -185,12 +183,12 @@ impl OpState for LSTMState {
                 .to_owned()
                 .into_dimensionality::<Ix3>()?
                 .into_shape((batch_size, hidden_size))?;
-/*
-            dbg!(&f);
-            dbg!(&ct);
-            dbg!(&i);
-            dbg!(&c);
-*/
+            /*
+                        dbg!(&f);
+                        dbg!(&ct);
+                        dbg!(&i);
+                        dbg!(&c);
+            */
             let big_c = f * &ct + i * c;
             // dbg!(&big_c);
             let big_h = o * op.h.eval(tvec!(big_c.clone().into()))?[0]

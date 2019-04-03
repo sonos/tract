@@ -363,7 +363,7 @@ impl Parameters {
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
 
-//        println!("{:?}", raw_model);
+        //        println!("{:?}", raw_model);
 
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
@@ -390,8 +390,7 @@ impl Parameters {
             }
         }
 
-        if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model)
-        {
+        if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model) {
             info!("Convert to normalized net");
             let normalized = model.clone().into_normalized()?;
             info!("Pulsify {}", pulse);
@@ -501,7 +500,6 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
     let mut params = Parameters::from_clap(&matches)?;
 
     match matches.subcommand() {
-
         #[cfg(feature = "conform")]
         ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
         #[cfg(not(feature = "conform"))]
@@ -517,10 +515,11 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             optimize_check::handle(params, display_options_from_clap(m)?)
         }
         */
-
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
 
-        ("draw", Some(m)) => crate::draw::render(&params.tract_model, display_options_from_clap(m)?),
+        ("draw", Some(m)) => {
+            crate::draw::render(&params.tract_model, display_options_from_clap(m)?)
+        }
 
         ("dump", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);

@@ -1,27 +1,24 @@
 use std::alloc;
 use std::mem;
 
-pub unsafe fn alloc_bytes(size: usize, alignment:usize) -> *mut u8 {
-    alloc::alloc(
-        alloc::Layout::from_size_align(size, alignment).unwrap()
-    )
+pub unsafe fn alloc_bytes(size: usize, alignment: usize) -> *mut u8 {
+    alloc::alloc(alloc::Layout::from_size_align(size, alignment).unwrap())
 }
 
-pub unsafe fn vec_bytes(capacity: usize, alignment:usize) -> Vec<u8> {
+pub unsafe fn vec_bytes(capacity: usize, alignment: usize) -> Vec<u8> {
     let aligned_buffer = alloc_bytes(capacity, alignment);
     Vec::from_raw_parts(aligned_buffer as _, 0, capacity)
 }
 
-pub unsafe fn uninitialized_bytes(size: usize, alignment:usize) -> Vec<u8> {
+pub unsafe fn uninitialized_bytes(size: usize, alignment: usize) -> Vec<u8> {
     let aligned_buffer = alloc_bytes(size, alignment);
     Vec::from_raw_parts(aligned_buffer as _, size, size)
 }
 
-pub unsafe fn uninitialized<T>(size: usize, alignment_bytes:usize) -> Vec<T> {
+pub unsafe fn uninitialized<T>(size: usize, alignment_bytes: usize) -> Vec<T> {
     let aligned_buffer = alloc_bytes(size * mem::size_of::<T>(), alignment_bytes);
     Vec::from_raw_parts(aligned_buffer as _, size, size)
 }
-
 
 /*
 fn realign_slice_bytes(v: &[u8], alignment: usize) -> Vec<u8> {
@@ -42,7 +39,7 @@ fn realign_slice_bytes(v: &[u8], alignment: usize) -> Vec<u8> {
 }
 */
 
-pub fn realign_slice<T:Copy>(v: &[T], alignment: usize) -> Vec<T> {
+pub fn realign_slice<T: Copy>(v: &[T], alignment: usize) -> Vec<T> {
     if v.len() == 0 {
         return vec![];
     }
@@ -55,7 +52,7 @@ pub fn realign_slice<T:Copy>(v: &[T], alignment: usize) -> Vec<T> {
     }
 }
 
-pub fn realign_vec<T:Copy>(v: Vec<T>, alignment: usize) -> Vec<T> {
+pub fn realign_vec<T: Copy>(v: Vec<T>, alignment: usize) -> Vec<T> {
     if v.len() == 0 || v.as_ptr() as usize % alignment == 0 {
         return v;
     }

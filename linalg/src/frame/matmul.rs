@@ -70,12 +70,7 @@ where
     T: Copy + Add + Mul + Zero + Debug + Send + Sync,
 {
     pub fn new(m: usize, k: usize, n: usize) -> PackedMatMul<K, T> {
-        PackedMatMul {
-            m,
-            k,
-            n,
-            _kernel: PhantomData,
-        }
+        PackedMatMul { m, k, n, _kernel: PhantomData }
     }
 
     fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
@@ -285,11 +280,7 @@ where
             panels,
             panel_width,
             last_panel_width,
-            remain: if panels > 1 {
-                panel_width
-            } else {
-                last_panel_width
-            },
+            remain: if panels > 1 { panel_width } else { last_panel_width },
             current_panel: 0,
             next_panel: ((k - 1) * panel_width) as isize,
             next_lane: panel_width as isize
@@ -340,10 +331,11 @@ pub mod test {
                 )
             })
             .prop_map(|(k, a, b)| {
-                (k,
-                 align::realign_vec(a, MM::alignment_bytes_a()),
-                 align::realign_vec(b, MM::alignment_bytes_b()),
-                 )
+                (
+                    k,
+                    align::realign_vec(a, MM::alignment_bytes_a()),
+                    align::realign_vec(b, MM::alignment_bytes_b()),
+                )
             })
             .boxed()
     }
@@ -359,9 +351,8 @@ pub mod test {
         let mut expect = vec![0.0f32; MM::mr() * MM::nr()];
         for x in 0..MM::nr() {
             for y in 0..MM::mr() {
-                expect[x + y * MM::nr()] = (0..k)
-                    .map(|k| pa[k * MM::mr() + y] * pb[k * MM::nr() + x])
-                    .sum::<f32>();
+                expect[x + y * MM::nr()] =
+                    (0..k).map(|k| pa[k * MM::mr() + y] * pb[k * MM::nr() + x]).sum::<f32>();
             }
         }
         let mut found = vec![9999.0f32; expect.len()];

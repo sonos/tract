@@ -53,10 +53,7 @@ impl PartialEq for Stack {
 
 impl Stack {
     pub fn empty() -> Stack {
-        Stack {
-            len: 0,
-            array: unsafe { ::std::mem::uninitialized() },
-        }
+        Stack { len: 0, array: unsafe { ::std::mem::uninitialized() } }
     }
 
     pub fn sym(s: char) -> Stack {
@@ -151,9 +148,7 @@ impl Stack {
     }
 
     pub fn div_ceil(self, rhs: &Stack) -> Stack {
-        ExpNode::DivCeil(Box::new(self.to_tree()), Box::new(rhs.to_tree()))
-            .reduce()
-            .to_stack()
+        ExpNode::DivCeil(Box::new(self.to_tree()), Box::new(rhs.to_tree())).reduce().to_stack()
     }
 
     pub fn to_tree(&self) -> ExpNode {
@@ -199,9 +194,7 @@ where
             *lhs += *rhs;
             return;
         }
-        *self = ExpNode::Add(vec![self.to_tree(), rhs.to_tree()])
-            .reduce()
-            .to_stack()
+        *self = ExpNode::Add(vec![self.to_tree(), rhs.to_tree()]).reduce().to_stack()
     }
 }
 
@@ -242,9 +235,7 @@ where
     I: Into<Stack>,
 {
     fn mul_assign(&mut self, rhs: I) {
-        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.into().to_tree()])
-            .reduce()
-            .to_stack()
+        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.into().to_tree()]).reduce().to_stack()
     }
 }
 

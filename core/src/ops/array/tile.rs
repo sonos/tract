@@ -11,19 +11,11 @@ impl Tile {
         indices: &[usize],
     ) -> TractResult<SharedTensor> {
         let data = data.to_array_view::<T>()?;
-        let output_shape: TVec<usize> = data
-            .shape()
-            .iter()
-            .zip(indices.iter())
-            .map(|(&d, &m)| d * m as usize)
-            .collect();
+        let output_shape: TVec<usize> =
+            data.shape().iter().zip(indices.iter()).map(|(&d, &m)| d * m as usize).collect();
         let output = ndarray::ArrayD::from_shape_fn(&*output_shape, |coords| {
-            let coords: Vec<usize> = coords
-                .slice()
-                .iter()
-                .zip(data.shape().iter())
-                .map(|(&x, &d)| x % d)
-                .collect();
+            let coords: Vec<usize> =
+                coords.slice().iter().zip(data.shape().iter()).map(|(&x, &d)| x % d).collect();
             data[&*coords]
         });
 
@@ -46,11 +38,7 @@ impl StatelessOp for Tile {
             .iter()
             .map(|&x| x as usize)
             .collect();
-        Ok(tvec!(dispatch_numbers!(Self::eval_t(data.datum_type())(
-            &self,
-            &data,
-            &*multipliers
-        ))?))
+        Ok(tvec!(dispatch_numbers!(Self::eval_t(data.datum_type())(&self, &data, &*multipliers))?))
     }
 }
 

@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use tract_linalg::MatMul;
 use tract_linalg::frame::matmul::PackedWriter;
+use tract_linalg::MatMul;
 
 #[derive(Copy, Clone, Debug, new)]
 pub struct NdArrayDummyPackedMatMul<T: ndarray::LinalgScalar + Copy> {

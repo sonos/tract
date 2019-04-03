@@ -61,7 +61,7 @@ impl Conv {
         if inputs.len() == 2 {
             let (input, kernel) = args_2!(inputs);
             if let Some(kvalue) = kernel.konst.clone() {
-                let ishape:TVec<TDim> = input.shape.iter().collect();
+                let ishape: TVec<TDim> = input.shape.iter().collect();
                 let reduced = ConvUnary::new(
                     &self,
                     &ishape,
@@ -70,12 +70,12 @@ impl Conv {
                     None,
                     self.group,
                 )?;
-                return Ok(Some(reduced))
+                return Ok(Some(reduced));
             }
         } else {
             let (input, kernel, bias) = args_3!(inputs);
             if let (Some(kvalue), Some(bias)) = (kernel.konst.clone(), bias.konst.clone()) {
-                let ishape:TVec<TDim> = input.shape.iter().collect();
+                let ishape: TVec<TDim> = input.shape.iter().collect();
                 let reduced = ConvUnary::new(
                     &self,
                     &ishape,
@@ -84,7 +84,7 @@ impl Conv {
                     Some(bias.to_tensor()),
                     self.group,
                 )?;
-                return Ok(Some(reduced))
+                return Ok(Some(reduced));
             }
         }
         Ok(None)
@@ -96,7 +96,11 @@ impl Op for Conv {
         "Conv".into()
     }
 
-    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(op) = self.to_unary(inputs)? {
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));

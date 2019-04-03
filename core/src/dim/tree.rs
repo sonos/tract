@@ -24,12 +24,7 @@ impl fmt::Debug for ExpNode {
             Mul(a, b) if *a == 1 => {
                 write!(fmt, "{}", b.iter().map(|x| format!("{:?}", x)).join("*"))
             }
-            Mul(a, b) => write!(
-                fmt,
-                "{}.{}",
-                a,
-                b.iter().map(|x| format!("{:?}", x)).join("")
-            ),
+            Mul(a, b) => write!(fmt, "{}.{}", a, b.iter().map(|x| format!("{:?}", x)).join("")),
             Div(a, b) => write!(fmt, "{:?}/{:?}", a, b),
             Rem(a, b) => write!(fmt, "{:?}%{:?}", a, b),
             DivCeil(a, b) => write!(fmt, "({:?}/{:?}).ceil()", a, b),
@@ -197,11 +192,8 @@ impl ExpNode {
                 if b == ExpNode::Val(1) {
                     a
                 } else {
-                    Add(vec![
-                        a.clone(),
-                        Mul(-1, vec![b.clone(), Div(b!(a.clone()), b!(b))]),
-                    ])
-                    .reduce()
+                    Add(vec![a.clone(), Mul(-1, vec![b.clone(), Div(b!(a.clone()), b!(b))])])
+                        .reduce()
                 }
             }
             DivCeil(a, b) => {
@@ -404,10 +396,7 @@ mod tests {
 
     #[test]
     fn reduce_cplx_ex_3() {
-        assert_eq!(
-            div(&Mul(1, vec![Sym('S'), Val(4)]), &Val(4)).reduce(),
-            Sym('S')
-        )
+        assert_eq!(div(&Mul(1, vec![Sym('S'), Val(4)]), &Val(4)).reduce(), Sym('S'))
     }
 
     #[test]
@@ -416,10 +405,7 @@ mod tests {
             div(
                 &Mul(
                     1,
-                    vec![
-                        add(&Val(-4), &Mul(1, vec![Val(-8), div(&Sym('S'), &Val(8))])),
-                        Val(8),
-                    ]
+                    vec![add(&Val(-4), &Mul(1, vec![Val(-8), div(&Sym('S'), &Val(8))])), Val(8),]
                 ),
                 &Val(8)
             )
@@ -438,14 +424,8 @@ mod tests {
 
     #[test]
     fn reduce_mul_1() {
-        assert_eq!(
-            Mul(1, vec![Val(2), Sym('S')]).reduce(),
-            Mul(2, vec![Sym('S')])
-        );
-        assert_eq!(
-            Mul(1, vec![Sym('S'), Val(2)]).reduce(),
-            Mul(2, vec![Sym('S')])
-        );
+        assert_eq!(Mul(1, vec![Val(2), Sym('S')]).reduce(), Mul(2, vec![Sym('S')]));
+        assert_eq!(Mul(1, vec![Sym('S'), Val(2)]).reduce(), Mul(2, vec![Sym('S')]));
     }
 
     #[test]

@@ -3,7 +3,6 @@ use crate::errors::*;
 use crate::{Parameters, SomeModel};
 use tract_core::ops::prelude::*;
 
-
 pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
     let tract = &params.tract_model;
     match tract {

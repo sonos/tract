@@ -7,7 +7,15 @@ struct SixteenAlignedF32([f32; 16]);
 pub struct SConvFma16x6;
 
 #[target_feature(enable = "fma")]
-unsafe fn fma(k: usize, a: *const f32, b_tops: *const *const f32, b_down_offsets: *const isize, c: *mut f32, rsc: usize, csc: usize) {
+unsafe fn fma(
+    k: usize,
+    a: *const f32,
+    b_tops: *const *const f32,
+    b_down_offsets: *const isize,
+    c: *mut f32,
+    rsc: usize,
+    csc: usize,
+) {
     use std::arch::x86_64::*;
     assert!(a as usize % 32 == 0);
     let mut ab1 = [_mm256_setzero_ps(); 6];
@@ -67,9 +75,7 @@ impl frame::conv::ConvKer<f32> for SConvFma16x6 {
 }
 
 #[cfg(test)]
-#[cfg(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-))]
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),))]
 mod test {
     use super::*;
     use crate::frame::conv::test::*;

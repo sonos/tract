@@ -104,11 +104,7 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> TractResult<Tensor> {
-        assert!(
-            (alignment as u32).count_ones() == 1,
-            "Invalid alignment required ({})",
-            alignment
-        );
+        assert!((alignment as u32).count_ones() == 1, "Invalid alignment required ({})", alignment);
         let len = shape.iter().cloned().product::<usize>() * size_of::<T>();
         let data = if len == 0 {
             vec![]
@@ -119,13 +115,7 @@ impl Tensor {
                 })?);
             Vec::from_raw_parts(aligned_buffer as _, len, len)
         };
-        Ok(Tensor {
-            null: false,
-            dt: T::datum_type(),
-            shape: shape.into(),
-            alignment,
-            data,
-        })
+        Ok(Tensor { null: false, dt: T::datum_type(), shape: shape.into(), alignment, data })
     }
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
         let data = align::realign_slice(content, size_of::<T>());
@@ -153,13 +143,7 @@ impl Tensor {
     }
 
     pub unsafe fn null_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
-        Ok(Tensor {
-            null: true,
-            dt,
-            shape: shape.into(),
-            data: vec![],
-            alignment: dt.alignment(),
-        })
+        Ok(Tensor { null: true, dt, shape: shape.into(), data: vec![], alignment: dt.alignment() })
     }
 
     pub fn is_null(&self) -> bool {
@@ -175,10 +159,7 @@ impl Tensor {
     }
 
     pub fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
-        Ok(Tensor {
-            shape: shape.into(),
-            ..self
-        })
+        Ok(Tensor { shape: shape.into(), ..self })
     }
 
     pub fn datum_type(&self) -> DatumType {
@@ -192,11 +173,7 @@ impl Tensor {
         let s = if force_full || data.len() <= 4 {
             format!("{} {}", spec.format_dt_shape(), data.iter().join(", "))
         } else {
-            format!(
-                "{} {}...",
-                spec.format_dt_shape(),
-                data.iter().take(4).join(", ")
-            )
+            format!("{} {}...", spec.format_dt_shape(), data.iter().take(4).join(", "))
         };
         Ok(s)
     }
@@ -213,24 +190,12 @@ impl Tensor {
         let ma = ma.to_array_view::<f32>().unwrap();
         let mb = other.cast_to::<f32>().unwrap();
         let mb = mb.to_array_view::<f32>().unwrap();
-        let avg = ma
-            .iter()
-            .filter(|a| a.is_finite())
-            .map(|&a| a.abs())
-            .sum::<f32>()
-            / ma.len() as f32;
-        let dev = (ma
-            .iter()
-            .filter(|a| a.is_finite())
-            .map(|&a| (a - avg).powi(2))
-            .sum::<f32>()
+        let avg =
+            ma.iter().filter(|a| a.is_finite()).map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
+        let dev = (ma.iter().filter(|a| a.is_finite()).map(|&a| (a - avg).powi(2)).sum::<f32>()
             / ma.len() as f32)
             .sqrt();
-        let margin = if approx {
-            (dev / 5.0).max(avg.abs() / 10_000.0).max(1e-5)
-        } else {
-            0.0
-        };
+        let margin = if approx { (dev / 5.0).max(avg.abs() / 10_000.0).max(1e-5) } else { 0.0 };
         trace!("close_enough 4");
         ma.shape() == mb.shape()
             && mb
@@ -309,10 +274,7 @@ impl Tensor {
         }
         if self.data.len() != 0 {
             unsafe {
-                return Ok(ArrayViewD::from_shape_ptr(
-                    &*self.shape,
-                    self.data.as_ptr() as _,
-                ));
+                return Ok(ArrayViewD::from_shape_ptr(&*self.shape, self.data.as_ptr() as _));
             }
         } else {
             return Ok(ArrayViewD::from_shape(&*self.shape, &[])?);
@@ -366,12 +328,7 @@ impl Tensor {
         }
         let shape = self.shape.clone();
         if self.data.len() != 0 {
-            unsafe {
-                Ok(ArrayViewMutD::from_shape_ptr(
-                    &*shape,
-                    self.data.as_mut_ptr() as _,
-                ))
-            }
+            unsafe { Ok(ArrayViewMutD::from_shape_ptr(&*shape, self.data.as_mut_ptr() as _)) }
         } else {
             return Ok(ArrayViewMutD::from_shape(&*self.shape, &mut [])?);
         }
@@ -394,10 +351,7 @@ impl Tensor {
     fn cast_data<Source: Datum + TryInto<Target>, Target: Datum>(
         &self,
     ) -> TractResult<Vec<Target>> {
-        self.as_slice::<Source>()?
-            .iter()
-            .map(|s| s.try_into())
-            .collect()
+        self.as_slice::<Source>()?.iter().map(|s| s.try_into()).collect()
     }
 
     fn cast<Source: Datum + TryInto<Target>, Target: Datum>(&self) -> TractResult<Tensor> {
@@ -480,9 +434,7 @@ impl PartialEq for Tensor {
 
 impl fmt::Debug for Tensor {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let content = self
-            .dump(false)
-            .unwrap_or_else(|e| format!("Error : {:?}", e));
+        let content = self.dump(false).unwrap_or_else(|e| format!("Error : {:?}", e));
         write!(formatter, "{}", content)
     }
 }
@@ -495,11 +447,8 @@ impl Serialize for Tensor {
     {
         macro_rules! serialize_inner {
             ($type:ident, $m:ident) => {{
-                let data = (
-                    stringify!($type),
-                    self.shape(),
-                    $m.iter().cloned().collect::<Vec<_>>(),
-                );
+                let data =
+                    (stringify!($type), self.shape(), $m.iter().cloned().collect::<Vec<_>>());
                 data.serialize(serializer)
             }};
         };

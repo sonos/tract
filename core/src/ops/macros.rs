@@ -205,7 +205,7 @@ macro_rules! element_bin {
                         let add_delay = delay - a_fact.delay;
                         let mut fixed_fact = a_fact.clone();
                         fixed_fact.delay += add_delay;
-                        let id = target.chain_after(a, 
+                        let id = target.chain_after(a,
                             format!("{}/Delay", &*node.name), Delay::new(a_fact.clone(), add_delay, 0), tvec!(fixed_fact))?;
                         OutletId::new(id, 0)
                     } else {

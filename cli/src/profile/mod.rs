@@ -19,13 +19,15 @@ pub struct ProfileData {
 }
 
 impl ProfileData {
-    pub fn new<TI:TensorInfo>(model: &Model<TI>) -> ProfileData {
-        ProfileData {
-            nodes: HashMap::with_capacity(model.nodes().len()),
-        }
+    pub fn new<TI: TensorInfo>(model: &Model<TI>) -> ProfileData {
+        ProfileData { nodes: HashMap::with_capacity(model.nodes().len()) }
     }
 
-    pub fn add<TI:TensorInfo>(&mut self, node: &Node<TI>, dur: Duration) -> ::tract_core::TractResult<()> {
+    pub fn add<TI: TensorInfo>(
+        &mut self,
+        node: &Node<TI>,
+        dur: Duration,
+    ) -> ::tract_core::TractResult<()> {
         *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
         Ok(())
     }
@@ -47,9 +49,7 @@ impl ProfileData {
             .nodes
             .iter()
             .sorted_by(|(_, a), (_, b)| {
-                a.avg_real()
-                    .partial_cmp(&b.avg_real())
-                    .unwrap_or(::std::cmp::Ordering::Greater)
+                a.avg_real().partial_cmp(&b.avg_real()).unwrap_or(::std::cmp::Ordering::Greater)
             })
             .into_iter()
             .rev()
@@ -62,16 +62,15 @@ impl ProfileData {
         Ok(())
     }
 
-    pub fn print_most_consuming_ops<TI:TensorInfo>(&self, model: &Model<TI>) -> CliResult<()> {
+    pub fn print_most_consuming_ops<TI: TensorInfo>(&self, model: &Model<TI>) -> CliResult<()> {
         let sum = self.summed();
         println!("Most time consuming operations:");
         let mut operations = HashMap::new();
         let mut counters = HashMap::new();
         for (node, dur) in &self.nodes {
             let node = &model.nodes()[*node];
-            let mut cell = operations
-                .entry(node.op.name().to_string())
-                .or_insert(Duration::default());
+            let mut cell =
+                operations.entry(node.op.name().to_string()).or_insert(Duration::default());
             // do not use duration addition here, as we are summing for real
             // instead of averaging
             cell.total_real += dur.avg_real();
@@ -103,12 +102,7 @@ impl ProfileData {
         let total_real = self.nodes.values().map(|n| n.avg_real()).sum();
         let total_sys = self.nodes.values().map(|n| n.avg_sys()).sum();
         let total_user = self.nodes.values().map(|n| n.avg_user()).sum();
-        Duration {
-            total_real,
-            total_sys,
-            total_user,
-            counter: 1,
-        }
+        Duration { total_real, total_sys, total_user, counter: 1 }
     }
 }
 

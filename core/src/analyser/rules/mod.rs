@@ -51,8 +51,10 @@ impl<O: InferenceRulesOp> crate::ops::InferenceOp for O {
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let inputs_proxy:TVec<TensorProxy> = (0..inputs.len()).map(|ix| TensorProxy::new(tvec!(0, ix as isize).into())).collect();
-        let outputs_proxy:TVec<TensorProxy> = (0..outputs.len()).map(|ix| TensorProxy::new(tvec!(1, ix as isize).into())).collect();
+        let inputs_proxy: TVec<TensorProxy> =
+            (0..inputs.len()).map(|ix| TensorProxy::new(tvec!(0, ix as isize).into())).collect();
+        let outputs_proxy: TVec<TensorProxy> =
+            (0..outputs.len()).map(|ix| TensorProxy::new(tvec!(1, ix as isize).into())).collect();
 
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;

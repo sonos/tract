@@ -38,7 +38,7 @@ fn render_t<TI: TensorInfo>(model: &Model<TI>, options: DisplayOptions) -> CliRe
         let node = &model.nodes()[node];
         let inputs =
             if model.inputs()?.contains(&OutletId::new(node.id, 0)) { &[] } else { &*node.inputs };
-        let mut memory_wires:Vec<_> = wires.clone();
+        let mut memory_wires: Vec<_> = wires.clone();
         for i in inputs {
             let pos = memory_wires.iter().position(|w| *i == w.as_ref().unwrap().0).unwrap();
             memory_wires[pos].as_mut().unwrap().2 -= 1;
@@ -77,7 +77,7 @@ fn render_t<TI: TensorInfo>(model: &Model<TI>, options: DisplayOptions) -> CliRe
                 wires[little].as_mut().unwrap().2 -= 1;
                 if wires[little].unwrap().2 == 0 {
                     for i in little..big {
-                        wires[i] = wires[i+1];
+                        wires[i] = wires[i + 1];
                     }
                 }
                 wires[wanted] = w;

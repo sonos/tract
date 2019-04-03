@@ -410,10 +410,7 @@ impl<T: Datum + Copy> Op for PulsedSameAxisConcat<T> {
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsedSameAxisConcat<T> {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-    ) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
         return Ok(Some(Box::new(PulsedSameAxisConcatState::<T>::default())));
     }
 }

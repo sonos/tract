@@ -74,7 +74,15 @@ impl frame::conv::ConvKer<f32> for SConv8x4 {
         4
     }
     #[inline(never)]
-    fn kernel(k: usize, a: *const f32, b_tops: *const *const f32, b_offsets: *const isize, c: *mut f32, rsc: usize, csc: usize) {
+    fn kernel(
+        k: usize,
+        a: *const f32,
+        b_tops: *const *const f32,
+        b_offsets: *const isize,
+        c: *mut f32,
+        rsc: usize,
+        csc: usize,
+    ) {
         unsafe { arm7neon_conv_s8x4(k, a, b_tops, b_offsets, c, rsc, csc) }
     }
 }
@@ -83,8 +91,8 @@ impl frame::conv::ConvKer<f32> for SConv8x4 {
 mod test {
     use super::*;
     use crate::arm32::has_neon;
-    use crate::frame::matmul::test::*;
     use crate::frame::conv::test::*;
+    use crate::frame::matmul::test::*;
     use crate::frame::PackedConv;
     use crate::frame::PackedMatMul;
     use proptest::*;

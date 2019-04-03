@@ -17,9 +17,8 @@ impl ArgMaxMin {
         } else {
             |a, b| b.1.partial_cmp(&a.1).unwrap_or(a.0.cmp(&b.0))
         };
-        let mut values = array.map_axis(Axis(self.axis), |row| {
-            row.iter().enumerate().max_by(f).unwrap().0 as i64
-        });
+        let mut values = array
+            .map_axis(Axis(self.axis), |row| row.iter().enumerate().max_by(f).unwrap().0 as i64);
         if self.keepdims {
             values = values.insert_axis(Axis(self.axis));
         }
@@ -36,9 +35,7 @@ impl Op for ArgMaxMin {
 impl StatelessOp for ArgMaxMin {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(
-            self, input
-        ))?))
+        Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))
     }
 }
 

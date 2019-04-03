@@ -102,10 +102,8 @@ fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &tf::Tensor<T>) -> Resul
 impl Tensorflow {
     /// Executes the graph in one batch.
     pub fn run(&mut self, inputs: Vec<(&str, Tensor)>, output_name: &str) -> Result<Vec<Tensor>> {
-        let tensors: Vec<(&str, TensorHolder)> = inputs
-            .into_iter()
-            .map(|(name, mat)| (name, mat.into()))
-            .collect();
+        let tensors: Vec<(&str, TensorHolder)> =
+            inputs.into_iter().map(|(name, mat)| (name, mat.into())).collect();
 
         let mut step = SessionRunArgs::new();
         for t in &tensors {
@@ -126,9 +124,8 @@ impl Tensorflow {
         }
 
         let op = &self.graph.operation_by_name_required(output_name)?;
-        let tokens = (0..op.num_outputs())
-            .map(|ix| step.request_fetch(&op, ix as i32))
-            .collect::<Vec<_>>();
+        let tokens =
+            (0..op.num_outputs()).map(|ix| step.request_fetch(&op, ix as i32)).collect::<Vec<_>>();
 
         self.session.run(&mut step)?;
 
@@ -136,10 +133,8 @@ impl Tensorflow {
             .into_iter()
             .enumerate()
             .map(|(ix, tok)| {
-                let output_type = &self
-                    .graph
-                    .operation_by_name_required(&output_name)?
-                    .output_type(ix);
+                let output_type =
+                    &self.graph.operation_by_name_required(&output_name)?.output_type(ix);
                 convert_output(&mut step, output_type, tok)
             })
             .collect()
@@ -184,10 +179,8 @@ impl Tensorflow {
                 continue;
             }
 
-            if let Some(operation) = self
-                .graph
-                .operation_by_name(name)
-                .map_err(|e| format!("TfError: {:?}", e))?
+            if let Some(operation) =
+                self.graph.operation_by_name(name).map_err(|e| format!("TfError: {:?}", e))?
             {
                 // switch only computes one of its outputs. tf explodes during
                 // the call to run() if we registers them
@@ -215,10 +208,8 @@ impl Tensorflow {
                 .iter()
                 .enumerate()
                 .map(|(ix, tok)| {
-                    let output_type = &self
-                        .graph
-                        .operation_by_name_required(&name)?
-                        .output_type(ix);
+                    let output_type =
+                        &self.graph.operation_by_name_required(&name)?.output_type(ix);
                     convert_output(&mut step, output_type, *tok)
                 })
                 .collect::<Result<Vec<_>>>()?;

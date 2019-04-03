@@ -9,7 +9,7 @@ use prettytable::Table;
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tract_core;
-use tract_core::model::{ Model, Node, TensorInfo };
+use tract_core::model::{Model, Node, TensorInfo};
 use tract_core::plan::{SimplePlan, SimpleState};
 
 use crate::format;
@@ -45,10 +45,7 @@ fn format_no_right_border() -> TableFormat {
         .column_separator('|')
         .left_border('|')
         .separators(
-            &[
-                pt::format::LinePosition::Top,
-                pt::format::LinePosition::Bottom,
-            ],
+            &[pt::format::LinePosition::Top, pt::format::LinePosition::Bottom],
             pt::format::LineSeparator::new('-', '+', '+', '+'),
         )
         .padding(1, 1)
@@ -74,9 +71,7 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
                 }
             ),
             name_table,
-            Style::new()
-                .bold()
-                .paint(format!(" {:^33}", status.as_ref())),
+            Style::new().bold().paint(format!(" {:^33}", status.as_ref())),
         ])
     } else {
         let mut name_table = table!([
@@ -85,10 +80,7 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
         ]);
 
         name_table.set_format(format_none());
-        table!([
-            format!("Operation: {:15}", Blue.bold().paint(op)),
-            name_table
-        ])
+        table!([format!("Operation: {:15}", Blue.bold().paint(op)), name_table])
     };
 
     header.set_format(format_only_columns());
@@ -98,10 +90,8 @@ fn build_header(cols: usize, op: &str, name: &str, status: Option<impl AsRef<str
 /// Builds a box header conntaining the operation and name on one line, and a list
 /// of status messages on the other.
 fn build_header_wide(cols: usize, op: &str, name: &str, status: &[impl AsRef<str>]) -> Table {
-    let mut name_table = table!([
-        " Name: ",
-        format!("{:1$}", textwrap::fill(name.as_ref(), cols - 46), cols - 46),
-    ]);
+    let mut name_table =
+        table!([" Name: ", format!("{:1$}", textwrap::fill(name.as_ref(), cols - 46), cols - 46),]);
 
     name_table.set_format(format_none());
 
@@ -172,10 +162,9 @@ pub fn print_box(
         for row in section {
             let mut inner = match row {
                 Row::Simple(content) => table!([textwrap::fill(content.as_str(), cols - 30)]),
-                Row::Double(header, content) => table!([
-                    format!("{} ", header),
-                    textwrap::fill(content.as_str(), cols - 30),
-                ]),
+                Row::Double(header, content) => {
+                    table!([format!("{} ", header), textwrap::fill(content.as_str(), cols - 30),])
+                }
             };
 
             inner.set_format(format_none());
@@ -205,7 +194,8 @@ where
 {
     // First section: node attributes.
     let mut attributes = Vec::new();
-    #[cfg(features="tf")] {
+    #[cfg(features = "tf")]
+    {
         if let SomeGraphDef::Tf(graph) = graph {
             let proto_node = graph.get_node().iter().find(|n| n.get_name() == node.name);
 
@@ -280,15 +270,9 @@ pub fn print_header(text: String, color: &Style) {
 pub fn dur_avg_oneline(measure: Duration) -> String {
     format!(
         "Real: {} User: {} Sys: {}",
-        White
-            .bold()
-            .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
-        White
-            .bold()
-            .paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
-        White
-            .bold()
-            .paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
+        White.bold().paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
+        White.bold().paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
+        White.bold().paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
     )
 }
 
@@ -296,15 +280,9 @@ pub fn dur_avg_oneline(measure: Duration) -> String {
 pub fn dur_avg_multiline(measure: Duration) -> String {
     format!(
         "Real: {}\nUser: {}\nSys: {}",
-        White
-            .bold()
-            .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
-        White
-            .bold()
-            .paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
-        White
-            .bold()
-            .paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
+        White.bold().paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)),
+        White.bold().paint(format!("{:.3} ms/i", measure.avg_user() * 1e3)),
+        White.bold().paint(format!("{:.3} ms/i", measure.avg_sys() * 1e3)),
     )
 }
 
@@ -313,26 +291,11 @@ pub fn dur_avg_multiline(measure: Duration) -> String {
 pub fn dur_avg_oneline_ratio(measure: Duration, global: Duration) -> String {
     format!(
         "Real: {} {} User: {} {} Sys: {} {}",
-        White
-            .bold()
-            .paint(format!("{:7.3} ms/i", measure.avg_real() * 1e3)),
-        Yellow.bold().paint(format!(
-            "{:2.0}%",
-            measure.avg_real() / global.avg_real() * 100.
-        )),
-        Yellow
-            .bold()
-            .paint(format!("{:7.3} ms/i", measure.avg_user() * 1e3)),
-        Yellow.bold().paint(format!(
-            "{:2.0}%",
-            measure.avg_user() / global.avg_user() * 100.
-        )),
-        Yellow
-            .bold()
-            .paint(format!("{:7.3} ms/i", measure.avg_sys() * 1e3)),
-        Yellow.bold().paint(format!(
-            "{:2.0}%",
-            measure.avg_sys() / global.avg_sys() * 100.
-        )),
+        White.bold().paint(format!("{:7.3} ms/i", measure.avg_real() * 1e3)),
+        Yellow.bold().paint(format!("{:2.0}%", measure.avg_real() / global.avg_real() * 100.)),
+        Yellow.bold().paint(format!("{:7.3} ms/i", measure.avg_user() * 1e3)),
+        Yellow.bold().paint(format!("{:2.0}%", measure.avg_user() / global.avg_user() * 100.)),
+        Yellow.bold().paint(format!("{:7.3} ms/i", measure.avg_sys() * 1e3)),
+        Yellow.bold().paint(format!("{:2.0}%", measure.avg_sys() / global.avg_sys() * 100.)),
     )
 }

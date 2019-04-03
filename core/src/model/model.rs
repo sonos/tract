@@ -11,17 +11,11 @@ pub struct Model<TI: TensorInfo> {
 
 impl<TI: TensorInfo> Default for Model<TI> {
     fn default() -> Model<TI> {
-        Model {
-            nodes: vec![],
-            nodes_by_name: HashMap::new(),
-            inputs: vec![],
-            outputs: vec![],
-        }
+        Model { nodes: vec![], nodes_by_name: HashMap::new(), inputs: vec![], outputs: vec![] }
     }
 }
 
 impl<TI: TensorInfo> Model<TI> {
-
     pub fn add_node(
         &mut self,
         name: impl Into<String>,
@@ -269,4 +263,3 @@ impl<TI: TensorInfo> Model<TI> {
         Ok(())
     }
 }
-

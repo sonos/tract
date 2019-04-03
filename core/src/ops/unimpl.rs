@@ -8,10 +8,7 @@ pub struct UnimplementedOp {
 
 impl UnimplementedOp {
     pub fn new(name: impl AsRef<str>, message: impl AsRef<str>) -> UnimplementedOp {
-        UnimplementedOp {
-            name: name.as_ref().to_string(),
-            message: message.as_ref().to_string(),
-        }
+        UnimplementedOp { name: name.as_ref().to_string(), message: message.as_ref().to_string() }
     }
 }
 

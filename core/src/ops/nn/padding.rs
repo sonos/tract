@@ -70,20 +70,12 @@ impl PaddingSpec {
                 bef,
                 aft,
             ),
-            PaddingSpec::SameUpper => self.same(
-                input_spatial_shape,
-                kernel_spatial_shape,
-                dilations,
-                strides,
-                true,
-            ),
-            PaddingSpec::SameLower => self.same(
-                input_spatial_shape,
-                kernel_spatial_shape,
-                dilations,
-                strides,
-                false,
-            ),
+            PaddingSpec::SameUpper => {
+                self.same(input_spatial_shape, kernel_spatial_shape, dilations, strides, true)
+            }
+            PaddingSpec::SameLower => {
+                self.same(input_spatial_shape, kernel_spatial_shape, dilations, strides, false)
+            }
         }
     }
 
@@ -143,10 +135,6 @@ impl PaddingSpec {
                 pad_before.push(higher_pad);
             }
         }
-        ComputedPaddedDim {
-            pad_before,
-            pad_after,
-            output: dims,
-        }
+        ComputedPaddedDim { pad_before, pad_after, output: dims }
     }
 }

@@ -92,10 +92,7 @@ impl num_traits::Float for f16 {
         f16(self.0.signum())
     }
     fn mul_add(self, a: f16, b: f16) -> f16 {
-        (self.0)
-            .to_f32()
-            .mul_add((a.0).to_f32(), (b.0).to_f32())
-            .into()
+        (self.0).to_f32().mul_add((a.0).to_f32(), (b.0).to_f32()).into()
     }
     fn powi(self, i: i32) -> f16 {
         (self.0).to_f32().powi(i).into()
@@ -177,8 +174,12 @@ impl num_traits::NumCast for f16 {
 }
 
 impl num_traits::Bounded for f16 {
-    fn min_value() -> f16 { f16(half::consts::MIN) }
-    fn max_value() -> f16 { f16(half::consts::MAX) }
+    fn min_value() -> f16 {
+        f16(half::consts::MIN)
+    }
+    fn max_value() -> f16 {
+        f16(half::consts::MAX)
+    }
 }
 
 impl ops::Neg for f16 {

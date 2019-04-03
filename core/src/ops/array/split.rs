@@ -26,7 +26,7 @@ impl Split {
                 let slice = if d > 0 {
                     input.slice_axis(Axis(self.axis), (current..current + d).into()).to_owned()
                 } else {
-                    let mut shape:TVec<usize> = input.shape().into();
+                    let mut shape: TVec<usize> = input.shape().into();
                     shape[self.axis] = 0;
                     ArrayD::<T>::default(&*shape)
                 };

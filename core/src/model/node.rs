@@ -1,7 +1,7 @@
-use std::fmt;
 use super::*;
 use crate::ops::Op;
 use itertools::Itertools;
+use std::fmt;
 
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
@@ -16,7 +16,7 @@ pub struct Node<TI: TensorInfo> {
     pub outputs: TVec<OutletFact<TI>>,
 }
 
-impl<TI:TensorInfo> fmt::Display for Node<TI> {
+impl<TI: TensorInfo> fmt::Display for Node<TI> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op().name())
     }
@@ -53,7 +53,12 @@ pub struct OutletFact<TI: TensorInfo> {
 
 impl<TI: TensorInfo> fmt::Debug for OutletFact<TI> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "{:?} {}", self.fact, self.successors.iter().map(|o| format!("{:?}", o)).join(" "))
+        write!(
+            fmt,
+            "{:?} {}",
+            self.fact,
+            self.successors.iter().map(|o| format!("{:?}", o)).join(" ")
+        )
     }
 }
 
@@ -94,4 +99,3 @@ impl fmt::Debug for InletId {
         write!(fmt, ">{}/{}", self.node, self.slot)
     }
 }
-

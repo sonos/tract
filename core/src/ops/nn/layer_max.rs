@@ -12,11 +12,8 @@ impl LayerHardmax {
     ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
-        let axis = if self.axis < 0 {
-            shape.len() as isize + self.axis
-        } else {
-            self.axis
-        } as usize;
+        let axis =
+            if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
         let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
@@ -73,11 +70,8 @@ impl LayerLogSoftmax {
     ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
-        let axis = if self.axis < 0 {
-            shape.len() as isize + self.axis
-        } else {
-            self.axis
-        } as usize;
+        let axis =
+            if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
         let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
@@ -131,11 +125,8 @@ impl LayerSoftmax {
     ) -> TractResult<TVec<SharedTensor>> {
         let array = input.to_array::<D>()?;
         let shape = array.shape().to_vec();
-        let axis = if self.axis < 0 {
-            shape.len() as isize + self.axis
-        } else {
-            self.axis
-        } as usize;
+        let axis =
+            if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
         let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;

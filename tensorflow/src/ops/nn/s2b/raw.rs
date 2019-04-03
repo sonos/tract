@@ -13,19 +13,20 @@ impl Op for SpaceToBatch {
         "SpaceToBatch".into()
     }
 
-    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let mut outputs = model.node_output_facts(node.id)?;
         let (input, block_shape, paddings) = args_3!(inputs);
         let output = args_1!(outputs);
-        if let (Some(block_shape), Some(paddings)) = (
-            block_shape.konst.as_ref(),
-            paddings.konst.as_ref(),
-        ) {
+        if let (Some(block_shape), Some(paddings)) =
+            (block_shape.konst.as_ref(), paddings.konst.as_ref())
+        {
             let paddings = paddings.cast_to::<TDim>()?;
-            let paddings_view = paddings
-                .to_array_view::<TDim>()?
-                .into_dimensionality::<Ix2>()?;
+            let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let mut paddings = tvec![];
             for p in paddings_view.outer_iter() {
                 let pad = match (p[0].to_integer(), p[1].to_integer()) {
@@ -80,14 +81,7 @@ impl InferenceRulesOp for SpaceToBatch {
     ) -> InferenceResult {
         check_input_arity(&inputs, 3)?;
         check_output_arity(&outputs, 1)?;
-        rules(
-            s,
-            self.datum_type,
-            &outputs[0],
-            &inputs[0],
-            &inputs[1],
-            &inputs[2],
-        )
+        rules(s, self.datum_type, &outputs[0], &inputs[0], &inputs[1], &inputs[2])
     }
 }
 
@@ -101,19 +95,20 @@ impl Op for BatchToSpace {
         "BatchToSpace".into()
     }
 
-    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let mut outputs = model.node_output_facts(node.id)?;
         let (input, block_shape, paddings) = args_3!(inputs);
         let output = args_1!(outputs);
-        if let (Some(block_shape), Some(paddings)) = (
-            block_shape.konst.as_ref(),
-            paddings.konst.as_ref(),
-        ) {
+        if let (Some(block_shape), Some(paddings)) =
+            (block_shape.konst.as_ref(), paddings.konst.as_ref())
+        {
             let paddings = paddings.cast_to::<TDim>()?;
-            let paddings = paddings
-                .to_array_view::<TDim>()?
-                .into_dimensionality::<Ix2>()?;
+            let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
             let paddings = paddings
                 .outer_iter()
                 .map(|p| {
@@ -167,14 +162,7 @@ impl InferenceRulesOp for BatchToSpace {
     ) -> InferenceResult {
         check_input_arity(&inputs, 3)?;
         check_output_arity(&outputs, 1)?;
-        rules(
-            s,
-            self.datum_type,
-            &inputs[0],
-            &outputs[0],
-            &inputs[1],
-            &inputs[2],
-        )
+        rules(s, self.datum_type, &inputs[0], &outputs[0], &inputs[1], &inputs[2])
     }
 }
 
@@ -196,10 +184,7 @@ fn rules<'r, 'p: 'r>(
     s.given(&block_shape.value, move |s, block_shape| {
         let block_shape = block_shape.to_array::<i32>()?;
         let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
-        s.equals(
-            &batch.shape[0],
-            (block_shape_prod as i32) * space.shape[0].bex(),
-        )?;
+        s.equals(&batch.shape[0], (block_shape_prod as i32) * space.shape[0].bex())?;
         s.given(&paddings.value, move |s, paddings| {
             let paddings = paddings.cast_to::<TDim>()?;
             let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality()?;

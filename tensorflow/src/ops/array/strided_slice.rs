@@ -33,10 +33,8 @@ struct Dim {
 
 impl Dim {
     fn len(&self) -> TractResult<usize> {
-        Ok(
-            (((self.stride.abs() as i32 - 1) + (self.end - self.begin).to_integer()?.abs() as i32)
-                / self.stride.abs()) as usize,
-        )
+        Ok((((self.stride.abs() as i32 - 1) + (self.end - self.begin).to_integer()?.abs() as i32)
+            / self.stride.abs()) as usize)
     }
 
     fn soft_len(&self) -> TractResult<TDim> {
@@ -70,12 +68,7 @@ impl BaseStridedSlice {
     ) -> Dim {
         // deal with too small dim begin/end/stride for input rank
         if ix >= begin.len() {
-            return Dim {
-                begin: 0.to_dim(),
-                end: dim,
-                stride: 1,
-                shrink: false,
-            };
+            return Dim { begin: 0.to_dim(), end: dim, stride: 1, shrink: false };
         }
 
         // deal with negative indexing
@@ -86,25 +79,12 @@ impl BaseStridedSlice {
                 bound.eval(100_000_000).unwrap() < 0 // FIXME
             }
         }
-        let b: TDim = if must_add_to_len(begin[ix]) {
-            dim + begin[ix]
-        } else {
-            begin[ix]
-        };
-        let e: TDim = if must_add_to_len(end[ix]) {
-            dim + end[ix]
-        } else {
-            end[ix]
-        };
+        let b: TDim = if must_add_to_len(begin[ix]) { dim + begin[ix] } else { begin[ix] };
+        let e: TDim = if must_add_to_len(end[ix]) { dim + end[ix] } else { end[ix] };
 
         // deal with shrinking
         if self.must_shrink(ix) {
-            return Dim {
-                begin: b,
-                end: b + 1,
-                stride: 1,
-                shrink: true,
-            };
+            return Dim { begin: b, end: b + 1, stride: 1, shrink: true };
         }
 
         // deal with begin and end masks
@@ -127,12 +107,7 @@ impl BaseStridedSlice {
         } else {
             e
         };
-        Dim {
-            begin: b,
-            end: e,
-            stride: s,
-            shrink: false,
-        }
+        Dim { begin: b, end: e, stride: s, shrink: false }
     }
 
     fn prepare(
@@ -143,9 +118,7 @@ impl BaseStridedSlice {
         strides: SharedTensor,
     ) -> TractResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
         let casted_begin = begin.cast_to::<TDim>()?;
-        let begin = casted_begin
-            .to_array_view::<TDim>()?
-            .into_dimensionality()?;
+        let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
         let casted_end = end.cast_to::<TDim>()?;
         let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
         let strides = strides.to_array_view::<i32>()?.into_dimensionality()?;
@@ -161,10 +134,8 @@ impl BaseStridedSlice {
             .map(|ix| self.prepare_one_dim(ix, input_shape[ix].to_dim(), &begin, &end, &strides))
             .collect();
         trace!("StridedSlice bounds {:?}", bounds);
-        let mid_shape: Vec<usize> = bounds
-            .iter()
-            .map(|d| d.len())
-            .collect::<TractResult<Vec<usize>>>()?;
+        let mid_shape: Vec<usize> =
+            bounds.iter().map(|d| d.len()).collect::<TractResult<Vec<usize>>>()?;
         let end_shape: Vec<usize> = bounds
             .iter()
             .filter(|d| !d.shrink)
@@ -173,7 +144,10 @@ impl BaseStridedSlice {
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Copy + Datum>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval<T: Copy + Datum>(
+        &self,
+        mut inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -205,11 +179,7 @@ impl BaseStridedSlice {
         s.equals(&inputs[1].rank, 1)?;
         s.equals(&inputs[2].rank, 1)?;
         s.equals(&inputs[3].rank, 1)?;
-        s.equals_all(wrap!(
-            &inputs[1].shape[0],
-            &inputs[2].shape[0],
-            &inputs[3].shape[0]
-        ))?;
+        s.equals_all(wrap!(&inputs[1].shape[0], &inputs[2].shape[0], &inputs[3].shape[0]))?;
         s.given_4(
             &inputs[0].shape,
             &inputs[1].value,
@@ -217,9 +187,7 @@ impl BaseStridedSlice {
             &inputs[3].value,
             move |s, input_shape, begin, end, stride| {
                 let casted_begin = begin.cast_to::<TDim>()?;
-                let begin = casted_begin
-                    .to_array_view::<TDim>()?
-                    .into_dimensionality()?;
+                let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
                 let casted_end = end.cast_to::<TDim>()?;
                 let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
                 let stride = stride.to_array_view::<i32>()?.into_dimensionality()?;
@@ -254,14 +222,16 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
         "tf.StridedSlice".into()
     }
 
-    fn declutter(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let mut inputs = model.node_input_facts(node.id)?;
         let (input, begin, end, strides) = args_4!(inputs);
-        if let (Some(ref begin), Some(ref end), Some(ref strides)) = (
-            begin.konst.as_ref(),
-            end.konst.as_ref(),
-            strides.konst.as_ref(),
-        ) {
+        if let (Some(ref begin), Some(ref end), Some(ref strides)) =
+            (begin.konst.as_ref(), end.konst.as_ref(), strides.konst.as_ref())
+        {
             if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
                 info!("Failed to unarize StridedSlices because of strides");
                 return Ok(None);
@@ -370,11 +340,7 @@ mod tests {
         assert_eq!(
             eval(
                 StridedSlice::default(),
-                arr3(&[
-                    [[1, 1, 1], [2, 2, 2]],
-                    [[3, 3, 3], [4, 4, 4]],
-                    [[5, 5, 5], [6, 6, 6]],
-                ]),
+                arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 arr1(&[1, 0, 0]),
                 arr1(&[2, 1, 3]),
                 arr1(&[1, 1, 1])
@@ -388,11 +354,7 @@ mod tests {
         assert_eq!(
             eval(
                 StridedSlice::default(),
-                arr3(&[
-                    [[1, 1, 1], [2, 2, 2]],
-                    [[3, 3, 3], [4, 4, 4]],
-                    [[5, 5, 5], [6, 6, 6]],
-                ]),
+                arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 arr1(&[1, 0, 0]),
                 arr1(&[2, 2, 3]),
                 arr1(&[1, 1, 1])
@@ -406,11 +368,7 @@ mod tests {
         assert_eq!(
             eval(
                 StridedSlice::default(),
-                arr3(&[
-                    [[1, 1, 1], [2, 2, 2]],
-                    [[3, 3, 3], [4, 4, 4]],
-                    [[5, 5, 5], [6, 6, 6]],
-                ]),
+                arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 arr1(&[1, -1, 0]),
                 arr1(&[2, -3, 3]),
                 arr1(&[1, -1, 1])
@@ -424,11 +382,7 @@ mod tests {
         assert_eq!(
             eval(
                 StridedSlice::default(),
-                arr3(&[
-                    [[1, 1, 1], [2, 2, 2]],
-                    [[3, 3, 3], [4, 4, 4]],
-                    [[5, 5, 5], [6, 6, 6]],
-                ]),
+                arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
                 arr1(&[1, 0, 0]),
                 arr1(&[2, 2, 4]),
                 arr1(&[1, 1, 2])
@@ -440,13 +394,7 @@ mod tests {
     #[test]
     fn eval_5() {
         assert_eq!(
-            eval(
-                StridedSlice::default(),
-                arr1(&[0, 0]),
-                arr1(&[0]),
-                arr1(&[-1]),
-                arr1(&[1])
-            ),
+            eval(StridedSlice::default(), arr1(&[0, 0]), arr1(&[0]), arr1(&[-1]), arr1(&[1])),
             Tensor::from(arr1(&[0]))
         )
     }
@@ -494,13 +442,7 @@ mod tests {
         let mut op = StridedSlice::default();
         op.base.shrink_axis_mask = 1;
         assert_eq!(
-            eval(
-                op,
-                arr2(&[[0]]),
-                arr1(&[0, 0]),
-                arr1(&[0, 0]),
-                arr1(&[1, 1])
-            ),
+            eval(op, arr2(&[[0]]), arr1(&[0, 0]), arr1(&[0, 0]), arr1(&[1, 1])),
             arr1::<i32>(&[]).into()
         )
     }
@@ -509,10 +451,7 @@ mod tests {
     fn eval_shrink_to_scalar() {
         let mut op = StridedSlice::default();
         op.base.shrink_axis_mask = 1;
-        assert_eq!(
-            eval(op, arr1(&[0]), arr1(&[0]), arr1(&[0]), arr1(&[1])),
-            arr0::<i32>(0).into()
-        )
+        assert_eq!(eval(op, arr1(&[0]), arr1(&[0]), arr1(&[0]), arr1(&[1])), arr0::<i32>(0).into())
     }
 
     #[test]
@@ -524,15 +463,12 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
-        let (input_facts, output_facts) = op
-            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
-            .unwrap();
+        let (input_facts, output_facts) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
         assert_eq!(
             input_facts,
             tvec![
-                TensorFact::default()
-                    .with_datum_type(DatumType::F32)
-                    .with_shape(shapefact![..]),
+                TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]),
                 begin,
                 end,
                 strides,
@@ -540,9 +476,7 @@ mod tests {
         );
         assert_eq!(
             output_facts,
-            tvec![TensorFact::default()
-                .with_datum_type(DatumType::F32)
-                .with_shape(shapefact![..]),]
+            tvec![TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]),]
         );
     }
 
@@ -555,15 +489,12 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1]));
         let any = TensorFact::default();
 
-        let (input_facts, output_facts) = op
-            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
-            .unwrap();
+        let (input_facts, output_facts) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
         assert_eq!(
             input_facts,
             tvec![
-                TensorFact::default()
-                    .with_datum_type(DatumType::F32)
-                    .with_shape(shapefact![..]),
+                TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]),
                 begin,
                 end,
                 strides,
@@ -571,9 +502,7 @@ mod tests {
         );
         assert_eq!(
             output_facts,
-            tvec![TensorFact::default()
-                .with_datum_type(DatumType::F32)
-                .with_shape(shapefact![..]),]
+            tvec![TensorFact::default().with_datum_type(DatumType::F32).with_shape(shapefact![..]),]
         );
     }
 
@@ -586,16 +515,12 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
-        let (_, output_facts) = op
-            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
-            .unwrap();
+        let (_, output_facts) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
 
         assert_eq!(
             output_facts,
-            tvec![TensorFact::dt_shape(
-                DatumType::F32,
-                shapefact!(1, (TDim::stream() - 4), 16)
-            )]
+            tvec![TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 4), 16))]
         );
     }
 
@@ -608,16 +533,12 @@ mod tests {
         let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
-        let (_, output_facts) = op
-            .infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any])
-            .unwrap();
+        let (_, output_facts) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
 
         assert_eq!(
             output_facts,
-            tvec![TensorFact::dt_shape(
-                DatumType::F32,
-                shapefact!(1, (TDim::stream() - 4), 16)
-            )]
+            tvec![TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 4), 16))]
         );
     }
 }

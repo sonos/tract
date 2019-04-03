@@ -42,7 +42,11 @@ impl Op for AvgPool {
         "AvgPool".into()
     }
 
-    fn codegen(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(shape) = inputs[0].shape.as_finite() {
             let dt = inputs[0].datum_type;
@@ -113,7 +117,6 @@ where
     T: Datum + Float,
     usize: AsPrimitive<T>,
 {
-
     #[inline(never)]
     fn valid_2d_nhwc(&self, input: &ArrayView4<T>, output: &mut ArrayViewMut4<T>) {
         unsafe {
@@ -125,13 +128,7 @@ where
                 * self.patch.kernel_strides[1] as isize;
             let stride_out_y = output.strides()[self.patch.input_shape.hw_axes()][0];
             let stride_out_x = output.strides()[self.patch.input_shape.hw_axes()][1];
-            let k_len = self
-                .patch
-                .kernel_spatial_shape
-                .iter()
-                .cloned()
-                .product::<usize>()
-                .as_();
+            let k_len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>().as_();
             for i in 0..self.patch.input_shape.n() {
                 let p_in = input
                     .slice_axis(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
@@ -187,13 +184,7 @@ where
             let stride_out_c = output.strides()[self.patch.input_shape.c_axis()] as isize;
             let stride_out_y = output.strides()[self.patch.input_shape.hw_axes()][0];
             let stride_out_x = output.strides()[self.patch.input_shape.hw_axes()][1];
-            let k_len = self
-                .patch
-                .kernel_spatial_shape
-                .iter()
-                .cloned()
-                .product::<usize>()
-                .as_();
+            let k_len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>().as_();
             for i in 0..self.patch.input_shape.n() {
                 let p_in_i = input
                     .slice_axis(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
@@ -363,10 +354,7 @@ where
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&outputs[0].datum_type, T::datum_type())?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
-        s.equals(
-            &inputs[0].shape,
-            ShapeFact::from(&*self.patch.input_shape.shape),
-        )?;
+        s.equals(&inputs[0].shape, ShapeFact::from(&*self.patch.input_shape.shape))?;
         let shape: TVec<usize> = self.patch.output_full_shape(self.patch.input_shape.c_dim());
         s.equals(&outputs[0].shape, ShapeFact::from(shape))?;
         Ok(())
@@ -391,7 +379,7 @@ mod tests {
         )
             .prop_flat_map(|p| {
                 let size = p.3;
-                (Just(p), (size.0 + 5 ..= size.0 + 10, size.1 + 5 ..= size.1 + 10))
+                (Just(p), (size.0 + 5..=size.0 + 10, size.1 + 5..=size.1 + 10))
             })
             .prop_map(|((fmt, dil, c, ks, pad, strides), inp)| {
                 Patch::new(

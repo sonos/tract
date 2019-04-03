@@ -99,13 +99,7 @@ impl Reducer {
                 .slice()
                 .iter()
                 .enumerate()
-                .map(|(ax, &d)| {
-                    if reduce.must_reduce(ax, rank) {
-                        (..).into()
-                    } else {
-                        d.into()
-                    }
-                })
+                .map(|(ax, &d)| if reduce.must_reduce(ax, rank) { (..).into() } else { d.into() })
                 .collect();
             let slice_info = SliceInfo::new(&slice_spec).unwrap();
             let slice = input.slice(slice_info.as_ref());
@@ -141,9 +135,7 @@ where
     T: Copy + Datum + AsPrimitive<f64>,
     f64: AsPrimitive<T>,
 {
-    v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2))
-        .sqrt()
-        .as_()
+    v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2)).sqrt().as_()
 }
 
 fn log_sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
@@ -225,10 +217,7 @@ impl Reduce {
             }
         };
 
-        resolved_axes
-            .as_ref()
-            .map(|axes| axes.contains(&ax))
-            .unwrap_or(true)
+        resolved_axes.as_ref().map(|axes| axes.contains(&ax)).unwrap_or(true)
     }
 
     fn resolve_axis(axis: i64, rank: i64) -> TractResult<usize> {
@@ -237,11 +226,7 @@ impl Reduce {
         } else if -rank <= axis && axis < 0 {
             Ok((axis + rank) as usize)
         } else {
-            bail!(
-                "Illegal combination of values for rank and axis: {} and {}",
-                rank,
-                axis
-            )
+            bail!("Illegal combination of values for rank and axis: {} and {}", rank, axis)
         }
     }
 }
@@ -283,10 +268,7 @@ impl InferenceRulesOp for Reduce {
         if self.keep_dims {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
         } else if let Some(axes) = self.axes.as_ref() {
-            s.equals(
-                (&inputs[0].rank).bex() - axes.len() as i32,
-                &outputs[0].rank,
-            )?;
+            s.equals((&inputs[0].rank).bex() - axes.len() as i32, &outputs[0].rank)?;
         } else {
             s.equals(&outputs[0].rank, 0)?;
         }

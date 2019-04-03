@@ -52,10 +52,7 @@ impl StatelessOp for MaxPool {
                 .at(&coords.slice())
                 .enumerate()
                 .filter_map(|(ix, v)| v.map(|v| (ix, v)))
-                .fold(
-                    (0, ::std::f32::MIN),
-                    |acc, v| if acc.1 < v.1 { v } else { acc },
-                );
+                .fold((0, ::std::f32::MIN), |acc, v| if acc.1 < v.1 { v } else { acc });
             values[&coords] = max.1;
             if self.with_index_outputs.is_some() {
                 indices.as_mut().unwrap()[coords] =
@@ -65,10 +62,7 @@ impl StatelessOp for MaxPool {
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(
                 values.into(),
-                Tensor::from(indices.unwrap())
-                    .cast_to_dt(dt)?
-                    .into_owned()
-                    .into_tensor()
+                Tensor::from(indices.unwrap()).cast_to_dt(dt)?.into_owned().into_tensor()
             ))
         } else {
             Ok(tvec!(values.into()))

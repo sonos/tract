@@ -16,7 +16,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("MaxPool", pools::maxpool);
     reg.insert("Relu", with_T!(::tract_core::ops::nn::Relu));
     reg.insert("Sigmoid", with_T!(::tract_core::ops::nn::Sigmoid));
-    reg.insert("Softmax", |_|  Ok(Box::new(LayerSoftmax::new(1))));
+    reg.insert("Softmax", |_| Ok(Box::new(LayerSoftmax::new(1))));
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);
     reg.insert("BatchToSpaceND", s2b::batch_to_space_nd);
 }
@@ -24,10 +24,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
 pub fn strides(pb: &NodeDef) -> TractResult<Vec<usize>> {
     let strides: Vec<usize> = pb.get_attr_list_int("strides")?;
     if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
-        Err(format!(
-            "strides must be of the form [1, h, v, 1], found {:?}",
-            strides
-        ))?
+        Err(format!("strides must be of the form [1, h, v, 1], found {:?}", strides))?
     };
     Ok(strides)
 }
@@ -46,10 +43,6 @@ pub fn padding(pb: &NodeDef) -> TractResult<PaddingSpec> {
     match padding {
         b"VALID" => Ok(PaddingSpec::Valid),
         b"SAME" => Ok(PaddingSpec::SameUpper),
-        s => Err(format!(
-            "unsupported Padding {}",
-            String::from_utf8_lossy(s)
-        ))?,
+        s => Err(format!("unsupported Padding {}", String::from_utf8_lossy(s)))?,
     }
 }
-

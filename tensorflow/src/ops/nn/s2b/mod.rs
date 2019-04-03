@@ -100,10 +100,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
         if crop[0] != 0 || crop[1] != 0 {
             let end = data.shape()[1 + i] as usize;
             let range = (crop[0] as usize)..(end - crop[1] as usize);
-            data = data
-                .slice_axis(Axis(i + 1), range.into())
-                .map(|x| *x)
-                .to_owned();
+            data = data.slice_axis(Axis(i + 1), range.into()).map(|x| *x).to_owned();
         }
     }
     Ok(data.into())
@@ -142,13 +139,9 @@ mod tests {
                     arr2(&[[0, 0], [0, 0]]).into(),
                 ])
                 .unwrap(),
-            tvec![arr4(&[
-                [[[1i32, 2, 3]]],
-                [[[4, 5, 6]]],
-                [[[7, 8, 9]]],
-                [[[10, 11, 12]]],
-            ])
-            .into(),],
+            tvec![
+                arr4(&[[[[1i32, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]],]).into(),
+            ],
         )
     }
 
@@ -214,14 +207,10 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
         let any = TensorFact::default();
 
-        let (_, outputs) = op
-            .infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any))
-            .unwrap();
+        let (_, outputs) =
+            op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any)).unwrap();
 
-        assert_eq!(
-            outputs[0],
-            TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 16))
-        );
+        assert_eq!(outputs[0], TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 16)));
     }
 
     #[test]
@@ -232,9 +221,8 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
         let any = TensorFact::default();
 
-        let (_, outputs) = op
-            .infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any))
-            .unwrap();
+        let (_, outputs) =
+            op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any)).unwrap();
         assert_eq!(
             outputs[0],
             TensorFact::dt_shape(
@@ -263,13 +251,8 @@ mod tests {
         assert_eq!(
             BatchToSpace::new(i32::datum_type())
                 .eval(tvec![
-                    arr4(&[
-                        [[[1i32, 2, 3]]],
-                        [[[4, 5, 6]]],
-                        [[[7, 8, 9]]],
-                        [[[10, 11, 12]]],
-                    ])
-                    .into(),
+                    arr4(&[[[[1i32, 2, 3]]], [[[4, 5, 6]]], [[[7, 8, 9]]], [[[10, 11, 12]]],])
+                        .into(),
                     arr1(&[2, 2]).into(),
                     arr2(&[[0, 0], [0, 0]]).into(),
                 ])

@@ -96,8 +96,12 @@ pub fn for_string(value: &str) -> CliResult<TensorFact> {
             let mut split = value.split("=");
             let spec = parse_spec(split.next().unwrap())?;
             let value = split.next().unwrap().split(",");
-            let dt = spec.datum_type.concretize().ok_or("Must specify type when giving tensor value")?;
-            let shape = spec.shape.as_concrete_finite()?.ok_or("Must specify concrete shape when giving tensor value")?;
+            let dt =
+                spec.datum_type.concretize().ok_or("Must specify type when giving tensor value")?;
+            let shape = spec
+                .shape
+                .as_concrete_finite()?
+                .ok_or("Must specify concrete shape when giving tensor value")?;
             let tensor = dispatch_copy!(parse_values(dt)(&*shape, value.collect()))?;
             Ok(tensor.into())
         } else {

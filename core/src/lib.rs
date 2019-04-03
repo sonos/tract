@@ -79,11 +79,11 @@ extern crate no_panic;
 #[macro_use]
 extern crate objekt;
 #[cfg(test)]
+extern crate env_logger;
+#[cfg(test)]
 extern crate proptest;
 #[cfg(feature = "serialize")]
 extern crate serde;
-#[cfg(test)]
-extern crate env_logger;
 extern crate smallvec;
 #[cfg(feature = "serialize")]
 #[macro_use]
@@ -113,7 +113,7 @@ pub mod tensor;
 pub use crate::errors::*;
 
 pub use crate::analyser::types::TensorFact;
-pub use crate::datum::{ DatumType, TryInto };
+pub use crate::datum::{DatumType, TryInto};
 pub use crate::dim::TDim;
 pub use crate::framework::Framework;
 pub use crate::model::TVec;
@@ -126,9 +126,8 @@ pub use crate::tensor::{SharedTensor, Tensor};
 #[allow(dead_code)]
 */
 pub fn setup_test_logger() {
-    let _ = env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Trace)
-        .try_init();
+    let _ =
+        env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).try_init();
 }
 
 pub trait Tractify<Other>: Sized {

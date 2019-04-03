@@ -1,6 +1,6 @@
+use crate::ops::prelude::*;
 use ndarray::prelude::*;
 use tract_linalg::Conv;
-use crate::ops::prelude::*;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {

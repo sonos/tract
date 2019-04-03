@@ -1,15 +1,15 @@
 use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
-use tract_core::framework::{Framework, OpRegister, OpBuilder};
-use tract_core::model::{InletId, OutletId};
-use tract_core::InferenceModel;
-use tract_core::ops::prelude::*;
 use std::collections::HashMap;
+use tract_core::framework::{Framework, OpBuilder, OpRegister};
+use tract_core::model::{InletId, OutletId};
+use tract_core::ops::prelude::*;
+use tract_core::InferenceModel;
 
 pub type TfOpRegister = OpRegister<NodeDef>;
 
 pub struct Tensorflow {
-    pub op_register: TfOpRegister
+    pub op_register: TfOpRegister,
 }
 
 impl Tensorflow {
@@ -45,7 +45,7 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
             for i in pbnode.get_input().iter() {
                 let (node, slot) = Self::parse_input(i)?;
                 let arity = arities.entry(node).or_insert(1);
-                *arity = (*arity).max(slot+1);
+                *arity = (*arity).max(slot + 1);
             }
         }
         for pbnode in graph.get_node().iter() {
@@ -55,10 +55,9 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
             let facts = tvec!(TensorFact::default(); output_arity);
             let node_id = model.add_node(
                 name.clone(),
-                self
-                    .build_op(&*pbnode.get_op(), pbnode)
+                self.build_op(&*pbnode.get_op(), pbnode)
                     .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
-                facts
+                facts,
             )?;
 
             for (ix, i) in pbnode.get_input().iter().enumerate() {
@@ -84,11 +83,13 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
         //      output #1 to access the opaque ptr
         for id in 0..model.nodes().len() {
             use crate::ops::vars::*;
-            if  model.node(id).op_is::<Assign>() {
+            if model.node(id).op_is::<Assign>() {
                 let prec = model.node(id).inputs[0];
                 let var_id = model.node(prec.node).op_as::<VariableV2>().map(|v| v.id.clone());
-                if let (Some(var_id), Some(assign)) = (var_id,  model.node_mut(id).op_as_mut::<Assign>()) {
-                     assign.var_id = Some(var_id);
+                if let (Some(var_id), Some(assign)) =
+                    (var_id, model.node_mut(id).op_as_mut::<Assign>())
+                {
+                    assign.var_id = Some(var_id);
                 } else {
                     bail!("Model contains unlinked Assign/Variable2");
                 }

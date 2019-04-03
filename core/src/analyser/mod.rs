@@ -36,26 +36,28 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 Some(n) => *n,
             };
             match self.analyse_one(node) {
-                Ok(changed_edges) => for (edge, _fact) in changed_edges {
-                    trace!("Changed edge: {:?}", edge);
-                    for dst in self.model.borrow().nodes()[edge.node].outputs[edge.slot]
-                        .successors
-                        .iter()
-                    {
-                        if dst.node != edge.node {
-                            trace!("Inserting node dn {:?}", dst.node);
-                            nodes_to_visit.insert(dst.node);
+                Ok(changed_edges) => {
+                    for (edge, _fact) in changed_edges {
+                        trace!("Changed edge: {:?}", edge);
+                        for dst in self.model.borrow().nodes()[edge.node].outputs[edge.slot]
+                            .successors
+                            .iter()
+                        {
+                            if dst.node != edge.node {
+                                trace!("Inserting node dn {:?}", dst.node);
+                                nodes_to_visit.insert(dst.node);
+                            }
                         }
-                    }
-                    if edge.node != node {
-                        trace!("Inserting node up {}", edge.node);
-                        nodes_to_visit.insert(edge.node);
+                        if edge.node != node {
+                            trace!("Inserting node up {}", edge.node);
+                            nodes_to_visit.insert(edge.node);
+                        }
                     }
                 }
                 Err(e) => {
                     let e = format!("Analysing node {:?}, {:?}", node, e);
                     if !obstinate {
-                        return Err(e.into())
+                        return Err(e.into());
                     }
                     debug!("{:?}", e);
                     if first_error.is_none() {
@@ -82,16 +84,17 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 
             let (inputs, outputs) = self.model.borrow().facts(node.id)?;
 
-            let inferred = node.op.infer(inputs, outputs).map_err(|e| {
-                format!("while running inference on {} : {}", node,  e)
-            })?;
+            let inferred = node
+                .op
+                .infer(inputs, outputs)
+                .map_err(|e| format!("while running inference on {} : {}", node, e))?;
 
             for (ix, &outlet) in node.inputs.iter().enumerate() {
                 let inferred_fact = &inferred.0[ix];
                 let old_fact = self.model.borrow().fact(outlet)?;
-                let unified = inferred_fact.unify(&old_fact).map_err(|e| {
-                    format!("while unifying inputs of {} : {}", node, e)
-                })?;
+                let unified = inferred_fact
+                    .unify(&old_fact)
+                    .map_err(|e| format!("while unifying inputs of {} : {}", node, e))?;
 
                 if &unified != old_fact {
                     debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);

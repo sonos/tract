@@ -35,11 +35,7 @@ pub fn generic() -> Ops {
         smm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::SMatMul4x4, f32>::new(m, k, n))),
         dmm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::DMatMul4x2, f64>::new(m, k, n))),
         sconv: Box::new(|co, kernel_offsets, data_offsets| {
-            Box::new(PackedConv::<generic::SConv4x4, f32>::new(
-                co,
-                kernel_offsets,
-                data_offsets,
-            ))
+            Box::new(PackedConv::<generic::SConv4x4, f32>::new(co, kernel_offsets, data_offsets))
         }),
     }
 }
@@ -52,13 +48,13 @@ pub fn best() -> Ops {
         if is_x86_feature_detected!("fma") {
             log::info!("x86_64/fma activated for smm and sconv");
             ops.smm = Box::new(|m, k, n| {
-                Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(
-                    m, k, n,
-                ))
+                Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(m, k, n))
             });
             ops.sconv = Box::new(|co, kernel_offsets, data_offsets| {
                 Box::new(PackedConv::<x86_64_fma::conv::SConvFma16x6, f32>::new(
-                    co, kernel_offsets, data_offsets
+                    co,
+                    kernel_offsets,
+                    data_offsets,
                 ))
             });
         }

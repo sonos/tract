@@ -5,6 +5,7 @@ extern crate tract_core;
 use criterion::Criterion;
 
 use tract_core::datum::TryInto;
+use tract_core::model::TypedTensorInfo;
 use tract_core::ops::nn::PaddingSpec;
 use tract_core::ops::nn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::nn::PaddingSpec::Valid;
@@ -13,7 +14,6 @@ use tract_core::tvec;
 use tract_core::DatumType;
 use tract_core::Tensor;
 use tract_core::TensorFact;
-use tract_core::model::TypedTensorInfo;
 
 fn b(
     c: &mut Criterion,
@@ -38,16 +38,12 @@ fn b(
         Some(tvec!(stride, stride)),
         1,
     );
-    let input_fact:TypedTensorInfo = TensorFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();
-    let kernel_fact:TypedTensorInfo = TensorFact::from(kernel).try_into().unwrap();
-    let unary = conv
-        .to_unary(tvec!(&input_fact, &kernel_fact))
-        .unwrap()
-        .unwrap();
-    let im2col = unary
-        .to_boxed_im2col_pair::<f32>(&*input_fact.shape.as_finite().unwrap())
-        .unwrap()
-        .0;
+    let input_fact: TypedTensorInfo =
+        TensorFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();
+    let kernel_fact: TypedTensorInfo = TensorFact::from(kernel).try_into().unwrap();
+    let unary = conv.to_unary(tvec!(&input_fact, &kernel_fact)).unwrap().unwrap();
+    let im2col =
+        unary.to_boxed_im2col_pair::<f32>(&*input_fact.shape.as_finite().unwrap()).unwrap().0;
     assert_eq!(im2col.name(), "Im2col");
     let args = tvec!(image.into());
     c.bench_function(name, move |b| {

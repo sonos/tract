@@ -30,11 +30,7 @@ impl Patch {
     ) -> Patch {
         use crate::ops::nn::padding::ComputedPaddedDim;
         let input_shape = data_fmt.shape(input_full_shape);
-        let ComputedPaddedDim {
-            pad_after,
-            pad_before,
-            output,
-        } = padding.compute(
+        let ComputedPaddedDim { pad_after, pad_before, output } = padding.compute(
             input_shape.hw_dims(),
             &kernel_spatial_shape,
             &*dilations,
@@ -53,22 +49,14 @@ impl Patch {
             })
             .collect();
         let data_field = Array2::from_shape_vec(
-            (
-                kernel_spatial_shape.iter().cloned().product(),
-                kernel_spatial_shape.len(),
-            ),
+            (kernel_spatial_shape.iter().cloned().product(), kernel_spatial_shape.len()),
             data_field,
         )
         .unwrap();
         let data_field_min_max = data_field
             .gencolumns()
             .into_iter()
-            .map(|col| {
-                (
-                    col.iter().min().cloned().unwrap(),
-                    col.iter().max().cloned().unwrap(),
-                )
-            })
+            .map(|col| (col.iter().min().cloned().unwrap(), col.iter().max().cloned().unwrap()))
             .collect();
 
         let mut input_layout_strides: Vec<usize> = vec![1];
@@ -120,12 +108,7 @@ impl Patch {
             .iter_mut()
             .zip(self.kernel_strides.iter())
             .for_each(|(a, &b)| *a *= b as isize);
-        PatchVisitor {
-            patch: &self,
-            input,
-            valid,
-            fast_strides,
-        }
+        PatchVisitor { patch: &self, input, valid, fast_strides }
     }
 }
 
@@ -143,23 +126,16 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
         'i: 'v,
         'p: 'v,
     {
-        let center = coords
-            .iter()
-            .zip(self.fast_strides.iter())
-            .map(|(&a, &b)| b * a as isize)
-            .sum();
+        let center =
+            coords.iter().zip(self.fast_strides.iter()).map(|(&a, &b)| b * a as isize).sum();
         if self.valid
-            || coords[self.patch.input_shape.hw_axes()]
-                .iter()
-                .enumerate()
-                .all(|(ix, &c)| {
-                    (c * self.patch.kernel_strides[ix]) as isize
-                        + self.patch.data_field_min_max[ix].0
-                        >= 0
-                        && (c * self.patch.kernel_strides[ix]) as isize
-                            + self.patch.data_field_min_max[ix].1
-                            < self.patch.input_shape.hw_dims()[ix] as isize
-                })
+            || coords[self.patch.input_shape.hw_axes()].iter().enumerate().all(|(ix, &c)| {
+                (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].0
+                    >= 0
+                    && (c * self.patch.kernel_strides[ix]) as isize
+                        + self.patch.data_field_min_max[ix].1
+                        < self.patch.input_shape.hw_dims()[ix] as isize
+            })
         {
             PatchIterator::Fast(FastPatchIterator {
                 visitor: &self,
@@ -230,11 +206,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
         }
         unsafe {
             let position = self.center
-                + self
-                    .visitor
-                    .patch
-                    .standard_layout_data_field
-                    .get_unchecked(self.item);
+                + self.visitor.patch.standard_layout_data_field.get_unchecked(self.item);
             self.item += 1;
             Some(Some(*(self.ptr.offset(position))))
         }
@@ -262,7 +234,10 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
                 return None;
             }
             let input_shape = &patch.input_shape;
-            let img_offset = patch.data_field.as_ptr().offset((self.item * (input_shape.shape.len() - 2)) as isize);
+            let img_offset = patch
+                .data_field
+                .as_ptr()
+                .offset((self.item * (input_shape.shape.len() - 2)) as isize);
 
             for ix in 0..(input_shape.shape.len() - 2) {
                 let ax = input_shape.h_axis() + ix;
@@ -340,13 +315,7 @@ mod test {
     fn test_field() {
         assert_eq!(field(&[3], &[1]), arr2(&[[0], [1], [2]]));
         assert_eq!(field(&[3], &[2]), arr2(&[[0], [2], [4]]));
-        assert_eq!(
-            field(&[2, 2], &[1, 1]),
-            arr2(&[[0, 0], [0, 1], [1, 0], [1, 1]])
-        );
-        assert_eq!(
-            field(&[2, 2], &[2, 1]),
-            arr2(&[[0, 0], [0, 1], [2, 0], [2, 1]])
-        );
+        assert_eq!(field(&[2, 2], &[1, 1]), arr2(&[[0, 0], [0, 1], [1, 0], [1, 1]]));
+        assert_eq!(field(&[2, 2], &[2, 1]), arr2(&[[0, 0], [0, 1], [2, 0], [2, 1]]));
     }
 }

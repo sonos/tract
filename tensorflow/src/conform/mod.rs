@@ -24,7 +24,7 @@ pub mod tf;
 pub use protobuf::Message;
 
 use crate::tfpb;
-use crate::tfpb::tensor_shape::{ TensorShapeProto, TensorShapeProto_Dim };
+use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use crate::tfpb::types::DataType;
 use tract_core::ops::prelude::*;
 

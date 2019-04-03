@@ -12,12 +12,8 @@ impl ConstantOfShape {
     where
         T: Datum + Copy,
     {
-        let shape: TVec<usize> = shape
-            .cast_to::<i64>()?
-            .as_slice::<i64>()?
-            .iter()
-            .map(|&x| x as usize)
-            .collect();
+        let shape: TVec<usize> =
+            shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
         Ok(Array::<T, _>::from_elem(&*shape, *self.value.to_scalar()?).into())
     }
 }
@@ -31,9 +27,7 @@ impl Op for ConstantOfShape {
 impl StatelessOp for ConstantOfShape {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        Ok(tvec!(dispatch_numbers!(Self::make(
-            self.value.datum_type()
-        )(self, &inputs[0]))?))
+        Ok(tvec!(dispatch_numbers!(Self::make(self.value.datum_type())(self, &inputs[0]))?))
     }
 }
 

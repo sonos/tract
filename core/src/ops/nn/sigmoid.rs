@@ -37,4 +37,3 @@ pub fn sigmoid_f32(x: f32) -> f32 {
 
     p / q + 0.5
 }
-

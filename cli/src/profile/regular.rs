@@ -13,8 +13,8 @@ use crate::profile::ProfileData;
 use crate::rusage::{Duration, Instant};
 use crate::tensor::make_inputs;
 
-use tract_core::plan::{SimplePlan, SimpleState};
 use tract_core::model::{Model, TensorInfo};
+use tract_core::plan::{SimplePlan, SimpleState};
 
 pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
     match &params.tract_model {
@@ -22,19 +22,20 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
         SomeModel::Typed(m) => handle_benching_t(m, &params, profiling),
         SomeModel::Normalized(m) => handle_benching_t(m, &params, profiling),
         SomeModel::Pulsed(_, m) => handle_benching_t(m, &params, profiling),
-   }
+    }
 }
 
-fn handle_benching_t<TI:TensorInfo>(model: &Model<TI>, params: &Parameters, profiling: ProfilingMode) -> CliResult<()> {
-    let (max_iters, max_time) = if let ProfilingMode::RegularBenching {
-        max_iters,
-        max_time,
-    } = profiling
-    {
-        (max_iters, max_time)
-    } else {
-        bail!("Expecting bench profile mode")
-    };
+fn handle_benching_t<TI: TensorInfo>(
+    model: &Model<TI>,
+    params: &Parameters,
+    profiling: ProfilingMode,
+) -> CliResult<()> {
+    let (max_iters, max_time) =
+        if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
+            (max_iters, max_time)
+        } else {
+            bail!("Expecting bench profile mode")
+        };
 
     let plan = SimplePlan::new(model)?;
     let mut state = SimpleState::new(plan)?;
@@ -58,7 +59,11 @@ fn handle_benching_t<TI:TensorInfo>(model: &Model<TI>, params: &Parameters, prof
     Ok(())
 }
 
-pub fn handle(params: Parameters, profiling: ProfilingMode, display_options: DisplayOptions) -> CliResult<()> {
+pub fn handle(
+    params: Parameters,
+    profiling: ProfilingMode,
+    display_options: DisplayOptions,
+) -> CliResult<()> {
     match &params.tract_model {
         SomeModel::Inference(ref m) => handle_t(m, &params, profiling, display_options),
         SomeModel::Typed(ref m) => handle_t(m, &params, profiling, display_options),
@@ -68,17 +73,13 @@ pub fn handle(params: Parameters, profiling: ProfilingMode, display_options: Dis
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle_t<TI:TensorInfo>(
+pub fn handle_t<TI: TensorInfo>(
     model: &Model<TI>,
     params: &Parameters,
     profiling: ProfilingMode,
     display_options: DisplayOptions,
 ) -> CliResult<()> {
-    let (max_iters, max_time) = if let ProfilingMode::Regular {
-        max_iters,
-        max_time,
-    } = profiling
-    {
+    let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
         (max_iters, max_time)
     } else {
         bail!("Expecting regular profile mode")
@@ -147,9 +148,7 @@ pub fn handle_t<TI:TensorInfo>(
                 &node,
                 &params.graph,
                 Some(&state),
-                &[White
-                    .paint(format!("{:.3} ms/i", measure.avg_real() * 1e3))
-                    .to_string()],
+                &[White.paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)).to_string()],
                 vec![],
             );
         }
@@ -170,10 +169,7 @@ pub fn handle_t<TI:TensorInfo>(
     println!();
 
     println!("Entire network performance: {}", dur_avg_oneline(entire));
-    println!(
-        "Accounted by ops: {}",
-        dur_avg_oneline_ratio(profile.summed(), entire)
-    );
+    println!("Accounted by ops: {}", dur_avg_oneline_ratio(profile.summed(), entire));
 
     if log_enabled!(Info) {
         println!(

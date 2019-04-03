@@ -175,7 +175,8 @@ macro_rules! impl_attr_scalar_type_int {
 
         impl<'a> AttrTVecType<'a> for $ty {
             fn get_attr_opt_tvec(
-                node: &'a NodeProto, name: &str,
+                node: &'a NodeProto,
+                name: &str,
             ) -> TractResult<Option<TVec<Self>>> {
                 AttrTVecType::get_attr_opt_tvec(node, name)?.and_try(|ints| {
                     ints.into_iter().map(|int| check_int(node, name, int, true)).try_collect()
@@ -314,7 +315,9 @@ impl NodeProto {
     }
 
     fn get_attr_opt_with_type(
-        &self, name: &str, ty: AttributeProto_AttributeType,
+        &self,
+        name: &str,
+        ty: AttributeProto_AttributeType,
     ) -> TractResult<Option<&AttributeProto>> {
         let attr = match self.get_attribute().iter().find(|a| a.get_name() == name) {
             Some(attr) => attr,

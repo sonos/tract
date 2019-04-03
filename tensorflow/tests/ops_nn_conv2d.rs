@@ -13,6 +13,7 @@ extern crate tract_tensorflow;
 
 mod utils;
 
+use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
@@ -20,7 +21,6 @@ use tract_core::Tensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use crate::utils::*;
 
 fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u8>> {
     let conv = tfpb::node()
@@ -32,10 +32,8 @@ fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u
         .attr("padding", if valid { "VALID" } else { "SAME" })
         .attr("T", DT_FLOAT);
 
-    let graph = tfpb::graph()
-        .node(placeholder_f32("data"))
-        .node(placeholder_f32("kernel"))
-        .node(conv);
+    let graph =
+        tfpb::graph().node(placeholder_f32("data")).node(placeholder_f32("kernel")).node(conv);
 
     Ok(graph.write_to_bytes()?)
 }
@@ -104,12 +102,7 @@ fn conv_infer_facts_1() {
     let i: Tensor = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
     let k: Tensor = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
     let model = convolution_pb(1, 1, false).unwrap();
-    infer(
-        &model,
-        vec![("data", i.into()), ("kernel", k.into())],
-        "conv",
-    )
-    .unwrap();
+    infer(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
 }
 
 #[test]
@@ -119,10 +112,5 @@ fn conv_eval_1() {
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
     let model = convolution_pb(1, 1, false).unwrap();
-    compare(
-        &model,
-        vec![("data", i.into()), ("kernel", k.into())],
-        "conv",
-    )
-    .unwrap();
+    compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
 }

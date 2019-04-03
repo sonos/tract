@@ -66,14 +66,9 @@ impl Op for Merge {
 
 impl StatelessOp for Merge {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let index = inputs
-            .iter()
-            .position(|t| !t.is_null())
-            .ok_or("No tensor received in merge")?;
-        Ok(tvec!(
-            inputs.remove(index),
-            Tensor::from(index as i32).into()
-        ))
+        let index =
+            inputs.iter().position(|t| !t.is_null()).ok_or("No tensor received in merge")?;
+        Ok(tvec!(inputs.remove(index), Tensor::from(index as i32).into()))
     }
 }
 

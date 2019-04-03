@@ -1,6 +1,6 @@
+use crate::tfpb::node_def::NodeDef;
 use tract_core::ops::nn::*;
 use tract_core::ops::prelude::*;
-use crate::tfpb::node_def::NodeDef;
 
 pub fn avgpool(pb: &NodeDef) -> TractResult<Box<Op>> {
     let ksize: Vec<usize> = pb.get_attr_list_int("ksize")?;
@@ -28,6 +28,6 @@ pub fn maxpool(pb: &NodeDef) -> TractResult<Box<Op>> {
         kshape.hw_dims().into(),
         padding,
         Some(strides[kshape.hw_axes()].into()),
-        None
+        None,
     )))
 }

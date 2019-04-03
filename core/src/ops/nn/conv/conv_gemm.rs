@@ -70,9 +70,8 @@ where
 
         for i in 0..input_shape.n_dim() {
             unsafe {
-                let output_i = output
-                    .as_mut_ptr()
-                    .offset(output.strides()[input_shape.n_axis()] * i as isize);
+                let output_i =
+                    output.as_mut_ptr().offset(output.strides()[input_shape.n_axis()] * i as isize);
                 for g in 0..self.group {
                     let a = &self.packed_kernels[g];
                     let output_i_g = output_i.offset(

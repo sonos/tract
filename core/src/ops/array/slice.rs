@@ -1,5 +1,5 @@
-use crate::ops::prelude::*;
 use crate::ops::identity::Identity;
+use crate::ops::prelude::*;
 use ndarray::*;
 
 #[derive(Debug, Clone, new, Default)]
@@ -39,18 +39,14 @@ impl Op for Slice {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let fact = target.fact(input)?;
-        if self
-            .prune
-            .iter()
-            .enumerate()
-            .all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
+        if self.prune.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
         {
             let (before, after) = self.prune[fact.axis];
             let mut fact = fact.clone();
             fact.delay += before;
             fact.dim -= before.to_dim() + after.to_dim();
             let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
-            return Ok(tvec!(OutletId::new(id, 0)))
+            return Ok(tvec!(OutletId::new(id, 0)));
         }
         bail!("Slice only support pulsify on streaming axis")
     }
@@ -60,9 +56,7 @@ impl StatelessOp for Slice {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
-            self, input
-        ))?))
+        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, input))?))
     }
 }
 
@@ -78,10 +72,7 @@ impl InferenceRulesOp for Slice {
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         for (ix, &(a, b)) in self.prune.iter().enumerate() {
-            s.equals(
-                &inputs[0].shape[ix],
-                outputs[0].shape[ix].bex() + a.to_dim() + b.to_dim(),
-            )?;
+            s.equals(&inputs[0].shape[ix], outputs[0].shape[ix].bex() + a.to_dim() + b.to_dim())?;
         }
         Ok(())
     }

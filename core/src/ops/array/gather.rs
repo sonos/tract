@@ -69,9 +69,7 @@ impl StatelessOp for Gather {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (data, indices) = args_2!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(data.datum_type())(
-            &self, data, &indices
-        ))?))
+        Ok(tvec!(dispatch_datum!(Self::eval_t(data.datum_type())(&self, data, &indices))?))
     }
 }
 
@@ -85,10 +83,7 @@ impl InferenceRulesOp for Gather {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[1].datum_type, i64::datum_type())?;
-        s.equals(
-            inputs[0].rank.bex() - 1 + inputs[1].rank.bex(),
-            outputs[0].rank.bex(),
-        )?;
+        s.equals(inputs[0].rank.bex() - 1 + inputs[1].rank.bex(), outputs[0].rank.bex())?;
         Ok(())
     }
 }
@@ -103,9 +98,7 @@ mod tests {
         let gatherer = Gather::new(0);
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx as i64));
-            let outputs = gatherer
-                .eval(tvec![data.clone().into(), index.into()])
-                .unwrap();
+            let outputs = gatherer.eval(tvec![data.clone().into(), index.into()]).unwrap();
             let output = &outputs[0];
             //            println!("{:?}", output);
             assert_eq!(output.shape().len(), 0);

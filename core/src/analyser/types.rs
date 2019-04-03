@@ -94,13 +94,19 @@ impl TensorFact {
         if !self.shape.open && self.shape.dims.len() == 0 {
             format!(
                 "{}",
-                self.datum_type.concretize().map(|dt| format!("{:?}", dt)).unwrap_or("___".to_string())
+                self.datum_type
+                    .concretize()
+                    .map(|dt| format!("{:?}", dt))
+                    .unwrap_or("___".to_string())
             )
         } else {
             format!(
                 "{:?}x{}",
                 self.shape,
-                self.datum_type.concretize().map(|dt| format!("{:?}", dt)).unwrap_or("___".to_string())
+                self.datum_type
+                    .concretize()
+                    .map(|dt| format!("{:?}", dt))
+                    .unwrap_or("___".to_string())
             )
         }
     }

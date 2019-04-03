@@ -42,15 +42,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("IsNaN", |_| Ok(Box::new(tractops::math::IsNan::default())));
     reg.insert("Neg", |_| Ok(Box::new(tractops::math::Neg::default())));
     reg.insert("Sign", |_| Ok(Box::new(tractops::math::Sign::default())));
-    reg.insert("Reciprocal", |_| {
-        Ok(Box::new(tractops::math::Recip::default()))
-    });
+    reg.insert("Reciprocal", |_| Ok(Box::new(tractops::math::Recip::default())));
 
     reg.insert("Pow", |_| Ok(Box::new(tractops::math::Pow::default())));
 
-    reg.insert("MatMul", |_| {
-        Ok(Box::new(tractops::math::MatMul::default()))
-    });
+    reg.insert("MatMul", |_| Ok(Box::new(tractops::math::MatMul::default())));
     reg.insert("Gemm", gemm);
 }
 
@@ -65,7 +61,5 @@ pub fn gemm(node: &NodeProto) -> TractResult<Box<Op>> {
     let beta = node.get_attr_opt("beta")?.unwrap_or(1.);
     let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
     let trans_b = node.get_attr_opt("transB")?.unwrap_or(false);
-    Ok(Box::new(tractops::math::Gemm::new(
-        alpha, beta, trans_a, trans_b, true,
-    )))
+    Ok(Box::new(tractops::math::Gemm::new(alpha, beta, trans_a, trans_b, true)))
 }

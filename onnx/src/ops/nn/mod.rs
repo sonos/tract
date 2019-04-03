@@ -11,15 +11,10 @@ mod dropout;
 macro_rules! reduce {
     ($id:ident) => {
         |node| {
-            let axes = node
-                .get_attr_opt_vec("axes")?;
-//                .map(|axes| axes.iter().map(|&i| i as i64).collect());
+            let axes = node.get_attr_opt_vec("axes")?;
+            //                .map(|axes| axes.iter().map(|&i| i as i64).collect());
             let keep_dims = node.get_attr_opt("keepdims")?.unwrap_or(1i64) == 1;
-            Ok(Box::new(tractops::nn::Reduce::new(
-                axes,
-                keep_dims,
-                tractops::nn::Reducer::$id,
-            )))
+            Ok(Box::new(tractops::nn::Reduce::new(axes, keep_dims, tractops::nn::Reducer::$id)))
         }
     };
 }
@@ -30,15 +25,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
-    reg.insert("Dropout", |_| Ok(Box::new(dropout::Dropout)) );
+    reg.insert("Dropout", |_| Ok(Box::new(dropout::Dropout)));
     reg.insert("Elu", elu);
-    reg.insert("GlobalAveragePool", |_| {
-        Ok(Box::new(tractops::nn::GlobalAvgPool::default()))
-    });
+    reg.insert("GlobalAveragePool", |_| Ok(Box::new(tractops::nn::GlobalAvgPool::default())));
     reg.insert("GlobalLpPool", global_lp_pool);
-    reg.insert("GlobalMaxPool", |_| {
-        Ok(Box::new(tractops::nn::GlobalMaxPool::default()))
-    });
+    reg.insert("GlobalMaxPool", |_| Ok(Box::new(tractops::nn::GlobalMaxPool::default())));
     reg.insert("Hardmax", layer_hard_max);
     reg.insert("HardSigmoid", hard_sigmoid);
     reg.insert("LeakyRelu", leaky_relu);
@@ -62,16 +53,10 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
-    reg.insert("Sigmoid", |_| {
-        Ok(Box::new(tractops::nn::Sigmoid::default()))
-    });
+    reg.insert("Sigmoid", |_| Ok(Box::new(tractops::nn::Sigmoid::default())));
     reg.insert("Softmax", layer_soft_max);
-    reg.insert("Softplus", |_| {
-        Ok(Box::new(tractops::nn::Softplus::default()))
-    });
-    reg.insert("Softsign", |_| {
-        Ok(Box::new(tractops::nn::Softsign::default()))
-    });
+    reg.insert("Softplus", |_| Ok(Box::new(tractops::nn::Softplus::default())));
+    reg.insert("Softsign", |_| Ok(Box::new(tractops::nn::Softsign::default())));
 }
 
 fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
@@ -82,15 +67,21 @@ fn pad(node: &NodeProto) -> TractResult<PaddingSpec> {
             pads.iter().cloned().skip(len / 2).collect(),
         ));
     }
-    Ok(node.get_attr_opt("auto_pad")?.and_try(|s| {
-        node.check_value("auto_pad", match s {
-            "NOTSET" => Ok(PaddingSpec::Valid),
-            "VALID" => Ok(PaddingSpec::Valid),
-            "SAME_UPPER" => Ok(PaddingSpec::SameUpper),
-            "SAME_LOWER" => Ok(PaddingSpec::SameLower),
-            _ => Err(s),
-        })
-    })?.unwrap_or(PaddingSpec::Valid))
+    Ok(node
+        .get_attr_opt("auto_pad")?
+        .and_try(|s| {
+            node.check_value(
+                "auto_pad",
+                match s {
+                    "NOTSET" => Ok(PaddingSpec::Valid),
+                    "VALID" => Ok(PaddingSpec::Valid),
+                    "SAME_UPPER" => Ok(PaddingSpec::SameUpper),
+                    "SAME_LOWER" => Ok(PaddingSpec::SameLower),
+                    _ => Err(s),
+                },
+            )
+        })?
+        .unwrap_or(PaddingSpec::Valid))
 }
 
 fn dilations(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
@@ -112,11 +103,7 @@ pub fn batch_normalization(node: &NodeProto) -> TractResult<Box<Op>> {
     let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5);
     let spatial = node.get_attr_opt("spatial")?.unwrap_or(0);
     assert_eq!(spatial, 0);
-    Ok(Box::new(tractops::nn::BatchNorm::new(
-        DataFormat::NCHW,
-        epsilon,
-        spatial != 0,
-    )))
+    Ok(Box::new(tractops::nn::BatchNorm::new(DataFormat::NCHW, epsilon, spatial != 0)))
 }
 
 pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
@@ -200,11 +187,7 @@ pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
         kernel_shape,
         pad,
         strides,
-        if node.get_output().len() == 2 {
-            Some(DatumType::I64)
-        } else {
-            None
-        },
+        if node.get_output().len() == 2 { Some(DatumType::I64) } else { None },
     )))
 }
 

@@ -20,11 +20,7 @@ impl DataFormat {
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
     {
-        DataShape {
-            fmt: *self,
-            shape: shape,
-            _phantom: PhantomData,
-        }
+        DataShape { fmt: *self, shape, _phantom: PhantomData }
     }
 }
 

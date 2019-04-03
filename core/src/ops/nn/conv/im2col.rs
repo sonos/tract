@@ -54,17 +54,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         } else {
             Patcher::Generic
         };
-        Im2Col {
-            patch,
-            m,
-            k,
-            n,
-            group,
-            ci_per_group,
-            packed_b_len,
-            mm,
-            patcher,
-        }
+        Im2Col { patch, m, k, n, group, ci_per_group, packed_b_len, mm, patcher }
     }
 
     pub(super) fn output_shape(&self) -> TractResult<TVec<usize>> {
@@ -101,10 +91,7 @@ impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
     impl_op_same_as!();
 
     fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!(
-            "Pack: {:?}\nMatMul: {:?}",
-            self.patch, self.mm
-        )))
+        Ok(Some(format!("Pack: {:?}\nMatMul: {:?}", self.patch, self.mm)))
     }
 }
 
@@ -126,14 +113,8 @@ impl<T: Copy + Datum + Mul + Zero> InferenceRulesOp for Im2Col<T> {
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, T::datum_type())?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(
-            &inputs[0].shape,
-            ShapeFact::from(&*self.patch.input_shape.shape),
-        )?;
-        s.equals(
-            &outputs[0].shape,
-            ShapeFact::from(&[self.packed_b_len * self.group]),
-        )?;
+        s.equals(&inputs[0].shape, ShapeFact::from(&*self.patch.input_shape.shape))?;
+        s.equals(&outputs[0].shape, ShapeFact::from(&[self.packed_b_len * self.group]))?;
         Ok(())
     }
 }
@@ -177,7 +158,7 @@ impl Patcher {
                 i,
                 g,
             ),
-            _ => Self::generic(im2col, input, pack, i, g)
+            _ => Self::generic(im2col, input, pack, i, g),
         }
     }
 
@@ -227,9 +208,8 @@ impl Patcher {
                 * im2col.patch.kernel_strides[0] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
             let mut writer = im2col.mm.write_b_packed_by_rows(pack);
-            let iptr = input
-                .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
-                .as_ptr();
+            let iptr =
+                input.slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
@@ -260,15 +240,15 @@ impl Patcher {
             let input_width = im2col.patch.input_shape.hw_dims()[1] as isize;
             let kernel_len = im2col.patch.standard_layout_data_field.len();
             let mut writer = im2col.mm.write_b_packed_by_rows(pack);
-            let iptr = input
-                .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
-                .as_ptr();
+            let iptr =
+                input.slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for kitem in 0..kernel_len {
-                    let dy = *im2col.patch.data_field.as_ptr().offset(kitem as isize*2);
-                    let dx = *im2col.patch.data_field.as_ptr().offset(1+kitem as isize*2);
-                    let iptr = iptr.offset(*im2col.patch.standard_layout_data_field.get_unchecked(kitem));
+                    let dy = *im2col.patch.data_field.as_ptr().offset(kitem as isize * 2);
+                    let dx = *im2col.patch.data_field.as_ptr().offset(1 + kitem as isize * 2);
+                    let iptr =
+                        iptr.offset(*im2col.patch.standard_layout_data_field.get_unchecked(kitem));
                     for yo in 0..*im2col.patch.output_spatial_shape.get_unchecked(0) {
                         let y = yo as isize * y_stride + dy;
                         let iptr = iptr.offset(yo as isize * y_stride_ptr);
@@ -307,9 +287,8 @@ impl Patcher {
                 * im2col.patch.kernel_strides[1] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
             let mut writer = im2col.mm.write_b_packed_by_rows(pack);
-            let iptr = input
-                .slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into())
-                .as_ptr();
+            let iptr =
+                input.slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {

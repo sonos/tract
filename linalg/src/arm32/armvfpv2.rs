@@ -74,7 +74,15 @@ impl frame::conv::ConvKer<f32> for SConv4x4 {
         4
     }
     #[inline(never)]
-    fn kernel(k: usize, a: *const f32, b_tops: *const *const f32, b_offsets: *const isize, c: *mut f32, rsc: usize, csc: usize) {
+    fn kernel(
+        k: usize,
+        a: *const f32,
+        b_tops: *const *const f32,
+        b_offsets: *const isize,
+        c: *mut f32,
+        rsc: usize,
+        csc: usize,
+    ) {
         unsafe { arm_vfpv2_conv_s4x4(k, a, b_tops, b_offsets, c, rsc, csc) }
     }
 }
@@ -82,9 +90,9 @@ impl frame::conv::ConvKer<f32> for SConv4x4 {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::frame::*;
-    use crate::frame::matmul::test::*;
     use crate::frame::conv::test::*;
+    use crate::frame::matmul::test::*;
+    use crate::frame::*;
     use proptest::*;
 
     proptest! {
@@ -115,9 +123,9 @@ mod test {
     fn conv_4x4() {
         for t in 0..4 {
             for c in 0..4 {
-                let filters = (0usize..4).map(|i| (i==c) as usize as f32).collect();
-                let data = (0usize..4).map(|i| (i==t) as usize as f32).collect();
-                let pb = ConvProblem { ci: 1, co: 4, kt: 1, stride: 1, dilation: 1, filters, data};
+                let filters = (0usize..4).map(|i| (i == c) as usize as f32).collect();
+                let data = (0usize..4).map(|i| (i == t) as usize as f32).collect();
+                let pb = ConvProblem { ci: 1, co: 4, kt: 1, stride: 1, dilation: 1, filters, data };
                 let (kernel_offsets, data_offsets) = pb.offsets();
                 let conv = PackedConv::<SConv4x4, f32>::new(pb.co, kernel_offsets, data_offsets);
                 let found = pb.run(&conv);
@@ -128,7 +136,15 @@ mod test {
 
     #[test]
     fn conv_1() {
-        let pb = ConvProblem { ci: 1, co: 1, kt: 1, stride: 1, dilation: 1, filters: [0.0].to_vec(), data: [-7.0, -5.0, -9.0, -3.0].to_vec() };
+        let pb = ConvProblem {
+            ci: 1,
+            co: 1,
+            kt: 1,
+            stride: 1,
+            dilation: 1,
+            filters: [0.0].to_vec(),
+            data: [-7.0, -5.0, -9.0, -3.0].to_vec(),
+        };
         let (kernel_offsets, data_offsets) = pb.offsets();
         let conv = PackedConv::<SConv4x4, f32>::new(pb.co, kernel_offsets, data_offsets);
         let expected = pb.expected();
@@ -140,7 +156,15 @@ mod test {
 
     #[test]
     fn conv_2() {
-        let pb = ConvProblem { ci: 1, co: 1, kt: 1, stride: 1, dilation: 1, filters: [0.0].to_vec(), data: [-7.0, 7.0, 8.0, -10.0].to_vec() };
+        let pb = ConvProblem {
+            ci: 1,
+            co: 1,
+            kt: 1,
+            stride: 1,
+            dilation: 1,
+            filters: [0.0].to_vec(),
+            data: [-7.0, 7.0, 8.0, -10.0].to_vec(),
+        };
         let (kernel_offsets, data_offsets) = pb.offsets();
         let conv = PackedConv::<SConv4x4, f32>::new(pb.co, kernel_offsets, data_offsets);
         let found = pb.run(&conv);

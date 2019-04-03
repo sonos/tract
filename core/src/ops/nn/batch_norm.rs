@@ -69,9 +69,7 @@ impl Op for BatchNorm {
                     + ::ndarray::ScalarOperand,
                 f32: AsPrimitive<T>,
             {
-                Ok(Box::new(FixedBatchNorm::new(
-                    c_axis, c_dim, scale, beta, mean, var, epsilon,
-                )?))
+                Ok(Box::new(FixedBatchNorm::new(c_axis, c_dim, scale, beta, mean, var, epsilon)?))
             }
 
             let op = dispatch_floatlike!(fixed(dt)(
@@ -162,12 +160,7 @@ where
 
         let slope = &scale / &denominator;
         let intercept = beta - (mean * scale) / denominator;
-        Ok(FixedBatchNorm::<T> {
-            c_axis,
-            c_dim,
-            slope,
-            intercept,
-        })
+        Ok(FixedBatchNorm::<T> { c_axis, c_dim, slope, intercept })
     }
 }
 

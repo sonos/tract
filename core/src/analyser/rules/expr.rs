@@ -75,9 +75,7 @@ impl Output for i32 {
     fn from_wrapped(wrapped: Wrapped) -> TractResult<i32> {
         let message = format!("Tried to convert {:?} to a i32.", wrapped);
 
-        IntFact::from_wrapped(wrapped)?
-            .concretize()
-            .ok_or(message.into())
+        IntFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
 }
 
@@ -90,9 +88,7 @@ impl Output for SharedTensor {
     fn from_wrapped(wrapped: Wrapped) -> TractResult<SharedTensor> {
         let message = format!("Tried to convert {:?} to a tensor.", wrapped);
 
-        ValueFact::from_wrapped(wrapped)?
-            .concretize()
-            .ok_or(message.into())
+        ValueFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
 }
 
@@ -105,9 +101,7 @@ impl Output for TDim {
     fn from_wrapped(wrapped: Wrapped) -> TractResult<TDim> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
-        DimFact::from_wrapped(wrapped)?
-            .concretize()
-            .ok_or(message.into())
+        DimFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
 }
 
@@ -176,9 +170,7 @@ where
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
-        self.0
-            .iter()
-            .try_fold(T::zero(), |acc, it| Ok(acc + it.0.get(context)?))
+        self.0.iter().try_fold(T::zero(), |acc, it| Ok(acc + it.0.get(context)?))
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -278,9 +270,7 @@ where
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
-        context
-            .get(&self.0)
-            .map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
+        context.get(&self.0).map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -288,9 +278,7 @@ where
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
-        context
-            .set(&self.0, new)
-            .map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
+        context.set(&self.0, new).map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
         Ok(diff)
     }
 

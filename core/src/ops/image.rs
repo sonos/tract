@@ -41,10 +41,7 @@ impl Op for ResizeBilinear {
     fn eval(&self, mut inputs: Vec<Input>) -> TractResult<Vec<Input>> {
         use std::cmp::min;
         let (m_images, m_sizes) = args_2!(inputs);
-        let images = m_images
-            .into_tensor()
-            .take_f32s()
-            .ok_or("Expect input #0 to be images")?;
+        let images = m_images.into_tensor().take_f32s().ok_or("Expect input #0 to be images")?;
         let sizes = m_sizes.as_i32s().ok_or("Expect input #1 to be sizes")?;
         let batches = images.shape()[0];
         let old_height = images.shape()[1];
@@ -62,12 +59,7 @@ impl Op for ResizeBilinear {
             let q11 = images[(b, old_y, old_x, c)];
             let q12 = images[(b, min(old_y + 1, old_height - 1), old_x, c)];
             let q21 = images[(b, old_y, min(old_x + 1, old_width - 1), c)];
-            let q22 = images[(
-                b,
-                min(old_y + 1, old_height - 1),
-                min(old_x + 1, old_width - 1),
-                c,
-            )];
+            let q22 = images[(b, min(old_y + 1, old_height - 1), min(old_x + 1, old_width - 1), c)];
             let dx = proj_x - old_x as f32;
             let dy = proj_y - old_y as f32;
             (1.0 - dy) * ((1.0 - dx) * q11 + dx * q21) + dy * ((1.0 - dx) * q12 + dx * q22)

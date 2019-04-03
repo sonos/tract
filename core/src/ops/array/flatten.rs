@@ -27,11 +27,7 @@ impl StatelessOp for Flatten {
         let input = args_1!(inputs);
         let shape_0 = input.shape()[..self.axis].iter().product::<usize>();
         let shape_1 = input.shape()[self.axis..].iter().product::<usize>();
-        dispatch_datum!(Self::eval_t(input.datum_type())(
-            self,
-            input,
-            (shape_0, shape_1)
-        ))
+        dispatch_datum!(Self::eval_t(input.datum_type())(self, input, (shape_0, shape_1)))
     }
 }
 
@@ -44,12 +40,8 @@ impl InferenceRulesOp for Flatten {
     ) -> InferenceResult {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let shape_0 = shape[..self.axis]
-                .iter()
-                .fold(TDim::from(1), |acc, &v| acc * v);
-            let shape_1 = shape[self.axis..]
-                .iter()
-                .fold(TDim::from(1), |acc, &v| acc * v);
+            let shape_0 = shape[..self.axis].iter().fold(TDim::from(1), |acc, &v| acc * v);
+            let shape_1 = shape[self.axis..].iter().fold(TDim::from(1), |acc, &v| acc * v);
             s.equals(&outputs[0].shape, ShapeFact::from(vec![shape_0, shape_1]))
         })
     }

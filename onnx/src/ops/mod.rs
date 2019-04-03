@@ -12,9 +12,7 @@ pub mod rec;
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast);
     reg.insert("Constant", konst);
-    reg.insert("Identity", |_| {
-        Ok(Box::new(::tract_core::ops::identity::Identity::default()))
-    });
+    reg.insert("Identity", |_| Ok(Box::new(::tract_core::ops::identity::Identity::default())));
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
     nn::register_all_ops(reg);

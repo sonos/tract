@@ -226,10 +226,7 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-    ) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
         Ok(Some(Box::new(PulsePadOpState::<T>::default())))
     }
 }

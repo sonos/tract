@@ -121,10 +121,7 @@ pub struct ShapeProxy {
 impl ShapeProxy {
     /// Creates a new ShapeProxy instance.
     pub fn new(path: Path) -> ShapeProxy {
-        ShapeProxy {
-            dims: Cache::new(),
-            path,
-        }
+        ShapeProxy { dims: Cache::new(), path }
     }
 }
 
@@ -166,11 +163,7 @@ impl ValueProxy {
     /// Creates a new RootValueProxy instance.
     pub fn new(path: Path) -> ValueProxy {
         let root = IntProxy::new([&path[..], &[-1]].concat().into());
-        ValueProxy {
-            sub: Cache::new(),
-            root,
-            path,
-        }
+        ValueProxy { sub: Cache::new(), root, path }
     }
 }
 
@@ -205,10 +198,7 @@ pub struct ElementProxy {
 impl ElementProxy {
     /// Creates a new ElementProxy instance.
     pub fn new(path: Path) -> ElementProxy {
-        ElementProxy {
-            sub: Cache::new(),
-            path,
-        }
+        ElementProxy { sub: Cache::new(), path }
     }
 }
 
@@ -255,9 +245,6 @@ mod tests {
         assert_eq!(input.value[()].get_path(), &vec![0, 0, 3, -1].into());
         assert_eq!(input.value[0].get_path(), &vec![0, 0, 3, 0].into());
         assert_eq!(input.value[0][1].get_path(), &vec![0, 0, 3, 0, 1].into());
-        assert_eq!(
-            input.value[1][2][3].get_path(),
-            &vec![0, 0, 3, 1, 2, 3].into()
-        );
+        assert_eq!(input.value[1][2][3].get_path(), &vec![0, 0, 3, 1, 2, 3].into());
     }
 }

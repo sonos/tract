@@ -114,9 +114,7 @@ fn set_tensorfacts_path(
         // Set the number of facts in the set.
         [-1] => {
             // Conversion is checked.
-            let value = IntFact::from_wrapped(value)?
-                .concretize()
-                .map(|v| v.to_usize().unwrap());
+            let value = IntFact::from_wrapped(value)?.concretize().map(|v| v.to_usize().unwrap());
 
             if value.is_some() && value.unwrap() != facts.len() {
                 bail!(
@@ -199,9 +197,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             if let Some(k) = IntFact::from_wrapped(value)?.concretize() {
                 if k >= 0 {
                     let k = k.to_usize().unwrap();
-                    fact.shape = fact
-                        .shape
-                        .unify(&ShapeFact::closed(tvec![dimfact!(_); k]))?;
+                    fact.shape = fact.shape.unify(&ShapeFact::closed(tvec![dimfact!(_); k]))?;
                 } else {
                     bail!("Infered a negative rank ({})", k)
                 }
@@ -237,9 +233,7 @@ fn set_tensorfact_path(fact: &mut TensorFact, path: &[isize], value: Wrapped) ->
             fact.value = fact.value.unify(&value)?;
             if let Some(tensor) = fact.value.concretize() {
                 fact.shape = fact.shape.unify(&ShapeFact::from(tensor.shape()))?;
-                fact.datum_type = fact
-                    .datum_type
-                    .unify(&TypeFact::from(tensor.datum_type()))?;
+                fact.datum_type = fact.datum_type.unify(&TypeFact::from(tensor.datum_type()))?;
             }
             Ok(())
         }

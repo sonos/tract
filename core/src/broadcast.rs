@@ -11,11 +11,7 @@ where
         let mut wanted_size = T::one();
         for shape in shapes {
             let len = shape.as_ref().len();
-            let dim = if i < len {
-                shape.as_ref()[len - i - 1]
-            } else {
-                T::one()
-            };
+            let dim = if i < len { shape.as_ref()[len - i - 1] } else { T::one() };
             if dim != T::one() {
                 if wanted_size != T::one() && dim != wanted_size {
                     return None;
@@ -35,26 +31,17 @@ mod tests {
 
     #[test]
     fn onnx_1() {
-        assert_eq!(
-            multi_broadcast(&tvec![tvec![2, 3, 4, 5], tvec![]]),
-            Some(tvec![2, 3, 4, 5])
-        )
+        assert_eq!(multi_broadcast(&tvec![tvec![2, 3, 4, 5], tvec![]]), Some(tvec![2, 3, 4, 5]))
     }
 
     #[test]
     fn onnx_2() {
-        assert_eq!(
-            multi_broadcast(&tvec![tvec![2, 3, 4, 5], tvec![5]]),
-            Some(tvec![2, 3, 4, 5])
-        )
+        assert_eq!(multi_broadcast(&tvec![tvec![2, 3, 4, 5], tvec![5]]), Some(tvec![2, 3, 4, 5]))
     }
 
     #[test]
     fn onnx_3() {
-        assert_eq!(
-            multi_broadcast(&tvec![tvec![4, 5], tvec![2, 3, 4, 5]]),
-            Some(tvec![2, 3, 4, 5])
-        )
+        assert_eq!(multi_broadcast(&tvec![tvec![4, 5], tvec![2, 3, 4, 5]]), Some(tvec![2, 3, 4, 5]))
     }
 
     #[test]

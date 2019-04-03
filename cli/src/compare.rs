@@ -16,10 +16,15 @@ pub fn handle(mut params: Parameters, output_params: DisplayOptions) -> CliResul
         SomeModel::Typed(m) => handle_t(m, tf, &params, output_params),
         SomeModel::Normalized(m) => handle_t(m, tf, &params, output_params),
         SomeModel::Pulsed(_, m) => handle_t(m, tf, &params, output_params),
-   }
+    }
 }
 
-pub fn handle_t<TI: TensorInfo>(tract: &Model<TI>, mut tf: tract_tensorflow::conform::tf::Tensorflow,  params: &Parameters, output_params: DisplayOptions) -> CliResult<()> {
+pub fn handle_t<TI: TensorInfo>(
+    tract: &Model<TI>,
+    mut tf: tract_tensorflow::conform::tf::Tensorflow,
+    params: &Parameters,
+    output_params: DisplayOptions,
+) -> CliResult<()> {
     use crate::format::Row;
 
     // First generate random values for the inputs.
@@ -95,17 +100,11 @@ pub fn handle_t<TI: TensorInfo>(tract: &Model<TI>, mut tf: tract_tensorflow::con
                     .enumerate()
                     .position(|(ix, o)| {
                         o.successors.len() == 0
-                            && !tract
-                                .outputs()
-                                .unwrap()
-                                .contains(&OutletId::new(node.id, ix))
+                            && !tract.outputs().unwrap().contains(&OutletId::new(node.id, ix))
                     })
                     .unwrap_or(node.outputs.len());
-                let expected: Vec<TensorFact> = tf_output
-                    .iter()
-                    .take(wanted)
-                    .map(|m| m.clone().into())
-                    .collect();
+                let expected: Vec<TensorFact> =
+                    tf_output.iter().take(wanted).map(|m| m.clone().into()).collect();
                 let tract_output: &[SharedTensor] = &*state.values[n].as_ref().unwrap();
                 match check_outputs(&tract_output, &expected) {
                     Err(e) => {
@@ -159,11 +158,7 @@ pub fn handle_t<TI: TensorInfo>(tract: &Model<TI>, mut tf: tract_tensorflow::con
         };
 
         // Use the output from tensorflow to keep tract from drifting.
-        trace!(
-            "copy tensorflow output in state: for node {}, {:?}",
-            node.id,
-            tf_output
-        );
+        trace!("copy tensorflow output in state: for node {}, {:?}", node.id, tf_output);
         state.set_values(node.id, tf_output.into())?;
     }
 

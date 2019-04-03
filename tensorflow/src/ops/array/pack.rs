@@ -18,12 +18,13 @@ pub struct Pack {
 
 impl Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Copy + Datum>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Copy + Datum>(
+        &self,
+        inputs: TVec<SharedTensor>,
+    ) -> TractResult<TVec<SharedTensor>> {
         use ndarray::Axis;
-        let arrays = inputs
-            .iter()
-            .map(|m| Ok(m.cast_to::<T>()?))
-            .collect::<TractResult<Vec<_>>>()?;
+        let arrays =
+            inputs.iter().map(|m| Ok(m.cast_to::<T>()?)).collect::<TractResult<Vec<_>>>()?;
         let views: Vec<_> = arrays
             .iter()
             .map(|v| v.to_array_view::<T>().unwrap().insert_axis(Axis(self.axis)))
@@ -103,25 +104,13 @@ mod tests {
 
     #[test]
     fn pack_0() {
-        let inputs = tvec![
-            arr1(&[1, 4]).into(),
-            arr1(&[2, 5]).into(),
-            arr1(&[3, 6]).into(),
-        ];
+        let inputs = tvec![arr1(&[1, 4]).into(), arr1(&[2, 5]).into(), arr1(&[3, 6]).into(),];
         assert_eq!(
-            Pack::new(DatumType::I32, 3, 0)
-                .eval(inputs.clone())
-                .unwrap()
-                .remove(0)
-                .to_tensor(),
+            Pack::new(DatumType::I32, 3, 0).eval(inputs.clone()).unwrap().remove(0).to_tensor(),
             Tensor::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
         );
         assert_eq!(
-            Pack::new(DatumType::I32, 3, 1)
-                .eval(inputs.clone())
-                .unwrap()
-                .remove(0)
-                .to_tensor(),
+            Pack::new(DatumType::I32, 3, 1).eval(inputs.clone()).unwrap().remove(0).to_tensor(),
             Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
         );
     }
@@ -133,12 +122,7 @@ mod tests {
         let exp: SharedTensor = arr2::<i32, _>(&[[]]).into();
         let found = pack.eval(tvec![input]).unwrap();
 
-        assert!(
-            exp.close_enough(&found[0], false),
-            "expected: {:?} found: {:?}",
-            exp,
-            found[0]
-        )
+        assert!(exp.close_enough(&found[0], false), "expected: {:?} found: {:?}", exp, found[0])
     }
 
     #[test]

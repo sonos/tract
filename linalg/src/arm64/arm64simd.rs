@@ -75,11 +75,18 @@ impl frame::conv::ConvKer<f32> for SConv8x8 {
         4
     }
     #[inline(never)]
-    fn kernel(k: usize, a: *const f32, b_tops: *const *const f32, b_offsets: *const isize, c: *mut f32, rsc: usize, csc: usize) {
+    fn kernel(
+        k: usize,
+        a: *const f32,
+        b_tops: *const *const f32,
+        b_offsets: *const isize,
+        c: *mut f32,
+        rsc: usize,
+        csc: usize,
+    ) {
         unsafe { arm64simd_conv_s8x8(k, a, b_tops, b_offsets, c, rsc, csc) }
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -114,4 +121,3 @@ mod test {
         }
     }
 }
-

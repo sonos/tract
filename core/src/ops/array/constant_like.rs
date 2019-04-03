@@ -27,10 +27,7 @@ impl StatelessOp for ConstantLike {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(
-            self,
-            input.shape()
-        ))?))
+        Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(self, input.shape()))?))
     }
 }
 
@@ -46,21 +43,15 @@ impl InferenceRulesOp for ConstantLike {
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
-        s.given_2(
-            &inputs[0].shape,
-            &inputs[0].datum_type,
-            move |s, shape, dt| {
-                if shape.iter().all(|d| d.to_integer().is_ok()) {
-                    let shape: Vec<usize> = shape
-                        .iter()
-                        .map(|d| d.to_integer().unwrap() as usize)
-                        .collect();
-                    let value = dispatch_numbers!(Self::make(dt)(self, &shape))?;
-                    s.equals(&outputs[0].value, value)?;
-                }
-                Ok(())
-            },
-        )
+        s.given_2(&inputs[0].shape, &inputs[0].datum_type, move |s, shape, dt| {
+            if shape.iter().all(|d| d.to_integer().is_ok()) {
+                let shape: Vec<usize> =
+                    shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+                let value = dispatch_numbers!(Self::make(dt)(self, &shape))?;
+                s.equals(&outputs[0].value, value)?;
+            }
+            Ok(())
+        })
     }
 }
 

@@ -25,11 +25,7 @@ mod tests {
     where
         I: Into<Tensor>,
     {
-        op.eval(tvec![input.into().into()])
-            .unwrap()
-            .pop()
-            .unwrap()
-            .to_tensor()
+        op.eval(tvec![input.into().into()]).unwrap().pop().unwrap().to_tensor()
     }
 
     #[test]
@@ -43,20 +39,19 @@ mod tests {
     #[test]
     fn squeeze_2() {
         assert_eq!(
-            run(
-                Squeeze::new(Some(vec![2, 4])),
-                Array::from_elem([1, 2, 1, 3, 1, 1], 0)
-            )
-            .shape(),
+            run(Squeeze::new(Some(vec![2, 4])), Array::from_elem([1, 2, 1, 3, 1, 1], 0)).shape(),
             &[1, 2, 3, 1]
         );
     }
 
     #[test]
     fn squeeze_inference_1() {
-        let input = TensorFact::default()
-            .with_datum_type(DatumType::TDim)
-            .with_shape(shapefact![1, 1, (TDim::stream() - 2), 16]);
+        let input = TensorFact::default().with_datum_type(DatumType::TDim).with_shape(shapefact![
+            1,
+            1,
+            (TDim::stream() - 2),
+            16
+        ]);
         let any = TensorFact::default();
 
         let op = Squeeze::new(Some(vec![1]));

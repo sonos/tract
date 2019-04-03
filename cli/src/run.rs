@@ -4,7 +4,6 @@ use tract_core::ops::prelude::*;
 use tract_core::SimplePlan;
 
 pub fn handle(params: Parameters) -> CliResult<()> {
-
     let outputs = match &params.tract_model {
         SomeModel::Inference(ref m) => run_regular_t(m, &params)?,
         SomeModel::Typed(ref m) => run_regular_t(m, &params)?,
@@ -48,7 +47,6 @@ fn run_regular_t<TI: TensorInfo>(
     info!("Running");
     Ok(plan.run(inputs)?)
 }
-
 
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<SharedTensor>> {
     let input_fact = model.input_fact()?;

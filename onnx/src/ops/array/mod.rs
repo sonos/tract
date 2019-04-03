@@ -12,26 +12,16 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);
-    reg.insert("Expand", |_| {
-        Ok(Box::new(tractops::array::MultiBroadcastTo::default()))
-    });
+    reg.insert("Expand", |_| Ok(Box::new(tractops::array::MultiBroadcastTo::default())));
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
     reg.insert("Pad", pad);
-    reg.insert("Reshape", |_| {
-        Ok(Box::new(tractops::array::Reshape::default()))
-    });
-    reg.insert("Shape", |_| {
-        Ok(Box::new(tractops::array::Shape::new(DatumType::I64)))
-    });
-    reg.insert("Size", |_| {
-        Ok(Box::new(tractops::array::Size::new(DatumType::I64)))
-    });
+    reg.insert("Reshape", |_| Ok(Box::new(tractops::array::Reshape::default())));
+    reg.insert("Shape", |_| Ok(Box::new(tractops::array::Shape::new(DatumType::I64))));
+    reg.insert("Size", |_| Ok(Box::new(tractops::array::Size::new(DatumType::I64))));
     reg.insert("Transpose", transpose);
-    reg.insert("Tile", |_| {
-        Ok(Box::new(tractops::array::Tile::default()))
-    });
+    reg.insert("Tile", |_| Ok(Box::new(tractops::array::Tile::default())));
     reg.insert("Slice", slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
@@ -109,19 +99,19 @@ pub fn pad(node: &NodeProto) -> TractResult<Box<Op>> {
     let value = node.get_attr_opt("value")?;
     let mode = match node.get_attr_opt("mode")? {
         None | Some("constant") => None,
-        Some(mode) => node.check_value("mode", match mode {
-            "reflect" => Ok(Some(tractops::array::PadMode::Reflect)),
-            "edge" => Ok(Some(tractops::array::PadMode::Edge)),
-            _ => Err(mode)
-        })?
-    }.unwrap_or_else(||
-        tractops::array::PadMode::Constant(value.unwrap_or(0.))
-    );
+        Some(mode) => node.check_value(
+            "mode",
+            match mode {
+                "reflect" => Ok(Some(tractops::array::PadMode::Reflect)),
+                "edge" => Ok(Some(tractops::array::PadMode::Edge)),
+                _ => Err(mode),
+            },
+        )?,
+    }
+    .unwrap_or_else(|| tractops::array::PadMode::Constant(value.unwrap_or(0.)));
     let pads = node.get_attr_tvec("pads")?;
     let rank = pads.len() / 2;
-    let pads = (0..rank)
-        .map(|ax| (pads[ax], pads[ax + rank]))
-        .collect();
+    let pads = (0..rank).map(|ax| (pads[ax], pads[ax + rank])).collect();
     Ok(Box::new(tractops::array::Pad::new(pads, mode)))
 }
 

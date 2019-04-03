@@ -147,7 +147,10 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
         Ok(())
     }
 
-    pub fn from_model_and_options(model: M, options: DisplayOptions) -> CliResult<DisplayGraph<TI, M>> {
+    pub fn from_model_and_options(
+        model: M,
+        options: DisplayOptions,
+    ) -> CliResult<DisplayGraph<TI, M>> {
         Ok(DisplayGraph {
             model,
             options,

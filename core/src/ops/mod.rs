@@ -74,20 +74,14 @@ pub trait StatelessOp: Op {
 }
 
 pub trait StatefullOp {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-    ) -> TractResult<Option<Box<OpState>>>;
+    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>>;
     fn as_stateless(&self) -> Option<&StatelessOp> {
         None
     }
 }
 
 impl<O: StatelessOp + Clone> StatefullOp for O {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-    ) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
         Ok(None)
     }
 

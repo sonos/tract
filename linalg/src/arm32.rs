@@ -1,20 +1,21 @@
-use std::{ fs, env };
-mod armvfpv2;
+use std::{env, fs};
 mod armv7neon;
+mod armvfpv2;
 
-use crate::Ops;
-use crate::frame::PackedMatMul;
 use crate::frame::PackedConv;
+use crate::frame::PackedMatMul;
+use crate::Ops;
 
-fn has_neon_cpuinfo() -> std::io::Result<bool>  {
+fn has_neon_cpuinfo() -> std::io::Result<bool> {
     let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
-    let neon = cpu_info.split("\n").any(|line| line.starts_with("Features") && line.contains("neon"));
+    let neon =
+        cpu_info.split("\n").any(|line| line.starts_with("Features") && line.contains("neon"));
     Ok(neon)
 }
 
 fn has_neon() -> bool {
     if let Ok(v) = env::var("TRACT_CPU_ARM32_NEON") {
-        return v == "true"
+        return v == "true";
     }
     has_neon_cpuinfo().unwrap_or(false)
 }
@@ -54,4 +55,3 @@ mod tests {
         }
     }
 }
-

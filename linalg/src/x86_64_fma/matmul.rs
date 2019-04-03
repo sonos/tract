@@ -59,9 +59,7 @@ impl frame::matmul::PackedMatMulKer<f32> for KerFma16x6 {
 }
 
 #[cfg(test)]
-#[cfg(all(
-    any(target_arch = "x86", target_arch = "x86_64"),
-))]
+#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),))]
 mod test {
     use super::*;
     use crate::frame::matmul::test::*;

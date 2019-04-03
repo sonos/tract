@@ -1,9 +1,9 @@
-use std::fmt;
-use crate::{DatumType, SharedTensor, TDim, TractResult, TVec};
 use crate::analyser::types::{ShapeFact, TensorFact};
 use crate::datum::TryInto;
 use crate::dim::ToDim;
 use crate::tensor::Tensor;
+use crate::{DatumType, SharedTensor, TDim, TVec, TractResult};
+use std::fmt;
 
 pub trait TensorInfo: Clone + std::fmt::Debug {
     fn to_tensor_fact(&self) -> TensorFact;
@@ -163,7 +163,7 @@ impl fmt::Debug for TypedTensorInfo {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.konst {
             Some(ref k) => write!(fmt, "{:?}", k),
-            None => write!(fmt, "{:?}x{:?}", self.shape, self.datum_type)
+            None => write!(fmt, "{:?}x{:?}", self.shape, self.datum_type),
         }
     }
 }

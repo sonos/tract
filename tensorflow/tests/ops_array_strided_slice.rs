@@ -13,6 +13,7 @@ extern crate tract_tensorflow;
 
 mod utils;
 
+use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
@@ -20,7 +21,6 @@ use tract_core::Tensor as TractSharedTensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
-use crate::utils::*;
 
 fn strided_slice_strat() -> BoxedStrategy<(
     TractSharedTensor,
@@ -45,34 +45,17 @@ fn strided_slice_strat() -> BoxedStrategy<(
     )
     .prop_flat_map(|dims| {
         let rank = dims.iter().len();
-        (
-            Just(dims),
-            (
-                0..(1 << rank),
-                0..(1 << rank),
-                Just(0),
-                Just(0),
-                0..(1 << rank),
-            ),
-        )
+        (Just(dims), (0..(1 << rank), 0..(1 << rank), Just(0), Just(0), 0..(1 << rank)))
     })
     .prop_map(|(dims, masks)| {
         let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
         let size: i32 = shape.iter().map(|d| *d as i32).product();
         (
             TractSharedTensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
-            Array::from_vec(
-                dims.iter()
-                    .map(|d| if d.4 { d.1 - d.0 } else { d.1 })
-                    .collect(),
-            )
-            .into(),
-            Array::from_vec(
-                dims.iter()
-                    .map(|d| if d.5 { d.2 - d.0 } else { d.2 })
-                    .collect(),
-            )
-            .into(),
+            Array::from_vec(dims.iter().map(|d| if d.4 { d.1 - d.0 } else { d.1 }).collect())
+                .into(),
+            Array::from_vec(dims.iter().map(|d| if d.5 { d.2 - d.0 } else { d.2 }).collect())
+                .into(),
             Array::from_vec(
                 dims.iter()
                     .enumerate()

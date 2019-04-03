@@ -2,8 +2,8 @@
 #![allow(non_snake_case)]
 #[macro_use]
 extern crate log;
-extern crate ndarray;
 extern crate env_logger;
+extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
@@ -14,13 +14,13 @@ extern crate tract_tensorflow;
 
 mod utils;
 
+use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use crate::utils::*;
 
 use tract_core::Tensor as TractSharedTensor;
 
@@ -33,10 +33,7 @@ fn img_and_pool(
 ) -> BoxedStrategy<(TractSharedTensor, (usize, usize), String, usize)> {
     (1..ih, 1..iw, 1..ic)
         .prop_flat_map(move |(ih, iw, ic)| {
-            (
-                Just((ih, iw, ic)),
-                (1..kh.min(ih + 1).max(2), 1..kw.min(iw + 1).max(2)),
-            )
+            (Just((ih, iw, ic)), (1..kh.min(ih + 1).max(2), 1..kw.min(iw + 1).max(2)))
         })
         .prop_flat_map(|((ih, iw, ic), k)| {
             let i_size = iw * ih * ic;
@@ -49,12 +46,7 @@ fn img_and_pool(
             )
         })
         .prop_map(|(img_shape, k, img, padding, stride)| {
-            (
-                Array::from_vec(img).into_shape(img_shape).unwrap().into(),
-                k,
-                padding,
-                stride,
-            )
+            (Array::from_vec(img).into_shape(img_shape).unwrap().into(), k, padding, stride)
         })
         .boxed()
 }

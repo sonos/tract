@@ -35,9 +35,7 @@ pub fn make_test_file(tests_set: &str) {
     ensure_onnx_git_checkout();
     let node_tests = dir().join("onnx/backend/test/data").join(tests_set);
     assert!(node_tests.exists());
-    let working_list_file = path::PathBuf::from("tests")
-        .join(tests_set)
-        .with_extension("txt");
+    let working_list_file = path::PathBuf::from("tests").join(tests_set).with_extension("txt");
     let working_list: Vec<String> = if let Ok(list) = fs::read_to_string(&working_list_file) {
         list.split("\n")
             .map(|s| s.to_string())
@@ -66,12 +64,7 @@ pub fn make_test_file(tests_set: &str) {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             writeln!(rs, "fn {}() {{", t).unwrap();
-            writeln!(
-                rs,
-                "crate::onnx::run_one({:?}, {:?}, {:?})",
-                node_tests, t, optim
-            )
-            .unwrap();
+            writeln!(rs, "crate::onnx::run_one({:?}, {:?}, {:?})", node_tests, t, optim).unwrap();
             writeln!(rs, "}}").unwrap();
         }
         writeln!(rs, "}}").unwrap();

@@ -69,10 +69,8 @@ impl<T: Output + Fact> EqualsRule<T> {
 impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
-        let value = self
-            .items
-            .iter()
-            .try_fold(T::default(), |acc, f| acc.unify(&f.get(context)?))?;
+        let value =
+            self.items.iter().try_fold(T::default(), |acc, f| acc.unify(&f.get(context)?))?;
         let mut changed = false;
         for item in &self.items {
             changed |= item.set(context, value.clone())?;
@@ -273,11 +271,8 @@ impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
 impl<'rules, T: Output + Fact> Rule<'rules> for GivenAllRule<'rules, T> {
     /// Tries to apply the rule to a given context.
     fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
-        let values: Vec<T> = self
-            .items
-            .iter()
-            .map(|it| it.get(context))
-            .collect::<TractResult<Vec<T>>>()?;
+        let values: Vec<T> =
+            self.items.iter().map(|it| it.get(context)).collect::<TractResult<Vec<T>>>()?;
         let concrete: Vec<_> = values.iter().filter_map(|it| it.concretize()).collect();
 
         if concrete.len() == self.items.len() {
@@ -623,13 +618,7 @@ impl<'rules> Solver<'rules> {
             ) -> InferenceResult
             + 'rules,
     {
-        let rule = Given4Rule::new(
-            item_1.bex(),
-            item_2.bex(),
-            item_3.bex(),
-            item_4.bex(),
-            closure,
-        );
+        let rule = Given4Rule::new(item_1.bex(), item_2.bex(), item_3.bex(), item_4.bex(), closure);
         self.rules.push(Box::new(rule));
         Ok(())
     }
@@ -642,8 +631,8 @@ mod tests {
     fn bootstrap<'s>() -> (Solver<'s>, TVec<TensorProxy>, TVec<TensorProxy>) {
         (
             Solver::default(),
-            tvec!(TensorProxy::new(tvec![0,0].into())),
-            tvec!(TensorProxy::new(tvec![1,0].into())),
+            tvec!(TensorProxy::new(tvec![0, 0].into())),
+            tvec!(TensorProxy::new(tvec![1, 0].into())),
         )
     }
 
@@ -652,9 +641,7 @@ mod tests {
     fn solver_wrong_size_1() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 2).unwrap();
-        solver
-            .infer_facts((tvec![].into(), tvec![].into()))
-            .unwrap();
+        solver.infer_facts((tvec![].into(), tvec![].into())).unwrap();
     }
 
     #[test]
@@ -662,9 +649,7 @@ mod tests {
         let (solver, _, _) = bootstrap();
         let any = TensorFact::new();
 
-        let facts = solver
-            .infer_facts((tvec![&any].into(), tvec![].into()))
-            .unwrap();
+        let facts = solver.infer_facts((tvec![&any].into(), tvec![].into())).unwrap();
         assert_eq!(facts, (tvec![TensorFact::new()].into(), tvec![].into()));
     }
 
@@ -675,13 +660,8 @@ mod tests {
 
         let any = TensorFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
-        let expected = (
-            tvec![TensorFact {
-                shape: shapefact![_, _],
-                ..TensorFact::new()
-            }],
-            tvec![],
-        );
+        let expected =
+            (tvec![TensorFact { shape: shapefact![_, _], ..TensorFact::new() }], tvec![]);
 
         assert_eq!(facts, expected);
     }
@@ -693,13 +673,8 @@ mod tests {
 
         let any = TensorFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
-        let expected = (
-            tvec![TensorFact {
-                shape: shapefact![_, 0; ..],
-                ..TensorFact::new()
-            }],
-            tvec![],
-        );
+        let expected =
+            (tvec![TensorFact { shape: shapefact![_, 0; ..], ..TensorFact::new() }], tvec![]);
 
         assert_eq!(facts, expected);
     }
@@ -708,23 +683,14 @@ mod tests {
     fn solver_ranks() {
         let (mut solver, inputs, _) = bootstrap();
         solver.equals(&inputs[0].rank, 3).unwrap();
-        solver
-            .equals(&inputs[0].shape[0], &inputs[0].shape[1])
-            .unwrap();
-        solver
-            .equals(&inputs[0].shape[1], &inputs[0].shape[2])
-            .unwrap();
+        solver.equals(&inputs[0].shape[0], &inputs[0].shape[1]).unwrap();
+        solver.equals(&inputs[0].shape[1], &inputs[0].shape[2]).unwrap();
         solver.equals(&inputs[0].shape[1], 3.to_dim()).unwrap();
 
         let any = TensorFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![])).unwrap();
-        let expected = (
-            tvec![TensorFact {
-                shape: shapefact![3, 3, 3],
-                ..TensorFact::new()
-            }],
-            tvec![],
-        );
+        let expected =
+            (tvec![TensorFact { shape: shapefact![3, 3, 3], ..TensorFact::new() }], tvec![]);
 
         assert_eq!(facts, expected);
     }
@@ -747,9 +713,7 @@ mod tests {
     #[test]
     fn solver_backward_1() {
         let (mut solver, inputs, outputs) = bootstrap();
-        solver
-            .equals(&inputs[0].shape[1], &outputs[0].shape[1])
-            .unwrap();
+        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]).unwrap();
 
         let any = TensorFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![&any])).unwrap();
@@ -763,21 +727,13 @@ mod tests {
     #[test]
     fn solver_backward_2() {
         let (mut solver, inputs, outputs) = bootstrap();
-        solver
-            .equals(&inputs[0].shape[1], &outputs[0].shape[1])
-            .unwrap();
+        solver.equals(&inputs[0].shape[1], &outputs[0].shape[1]).unwrap();
 
-        let output = TensorFact {
-            shape: shapefact![_, 2, _],
-            ..TensorFact::new()
-        };
+        let output = TensorFact { shape: shapefact![_, 2, _], ..TensorFact::new() };
         let any = TensorFact::new();
         let facts = solver.infer_facts((tvec![&any], tvec![&output])).unwrap();
         let expected = (
-            tvec![TensorFact {
-                shape: shapefact![_, 2; ..],
-                ..TensorFact::new()
-            }],
+            tvec![TensorFact { shape: shapefact![_, 2; ..], ..TensorFact::new() }],
             tvec![output.clone()],
         );
 

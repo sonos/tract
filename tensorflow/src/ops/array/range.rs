@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
-use tract_core::ops::prelude::*;
 use num_traits::AsPrimitive;
-use std::ops::{ Add, Div, Mul, Sub };
+use std::ops::{Add, Div, Mul, Sub};
+use tract_core::ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Range {
@@ -14,15 +14,22 @@ pub fn range(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 }
 
 impl Range {
-    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> 
-        where T: Datum + AsPrimitive<usize> + Add<T, Output=T> + Div<T, Output=T> + Mul<T,Output=T> + Sub<T, Output=T>,
-              usize: AsPrimitive<T>
+    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    where
+        T: Datum
+            + AsPrimitive<usize>
+            + Add<T, Output = T>
+            + Div<T, Output = T>
+            + Mul<T, Output = T>
+            + Sub<T, Output = T>,
+        usize: AsPrimitive<T>,
     {
         let (start, limit, delta) = args_3!(inputs);
         let start = *start.to_scalar::<T>()?;
         let limit = *limit.to_scalar::<T>()?;
         let delta = *delta.to_scalar::<T>()?;
-        let value = Array1::from_shape_fn(((limit-start) / delta).as_(), |ix| ix.as_() * delta + start);
+        let value =
+            Array1::from_shape_fn(((limit - start) / delta).as_(), |ix| ix.as_() * delta + start);
         Ok(tvec![value.into()])
     }
 }

@@ -2,7 +2,7 @@ use crate::tfpb::tensor::TensorProto;
 use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use crate::tfpb::types::DataType;
 use crate::ToSharedTensor;
-use tract_core::{DatumType, Tensor, ToTract, TractResult, Tractify, TVec};
+use tract_core::{DatumType, TVec, Tensor, ToTract, TractResult, Tractify};
 
 impl Tractify<DataType> for DatumType {
     fn tractify(t: &DataType) -> TractResult<DatumType> {
@@ -25,10 +25,7 @@ impl Tractify<DataType> for DatumType {
 
 impl Tractify<TensorShapeProto> for TVec<usize> {
     fn tractify(t: &TensorShapeProto) -> TractResult<TVec<usize>> {
-        Ok(t.get_dim()
-        .iter()
-        .map(|d| d.size as usize)
-        .collect::<TVec<_>>())
+        Ok(t.get_dim().iter().map(|d| d.size as usize).collect::<TVec<_>>())
     }
 }
 
@@ -54,7 +51,7 @@ impl ToSharedTensor<DataType> for DatumType {
 impl Tractify<TensorProto> for Tensor {
     fn tractify(t: &TensorProto) -> TractResult<Tensor> {
         let dtype = t.get_dtype();
-        let dims:TVec<usize> = t.get_tensor_shape().tractify()?;
+        let dims: TVec<usize> = t.get_tensor_shape().tractify()?;
         let rank = dims.len();
         let content = t.get_tensor_content();
         let mat: Tensor = if content.len() != 0 {

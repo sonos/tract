@@ -32,32 +32,14 @@ impl DatumType {
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
             DatumType::Bool => &[DatumType::Bool],
-            DatumType::U8 => &[
-                DatumType::U8,
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
-            DatumType::U16 => &[
-                DatumType::U16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
-            DatumType::I8 => &[
-                DatumType::I8,
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
-            DatumType::I16 => &[
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
+            DatumType::U8 => {
+                &[DatumType::U8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim]
+            }
+            DatumType::U16 => &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::I8 => {
+                &[DatumType::I8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim]
+            }
+            DatumType::I16 => &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim],
             DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim],
             DatumType::I64 => &[DatumType::I64, DatumType::TDim],
             DatumType::F16 => &[DatumType::F16, DatumType::F32, DatumType::F64],
@@ -268,17 +250,13 @@ impl TryInto<f32> for String {
         } else if self == "-INF" {
             Ok(-std::f32::INFINITY)
         } else {
-            Ok(self
-                .parse::<f32>()
-                .map_err(|_| format!("Can not parse {} as f32", self))?)
+            Ok(self.parse::<f32>().map_err(|_| format!("Can not parse {} as f32", self))?)
         }
     }
 }
 
 datum!(bool, Bool);
-datum!(f16, F16, |m, k, n| Some(
-    Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _
-));
+datum!(f16, F16, |m, k, n| Some(Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _));
 datum!(f32, F32, |m, k, n| if m != 1 {
     Some((tract_linalg::ops().smm)(m, k, n))
 } else {

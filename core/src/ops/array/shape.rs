@@ -43,9 +43,7 @@ impl InferenceRulesOp for Shape {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].rank, 1)?;
-        s.given(&inputs[0].rank, move |s, r| {
-            s.equals(&outputs[0].shape[0], r.to_dim())
-        })?;
+        s.given(&inputs[0].rank, move |s, r| s.equals(&outputs[0].shape[0], r.to_dim()))?;
         s.given(&outputs[0].shape[0], move |s, r| {
             if let Ok(d) = r.to_integer() {
                 s.equals(&inputs[0].rank, d)?;
@@ -61,20 +59,14 @@ impl InferenceRulesOp for Shape {
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
                 let array1: Array1<i64> = Array1::from_vec(
-                    shape
-                        .iter()
-                        .map(|&i| i.to_integer().unwrap() as i64)
-                        .collect(),
+                    shape.iter().map(|&i| i.to_integer().unwrap() as i64).collect(),
                 );
                 let tensor: SharedTensor = array1.into();
                 s.equals(&outputs[0].value, tensor)
             } else {
                 s.equals(&outputs[0].datum_type, DatumType::I32)?;
                 let array1: Array1<i32> = Array1::from_vec(
-                    shape
-                        .iter()
-                        .map(|&i| i.to_integer().unwrap() as i32)
-                        .collect(),
+                    shape.iter().map(|&i| i.to_integer().unwrap() as i32).collect(),
                 );
                 let tensor: SharedTensor = array1.into();
                 s.equals(&outputs[0].value, tensor)

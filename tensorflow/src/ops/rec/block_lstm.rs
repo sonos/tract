@@ -1,9 +1,9 @@
 use ndarray::*;
 
 use crate::tfpb::node_def::NodeDef;
-use tract_core::ops::prelude::*;
 use tract_core::ops::nn::sigmoid::sigmoid_f32;
 use tract_core::ops::nn::tanh::tanh_f32;
+use tract_core::ops::prelude::*;
 
 pub fn block_lstm(node: &NodeDef) -> TractResult<Box<Op>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);
@@ -55,7 +55,7 @@ impl StatelessOp for BlockLSTM {
         */
 
         for n in 0..len {
-            let x = x.index_axis(Axis(0),n);
+            let x = x.index_axis(Axis(0), n);
             let mut i = i.index_axis_mut(Axis(0), n);
             let mut cs = cs.index_axis_mut(Axis(0), n);
             let mut f = f.index_axis_mut(Axis(0), n);
@@ -68,44 +68,44 @@ impl StatelessOp for BlockLSTM {
 
             // println!("x: {:?}", x.iter().take(9).collect::<Vec<_>>());
             let xh = ndarray::stack(Axis(1), &[x, h_prev.view()])?;
-//            dbg!(&xh);
+            //            dbg!(&xh);
 
             let i_ci_f_o = xh.dot(&w) + &bias;
-//            dbg!(&i_ci_f_o);
+            //            dbg!(&i_ci_f_o);
 
             i.assign(&i_ci_f_o.slice_axis(Axis(1), (0..cell_size).into()));
             i.mapv_inplace(sigmoid_f32); // TODO: peepholes
-            // dbg!(&i);
+                                         // dbg!(&i);
 
-//            println!("i: {:?}", i.iter().take(6).collect::<Vec<_>>());
+            //            println!("i: {:?}", i.iter().take(6).collect::<Vec<_>>());
 
-            f.assign(&i_ci_f_o.slice_axis(Axis(1), (2*cell_size..3*cell_size).into()));
+            f.assign(&i_ci_f_o.slice_axis(Axis(1), (2 * cell_size..3 * cell_size).into()));
             f.mapv_inplace(|x| sigmoid_f32(x + self.forget_bias)); // TODO: peepholes
-//            println!("f: {:?}", f.iter().take(6).collect::<Vec<_>>());
+                                                                   //            println!("f: {:?}", f.iter().take(6).collect::<Vec<_>>());
 
-            ci.assign(&i_ci_f_o.slice_axis(Axis(1), (cell_size..2*cell_size).into()));
+            ci.assign(&i_ci_f_o.slice_axis(Axis(1), (cell_size..2 * cell_size).into()));
             ci.mapv_inplace(tanh_f32);
-//            println!("ci: {:?}", ci.iter().take(6).collect::<Vec<_>>());
-/*
-            dbg!(&f);
-            dbg!(&cs_prev);
-            dbg!(&i);
-            dbg!(&ci);
-*/
+            //            println!("ci: {:?}", ci.iter().take(6).collect::<Vec<_>>());
+            /*
+                        dbg!(&f);
+                        dbg!(&cs_prev);
+                        dbg!(&i);
+                        dbg!(&ci);
+            */
             cs_prev *= &f;
             cs_prev += &(ci.to_owned() * &i);
             // TODO: clip cs
             cs.assign(&cs_prev);
-//            dbg!(&cs);
+            //            dbg!(&cs);
 
-            o.assign(&i_ci_f_o.slice_axis(Axis(1), (3*cell_size..4*cell_size).into()));
+            o.assign(&i_ci_f_o.slice_axis(Axis(1), (3 * cell_size..4 * cell_size).into()));
             o.mapv_inplace(sigmoid_f32); // TODO: peephole
-            // dbg!(&o);
-//            println!("o: {:?}", o.iter().take(6).collect::<Vec<_>>());
+                                         // dbg!(&o);
+                                         //            println!("o: {:?}", o.iter().take(6).collect::<Vec<_>>());
 
             co.assign(&cs);
             co.mapv_inplace(tanh_f32);
-//            println!("co: {:?}", co.iter().take(6).collect::<Vec<_>>());
+            //            println!("co: {:?}", co.iter().take(6).collect::<Vec<_>>());
 
             h_prev.assign(&co);
             h_prev *= &o;

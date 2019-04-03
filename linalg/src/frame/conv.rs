@@ -99,14 +99,7 @@ where
         for _ in 0..4 {
             kernel_offsets.push(kernel_offsets[kernel_offsets.len() - 1]);
         }
-        PackedConv {
-            co,
-            k,
-            kernel_offsets,
-            n,
-            data_offsets,
-            _kernel: PhantomData,
-        }
+        PackedConv { co, k, kernel_offsets, n, data_offsets, _kernel: PhantomData }
     }
 
     fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
@@ -285,9 +278,8 @@ pub mod test {
             (self.input_width() - self.kernel_field()) / self.stride + 1
         }
         pub fn offsets(&self) -> (Vec<isize>, Vec<isize>) {
-            let data_offsets: Vec<isize> = (0..self.output_width())
-                .map(|i| (i * self.stride) as isize)
-                .collect();
+            let data_offsets: Vec<isize> =
+                (0..self.output_width()).map(|i| (i * self.stride) as isize).collect();
             let kernel_offsets: Vec<isize> = (0..self.ci)
                 .flat_map(move |ici| {
                     (0..self.kt)
@@ -317,12 +309,7 @@ pub mod test {
             unsafe {
                 let mut packed_a: Vec<f32> =
                     align::uninitialized(conv.packed_a_len(), conv.packed_a_alignment());
-                conv.pack_a(
-                    packed_a.as_mut_ptr(),
-                    self.filters.as_ptr(),
-                    self.k() as isize,
-                    1,
-                );
+                conv.pack_a(packed_a.as_mut_ptr(), self.filters.as_ptr(), self.k() as isize, 1);
 
                 let mut found = vec![9999.0f32; self.co * self.output_width()];
                 conv.conv(
@@ -341,14 +328,7 @@ pub mod test {
         (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)
             .prop_flat_map(|(ci, co, kt, stride, dilation)| {
                 let min = (kt - 1) * dilation + 1;
-                (
-                    Just(ci),
-                    Just(co),
-                    Just(kt),
-                    Just(stride),
-                    Just(dilation),
-                    min..min + 10,
-                )
+                (Just(ci), Just(co), Just(kt), Just(stride), Just(dilation), min..min + 10)
             })
             .prop_flat_map(move |(ci, co, kt, stride, dilation, t)| {
                 (
@@ -361,17 +341,15 @@ pub mod test {
                     proptest::collection::vec((-10..10).prop_map(|a| a as f32), t * ci),
                 )
             })
-            .prop_map(
-                move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {
-                    ci,
-                    co,
-                    kt,
-                    stride,
-                    dilation,
-                    filters,
-                    data,
-                },
-            )
+            .prop_map(move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {
+                ci,
+                co,
+                kt,
+                stride,
+                dilation,
+                filters,
+                data,
+            })
             .boxed()
     }
 }

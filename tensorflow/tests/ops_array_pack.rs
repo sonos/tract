@@ -13,6 +13,7 @@ extern crate tract_tensorflow;
 
 mod utils;
 
+use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
@@ -21,7 +22,6 @@ use tract_core::Tensor as TractSharedTensor;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
-use crate::utils::*;
 
 fn strat() -> BoxedStrategy<(usize, Vec<TractSharedTensor>)> {
     // input rank

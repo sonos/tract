@@ -14,6 +14,7 @@ extern crate tract_tensorflow;
 
 mod utils;
 
+use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
@@ -25,15 +26,10 @@ use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
-use crate::utils::*;
 
 fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
     use proptest::collection::vec;
-    (
-        1usize..4,
-        vec(1usize..8, 1usize..4),
-        vec(1usize..8, 1usize..4),
-    )
+    (1usize..4, vec(1usize..8, 1usize..4), vec(1usize..8, 1usize..4))
         .prop_flat_map(|(b, spatial_dims, non_spatial_dims)| {
             (
                 Just(b),
@@ -59,9 +55,7 @@ fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
                 input_shape.extend(&nsd);
                 let input = ArrayD::from_shape_vec(
                     input_shape.clone(),
-                    (0..input_shape.iter().cloned().product())
-                        .map(|i| (1 + i) as f32)
-                        .collect(),
+                    (0..input_shape.iter().cloned().product()).map(|i| (1 + i) as f32).collect(),
                 )
                 .unwrap();
                 let block_size = Array1::from_shape_fn(sd.len(), |i| bs[i] as i32).into_dyn();

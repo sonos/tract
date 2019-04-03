@@ -1,15 +1,14 @@
 use std::{fs, path};
 
+use tract_core::model::{Model, TensorInfo};
 use tract_core::*;
-use tract_core::model::{ Model, TensorInfo };
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
-    let _ = env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Trace)
-        .try_init();
+    let _ =
+        env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).try_init();
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
@@ -17,20 +16,12 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
     let len = fs::read_dir(path)
         .map_err(|e| format!("accessing {:?}, {:?}", path, e))
         .unwrap()
-        .filter(|d| {
-            d.as_ref()
-                .unwrap()
-                .file_name()
-                .to_str()
-                .unwrap()
-                .starts_with(prefix)
-        })
+        .filter(|d| d.as_ref().unwrap().file_name().to_str().unwrap().starts_with(prefix))
         .count();
     for i in 0..len {
         let filename = path.join(format!("{}_{}.pb", prefix, i));
-        let mut file = fs::File::open(filename)
-            .map_err(|e| format!("accessing {:?}, {:?}", path, e))
-            .unwrap();
+        let mut file =
+            fs::File::open(filename).map_err(|e| format!("accessing {:?}, {:?}", path, e)).unwrap();
         let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
         vec.push(tensor.tractify().unwrap())
     }
@@ -38,10 +29,7 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
 }
 
 pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
-    (
-        load_half_dataset("input", path),
-        load_half_dataset("output", path),
-    )
+    (load_half_dataset("input", path), load_half_dataset("output", path))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,7 +39,7 @@ struct DataJson {
 }
 
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
-//    setup_test_logger();
+    //    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -85,10 +73,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     debug!("Loading {:?}", model_file);
     let onnx = onnx();
     let mut model = onnx.model_for_path(&model_file).unwrap();
-    trace!(
-        "Proto Model:\n{:#?}",
-        onnx.proto_model_for_path(&model_file)
-    );
+    trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
     trace!("Model:\n{:#?}", model);
     model.analyse(false).unwrap();
     if model.missing_type_shape().unwrap().len() != 0 {
@@ -109,10 +94,7 @@ fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
         if d.metadata().unwrap().is_dir()
-            && d.file_name()
-                .to_str()
-                .unwrap()
-                .starts_with("test_data_set_")
+            && d.file_name().to_str().unwrap().starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
             // println!("inputs: {:?}", inputs[0].dump(true));
@@ -125,13 +107,10 @@ fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
                 );
             }
             for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
-//                println!("computed: {:?}", computed[ix].dump(true));
-//                println!("expected: {:?}", expected[ix].dump(true));
+                //                println!("computed: {:?}", computed[ix].dump(true));
+                //                println!("expected: {:?}", expected[ix].dump(true));
                 if !a.close_enough(b, true) {
-                    panic!(
-                        "Different result for output #{}: got:{:?} expected:{:?}",
-                        ix, a, b
-                    )
+                    panic!("Different result for output #{}: got:{:?} expected:{:?}", ix, a, b)
                 }
             }
         }

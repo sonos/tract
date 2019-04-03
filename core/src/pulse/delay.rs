@@ -82,10 +82,7 @@ fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
 }
 
 impl StatefullOp for Delay {
-    fn state(
-        &self,
-        _session: &mut SessionState,
-    ) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
         let mut buffer_shape: TVec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
         let buffer = dispatch_copy!(self::make_buffer(self.input_fact.dt)(&buffer_shape));

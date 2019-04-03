@@ -37,4 +37,3 @@ pub fn tanh_f32(x: f32) -> f32 {
 
     p / q
 }
-

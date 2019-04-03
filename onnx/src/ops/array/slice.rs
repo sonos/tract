@@ -13,20 +13,10 @@ impl Slice {
         let mut input = input.to_array_view::<T>()?;
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
             let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
-            let b = if b > input.shape()[axis] as isize {
-                input.shape()[axis] as isize
-            } else {
-                b
-            };
-            let e = if e > input.shape()[axis] as isize {
-                input.shape()[axis] as isize
-            } else {
-                e
-            };
-            input.slice_axis_inplace(
-                Axis(axis),
-                ::ndarray::Slice::from((b as isize)..(e as isize)),
-            );
+            let b = if b > input.shape()[axis] as isize { input.shape()[axis] as isize } else { b };
+            let e = if e > input.shape()[axis] as isize { input.shape()[axis] as isize } else { e };
+            input
+                .slice_axis_inplace(Axis(axis), ::ndarray::Slice::from((b as isize)..(e as isize)));
         }
         Ok(Tensor::from(input.to_owned()).into())
     }
@@ -42,9 +32,7 @@ impl StatelessOp for Slice {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(
-            self, input
-        ))?))
+        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, input))?))
     }
 }
 
@@ -84,16 +72,8 @@ impl InferenceRulesOp for Slice {
                             e = (d as isize).into();
                         }
                     }
-                    let b = if b < 0 {
-                        d.bex() + TDim::from(b)
-                    } else {
-                        TDim::from(b).bex()
-                    };
-                    let e = if e < 0 {
-                        d.bex() + TDim::from(e)
-                    } else {
-                        TDim::from(e).bex()
-                    };
+                    let b = if b < 0 { d.bex() + TDim::from(b) } else { TDim::from(b).bex() };
+                    let e = if e < 0 { d.bex() + TDim::from(e) } else { TDim::from(e).bex() };
                     s.equals(&outputs[0].shape[axis], e - b)
                 } else {
                     s.equals(&outputs[0].shape[axis], shape[axis])

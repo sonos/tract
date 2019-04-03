@@ -1,5 +1,5 @@
-use tract_core::ops::prelude::*;
 use crate::tfpb::node_def::NodeDef;
+use tract_core::ops::prelude::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Transpose {
@@ -22,7 +22,11 @@ impl Transpose {
         new_shape
     }
 
-    fn eval_t<T: Datum>(&self, input: SharedTensor, perm: &[usize]) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Datum>(
+        &self,
+        input: SharedTensor,
+        perm: &[usize],
+    ) -> TractResult<TVec<SharedTensor>> {
         Ok(tvec![input.to_array::<T>()?.permuted_axes(perm).into()])
     }
 }
@@ -39,9 +43,10 @@ impl Op for Transpose {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(ref perm) = inputs[1].konst {
-            let perm:Vec<usize> = perm.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&x| x as usize).collect();
+            let perm: Vec<usize> =
+                perm.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&x| x as usize).collect();
             let op = ::tract_core::ops::array::PermuteAxes::new(Some(perm));
-            return Ok(Some(TypedModelPatch::single_unary_op(&model, &node, op)?))
+            return Ok(Some(TypedModelPatch::single_unary_op(&model, &node, op)?));
         }
         Ok(None)
     }
@@ -50,7 +55,8 @@ impl Op for Transpose {
 impl StatelessOp for Transpose {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (data, perm) = args_2!(inputs);
-        let perm:TVec<usize> = perm.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&x| x as usize).collect();
+        let perm: TVec<usize> =
+            perm.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&x| x as usize).collect();
         dispatch_datum!(Self::eval_t(data.datum_type())(self, data, &*perm))
     }
 }

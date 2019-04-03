@@ -15,7 +15,7 @@ impl Op for Identity {
     ) -> TractResult<Option<TypedModelPatch>> {
         let mut patch = TypedModelPatch::default();
         let tap = patch.tap_model(model, node.inputs[0])?;
-        patch.shunt_outside(OutletId::new(node.id,0), tap)?;
+        patch.shunt_outside(OutletId::new(node.id, 0), tap)?;
         Ok(Some(patch))
     }
 }
