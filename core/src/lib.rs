@@ -148,6 +148,7 @@ pub mod internal {
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
+    pub use crate::{ args_1, args_2, args_3, args_4 };
 }
 
 /*
