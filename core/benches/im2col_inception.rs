@@ -4,16 +4,10 @@ extern crate ndarray;
 extern crate tract_core;
 use criterion::Criterion;
 
-use tract_core::datum::TryInto;
-use tract_core::model::TypedTensorInfo;
+use tract_core::internal::*;
 use tract_core::ops::nn::PaddingSpec;
 use tract_core::ops::nn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::nn::PaddingSpec::Valid;
-use tract_core::ops::prelude::*;
-use tract_core::tvec;
-use tract_core::DatumType;
-use tract_core::Tensor;
-use tract_core::TensorFact;
 
 fn b(
     c: &mut Criterion,

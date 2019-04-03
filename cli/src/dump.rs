@@ -1,7 +1,7 @@
 use crate::display_graph::*;
 use crate::errors::*;
 use crate::{Parameters, SomeModel};
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
     let tract = &params.tract_model;

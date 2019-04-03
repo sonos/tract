@@ -2,7 +2,7 @@ use crate::tfpb::tensor::TensorProto;
 use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use crate::tfpb::types::DataType;
 use crate::ToSharedTensor;
-use tract_core::{DatumType, TVec, Tensor, ToTract, TractResult, Tractify};
+use tract_core::internal::*;
 
 impl Tractify<DataType> for DatumType {
     fn tractify(t: &DataType) -> TractResult<DatumType> {

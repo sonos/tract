@@ -1,4 +1,4 @@
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn build(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     Ok(Box::new(ExpandDims))

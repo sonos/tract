@@ -13,9 +13,7 @@ use crate::profile::ProfileData;
 use crate::rusage::{Duration, Instant};
 use crate::tensor::make_inputs;
 
-use tract_core::model::{Model, TensorInfo};
-use tract_core::plan::{SimplePlan, SimpleState};
-use tract_core::{ Tensor, TractResult, TVec};
+use tract_core::internal::*;
 
 pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
     match &params.tract_model {

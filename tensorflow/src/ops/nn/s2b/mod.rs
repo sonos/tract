@@ -3,7 +3,7 @@ use num_traits::Zero;
 
 pub mod raw;
 pub mod unary;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn space_to_batch_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let datum_type = pb.get_attr_datum_type("T")?;

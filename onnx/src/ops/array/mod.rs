@@ -1,7 +1,7 @@
 mod slice;
 
 use tract_core::ops as tractops;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 use crate::model::OnnxOpRegister;
 use crate::pb;

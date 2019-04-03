@@ -5,7 +5,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 use num_traits::Zero;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 /// Partial information about any value.
 pub trait Fact: fmt::Debug + Clone + PartialEq + Default {

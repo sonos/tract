@@ -5,7 +5,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use num_traits::ToPrimitive;
 use num_traits::Zero;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 use self::super::path::Path;
 use self::super::proxies::*;

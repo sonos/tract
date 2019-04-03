@@ -1,4 +1,4 @@
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
@@ -45,13 +45,8 @@ pub fn konst(node: &NodeDef) -> TractResult<Box<Op>> {
     Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(mat)))
 }
 
-pub fn placeholder(node: &NodeDef) -> TractResult<Box<Op>> {
-    let dt = node.get_attr_datum_type("dtype")?;
-    let mut fact = TensorFact::dt(dt);
-    if let Some(shape) = node.get_attr_opt_shape("shape")? {
-        fact = fact.with_shape(shape)
-    }
-    Ok(Box::new(::tract_core::ops::source::Source::new(fact)))
+pub fn placeholder(_node: &NodeDef) -> TractResult<Box<Op>> {
+    Ok(Box::new(::tract_core::ops::source::Source::new()))
 }
 
 #[derive(Clone, Debug, new)]

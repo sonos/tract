@@ -1,5 +1,5 @@
 use self::super::DataFormat;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::prelude::Array1;
 use ndarray::Axis;
 use num_traits::AsPrimitive;

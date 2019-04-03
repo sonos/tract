@@ -1,10 +1,6 @@
+use tract_core::internal::*;
 use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
-use std::collections::HashMap;
-use tract_core::framework::{Framework, OpBuilder, OpRegister};
-use tract_core::model::{InletId, OutletId};
-use tract_core::ops::prelude::*;
-use tract_core::InferenceModel;
 
 pub type TfOpRegister = OpRegister<NodeDef>;
 
@@ -50,7 +46,6 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
         }
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
-            // variable -> assign rewire
             let output_arity = arities.get(&*name).cloned().unwrap_or(1);
             let facts = tvec!(TensorFact::default(); output_arity);
             let node_id = model.add_node(
@@ -59,6 +54,15 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
                     .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
                 facts,
             )?;
+
+            if pbnode.get_op() == "PlaceHolder" {
+                let dt = pbnode.get_attr_datum_type("dtype")?;
+                let mut fact = TensorFact::dt(dt);
+                if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
+                    fact = fact.with_shape(shape)
+                }
+                model.set_outlet_fact(OutletId::new(node_id, 0), fact)?;
+            }
 
             for (ix, i) in pbnode.get_input().iter().enumerate() {
                 let input = Self::parse_input(i)?;

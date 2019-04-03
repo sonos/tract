@@ -188,7 +188,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", ::tract_core::Tensor::tractify(a.1.get_tensor())?)
+                        format!("{:?}", ::tract_core::prelude::Tensor::tractify(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };
@@ -212,7 +212,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                 let mut v = vec![];
                 for a in gnode.get_attribute().iter() {
                     let value = if a.has_t() {
-                        format!("{:?}", ::tract_core::Tensor::tractify(a.get_t())?)
+                        format!("{:?}", ::tract_core::prelude::Tensor::tractify(a.get_t())?)
                     } else {
                         format!("{:?}", a)
                     };

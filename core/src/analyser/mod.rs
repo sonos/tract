@@ -2,7 +2,7 @@ use std::borrow::BorrowMut;
 use std::collections::BTreeSet;
 
 use crate::model::*;
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 pub mod types;
 

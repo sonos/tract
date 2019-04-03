@@ -1,5 +1,4 @@
-use crate::datum::TryInto;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use crate::ops::source::Source;
 use std::fmt;
 
@@ -125,7 +124,6 @@ impl PulsedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::*;
     use ndarray::*;
     use proptest::proptest;
     use proptest::test_runner::TestCaseResult;
@@ -183,9 +181,12 @@ mod tests {
         input_array: ArrayD<f32>,
         axis: usize,
     ) -> TestCaseResult {
+        let mut ref_model = model.clone();
+        ref_model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), input_array.shape()))?;
         let input = Tensor::from(input_array.clone());
-        let plan = SimplePlan::new(&model).unwrap();
+        let plan = SimplePlan::new(&ref_model).unwrap();
         let outputs = plan.run(tvec!(input.clone())).unwrap();
+
         let model = model.into_normalized().unwrap();
 
         let pulsed = PulsedModel::new(&model, pulse).unwrap();
@@ -196,8 +197,8 @@ mod tests {
         let mut initial_output_shape = output_fact.shape.clone();
         initial_output_shape[output_stream_axis] = 0;
 
-        let pulsed_plan = crate::plan::SimplePlan::new(pulsed).unwrap();
-        let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
+        let pulsed_plan = SimplePlan::new(pulsed).unwrap();
+        let mut state = SimpleState::new(&pulsed_plan).unwrap();
 
         let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
         let mut output_len = None;

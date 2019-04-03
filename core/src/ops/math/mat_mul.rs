@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::ops::{Add, Mul};
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::*;
 
 fn eval_t<T: Copy + Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {

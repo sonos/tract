@@ -10,7 +10,7 @@ use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 
 use ndarray::ArrayD;
-use tract_core::Tensor;
+use tract_core::prelude::*;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -65,20 +65,18 @@ impl TensorHolder {
 
 impl From<Tensor> for TensorHolder {
     fn from(m: Tensor) -> TensorHolder {
-        use tract_core::DatumType::*;
-        use tract_core::TDim;
         match m.datum_type() {
-            Bool => TensorHolder::Bool(Self::to_tensor(m.into_array().unwrap())),
-            F16 => unimplemented!(),
-            F32 => TensorHolder::F32(Self::to_tensor(m.into_array().unwrap())),
-            F64 => TensorHolder::F64(Self::to_tensor(m.into_array().unwrap())),
-            I8 => TensorHolder::I8(Self::to_tensor(m.into_array().unwrap())),
-            I16 => TensorHolder::I16(Self::to_tensor(m.into_array().unwrap())),
-            I32 => TensorHolder::I32(Self::to_tensor(m.into_array().unwrap())),
-            I64 => TensorHolder::I64(Self::to_tensor(m.into_array().unwrap())),
-            U8 => TensorHolder::U8(Self::to_tensor(m.into_array().unwrap())),
-            U16 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
-            TDim => {
+            DatumType::Bool => TensorHolder::Bool(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::F16 => unimplemented!(),
+            DatumType::F32 => TensorHolder::F32(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::F64 => TensorHolder::F64(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I8 => TensorHolder::I8(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I16 => TensorHolder::I16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I32 => TensorHolder::I32(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I64 => TensorHolder::I64(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::U8 => TensorHolder::U8(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::U16 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::TDim => {
                 let dims = m.to_array_view::<TDim>().unwrap();
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
                     let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
@@ -87,7 +85,7 @@ impl From<Tensor> for TensorHolder {
                     panic!("Streaming used in tensorflow settings")
                 }
             }
-            tract_core::DatumType::String => {
+            DatumType::String => {
                 TensorHolder::String(Self::to_tensor(m.into_array().unwrap()))
             }
         }

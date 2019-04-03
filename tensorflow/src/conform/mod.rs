@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![allow(deprecated)]
 #![allow(non_snake_case)]
 
 error_chain! {
@@ -26,7 +27,7 @@ pub use protobuf::Message;
 use crate::tfpb;
 use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use crate::tfpb::types::DataType;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,

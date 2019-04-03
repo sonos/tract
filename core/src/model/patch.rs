@@ -1,5 +1,5 @@
 use crate::model::*;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug)]

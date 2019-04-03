@@ -2,7 +2,7 @@ use std::fmt;
 
 use num_traits::ToPrimitive;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 use self::super::expr::*;
 use self::super::solver::Context;

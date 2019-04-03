@@ -1,7 +1,6 @@
 use std::{fs, path};
 
-use tract_core::model::{Model, TensorInfo};
-use tract_core::*;
+use tract_core::internal::*;
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
 

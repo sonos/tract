@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use crate::model::order::eval_order_for_nodes;
 use crate::model::{Model, OutletId, TensorInfo};
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Default)]
 pub struct SessionState {

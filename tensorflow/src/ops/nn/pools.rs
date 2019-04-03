@@ -1,6 +1,6 @@
 use crate::tfpb::node_def::NodeDef;
 use tract_core::ops::nn::*;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn avgpool(pb: &NodeDef) -> TractResult<Box<Op>> {
     let ksize: Vec<usize> = pb.get_attr_list_int("ksize")?;

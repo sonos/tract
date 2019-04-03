@@ -3,7 +3,7 @@ pub mod mat_mul;
 
 pub use self::gemm::Gemm;
 pub use self::mat_mul::MatMul;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use num_traits::AsPrimitive;
 use num_traits::Float;
 use num_traits::Zero;

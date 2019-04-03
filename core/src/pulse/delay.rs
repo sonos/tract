@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use crate::pulse::PulsedTensorFact;
 use ndarray::*;
 

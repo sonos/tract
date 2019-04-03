@@ -20,45 +20,23 @@ pub mod nn;
 pub mod source;
 pub mod unimpl;
 
-pub mod prelude {
-    pub use super::{InferenceOp, Op, OpState, StatefullOp, StatelessOp};
-    pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
-    pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
-    pub use crate::analyser::types::TypeFact;
-    pub use crate::analyser::types::*;
-    pub use crate::datum::{Datum, DatumType};
-    pub use crate::dim::{DimLike, TDim, ToDim};
-    pub use crate::framework::Framework;
-    pub use crate::model::TVec;
-    pub use crate::model::*;
-    pub use crate::plan::SessionState;
-    pub use crate::pulse::PulsedModel;
-    pub use crate::tensor::{arr4, SharedTensor, Tensor};
-    pub use crate::ToTract;
-    pub use crate::TractResult;
-    pub use std::borrow::Cow;
-    pub use std::collections::HashMap;
-    pub use std::marker::PhantomData;
-    pub use tract_linalg::f16::f16;
-
-    pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
-        if inputs.len() != expected {
-            bail!("Wrong input number. Rules expect {}, node has {}.", expected, inputs.len())
-        } else {
-            Ok(())
-        }
-    }
-
-    pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResult<()> {
-        if outputs.len() != expected {
-            bail!("Wrong output number. Rules expect {}, node has {}.", expected, outputs.len())
-        } else {
-            Ok(())
-        }
+pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
+    if inputs.len() != expected {
+        bail!("Wrong input number. Rules expect {}, node has {}.", expected, inputs.len())
+    } else {
+        Ok(())
     }
 }
 
-use self::prelude::*;
+pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResult<()> {
+    if outputs.len() != expected {
+        bail!("Wrong output number. Rules expect {}, node has {}.", expected, outputs.len())
+    } else {
+        Ok(())
+    }
+}
+
+use crate::internal::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
     fn eval(

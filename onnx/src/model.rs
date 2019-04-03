@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use tract_core::framework::{Framework, OpBuilder, OpRegister};
-use tract_core::model::*;
-use tract_core::*;
+use tract_core::internal::*;
 
 use crate::pb;
 

@@ -1,6 +1,6 @@
 use ndarray::*;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct ConstantOfShape {

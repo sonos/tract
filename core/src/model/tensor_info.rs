@@ -1,8 +1,8 @@
-use crate::analyser::types::{ShapeFact, TensorFact};
+use crate::prelude::*;
+use crate::internal::*;
 use crate::datum::TryInto;
 use crate::dim::ToDim;
 use crate::tensor::Tensor;
-use crate::{DatumType, SharedTensor, TDim, TVec, TractResult};
 use std::fmt;
 
 pub trait TensorInfo: Clone + std::fmt::Debug {

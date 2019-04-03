@@ -32,7 +32,7 @@ use std::str::FromStr;
 use crate::tfpb::graph::GraphDef;
 use insideout::InsideOut;
 use tract_core::model::{InferenceModel, NormalizedModel, TypedModel};
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb;
 
@@ -261,7 +261,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     tf_model: (),
 
-    inputs: Option<Vec<Option<tract_core::ops::prelude::SharedTensor>>>,
+    inputs: Option<Vec<Option<tract_core::internal::SharedTensor>>>,
 
     assertions: Option<Assertions>,
 

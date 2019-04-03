@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::prelude::*;
 use num_traits::cast::AsPrimitive;
 

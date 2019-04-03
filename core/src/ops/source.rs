@@ -1,8 +1,7 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Source {
-    pub fact: TensorFact,
 }
 
 impl Op for Source {
@@ -30,18 +29,12 @@ impl InferenceRulesOp for Source {
     /// Registers the inference rules of the operator.
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        s: &mut Solver<'r>,
+        _s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_input_arity(&inputs, 0)?;
         check_output_arity(&outputs, 1)?;
-        if let GenericFact::Only(dt) = self.fact.datum_type {
-            s.equals(&outputs[0].datum_type, dt)?;
-        }
-        if let Some(shape) = self.fact.shape.concretize() {
-            s.equals(&outputs[0].shape, shape)?;
-        }
         Ok(())
     }
 }

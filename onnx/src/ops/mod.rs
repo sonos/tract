@@ -1,7 +1,7 @@
 use crate::model::OnnxOpRegister;
 use crate::pb;
 use crate::pb::NodeProto;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 mod array;
 mod logic;

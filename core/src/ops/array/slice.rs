@@ -1,5 +1,5 @@
 use crate::ops::identity::Identity;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::*;
 
 #[derive(Debug, Clone, new, Default)]

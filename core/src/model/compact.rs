@@ -1,6 +1,6 @@
+use crate::prelude::*;
 use crate::datum::TryInto;
 use crate::model::{InletId, Model, OutletId, TensorInfo};
-use crate::{TVec, TractResult};
 use std::collections::HashMap;
 
 pub(crate) fn compact<TI1, TI2>(old: &Model<TI1>) -> TractResult<Model<TI2>>

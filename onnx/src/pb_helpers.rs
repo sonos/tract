@@ -1,5 +1,5 @@
 use crate::pb::*;
-use tract_core::*;
+use tract_core::internal::*;
 
 use num_traits::{AsPrimitive, Bounded};
 

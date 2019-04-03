@@ -4,15 +4,15 @@
 //!
 //! ## Example
 //!
+//!
 //! ```
 //! # extern crate tract_core;
 //! # extern crate ndarray;
 //! # fn main() {
-//! use tract_core::*;
-//! use tract_core::model::*;
+//! use tract_core::internal::*;
 //!
 //! // build a simple model that just add 3 to each input component
-//! let mut model = Model::default();
+//! let mut model = InferenceModel::default();
 //!
 //! let input = model.add_source_default("input").unwrap();
 //! let three = model.add_const("three".to_string(), 3f32.into()).unwrap();
@@ -40,9 +40,10 @@
 //! # }
 //! ```
 //!
+//!
 //! While creating a model from Rust code is usefull for testing the library,
-//! real-life use-cases will usually load a SharedTensor or ONNX model using
-//! tract-tf or tract-onnx crates.
+//! real-life use-cases will usually load a TensorFlow or ONNX model using
+//! tract-tensorflow or tract-onnx crates.
 //!
 
 // TODO: show Plan-based API in doc instead of shortcut
@@ -112,14 +113,42 @@ pub mod tensor;
 
 pub use crate::errors::*;
 
-pub use crate::analyser::types::TensorFact;
-pub use crate::datum::{DatumType, TryInto};
-pub use crate::dim::TDim;
-pub use crate::framework::Framework;
-pub use crate::model::TVec;
-pub use crate::model::{InferenceModel, InferenceNode};
-pub use crate::plan::{SimplePlan, SimpleState};
-pub use crate::tensor::{SharedTensor, Tensor};
+/// This prelude is meant for code using tract.
+pub mod prelude {
+    pub use crate::analyser::types::TensorFact;
+    pub use crate::datum::{DatumType, TryInto};
+    pub use crate::dim::TDim;
+    pub use crate::errors::*;
+    pub use crate::framework::Framework;
+    pub use crate::model::TVec;
+    pub use crate::plan::{SimplePlan, SimpleState};
+    pub use crate::tensor::{SharedTensor, Tensor};
+    pub use crate::tvec;
+}
+
+/// This prelude is meant for code extending tract (like implementing new ops).
+pub mod internal {
+    pub use crate::analyser::rules::expr::{IntoExp, ToDimExp};
+    pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
+    pub use crate::analyser::types::TypeFact;
+    pub use crate::analyser::types::*;
+    pub use crate::datum::{Datum, DatumType};
+    pub use crate::dim::{DimLike, TDim, ToDim};
+    pub use crate::framework::*;
+    pub use crate::model::*;
+    pub use crate::ops::{
+        check_input_arity, check_output_arity, InferenceOp, Op, OpState, StatefullOp, StatelessOp,
+    };
+    pub use crate::plan::SessionState;
+    pub use crate::prelude::*;
+    pub use crate::pulse::PulsedModel;
+    pub use crate::tensor::arr4;
+    pub use crate::{ToTract, Tractify};
+    pub use std::borrow::Cow;
+    pub use std::collections::HashMap;
+    pub use std::marker::PhantomData;
+    pub use tract_linalg::f16::f16;
+}
 
 /*
 #[cfg(test)]

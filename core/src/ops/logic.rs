@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 element_map!(Not, [bool], |a: bool| !a);
 

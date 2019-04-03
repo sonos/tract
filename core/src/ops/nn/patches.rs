@@ -1,5 +1,5 @@
 use super::{DataFormat, DataShape, PaddingSpec};
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::prelude::*;
 #[cfg(not(debug_assertions))]
 use no_panic::no_panic;

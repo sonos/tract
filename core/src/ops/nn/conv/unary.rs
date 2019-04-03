@@ -1,7 +1,7 @@
 use ndarray::*;
 
 use crate::model::*;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use insideout::InsideOut;
 
 use super::conv_gemm::ConvGemm;

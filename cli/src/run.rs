@@ -1,7 +1,6 @@
 use crate::errors::*;
 use crate::{Parameters, SomeModel};
-use tract_core::ops::prelude::*;
-use tract_core::SimplePlan;
+use tract_core::internal::*;
 
 pub fn handle(params: Parameters) -> CliResult<()> {
     let outputs = match &params.tract_model {
