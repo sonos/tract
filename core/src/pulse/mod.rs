@@ -112,8 +112,8 @@ impl PulsedModel {
             trace!("Target is now {}", target.nodes().len());
         }
         // maintaining order of i/o interface
-        target.inputs = source.inputs()?.iter().map(|i| mapping[&i]).collect();
-        target.outputs = source.outputs()?.iter().map(|o| mapping[&o]).collect();
+        target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
+        target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
         Ok((target, mapping))
     }
 
@@ -150,7 +150,7 @@ mod tests {
         let pulse =
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
-            pulse.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
+            pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
         );
     }
@@ -168,11 +168,11 @@ mod tests {
         let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
 
         assert_eq!(
-            pulse.input_fact().unwrap().to_tensor_fact(),
+            pulse.input_fact(0).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
         assert_eq!(
-            pulse.output_fact().unwrap().to_tensor_fact(),
+            pulse.output_fact(0).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
     }
@@ -189,7 +189,7 @@ mod tests {
         let model = model.into_normalized().unwrap();
 
         let pulsed = PulsedModel::new(&model, pulse).unwrap();
-        let output_fact = pulsed.output_fact().unwrap().clone();
+        let output_fact = pulsed.output_fact(0).unwrap().clone();
 
         let output_stream_axis = output_fact.axis;
         let delay = output_fact.delay;

@@ -244,7 +244,7 @@ impl Op for Reduce {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let fact = target.fact(input)?.clone();
+        let fact = target.outlet_fact(input)?.clone();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }

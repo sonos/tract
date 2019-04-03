@@ -34,7 +34,7 @@ impl Op for AddDims {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.fact(input)?.clone();
+        let mut fact = target.outlet_fact(input)?.clone();
         fact.shape = self.compute_shape(&fact.shape);
         fact.axis += self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;

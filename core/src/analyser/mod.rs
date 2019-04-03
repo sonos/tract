@@ -82,7 +82,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             let node = &self.model.borrow().nodes()[node];
             debug!("Starting step for #{} {} ({})", node.id, node.name, node.op.name(),);
 
-            let (inputs, outputs) = self.model.borrow().facts(node.id)?;
+            let (inputs, outputs) = self.model.borrow().node_facts(node.id)?;
 
             let inferred = node
                 .op
@@ -91,7 +91,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 
             for (ix, &outlet) in node.inputs.iter().enumerate() {
                 let inferred_fact = &inferred.0[ix];
-                let old_fact = self.model.borrow().fact(outlet)?;
+                let old_fact = self.model.borrow().outlet_fact(outlet)?;
                 let unified = inferred_fact
                     .unify(&old_fact)
                     .map_err(|e| format!("while unifying inputs of {} : {}", node, e))?;
@@ -103,7 +103,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             }
 
             for (ix, inferred_fact) in inferred.1.iter().enumerate() {
-                let old_fact = self.model.borrow().fact(OutletId::new(node.id, ix))?;
+                let old_fact = self.model.borrow().outlet_fact(OutletId::new(node.id, ix))?;
                 let unified = old_fact.unify(inferred_fact)?;
 
                 if &unified != old_fact {
@@ -114,7 +114,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             }
         }
         for (outlet, fact) in &changed_edges {
-            self.model.borrow_mut().set_fact(*outlet, fact.clone())?;
+            self.model.borrow_mut().set_outlet_fact(*outlet, fact.clone())?;
         }
         Ok(changed_edges)
     }

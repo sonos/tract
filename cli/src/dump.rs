@@ -25,12 +25,12 @@ fn handle_t<TI: TensorInfo>(
     if let Some(asserts) = &params.assertions {
         if let Some(asserts) = &asserts.assert_outputs {
             for (ix, assert) in asserts.iter().enumerate() {
-                assert.unify(&tract.outputs_fact(ix).unwrap().to_tensor_fact())?;
+                assert.unify(&tract.output_fact(ix).unwrap().to_tensor_fact())?;
             }
         }
         if let Some(asserts) = &asserts.assert_output_facts {
             let outputs_facts: Vec<TensorFact> =
-                tract.outputs()?.iter().map(|o| tract.fact(*o).unwrap().to_tensor_fact()).collect();
+                tract.output_outlets()?.iter().map(|o| tract.outlet_fact(*o).unwrap().to_tensor_fact()).collect();
             crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
         }
     }

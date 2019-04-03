@@ -3,8 +3,8 @@ use crate::TractResult;
 use bit_set;
 
 pub fn eval_order<TI: TensorInfo>(model: &super::Model<TI>) -> TractResult<Vec<usize>> {
-    let inputs = model.inputs()?.iter().map(|n| n.node).collect::<Vec<usize>>();
-    let targets = model.outputs()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 

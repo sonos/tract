@@ -179,7 +179,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
         }
 
         let input = mapping[&node.inputs[0]];
-        let fact = target.fact(input)?;
+        let fact = target.outlet_fact(input)?;
 
         if fact.axis == self.axis {
             self.pulsify_along_concat_axis(source, node, target, mapping)
@@ -287,7 +287,7 @@ impl<T: Datum + Copy> NormConcat<T> {
             bail!("Concat can not pulse more than on input on concat axis")
         }
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.fact(input)?.clone();
+        let mut fact = target.outlet_fact(input)?.clone();
         assert_eq!(fact.axis, self.axis);
         let var_index = self.slices.iter().position(|s| s.is_var()).unwrap();
         let pre_views: Vec<_> =

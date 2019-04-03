@@ -43,7 +43,7 @@ impl Op for PermuteAxes {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.fact(input)?.clone();
+        let mut fact = target.outlet_fact(input)?.clone();
         if let Some(axes) = &self.axes {
             fact.axis = axes.iter().position(|x| x == &fact.axis).ok_or_else(|| {
                 format!("Could not find streaming axis {} if permute axes {:?}", fact.axis, axes)

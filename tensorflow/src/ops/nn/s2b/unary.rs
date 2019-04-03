@@ -41,7 +41,7 @@ impl Op for SpaceToBatchUnary {
                         strides: conv_op.strides.clone(),
                         kernel: conv_op.kernel.clone(),
                         bias: conv_op.bias.clone(),
-                        full_input_shape: model.fact(node.inputs[0])?.shape.iter().collect(),
+                        full_input_shape: model.outlet_fact(node.inputs[0])?.shape.iter().collect(),
                         full_output_shape: b2s_node.outputs[0].fact.shape.iter().collect(),
                         group: conv_op.group,
                     };

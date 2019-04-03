@@ -15,6 +15,7 @@ use crate::tensor::make_inputs;
 
 use tract_core::model::{Model, TensorInfo};
 use tract_core::plan::{SimplePlan, SimpleState};
+use tract_core::{ Tensor, TractResult, TVec};
 
 pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
     match &params.tract_model {
@@ -23,6 +24,16 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
         SomeModel::Normalized(m) => handle_benching_t(m, &params, profiling),
         SomeModel::Pulsed(_, m) => handle_benching_t(m, &params, profiling),
     }
+}
+
+pub fn make_inputs_for_model<TI: TensorInfo>(model: &Model<TI>) -> CliResult<TVec<Tensor>> {
+    Ok(make_inputs(
+        &*model
+            .input_outlets()?
+            .iter()
+            .map(|&t| Ok(model.outlet_fact(t)?.to_tensor_fact()))
+            .collect::<TractResult<Vec<_>>>()?,
+    )?)
 }
 
 fn handle_benching_t<TI: TensorInfo>(
@@ -43,7 +54,7 @@ fn handle_benching_t<TI: TensorInfo>(
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        state.run(make_inputs(&[model.input_fact()?.to_tensor_fact()])?)?;
+        state.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
     let dur = Duration::since(&start, iters);
@@ -90,7 +101,7 @@ pub fn handle_t<TI: TensorInfo>(
     let mut iters = 0;
     let start = Instant::now();
     while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-        let _ = plan.run(make_inputs(&[model.input_fact()?.to_tensor_fact()])?)?;
+        let _ = plan.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
     let entire = Duration::since(&start, iters);
@@ -99,7 +110,7 @@ pub fn handle_t<TI: TensorInfo>(
     info!("Running for {} ms max. for each node.", max_time);
 
     let mut state = SimpleState::new(&plan)?;
-    state.set_inputs(make_inputs(&[model.input_fact()?.to_tensor_fact()])?)?;
+    state.set_inputs(make_inputs_for_model(model)?)?;
     debug!("Using execution plan: {:?}", plan);
 
     let mut profile = ProfileData::new(model);

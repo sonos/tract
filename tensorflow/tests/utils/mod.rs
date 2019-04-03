@@ -7,8 +7,8 @@ pub fn compare<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
-    model.set_inputs(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
-    model.set_outputs(&[output])?;
+    model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
+    model.set_output_names(&[output])?;
     let plan = tract_core::SimplePlan::new(&model)?;
     let mut state = tract_core::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
@@ -42,8 +42,8 @@ pub fn infer<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
-    model.set_inputs(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
-    model.set_outputs(&[output])?;
+    model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
+    model.set_output_names(&[output])?;
     let plan = tract_core::SimplePlan::new(&model)?;
     let mut state = tract_core::plan::SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {

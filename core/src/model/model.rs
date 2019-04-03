@@ -53,7 +53,8 @@ impl<TI: TensorInfo> Model<TI> {
         Ok(id)
     }
 
-    pub fn clear_inputs(&mut self, node: usize) -> TractResult<()> {
+
+    pub(crate) fn clear_inputs(&mut self, node: usize) -> TractResult<()> {
         for ix in 0..self.nodes[node].inputs.len() {
             let previous = self.nodes[node].inputs[ix];
             self.nodes[previous.node].outputs[previous.slot]
@@ -86,24 +87,53 @@ impl<TI: TensorInfo> Model<TI> {
         Ok(())
     }
 
-    pub fn set_inputs(
-        &mut self,
-        inputs: impl IntoIterator<Item = impl AsRef<str>>,
-    ) -> TractResult<()> {
-        use crate::ops::source::Source;
-        let ids: Vec<OutletId> = inputs
-            .into_iter()
-            .map(|s| self.node_by_name(s.as_ref()).map(|n| OutletId::new(n.id, 0)))
-            .collect::<TractResult<_>>()?;
-        self.inputs = ids;
-        for &i in &self.inputs {
-            self.nodes[i.node].inputs.clear();
-            self.nodes[i.node].op = Box::new(Source::default());
-        }
+    // Inputs
+
+    pub fn input_outlets(&self) -> TractResult<&[OutletId]> {
+        Ok(&self.inputs)
+    }
+
+    pub fn set_input_outlets(&mut self, inputs: &[OutletId]) -> TractResult<()> {
+        self.inputs = inputs.to_vec();
         Ok(())
     }
 
-    pub fn set_outputs(
+    pub fn set_input_names(
+        &mut self,
+        inputs: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> TractResult<()> {
+        let mut ids = vec!();
+        for i in inputs.into_iter() {
+            let node = self.node_by_name(i.as_ref())?;
+            for o in 0..node.outputs.len() {
+                ids.push(OutletId::new(node.id, o))
+            }
+        }
+        self.inputs = ids;
+        Ok(())
+    }
+
+    pub fn input_fact(&self, ix: usize) -> TractResult<&TI> {
+        let input = self.input_outlets()?[ix];
+        self.outlet_fact(input)
+    }
+
+    pub fn set_input_fact(&mut self, input: usize, fact: TI) -> TractResult<()> {
+        let outlet = self.inputs[input];
+        self.set_outlet_fact(outlet, fact)
+    }
+
+    // Outputs
+    pub fn output_outlets(&self) -> TractResult<&[OutletId]> {
+        Ok(&self.outputs)
+    }
+
+    pub fn set_output_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
+        self.outputs = outputs.to_vec();
+        Ok(())
+    }
+
+    pub fn set_output_names(
         &mut self,
         outputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
@@ -115,71 +145,21 @@ impl<TI: TensorInfo> Model<TI> {
         Ok(())
     }
 
-    pub fn set_output_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
-        self.outputs = outputs.to_vec();
-        Ok(())
+    pub fn output_fact(&self, ix: usize) -> TractResult<&TI> {
+        let output = self.output_outlets()?[ix];
+        self.outlet_fact(output)
     }
 
-    pub fn set_fact(&mut self, outlet: OutletId, fact: TI) -> TractResult<()> {
-        let outlets = &mut self.nodes[outlet.node].outputs;
-        if outlets.len() <= outlet.slot {
-            bail!("Invalid outlet refererence: {:?}", outlet)
-        }
-        outlets[outlet.slot].fact = fact;
-        Ok(())
-    }
+    // nodes and their facts
 
-    pub fn set_input_fact(&mut self, input: usize, fact: TI) -> TractResult<()> {
-        let outlet = self.inputs()?[input];
-        self.set_fact(outlet, fact)
-    }
-
-    pub fn facts(&self, id: usize) -> TractResult<(TVec<&TI>, TVec<&TI>)> {
-        let node = &self.nodes[id];
-
-        let inputs: TVec<&TI> = node
-            .inputs
-            .iter()
-            .enumerate()
-            .map(|(ix, outlet)| (ix, outlet, self.fact(*outlet).unwrap()))
-            .inspect(|(ix, outlet, fact)| {
-                trace!("Input {} from {:?}: {:?}", ix, outlet, fact);
-            })
-            .map(|(_, _, fact)| fact)
-            .collect();
-
-        let outputs = node
-            .outputs
-            .iter()
-            .map(|outlet| &outlet.fact)
-            .enumerate()
-            .inspect(|(ix, fact)| trace!("Output {}: {:?}", ix, fact))
-            .map(|(_ix, f)| f)
-            .collect();
-
-        Ok((inputs, outputs))
-    }
-
-    pub fn eval_order(&self) -> TractResult<Vec<usize>> {
-        eval_order(&self)
-    }
-
-    pub fn node_input_facts(&self, node_id: usize) -> TractResult<TVec<&TI>> {
-        self.nodes[node_id].inputs.iter().map(|o| self.fact(*o)).collect()
-    }
-
-    pub fn node_output_facts(&self, node_id: usize) -> TractResult<TVec<&TI>> {
-        Ok(self.nodes[node_id].outputs.iter().map(|o| &o.fact).collect())
+    pub fn node_names(&self) -> impl Iterator<Item=&str> {
+        self.nodes.iter().map(|s| &*s.name)
     }
 
     pub fn node_by_name(&self, name: &str) -> TractResult<&Node<TI>> {
         let id: &usize =
             self.nodes_by_name.get(name).ok_or_else(|| format!("Node named {} not found", name))?;
         Ok(&self.nodes[*id])
-    }
-
-    pub fn node_names(&self) -> Vec<&str> {
-        self.nodes.iter().map(|s| &*s.name).collect()
     }
 
     pub fn node(&self, id: usize) -> &Node<TI> {
@@ -194,44 +174,44 @@ impl<TI: TensorInfo> Model<TI> {
         &*self.nodes
     }
 
-    pub fn mut_nodes(&mut self) -> &mut [Node<TI>] {
+    pub fn nodes_mut(&mut self) -> &mut [Node<TI>] {
         &mut *self.nodes
     }
 
-    pub fn fact(&self, outlet: OutletId) -> TractResult<&TI> {
+    pub fn node_facts(&self, id: usize) -> TractResult<(TVec<&TI>, TVec<&TI>)> {
+        Ok((self.node_input_facts(id)?, self.node_output_facts(id)?))
+    }
+
+    pub fn node_input_facts(&self, node_id: usize) -> TractResult<TVec<&TI>> {
+        self.nodes[node_id].inputs.iter().map(|o| self.outlet_fact(*o)).collect()
+    }
+
+    pub fn node_output_facts(&self, node_id: usize) -> TractResult<TVec<&TI>> {
+        Ok(self.nodes[node_id].outputs.iter().map(|o| &o.fact).collect())
+    }
+
+    // outlets
+
+    pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&TI> {
         let outlets = &self.nodes[outlet.node].outputs;
         Ok(&outlets[outlet.slot].fact)
     }
 
-    pub fn inputs_fact(&self, ix: usize) -> TractResult<&TI> {
-        let input = self.inputs()?[ix];
-        self.fact(input)
+    pub fn set_outlet_fact(&mut self, outlet: OutletId, fact: TI) -> TractResult<()> {
+        let outlets = &mut self.nodes[outlet.node].outputs;
+        if outlets.len() <= outlet.slot {
+            bail!("Invalid outlet refererence: {:?}", outlet)
+        }
+        outlets[outlet.slot].fact = fact;
+        Ok(())
     }
 
-    pub fn input_fact(&self) -> TractResult<&TI> {
-        self.inputs_fact(0)
+    // misc
+
+    pub fn eval_order(&self) -> TractResult<Vec<usize>> {
+        eval_order(&self)
     }
 
-    pub fn inputs(&self) -> TractResult<&[OutletId]> {
-        Ok(&self.inputs)
-    }
-
-    pub fn outputs_fact(&self, ix: usize) -> TractResult<&TI> {
-        let output = self.outputs()?[ix];
-        self.fact(output)
-    }
-
-    pub fn output_fact(&self) -> TractResult<&TI> {
-        self.outputs_fact(0)
-    }
-
-    pub fn outputs(&self) -> TractResult<&[OutletId]> {
-        Ok(&self.outputs)
-    }
-
-    pub fn into_arc(self) -> Arc<Model<TI>> {
-        Arc::new(self)
-    }
 
     pub fn check_edges(&self) -> TractResult<()> {
         for node in self.eval_order()? {

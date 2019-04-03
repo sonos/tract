@@ -317,11 +317,11 @@ impl Parameters {
         let tf_model = ();
 
         if let Some(inputs) = matches.values_of("input_node") {
-            raw_model.set_inputs(inputs)?;
+            raw_model.set_input_names(inputs)?;
         };
 
         if let Some(outputs) = matches.values_of("output_node") {
-            raw_model.set_outputs(outputs)?;
+            raw_model.set_output_names(outputs)?;
         };
 
         let machine_friendly = matches.is_present("machine_friendly");
@@ -330,31 +330,9 @@ impl Parameters {
             let mut vs = vec![];
             for (ix, v) in inputs.enumerate() {
                 let t = tensor::for_string(v)?;
-                /*
-                // obliterate value in input (the analyser/optimizer would fold
-                // the graph)
-                let mut fact = TensorFact { value: Default::default(), ..t };
-                if let Some(axis) = matches.value_of("stream_axis") {
-                    let axis = axis.parse::<usize>().unwrap();
-                    let shape = ShapeFact::closed(
-                        fact.shape
-                            .dims()
-                            .enumerate()
-                            .map(|(ix, d)| {
-                                if ix == axis {
-                                    GenericFact::Only(::tract_core::TDim::s())
-                                } else {
-                                    d
-                                }
-                            })
-                            .collect(),
-                    );
-                    fact.shape = shape;
-                }
-                */
-                let outlet = raw_model.inputs()?[ix];
+                let outlet = raw_model.input_outlets()?[ix];
                 vs.push(t.value.concretize());
-                raw_model.set_fact(outlet, t)?;
+                raw_model.set_outlet_fact(outlet, t)?;
             }
             Some(vs)
         } else {

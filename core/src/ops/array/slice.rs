@@ -38,7 +38,7 @@ impl Op for Slice {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let fact = target.fact(input)?;
+        let fact = target.outlet_fact(input)?;
         if self.prune.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
         {
             let (before, after) = self.prune[fact.axis];

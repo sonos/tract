@@ -78,7 +78,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
     pub fn render_node(&self, node: &Node<TI>) -> CliResult<()> {
         let bold = Style::new().bold();
         let mut sections: Vec<Vec<Row>> = vec![];
-        if let Some(id) = self.model.borrow().inputs()?.iter().position(|n| n.node == node.id) {
+        if let Some(id) = self.model.borrow().input_outlets()?.iter().position(|n| n.node == node.id) {
             sections.push(vec![Row::Simple(
                 Yellow.bold().paint(format!("MODEL INPUT {}", id)).to_string(),
             )]);
@@ -95,7 +95,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                             bold.paint(format!("{}", a.node)),
                             bold.paint(format!("{}", a.slot)),
                         ),
-                        format!("{:?}", self.model.borrow().fact(*a)?),
+                        format!("{:?}", self.model.borrow().outlet_fact(*a)?),
                     ))
                 })
                 .collect::<CliResult<_>>()?,
@@ -108,7 +108,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                     if let Some(pos) = self
                         .model
                         .borrow()
-                        .outputs()
+                        .output_outlets()
                         .unwrap()
                         .iter()
                         .position(|&o| o == ::tract_core::model::OutletId::new(node.id, ix))
