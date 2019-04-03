@@ -41,7 +41,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
                 values_needed_until_step[i.node] = step;
             }
         }
-        for o in model.borrow().output_outlets()? {
+        for o in outputs.iter() {
             values_needed_until_step[o.node] = order.len();
         }
         let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
