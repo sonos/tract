@@ -12,5 +12,3 @@ docker run --rm -it \
          make -j 3 -f tensorflow/lite/tools/make/Makefile TARGET=linux TARGET_ARCH=aarch64 ;
          cp /tensorflow/tensorflow/lite/tools/make/gen/linux_aarch64/bin/benchmark_model /result/tflite_benchmark_model_aarch64
      "
-
-aws s3 sync result/ s3://tract-ci-builds/model/
