@@ -7,7 +7,7 @@ macro_rules! element_map {
     };
     ($Name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
         #[allow(unused_imports)]
-        use $crate::ops::prelude::*;
+        use $crate::internal::*;
 
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name(TypeFact);
@@ -37,7 +37,7 @@ macro_rules! element_map {
                 mapping: &HashMap<OutletId, OutletId>,
             ) -> TractResult<TVec<OutletId>> {
                 let input = mapping[&node.inputs[0]];
-                let fact = target.fact(input)?.clone();
+                let fact = target.outlet_fact(input)?.clone();
                 let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
                 Ok(tvec!(OutletId::new(id, 0)))
             }
@@ -70,7 +70,7 @@ macro_rules! element_map {
 macro_rules! element_map_with_params {
     ($Name:ident, [$($type:ty),*], {$($pname:ident : $pty:ty),*}, $expr:item) => {
         #[allow(unused_imports)]
-        use $crate::ops::prelude::*;
+        use $crate::internal::*;
 
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name {
@@ -129,7 +129,7 @@ macro_rules! element_bin {
         #[allow(non_snake_case)]
         pub mod $name {
             #[allow(unused_imports)]
-            use $crate::ops::prelude::*;
+            use $crate::internal::*;
             #[allow(unused_imports)]
             use num_traits::Float;
 
@@ -193,10 +193,10 @@ macro_rules! element_bin {
                     use $crate::pulse::delay::Delay;
                     let a = mapping[&node.inputs[0]];
                     let b = mapping[&node.inputs[1]];
-                    let a_fact = target.fact(a)?.clone();
-                    let b_fact = target.fact(b)?.clone();
+                    let a_fact = target.outlet_fact(a)?.clone();
+                    let b_fact = target.outlet_fact(b)?.clone();
                     let delay = a_fact.delay.max(b_fact.delay);
-                    let mut fact = target.fact(a)?.clone();
+                    let mut fact = target.outlet_fact(a)?.clone();
                     fact.delay = delay;
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
@@ -288,7 +288,7 @@ macro_rules! element_bin {
                     mapping: &HashMap<OutletId, OutletId>,
                 ) -> TractResult<TVec<OutletId>> {
                     let input = mapping[&node.inputs[0]];
-                    let mut fact = target.fact(input)?.clone();
+                    let mut fact = target.outlet_fact(input)?.clone();
                     $(if fact.dt == <$type>::datum_type() {
                         fact.dt = <$to>::datum_type().into();
                     })*
@@ -338,7 +338,7 @@ macro_rules! element_nary {
     };
     ($Name:ident, match $($type:ty => $to:ty { $expr:expr }),*) => {
         #[allow(unused_imports)]
-        use $crate::ops::prelude::*;
+        use $crate::internal::*;
 
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name {
@@ -359,7 +359,7 @@ macro_rules! element_nary {
                 mapping: &HashMap<OutletId, OutletId>,
             ) -> TractResult<TVec<OutletId>> {
                 let input = mapping[&node.inputs[0]];
-                let mut fact = target.fact(input)?.clone();
+                let mut fact = target.outlet_fact(input)?.clone();
                 $(if fact.dt == <$type>::datum_type() {
                     fact.dt = <$to>::datum_type().into();
                 })*
@@ -520,7 +520,7 @@ macro_rules! args_5 {
 #[macro_export]
 macro_rules! boxed_new {
     ($op:tt($dtype:expr)($($arg:expr),*)) => { {
-        use $crate::DatumType;
+        use $crate::datum::DatumType;
         match $dtype {
             DatumType::I32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
             DatumType::F32 => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
@@ -558,7 +558,8 @@ macro_rules! assert_backward {
 
 #[macro_export]
 macro_rules! dispatch_datum {
-    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
         match $dt {
             DatumType::Bool => $($path)::*::<bool>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
@@ -573,12 +574,13 @@ macro_rules! dispatch_datum {
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             DatumType::String => $($path)::*::<String>($($args),*),
         }
-    }
+    } }
 }
 
 #[macro_export]
 macro_rules! dispatch_copy {
-    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
         match $dt {
             DatumType::Bool => $($path)::*::<bool>($($args),*),
             DatumType::U8   => $($path)::*::<u8>($($args),*),
@@ -593,12 +595,13 @@ macro_rules! dispatch_copy {
             DatumType::TDim => $($path)::*::<TDim>($($args),*),
             _ => bail!("{:?} is not Copy", $dt)
         }
-    }
+    } }
 }
 
 #[macro_export]
 macro_rules! dispatch_numbers {
-    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
         match $dt {
             DatumType::U8   => $($path)::*::<u8>($($args),*),
             DatumType::U16  => $($path)::*::<u16>($($args),*),
@@ -611,19 +614,20 @@ macro_rules! dispatch_numbers {
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             _ => bail!("{:?} is not a number", $dt)
         }
-    }
+    } }
 }
 
 #[macro_export]
 macro_rules! dispatch_floatlike {
-    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => {
+    ($($path:ident)::* ($dt:expr) ($($args:expr),*)) => { {
+        use $crate::datum::DatumType;
         match $dt {
             DatumType::F16  => $($path)::*::<f32>($($args),*), // FIXME !!!
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
             _ => bail!("{:?} is not float-like", $dt)
         }
-    }
+    } }
 }
 
 #[macro_export]

@@ -15,8 +15,8 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
         unreachable!();
     };
 
-    let fixed_input_fact = fixed.input_fact()?;
-    let pulsed_input_fact = pulsed.input_fact()?;
+    let fixed_input_fact = fixed.input_fact(0)?;
+    let pulsed_input_fact = pulsed.input_fact(0)?;
     let pulse = pulsed_input_fact.pulse();
 
     // First generate random values for the inputs.
@@ -39,7 +39,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
             let mut pulsed = pulsed.clone();
             pulsed.set_output_outlets(&[pulsed_outlet])?;
 
-            let pulsed_output_fact = pulsed.output_fact()?;
+            let pulsed_output_fact = pulsed.output_fact(0)?;
             let output_pulse = pulsed_output_fact.pulse();
             let output_axis = pulsed_output_fact.axis;
             let delay = pulsed_output_fact.delay;

@@ -3,7 +3,7 @@ use std::ops::{Add, AddAssign, Mul};
 
 use std::sync::Arc;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::prelude::*;
 
 use crate::ops::nn::conv::KernelFormat;

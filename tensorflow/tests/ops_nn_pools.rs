@@ -8,7 +8,6 @@ extern crate ndarray;
 extern crate proptest;
 extern crate protobuf;
 extern crate tensorflow;
-#[macro_use]
 extern crate tract_core;
 extern crate tract_tensorflow;
 
@@ -22,7 +21,7 @@ use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 
-use tract_core::Tensor as TractSharedTensor;
+use tract_core::prelude::*;
 
 fn img_and_pool(
     ih: usize,
@@ -30,7 +29,7 @@ fn img_and_pool(
     ic: usize,
     kh: usize,
     kw: usize,
-) -> BoxedStrategy<(TractSharedTensor, (usize, usize), String, usize)> {
+) -> BoxedStrategy<(Tensor, (usize, usize), String, usize)> {
     (1..ih, 1..iw, 1..ic)
         .prop_flat_map(move |(ih, iw, ic)| {
             (Just((ih, iw, ic)), (1..kh.min(ih + 1).max(2), 1..kw.min(iw + 1).max(2)))

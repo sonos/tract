@@ -1,5 +1,4 @@
-use tract_core::ops::prelude::*;
-use tract_core::TractResult;
+use tract_core::internal::*;
 
 pub fn pack(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let dtype = pb.get_attr_datum_type("T")?;
@@ -99,8 +98,6 @@ mod tests {
     use super::*;
     use ndarray::prelude::*;
     use num_traits::Zero;
-    use tract_core::ops::InferenceOp;
-    use tract_core::Tensor;
 
     #[test]
     fn pack_0() {

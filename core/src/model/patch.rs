@@ -1,5 +1,5 @@
 use crate::model::*;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Clone, Debug)]
@@ -34,7 +34,7 @@ impl<TI: TensorInfo> DerefMut for ModelPatch<TI> {
 
 impl<TI: TensorInfo> ModelPatch<TI> {
     pub fn tap_model(&mut self, model: &Model<TI>, outlet: OutletId) -> TractResult<OutletId> {
-        let fact = model.fact(outlet)?;
+        let fact = model.outlet_fact(outlet)?;
         let node_id =
             self.add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), fact.clone())?;
         let inside = OutletId::new(node_id, 0);

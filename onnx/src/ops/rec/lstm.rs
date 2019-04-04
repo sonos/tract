@@ -1,7 +1,7 @@
 use crate::pb::NodeProto;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn lstm(_pb: &NodeProto) -> TractResult<Box<Op>> {
     Ok(Box::new(LSTM::default()))

@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use num_traits::AsPrimitive;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Shape {

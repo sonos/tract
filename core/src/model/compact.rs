@@ -1,6 +1,6 @@
+use crate::prelude::*;
 use crate::datum::TryInto;
 use crate::model::{InletId, Model, OutletId, TensorInfo};
-use crate::{TVec, TractResult};
 use std::collections::HashMap;
 
 pub(crate) fn compact<TI1, TI2>(old: &Model<TI1>) -> TractResult<Model<TI2>>
@@ -21,7 +21,7 @@ where
             .map_err(|e| format!("While translating {}: {:?}", old_node, e))?;
         let new_id = model.add_node(old_node.name.clone(), old_node.op.clone(), facts)?;
         map.insert(old_id, new_id);
-        if old.inputs()?.contains(&OutletId::new(old_node.id, 0)) {
+        if old.input_outlets()?.contains(&OutletId::new(old_node.id, 0)) {
             continue;
         }
         for (ix, input) in old_node.inputs.iter().enumerate() {
@@ -31,10 +31,10 @@ where
     }
     // maintaining order of i/o interface
     model.inputs = old
-        .inputs()?
+        .input_outlets()?
         .iter()
         .filter_map(|i| map.get(&i.node).map(|&n| OutletId::new(n, i.slot)))
         .collect();
-    model.outputs = old.outputs()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
+    model.outputs = old.output_outlets()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
     Ok(model)
 }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #[macro_use]
 extern crate criterion;
 #[macro_use]
@@ -10,7 +11,7 @@ use tract_core::model::*;
 use tract_core::*;
 
 use tract_core::ops::nn::ConvUnary;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 #[derive(Debug, new)]
 struct Problem {

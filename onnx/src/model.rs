@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use tract_core::framework::{Framework, OpBuilder, OpRegister};
-use tract_core::model::*;
-use tract_core::*;
+use tract_core::internal::*;
 
 use crate::pb;
 
@@ -63,7 +61,7 @@ impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
         for output in graph.get_output().iter() {
             let fact = output.get_field_type().get_tensor_type().tractify()?;
             outputs.push(outlets_by_name[output.get_name()]);
-            model.set_fact(outlets_by_name[output.get_name()], fact)?;
+            model.set_outlet_fact(outlets_by_name[output.get_name()], fact)?;
         }
         model.set_output_outlets(&outputs)?;
         Ok(model)

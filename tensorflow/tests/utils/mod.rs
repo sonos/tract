@@ -1,4 +1,4 @@
-use tract_core::{Framework, TVec, Tensor, TensorFact};
+use tract_core::prelude::*;
 
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
@@ -7,10 +7,10 @@ pub fn compare<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
-    model.set_inputs(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
-    model.set_outputs(&[output])?;
-    let plan = tract_core::SimplePlan::new(&model)?;
-    let mut state = tract_core::plan::SimpleState::new(&plan)?;
+    model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
+    model.set_output_names(&[output])?;
+    let plan = SimplePlan::new(&model)?;
+    let mut state = SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }
@@ -42,10 +42,10 @@ pub fn infer<S: AsRef<str>>(
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
-    model.set_inputs(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
-    model.set_outputs(&[output])?;
-    let plan = tract_core::SimplePlan::new(&model)?;
-    let mut state = tract_core::plan::SimpleState::new(&plan)?;
+    model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
+    model.set_output_names(&[output])?;
+    let plan = SimplePlan::new(&model)?;
+    let mut state = SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }

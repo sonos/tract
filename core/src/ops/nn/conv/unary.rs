@@ -1,7 +1,7 @@
 use ndarray::*;
 
 use crate::model::*;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use insideout::InsideOut;
 
 use super::conv_gemm::ConvGemm;
@@ -413,7 +413,7 @@ impl Op for ConvUnary {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.fact(input)?.clone();
+        let mut fact = target.outlet_fact(input)?.clone();
         let shape = self.data_fmt.shape(&fact.shape);
         if fact.axis == shape.n_axis() {
             let mut op = self.clone();

@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use ops::prelude::*;
+use internal::*;
 
 use ops::nn::{DataFormat, PaddingSpec, Patch};
 use ops::nn::conv::KernelFormat;

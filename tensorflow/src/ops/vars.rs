@@ -1,4 +1,4 @@
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
@@ -160,7 +160,6 @@ impl InferenceRulesOp for Assign {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tract_core::*;
 
     #[test]
     fn var_assign() {

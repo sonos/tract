@@ -31,8 +31,7 @@ pub mod versions;
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
-use tract_core::{ TractResult, ToTract };
-use tract_core::model::TVec;
+use tract_core::internal::*;
 
 pub fn graph() -> graph::GraphDef {
     graph::GraphDef::new()
@@ -125,12 +124,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_datum_type(&self, name: &str) -> TractResult<tract_core::DatumType> {
+    pub fn get_attr_datum_type(&self, name: &str) -> TractResult<DatumType> {
         Ok(self.get_attr_opt_datum_type(name)?
             .ok_or_else(|| format!("Node {} ({}) expected datum_type attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<tract_core::DatumType>> {
+    pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
             Ok(Some(t.get_field_type().tractify()?))
         } else {
@@ -151,12 +150,12 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::Tensor> {
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::internal::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?
             .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::internal::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
             Ok(Some(t.tractify()?))
         } else {

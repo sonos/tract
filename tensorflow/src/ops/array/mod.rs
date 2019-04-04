@@ -1,5 +1,5 @@
 use crate::model::TfOpRegister;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 mod concatv2;
 mod expand_dims;

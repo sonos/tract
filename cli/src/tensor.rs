@@ -3,7 +3,7 @@ use std::io::Read;
 use std::str::FromStr;
 
 use crate::CliResult;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
     let splits = size.split("x").collect::<Vec<_>>();

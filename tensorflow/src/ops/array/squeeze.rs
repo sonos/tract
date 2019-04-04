@@ -1,5 +1,5 @@
 use tract_core::ops::array::Squeeze;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn squeeze(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
@@ -17,9 +17,6 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use ndarray::*;
-    use tract_core::dim::TDim;
-    use tract_core::ops::InferenceOp;
-    use tract_core::Tensor;
 
     fn run<I>(op: Squeeze, input: I) -> Tensor
     where

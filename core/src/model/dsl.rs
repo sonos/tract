@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 pub use super::{InletId, Model, Node, OutletId};
 
@@ -29,7 +29,7 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
     fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize> {
         let id = self.add_node(
             name,
-            crate::ops::source::Source::new(fact.to_tensor_fact()),
+            crate::ops::source::Source::new(),
             tvec!(fact),
         )?;
         Ok(id)

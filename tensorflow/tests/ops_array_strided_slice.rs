@@ -7,7 +7,6 @@ extern crate ndarray;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
-#[macro_use]
 extern crate tract_core;
 extern crate tract_tensorflow;
 
@@ -17,16 +16,16 @@ use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::Tensor as TractSharedTensor;
+use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 
 fn strided_slice_strat() -> BoxedStrategy<(
-    TractSharedTensor,
-    TractSharedTensor,
-    TractSharedTensor,
-    TractSharedTensor,
+    Tensor,
+    Tensor,
+    Tensor,
+    Tensor,
     (i32, i32, i32, i32, i32),
 )> {
     ::proptest::collection::vec(
@@ -51,7 +50,7 @@ fn strided_slice_strat() -> BoxedStrategy<(
         let shape = dims.iter().map(|d| d.0 as usize).collect::<Vec<_>>();
         let size: i32 = shape.iter().map(|d| *d as i32).product();
         (
-            TractSharedTensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
+            Tensor::from(Array::from_shape_vec(shape, (0..size).collect()).unwrap()),
             Array::from_vec(dims.iter().map(|d| if d.4 { d.1 - d.0 } else { d.1 }).collect())
                 .into(),
             Array::from_vec(dims.iter().map(|d| if d.5 { d.2 - d.0 } else { d.2 }).collect())

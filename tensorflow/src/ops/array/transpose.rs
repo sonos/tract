@@ -1,5 +1,5 @@
 use crate::tfpb::node_def::NodeDef;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Transpose {

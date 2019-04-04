@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Reshape<T: Datum>(PhantomData<T>);

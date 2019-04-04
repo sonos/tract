@@ -1,5 +1,5 @@
 use crate::model::InferenceModel;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use crate::ops::unimpl::UnimplementedOp;
 use std::fmt::Debug;
 use std::io::Read;

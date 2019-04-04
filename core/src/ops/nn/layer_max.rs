@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct LayerHardmax {

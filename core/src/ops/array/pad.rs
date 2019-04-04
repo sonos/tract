@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use crate::pulse::delay::Delay;
 use ndarray::*;
 use num_traits::AsPrimitive;
@@ -98,7 +98,7 @@ impl Op for Pad {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let input_fact = target.fact(input)?.clone();
+        let input_fact = target.outlet_fact(input)?.clone();
         if !self
             .pads
             .iter()

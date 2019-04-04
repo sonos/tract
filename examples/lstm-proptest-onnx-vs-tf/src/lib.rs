@@ -1,12 +1,10 @@
-use ndarray::*;
+#![allow(dead_code)]
 
 use proptest::prelude::*;
 use proptest::*;
 
-use tract_core::datum::Datum;
-use tract_core::model::*;
-use tract_core::InferenceModel;
-use tract_core::*;
+use tract_core::internal::*;
+use tract_core::ndarray::*;
 
 #[derive(Clone, Debug)]
 pub struct LstmProblem {
@@ -191,7 +189,7 @@ impl LstmProblem {
         model.add_edge(OutletId::new(a_h0, 0), InletId::new(init, 0))?;
         model.add_edge(OutletId::new(a_cs0, 0), InletId::new(init, 1))?;
 
-        model.set_outputs(&["lstm", "init", "memo"])?;
+        model.set_output_names(&["lstm", "init", "memo"])?;
 
         model.analyse(false)?;
         // println!("{:#?}", model);

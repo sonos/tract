@@ -3,7 +3,7 @@ use ndarray::*;
 use crate::tfpb::node_def::NodeDef;
 use tract_core::ops::nn::sigmoid::sigmoid_f32;
 use tract_core::ops::nn::tanh::tanh_f32;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn block_lstm(node: &NodeDef) -> TractResult<Box<Op>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);

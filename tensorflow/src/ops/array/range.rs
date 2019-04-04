@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use num_traits::AsPrimitive;
 use std::ops::{Add, Div, Mul, Sub};
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Range {

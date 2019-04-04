@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::str;
-use std::sync::Arc;
 
 pub mod compact;
 mod dsl;

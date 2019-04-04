@@ -10,7 +10,7 @@ impl super::DeclutterPass for PropConst {
         let mut replaced = 0;
         let mut done = bit_set::BitSet::with_capacity(model.nodes().len());
         let mut needed: Vec<usize> = vec![];
-        for t in model.outputs()?.iter().map(|n| n.node) {
+        for t in model.output_outlets()?.iter().map(|n| n.node) {
             needed.push(t);
         }
         while let Some(&node) = needed.last() {
@@ -26,9 +26,9 @@ impl super::DeclutterPass for PropConst {
                 for ix in 0..model.nodes()[node].inputs.len() {
                     let source = model.nodes()[node].inputs[ix];
                     if model.nodes()[source.node].op().name() != "Const"
-                        && model.fact(source)?.konst.is_some()
+                        && model.outlet_fact(source)?.konst.is_some()
                     {
-                        let konst = model.fact(source)?.konst.clone().unwrap();
+                        let konst = model.outlet_fact(source)?.konst.clone().unwrap();
                         let id = model.nodes().len();
                         trace!(
                             "   Replacing node {} input {} by a constant instead of {:?}",
@@ -39,7 +39,7 @@ impl super::DeclutterPass for PropConst {
                         let id = model.add_const(format!("Const-{}", id), konst.clone())?;
                         model.add_edge(OutletId::new(id, 0), InletId::new(node, ix))?;
                         model.check_edges()?;
-                        model.set_fact(OutletId::new(id, 0), konst.into())?;
+                        model.set_outlet_fact(OutletId::new(id, 0), konst.into())?;
                         replaced += 1;
                     } else {
                         needed.push(source.node);

@@ -1,5 +1,4 @@
-use crate::datum::TryInto;
-use crate::ops::prelude::*;
+use crate::internal::*;
 use crate::ops::source::Source;
 use std::fmt;
 
@@ -112,8 +111,8 @@ impl PulsedModel {
             trace!("Target is now {}", target.nodes().len());
         }
         // maintaining order of i/o interface
-        target.inputs = source.inputs()?.iter().map(|i| mapping[&i]).collect();
-        target.outputs = source.outputs()?.iter().map(|o| mapping[&o]).collect();
+        target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
+        target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
         Ok((target, mapping))
     }
 
@@ -125,7 +124,6 @@ impl PulsedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::*;
     use ndarray::*;
     use proptest::proptest;
     use proptest::test_runner::TestCaseResult;
@@ -150,7 +148,7 @@ mod tests {
         let pulse =
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
-            pulse.fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
+            pulse.outlet_fact(OutletId::new(0, 0)).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(1, 4, 3))
         );
     }
@@ -168,11 +166,11 @@ mod tests {
         let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
 
         assert_eq!(
-            pulse.input_fact().unwrap().to_tensor_fact(),
+            pulse.input_fact(0).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
         assert_eq!(
-            pulse.output_fact().unwrap().to_tensor_fact(),
+            pulse.output_fact(0).unwrap().to_tensor_fact(),
             TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
     }
@@ -183,21 +181,24 @@ mod tests {
         input_array: ArrayD<f32>,
         axis: usize,
     ) -> TestCaseResult {
+        let mut ref_model = model.clone();
+        ref_model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), input_array.shape()))?;
         let input = Tensor::from(input_array.clone());
-        let plan = SimplePlan::new(&model).unwrap();
+        let plan = SimplePlan::new(&ref_model).unwrap();
         let outputs = plan.run(tvec!(input.clone())).unwrap();
+
         let model = model.into_normalized().unwrap();
 
         let pulsed = PulsedModel::new(&model, pulse).unwrap();
-        let output_fact = pulsed.output_fact().unwrap().clone();
+        let output_fact = pulsed.output_fact(0).unwrap().clone();
 
         let output_stream_axis = output_fact.axis;
         let delay = output_fact.delay;
         let mut initial_output_shape = output_fact.shape.clone();
         initial_output_shape[output_stream_axis] = 0;
 
-        let pulsed_plan = crate::plan::SimplePlan::new(pulsed).unwrap();
-        let mut state = crate::plan::SimpleState::new(&pulsed_plan).unwrap();
+        let pulsed_plan = SimplePlan::new(pulsed).unwrap();
+        let mut state = SimpleState::new(&pulsed_plan).unwrap();
 
         let mut got: ArrayD<f32> = ArrayD::zeros(&*initial_output_shape);
         let mut output_len = None;

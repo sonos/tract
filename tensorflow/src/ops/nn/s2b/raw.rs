@@ -1,5 +1,5 @@
 use ndarray::prelude::*;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 use tract_core::analyser::rules::TensorProxy;
 

@@ -1,4 +1,4 @@
-use ops::prelude::*;
+use internal::*;
 use std::fmt::Debug;
 
 pub trait OpState: Debug {

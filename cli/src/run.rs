@@ -1,7 +1,6 @@
 use crate::errors::*;
 use crate::{Parameters, SomeModel};
-use tract_core::ops::prelude::*;
-use tract_core::SimplePlan;
+use tract_core::internal::*;
 
 pub fn handle(params: Parameters) -> CliResult<()> {
     let outputs = match &params.tract_model {
@@ -35,12 +34,12 @@ fn run_regular_t<TI: TensorInfo>(
 ) -> CliResult<TVec<SharedTensor>> {
     let plan = SimplePlan::new(tract)?;
     let mut inputs: TVec<Tensor> = tvec!();
-    for (ix, input) in tract.inputs()?.iter().enumerate() {
+    for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         if let Some(input) = params.inputs.as_ref().and_then(|v| v.get(ix)).and_then(|t| t.as_ref())
         {
             inputs.push(input.as_tensor().to_owned());
         } else {
-            let fact = tract.fact(*input)?;
+            let fact = tract.outlet_fact(*input)?;
             inputs.push(crate::tensor::tensor_for_fact(&fact.to_tensor_fact(), None)?);
         }
     }
@@ -49,8 +48,8 @@ fn run_regular_t<TI: TensorInfo>(
 }
 
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<SharedTensor>> {
-    let input_fact = model.input_fact()?;
-    let output_fact = model.output_fact()?;
+    let input_fact = model.input_fact(0)?;
+    let output_fact = model.output_fact(0)?;
 
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);

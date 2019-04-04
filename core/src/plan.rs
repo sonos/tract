@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use crate::model::order::eval_order_for_nodes;
 use crate::model::{Model, OutletId, TensorInfo};
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Default)]
 pub struct SessionState {
@@ -23,7 +23,7 @@ pub struct SimplePlan<TI: TensorInfo, M: Borrow<Model<TI>>> {
 impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<TI, M>> {
-        let outputs = model.borrow().outputs()?.iter().cloned().collect::<Vec<OutletId>>();
+        let outputs = model.borrow().output_outlets()?.iter().cloned().collect::<Vec<OutletId>>();
         Self::new_for_outputs(model, &outputs)
     }
     /// This contructor returns a plan that will compute the specified output.
@@ -32,7 +32,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
     }
     /// This contructor returns a plan that will compute all specified outputs in one pass.
     pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<TI, M>> {
-        let inputs = model.borrow().inputs()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+        let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes)?;
         let mut values_needed_until_step = vec![0; model.borrow().nodes().len()];
@@ -41,7 +41,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
                 values_needed_until_step[i.node] = step;
             }
         }
-        for o in model.borrow().outputs()? {
+        for o in outputs.iter() {
             values_needed_until_step[o.node] = order.len();
         }
         let mut flush_lists: Vec<TVec<usize>> = vec![tvec!(); order.len() + 1];
@@ -141,7 +141,6 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
         inputs: TVec<Tensor>,
         plan: usize,
     ) -> TractResult<TVec<SharedTensor>> {
-        use crate::ops::source::Source;
         let mut result = tvec!();
         {
             self.set_inputs(inputs)?;
@@ -157,7 +156,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             for (step, n) in plan.order.iter().enumerate() {
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
-                if node.op_as::<Source>().is_none() {
+                if !model.inputs.iter().any(|outlet| outlet.node == *n) {
                     let mut inputs: TVec<SharedTensor> = tvec![];
                     for i in &node.inputs {
                         trace!("  use input {:?}", i);
@@ -179,6 +178,9 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                             );
                         }
                         for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
+                            if f.to_tensor_fact().stream_info()?.is_some() {
+                                continue;
+                            }
                             if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
                                 bail!(
                                     "Evaluating {}: input {:?}, expected {:?}, got {:?} ({})",
@@ -209,6 +211,9 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                             );
                         }
                         for (ix, (v, f)) in vs.iter().zip(facts.iter()).enumerate() {
+                            if f.to_tensor_fact().stream_info()?.is_some() {
+                                continue;
+                            }
                             if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
                                 bail!(
                                     "Evaluating {}: output {:?}, expected {:?}, got {:?} ({})",
@@ -242,7 +247,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
         plans[0]
             .borrow()
             .model()
-            .inputs()?
+            .input_outlets()?
             .iter()
             .zip(inputs)
             .for_each(|(input, t)| values[input.node] = Some(tvec![t.into()]));
@@ -250,7 +255,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     }
 
     pub fn set_input(&mut self, input: usize, t: Tensor) -> TractResult<()> {
-        let id = self.model().inputs()?[input].node;
+        let id = self.model().input_outlets()?[input].node;
         self.values[id] = Some(tvec![t.into()]);
         Ok(())
     }
@@ -258,7 +263,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     pub fn take_outputs(&mut self) -> TractResult<Vec<SharedTensor>> {
         let SimpleState { ref plans, ref mut values, .. } = self;
         let mut v = vec![];
-        for o in plans[0].borrow().model().outputs()?.iter() {
+        for o in plans[0].borrow().model().output_outlets()?.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
                 format!(
                     "SharedTensor for {:?} is not computed",

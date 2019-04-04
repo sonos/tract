@@ -1,5 +1,5 @@
 use tract_core::ops::nn::{DataFormat, LayerSoftmax, PaddingSpec};
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;

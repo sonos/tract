@@ -1,7 +1,5 @@
-use std::marker::PhantomData;
-
 use ndarray::prelude::*;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
@@ -312,8 +310,6 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use ndarray::*;
-    use tract_core::ops::InferenceOp;
-    use tract_core::Tensor;
 
     fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
     where

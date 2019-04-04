@@ -1,10 +1,7 @@
-//! `Tensor` is the equivalent of SharedTensor Tensor.
-use crate::dim::TDim;
-use crate::model::TVec;
-use crate::TractResult;
+//! `Tensor` and `SharedTensor`
+use crate::internal::*;
 use ndarray::prelude::*;
 use std::alloc;
-use std::borrow::Cow;
 use std::fmt;
 use std::mem::size_of;
 
@@ -16,7 +13,6 @@ use serde::ser::{Serialize, Serializer};
 use std::sync::Arc;
 
 use crate::datum::TryInto;
-use crate::ops::prelude::*;
 
 #[derive(Clone)]
 pub struct SharedTensor(Arc<Tensor>);
@@ -150,8 +146,8 @@ impl Tensor {
         self.null
     }
 
-    pub fn into_tensor(self) -> crate::SharedTensor {
-        crate::SharedTensor::from(self)
+    pub fn into_tensor(self) -> SharedTensor {
+        SharedTensor::from(self)
     }
 
     pub fn shape(&self) -> &[usize] {
@@ -370,7 +366,7 @@ impl Tensor {
     }
 
     pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<Tensor>> {
-        use crate::DatumType::*;
+        use DatumType::*;
         if self.dt == dt {
             return Ok(Cow::Borrowed(self));
         }

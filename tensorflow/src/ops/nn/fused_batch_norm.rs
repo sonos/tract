@@ -1,5 +1,5 @@
 use crate::tfpb::node_def::NodeDef;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn fused_batch_norm(node: &NodeDef) -> TractResult<Box<Op>> {
     let epsilon = node.get_attr_float::<f32>("epsilon")?;

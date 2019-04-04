@@ -22,7 +22,7 @@ macro_rules! wrap {
     ($($x:expr,)*) => (wrap![$($x),*]);
 }
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 mod cache;
 pub mod expr;

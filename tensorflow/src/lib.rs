@@ -9,7 +9,7 @@
 //! # extern crate tract_tensorflow;
 //! # extern crate ndarray;
 //! # fn main() {
-//! use tract_core::*;
+//! use tract_core::prelude::*;
 //!
 //! // build a simple model that just add 3 to each input component
 //! let tf = tract_tensorflow::tensorflow();
@@ -64,7 +64,7 @@ pub trait ToSharedTensor<Tf>: Sized {
 }
 
 pub use model::Tensorflow;
-use tract_core::{Framework, InferenceModel, TractResult};
+use tract_core::internal::*;
 
 pub fn tensorflow() -> Tensorflow {
     let mut ops = tract_core::framework::OpRegister::default();

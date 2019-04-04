@@ -1,7 +1,7 @@
 use num_traits::Zero;
 use std::ops::{Add, Mul};
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::*;
 
 fn eval_t<T: Copy + Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
@@ -228,7 +228,7 @@ impl Op for MatMulUnaryA {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
-        let mut fact = target.fact(input)?.clone();
+        let mut fact = target.outlet_fact(input)?.clone();
         if fact.axis >= fact.shape.len() - 1 {
             bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
         }

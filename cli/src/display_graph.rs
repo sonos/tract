@@ -78,7 +78,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
     pub fn render_node(&self, node: &Node<TI>) -> CliResult<()> {
         let bold = Style::new().bold();
         let mut sections: Vec<Vec<Row>> = vec![];
-        if let Some(id) = self.model.borrow().inputs()?.iter().position(|n| n.node == node.id) {
+        if let Some(id) = self.model.borrow().input_outlets()?.iter().position(|n| n.node == node.id) {
             sections.push(vec![Row::Simple(
                 Yellow.bold().paint(format!("MODEL INPUT {}", id)).to_string(),
             )]);
@@ -95,7 +95,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                             bold.paint(format!("{}", a.node)),
                             bold.paint(format!("{}", a.slot)),
                         ),
-                        format!("{:?}", self.model.borrow().fact(*a)?),
+                        format!("{:?}", self.model.borrow().outlet_fact(*a)?),
                     ))
                 })
                 .collect::<CliResult<_>>()?,
@@ -108,7 +108,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                     if let Some(pos) = self
                         .model
                         .borrow()
-                        .outputs()
+                        .output_outlets()
                         .unwrap()
                         .iter()
                         .position(|&o| o == ::tract_core::model::OutletId::new(node.id, ix))
@@ -188,7 +188,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", ::tract_core::Tensor::tractify(a.1.get_tensor())?)
+                        format!("{:?}", ::tract_core::prelude::Tensor::tractify(a.1.get_tensor())?)
                     } else {
                         format!("{:?}", a.1)
                     };
@@ -212,7 +212,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                 let mut v = vec![];
                 for a in gnode.get_attribute().iter() {
                     let value = if a.has_t() {
-                        format!("{:?}", ::tract_core::Tensor::tractify(a.get_t())?)
+                        format!("{:?}", ::tract_core::prelude::Tensor::tractify(a.get_t())?)
                     } else {
                         format!("{:?}", a)
                     };

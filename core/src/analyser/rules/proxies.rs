@@ -3,7 +3,7 @@ use std::ops::Index;
 
 use num_traits::ToPrimitive;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 use self::super::cache::Cache;
 use self::super::expr::Output;
