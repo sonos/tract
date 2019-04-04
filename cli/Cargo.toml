@@ -32,8 +32,8 @@ rand = "0.6.5"
 terminal_size = "0.1.7"
 textwrap = "0.10"
 tract-core = { path = "../core" }
-tract-onnx = { path = "../onnx" }
-tract-tensorflow = { path = "../tensorflow" }
+tract-onnx = { path = "../onnx", optional = true }
+tract-tensorflow = { path = "../tensorflow", optional = true }
 
 [features]
 default = ["tf", "onnx"]
