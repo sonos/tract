@@ -6,7 +6,7 @@ use downcast_rs::Downcast;
 use objekt;
 
 #[macro_use]
-mod macros;
+pub mod macros;
 
 pub mod array;
 pub mod cast;
