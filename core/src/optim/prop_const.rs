@@ -1,4 +1,5 @@
 use crate::model::*;
+use crate::model::order::eval_order_for_nodes;
 use crate::TractResult;
 use bit_set;
 
@@ -22,17 +23,24 @@ impl super::DeclutterPass for PropConst {
                 needed.pop();
                 done.insert(node);
             } else {
-                trace!("Looking at node {} inputs", node);
+                trace!("Looking at node {} inputs", model.nodes()[node]);
                 for ix in 0..model.nodes()[node].inputs.len() {
                     let source = model.nodes()[node].inputs[ix];
                     if model.nodes()[source.node].op().name() != "Const"
                         && model.outlet_fact(source)?.konst.is_some()
+                        && eval_order_for_nodes(
+                            model.nodes(),
+                            &model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<_>>(),
+                            &[source.node],
+                        )?
+                        .into_iter()
+                        .all(|n| model.nodes()[n].op().as_stateless().is_some())
                     {
                         let konst = model.outlet_fact(source)?.konst.clone().unwrap();
                         let id = model.nodes().len();
                         trace!(
                             "   Replacing node {} input {} by a constant instead of {:?}",
-                            node,
+                            model.nodes()[node],
                             ix,
                             source
                         );
