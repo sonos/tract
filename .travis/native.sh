@@ -9,11 +9,9 @@ then
     CACHEDIR=`dirname $0`/../.cached
 fi
 
+cargo build --release --all
+cargo build --release --benches
 cargo test --release --all
-cargo check --benches --all
-
-(cd tensorflow; cargo test --release --features conform)
-(cd cli; cargo build --release)
 
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
