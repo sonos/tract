@@ -2,6 +2,7 @@ use std::{fs, path};
 
 pub fn dir() -> path::PathBuf {
     let cache = ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string());
+    fs::create_dir_all(&cache).unwrap();
     path::PathBuf::from(cache).join("onnx")
 }
 
@@ -19,7 +20,6 @@ pub fn ensure_onnx_git_checkout() {
 pub fn make_test_file(tests_set: &str) {
     use std::io::Write;
     ensure_onnx_git_checkout();
-    println!("dir: {:?}", dir());
     let node_tests = dir().join("onnx/backend/test/data").join(tests_set);
     assert!(node_tests.exists());
     let working_list_file = path::PathBuf::from(".").join(tests_set).with_extension("txt");
