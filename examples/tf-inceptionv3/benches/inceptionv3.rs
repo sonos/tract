@@ -2,10 +2,10 @@
 extern crate criterion;
 extern crate dinghy_test;
 extern crate inceptionv3;
-extern crate tract_core as tract;
+extern crate tract_core;
 extern crate tract_tensorflow;
 
-use tract::*;
+use tract_core::prelude::*;
 
 use self::dinghy_test::test_project_path;
 use criterion::Criterion;
@@ -46,7 +46,7 @@ fn tract(bencher: &mut Criterion) {
         .unwrap();
     let tfd = tfd.into_optimized().unwrap();
     let input = inceptionv3::load_image(hopper());
-    let plan = tract::SimplePlan::new(tfd).unwrap();
+    let plan = SimplePlan::new(tfd).unwrap();
     bencher.bench_function("tract", move |b| {
         b.iter(|| plan.run(tvec![input.clone()]).unwrap())
     });

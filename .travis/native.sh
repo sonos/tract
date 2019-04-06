@@ -9,8 +9,8 @@ then
     CACHEDIR=`dirname $0`/../.cached
 fi
 
-cargo check --benches --all --features serialize # running benches on travis is useless
-cargo test --release --all --features serialize
+cargo test --release --all
+cargo check --benches --all
 
 (cd tensorflow; cargo test --release --features conform)
 (cd cli; cargo build --release)
