@@ -179,9 +179,13 @@ mod tests {
         let set = model.add_node_default("set", Assign::new(Some("xxx".into()))).unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(set, 0)).unwrap();
         model.add_edge(OutletId::new(one, 0), InletId::new(set, 1)).unwrap();
+        let model = model.into_typed().unwrap();
         let model = std::rc::Rc::new(model);
+        let var = model.node_by_name("var").unwrap().id;
         let plan_read = SimplePlan::new_for_output(model.clone(), OutletId::new(var, 0)).unwrap();
+        let set = model.node_by_name("set").unwrap().id;
         let plan_set = SimplePlan::new_for_output(model.clone(), OutletId::new(set, 0)).unwrap();
+        let reset = model.node_by_name("reset").unwrap().id;
         let plan_reset =
             SimplePlan::new_for_output(model.clone(), OutletId::new(reset, 0)).unwrap();
         let mut state = SimpleState::new_multiplan(vec![plan_read, plan_set, plan_reset]).unwrap();
