@@ -1,5 +1,6 @@
 use tract_core::internal::*;
 use tract_core::ops::nn::*;
+use tract_core::ndarray::*;
 
 pub fn depthwise_conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let fmt = super::data_format(pb)?;
@@ -27,8 +28,38 @@ impl Op for DepthwiseConv2d {
 }
 
 impl StatelessOp for DepthwiseConv2d {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        unimplemented!()
+    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let (img, ker) = args_2!(inputs);
+        let img = img.to_array_view::<f32>()?;
+        let ker = ker.to_array_view::<f32>()?;
+        let input_shape = self.fmt.shape(img.shape());
+        let patch = Patch::new(
+            self.fmt.clone(),
+            self.dilations[input_shape.hw_axes()].into(),
+            ker.shape()[0..2].into(),
+            &self.padding,
+            self.strides[input_shape.hw_axes()].into(),
+            img.shape().into(),
+        );
+        let out_channels = ker.shape()[2]*ker.shape()[3];
+//        let visitor = patch.wrap(&input);
+        let output_shape = patch.output_full_shape(out_channels);
+        let output = ArrayD::<f32>::from_shape_fn(&*output_shape, |coords| {
+            let k = coords[input_shape.c_axis()] / ker.shape()[3];
+            let q = coords[input_shape.c_axis()] % ker.shape()[3];
+            let mut sum = 0.0f32;
+            for di in 0..ker.shape()[0] {
+                for dj in 0..ker.shape()[0] {
+                    sum += img.get([coords[0],
+                        coords[1]*self.strides[1]+di * self.dilations[1],
+                        coords[2]*self.strides[2]+dj * self.dilations[2],
+                        k,
+                    ]).unwrap_or(&0.0) * ker[[di,dj,k,q]];
+                }
+            }
+            sum
+        });
+        Ok(tvec!(output.into()))
     }
 }
 
