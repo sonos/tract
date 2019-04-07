@@ -9,11 +9,9 @@ then
     CACHEDIR=`dirname $0`/../.cached
 fi
 
-cargo check --benches --all --features serialize # running benches on travis is useless
-cargo test --release --all --features serialize
-
-(cd tensorflow; cargo test --release --features conform)
-(cd cli; cargo build --release)
+cargo build --release --all
+cargo build --release --benches
+cargo test --release --all
 
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \

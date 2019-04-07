@@ -85,7 +85,11 @@ fn render_t<TI: TensorInfo>(model: &Model<TI>, options: DisplayOptions) -> CliRe
                     if big < wires.len() {
                         for w in &wires[big + 1..] {
                             if let Some(w) = w {
-                                print!("{}", w.1.paint(VERTICAL));
+                                if w.3 {
+                                    print!("{}", w.1.paint(VERTICAL));
+                                } else {
+                                    print!(" ");
+                                }
                             } else {
                                 print!(" ");
                             }

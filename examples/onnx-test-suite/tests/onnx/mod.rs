@@ -1,5 +1,7 @@
 use std::{fs, path};
 
+use log::*;
+
 use tract_core::internal::*;
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
@@ -31,40 +33,42 @@ pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
     (load_half_dataset("input", path), load_half_dataset("output", path))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct DataJson {
-    model_name: String,
-    url: String,
-}
-
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     //    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
+        let url = fs::read_to_string(test_path.join("data.json"))
+            .unwrap()
+            .split("\"")
+            .find(|s| s.starts_with("https://"))
+            .unwrap()
+            .to_string();
         let f = fs::File::open(test_path.join("data.json")).unwrap();
         let _lock = f.lock_exclusive();
+        let name: String = test_path.file_name().unwrap().to_str().unwrap().chars().skip(5).collect();
         info!("Locked {:?}", f);
-        let data: DataJson = ::serde_json::from_reader(&f).unwrap();
-        if !test_path.join(&data.model_name).exists() {
-            let (_, body) = ::mio_httpc::CallBuilder::get()
-                .url(&data.url)
-                .unwrap()
-                .max_response(1_000_000_000)
-                .timeout_ms(1_200_000)
-                .exec()
+        if !test_path.join(&name).exists() {
+            let tgz_name = format!("{}.tgz", name);
+            let wget = std::process::Command::new("wget")
+                .arg("-q")
+                .arg(&url)
+                .arg("-O")
+                .arg(&tgz_name)
+                .status()
                 .unwrap();
-            info!("Downloaded {:?}", data.url);
-            let gz = ::flate2::read::GzDecoder::new(&*body);
-            let mut tar = ::tar::Archive::new(gz);
-            let tmp = test_path.join("tmp");
-            let _ = fs::remove_dir_all(&tmp);
-            tar.unpack(&tmp).unwrap();
-            fs::rename(tmp.join(&data.model_name), test_path.join(&data.model_name)).unwrap();
-            let _ = fs::remove_dir_all(&tmp);
+            if !wget.success() {
+                panic!("wget: {:?}", wget);
+            }
+            let tar = std::process::Command::new("tar").arg("zxf").arg(&tgz_name).status().unwrap();
+            if !tar.success() {
+                panic!("tar: {:?}", tar);
+            }
+            fs::rename(&name, test_path.join(&name)).unwrap();
+            fs::remove_file(&tgz_name).unwrap();
         }
         info!("Done with {:?}", f);
-        test_path.join(&data.model_name)
+        test_path.join(&name)
     } else {
         test_path
     };

@@ -4,7 +4,11 @@ members = [
     "core",
     "tensorflow",
     "onnx",
-    "cli"
+    "cli",
+    "examples/lstm-proptest-onnx-vs-tf",
+    "examples/onnx-test-suite",
+    "examples/tf-inceptionv3",
+    "examples/tf-moz-deepspeech",
 ]
 
 [profile.release]

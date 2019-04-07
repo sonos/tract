@@ -1,31 +1,18 @@
-extern crate git2;
-
 use std::{fs, path};
 
 pub fn dir() -> path::PathBuf {
-    match ::std::env::var("TRAVIS_BUILD_DIR") {
-        Ok(t) => path::Path::new(&t).join("cached").join("onnx-checkout"),
-        _ => {
-            let out_dir = std::env::var("OUT_DIR").unwrap();
-            let out_dir = path::PathBuf::from(out_dir);
-            out_dir.join("onnx-checkout")
-        }
-    }
+    let cache = ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string());
+    fs::create_dir_all(&cache).unwrap();
+    path::PathBuf::from(cache).join("onnx")
 }
 
 pub fn ensure_onnx_git_checkout() {
     use std::sync::Once;
     static START: Once = Once::new();
     START.call_once(|| {
-        if !dir().exists() {
-            let _ = fs::create_dir_all(dir().parent().unwrap());
-            let url = "https://github.com/onnx/onnx";
-            let repo = git2::Repository::clone(url, dir()).unwrap();
-            let tag: git2::Oid = repo.refname_to_id("refs/tags/v1.4.1").unwrap();
-            let tag: git2::Object = repo.find_object(tag, None).unwrap();
-            let mut options = git2::build::CheckoutBuilder::new();
-            options.safe();
-            repo.checkout_tree(&tag, Some(&mut options)).unwrap();
+        let run = std::process::Command::new("./checkout.sh").status().unwrap();
+        if !run.success() {
+            panic!("Failed to checkout onnx")
         }
     });
 }
@@ -35,7 +22,7 @@ pub fn make_test_file(tests_set: &str) {
     ensure_onnx_git_checkout();
     let node_tests = dir().join("onnx/backend/test/data").join(tests_set);
     assert!(node_tests.exists());
-    let working_list_file = path::PathBuf::from("tests").join(tests_set).with_extension("txt");
+    let working_list_file = path::PathBuf::from(".").join(tests_set).with_extension("txt");
     let working_list: Vec<String> = if let Ok(list) = fs::read_to_string(&working_list_file) {
         list.split("\n")
             .map(|s| s.to_string())
