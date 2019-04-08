@@ -32,10 +32,10 @@ impl ::std::default::Default for Conv {
 }
 
 impl Conv {
-    fn output_shape<D: DimLike, ID: Into<D> + Copy + std::fmt::Debug>(
+    fn output_shape<D: DimLike>(
         &self,
         ishape: &[D],
-        kshape: &[ID],
+        kshape: &[usize],
     ) -> TVec<D> {
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_fmt.shape(ishape);
@@ -120,11 +120,10 @@ impl StatelessOp for Conv {
             (input, kernel, Some(bias.to_tensor()))
         };
         let ishape: TVec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
-        let kshape: TVec<TDim> = kernel.shape().iter().map(|i| i.to_dim()).collect();
         let reduced = ConvUnary::new(
             &self,
             &ishape,
-            &self.output_shape(&ishape, &kshape),
+            &self.output_shape(&*ishape, &kernel.shape()),
             kernel.to_tensor(),
             bias,
             self.group,
@@ -174,8 +173,12 @@ impl InferenceRulesOp for Conv {
             s.equals(input_c.bex(), self.group as i32 * filter_i.bex())
         })?;
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ishape, kshape| {
-            let oshape = self.output_shape(&*ishape, &*kshape);
-            s.equals(&outputs[0].shape, oshape)
+            if kshape.iter().all(|d| d.to_integer().is_ok()) {
+                let kshape:TVec<usize> = kshape.iter().map(|d| d.to_integer().unwrap() as _).collect();
+                let oshape = self.output_shape(&*ishape, &*kshape);
+                s.equals(&outputs[0].shape, oshape)?;
+            }
+            Ok(())
         })
     }
 }

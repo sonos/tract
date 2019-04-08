@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+xs 3626947671 567190746 1066259331 2169673451 # shrinks to (ref i, ref k, ref strides) = (1x1x1x1xF32 0, 1x1x1x1xF32 0, (1, 1)), valid = false
+xs 2095200658 2521600292 167531540 27545920 # shrinks to (ref i, ref k, ref strides) = (1x1x1x1xF32 0, 1x1x1x1xF32 0, (1, 1)), valid = false
+xs 3785992409 1022059155 3135754526 805113969 # shrinks to (ref i, ref k, stride) = (1x1x2x1xF32 1, 0, 1x1x1x1xF32 1, 2), valid = false
+xs 144961368 3467274053 4120060015 4072688890 # shrinks to (ref i, ref k, stride) = (1x3x8x1xF32 0, 0, 0, 0..., 1x1x1x1xF32 -1, 2), valid = false
+xs 3441037282 1568902391 1947917976 3753470628 # shrinks to (ref i, ref k, stride) = (1x3x4x1xF32 0, 0, 0, 0..., 1x1x1x1xF32 -1, 2), valid = false
+xs 1210613092 3469268474 2211162269 2728189630 # shrinks to (ref i, ref k, stride) = ([[[[0.0],    [0.0]],   [[0.0],    [0.0]],   [[0.0],    [0.0]]],  [[[0.0],    [-1.0]],   [[0.0],    [0.0]],   [[0.0],    [0.0]]]] shape=[2, 3, 2, 1], strides=[6, 2, 1, 1], layout=C (0x1), const ndim=4, [[[[0.0]]],  [[[-1.0]]]] shape=[2, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1), const ndim=4, 1), valid = false
+xs 3872883304 3578968752 800499419 963336543 # shrinks to (ref i, ref k, stride) = ([[[[0.0],    [0.0],    [0.0],    [0.0],    [0.0]],   [[0.0],    [0.0],    [0.0],    [0.0],    [0.0]],   [[0.0],    [0.0],    [0.0],    [0.0],    [0.0]],   [[0.0],    [0.0],    [0.0],    [0.0],    [0.0]],   [[0.0],    [3.0],    [0.0],    [0.0],    [-1.0]]]] shape=[1, 5, 5, 1], strides=[25, 5, 1, 1], layout=C (0x1), const ndim=4, [[[[0.0, 0.0]],   [[1.0, 0.0]]],  [[[4.0, 6.0]],   [[-3.0, 8.0]]]] shape=[2, 2, 1, 2], strides=[4, 2, 2, 1], layout=C (0x1), const ndim=4, 1), valid = false
