@@ -28,9 +28,9 @@ echo binary_size.cli $binary_size_cli > metrics
     done
     for bench in `find target/criterion -path "*/new/*" -name raw.csv`
     do
-        group=`cat $bench | tail -1 | cut -d , -f 1`
-        nanos=`cat $bench | tail -1 | cut -d , -f 4`
-        iter=`cat $bench | tail -1 | cut -d , -f 5`
+        group=`cat $bench | tail -1 | cut -d , -f 1 | cut -d . -f 1`
+        nanos=`cat $bench | tail -1 | cut -d , -f 4 | cut -d . -f 1`
+        iter=`cat $bench | tail -1 | cut -d , -f 5 | cut -d . -f 1`
         time=$((nanos/iter))
         echo microbench.${group}.${func:-none}.${value:-none} $(($nanos/$iter)) >> metrics
     done
