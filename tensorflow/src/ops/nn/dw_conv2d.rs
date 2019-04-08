@@ -1,6 +1,6 @@
 use tract_core::internal::*;
-use tract_core::ops::nn::*;
 use tract_core::ndarray::*;
+use tract_core::ops::nn::*;
 
 pub fn depthwise_conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let fmt = super::data_format(pb)?;
@@ -41,20 +41,26 @@ impl StatelessOp for DepthwiseConv2d {
             self.strides[input_shape.hw_axes()].into(),
             img.shape().into(),
         );
-        let out_channels = ker.shape()[2]*ker.shape()[3];
-//        let visitor = patch.wrap(&input);
+        println!("{:#?}", patch);
+        println!("{:?}", img);
+        println!("{:?}", ker);
+        let out_channels = ker.shape()[2] * ker.shape()[3];
+        let visitor = patch.wrap(&img);
         let output_shape = patch.output_full_shape(out_channels);
-        let output = ArrayD::<f32>::from_shape_fn(&*output_shape, |coords| {
+        let output = ArrayD::<f32>::from_shape_fn(&*output_shape, |mut coords| {
             let k = coords[input_shape.c_axis()] / ker.shape()[3];
             let q = coords[input_shape.c_axis()] % ker.shape()[3];
+            coords[input_shape.c_axis()] = k;
+            println!("coords fix : {:?}", coords);
+            println!("{:?}", visitor.at(coords.slice()).collect::<Vec<_>>());
+            let mut it = visitor.at(coords.slice());
             let mut sum = 0.0f32;
             for di in 0..ker.shape()[0] {
-                for dj in 0..ker.shape()[0] {
-                    sum += img.get([coords[0],
-                        coords[1]*self.strides[1]+di * self.dilations[1],
-                        coords[2]*self.strides[2]+dj * self.dilations[2],
-                        k,
-                    ]).unwrap_or(&0.0) * ker[[di,dj,k,q]];
+                for dj in 0..ker.shape()[1] {
+                    let vi = it.next().unwrap().unwrap_or(0.0);
+                    let vk = ker[[di, dj, k, q]];
+                    println!("{} {}", vi, vk);
+                    sum += vi * vk;
                 }
             }
             sum

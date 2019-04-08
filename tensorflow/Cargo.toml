@@ -29,7 +29,7 @@ conform = [ "tensorflow" ]
 [dev-dependencies]
 criterion = "0.2"
 env_logger = "0.6"
-proptest = "0.8"
+proptest = "0.9"
 
 # [[bench]]
 # name = "conv"

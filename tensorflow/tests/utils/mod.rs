@@ -28,8 +28,8 @@ pub fn compare<S: AsRef<str>>(
     prop_assert!(
         expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true),
         "expected: {:?} found: {:?}",
-        expected,
-        found
+        expected[0].to_array_view::<f32>().unwrap(),
+        found[0].to_array_view::<f32>().unwrap(),
     );
     Ok(())
 }

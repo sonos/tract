@@ -166,10 +166,10 @@ impl Tensor {
         use itertools::Itertools;
         let spec = TensorFact::dt_shape(D::datum_type(), &*self.shape);
         let data = self.to_array_view::<D>()?;
-        let s = if force_full || data.len() <= 4 {
+        let s = if force_full || data.len() <= 12 {
             format!("{} {}", spec.format_dt_shape(), data.iter().join(", "))
         } else {
-            format!("{} {}...", spec.format_dt_shape(), data.iter().take(4).join(", "))
+            format!("{} {}...", spec.format_dt_shape(), data.iter().take(8).join(", "))
         };
         Ok(s)
     }

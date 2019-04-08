@@ -24,8 +24,10 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
         let mut file =
             fs::File::open(filename).map_err(|e| format!("accessing {:?}, {:?}", path, e)).unwrap();
         let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
+        debug!("{:?}", tensor);
         vec.push(tensor.tractify().unwrap())
     }
+    debug!("{:?}: {:?}", path, vec);
     vec
 }
 
@@ -46,7 +48,8 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
             .to_string();
         let f = fs::File::open(test_path.join("data.json")).unwrap();
         let _lock = f.lock_exclusive();
-        let name: String = test_path.file_name().unwrap().to_str().unwrap().chars().skip(5).collect();
+        let name: String =
+            test_path.file_name().unwrap().to_str().unwrap().chars().skip(5).collect();
         info!("Locked {:?}", f);
         if !test_path.join(&name).exists() {
             let tgz_name = format!("{}.tgz", name);
@@ -100,6 +103,38 @@ fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
             && d.file_name().to_str().unwrap().starts_with("test_data_set_")
         {
             let (inputs, expected) = load_dataset(&d.path());
+            let inputs = inputs
+                .into_iter()
+                .enumerate()
+                .map(|(ix, i)| {
+                    let shape = plan
+                        .model()
+                        .input_fact(ix)
+                        .unwrap()
+                        .to_tensor_fact()
+                        .shape
+                        .as_concrete_finite()
+                        .unwrap()
+                        .unwrap();
+                    i.into_shape(&shape).unwrap()
+                })
+                .collect();
+            let expected: TVec<Tensor> = expected
+                .into_iter()
+                .enumerate()
+                .map(|(ix, i)| {
+                    let shape = plan
+                        .model()
+                        .output_fact(ix)
+                        .unwrap()
+                        .to_tensor_fact()
+                        .shape
+                        .as_concrete_finite()
+                        .unwrap()
+                        .unwrap();
+                    i.into_shape(&shape).unwrap()
+                })
+                .collect();
             // println!("inputs: {:?}", inputs[0].dump(true));
             let computed = plan.run(inputs).unwrap();
             if computed.len() != expected.len() {
@@ -113,7 +148,12 @@ fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
                 //                println!("computed: {:?}", computed[ix].dump(true));
                 //                println!("expected: {:?}", expected[ix].dump(true));
                 if !a.close_enough(b, true) {
-                    panic!("Different result for output #{}: got:{:?} expected:{:?}", ix, a, b)
+                    panic!(
+                        "Different result for output #{}: got:{:?} expected:{:?}",
+                        ix,
+                        a.to_array_view::<f32>().unwrap(),
+                        b.to_array_view::<f32>().unwrap(),
+                    )
                 }
             }
         }
