@@ -107,7 +107,12 @@ then
     then
         tflites="official_rpi official_rpi_2019_03"
     fi
-
+elif [ -e /etc/issue ] && ( cat /etc/issue | grep i.MX )
+then
+    if [ `uname -m` = "aarch64" ]
+    then
+        tflites="aarch64_unknown_linux_gnu aarch64_unknown_linux_gnu_2019_03"
+    fi
 fi
 
 for tflite in $tflites
