@@ -36,48 +36,56 @@ echo binary_size.cli $binary_size_cli > metrics
     done
 )
 
+arm_ml_kws_cnn_m=`$TRACT --machine-friendly $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
+    -O -i 49x10xf32 --input-node Mfcc profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
+
 deepspeech_0_4_1=`$TRACT --machine-friendly $CACHEDIR/deepspeech-0.4.1.pb \
     --input-node input_node -i 1x16x19x26xf32 \
     --input-node input_lengths -i 1xi32=16 \
     -O profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
+
+hey_snips_v31_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v3.1.pb \
+    -O -i 40x40xf32 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms >> metrics
+
+hey_snips_v4_model17_2sec=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
+    -O -i 200x20xf32 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.hey_snips_v4_model17.evaltime.2sec $hey_snips_v4_model17_2sec >> metrics
+
+hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
+    -O -i Sx20xf32 --pulse 8 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 >> metrics
+
+mobilenet_v1_1=`$TRACT --machine-friendly $CACHEDIR/mobilenet_v1_1.pb \
+    -O -i 1x244x244x3xf32 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.mobilenet_v1_1.evaltime.pass $mobilenet_v1_1 >> metrics
 
 inceptionv3=`$TRACT --machine-friendly $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
     -O -i 1x299x299x3xf32 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 
-voicecom_float=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-float.pb \
-    -O -i 200x10xf32 profile --bench \
+speaker_id_pulse8=`$TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
+    -O -i 1xSx40xf32 --output-node 257 --pulse 8 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 
 voicecom_fake_quant=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
     -O -i 200x10xf32 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-
-arm_ml_kws_cnn_m=`$TRACT --machine-friendly $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
-    -O -i 49x10xf32 --input-node Mfcc profile --bench \
-    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-
-hey_snips_v31_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v3.1.pb \
-    -O -i 40x40xf32 profile --bench \
-    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-
-hey_snips_v4_model17_2sec=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
-    -O -i 200x20xf32 profile --bench \
-    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-
-hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_model17.pb \
-    -O -i Sx20xf32 --pulse 8 profile --bench \
-    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-
-echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
-echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
-echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
-echo net.voicecom_float.evaltime.2sec $voicecom_float >> metrics
 echo net.voicecom_fake_quant.evaltime.2sec $voicecom_fake_quant >> metrics
-echo net.hey_snips_v31.evaltime.400ms $hey_snips_v31_400ms >> metrics
-echo net.hey_snips_v4_model17.evaltime.2sec $hey_snips_v4_model17_2sec >> metrics
-echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 >> metrics
+
+voicecom_float=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-float.pb \
+    -O -i 200x10xf32 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.voicecom_float.evaltime.2sec $voicecom_float >> metrics
 
 if [ -e /etc/issue ] && ( cat /etc/issue | grep Raspbian )
 then
