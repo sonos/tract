@@ -76,7 +76,7 @@ echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 speaker_id_pulse8=`$TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
     -O -i 1xSx40xf32 --output-node 257 --pulse 8 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.speaker_id.evaltime.pulse8 $inceptionv3 >> metrics
+echo net.speaker_id.evaltime.pulse8 $speaker_id_pulse8 >> metrics
 
 voicecom_fake_quant=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
     -O -i 200x10xf32 profile --bench \
