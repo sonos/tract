@@ -63,7 +63,7 @@ hey_snips_v4_model17_pulse8=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v4_mo
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.hey_snips_v4_model17.evaltime.pulse8 $hey_snips_v4_model17_pulse8 >> metrics
 
-mobilenet_v1_1=`$TRACT --machine-friendly $CACHEDIR/mobilenet_v1_1.pb \
+mobilenet_v1_1=`$TRACT --machine-friendly $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
     -O -i 1x244x244x3xf32 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.mobilenet_v1_1.evaltime.pass $mobilenet_v1_1 >> metrics
@@ -76,6 +76,7 @@ echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 speaker_id_pulse8=`$TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
     -O -i 1xSx40xf32 --output-node 257 --pulse 8 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.speaker_id.evaltime.pulse8 $inceptionv3 >> metrics
 
 voicecom_fake_quant=`$TRACT --machine-friendly $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
     -O -i 200x10xf32 profile --bench \
