@@ -107,7 +107,7 @@ then
     then
         tflites="official_rpi official_rpi_2019_03"
     fi
-elif [ -e /etc/issue ] && ( cat /etc/issue | grep i.MX )
+elif [ -e /etc/issue ] && ( cat /etc/issue | grep buster )
 then
     if [ `uname -m` = "aarch64" ]
     then
