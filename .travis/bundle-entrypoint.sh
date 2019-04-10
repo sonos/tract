@@ -68,6 +68,11 @@ mobilenet_v1_1=`$TRACT --machine-friendly $CACHEDIR/mobilenet_v1_1.0_224_frozen.
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.mobilenet_v1_1.evaltime.pass $mobilenet_v1_1 >> metrics
 
+mobilenet_v2_1=`$TRACT --machine-friendly $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
+    -O -i 1x244x244x3xf32 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.mobilenet_v2_1.evaltime.pass $mobilenet_v2_1 >> metrics
+
 inceptionv3=`$TRACT --machine-friendly $CACHEDIR/inception_v3_2016_08_28_frozen.pb \
     -O -i 1x299x299x3xf32 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
@@ -138,5 +143,19 @@ do
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.arm_ml_kws_cnn_m.tflite_$tflite.pass $sec >> metrics
+
+    $CACHEDIR/tflite_benchmark_model_$tflite \
+        --graph=$CACHEDIR/mobilenet_v1_1.0_224.tflite \
+    2> bench
+    usec=`cat bench | tail -1 | sed "s/.* //"`
+    sec=`python -c "print(float($usec) / 1000000)"`
+    echo net.mobilenet_v1.tflite_$tflite.pass $sec >> metrics
+
+    $CACHEDIR/tflite_benchmark_model_$tflite \
+        --graph=$CACHEDIR/mobilenet_v2_1.4_224.tflite \
+    2> bench
+    usec=`cat bench | tail -1 | sed "s/.* //"`
+    sec=`python -c "print(float($usec) / 1000000)"`
+    echo net.mobilenet_v2.tflite_$tflite.pass $sec >> metrics
 done
 
