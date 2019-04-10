@@ -44,6 +44,7 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
                 *arity = (*arity).max(slot + 1);
             }
         }
+
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
             let output_arity = arities.get(&*name).cloned().unwrap_or(1);
@@ -63,7 +64,9 @@ impl Framework<NodeDef, GraphDef> for Tensorflow {
                 }
                 model.set_outlet_fact(OutletId::new(node_id, 0), fact)?;
             }
+        }
 
+        for (node_id, pbnode) in graph.get_node().iter().enumerate() {
             for (ix, i) in pbnode.get_input().iter().enumerate() {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;

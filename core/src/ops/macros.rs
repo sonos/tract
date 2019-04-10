@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! element_map {
     ($Name:ident, [$($type:ty),*], $expr:expr) => {
         element_map!($Name, match $($type => { $expr } ),*);

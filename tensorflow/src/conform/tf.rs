@@ -186,6 +186,11 @@ impl Tensorflow {
                     continue;
                 }
 
+                // this one pretends to have 5 outputs, but has only one
+                if operation.op_type()? == "FusedBatchNorm" {
+                    continue;
+                }
+
                 let outputs = (0..operation.num_outputs())
                     .map(|ix| step.request_fetch(&operation, ix as i32))
                     .collect::<Vec<_>>();
@@ -194,6 +199,7 @@ impl Tensorflow {
             }
         }
         trace!("Generated all output tokens");
+        trace!("{:?}", tokens);
 
         // Execute the graph using tensorflow.
         self.session.run(&mut step)?;

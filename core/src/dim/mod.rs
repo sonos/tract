@@ -28,6 +28,7 @@ pub trait DimLike:
     + ops::Sub<usize, Output = Self>
     + ops::Mul<usize, Output = Self>
     + ops::Div<usize, Output = Self>
+    + ops::Rem<usize, Output = Self>
     + Send
     + Sync
     + 'static

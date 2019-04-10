@@ -1,9 +1,7 @@
 use ansi_term::Color::*;
 
 use log::Level::Info;
-use tract_core::model::OutletId;
-use tract_core::plan::{SimplePlan, SimpleState};
-use tract_core::{SharedTensor, TensorFact};
+use tract_core::internal::*;
 
 use crate::display_graph::DisplayOptions;
 use crate::utils::*;
@@ -28,13 +26,13 @@ pub fn handle_t<TI: TensorInfo>(
     use crate::format::Row;
 
     // First generate random values for the inputs.
-    let generated = crate::tensor::make_inputs(&[tract.input_fact()?.to_tensor_fact()])?;
+    let generated = crate::tensor::make_inputs(&[tract.input_fact(0)?.to_tensor_fact()])?;
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
     trace!("Inject inputs in tensorflow graph.");
     let pairs = tract
-        .inputs()
+        .input_outlets()
         .iter()
         .map(|s| &*tract.node(s[0].node).name)
         .zip(generated.iter().cloned())
@@ -45,7 +43,7 @@ pub fn handle_t<TI: TensorInfo>(
     let nodes = tract.nodes();
     let wanted_outputs: Vec<&str> = eval_order
         .iter()
-        .filter(|&n| !tract.inputs().unwrap().contains(&OutletId::new(*n, 0)))
+        .filter(|&n| !tract.output_outlets().unwrap().contains(&OutletId::new(*n, 0)))
         .map(|&n| &*nodes[n].name)
         .collect();
     let mut tf_outputs = tf.run_get_many(pairs, wanted_outputs)?;
@@ -100,7 +98,7 @@ pub fn handle_t<TI: TensorInfo>(
                     .enumerate()
                     .position(|(ix, o)| {
                         o.successors.len() == 0
-                            && !tract.outputs().unwrap().contains(&OutletId::new(node.id, ix))
+                            && !tract.output_outlets().unwrap().contains(&OutletId::new(node.id, ix))
                     })
                     .unwrap_or(node.outputs.len());
                 let expected: Vec<TensorFact> =
