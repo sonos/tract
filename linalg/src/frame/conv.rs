@@ -10,6 +10,7 @@ pub trait Conv<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + objekt
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
 
     fn co(&self) -> usize;
+    fn k(&self) -> usize;
     fn n(&self) -> usize;
     fn conv(&self, pa: *const T, b: *const T, c: *mut T, rsc: isize, csc: isize);
 }
@@ -244,6 +245,10 @@ where
 
     fn n(&self) -> usize {
         self.n
+    }
+
+    fn k(&self) -> usize {
+        self.k
     }
 }
 

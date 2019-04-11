@@ -11,7 +11,7 @@ use tract_linalg::f16::f16;
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DatumType {
     Bool,

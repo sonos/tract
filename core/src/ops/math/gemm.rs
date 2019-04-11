@@ -146,6 +146,7 @@ impl StatelessOp for Gemm {
             dispatch_floatlike!(Self::eval_t_2(inputs[0].datum_type())(self, inputs))
         }
     }
+
 }
 
 impl InferenceRulesOp for Gemm {

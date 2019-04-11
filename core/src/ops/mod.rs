@@ -36,6 +36,11 @@ pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResu
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum Cost {
+    FMA(DatumType),
+}
+
 use crate::internal::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
@@ -45,10 +50,17 @@ pub trait OpState: Debug + Send + objekt::Clone {
         op: &Op,
         inputs: TVec<SharedTensor>,
     ) -> TractResult<TVec<SharedTensor>>;
+
+    fn cost(&self, _op: &Op, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost,TDim)>> {
+        Ok(tvec!())
+    }
 }
 
 pub trait StatelessOp: Op {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
+    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost,TDim)>> {
+        Ok(tvec!())
+    }
 }
 
 pub trait StatefullOp {

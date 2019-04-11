@@ -1,17 +1,19 @@
-use crate::prelude::*;
-use crate::internal::*;
 use crate::datum::TryInto;
 use crate::dim::ToDim;
+use crate::internal::*;
+use crate::prelude::*;
 use crate::tensor::Tensor;
 use std::fmt;
 
-pub trait TensorInfo: Clone + std::fmt::Debug {
+pub trait TensorInfo: std::fmt::Debug + objekt::Clone {
     fn to_tensor_fact(&self) -> TensorFact;
 }
 
+objekt::clone_trait_object!(TensorInfo);
+
 impl<TI: TensorInfo> TryInto<TI> for TI {
     fn try_into(&self) -> TractResult<TI> {
-        Ok(self.clone())
+        Ok(objekt::clone(self))
     }
 }
 
