@@ -51,7 +51,7 @@ echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
 hey_snips_v1_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v1.pb \
     -O -i 41x40xf32 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo net.hey_snips_v1.evaltime.400ms $hey_snips_v31_400ms >> metrics
+echo net.hey_snips_v1.evaltime.400ms $hey_snips_v1_400ms >> metrics
 
 hey_snips_v31_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v3.1.pb \
     -O -i 40x40xf32 profile --bench \
