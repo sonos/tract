@@ -50,17 +50,10 @@ pub trait OpState: Debug + Send + objekt::Clone {
         op: &Op,
         inputs: TVec<SharedTensor>,
     ) -> TractResult<TVec<SharedTensor>>;
-
-    fn cost(&self, _op: &Op, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost,TDim)>> {
-        Ok(tvec!())
-    }
 }
 
 pub trait StatelessOp: Op {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
-    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost,TDim)>> {
-        Ok(tvec!())
-    }
 }
 
 pub trait StatefullOp {
@@ -143,6 +136,10 @@ pub trait Op:
         _node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
+    }
+
+    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost,TDim)>> {
+        Ok(tvec!())
     }
 
     fn rounding_errors(&self) -> bool {

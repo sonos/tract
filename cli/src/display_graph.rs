@@ -54,7 +54,6 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
         }
         let node_ids = ::tract_core::model::eval_order(&model)?;
         for node in node_ids {
-            use tract_core::prelude::*;
             let node = &model.nodes()[node];
             if node.op().name() == "Const" && !self.options.konst {
                 continue;
@@ -131,6 +130,10 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
         );
         if let Some(info) = node.op().info()? {
             sections.push(vec![Row::Simple(info)])
+        }
+        let cost = node.op().cost()?;
+        if cost.len() > 0 {
+            sections.push(vec![Row::Simple(format!("{:?}", cost))])
         }
         if self.options.debug_op {
             sections.push(vec![Row::Simple(format!("{:?}", node.op))]);

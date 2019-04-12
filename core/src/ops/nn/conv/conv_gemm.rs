@@ -114,6 +114,14 @@ where
     fn info(&self) -> TractResult<Option<String>> {
         Ok(Some(format!("{:?}", self.mm)))
     }
+
+    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+        let batch = inputs[0].shape.dim(0);
+        Ok(tvec!((
+            Cost::FMA(f32::datum_type()),
+            batch * self.group * self.mm.m() * self.mm.k() * self.mm.n()
+        )))
+    }
 }
 
 impl<D> StatelessOp for ConvGemm<D>
@@ -126,13 +134,6 @@ where
         Ok(tvec!(output.into()))
     }
 
-    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
-        let batch = inputs[0].shape.dim(0);
-        Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
-            batch * self.group * self.mm.m() * self.mm.k() * self.mm.n()
-        )))
-    }
 }
 
 impl<D> InferenceRulesOp for ConvGemm<D>

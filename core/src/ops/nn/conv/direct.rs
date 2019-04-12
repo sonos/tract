@@ -19,6 +19,14 @@ impl Op for Direct {
     fn info(&self) -> TractResult<Option<String>> {
         Ok(Some(format!("{:?}", self.conv)))
     }
+
+    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+        let batch = inputs[0].shape.dim(0);
+        Ok(tvec!((
+            Cost::FMA(f32::datum_type()),
+            batch * self.conv.n() * self.conv.co() * self.conv.k()
+        )))
+    }
 }
 
 impl StatelessOp for Direct {
@@ -42,13 +50,6 @@ impl StatelessOp for Direct {
         }
     }
 
-    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
-        let batch = inputs[0].shape.dim(0);
-        Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
-            batch * self.conv.n() * self.conv.co() * self.conv.k()
-        )))
-    }
 }
 
 impl InferenceRulesOp for Direct {
