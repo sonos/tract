@@ -21,15 +21,25 @@ run_in_tf_docker "cd /models ; tflite_convert \
     --output_format tflite \
     --output_file ARM-ML-KWS-CNN-M.tflite"
 
-# hey_snips v3.1
+# hey_snips v1
 run_in_tf_docker "cd /models ; tflite_convert \
-    --graph_def_file hey_snips_v3.1.pb \
+    --graph_def_file hey_snips_v1.pb \
     --input_arrays inputs \
-    --input_shapes 40,40 \
+    --input_shapes 41,40 \
     --output_arrays logits \
     --output_format tflite \
-    --output_file hey_snips_v3.1.tflite"
+    --output_file hey_snips_v1.tflite"
 
+# hey_snips v3.1
+# (tflite does not support 1D dil)
+# run_in_tf_docker "cd /models ; tflite_convert \
+#     --graph_def_file hey_snips_v3.1.pb \
+#     --input_arrays inputs \
+#     --input_shapes 40,40 \
+#     --output_arrays logits \
+#     --output_format tflite \
+#     --output_file hey_snips_v3.1.tflite"
+# 
 # # hey_snips v4 model17, 2seconds
 # (tflite does not support AddN)
 # run_in_tf_docker "cd /models ; tflite_convert \

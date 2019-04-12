@@ -48,6 +48,11 @@ deepspeech_0_4_1=`$TRACT --machine-friendly $CACHEDIR/deepspeech-0.4.1.pb \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
 
+hey_snips_v1_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v1.pb \
+    -O -i 41x40xf32 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.hey_snips_v1.evaltime.400ms $hey_snips_v31_400ms >> metrics
+
 hey_snips_v31_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v3.1.pb \
     -O -i 40x40xf32 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
@@ -131,11 +136,11 @@ do
     echo net.inceptionv3.tflite_$tflite.pass $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
-        --graph=$CACHEDIR/hey_snips_v3.1.tflite \
+        --graph=$CACHEDIR/hey_snips_v1.tflite \
     2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
-    echo net.hey_snips_v31.tflite_$tflite.400ms $sec >> metrics
+    echo net.hey_snips_v1.tflite_$tflite.400ms $sec >> metrics
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/ARM-ML-KWS-CNN-M.tflite \
