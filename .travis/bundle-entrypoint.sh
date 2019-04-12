@@ -151,6 +151,7 @@ do
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/mobilenet_v1_1.0_224.tflite \
+        --num_runs=1 \
     2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
@@ -158,6 +159,7 @@ do
 
     $CACHEDIR/tflite_benchmark_model_$tflite \
         --graph=$CACHEDIR/mobilenet_v2_1.4_224.tflite \
+        --num_runs=1 \
     2> bench
     usec=`cat bench | tail -1 | sed "s/.* //"`
     sec=`python -c "print(float($usec) / 1000000)"`
