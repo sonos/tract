@@ -49,7 +49,7 @@ deepspeech_0_4_1=`$TRACT --machine-friendly $CACHEDIR/deepspeech-0.4.1.pb \
 echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics
 
 hey_snips_v1_400ms=`$TRACT --machine-friendly $CACHEDIR/hey_snips_v1.pb \
-    -O -i 41x40xf32 profile --bench \
+    -O -i 80x40xf32 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.hey_snips_v1.evaltime.400ms $hey_snips_v1_400ms >> metrics
 

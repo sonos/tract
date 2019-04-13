@@ -25,7 +25,7 @@ run_in_tf_docker "cd /models ; tflite_convert \
 run_in_tf_docker "cd /models ; tflite_convert \
     --graph_def_file hey_snips_v1.pb \
     --input_arrays inputs \
-    --input_shapes 41,40 \
+    --input_shapes 80,40 \
     --output_arrays logits \
     --output_format tflite \
     --output_file hey_snips_v1.tflite"
