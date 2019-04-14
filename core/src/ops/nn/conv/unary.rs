@@ -127,15 +127,15 @@ impl ConvUnary {
         let conv =
             (tract_linalg::ops().sconv)(self.output_channels(), kernel_offsets, data_offsets);
 
-        let kernel = self.kernel_reshaped()?;
+        let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<f32>(&[conv.packed_a_len()], conv.packed_a_alignment())?
         };
         conv.pack_a(
             packed.as_slice_mut()?.as_mut_ptr(),
             kernel.as_slice().unwrap().as_ptr(),
-            kernel.strides()[0],
             kernel.strides()[1],
+            kernel.strides()[2],
         );
 
         Ok(super::Direct::new(
@@ -146,22 +146,29 @@ impl ConvUnary {
         ))
     }
 
-    fn kernel_reshaped<T: Datum>(&self) -> TractResult<Array2<T>> {
+    fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
         let kernel = self.kernel.to_array_view::<T>()?;
-        let kernel_reshaped = (self.output_channels(), kernel.len() / self.output_channels());
-        let k = match self.kernel_fmt {
+        let final_shape = (
+            self.group,
+            self.output_channels() / self.group,
+            kernel.len() / self.output_channels(),
+        );
+        trace!("kernel shape (group, output, rest) = {:?}", final_shape);
+        let hw_rank = kernel.ndim() - 2;
+        match self.kernel_fmt {
             KernelFormat::HWIO => {
-                let mut permutation: Vec<usize> = vec![kernel.ndim() - 1, kernel.ndim() - 2];
-                permutation.extend(0..(kernel.ndim() - 2));
+                let mut shape = kernel.shape().to_vec();
+                shape.insert(hw_rank, self.group);
+                shape[hw_rank] /= self.group;
+                println!("kernel shape: {:?}", shape);
+                let kernel = kernel.into_shape(shape)?;
+                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2];
+                permutation.extend(0..hw_rank);
                 let permuted = kernel.permuted_axes(permutation);
-                Array2::<T>::from_shape_vec(
-                    kernel_reshaped,
-                    permuted.iter().cloned().collect::<Vec<_>>(),
-                )?
+                Ok(Array3::<T>::from_shape_vec(final_shape, permuted.iter().cloned().collect())?)
             }
-            KernelFormat::OIHW => kernel.into_shape(kernel_reshaped)?.to_owned(),
-        };
-        Ok(k)
+            KernelFormat::OIHW => Ok(kernel.into_shape(final_shape)?.to_owned()),
+        }
     }
 
     fn to_im2col_pair<T>(
@@ -176,8 +183,8 @@ impl ConvUnary {
         let kernel = self.kernel.to_array_view::<T>()?;
 
         let m = self.output_channels() / self.group;
-        let k = kernel.len() / self.output_channels();
         let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
+        let k = kernel.len() / self.output_channels();
 
         let mm: Arc<MatMul<T>> = T::packed_mat_mul(m, k, n)
             .ok_or_else(|| {
@@ -192,14 +199,10 @@ impl ConvUnary {
 
         trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
 
-        let kernel = self.kernel_reshaped()?;
+        let kernel = self.kernel_as_group_o_ihw()?;
 
         let mut packed_kernels: Vec<Tensor> = vec![];
-        let ci_per_group = patch.input_shape.c_dim() / self.group;
-        let co_per_group = self.output_channels() / self.group;
-        for g in 0..self.group {
-            let subkernel =
-                kernel.slice_axis(Axis(0), (co_per_group * g..co_per_group * (g + 1)).into());
+        for subkernel in kernel.outer_iter() {
             let mut packed = unsafe {
                 Tensor::uninitialized_aligned::<T>(&[mm.packed_a_len()], mm.packed_a_alignment())?
             };
@@ -223,9 +226,10 @@ impl ConvUnary {
             .inside_out()?;
 
         let im2col =
-            Im2Col::new(patch.clone(), m, k, n, self.group, ci_per_group, packed_b_len, mm.clone());
-        let intermediary_shape = im2col.output_shape()?;
+            Im2Col::new(patch.clone(), m, k, n, self.group, patch.input_shape.c_dim() / self.group, packed_b_len, mm.clone());
         trace!("im2col: {:?}", im2col);
+        let intermediary_shape = im2col.output_shape()?;
+        trace!("im2col shape: {:?}", intermediary_shape);
         let conv_gemm = ConvGemm::new(
             patch,
             shape,
@@ -327,11 +331,7 @@ impl Op for ConvUnary {
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            shape.n()
-                * shape.c()
-                * n_output_channels
-                * n_output_points
-                * kernel_surface
+            shape.n() * shape.c() * n_output_channels * n_output_points * kernel_surface
                 / self.group
         )))
     }
