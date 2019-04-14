@@ -50,7 +50,7 @@ impl Conv {
         );
         let channels_out = match self.kernel_fmt {
             KernelFormat::OIHW => kshape[0],
-            KernelFormat::HWIO => kshape[kshape.len() - 1],
+            KernelFormat::HWIO => kshape[kshape.len() - 1] * self.group,
         };
         result[ishape.c_axis()] = channels_out.into();
         result[ishape.hw_axes()].copy_from_slice(&computed.output);

@@ -83,10 +83,7 @@ impl ConvUnary {
     }
 
     fn output_channels(&self) -> usize {
-        match self.kernel_fmt {
-            KernelFormat::OIHW => self.kernel.shape()[0],
-            KernelFormat::HWIO => *self.kernel.shape().last().unwrap(),
-        }
+        self.data_fmt.shape(&self.full_output_shape).c_dim().to_integer().unwrap() as usize
     }
 
     pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
@@ -177,13 +174,15 @@ impl ConvUnary {
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq,
     {
+        trace!("to_im2col_pair: {:?}", self);
         let patch = self.patch(input_full_shape);
         let shape: TVec<usize> = patch.output_full_shape(self.output_channels());
         let kernel = self.kernel.to_array_view::<T>()?;
 
+        trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
-        let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
         let k = kernel.len() / self.output_channels();
+        let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
 
         let mm: Arc<MatMul<T>> = T::packed_mat_mul(m, k, n)
             .ok_or_else(|| {
@@ -225,8 +224,16 @@ impl ConvUnary {
             })
             .inside_out()?;
 
-        let im2col =
-            Im2Col::new(patch.clone(), m, k, n, self.group, patch.input_shape.c_dim() / self.group, packed_b_len, mm.clone());
+        let im2col = Im2Col::new(
+            patch.clone(),
+            m,
+            k,
+            n,
+            self.group,
+            patch.input_shape.c_dim() / self.group,
+            packed_b_len,
+            mm.clone(),
+        );
         trace!("im2col: {:?}", im2col);
         let intermediary_shape = im2col.output_shape()?;
         trace!("im2col shape: {:?}", intermediary_shape);
