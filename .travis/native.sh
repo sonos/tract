@@ -16,6 +16,8 @@ cargo test --release --all
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
     inception_v3_2016_08_28_frozen.pb \
+    mobilenet_v1_1.0_224_frozen.pb \
+    mobilenet_v2_1.4_224_frozen.pb \
     squeezenet.onnx
 
 ./target/release/tract $CACHEDIR/squeezenet.onnx \
@@ -34,6 +36,14 @@ cargo test --release --all
  ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
      -O -i 49x10xf32 \
      --input-node Mfcc run > /dev/null
+
+ ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
+     -O -i 1x224x224x3xf32 \
+    dump -q --assert-output-fact 1x1001xf32
+
+ ./target/release/tract $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
+     -O -i 1x224x224x3xf32 \
+    dump -q --assert-output-fact 1x1001xf32
 
 # these tests require access to private snips models
 if [ -n "$RUN_ALL_TESTS" ]
