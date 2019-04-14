@@ -27,6 +27,7 @@ pub trait DimLike:
     + ops::Sub<Self, Output = Self>
     + ops::Sub<usize, Output = Self>
     + ops::Mul<usize, Output = Self>
+    + ops::Mul<Self, Output = Self>
     + ops::Div<usize, Output = Self>
     + ops::Rem<usize, Output = Self>
     + Send
@@ -197,6 +198,12 @@ impl ops::Rem<TDim> for TDim {
 impl ops::RemAssign<TDim> for TDim {
     fn rem_assign(&mut self, rhs: TDim) {
         self.0 %= rhs.0
+    }
+}
+
+impl ::std::iter::Product for TDim {
+    fn product<I: Iterator<Item = TDim>>(iter: I) -> TDim {
+        iter.fold(1.to_dim(), |a, b| a * b)
     }
 }
 

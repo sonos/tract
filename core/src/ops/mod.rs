@@ -36,7 +36,7 @@ pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResu
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Cost {
     FMA(DatumType),
 }

@@ -162,6 +162,18 @@ impl Op for MatMul {
     fn name(&self) -> Cow<str> {
         "MatMul".into()
     }
+
+    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+        let dt = inputs[0].datum_type;
+        let (bc_a_shape, bc_b_shape, bc_c_shape) =
+            infer_shapes(inputs[0].shape.iter().collect(), 
+                         inputs[1].shape.iter().collect())?;
+        let mul = bc_c_shape.iter().rev().skip(2).cloned().product::<TDim>();
+        let m = bc_a_shape[bc_a_shape.len() - 2];
+        let k = bc_a_shape[bc_a_shape.len() - 1];
+        let n = bc_b_shape[bc_b_shape.len() - 1];
+        Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
+    }
 }
 
 impl StatelessOp for MatMul {
@@ -320,6 +332,13 @@ impl<T: Copy + Datum + Add + Mul + Zero> Op for MatMulUnaryImplASimpleB<T> {
     fn info(&self) -> TractResult<Option<String>> {
         Ok(Some(format!("{:?}", self.geo.mm)))
     }
+
+    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+        Ok(tvec!((
+            Cost::FMA(T::datum_type()),
+            (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k()).to_dim()
+        )))
+    }
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero> StatelessOp for MatMulUnaryImplASimpleB<T> {
@@ -408,6 +427,14 @@ impl<T: Copy + Datum + Add + Mul + Zero> Op for MatMulUnaryImplA<T> {
 
     fn info(&self) -> TractResult<Option<String>> {
         Ok(Some(format!("{:?}", self.geo.mm)))
+    }
+
+    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+        let mul = self.geo.c_shape_prefix.iter().product::<usize>();
+        Ok(tvec!((
+            Cost::FMA(T::datum_type()),
+            (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k() * mul).to_dim()
+        )))
     }
 }
 

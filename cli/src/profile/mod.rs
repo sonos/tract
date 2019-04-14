@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::errors::*;
 use crate::format::*;
 use itertools::Itertools;
-use tract_core::model::{Model, Node, TensorInfo};
+use tract_core::internal::*;
 
 use crate::display_graph::DisplayOptions;
 use crate::{Parameters, ProfilingMode, SomeGraphDef};
@@ -13,15 +13,12 @@ use crate::{Parameters, ProfilingMode, SomeGraphDef};
 mod regular;
 //mod streaming;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ProfileData {
     pub nodes: HashMap<usize, Duration>,
 }
 
 impl ProfileData {
-    pub fn new<TI: TensorInfo>(model: &Model<TI>) -> ProfileData {
-        ProfileData { nodes: HashMap::with_capacity(model.nodes().len()) }
-    }
 
     pub fn add<TI: TensorInfo>(
         &mut self,

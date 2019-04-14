@@ -1,7 +1,7 @@
 use ndarray::*;
 
-use crate::model::*;
 use crate::internal::*;
+use crate::model::*;
 use insideout::InsideOut;
 
 use super::conv_gemm::ConvGemm;
@@ -310,6 +310,30 @@ impl ConvUnary {
 impl Op for ConvUnary {
     fn name(&self) -> Cow<str> {
         "ConvUnary".into()
+    }
+
+    fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
+        let shape = self.data_fmt.shape(inputs[0].shape.iter().collect::<TVec<TDim>>());
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let output_dims = self.padding.compute(
+            shape.hw_dims(),
+            kernel_spatial_shape,
+            &*self.dilations,
+            &*self.strides,
+        );
+        let n_output_points: TDim = output_dims.output.into_iter().product::<TDim>();
+        let n_output_channels = self.output_channels().to_dim();
+        let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
+        Ok(tvec!((
+            Cost::FMA(f32::datum_type()),
+            shape.n()
+                * shape.c()
+                * n_output_channels
+                * n_output_points
+                * kernel_surface
+                / self.group
+        )))
     }
 
     fn declutter(

@@ -94,6 +94,10 @@ impl ShapeInfo {
         })
     }
 
+    pub fn to_tvec(&self) -> TVec<TDim> {
+        self.iter().collect::<TVec<TDim>>()
+    }
+
     pub fn to_shape_fact(&self) -> ShapeFact {
         ShapeFact::from(self.iter())
     }
