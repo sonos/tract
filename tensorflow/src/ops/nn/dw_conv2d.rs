@@ -42,6 +42,26 @@ impl Op for DepthwiseConv2d {
                 * kernel_surface
         )))
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        let input_shape = inputs[0].shape.to_tvec();
+        let shape = self.fmt.shape(&input_shape);
+        let conv = tract_core::ops::nn::Conv::new(
+            self.fmt.clone(),
+            KernelFormat::HWIO,
+            Some(self.dilations[shape.hw_axes()].into()),
+            None,
+            self.padding.clone(),
+            Some(self.strides[shape.hw_axes()].into()),
+            shape.c_dim().to_integer()? as usize,
+        );
+        Ok(Some(TypedModelPatch::replace_single_op(model, node, &*node.inputs, conv)?))
+    }
 }
 
 impl StatelessOp for DepthwiseConv2d {
