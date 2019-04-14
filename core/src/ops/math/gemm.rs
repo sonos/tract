@@ -74,7 +74,7 @@ impl Op for Gemm {
                 return Ok(Some(TypedModelPatch::replace_single_op(
                     model,
                     node,
-                    tvec!(node.inputs[0]),
+                    &[node.inputs[0]],
                     GemmUnaryA {
                         alpha: self.alpha,
                         beta: self.beta,
@@ -90,7 +90,7 @@ impl Op for Gemm {
                 return Ok(Some(TypedModelPatch::replace_single_op(
                     model,
                     node,
-                    tvec!(node.inputs[1]),
+                    &[node.inputs[1]],
                     GemmUnaryB {
                         alpha: self.alpha,
                         beta: self.beta,
@@ -106,7 +106,7 @@ impl Op for Gemm {
                 return Ok(Some(TypedModelPatch::replace_single_op(
                     model,
                     node,
-                    tvec!(node.inputs[0]),
+                    &[node.inputs[0]],
                     GemmUnaryA {
                         alpha: self.alpha,
                         beta: 0.0,
@@ -121,7 +121,7 @@ impl Op for Gemm {
                 return Ok(Some(TypedModelPatch::replace_single_op(
                     model,
                     node,
-                    tvec!(node.inputs[1]),
+                    &[node.inputs[1]],
                     GemmUnaryB {
                         alpha: self.alpha,
                         beta: 0.0,
