@@ -85,6 +85,7 @@ mod tests {
 
     #[test]
     fn testConv2D1x2Filter() {
+        // tract_core::setup_test_logger();
         verify(
             mk(&[1, 2, 3, 3]),
             mk(&[1, 2, 3, 3]),
@@ -161,8 +162,8 @@ mod tests {
         let exp: SharedTensor =
             arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
         let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
-        println!("{:?}", got);
-        println!("{:?}", exp);
+        //println!("{:?}", got);
+        //println!("{:?}", exp);
         assert!(exp.close_enough(&got, true));
     }
 

@@ -38,8 +38,8 @@ fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u
 }
 
 fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
-    (1usize..8, 1usize..8, 1usize..8, 1usize..8)
-        .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic, kh, kw, kc))))
+    (1usize..4, 1usize..3, 1usize..3, 1usize..4)
+        .prop_flat_map(|(ic, kh, kw, kc)| (1usize..2, kh..10, kw..10, Just((ic, kh, kw, kc))))
         .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, kc))| {
             let i_size = ib * iw * ih * ic;
             let k_size = kw * kh * kc * ic;
@@ -71,11 +71,7 @@ proptest! {
     #[test]
     fn conv_compare((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
-//        ::conform::setup_test_logger();
-        if valid {
-            prop_assume!(i.shape()[1] >= k.shape()[0]);
-            prop_assume!(i.shape()[2] >= k.shape()[1]);
-        }
+        //::tract_core::setup_test_logger();
         let model = convolution_pb(strides.0, strides.1, valid).unwrap();
         compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
     }
@@ -110,6 +106,16 @@ fn conv_eval_1() {
     //   ::conform::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
+    let model = convolution_pb(1, 1, false).unwrap();
+    compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_2() {
+    use tract_core::tensor::arr4;
+    // ::tract_core::setup_test_logger();
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let model = convolution_pb(1, 1, false).unwrap();
     compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
 }

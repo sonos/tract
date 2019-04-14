@@ -160,9 +160,8 @@ impl ConvUnary {
                 let mut shape = kernel.shape().to_vec();
                 shape.insert(hw_rank, self.group);
                 shape[hw_rank] /= self.group;
-                println!("kernel shape: {:?}", shape);
                 let kernel = kernel.into_shape(shape)?;
-                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2];
+                let mut permutation: Vec<usize> = vec![hw_rank, hw_rank + 2, hw_rank + 1];
                 permutation.extend(0..hw_rank);
                 let permuted = kernel.permuted_axes(permutation);
                 Ok(Array3::<T>::from_shape_vec(final_shape, permuted.iter().cloned().collect())?)
@@ -200,6 +199,7 @@ impl ConvUnary {
         trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
 
         let kernel = self.kernel_as_group_o_ihw()?;
+        trace!("kernel: {:?}", kernel);
 
         let mut packed_kernels: Vec<Tensor> = vec![];
         for subkernel in kernel.outer_iter() {
@@ -265,6 +265,7 @@ impl ConvUnary {
         let input = args_1!(inputs);
         let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
+        trace!("im2col: {:?}", mega);
         let output = conv_gemm.conv_gemm(&mega.to_array_view::<T>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into()))
     }
