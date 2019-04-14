@@ -50,7 +50,7 @@ impl<TI: TensorInfo> ModelPatch<TI> {
     pub fn replace_single_op<O: Into<Box<Op>>>(
         patched_model: &Model<TI>,
         node: &Node<TI>,
-        inputs: TVec<OutletId>,
+        inputs: &[OutletId],
         new_op: O,
     ) -> TractResult<ModelPatch<TI>> {
         let mut patch = ModelPatch::default();
@@ -69,7 +69,7 @@ impl<TI: TensorInfo> ModelPatch<TI> {
         node: &Node<TI>,
         new_op: O,
     ) -> TractResult<ModelPatch<TI>> {
-        Self::replace_single_op(patched_model, node, tvec!(node.inputs[0]), new_op)
+        Self::replace_single_op(patched_model, node, &[node.inputs[0]], new_op)
     }
 
     pub fn apply(self, model: &mut Model<TI>) -> TractResult<()> {
