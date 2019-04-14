@@ -70,7 +70,7 @@ impl Problem {
         );
         let kernel_fact: TypedTensorInfo = TypedTensorInfo::from(kernel);
         let image_fact: TypedTensorInfo = self.image_fact().try_into().unwrap();
-        let unary = conv.to_unary(tvec!(&image_fact, &kernel_fact)).unwrap();
+        let unary = conv.to_unary(&[&image_fact, &kernel_fact]).unwrap();
         Box::new(unary.unwrap())
     }
 
