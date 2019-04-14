@@ -35,7 +35,7 @@ fn b(
     let input_fact: TypedTensorInfo =
         TensorFact::dt_shape(DatumType::F32, image.shape()).try_into().unwrap();
     let kernel_fact: TypedTensorInfo = TensorFact::from(kernel).try_into().unwrap();
-    let unary = conv.to_unary(tvec!(&input_fact, &kernel_fact)).unwrap().unwrap();
+    let unary = conv.to_unary(&[&input_fact, &kernel_fact]).unwrap().unwrap();
     let im2col =
         unary.to_boxed_im2col_pair::<f32>(&*input_fact.shape.as_finite().unwrap()).unwrap().0;
     assert_eq!(im2col.name(), "Im2col");

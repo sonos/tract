@@ -111,7 +111,7 @@ pub fn handle_t<TI: TensorInfo>(
     state.set_inputs(make_inputs_for_model(model)?)?;
     debug!("Using execution plan: {:?}", plan);
 
-    let mut profile = ProfileData::new(model);
+    let mut profile = ProfileData::default();
     let mut progress = ProgressBar::new(plan.order.len() as u64);
 
     if log_enabled!(Info) {

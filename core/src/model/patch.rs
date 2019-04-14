@@ -36,7 +36,7 @@ impl<TI: TensorInfo> ModelPatch<TI> {
     pub fn tap_model(&mut self, model: &Model<TI>, outlet: OutletId) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let node_id =
-            self.add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), fact.clone())?;
+            self.add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), objekt::clone(fact))?;
         let inside = OutletId::new(node_id, 0);
         self.incoming.insert(inside, outlet);
         Ok(inside)
@@ -55,7 +55,7 @@ impl<TI: TensorInfo> ModelPatch<TI> {
     ) -> TractResult<ModelPatch<TI>> {
         let mut patch = ModelPatch::default();
         let new_op = new_op.into();
-        let by = patch.add_node(&*node.name, new_op, tvec!(node.outputs[0].fact.clone()))?;
+        let by = patch.add_node(&*node.name, new_op, tvec!(objekt::clone(&node.outputs[0].fact)))?;
         for (ix, i) in inputs.iter().enumerate() {
             let o = patch.tap_model(&patched_model, *i)?;
             patch.add_edge(o, InletId::new(by, ix))?;

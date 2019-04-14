@@ -5,7 +5,7 @@ use ansi_term::Color::*;
 use ansi_term::Style;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use tract_core::model::{Model, Node, TensorInfo};
+use tract_core::prelude::{Model, Node, TensorInfo };
 use tract_core::Tractify;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
@@ -78,7 +78,9 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
     pub fn render_node(&self, node: &Node<TI>) -> CliResult<()> {
         let bold = Style::new().bold();
         let mut sections: Vec<Vec<Row>> = vec![];
-        if let Some(id) = self.model.borrow().input_outlets()?.iter().position(|n| n.node == node.id) {
+        if let Some(id) =
+            self.model.borrow().input_outlets()?.iter().position(|n| n.node == node.id)
+        {
             sections.push(vec![Row::Simple(
                 Yellow.bold().paint(format!("MODEL INPUT {}", id)).to_string(),
             )]);
@@ -188,7 +190,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
-                        format!("{:?}", ::tract_core::prelude::Tensor::tractify(a.1.get_tensor())?)
+                        format!("{:?}", a.1.get_tensor())
                     } else {
                         format!("{:?}", a.1)
                     };

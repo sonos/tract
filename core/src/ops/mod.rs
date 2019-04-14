@@ -36,6 +36,11 @@ pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResu
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Cost {
+    FMA(DatumType),
+}
+
 use crate::internal::*;
 
 pub trait OpState: Debug + Send + objekt::Clone {
@@ -131,6 +136,10 @@ pub trait Op:
         _node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
+    }
+
+    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost,TDim)>> {
+        Ok(tvec!())
     }
 
     fn rounding_errors(&self) -> bool {

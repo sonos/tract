@@ -58,6 +58,18 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
             ndarray::linalg::general_mat_mul(T::one(), &a, &b, T::zero(), &mut c);
         }
     }
+
+    fn m(&self) -> usize {
+        self.m
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn n(&self) -> usize {
+        self.n
+    }
 }
 
 #[derive(Copy, Clone, Debug, new)]
@@ -109,5 +121,17 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
             let mut c = ndarray::ArrayViewMut::from_shape_ptr(self.n, pc);
             ndarray::linalg::general_mat_vec_mul(T::one(), &b.t(), &a, T::zero(), &mut c);
         }
+    }
+
+    fn m(&self) -> usize {
+        1
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn n(&self) -> usize {
+        self.n
     }
 }

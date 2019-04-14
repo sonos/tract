@@ -41,6 +41,7 @@ use crate::errors::*;
 
 #[cfg(feature = "conform")]
 mod compare;
+mod cost;
 mod display_graph;
 mod draw;
 mod dump;
@@ -162,9 +163,9 @@ fn main() {
         );
     app = app.subcommand(output_options(run));
 
-    let analyse = clap::SubCommand::with_name("analyse")
-        .help("Analyses the graph to infer properties about tensors (experimental).");
-    app = app.subcommand(output_options(analyse));
+    let cost = clap::SubCommand::with_name("cost")
+        .help("Compute a cost on (some) operations.");
+    app = app.subcommand(output_options(cost));
 
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
     app = app.subcommand(output_options(optimize));
@@ -494,6 +495,11 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         }
         */
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
+
+        ("cost", Some(m)) => {
+            crate::cost::handle(params, display_options_from_clap(m)?)
+        }
+
 
         ("draw", Some(m)) => {
             crate::draw::render(&params.tract_model, display_options_from_clap(m)?)

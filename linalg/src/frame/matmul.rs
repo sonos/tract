@@ -14,6 +14,10 @@ pub trait MatMul<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + obje
     fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T>;
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
+
+    fn m(&self) -> usize;
+    fn n(&self) -> usize;
+    fn k(&self) -> usize;
 }
 
 clone_trait_object!(<T> MatMul<T> where T: Copy + Add + Mul + Zero);
@@ -249,6 +253,18 @@ where
                 }
             }
         }
+    }
+
+    fn m(&self) -> usize {
+        self.m
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn n(&self) -> usize {
+        self.n
     }
 }
 
