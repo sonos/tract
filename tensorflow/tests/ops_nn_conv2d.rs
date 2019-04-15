@@ -75,9 +75,7 @@ proptest! {
         let model = convolution_pb(strides.0, strides.1, valid).unwrap();
         compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
     }
-}
 
-proptest! {
     #[test]
     fn conv_infer_facts((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
@@ -112,6 +110,16 @@ fn conv_eval_1() {
 
 #[test]
 fn conv_eval_2() {
+    use tract_core::tensor::arr4;
+    // ::tract_core::setup_test_logger();
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+    let model = convolution_pb(1, 1, false).unwrap();
+    compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_mobilenet_v2() {
     use tract_core::tensor::arr4;
     // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));

@@ -41,11 +41,19 @@ pub fn handle_t<TI: TensorInfo>(
     trace!("Execute the model on tensorflow.");
     let eval_order = ::tract_core::model::eval_order(&tract)?;
     let nodes = tract.nodes();
-    let wanted_outputs: Vec<&str> = eval_order
+    let mut wanted_outputs: Vec<&str> = eval_order
         .iter()
         .filter(|&n| !tract.output_outlets().unwrap().contains(&OutletId::new(*n, 0)))
         .map(|&n| &*nodes[n].name)
         .collect();
+
+    for o in tract.output_outlets()? {
+        let name = &*tract.nodes()[o.node].name;
+        if !wanted_outputs.contains(&name) {
+            wanted_outputs.push(name);
+        }
+    }
+
     let mut tf_outputs = tf.run_get_many(pairs, wanted_outputs)?;
 
     // Execute the model step-by-step on tract.

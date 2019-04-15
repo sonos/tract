@@ -116,7 +116,7 @@ pub use crate::errors::*;
 /// This prelude is meant for code using tract.
 pub mod prelude {
     pub use crate::analyser::types::TensorFact;
-    pub use crate::datum::{DatumType, TryInto};
+    pub use crate::datum::{Datum, DatumType, TryInto};
     pub use crate::dim::TDim;
     pub use crate::errors::*;
     pub use crate::framework::Framework;
@@ -132,7 +132,6 @@ pub mod internal {
     pub use crate::analyser::rules::{InferenceResult, InferenceRulesOp, Solver, TensorProxy};
     pub use crate::analyser::types::TypeFact;
     pub use crate::analyser::types::*;
-    pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::{DimLike, TDim, ToDim};
     pub use crate::framework::*;
     pub use crate::model::*;

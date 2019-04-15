@@ -257,11 +257,7 @@ impl TryInto<f32> for String {
 
 datum!(bool, Bool);
 datum!(f16, F16, |m, k, n| Some(Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _));
-datum!(f32, F32, |m, k, n| if m != 1 {
-    Some((tract_linalg::ops().smm)(m, k, n))
-} else {
-    Some(Box::new(NdArrayDummyPackedMatMul1xKxN::new(k, n)) as _)
-});
+datum!(f32, F32, |m, k, n| Some((tract_linalg::ops().smm)(m, k, n)));
 datum!(f64, F64, |m, k, n| Some((tract_linalg::ops().dmm)(m, k, n)));
 datum!(i8, I8);
 datum!(i16, I16);

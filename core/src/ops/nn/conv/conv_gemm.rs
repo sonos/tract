@@ -79,9 +79,10 @@ where
                     );
 
                     let (rsc, csc) = match self.patch.input_shape.fmt {
-                        DataFormat::NHWC => (1, self.m as isize),
+                        DataFormat::NHWC => (1, (self.m * self.group) as isize),
                         DataFormat::NCHW => (self.n as isize, 1),
                     };
+
                     self.mm.mat_mul_prepacked(
                         a.as_ptr()?,
                         packed_input

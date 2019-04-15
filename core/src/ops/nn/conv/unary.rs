@@ -425,7 +425,7 @@ impl Op for ConvUnary {
                         }),
                     )?;
                     let mm = patch.chain(
-                        format!("{}-convmm", node.name),
+                        &*node.name,
                         op2,
                         tvec!(node.outputs[0].fact.clone()),
                     )?;

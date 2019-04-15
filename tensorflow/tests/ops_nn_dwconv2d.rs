@@ -124,10 +124,24 @@ fn conv_eval_2() {
 
 #[test]
 fn conv_eval_3() {
-    use tract_core::tensor::arr4;
-    //   ::conform::setup_test_logger();
-    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0], [0.0]], [[-2.0], [0.0], [0.0]]]]));
-    let k: Tensor = Tensor::from(arr4(&[[[[0.0]], [[1.0f32]]]]));
-    let model = convolution_pb(1, false).unwrap();
+    use ndarray_rand::RandomExt;
+    use rand::distributions::Uniform;
+
+    let i: Tensor = Tensor::from(Array::random((1, 112, 112, 48), Uniform::new(0.0f32, 1.0)));
+    let k: Tensor = Tensor::from(Array::random((3, 3, 48, 1), Uniform::new(0.0f32, 1.0)));
+    let conv = tfpb::node()
+        .name("conv")
+        .op("DepthwiseConv2dNative")
+        .input("data")
+        .input("kernel")
+        .attr("strides", vec![1, 1, 1, 1])
+        .attr("dilations", vec![1, 1, 1, 1])
+        .attr("padding", "SAME")
+        .attr("T", DT_FLOAT);
+
+    let graph =
+        tfpb::graph().node(placeholder_f32("data")).node(placeholder_f32("kernel")).node(conv);
+
+    let model = graph.write_to_bytes().unwrap();
     compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
 }

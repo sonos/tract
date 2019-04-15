@@ -192,7 +192,6 @@ impl Tensor {
             / ma.len() as f32)
             .sqrt();
         let margin = if approx { (dev / 5.0).max(avg.abs() / 10_000.0).max(1e-5) } else { 0.0 };
-        trace!("close_enough 4");
         ma.shape() == mb.shape()
             && mb
                 .iter()
