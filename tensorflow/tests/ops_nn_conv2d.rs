@@ -117,3 +117,13 @@ fn conv_eval_2() {
     let model = convolution_pb(1, 1, false).unwrap();
     compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
 }
+
+#[test]
+fn conv_eval_mobilenet_v2() {
+    use tract_core::tensor::arr4;
+    // ::tract_core::setup_test_logger();
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+    let model = convolution_pb(1, 1, false).unwrap();
+    compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
+}

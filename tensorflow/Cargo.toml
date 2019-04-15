@@ -30,6 +30,8 @@ conform = [ "tensorflow" ]
 criterion = "0.2"
 env_logger = "0.6"
 proptest = "0.9"
+rand = "0.6"
+ndarray-rand = "0.9"
 
 # [[bench]]
 # name = "conv"

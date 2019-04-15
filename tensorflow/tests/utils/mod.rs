@@ -5,10 +5,28 @@ pub fn compare<S: AsRef<str>>(
     inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
+    compare_optim(graph, &inputs, output, false)?;
+    compare_optim(graph, &inputs, output, true)?;
+    Ok(())
+}
+
+pub fn compare_optim<S: AsRef<str>>(
+    graph: &[u8],
+    inputs: &Vec<(S, Tensor)>,
+    output: &str,
+    optim: bool,
+) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     // Run TFD
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
+    for (ix, (_, tf)) in inputs.iter().enumerate() {
+        model.set_input_fact(ix, TensorFact::from(tf.clone()))?;
+    }
+    let mut model = model.into_typed()?;
+    if optim {
+        model = model.into_optimized()?;
+    }
     let plan = SimplePlan::new(&model)?;
     let mut state = SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {

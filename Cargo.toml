@@ -8,6 +8,7 @@ members = [
     "examples/lstm-proptest-onnx-vs-tf",
     "examples/onnx-test-suite",
     "examples/tf-inceptionv3",
+    "examples/tf-mobilenet-v2",
     "examples/tf-moz-deepspeech",
 ]
 
