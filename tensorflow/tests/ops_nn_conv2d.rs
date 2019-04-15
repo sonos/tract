@@ -75,9 +75,7 @@ proptest! {
         let model = convolution_pb(strides.0, strides.1, valid).unwrap();
         compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
     }
-}
 
-proptest! {
     #[test]
     fn conv_infer_facts((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
