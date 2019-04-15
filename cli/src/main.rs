@@ -31,8 +31,8 @@ use std::str::FromStr;
 #[cfg(feature = "tf")]
 use crate::tfpb::graph::GraphDef;
 use insideout::InsideOut;
-use tract_core::model::{InferenceModel, NormalizedModel, TypedModel};
 use tract_core::internal::*;
+use tract_core::model::{InferenceModel, NormalizedModel, TypedModel};
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb;
 
@@ -47,7 +47,7 @@ mod draw;
 mod dump;
 mod errors;
 mod format;
-// mod optimize_check;
+mod optimize_check;
 mod profile;
 mod run;
 mod rusage;
@@ -163,8 +163,7 @@ fn main() {
         );
     app = app.subcommand(output_options(run));
 
-    let cost = clap::SubCommand::with_name("cost")
-        .help("Compute a cost on (some) operations.");
+    let cost = clap::SubCommand::with_name("cost").help("Compute a cost on (some) operations.");
     app = app.subcommand(output_options(cost));
 
     let optimize = clap::SubCommand::with_name("optimize").help("Optimize the graph");
@@ -253,6 +252,7 @@ pub enum SomeModel {
 pub struct Parameters {
     name: String,
     graph: SomeGraphDef,
+    unoptimized_model: Option<TypedModel>,
     tract_model: SomeModel,
 
     #[cfg(feature = "conform")]
@@ -344,6 +344,7 @@ impl Parameters {
 
         //        println!("{:?}", raw_model);
 
+        let mut unoptimized_model = None;
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
             if let Err(e) = raw_model.analyse(true) {
@@ -353,14 +354,20 @@ impl Parameters {
             if matches.is_present("skip_type") {
                 SomeModel::Inference(raw_model)
             } else {
-                SomeModel::Typed(raw_model.into_typed()?)
+                let typed = raw_model.into_typed()?;
+                unoptimized_model = Some(typed.clone());
+                SomeModel::Typed(typed)
             }
         } else {
             info!("Skipping analyse");
             SomeModel::Inference(raw_model)
         };
 
-        if matches.is_present("optimize") || matches.is_present("declutter") || pulse.is_some() {
+        if matches.is_present("optimize")
+            || matches.is_present("declutter")
+            || pulse.is_some()
+            || matches.subcommand().0 == "optimize-check"
+        {
             if let SomeModel::Typed(typed) = tract_model {
                 info!("Declutter");
                 tract_model = SomeModel::Typed(typed.declutter()?);
@@ -390,6 +397,7 @@ impl Parameters {
         Ok(Parameters {
             name: name.to_string(),
             graph,
+            unoptimized_model,
             tract_model,
             tf_model,
             inputs,
@@ -489,17 +497,13 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
             run::handle(params)
         }
 
-        /*
         ("optimize-check", Some(m)) => {
             optimize_check::handle(params, display_options_from_clap(m)?)
         }
-        */
+
         ("stream-check", Some(m)) => stream_check::handle(params, display_options_from_clap(m)?),
 
-        ("cost", Some(m)) => {
-            crate::cost::handle(params, display_options_from_clap(m)?)
-        }
-
+        ("cost", Some(m)) => crate::cost::handle(params, display_options_from_clap(m)?),
 
         ("draw", Some(m)) => {
             crate::draw::render(&params.tract_model, display_options_from_clap(m)?)

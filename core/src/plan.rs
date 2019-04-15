@@ -306,13 +306,13 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
         Ok(())
     }
 
-    pub fn compute_recursively(&mut self, node: usize) -> TractResult<()> {
+    pub fn compute_recursively(&mut self, node: usize) -> TractResult<&[SharedTensor]> {
         let values = {
             let precs: Vec<usize> =
                 self.model().nodes()[node].inputs.iter().map(|i| i.node).collect();
             for i in precs.into_iter() {
                 if self.values[i].is_none() {
-                    self.compute_recursively(i)?
+                    let _ = self.compute_recursively(i)?;
                 }
             }
             let mut inputs: TVec<SharedTensor> = tvec![];
@@ -335,7 +335,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             .map_err(|e| format!("Evaluating {:?}: {:?}", node, e))?
         };
         self.values[node] = Some(values);
-        Ok(())
+        Ok(&*self.values[node].as_ref().unwrap())
     }
 
     pub fn take_by_name(&mut self, name: &str) -> TractResult<TVec<Tensor>> {
