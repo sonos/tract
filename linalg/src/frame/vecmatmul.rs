@@ -114,8 +114,6 @@ where
                     tmpc.as_mut_ptr(),
                     1,
                 );
-                println!("pao: {}", n/nr*nr);
-                println!("tmpc: {:?}", tmpc);
                 for x in 0..(n % nr) {
                     *y.offset((x + n / nr * nr) as isize * sy) = tmpc[x];
                 }

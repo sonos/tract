@@ -1,8 +1,9 @@
-mod mat_mat;
 mod direct;
 mod gen;
 mod im2col;
+mod mat_mat;
 mod unary;
+mod vec_mat;
 
 pub use self::direct::Direct;
 pub use self::gen::Conv;

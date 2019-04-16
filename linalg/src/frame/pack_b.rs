@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PackB<T: Copy + Add + Mul + Zero + Debug> {
     k: usize,
     n: usize,

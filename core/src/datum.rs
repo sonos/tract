@@ -108,6 +108,7 @@ pub trait Datum:
     fn datum_type() -> DatumType;
 
     fn packed_mat_mul(m: usize, k: usize, n: usize) -> Option<Box<tract_linalg::MatMul<Self>>>;
+    fn packed_vec_mat_mul(k: usize, n: usize) -> Option<Box<tract_linalg::VecMatMul<Self>>>;
 }
 
 pub trait TryInto<D> {
@@ -116,9 +117,9 @@ pub trait TryInto<D> {
 
 macro_rules! datum {
     ($t:ident, $v:ident) => {
-        datum!($t, $v, |_, _, _| None);
+        datum!($t, $v, |_, _, _| None, |_, _| None);
     };
-    ($t:ident, $v:ident, $matmul:expr) => {
+    ($t:ident, $v:ident, $matmul:expr, $vecmatmul:expr) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
                 arr0(it).into()
@@ -140,6 +141,13 @@ macro_rules! datum {
                 n: usize,
             ) -> Option<Box<tract_linalg::MatMul<Self>>> {
                 $matmul(m, k, n)
+            }
+
+            fn packed_vec_mat_mul(
+                k: usize,
+                n: usize,
+            ) -> Option<Box<tract_linalg::VecMatMul<Self>>> {
+                $vecmatmul(k, n)
             }
         }
     };
@@ -255,9 +263,11 @@ impl TryInto<f32> for String {
 }
 
 datum!(bool, Bool);
-datum!(f16, F16, |m, k, n| { unimplemented!(); });
-datum!(f32, F32, |m, k, n| Some((tract_linalg::ops().smm)(m, k, n)));
-datum!(f64, F64, |m, k, n| Some((tract_linalg::ops().dmm)(m, k, n)));
+datum!(f16, F16);
+datum!(f32, F32, |m, k, n| Some((tract_linalg::ops().smm)(m, k, n)), |k, n| Some(
+    (tract_linalg::ops().svmm)(k, n)
+));
+datum!(f64, F64);
 datum!(i8, I8);
 datum!(i16, I16);
 datum!(i32, I32);

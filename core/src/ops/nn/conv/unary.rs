@@ -4,15 +4,12 @@ use crate::internal::*;
 use crate::model::*;
 use insideout::InsideOut;
 
-use super::mat_mat::MatMat;
 use super::im2col::Im2Col;
+use super::mat_mat::MatMat;
+use super::vec_mat::VecMat;
 use super::Conv;
 use crate::ops::nn::conv::KernelFormat;
 use crate::ops::nn::{DataFormat, PaddingSpec, Patch};
-
-use std::sync::Arc;
-
-use tract_linalg::MatMul;
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
@@ -167,10 +164,26 @@ impl ConvUnary {
         }
     }
 
+    fn bias_reshaped<T>(&self, output_shape: &[usize]) -> TractResult<Option<ArrayD<T>>>
+    where
+        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq,
+    {
+        Ok(self
+            .bias
+            .as_ref()
+            .map(|bias| -> TractResult<_> {
+                let mut bias_shape: Vec<usize> =
+                    ::std::iter::repeat(1).take(output_shape.len()).collect();
+                bias_shape[1] = self.output_channels();
+                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
+            })
+            .inside_out()?)
+    }
+
     fn to_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
-    ) -> TractResult<(Im2Col<T>, TVec<usize>, MatMat<T>)>
+    ) -> TractResult<(Im2Col<T>, TVec<usize>, Box<Op>)>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq,
     {
@@ -184,45 +197,84 @@ impl ConvUnary {
         let k = kernel.len() / self.output_channels();
         let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
 
-        let mm: Arc<MatMul<T>> = T::packed_mat_mul(m, k, n)
-            .ok_or_else(|| {
-                format!(
-                    "Can not perfom convolution on {:?} (not a linear algebra type)",
-                    T::datum_type()
-                )
-            })?
-            .into();
-
-        let packed_b_len = mm.b_pack().len();
-
-        trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
+        let bias = self.bias_reshaped(&*shape)?;
 
         let kernel = self.kernel_as_group_o_ihw()?;
-        trace!("kernel: {:?}", kernel);
-
         let mut packed_kernels: Vec<Tensor> = vec![];
-        for subkernel in kernel.outer_iter() {
-            let mut packed = unsafe {
-                Tensor::uninitialized_aligned::<T>(&[mm.packed_a_len()], mm.packed_a_alignment())?
-            };
-            mm.pack_a(
-                packed.as_slice_mut()?.as_mut_ptr(),
-                subkernel.as_ptr(),
-                subkernel.strides()[0],
-                subkernel.strides()[1],
-            );
-            packed_kernels.push(packed);
-        }
 
-        let bias: Option<ArrayD<T>> = self
-            .bias
-            .as_ref()
-            .map(|bias| -> TractResult<_> {
-                let mut bias_shape: Vec<usize> = ::std::iter::repeat(1).take(shape.len()).collect();
-                bias_shape[1] = self.output_channels();
-                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
-            })
-            .inside_out()?;
+        let (op2, b_pack): (Box<Op>, _) = if m > 1 {
+            let mm = T::packed_mat_mul(m, k, n)
+                .ok_or_else(|| {
+                    format!(
+                        "Can not perfom convolution on {:?} (not a linear algebra type)",
+                        T::datum_type()
+                    )
+                })?;
+            let b_pack = mm.b_pack();
+
+            trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
+
+            for subkernel in kernel.outer_iter() {
+                let mut packed = unsafe {
+                    Tensor::uninitialized_aligned::<T>(&[mm.packed_a_len()], mm.packed_a_alignment())?
+                };
+                mm.pack_a(
+                    packed.as_slice_mut()?.as_mut_ptr(),
+                    subkernel.as_ptr(),
+                    subkernel.strides()[0],
+                    subkernel.strides()[1],
+                );
+                packed_kernels.push(packed);
+            }
+            let conv_gemm = MatMat::new(
+                patch.clone(),
+                shape,
+                m,
+                k,
+                n,
+                self.kernel_fmt,
+                packed_kernels,
+                bias,
+                self.group,
+                mm.clone(),
+            );
+            (Box::new(conv_gemm), b_pack)
+        } else {
+            let mm = T::packed_vec_mat_mul(k, n)
+                .ok_or_else(|| {
+                    format!(
+                        "Can not perfom convolution on {:?} (not a linear algebra type)",
+                        T::datum_type()
+                    )
+                })?;
+            let b_pack = mm.b_pack();
+
+            trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
+
+            for subkernel in kernel.outer_iter() {
+                let mut packed = unsafe {
+                    Tensor::uninitialized_aligned::<T>(&[mm.packed_a_len()], mm.packed_a_alignment())?
+                };
+                mm.pack_a(
+                    packed.as_slice_mut()?.as_mut_ptr(),
+                    subkernel.as_ptr(),
+                    subkernel.strides()[1],
+                );
+                packed_kernels.push(packed);
+            }
+            let conv_gemm = VecMat::new(
+                patch.clone(),
+                shape,
+                k,
+                n,
+                self.kernel_fmt,
+                packed_kernels,
+                bias,
+                self.group,
+                mm
+            );
+            (Box::new(conv_gemm), b_pack)
+        };
 
         let im2col = Im2Col::new(
             patch.clone(),
@@ -231,27 +283,10 @@ impl ConvUnary {
             n,
             self.group,
             patch.input_shape.c_dim() / self.group,
-            packed_b_len,
-            mm.clone(),
+            b_pack
         );
-        trace!("im2col: {:?}", im2col);
         let intermediary_shape = im2col.output_shape()?;
-        trace!("im2col shape: {:?}", intermediary_shape);
-        let conv_gemm = MatMat::new(
-            patch,
-            shape,
-            m,
-            k,
-            n,
-            self.kernel_fmt,
-            packed_kernels,
-            bias,
-            self.group,
-            mm.clone(),
-        );
-        trace!("cvgemm: {:?}", conv_gemm);
-
-        Ok((im2col, intermediary_shape, conv_gemm))
+        Ok((im2col, intermediary_shape, op2))
     }
 
     pub fn to_boxed_im2col_pair<T>(
@@ -262,7 +297,7 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
     {
         let (op1, shape, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
-        Ok((Box::new(op1), shape, Box::new(op2)))
+        Ok((Box::new(op1), shape, op2))
     }
 
     fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
@@ -273,8 +308,7 @@ impl ConvUnary {
         let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
         trace!("im2col: {:?}", mega);
-        let output = conv_gemm.conv_gemm(&mega.to_array_view::<T>()?.into_dimensionality()?)?;
-        Ok(tvec!(output.into()))
+        conv_gemm.as_stateless().unwrap().eval(tvec!(mega.into()))
     }
 
     pub fn rm_dummy_axis(&self, axis: usize) -> TractResult<Option<ConvUnary>> {
@@ -424,11 +458,7 @@ impl Op for ConvUnary {
                             konst: None,
                         }),
                     )?;
-                    let mm = patch.chain(
-                        &*node.name,
-                        op2,
-                        tvec!(node.outputs[0].fact.clone()),
-                    )?;
+                    let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
                     patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
                     return Ok(Some(patch));
                 }
