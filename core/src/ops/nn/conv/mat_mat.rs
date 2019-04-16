@@ -38,7 +38,7 @@ use tract_linalg::MatMul;
  */
 
 #[derive(CustomDebug, Clone, new)]
-pub struct ConvGemm<T>
+pub struct MatMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy,
 {
@@ -55,7 +55,7 @@ where
     pub mm: Arc<MatMul<T>>,
 }
 
-impl<T> ConvGemm<T>
+impl<T> MatMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy + AddAssign + ndarray::LinalgScalar,
 {
@@ -105,12 +105,12 @@ where
     }
 }
 
-impl<D> Op for ConvGemm<D>
+impl<D> Op for MatMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
     fn name(&self) -> Cow<str> {
-        "ConvGemm".into()
+        "MatMat".into()
     }
 
     fn info(&self) -> TractResult<Option<String>> {
@@ -126,7 +126,7 @@ where
     }
 }
 
-impl<D> StatelessOp for ConvGemm<D>
+impl<D> StatelessOp for MatMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
@@ -138,7 +138,7 @@ where
 
 }
 
-impl<D> InferenceRulesOp for ConvGemm<D>
+impl<D> InferenceRulesOp for MatMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
 {

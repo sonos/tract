@@ -1,4 +1,4 @@
-mod conv_gemm;
+mod mat_mat;
 mod direct;
 mod gen;
 mod im2col;
