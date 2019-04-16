@@ -4,7 +4,7 @@ use tract_core::ops::source::Source;
 use crate::display_graph;
 use crate::{CliResult, Parameters, SomeModel};
 
-pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
+pub fn handle(params: Parameters, _options: display_graph::DisplayOptions) -> CliResult<()> {
     let plain = params.unoptimized_model.unwrap();
     let optimized = if let SomeModel::Typed(m) = params.tract_model {
         m

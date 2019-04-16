@@ -7,42 +7,15 @@ use ndarray::prelude::*;
 use crate::ops::nn::conv::KernelFormat;
 use crate::ops::nn::{DataFormat, Patch};
 
-use tract_linalg::MatMul;
-
-/*
- * group=1, N=1         N>1             g>1
- *
- * A: kernel
- *  * O rows            * O rows        * O rows
- *  * I*h*w cols        * I*w*h         * I/g*w*h
- * B: data
- *                      * N blocks
- *  * I*w*h rows        * I*w*h         * I*w*h
- *  * H*W cols          * H*W           * H*W
- * Gemm
- *  * 1 iter            * N iter        * g iter
- *  * m=O               * m=O           * m=O/g
- *  * k=I*h*w           * k=I*h*w       * k=I/g*h*w
- *  * n=H*W             * n=H*W         * n=H*W
- *
- *                                +------------+
- *                                | B input    |
- *                                +------------+
- *              +--------------+  +----------------+
- *              | A kernel g=0 |  | C output  g=0  |
- *              +--------------+  +----------------+
- *              | A kernel g=1 |  | C output  g=1  |
- *              +--------------+  +----------------+
- */
+use tract_linalg::VecMatMul;
 
 #[derive(CustomDebug, Clone, new)]
-pub struct MatMat<T>
+pub struct VecMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy,
 {
     pub patch: Patch,
     pub full_output_shape: TVec<usize>,
-    pub m: usize,
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,
@@ -50,10 +23,10 @@ where
     pub packed_kernels: Vec<Tensor>,
     pub bias: Option<ArrayD<T>>,
     pub group: usize,
-    pub mm: Box<MatMul<T>>,
+    pub vmm: Box<VecMatMul<T>>,
 }
 
-impl<T> MatMat<T>
+impl<T> VecMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy + AddAssign + ndarray::LinalgScalar,
 {
@@ -62,11 +35,10 @@ where
         packed_input: &'i ArrayView3<'i, T>,
     ) -> TractResult<ArrayD<T>> {
         let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.full_output_shape) };
-        let packed_b_len = self.mm.b_pack().len();
+        let packed_b_len = self.vmm.b_pack().len();
         let input_shape = &self.patch.input_shape;
 
         let co_per_group = self.full_output_shape[input_shape.c_axis()] / self.group;
-
         for i in 0..input_shape.n_dim() {
             unsafe {
                 let output_i =
@@ -77,19 +49,18 @@ where
                         output.strides()[input_shape.c_axis()] * co_per_group as isize * g as isize,
                     );
 
-                    let (rsc, csc) = match self.patch.input_shape.fmt {
-                        DataFormat::NHWC => (1, (self.m * self.group) as isize),
-                        DataFormat::NCHW => (self.n as isize, 1),
+                    let stride_output = match self.patch.input_shape.fmt {
+                        DataFormat::NHWC => self.group as isize,
+                        DataFormat::NCHW => 1,
                     };
 
-                    self.mm.mat_mul_prepacked(
+                    self.vmm.vec_mat_mul_prepacked(
                         a.as_ptr()?,
                         packed_input
                             .as_ptr()
                             .offset(((self.group * i + g) * packed_b_len) as isize),
                         output_i_g,
-                        rsc,
-                        csc,
+                        stride_output
                     );
                 }
             }
@@ -103,28 +74,28 @@ where
     }
 }
 
-impl<D> Op for MatMat<D>
+impl<D> Op for VecMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
     fn name(&self) -> Cow<str> {
-        "MatMat".into()
+        "VecMat".into()
     }
 
     fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!("{:?}", self.mm)))
+        Ok(Some(format!("{:?}", self.vmm)))
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            batch * self.group * self.mm.m() * self.mm.k() * self.mm.n()
+            batch * self.group * self.vmm.k() * self.vmm.n()
         )))
     }
 }
 
-impl<D> StatelessOp for MatMat<D>
+impl<D> StatelessOp for VecMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
@@ -136,7 +107,7 @@ where
 
 }
 
-impl<D> InferenceRulesOp for MatMat<D>
+impl<D> InferenceRulesOp for VecMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
 {
