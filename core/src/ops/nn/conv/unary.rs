@@ -4,7 +4,7 @@ use crate::internal::*;
 use crate::model::*;
 use insideout::InsideOut;
 
-use super::conv_gemm::ConvGemm;
+use super::mat_mat::MatMat;
 use super::im2col::Im2Col;
 use super::Conv;
 use crate::ops::nn::conv::KernelFormat;
@@ -170,7 +170,7 @@ impl ConvUnary {
     fn to_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
-    ) -> TractResult<(Im2Col<T>, TVec<usize>, ConvGemm<T>)>
+    ) -> TractResult<(Im2Col<T>, TVec<usize>, MatMat<T>)>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq,
     {
@@ -237,7 +237,7 @@ impl ConvUnary {
         trace!("im2col: {:?}", im2col);
         let intermediary_shape = im2col.output_shape()?;
         trace!("im2col shape: {:?}", intermediary_shape);
-        let conv_gemm = ConvGemm::new(
+        let conv_gemm = MatMat::new(
             patch,
             shape,
             m,
