@@ -64,6 +64,7 @@ where
         packed_input: &'i ArrayView3<'i, T>,
     ) -> TractResult<ArrayD<T>> {
         let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.full_output_shape) };
+        let packed_b_len = self.mm.b_pack().len();
         let input_shape = &self.patch.input_shape;
 
         let co_per_group = self.full_output_shape[input_shape.c_axis()] / self.group;
@@ -87,7 +88,7 @@ where
                         a.as_ptr()?,
                         packed_input
                             .as_ptr()
-                            .offset(((self.group * i + g) * self.mm.packed_b_len()) as isize),
+                            .offset(((self.group * i + g) * packed_b_len) as isize),
                         output_i_g,
                         rsc,
                         csc,

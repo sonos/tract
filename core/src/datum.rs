@@ -5,7 +5,6 @@ use crate::TractResult;
 use ndarray::prelude::*;
 use std::fmt;
 
-use crate::ndarray_dummy_packed_mm::*;
 use tract_linalg::f16::f16;
 
 #[cfg(feature = "serialize")]
@@ -256,7 +255,7 @@ impl TryInto<f32> for String {
 }
 
 datum!(bool, Bool);
-datum!(f16, F16, |m, k, n| Some(Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _));
+datum!(f16, F16, |m, k, n| { unimplemented!(); });
 datum!(f32, F32, |m, k, n| Some((tract_linalg::ops().smm)(m, k, n)));
 datum!(f64, F64, |m, k, n| Some((tract_linalg::ops().dmm)(m, k, n)));
 datum!(i8, I8);

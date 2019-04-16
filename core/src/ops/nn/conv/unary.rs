@@ -193,7 +193,7 @@ impl ConvUnary {
             })?
             .into();
 
-        let packed_b_len = mm.packed_b_len();
+        let packed_b_len = mm.b_pack().len();
 
         trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
 

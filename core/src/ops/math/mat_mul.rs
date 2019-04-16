@@ -12,11 +12,13 @@ fn eval_t<T: Copy + Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult
     let b = b.into_shape(&*geo.bc_b_shape)?;
     let mut c = unsafe { Array::uninitialized(&*geo.c_shape) };
 
+    let b_pack = geo.mm.b_pack();
+
     let mut pa = unsafe {
         Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_a_len()], geo.mm.packed_a_alignment())?
     };
     let mut pb = unsafe {
-        Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_b_len()], geo.mm.packed_b_alignment())?
+        Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())?
     };
 
     for prefix in indices(&*geo.c_shape_prefix).into_iter() {
@@ -37,7 +39,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar>(a: &Tensor, b: &Tensor) -> TractResult
             a.strides()[prefix.ndim()],
             a.strides()[prefix.ndim() + 1],
         );
-        geo.mm.pack_b(
+        b_pack.pack(
             pb.as_ptr_mut()?,
             b.as_ptr(),
             b.strides()[prefix.ndim()],
@@ -315,11 +317,11 @@ impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplASimpleB<T> {
         let a_len = a_shape.iter().cloned().product::<usize>();
         let shape_a_internal = [a_len / geo_ext.k, geo_ext.k];
         let geo = Geo::new(&shape_a_internal, b.shape())?;
-        let packed_b_len = geo.mm.packed_b_len();
+        let b_pack = geo.mm.b_pack();
         let mut packed_b = unsafe {
-            Tensor::uninitialized_aligned::<T>(&[packed_b_len], geo.mm.packed_b_alignment())?
+            Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())?
         };
-        geo.mm.pack_b(packed_b.as_ptr_mut()?, b.as_ptr(), b.strides()[0], b.strides()[1]);
+        b_pack.pack(packed_b.as_ptr_mut()?, b.as_ptr(), b.strides()[0], b.strides()[1]);
         Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
     }
 }
@@ -394,13 +396,14 @@ pub struct MatMulUnaryImplA<T: Copy + Datum + Add + Mul + Zero> {
 impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
     pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplA<T>> {
         let geo = Geo::new(a_shape, b.shape())?;
-        let packed_b_len = geo.mm.packed_b_len();
+        let b_pack = geo.mm.b_pack();
+        let packed_b_len = b_pack.len();
         let mut packed_bs_shape = geo.bc_b_shape.clone();
         packed_bs_shape.pop();
         packed_bs_shape.pop();
         packed_bs_shape.push(packed_b_len);
         let mut packed_bs = unsafe {
-            Tensor::uninitialized_aligned::<T>(&packed_bs_shape, geo.mm.packed_b_alignment())?
+            Tensor::uninitialized_aligned::<T>(&packed_bs_shape, b_pack.alignment())?
         };
         for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2]).into_iter().enumerate() {
             let mut b = b.view();
@@ -408,7 +411,7 @@ impl<T: Copy + Datum + Add + Mul + Zero> MatMulUnaryImplA<T> {
                 b.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
             unsafe {
-                geo.mm.pack_b(
+                b_pack.pack(
                     packed_bs.as_ptr_mut::<T>()?.offset((ix * packed_b_len) as isize),
                     b.as_ptr(),
                     b.strides()[prefix.ndim()],
