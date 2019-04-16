@@ -29,24 +29,6 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
             }
         }
     }
-    fn packed_b_len(&self) -> usize {
-        self.k * self.n
-    }
-    fn packed_b_alignment(&self) -> usize {
-        std::mem::size_of::<T>()
-    }
-    fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
-        unsafe {
-            for x in 0..self.n as isize {
-                for y in 0..self.k as isize {
-                    *pb.offset(x + y * self.n as isize) = *b.offset(x * csb + y * rsb)
-                }
-            }
-        }
-    }
-    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
-        PackedWriter::new(pb, self.n, self.n, self.k)
-    }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, rsc: isize, csc: isize) {
         unsafe {
@@ -94,24 +76,6 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
                 *pa.offset(x) = *a.offset(x * csa)
             }
         }
-    }
-    fn packed_b_len(&self) -> usize {
-        self.k * self.n
-    }
-    fn packed_b_alignment(&self) -> usize {
-        std::mem::size_of::<T>()
-    }
-    fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
-        unsafe {
-            for x in 0..self.n as isize {
-                for y in 0..self.k as isize {
-                    *pb.offset(x + y * self.n as isize) = *b.offset(x * csb + y * rsb)
-                }
-            }
-        }
-    }
-    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
-        PackedWriter::new(pb, self.n, self.n, self.k)
     }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, _rsc: isize, _csc: isize) {

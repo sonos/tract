@@ -59,16 +59,17 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
 
     pub(super) fn output_shape(&self) -> TractResult<TVec<usize>> {
         let input_shape = &self.patch.input_shape;
-        Ok(tvec!(input_shape.n_dim(), self.group, self.mm.packed_b_len()))
+        Ok(tvec!(input_shape.n_dim(), self.group, self.mm.b_pack().len()))
     }
 
     pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, T>) -> TractResult<Tensor> {
         let input_shape = &self.patch.input_shape;
+        let b_pack = self.mm.b_pack();
 
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<T>(
-                &[input_shape.n_dim(), self.group, self.mm.packed_b_len()],
-                self.mm.packed_b_alignment(),
+                &[input_shape.n_dim(), self.group, b_pack.len()],
+                b_pack.alignment(),
             )?
         };
         for i in 0..input_shape.n_dim() {
@@ -187,7 +188,7 @@ impl Patcher {
                 }
             }
         }
-        im2col.mm.pack_b(
+        im2col.mm.b_pack().pack(
             pack.as_mut_ptr(),
             mega_matrix.as_ptr(),
             mega_matrix.strides()[0],
@@ -207,7 +208,7 @@ impl Patcher {
             let x_stride = input.strides()[im2col.patch.input_shape.h_axis()]
                 * im2col.patch.kernel_strides[0] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
-            let mut writer = im2col.mm.write_b_packed_by_rows(pack);
+            let mut writer = im2col.mm.b_pack().write_packed_by_rows(pack);
             let iptr =
                 input.slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
@@ -239,7 +240,7 @@ impl Patcher {
             let input_heigth = im2col.patch.input_shape.hw_dims()[0] as isize;
             let input_width = im2col.patch.input_shape.hw_dims()[1] as isize;
             let kernel_len = im2col.patch.standard_layout_data_field.len();
-            let mut writer = im2col.mm.write_b_packed_by_rows(pack);
+            let mut writer = im2col.mm.b_pack().write_packed_by_rows(pack);
             let iptr =
                 input.slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
@@ -286,7 +287,7 @@ impl Patcher {
             let x_stride = input.strides()[im2col.patch.input_shape.hw_axes()][1]
                 * im2col.patch.kernel_strides[1] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
-            let mut writer = im2col.mm.write_b_packed_by_rows(pack);
+            let mut writer = im2col.mm.b_pack().write_packed_by_rows(pack);
             let iptr =
                 input.slice_axis(Axis(im2col.patch.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
