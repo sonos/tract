@@ -1,4 +1,5 @@
 mod direct;
+mod depth_wise;
 mod gen;
 mod im2col;
 mod mat_mat;

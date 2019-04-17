@@ -4,12 +4,15 @@ use crate::internal::*;
 use crate::model::*;
 use insideout::InsideOut;
 
+use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use super::mat_mat::MatMat;
 use super::vec_mat::VecMat;
 use super::Conv;
 use crate::ops::nn::conv::KernelFormat;
 use crate::ops::nn::{DataFormat, PaddingSpec, Patch};
+
+use std::iter::Sum;
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
@@ -174,7 +177,8 @@ impl ConvUnary {
             .map(|bias| -> TractResult<_> {
                 let mut bias_shape: Vec<usize> =
                     ::std::iter::repeat(1).take(output_shape.len()).collect();
-                bias_shape[1] = self.output_channels();
+                bias_shape[self.data_fmt.shape(output_shape).c_axis()] = self.output_channels();
+                println!("BIAS_shape: {:?}", bias_shape);
                 Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
             })
             .inside_out()?)
@@ -203,20 +207,22 @@ impl ConvUnary {
         let mut packed_kernels: Vec<Tensor> = vec![];
 
         let (op2, b_pack): (Box<Op>, _) = if m > 1 {
-            let mm = T::packed_mat_mul(m, k, n)
-                .ok_or_else(|| {
-                    format!(
-                        "Can not perfom convolution on {:?} (not a linear algebra type)",
-                        T::datum_type()
-                    )
-                })?;
+            let mm = T::packed_mat_mul(m, k, n).ok_or_else(|| {
+                format!(
+                    "Can not perfom convolution on {:?} (not a linear algebra type)",
+                    T::datum_type()
+                )
+            })?;
             let b_pack = mm.b_pack();
 
             trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
 
             for subkernel in kernel.outer_iter() {
                 let mut packed = unsafe {
-                    Tensor::uninitialized_aligned::<T>(&[mm.packed_a_len()], mm.packed_a_alignment())?
+                    Tensor::uninitialized_aligned::<T>(
+                        &[mm.packed_a_len()],
+                        mm.packed_a_alignment(),
+                    )?
                 };
                 mm.pack_a(
                     packed.as_slice_mut()?.as_mut_ptr(),
@@ -240,20 +246,22 @@ impl ConvUnary {
             );
             (Box::new(conv_gemm), b_pack)
         } else {
-            let mm = T::packed_vec_mat_mul(k, n)
-                .ok_or_else(|| {
-                    format!(
-                        "Can not perfom convolution on {:?} (not a linear algebra type)",
-                        T::datum_type()
-                    )
-                })?;
+            let mm = T::packed_vec_mat_mul(k, n).ok_or_else(|| {
+                format!(
+                    "Can not perfom convolution on {:?} (not a linear algebra type)",
+                    T::datum_type()
+                )
+            })?;
             let b_pack = mm.b_pack();
 
             trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
 
             for subkernel in kernel.outer_iter() {
                 let mut packed = unsafe {
-                    Tensor::uninitialized_aligned::<T>(&[mm.packed_a_len()], mm.packed_a_alignment())?
+                    Tensor::uninitialized_aligned::<T>(
+                        &[mm.packed_a_len()],
+                        mm.packed_a_alignment(),
+                    )?
                 };
                 mm.pack_a(
                     packed.as_slice_mut()?.as_mut_ptr(),
@@ -271,7 +279,7 @@ impl ConvUnary {
                 packed_kernels,
                 bias,
                 self.group,
-                mm
+                mm,
             );
             (Box::new(conv_gemm), b_pack)
         };
@@ -283,7 +291,7 @@ impl ConvUnary {
             n,
             self.group,
             patch.input_shape.c_dim() / self.group,
-            b_pack
+            b_pack,
         );
         let intermediary_shape = im2col.output_shape()?;
         Ok((im2col, intermediary_shape, op2))
@@ -350,6 +358,20 @@ impl ConvUnary {
             group: self.group,
         };
         Ok(Some(new_op))
+    }
+
+    pub fn to_depth_wise<T>(&self, shape: &[usize]) -> TractResult<Box<Op>>
+    where
+        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
+    {
+        let patch = self.patch(shape);
+        let op = DepthWise::<T>::new(
+            patch,
+            self.output_channels(),
+            self.kernel_as_group_o_ihw()?.into_dyn(),
+            self.bias_reshaped(&*shape)?,
+        );
+        Ok(Box::new(op))
     }
 }
 
@@ -443,6 +465,12 @@ impl Op for ConvUnary {
                 {
                     let op = self.to_direct(&*shape)?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+                } else if self.group == self.output_channels() {
+                    return Ok(Some(TypedModelPatch::single_unary_op(
+                        model,
+                        node,
+                        dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
+                    )?));
                 } else {
                     let (op1, shape, op2) =
                         dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
