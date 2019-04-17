@@ -55,15 +55,10 @@ impl StatelessOp for Direct {
 impl InferenceRulesOp for Direct {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
+        _s: &mut Solver<'r>,
+        _inputs: &'p [TensorProxy],
+        _outputs: &'p [TensorProxy],
     ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, ShapeFact::from(&*self.input_shape))?;
-        s.equals(&outputs[0].shape, ShapeFact::from(&*self.output_shape))?;
-        Ok(())
+        unreachable!()
     }
 }
