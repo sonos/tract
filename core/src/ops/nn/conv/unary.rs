@@ -422,7 +422,6 @@ impl Op for ConvUnary {
             && self.strides.iter().all(|&x| x == 1)
             && self.group == 1
             && self.bias.is_none()
-            && (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
         {
             if self.kernel_fmt == KernelFormat::HWIO && self.data_fmt == DataFormat::NHWC {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
