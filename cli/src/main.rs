@@ -515,6 +515,9 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         }
 
         ("profile", Some(m)) => {
+            if !matches.is_present("optimize") {
+                warn!("Profiling un-optimized network. Consider adding -O.");
+            }
             profile::handle(params, ProfilingMode::from_clap(&m)?, display_options_from_clap(m)?)
         }
 
