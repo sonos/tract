@@ -1,5 +1,5 @@
-use crate::model::InferenceModel;
 use crate::internal::*;
+use crate::model::InferenceModel;
 use crate::ops::unimpl::UnimplementedOp;
 use std::fmt::Debug;
 use std::io::Read;
@@ -28,7 +28,8 @@ pub trait Framework<ProtoOp: Debug, ProtoModel: Debug> {
     fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<InferenceModel>;
 
     fn proto_model_for_path(&self, p: impl AsRef<Path>) -> TractResult<ProtoModel> {
-        let mut r = std::fs::File::open(p)?;
+        let mut r = std::fs::File::open(p.as_ref())
+            .map_err(|e| format!("Could not open {:?}: {}", p.as_ref(), e))?;
         self.proto_model_for_read(&mut r)
     }
 
@@ -38,7 +39,8 @@ pub trait Framework<ProtoOp: Debug, ProtoModel: Debug> {
     }
 
     fn model_for_path(&self, p: impl AsRef<Path>) -> TractResult<InferenceModel> {
-        let mut r = std::fs::File::open(p)?;
+        let mut r = std::fs::File::open(p.as_ref())
+            .map_err(|e| format!("Could not open {:?}: {}", p.as_ref(), e))?;
         self.model_for_read(&mut r)
     }
 
