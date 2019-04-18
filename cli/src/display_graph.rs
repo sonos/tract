@@ -12,7 +12,7 @@ use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb::graph::GraphDef;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplayOptions {
     pub konst: bool,
     pub quiet: bool,
@@ -21,6 +21,25 @@ pub struct DisplayOptions {
     pub op_name: Option<String>,
     pub node_name: Option<String>,
     pub successors: Option<usize>,
+}
+
+impl DisplayOptions {
+    pub fn filter<TI: TensorInfo>(&self, _model: &Model<TI>, node: &Node<TI>) -> CliResult<bool> {
+        if let Some(nodes) = self.node_ids.as_ref() {
+            return Ok(nodes.contains(&node.id))
+        }
+        if let Some(node_name) = self.node_name.as_ref() {
+            return Ok(node.name.starts_with(&*node_name));
+        }
+        if let Some(op_name) = self.op_name.as_ref() {
+            return Ok(op_name == &node.op().name());
+        }
+        if let Some(successor) = self.successors {
+            return Ok(node.inputs.iter().any(|i| i.node == successor))
+
+        }
+        Ok(node.op().name() != "Const" || self.konst)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -38,39 +57,12 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
             return Ok(());
         }
         let model = self.model.borrow();
-        if let Some(nodes) = &self.options.node_ids {
-            for &node in nodes {
-                let node = &model.nodes()[node];
-                self.render_node(node)?;
-            }
-            return Ok(());
-        }
-        if let Some(node_name) = &self.options.node_name {
-            if let Ok(node) = model.node_by_name(node_name) {
-                return self.render_node(node);
-            } else {
-                return Ok(());
-            }
-        }
         let node_ids = ::tract_core::model::eval_order(&model)?;
         for node in node_ids {
             let node = &model.nodes()[node];
-            if node.op().name() == "Const" && !self.options.konst {
-                continue;
+            if self.options.filter(model, node)? {
+                self.render_node(&node)?
             }
-            if self.options.op_name.as_ref().map(|name| name != &*node.op.name()).unwrap_or(false) {
-                continue;
-            }
-            if self
-                .options
-                .successors
-                .as_ref()
-                .map(|id| !node.inputs.iter().any(|i| i.node == *id))
-                .unwrap_or(false)
-            {
-                continue;
-            }
-            self.render_node(&node)?
         }
         Ok(())
     }

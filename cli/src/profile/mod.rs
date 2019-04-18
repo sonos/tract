@@ -29,20 +29,8 @@ impl ProfileData {
         Ok(())
     }
 
-    pub fn print_most_consuming_nodes<TI: TensorInfo>(
-        &mut self,
-        model: &Model<TI>,
-        graph: &SomeGraphDef,
-        display_options: DisplayOptions,
-    ) -> CliResult<()> {
-        let sum = self.summed();
-        let mut display_graph =
-            crate::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
-                .with_graph_def(&graph)?;
-        for (ix, measure) in self.nodes.iter() {
-            display_graph.add_node_label(*ix, dur_avg_oneline_ratio(*measure, sum))?;
-        }
-        let top5: Vec<usize> = self
+    pub fn most_consuming_nodes(&self) -> CliResult<Vec<usize>> {
+        let top = self
             .nodes
             .iter()
             .sorted_by(|(_, a), (_, b)| {
@@ -53,10 +41,7 @@ impl ProfileData {
             .take(5)
             .map(|a| *a.0)
             .collect();
-        display_graph.options.node_ids = Some(top5);
-        println!("Most time consuming nodes:");
-        display_graph.render()?;
-        Ok(())
+        Ok(top)
     }
 
     pub fn print_most_consuming_ops<TI: TensorInfo>(&self, model: &Model<TI>) -> CliResult<()> {
