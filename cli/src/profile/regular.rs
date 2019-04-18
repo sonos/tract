@@ -86,7 +86,7 @@ pub fn handle_t<TI: TensorInfo>(
     model: &Model<TI>,
     params: &Parameters,
     profiling: ProfilingMode,
-    display_options: DisplayOptions,
+    mut display_options: DisplayOptions,
 ) -> CliResult<()> {
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
         (max_iters, max_time)
@@ -141,6 +141,11 @@ pub fn handle_t<TI: TensorInfo>(
             continue;
         }
 
+        if !display_options.filter(model, node)? {
+            continue
+        }
+        state.compute_recursively(n)?;
+
         let mut iters = 0;
         let start = Instant::now();
 
@@ -150,31 +155,27 @@ pub fn handle_t<TI: TensorInfo>(
         }
 
         let measure = Duration::since(&start, iters);
-
-        // Print the results for the node.
-        if log_enabled!(Info) {
-            print_node(
-                &node,
-                &params.graph,
-                Some(&state),
-                &[White.paint(format!("{:.3} ms/i", measure.avg_real() * 1e3)).to_string()],
-                vec![],
-            );
-        }
-
         profile.add(&node, measure)?;
+    }
+
+    if display_options == DisplayOptions::default() {
+        display_options.node_ids = Some(profile.most_consuming_nodes()?);
+    };
+
+    let mut display_graph =
+        crate::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
+            .with_graph_def(&params.graph)?;
+
+    let sum = profile.summed();
+    for (ix, measure) in profile.nodes.iter() {
+        display_graph.add_node_label(*ix, dur_avg_oneline_ratio(*measure, sum))?;
     }
 
     if atty::is(atty::Stream::Stdout) {
         progress.finish_print("");
     }
 
-    print_header(format!("Summary for {}:", params.name), &White.normal());
-
-    profile.print_most_consuming_nodes(model, &params.graph, display_options)?;
-    println!();
-
-    profile.print_most_consuming_ops(model)?;
+    display_graph.render()?;
     println!();
 
     println!("Entire network performance: {}", dur_avg_oneline(entire));
