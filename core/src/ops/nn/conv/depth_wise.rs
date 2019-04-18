@@ -14,6 +14,64 @@ where
     bias: Option<ArrayD<T>>,
 }
 
+impl<T> DepthWise<T>
+where
+    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
+{
+    fn eval3(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let img = args_1!(inputs);
+        let img = img.to_array_view::<T>()?;
+        let visitor = self.patch.wrap(&img);
+        let output_shape = self.patch.output_full_shape(self.out_channels);
+        let mut output = Array3::<T>::from_shape_fn((output_shape[0], output_shape[1], output_shape[2]), |coords| {
+            let coords = [coords.0, coords.1, coords.2];
+            let it = visitor.at(&coords);
+            let channel = coords[self.patch.input_shape.c_axis()];
+            let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
+            kernel.iter().zip(it).map(|(&k, v)| k * v.unwrap_or(T::zero())).sum()
+        });
+        if let Some(ref bias) = self.bias {
+            output += bias;
+        }
+        Ok(tvec!(output.into()))
+    }
+
+    fn eval4(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let img = args_1!(inputs);
+        let img = img.to_array_view::<T>()?;
+        let visitor = self.patch.wrap(&img);
+        let output_shape = self.patch.output_full_shape(self.out_channels);
+        let mut output = Array4::<T>::from_shape_fn((output_shape[0], output_shape[1], output_shape[2], output_shape[3]), |coords| {
+            let coords = [coords.0, coords.1, coords.2, coords.3];
+            let it = visitor.at(&coords);
+            let channel = coords[self.patch.input_shape.c_axis()];
+            let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
+            kernel.iter().zip(it).map(|(&k, v)| k * v.unwrap_or(T::zero())).sum()
+        });
+        if let Some(ref bias) = self.bias {
+            output += bias;
+        }
+        Ok(tvec!(output.into()))
+    }
+
+    fn evald(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let img = args_1!(inputs);
+        let img = img.to_array_view::<T>()?;
+        let visitor = self.patch.wrap(&img);
+        let output_shape = self.patch.output_full_shape(self.out_channels);
+        let mut output = ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
+            let it = visitor.at(&coords.slice());
+            let channel = coords[self.patch.input_shape.c_axis()];
+            let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
+            kernel.iter().zip(it).map(|(&k, v)| k * v.unwrap_or(T::zero())).sum()
+        });
+        if let Some(ref bias) = self.bias {
+            output += bias;
+        }
+        Ok(tvec!(output.into()))
+    }
+}
+
 impl<T> Op for DepthWise<T>
 where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
@@ -35,21 +93,12 @@ impl<T> StatelessOp for DepthWise<T>
 where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let img = args_1!(inputs);
-        let img = img.to_array_view::<T>()?;
-        let visitor = self.patch.wrap(&img);
-        let output_shape = self.patch.output_full_shape(self.out_channels);
-        let mut output = ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
-            let it = visitor.at(coords.slice());
-            let channel = coords[self.patch.input_shape.c_axis()];
-            let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
-            kernel.iter().zip(it).map(|(&k, v)| k * v.unwrap_or(T::zero())).sum()
-        });
-        if let Some(ref bias) = self.bias {
-            output += bias;
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        match inputs[0].shape().len() {
+            3 => self.eval3(inputs),
+            4 => self.eval4(inputs),
+            _ => self.evald(inputs),
         }
-        Ok(tvec!(output.into()))
     }
 }
 
