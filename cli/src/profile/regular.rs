@@ -178,6 +178,8 @@ pub fn handle_t<TI: TensorInfo>(
     display_graph.render()?;
     println!();
 
+    profile.print_most_consuming_ops(model)?;
+
     println!("Entire network performance: {}", dur_avg_oneline(entire));
     println!("Accounted by ops: {}", dur_avg_oneline_ratio(profile.summed(), entire));
 
