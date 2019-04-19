@@ -103,7 +103,7 @@ impl Patch {
         input: &'i ArrayViewD<'i, T>,
     ) -> PatchVisitor<'i, 'p, T> {
         let valid = !self.padded; //input.is_standard_layout() && !self.padded;
-        let mut fast_strides: TVec<_> = input.strides().into();
+        let mut fast_strides: Vec<_> = input.strides().into();
         fast_strides[self.input_shape.hw_axes()]
             .iter_mut()
             .zip(self.kernel_strides.iter())
@@ -117,45 +117,57 @@ pub struct PatchVisitor<'i, 'p, T: Copy + Datum> {
     patch: &'p Patch,
     input: &'i ArrayViewD<'i, T>,
     valid: bool,
-    fast_strides: TVec<isize>, // kernel strides * storage strides
+    fast_strides: Vec<isize>, // kernel strides * storage strides
 }
 
 impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
+    unsafe fn is_valid(&self, coords: &[usize]) -> bool {
+        let spatial_coords = coords.get_unchecked(self.patch.input_shape.hw_axes());
+        for ix in 0..self.patch.input_shape.hw_dims().len() {
+            let c = *spatial_coords.get_unchecked(ix) as isize;
+            let strides = *self.patch.kernel_strides.get_unchecked(ix) as isize;
+            let pos = c * strides;
+            let min_max = self.patch.data_field_min_max.get_unchecked(ix);
+            if pos + min_max.0 < 0
+                || pos + min_max.1 > *self.patch.input_shape.hw_dims().get_unchecked(ix) as isize
+            {
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn at<'v>(&'p self, coords: &[usize]) -> PatchIterator<'i, 'p, 'v, T>
     where
         'i: 'v,
         'p: 'v,
     {
-        let center =
-            coords.iter().zip(self.fast_strides.iter()).map(|(&a, &b)| b * a as isize).sum();
-        if self.valid
-            || coords[self.patch.input_shape.hw_axes()].iter().enumerate().all(|(ix, &c)| {
-                (c * self.patch.kernel_strides[ix]) as isize + self.patch.data_field_min_max[ix].0
-                    >= 0
-                    && (c * self.patch.kernel_strides[ix]) as isize
-                        + self.patch.data_field_min_max[ix].1
-                        < self.patch.input_shape.hw_dims()[ix] as isize
-            })
-        {
-            PatchIterator::Fast(FastPatchIterator {
-                visitor: &self,
-                ptr: self.input.as_ptr(),
-                center,
-                item: 0,
-            })
-        } else {
-            let mut input_patch_center: TVec<_> = coords.into();
-            input_patch_center[self.patch.input_shape.hw_axes()]
-                .iter_mut()
-                .zip(self.patch.kernel_strides.iter())
-                .for_each(|(a, &b)| *a *= b as usize);
-            PatchIterator::Safe(SafePatchIterator {
-                visitor: self,
-                item: 0,
-                input_patch_center,
-                center,
-                ptr: self.input.as_ptr(),
-            })
+        unsafe {
+            let mut center = 0;
+            for i in 0..self.fast_strides.len() {
+                center += *self.fast_strides.get_unchecked(i) * *coords.get_unchecked(i) as isize;
+            }
+            if self.valid || self.is_valid(coords) {
+                PatchIterator::Fast(FastPatchIterator {
+                    visitor: &self,
+                    ptr: self.input.as_ptr(),
+                    center,
+                    item: 0,
+                })
+            } else {
+                let mut input_patch_center: TVec<_> = coords.into();
+                input_patch_center[self.patch.input_shape.hw_axes()]
+                    .iter_mut()
+                    .zip(self.patch.kernel_strides.iter())
+                    .for_each(|(a, &b)| *a *= b as usize);
+                PatchIterator::Safe(SafePatchIterator {
+                    visitor: self,
+                    item: 0,
+                    input_patch_center,
+                    center,
+                    ptr: self.input.as_ptr(),
+                })
+            }
         }
     }
 
