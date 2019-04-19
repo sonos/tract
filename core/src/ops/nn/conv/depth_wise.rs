@@ -48,24 +48,32 @@ where
         let output_shape = self.patch.output_full_shape(self.out_channels);
         let len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>();
         let c_axis = self.patch.input_shape.c_axis();
+        let n_axis = self.patch.input_shape.n_axis();
+        let h_axis = self.patch.input_shape.h_axis();
         let kernel = self.kernel_chw.as_slice_memory_order().unwrap();
         let kernel_stride: usize = self.kernel_chw.strides()[0] as usize;
-        let mut output = Array4::<T>::from_shape_fn(
-            (output_shape[0], output_shape[1], output_shape[2], output_shape[3]),
-            |coords| {
-                let coords = [coords.0, coords.1, coords.2, coords.3];
-                let mut it = visitor.at(&coords);
-                unsafe {
-                    let channel = coords.get_unchecked(c_axis);
-                    let k = kernel.get_unchecked((kernel_stride * channel)..);
-                    let mut sum = T::zero();
-                    for i in 0..len {
-                        sum += *k.get_unchecked(i) * it.next().unsafe_unwrap().unwrap_or(T::zero())
+        let mut output = unsafe { ArrayD::<T>::uninitialized(&*output_shape) };
+        let mut full_coords = tvec!(0; output_shape.len());
+        for i in 0..self.patch.input_shape.n() {
+            unsafe {
+                full_coords[n_axis] = i;
+                for (coords, hint) in self.patch.visit_all_2() {
+                    *full_coords.get_unchecked_mut(h_axis) = coords.0;
+                    *full_coords.get_unchecked_mut(h_axis + 1) = coords.1;
+                    for c in 0..self.out_channels {
+                        *full_coords.get_unchecked_mut(c_axis) = c;
+                        let k = kernel.get_unchecked((kernel_stride * c)..);
+                        let mut sum = T::zero();
+                        let mut it = visitor.at_hint(&*full_coords, hint);
+                        for i in 0..len {
+                            sum +=
+                                *k.get_unchecked(i) * it.next().unsafe_unwrap().unwrap_or(T::zero())
+                        }
+                        output[&*full_coords] = sum
                     }
-                    sum
                 }
-            },
-        );
+            }
+        }
         if let Some(ref bias) = self.bias {
             output += bias;
         }

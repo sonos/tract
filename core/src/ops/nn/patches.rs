@@ -57,7 +57,7 @@ impl Patch {
             data_field,
         )
         .unwrap();
-        let data_field_min_max:TVec<_> = data_field
+        let data_field_min_max: TVec<_> = data_field
             .gencolumns()
             .into_iter()
             .map(|col| (col.iter().min().cloned().unwrap(), col.iter().max().cloned().unwrap()))
@@ -85,16 +85,22 @@ impl Patch {
         for ix in 0..input_shape.hw_dims().len() {
             let min_max = data_field_min_max[ix];
             let min = (-min_max.0 as usize).div_ceil(kernel_strides[ix]) as usize;
-            let max = (input_shape.hw_dims()[ix] - min_max.1 as usize)
-                .div_ceil(kernel_strides[ix]) as usize;
+            let max = (input_shape.hw_dims()[ix] - min_max.1 as usize).div_ceil(kernel_strides[ix])
+                as usize;
             if min != 0 {
                 let mut invalid = valid_output_zone.clone();
                 invalid.push(0..min);
+                while invalid.len() < output.len() {
+                    invalid.push(0..output[invalid.len()])
+                }
                 invalid_output_zones.push(invalid);
             }
             if max < output[ix] {
                 let mut invalid = valid_output_zone.clone();
                 invalid.push(max..output[ix]);
+                while invalid.len() < output.len() {
+                    invalid.push(0..output[invalid.len()])
+                }
                 invalid_output_zones.push(invalid);
             }
             valid_output_zone.push(min..max)
@@ -152,6 +158,84 @@ impl Patch {
         }
         true
     }
+
+    pub fn visit_zone_1<'p>(
+        &'p self,
+        zone: &'p [Range<usize>],
+        valid_hint: Option<bool>,
+    ) -> impl Iterator<Item = (usize, Option<bool>)> + 'p {
+        let shape = zone[0].end - zone[0].start;
+        ndarray::indices(shape)
+            .into_iter()
+            .map(move |coords| (unsafe { zone.get_unchecked(0).start + coords }, valid_hint))
+    }
+
+    pub fn visit_zone_2<'p>(
+        &'p self,
+        zone: &'p [Range<usize>],
+        valid_hint: Option<bool>,
+    ) -> impl Iterator<Item = ((usize, usize), Option<bool>)> + 'p {
+        let shape = (zone[0].end - zone[0].start, zone[1].end - zone[1].start);
+        ndarray::indices(shape).into_iter().map(move |coords| {
+            (
+                unsafe {
+                    (zone.get_unchecked(0).start + coords.0, zone.get_unchecked(1).start + coords.1)
+                },
+                valid_hint,
+            )
+        })
+    }
+
+    pub fn visit_zone_d<'p>(
+        &'p self,
+        zone: &'p [Range<usize>],
+        valid_hint: Option<bool>,
+    ) -> impl Iterator<Item = (TVec<usize>, Option<bool>)> + 'p {
+        let shape: Vec<usize> = zone.iter().map(|z| z.end - z.start).collect();
+        ndarray::indices(shape).into_iter().map(move |coords| {
+            let mut coords: TVec<usize> = coords.slice().into();
+            for i in 0..coords.len() {
+                coords[i] += zone[i].start;
+            }
+            (coords, valid_hint)
+        })
+    }
+
+    pub fn visit_all_1(&self) -> impl Iterator<Item = (usize, Option<bool>)> + '_ {
+        self.visit_valid_1().chain(self.visit_invalid_1())
+    }
+
+    pub fn visit_valid_1(&self) -> impl Iterator<Item = (usize, Option<bool>)> + '_ {
+        self.visit_zone_1(&*self.valid_output_zone, Some(true))
+    }
+
+    pub fn visit_invalid_1(&self) -> impl Iterator<Item = (usize, Option<bool>)> + '_ {
+        self.invalid_output_zones.iter().flat_map(move |z| self.visit_zone_1(z, Some(false)))
+    }
+
+    pub fn visit_all_2(&self) -> impl Iterator<Item = ((usize, usize), Option<bool>)> + '_ {
+        self.visit_valid_2().chain(self.visit_invalid_2())
+    }
+
+    pub fn visit_valid_2(&self) -> impl Iterator<Item = ((usize, usize), Option<bool>)> + '_ {
+        self.visit_zone_2(&*self.valid_output_zone, Some(true))
+    }
+
+    pub fn visit_invalid_2(&self) -> impl Iterator<Item = ((usize, usize), Option<bool>)> + '_ {
+        self.invalid_output_zones.iter().flat_map(move |z| self.visit_zone_2(z, Some(false)))
+    }
+
+    pub fn visit_all_d(&self) -> impl Iterator<Item = (TVec<usize>, Option<bool>)> + '_ {
+        self.visit_valid_d().chain(self.visit_invalid_d())
+    }
+
+    pub fn visit_valid_d(&self) -> impl Iterator<Item = (TVec<usize>, Option<bool>)> + '_ {
+        self.visit_zone_d(&*self.valid_output_zone, Some(true))
+    }
+
+    pub fn visit_invalid_d(&self) -> impl Iterator<Item = (TVec<usize>, Option<bool>)> + '_ {
+        self.invalid_output_zones.iter().flat_map(move |z| self.visit_zone_d(z, Some(false)))
+    }
 }
 
 #[derive(Debug)]
@@ -168,12 +252,25 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
         'i: 'v,
         'p: 'v,
     {
+        self.at_hint(coords, None)
+    }
+
+    pub fn at_hint<'v>(
+        &'p self,
+        coords: &[usize],
+        hint: Option<bool>,
+    ) -> PatchIterator<'i, 'p, 'v, T>
+    where
+        'i: 'v,
+        'p: 'v,
+    {
         unsafe {
             let mut center = 0;
             for i in 0..self.fast_strides.len() {
                 center += *self.fast_strides.get_unchecked(i) * *coords.get_unchecked(i) as isize;
             }
-            if self.valid || self.patch.is_valid(coords) {
+            let valid = hint.unwrap_or_else(|| self.valid || self.patch.is_valid(coords));
+            if valid {
                 PatchIterator::Fast(FastPatchIterator {
                     visitor: &self,
                     ptr: self.input.as_ptr(),
@@ -388,8 +485,8 @@ pub mod test {
 
     fn in_zone(coords: &[usize], h_axis: usize, zone: &[Range<usize>]) -> bool {
         for a in 0..zone.len() {
-            if coords[h_axis+a] < zone[a].start || coords[h_axis+a] >= zone[a].end {
-                return false
+            if coords[h_axis + a] < zone[a].start || coords[h_axis + a] >= zone[a].end {
+                return false;
             }
         }
         true
@@ -397,7 +494,7 @@ pub mod test {
 
     proptest! {
         #[test]
-        fn test_2d(p in patch_2d()) {
+        fn test_zoning(p in patch_2d()) {
             let valid_zone = &p.valid_output_zone;
             let invalid_zones = &p.invalid_output_zones;
             let h_axis = p.input_shape.h_axis();
@@ -413,10 +510,34 @@ pub mod test {
                     prop_assert_eq!(invalid_count, 1, "coords {:?}, valid_zone: {:?} inside_valid: {:?} invalid_zones: {:?}", coords.slice(), valid_zone, inside_valid, invalid_zones);
                 }
             };
-            /*
-            let op = FixedAvgPool::new(p, true);
-            prop_assert_eq!(op.generic(&d.view().into_dyn()).unwrap(), op.two_d(&d.view()).unwrap().into_dyn())
-            */
         }
+
+        #[test]
+        #[ignore]
+        fn test_zone_visitor(p in patch_2d()) {
+            let mut output = ndarray::ArrayD::<i32>::zeros(&*p.output_full_shape(1));
+            for (c, _v) in p.visit_all_2() {
+                prop_assert!(output[[0, 0, c.0, c.1]] == 0);
+                output[[0, 0, c.0, c.1]] = 1;
+            }
+            assert!(output.iter().all(|&x| x == 1));
+        }
+    }
+    #[test]
+    fn test_zone_visitor_1() {
+        let p = Patch::new(
+            DataFormat::NCHW,
+            tvec!(1, 1),
+            tvec![2, 1],
+            &PaddingSpec::SameLower,
+            tvec![1, 2],
+            tvec!(1, 1, 2, 2),
+        );
+        let mut output = ndarray::ArrayD::<i32>::zeros(&*p.output_full_shape(1));
+        for (c, _v) in p.visit_all_2() {
+            assert!(output[[0, 0, c.0, c.1]] == 0);
+            output[[0, 0, c.0, c.1]] = 1;
+        }
+        assert!(output.iter().all(|&x| x == 1));
     }
 }
