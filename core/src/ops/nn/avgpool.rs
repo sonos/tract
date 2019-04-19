@@ -367,32 +367,7 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::*;
-
-    pub fn patch_2d() -> BoxedStrategy<Patch> {
-        (
-            Just(DataFormat::NCHW),
-            (1usize..3, 1usize..3),
-            1usize..3,
-            (1usize..3, 1usize..3),
-            Just(PaddingSpec::SameLower),
-            (1usize..4, 1usize..4),
-        )
-            .prop_flat_map(|p| {
-                let size = p.3;
-                (Just(p), (size.0 + 5..=size.0 + 10, size.1 + 5..=size.1 + 10))
-            })
-            .prop_map(|((fmt, dil, c, ks, pad, strides), inp)| {
-                Patch::new(
-                    fmt,
-                    tvec!(dil.0, dil.1),
-                    tvec!(ks.0, ks.1),
-                    &pad,
-                    tvec![strides.0, strides.1],
-                    tvec!(1, c, inp.0, inp.1),
-                )
-            })
-            .boxed()
-    }
+    use super::super::patches::test::patch_2d;
 
     pub fn patch_2d_and_data() -> BoxedStrategy<(Patch, Array4<f32>)> {
         patch_2d()
