@@ -2,12 +2,12 @@ use crate::internal::*;
 use ndarray::prelude::*;
 use num_traits::{AsPrimitive, Float};
 
-use super::{DataFormat, PaddingSpec, Patch};
+use super::{DataFormat, PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::patches::PatchVisitor;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
-    data_fmt: DataFormat,
+    data_format: DataFormat,
     kernel_shape: TVec<usize>,
     padding: PaddingSpec,
     strides: Option<TVec<usize>>,
@@ -16,15 +16,15 @@ pub struct AvgPool {
 
 impl AvgPool {
     fn patch(&self, input_full_shape: &[usize]) -> Patch {
-        let hw_rank = self.data_fmt.shape(input_full_shape).hw_rank();
-        Patch::new(
-            self.data_fmt,
-            tvec![1; hw_rank],
-            self.kernel_shape.clone(),
-            &self.padding,
-            self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
-            input_full_shape.into(),
-        )
+        let hw_rank = self.data_format.shape(input_full_shape).hw_rank();
+        PatchSpec {
+            data_format: self.data_format,
+            dilations: tvec![1; hw_rank],
+            kernel_shape: self.kernel_shape.clone(),
+            padding: self.padding.clone(),
+            strides: self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
+            input_full_shape: input_full_shape.into(),
+        }.into_patch()
     }
 
     fn eval_t<T>(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
@@ -83,7 +83,7 @@ impl InferenceRulesOp for AvgPool {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[0].shape, move |s, ishape| {
-            let ishape = self.data_fmt.shape(ishape);
+            let ishape = self.data_format.shape(ishape);
             let ones = tvec![1; ishape.hw_rank()];
             let computed = self.padding.compute(
                 ishape.hw_dims(),
@@ -123,12 +123,12 @@ where
             let out_h = output.shape()[self.patch.input_shape.hw_axes()][0];
             let out_w = output.shape()[self.patch.input_shape.hw_axes()][1];
             let stride_in_y = input.strides()[self.patch.input_shape.hw_axes()][0]
-                * self.patch.kernel_strides[0] as isize;
+                * self.patch.spec.strides[0] as isize;
             let stride_in_x = input.strides()[self.patch.input_shape.hw_axes()][1]
-                * self.patch.kernel_strides[1] as isize;
+                * self.patch.spec.strides[1] as isize;
             let stride_out_y = output.strides()[self.patch.input_shape.hw_axes()][0];
             let stride_out_x = output.strides()[self.patch.input_shape.hw_axes()][1];
-            let k_len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>().as_();
+            let k_len = self.patch.spec.kernel_shape.iter().cloned().product::<usize>().as_();
             for i in 0..self.patch.input_shape.n() {
                 let p_in = input
                     .slice_axis(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
@@ -178,13 +178,13 @@ where
             let out_w = output.shape()[self.patch.input_shape.hw_axes()][1];
             let stride_in_c = input.strides()[self.patch.input_shape.c_axis()] as isize;
             let stride_in_y = input.strides()[self.patch.input_shape.hw_axes()][0]
-                * self.patch.kernel_strides[0] as isize;
+                * self.patch.spec.strides[0] as isize;
             let stride_in_x = input.strides()[self.patch.input_shape.hw_axes()][1]
-                * self.patch.kernel_strides[1] as isize;
+                * self.patch.spec.strides[1] as isize;
             let stride_out_c = output.strides()[self.patch.input_shape.c_axis()] as isize;
             let stride_out_y = output.strides()[self.patch.input_shape.hw_axes()][0];
             let stride_out_x = output.strides()[self.patch.input_shape.hw_axes()][1];
-            let k_len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>().as_();
+            let k_len = self.patch.spec.kernel_shape.iter().cloned().product::<usize>().as_();
             for i in 0..self.patch.input_shape.n() {
                 let p_in_i = input
                     .slice_axis(Axis(self.patch.input_shape.n_axis()), (i..=i).into())
@@ -225,10 +225,10 @@ where
             }
         } else {
             let h_axis = self.patch.input_shape.h_axis();
-            let non_valid_top = self.patch.pad_before[0].div_ceil(self.patch.kernel_strides[0]);
-            let non_valid_bottom = self.patch.pad_after[0].div_ceil(self.patch.kernel_strides[0]);
-            let non_valid_left = self.patch.pad_before[1].div_ceil(self.patch.kernel_strides[1]);
-            let non_valid_right = self.patch.pad_after[1].div_ceil(self.patch.kernel_strides[1]);
+            let non_valid_top = self.patch.pad_before[0].div_ceil(self.patch.spec.strides[0]);
+            let non_valid_bottom = self.patch.pad_after[0].div_ceil(self.patch.spec.strides[0]);
+            let non_valid_left = self.patch.pad_before[1].div_ceil(self.patch.spec.strides[1]);
+            let non_valid_right = self.patch.pad_after[1].div_ceil(self.patch.spec.strides[1]);
 
             let start_non_valid_y = self.patch.output_spatial_shape[0] - non_valid_bottom;
             let start_non_valid_x = self.patch.output_spatial_shape[1] - non_valid_right;
@@ -241,11 +241,11 @@ where
             let mut valid_input = input.view();
             valid_input.slice_axis_inplace(
                 Axis(h_axis),
-                (non_valid_top * self.patch.kernel_strides[0]..).into(),
+                (non_valid_top * self.patch.spec.strides[0]..).into(),
             );
             valid_input.slice_axis_inplace(
                 Axis(h_axis + 1),
-                (non_valid_left * self.patch.kernel_strides[1]..).into(),
+                (non_valid_left * self.patch.spec.strides[1]..).into(),
             );
             if self.patch.input_shape.fmt == DataFormat::NHWC {
                 self.valid_2d_nhwc(&valid_input, &mut valid_output);
@@ -328,7 +328,7 @@ where
         let input = args_1!(inputs);
         let input = input.to_array_view::<T>()?;
 
-        let result = if self.patch.kernel_spatial_shape.len() == 2 {
+        let result = if self.patch.spec.kernel_shape.len() == 2 {
             self.two_d(&input.into_dimensionality()?)?.into_dyn()
         } else {
             self.generic(&input)?
