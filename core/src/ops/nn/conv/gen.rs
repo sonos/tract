@@ -8,7 +8,7 @@ use crate::ops::nn::PaddingSpec;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv {
-    pub(super) data_fmt: DataFormat,
+    pub(super) data_format: DataFormat,
     pub(super) kernel_fmt: KernelFormat,
     pub(super) dilations: Option<TVec<usize>>,
     kernel_shape: Option<TVec<usize>>,
@@ -20,7 +20,7 @@ pub struct Conv {
 impl ::std::default::Default for Conv {
     fn default() -> Conv {
         Conv {
-            data_fmt: DataFormat::default(),
+            data_format: DataFormat::default(),
             kernel_fmt: KernelFormat::default(),
             dilations: None,
             kernel_shape: None,
@@ -38,7 +38,7 @@ impl Conv {
         kshape: &[usize],
     ) -> TVec<D> {
         let mut result: TVec<D> = ishape.into();
-        let ishape = self.data_fmt.shape(ishape);
+        let ishape = self.data_format.shape(ishape);
         let spatial_rank = ishape.hw_rank();
         let ones = tvec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[self.kernel_fmt.h_axis()..][..spatial_rank];
@@ -169,7 +169,7 @@ impl InferenceRulesOp for Conv {
             })?
         }
         s.given_2(&inputs[0].rank, &inputs[1].rank, move |s, irank, krank| {
-            let input_c = if self.data_fmt == DataFormat::NHWC {
+            let input_c = if self.data_format == DataFormat::NHWC {
                 &inputs[0].shape[irank as usize - 1]
             } else {
                 &inputs[0].shape[1]

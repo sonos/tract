@@ -23,7 +23,7 @@ pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::lrn::Lrn;
 pub use self::maxpool::MaxPool;
 pub use self::padding::PaddingSpec;
-pub use self::patches::Patch;
+pub use self::patches::{Patch, PatchSpec};
 pub use self::reduce::{Reduce, Reducer};
 pub use self::sigmoid::Sigmoid;
 pub use self::tanh::Tanh;

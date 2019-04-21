@@ -1,11 +1,11 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-use super::{DataFormat, PaddingSpec, Patch};
+use super::{DataFormat, PaddingSpec, Patch, PatchSpec};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct MaxPool {
-    data_fmt: DataFormat,
+    data_format: DataFormat,
     kernel_shape: TVec<usize>,
     padding: PaddingSpec,
     strides: Option<TVec<usize>>,
@@ -14,15 +14,15 @@ pub struct MaxPool {
 
 impl MaxPool {
     fn patch(&self, input_full_shape: &[usize]) -> Patch {
-        let hw_rank = self.data_fmt.shape(input_full_shape).hw_rank();
-        Patch::new(
-            self.data_fmt,
-            tvec![1; hw_rank],
-            self.kernel_shape.clone(),
-            &self.padding,
-            self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
-            input_full_shape.into(),
-        )
+        let hw_rank = self.data_format.shape(input_full_shape).hw_rank();
+        PatchSpec {
+            data_format: self.data_format,
+            dilations: tvec![1; hw_rank],
+            kernel_shape: self.kernel_shape.clone(),
+            padding: self.padding.clone(),
+            strides: self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
+            input_full_shape: input_full_shape.into(),
+        }.into_patch()
     }
 }
 
@@ -85,7 +85,7 @@ impl InferenceRulesOp for MaxPool {
             s.equals(&outputs[1].rank, &inputs[0].rank)?;
         }
         s.given(&inputs[0].shape, move |s, ishape| {
-            let ishape = self.data_fmt.shape(ishape);
+            let ishape = self.data_format.shape(ishape);
             let ones = tvec![1; ishape.hw_rank()];
             let computed = self.padding.compute(
                 ishape.hw_dims(),

@@ -34,7 +34,7 @@ impl Op for SpaceToBatchUnary {
                     (conv_node.op_as::<ConvUnary>(), b2s_node.op_as::<BatchToSpaceUnary>())
                 {
                     let op = ConvUnary {
-                        data_fmt: conv_op.data_fmt,
+                        data_format: conv_op.data_format,
                         kernel_fmt: conv_op.kernel_fmt,
                         padding: conv_op.padding.clone(), // FIXME
                         dilations: self.block_shape.iter().map(|&i| i as usize).collect(),

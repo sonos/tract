@@ -201,7 +201,7 @@ impl Patcher {
     ) {
         unsafe {
             let x_stride = input.strides()[im2col.patch.input_shape.h_axis()]
-                * im2col.patch.kernel_strides[0] as isize;
+                * im2col.patch.spec.strides[0] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
             let iptr =
@@ -227,8 +227,8 @@ impl Patcher {
         g: usize,
     ) {
         unsafe {
-            let y_stride = im2col.patch.kernel_strides[0] as isize;
-            let x_stride = im2col.patch.kernel_strides[1] as isize;
+            let y_stride = im2col.patch.spec.strides[0] as isize;
+            let x_stride = im2col.patch.spec.strides[1] as isize;
             let y_stride_ptr = y_stride * input.strides()[im2col.patch.input_shape.hw_axes()][0];
             let x_stride_ptr = x_stride * input.strides()[im2col.patch.input_shape.hw_axes()][1];
             let c_stride_ptr = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
@@ -278,9 +278,9 @@ impl Patcher {
     ) {
         unsafe {
             let y_stride = input.strides()[im2col.patch.input_shape.hw_axes()][0]
-                * im2col.patch.kernel_strides[0] as isize;
+                * im2col.patch.spec.strides[0] as isize;
             let x_stride = input.strides()[im2col.patch.input_shape.hw_axes()][1]
-                * im2col.patch.kernel_strides[1] as isize;
+                * im2col.patch.spec.strides[1] as isize;
             let c_stride = input.strides()[im2col.patch.input_shape.c_axis()] as isize;
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
             let iptr =

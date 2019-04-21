@@ -10,13 +10,13 @@ use super::mat_mat::MatMat;
 use super::vec_mat::VecMat;
 use super::Conv;
 use crate::ops::nn::conv::KernelFormat;
-use crate::ops::nn::{DataFormat, PaddingSpec, Patch};
+use crate::ops::nn::{DataFormat, PaddingSpec, Patch, PatchSpec};
 
 use std::iter::Sum;
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
-    pub data_fmt: DataFormat,
+    pub data_format: DataFormat,
     pub kernel_fmt: KernelFormat,
     pub padding: PaddingSpec,
     pub dilations: TVec<usize>,
@@ -45,7 +45,7 @@ impl ConvUnary {
             conv.strides.as_ref().map(|a| TVec::from(&**a)).unwrap_or(tvec!(1; spatial_rank));
 
         let unary = ConvUnary {
-            data_fmt: conv.data_fmt,
+            data_format: conv.data_format,
             kernel_fmt: conv.kernel_fmt,
             padding: conv.padding.clone(),
             dilations,
@@ -65,14 +65,14 @@ impl ConvUnary {
 
         trace!("kernel spatial shape {:?}", kernel_spatial_shape);
 
-        Patch::new(
-            self.data_fmt,
-            self.dilations.clone(),
-            kernel_spatial_shape.into(),
-            &self.padding,
-            self.strides.clone(),
-            input_full_shape.into(),
-        )
+        PatchSpec {
+            data_format: self.data_format,
+            dilations: self.dilations.clone(),
+            kernel_shape: kernel_spatial_shape.into(),
+            padding: self.padding.clone(),
+            strides: self.strides.clone(),
+            input_full_shape: input_full_shape.into(),
+        }.into_patch()
     }
 
     fn input_channels(&self) -> usize {
@@ -83,7 +83,7 @@ impl ConvUnary {
     }
 
     fn output_channels(&self) -> usize {
-        self.data_fmt.shape(&self.full_output_shape).c_dim().to_integer().unwrap() as usize
+        self.data_format.shape(&self.full_output_shape).c_dim().to_integer().unwrap() as usize
     }
 
     pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
@@ -109,7 +109,7 @@ impl ConvUnary {
                     .slice()
                     .iter()
                     .enumerate()
-                    .map(|(ix, x)| x * rpatch.kernel_strides[ix] * input_spatial_dims_strides[ix])
+                    .map(|(ix, x)| x * rpatch.spec.strides[ix] * input_spatial_dims_strides[ix])
                     .sum::<usize>() as isize
             })
             .collect();
@@ -177,7 +177,7 @@ impl ConvUnary {
             .map(|bias| -> TractResult<_> {
                 let mut bias_shape: Vec<usize> =
                     ::std::iter::repeat(1).take(output_shape.len()).collect();
-                bias_shape[self.data_fmt.shape(output_shape).c_axis()] = self.output_channels();
+                bias_shape[self.data_format.shape(output_shape).c_axis()] = self.output_channels();
                 Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
             })
             .inside_out()?)
@@ -309,7 +309,7 @@ impl ConvUnary {
     }
 
     pub fn rm_dummy_axis(&self, axis: usize) -> TractResult<Option<ConvUnary>> {
-        let shape = self.data_fmt.shape(&self.full_input_shape);
+        let shape = self.data_format.shape(&self.full_input_shape);
         if axis < shape.h_axis() {
             return Ok(None);
         }
@@ -335,7 +335,7 @@ impl ConvUnary {
             copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
         let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
         let new_op = ConvUnary {
-            data_fmt: self.data_fmt,
+            data_format: self.data_format,
             kernel_fmt: self.kernel_fmt,
             padding: self.padding.rm_axis(geo_axis),
             dilations: copy_rm_nth(&self.dilations, geo_axis),
@@ -370,7 +370,7 @@ impl Op for ConvUnary {
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
-        let shape = self.data_fmt.shape(inputs[0].shape.iter().collect::<TVec<TDim>>());
+        let shape = self.data_format.shape(inputs[0].shape.iter().collect::<TVec<TDim>>());
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let output_dims = self.padding.compute(
@@ -434,7 +434,7 @@ impl Op for ConvUnary {
             && self.group == 1
             && self.bias.is_none()
         {
-            if self.kernel_fmt == KernelFormat::HWIO && self.data_fmt == DataFormat::NHWC {
+            if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
                 let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
@@ -492,7 +492,7 @@ impl Op for ConvUnary {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let mut fact = target.outlet_fact(input)?.clone();
-        let shape = self.data_fmt.shape(&fact.shape);
+        let shape = self.data_format.shape(&fact.shape);
         if fact.axis == shape.n_axis() {
             let mut op = self.clone();
             op.full_output_shape[fact.axis] = fact.pulse().to_dim();

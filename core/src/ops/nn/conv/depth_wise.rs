@@ -46,7 +46,7 @@ where
         let img = img.to_array_view::<T>()?;
         let visitor = self.patch.wrap(&img);
         let output_shape = self.patch.output_full_shape(self.out_channels);
-        let len = self.patch.kernel_spatial_shape.iter().cloned().product::<usize>();
+        let len = self.patch.spec.kernel_shape.iter().cloned().product::<usize>();
         let c_axis = self.patch.input_shape.c_axis();
         let n_axis = self.patch.input_shape.n_axis();
         let h_axis = self.patch.input_shape.h_axis();
