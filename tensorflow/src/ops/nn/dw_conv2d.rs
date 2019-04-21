@@ -31,7 +31,7 @@ impl Op for DepthwiseConv2d {
         let ker = inputs[1].shape.as_finite().ok_or("Can not stream kernel")?;
         let shape = self.fmt.shape(img.shape.to_tvec());
         let output_dims = self.padding.compute(shape.hw_dims(), &ker[0..2], &self.dilations[1..3], &self.strides[1..3]);
-        let n_output_points: TDim = output_dims.output.into_iter().product::<TDim>();
+        let n_output_points: TDim = output_dims.iter().map(|d| d.output).product::<TDim>();
         let kernel_surface = ker[0] * ker[1];
         let out_channels = ker[2] * ker[3];
         Ok(tvec!((
@@ -128,8 +128,8 @@ impl InferenceRulesOp for DepthwiseConv2d {
                 );
                 let in_channels = ker[2].to_integer()?;
                 let multiplier = ker[3].to_integer()?;
-                s.equals(&outputs[0].shape[img.h_axis()], output_shape.output[0])?;
-                s.equals(&outputs[0].shape[img.h_axis() + 1], output_shape.output[1])?;
+                s.equals(&outputs[0].shape[img.h_axis()], output_shape[0].output)?;
+                s.equals(&outputs[0].shape[img.h_axis() + 1], output_shape[1].output)?;
                 s.equals(&outputs[0].shape[img.c_axis()], (in_channels * multiplier).to_dim())?;
             }
             Ok(())

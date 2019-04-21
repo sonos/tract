@@ -379,7 +379,7 @@ impl Op for ConvUnary {
             &*self.dilations,
             &*self.strides,
         );
-        let n_output_points: TDim = output_dims.output.into_iter().product::<TDim>();
+        let n_output_points: TDim = output_dims.iter().map(|d| d.output).product::<TDim>();
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         Ok(tvec!((

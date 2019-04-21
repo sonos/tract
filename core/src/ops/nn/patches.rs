@@ -32,14 +32,16 @@ impl Patch {
         kernel_strides: TVec<usize>,
         input_full_shape: TVec<usize>,
     ) -> Patch {
-        use crate::ops::nn::padding::ComputedPaddedDim;
         let input_shape = data_fmt.shape(input_full_shape);
-        let ComputedPaddedDim { pad_after, pad_before, output } = padding.compute(
+        let dims = padding.compute(
             input_shape.hw_dims(),
             &kernel_spatial_shape,
             &*dilations,
             &*kernel_strides,
         );
+        let output:TVec<usize> = dims.iter().map(|d| d.output).collect();
+        let pad_before:TVec<usize> = dims.iter().map(|d| d.pad_before).collect();
+        let pad_after:TVec<usize> = dims.iter().map(|d| d.pad_after).collect();
 
         let data_field: Vec<isize> = ::ndarray::indices(&*kernel_spatial_shape)
             .into_iter()
