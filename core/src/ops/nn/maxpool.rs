@@ -94,8 +94,8 @@ impl InferenceRulesOp for MaxPool {
                 self.strides.as_ref().unwrap_or(&ones),
             );
             for o in 0..outputs.len() {
-                for (ix, &d) in computed.output.iter().enumerate() {
-                    s.equals(&outputs[o].shape[ix + ishape.h_axis()], d)?;
+                for (ix, d) in computed.iter().enumerate() {
+                    s.equals(&outputs[o].shape[ix + ishape.h_axis()], d.output)?;
                 }
                 s.equals(&outputs[o].shape[ishape.n_axis()], ishape.n_dim())?;
                 s.equals(&outputs[o].shape[ishape.c_axis()], ishape.c_dim())?;

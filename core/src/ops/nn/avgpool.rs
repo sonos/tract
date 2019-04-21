@@ -91,8 +91,8 @@ impl InferenceRulesOp for AvgPool {
                 &ones,
                 self.strides.as_ref().unwrap_or(&ones),
             );
-            for (ix, &d) in computed.output.iter().enumerate() {
-                s.equals(&outputs[0].shape[ix + ishape.h_axis()], d)?;
+            for (ix, d) in computed.iter().enumerate() {
+                s.equals(&outputs[0].shape[ix + ishape.h_axis()], d.output)?;
             }
             s.equals(&outputs[0].shape[ishape.n_axis()], ishape.n_dim())?;
             s.equals(&outputs[0].shape[ishape.c_axis()], ishape.c_dim())?;

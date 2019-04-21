@@ -53,7 +53,9 @@ impl Conv {
             KernelFormat::HWIO => kshape[kshape.len() - 1] * self.group,
         };
         result[ishape.c_axis()] = channels_out.into();
-        result[ishape.hw_axes()].copy_from_slice(&computed.output);
+        for (ix, d) in computed.iter().enumerate() {
+            result[ishape.h_axis() + ix] = d.output;
+        }
         result
     }
 
