@@ -35,19 +35,19 @@ impl StatelessOp for MaxPool {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
         let input_ptr = input.as_ptr();
+        let shape = self.data_format.shape(input.shape());
 
         let patch = self.patch(input.shape());
-        let output_shape: TVec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
+        let output_shape = shape.fmt.from_n_c_hw(shape.n(), shape.c(), &*patch.output_shape);
         let visitor = patch.wrap(&input);
 
-        let mut values = unsafe { ArrayD::<f32>::uninitialized(&*output_shape) };
+        let mut values = unsafe { ArrayD::<f32>::uninitialized(&*output_shape.shape) };
         let mut indices = if self.with_index_outputs.is_some() {
-            Some(unsafe { ArrayD::uninitialized(&*output_shape) })
+            Some(unsafe { ArrayD::uninitialized(&*output_shape.shape) })
         } else {
             None
         };
-        let shape = &patch.input_shape;
-        ::ndarray::indices(&*output_shape).into_iter().for_each(|coords| unsafe {
+        ::ndarray::indices(&*output_shape.shape).into_iter().for_each(|coords| unsafe {
             let input_ptr = input_ptr.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
             let input_ptr = input_ptr.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
             let max = visitor

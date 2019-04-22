@@ -4,6 +4,8 @@ use crate::internal::*;
 use crate::model::*;
 use insideout::InsideOut;
 
+use itertools::zip;
+
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use super::mat_mat::MatMat;
@@ -89,23 +91,17 @@ impl ConvUnary {
         );
 
         let patch = self.patch(input_full_shape);
-        let ref input_spatial_dims_strides: TVec<usize> = patch
-            .input_shape
-            .hw_axes()
-            .map(|ax| input_full_shape.iter().skip(1 + ax).cloned().product::<usize>())
-            .collect();
-        let channel_stride =
-            input_full_shape.iter().skip(1 + patch.input_shape.c_axis()).product::<usize>();
+        let input_shape = self.data_format.shape(input_full_shape);
+        let output_shape =
+            self.data_format.from_n_c_hw(input_shape.n(), self.output_channels(), &*patch.output_shape);
+        let channel_stride = input_shape.c_stride();
         let rpatch = &patch;
-        let data_offsets: Vec<isize> = ndarray::indices(&*patch.output_spatial_shape)
+        let data_offsets: Vec<isize> = ndarray::indices(&*patch.output_shape)
             .into_iter()
             .map(move |coords| {
-                coords
-                    .slice()
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, x)| x * rpatch.spec.strides[ix] * input_spatial_dims_strides[ix])
-                    .sum::<usize>() as isize
+                zip(coords.slice(), &rpatch.op_strides_times_input_storage_strides)
+                    .map(|(a, b)| *a as isize * b)
+                    .sum::<isize>()
             })
             .collect();
         let kernel_offsets: Vec<isize> = (0..self.input_channels())
@@ -130,12 +126,7 @@ impl ConvUnary {
             kernel.strides()[2],
         );
 
-        Ok(super::Direct::new(
-            conv,
-            input_full_shape.into(),
-            patch.output_full_shape(self.output_channels()),
-            packed,
-        ))
+        Ok(super::Direct::new(conv, input_full_shape.into(), output_shape.shape, packed))
     }
 
     fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
@@ -187,15 +178,17 @@ impl ConvUnary {
     {
         trace!("to_im2col_pair: {:?}", self);
         let patch = self.patch(input_full_shape);
-        let shape: TVec<usize> = patch.output_full_shape(self.output_channels());
+        let input_shape = self.data_format.shape(input_full_shape.into());
+        let output_shape =
+            self.data_format.from_n_c_hw(input_shape.n(), self.output_channels(), &*patch.output_shape);
         let kernel = self.kernel.to_array_view::<T>()?;
 
         trace!("output channels: {:?}", self.output_channels());
         let m = self.output_channels() / self.group;
         let k = kernel.len() / self.output_channels();
-        let n = patch.output_spatial_shape.iter().cloned().product::<usize>();
+        let n = patch.output_shape.iter().cloned().product::<usize>();
 
-        let bias = self.bias_reshaped(&*shape)?;
+        let bias = self.bias_reshaped(&*output_shape.shape)?;
 
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed_kernels: Vec<Tensor> = vec![];
@@ -204,7 +197,7 @@ impl ConvUnary {
             let mm = T::packed_mat_mul(m, k, n);
             let b_pack = mm.b_pack();
 
-            trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
+            trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 
             for subkernel in kernel.outer_iter() {
                 let mut packed = unsafe {
@@ -223,7 +216,7 @@ impl ConvUnary {
             }
             let conv_gemm = MatMat::new(
                 patch.clone(),
-                shape,
+                output_shape,
                 m,
                 k,
                 n,
@@ -238,7 +231,7 @@ impl ConvUnary {
             let mm = T::packed_vec_mat_mul(k, n);
             let b_pack = mm.b_pack();
 
-            trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
+            trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
 
             for subkernel in kernel.outer_iter() {
                 let mut packed = unsafe {
@@ -256,7 +249,7 @@ impl ConvUnary {
             }
             let conv_gemm = VecMat::new(
                 patch.clone(),
-                shape,
+                output_shape,
                 k,
                 n,
                 self.kernel_fmt,
@@ -267,17 +260,19 @@ impl ConvUnary {
             );
             (Box::new(conv_gemm), b_pack)
         };
+        let c_dim = input_shape.c_dim();
 
         let im2col = Im2Col::new(
             patch.clone(),
+            input_shape,
             m,
             k,
             n,
             self.group,
-            patch.input_shape.c_dim() / self.group,
+            c_dim / self.group,
             b_pack,
         );
-        let intermediary_shape = im2col.output_shape()?;
+        let intermediary_shape = im2col.output_shape().into();
         Ok((im2col, intermediary_shape, op2))
     }
 
@@ -349,9 +344,13 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
     {
         let patch = self.patch(shape);
+        let input_shape = self.data_format.shape(shape.into());
+        let output_shape =
+            self.data_format.from_n_c_hw(input_shape.n(), self.output_channels(), &*patch.output_shape);
         let op = DepthWise::<T>::new(
             patch,
-            self.output_channels(),
+            input_shape,
+            output_shape,
             self.kernel_as_group_o_ihw()?.into_dyn(),
             self.bias_reshaped(&*shape)?,
         );

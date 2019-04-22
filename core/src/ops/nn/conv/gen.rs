@@ -5,6 +5,7 @@ use crate::dim::DimLike;
 use crate::ops::nn::conv::KernelFormat;
 use crate::ops::nn::DataFormat;
 use crate::ops::nn::PaddingSpec;
+use std::borrow::Borrow;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv {
@@ -59,12 +60,12 @@ impl Conv {
         result
     }
 
-    pub fn to_unary(&self, inputs: &[&TypedTensorInfo]) -> TractResult<Option<ConvUnary>> {
-        let input = inputs[0];
-        let kernel = inputs[1];
+    pub fn to_unary(&self, inputs: &[impl Borrow<TypedTensorInfo>]) -> TractResult<Option<ConvUnary>> {
+        let input = &inputs[0];
+        let kernel = &inputs[1];
         if inputs.len() == 2 {
-            if let Some(kvalue) = kernel.konst.clone() {
-                let ishape: TVec<TDim> = input.shape.iter().collect();
+            if let Some(kvalue) = kernel.borrow().konst.clone() {
+                let ishape: TVec<TDim> = input.borrow().shape.iter().collect();
                 let reduced = ConvUnary::new(
                     &self,
                     &ishape,
@@ -76,9 +77,9 @@ impl Conv {
                 return Ok(Some(reduced));
             }
         } else {
-            let bias = inputs[2];
-            if let (Some(kvalue), Some(bias)) = (kernel.konst.clone(), bias.konst.clone()) {
-                let ishape: TVec<TDim> = input.shape.iter().collect();
+            let bias = &inputs[2];
+            if let (Some(kvalue), Some(bias)) = (kernel.borrow().konst.clone(), bias.borrow().konst.clone()) {
+                let ishape: TVec<TDim> = input.borrow().shape.iter().collect();
                 let reduced = ConvUnary::new(
                     &self,
                     &ishape,
@@ -120,23 +121,9 @@ impl Op for Conv {
 
 impl StatelessOp for Conv {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let (input, kernel, bias) = if inputs.len() == 2 {
-            let (input, kernel) = args_2!(inputs);
-            (input, kernel, None)
-        } else {
-            let (input, kernel, bias) = args_3!(inputs);
-            (input, kernel, Some(bias.to_tensor()))
-        };
-        let ishape: TVec<TDim> = input.shape().iter().map(|i| i.to_dim()).collect();
-        let reduced = ConvUnary::new(
-            &self,
-            &ishape,
-            &self.output_shape(&*ishape, &kernel.shape()),
-            kernel.to_tensor(),
-            bias,
-            self.group,
-        )?;
-        reduced.eval(tvec!(input))
+        let inputs_info:TVec<TypedTensorInfo> = inputs.iter().map(|t| TypedTensorInfo::from(t.as_tensor())).collect();
+        let unary = self.to_unary(&*inputs_info)?.unwrap();
+        unary.eval(tvec!(inputs.remove(0)))
     }
 }
 

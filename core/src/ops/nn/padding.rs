@@ -165,4 +165,12 @@ mod tests {
         );
     }
 
+    #[test]
+    fn explicit_2() {
+        assert_eq!(
+            PaddingSpec::explicit(28usize, 3usize, 1, 1, 2, 2),
+            ComputedPaddedDim::new(30, 2, 2)
+        );
+    }
+
 }

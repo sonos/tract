@@ -1,3 +1,4 @@
+use crate::model::TVec;
 use crate::dim::DimLike;
 use std::fmt;
 use std::marker::PhantomData;
@@ -21,6 +22,22 @@ impl DataFormat {
         S: AsRef<[D]> + fmt::Debug,
     {
         DataShape { fmt: *self, shape, _phantom: PhantomData }
+    }
+
+    pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> DataShape<D, TVec<D>>
+    where
+        D: DimLike,
+        S: AsRef<[D]> + fmt::Debug,
+    {
+        let mut me = tvec!(n);
+        if *self == DataFormat::NCHW {
+            me.push(c);
+        }
+        me.extend(shape.as_ref().iter().cloned());
+        if *self == DataFormat::NHWC {
+            me.push(c);
+        }
+        self.shape(me)
     }
 }
 

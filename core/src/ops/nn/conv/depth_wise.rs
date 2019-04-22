@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::nn::Patch;
+use crate::ops::nn::{ DataShape, Patch };
 use ndarray::*;
 use std::iter::Sum;
 
@@ -11,7 +11,8 @@ where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
     patch: Patch,
-    out_channels: usize,
+    input_shape: DataShape<usize, TVec<usize>>,
+    output_shape: DataShape<usize, TVec<usize>>,
     kernel_chw: ArrayD<T>,
     bias: Option<ArrayD<T>>,
 }
@@ -103,13 +104,12 @@ where
         let img = img.to_array_view::<T>()?;
         let ptr = img.as_ptr();
         let visitor = self.patch.wrap(&img);
-        let shape = &self.patch.input_shape;
-        let output_shape = self.patch.output_full_shape(self.out_channels);
-        let mut output = unsafe { ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
+        let shape = &self.input_shape;
+        let mut output = unsafe { ArrayD::<T>::from_shape_fn(&*self.output_shape.shape, |coords| {
             let ptr = ptr.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
             let ptr = ptr.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
             let it = visitor.attt(&coords.slice()[shape.hw_axes()]);
-            let channel = coords[self.patch.input_shape.c_axis()];
+            let channel = coords[shape.c_axis()];
             let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
             kernel
                 .iter()
@@ -133,10 +133,10 @@ where
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
-        let n_output_points = self.patch.output_spatial_shape.iter().cloned().product::<usize>();
+        let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
         Ok(tvec!((
             Cost::FMA(T::datum_type()),
-            (self.patch.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
+            (self.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
         )))
     }
 }
