@@ -4,7 +4,7 @@ use ndarray::prelude::*;
 #[cfg(not(debug_assertions))]
 use no_panic::no_panic;
 
-use std::ops::{Range};
+use std::ops::Range;
 
 use itertools::zip;
 
@@ -19,6 +19,33 @@ pub struct PatchSpec {
 }
 
 impl PatchSpec {
+    pub fn for_full_shape(data_format: DataFormat, input_full_shape: &[usize]) -> PatchSpec {
+        PatchSpec {
+            data_format,
+            kernel_shape: tvec!(1; input_full_shape.len()-2),
+            strides: tvec!(1; input_full_shape.len()-2),
+            dilations: tvec!(1; input_full_shape.len()-2),
+            input_full_shape: input_full_shape.into(),
+            padding: PaddingSpec::Valid,
+        }
+    }
+
+    pub fn with_kernel_shape(self, kernel_shape: TVec<usize>) -> PatchSpec {
+        PatchSpec { kernel_shape, ..self }
+    }
+
+    pub fn with_dilations(self, dilations: TVec<usize>) -> PatchSpec {
+        PatchSpec { dilations, ..self }
+    }
+
+    pub fn with_strides(self, strides: TVec<usize>) -> PatchSpec {
+        PatchSpec { strides, ..self }
+    }
+
+    pub fn with_padding(self, padding: PaddingSpec) -> PatchSpec {
+        PatchSpec { padding, ..self }
+    }
+
     pub fn into_patch(self) -> Patch {
         let input_shape = self.data_format.shape(self.input_full_shape.clone());
         let dims = self.padding.compute(
@@ -59,10 +86,10 @@ impl PatchSpec {
             input_layout_strides.push(*dim as isize * previous);
         }
         input_layout_strides.reverse();
-        let input_layout_strides:TVec<isize> = input_layout_strides[input_shape.hw_axes()].into();
+        let input_layout_strides: TVec<isize> = input_layout_strides[input_shape.hw_axes()].into();
         let standard_layout_data_field: Vec<isize> = data_field
             .outer_iter()
-            .map(|coords| zip(coords,&input_layout_strides).map(|(a, b)| a * b).sum::<isize>())
+            .map(|coords| zip(coords, &input_layout_strides).map(|(a, b)| a * b).sum::<isize>())
             .collect();
 
         let mut valid_output_zone = tvec!();
@@ -91,7 +118,8 @@ impl PatchSpec {
             valid_output_zone.push(min..max)
         }
 
-        let op_strides_times_input_storage_strides = zip(&self.strides, &input_layout_strides).map(|(a,b)| (*a as isize * b)).collect();
+        let op_strides_times_input_storage_strides =
+            zip(&self.strides, &input_layout_strides).map(|(a, b)| (*a as isize * b)).collect();
 
         Patch {
             spec: self,
@@ -283,7 +311,9 @@ impl<'p> PatchVisitor<'p> {
 
     pub fn global_offset_for(&self, coords: &[usize], patch_index: usize) -> usize {
         assert_eq!(coords.len(), self.patch.spec.kernel_shape.len());
-        let center = zip(coords, &self.patch.op_strides_times_input_storage_strides).map(|(a,b)| *a as isize* *b).sum::<isize>();
+        let center = zip(coords, &self.patch.op_strides_times_input_storage_strides)
+            .map(|(a, b)| *a as isize * *b)
+            .sum::<isize>();
         (center + self.patch.standard_layout_data_field[patch_index]) as usize
     }
 }
