@@ -168,7 +168,6 @@ impl Patcher {
     ) {
         let ptr = input.as_ptr();
         let mut mega_matrix = unsafe { Array2::<T>::uninitialized((im2col.k, im2col.n)) };
-        let visitor = im2col.patch.wrap(input);
         let shape = &im2col.input_shape;
         unsafe {
             let ptr = ptr.offset((shape.n_stride() * i) as isize);
@@ -180,7 +179,7 @@ impl Patcher {
                 let mut col = col.iter_mut();
                 for ci in 0..im2col.ci_per_group {
                     let ptr = ptr.offset((shape.c_stride() * ci) as isize);
-                    for v in visitor.attt(spatial.slice()) {
+                    for v in im2col.patch.at(spatial.slice()) {
                         *col.next().expect("geometry error in conv") = v.map(|o| *ptr.offset(o) ).unwrap_or(T::default());
                     }
                 }
