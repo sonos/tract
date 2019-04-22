@@ -33,6 +33,8 @@ pub trait DimLike:
     + Send
     + Sync
     + 'static
+    + std::iter::Product
+    + std::iter::Sum
 {
     fn div_ceil(&self, other: usize) -> Self {
         (*self + other - 1) / other
@@ -198,6 +200,12 @@ impl ops::Rem<TDim> for TDim {
 impl ops::RemAssign<TDim> for TDim {
     fn rem_assign(&mut self, rhs: TDim) {
         self.0 %= rhs.0
+    }
+}
+
+impl ::std::iter::Sum for TDim {
+    fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {
+        iter.fold(0.to_dim(), |a, b| a + b)
     }
 }
 
