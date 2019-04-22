@@ -68,6 +68,7 @@ impl StatelessOp for DepthwiseConv2d {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (img, ker) = args_2!(inputs);
         let img = img.to_array_view::<f32>()?;
+        let ptr = img.as_ptr();
         let ker = ker.to_array_view::<f32>()?;
         let input_shape = self.data_format.shape(img.shape());
         let patch = PatchSpec {
@@ -89,7 +90,7 @@ impl StatelessOp for DepthwiseConv2d {
             let mut sum = 0.0f32;
             for di in 0..ker.shape()[0] {
                 for dj in 0..ker.shape()[1] {
-                    let vi = it.next().unwrap().unwrap_or(0.0);
+                    let vi = it.next().unwrap().map(|o| unsafe { *ptr.offset(o) }).unwrap_or(0.0);
                     let vk = ker[[di, dj, k, q]];
                     sum += vi * vk;
                 }

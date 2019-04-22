@@ -314,9 +314,9 @@ pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
 }
 
 impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for PatchIterator<'p, 'i, 'v, T> {
-    type Item = Option<T>;
+    type Item = Option<isize>;
     #[inline(always)]
-    fn next(&mut self) -> Option<Option<T>> {
+    fn next(&mut self) -> Option<Option<isize>> {
         match self {
             &mut PatchIterator::Fast(ref mut it) => it.next(),
             &mut PatchIterator::Safe(ref mut it) => it.next(),
@@ -335,10 +335,10 @@ pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
 impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
     for FastPatchIterator<'i, 'p, 'v, T>
 {
-    type Item = Option<T>;
+    type Item = Option<isize>;
     #[inline(always)]
     #[cfg_attr(not(debug_assertions), no_panic)]
-    fn next(&mut self) -> Option<Option<T>> {
+    fn next(&mut self) -> Option<Option<isize>> {
         if self.item == self.visitor.patch.standard_layout_data_field.len() {
             return None;
         }
@@ -346,7 +346,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
             let position = self.center
                 + self.visitor.patch.standard_layout_data_field.get_unchecked(self.item);
             self.item += 1;
-            Some(Some(*(self.ptr.offset(position))))
+            Some(Some(position))
         }
     }
 }
@@ -363,9 +363,9 @@ pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
 impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
     for SafePatchIterator<'i, 'p, 'v, T>
 {
-    type Item = Option<T>;
+    type Item = Option<isize>;
     #[cfg_attr(not(debug_assertions), no_panic)]
-    fn next(&mut self) -> Option<Option<T>> {
+    fn next(&mut self) -> Option<Option<isize>> {
         unsafe {
             let patch = self.visitor.patch;
             if self.item == patch.standard_layout_data_field.len() {
@@ -388,7 +388,7 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
             }
             let position = self.center + patch.standard_layout_data_field.get_unchecked(self.item);
             self.item += 1;
-            Some(Some(*(self.ptr.offset(position))))
+            Some(Some(position))
         }
     }
 }

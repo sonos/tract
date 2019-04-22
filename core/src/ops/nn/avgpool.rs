@@ -256,11 +256,12 @@ where
             use ndarray::IntoDimension;
             let i = input.view().into_dimensionality()?;
             let visitor = self.patch.wrap(&i);
+            let ptr = i.as_ptr();
             output
                 .slice_axis_mut(Axis(h_axis), (0..non_valid_top).into())
                 .indexed_iter_mut()
                 .for_each(|(coords, it)| {
-                    *it = self.compute_one(&visitor, coords.into_dimension().slice());
+                    *it = self.compute_one(ptr, &visitor, coords.into_dimension().slice());
                 });
             output
                 .slice_axis_mut(Axis(h_axis), (start_non_valid_y..).into())
@@ -268,13 +269,13 @@ where
                 .for_each(|(coords, it)| {
                     let mut coords = coords.into_dimension().into_dyn();
                     coords[h_axis] += start_non_valid_y;
-                    *it = self.compute_one(&visitor, coords.slice());
+                    *it = self.compute_one(ptr, &visitor, coords.slice());
                 });
             output
                 .slice_axis_mut(Axis(h_axis + 1), (0..non_valid_left).into())
                 .indexed_iter_mut()
                 .for_each(|(coords, it)| {
-                    *it = self.compute_one(&visitor, coords.into_dimension().slice());
+                    *it = self.compute_one(ptr, &visitor, coords.into_dimension().slice());
                 });
             output
                 .slice_axis_mut(Axis(h_axis + 1), (start_non_valid_x..).into())
@@ -282,7 +283,7 @@ where
                 .for_each(|(coords, it)| {
                     let mut coords = coords.into_dimension().into_dyn();
                     coords[h_axis + 1] += start_non_valid_x;
-                    *it = self.compute_one(&visitor, coords.slice());
+                    *it = self.compute_one(ptr, &visitor, coords.slice());
                 });
         }
         Ok(output)
@@ -292,17 +293,18 @@ where
         let output_shape: TVec<usize> =
             self.patch.output_full_shape(self.patch.input_shape.c_dim());
         let input = input.view();
+        let ptr = input.as_ptr();
         let visitor = self.patch.wrap(&input);
         let output = ArrayD::from_shape_fn(&*output_shape, |coords| {
-            self.compute_one(&visitor, coords.slice())
+            self.compute_one(ptr, &visitor, coords.slice())
         });
         Ok(output)
     }
 
-    fn compute_one<'v>(&self, visitor: &'v PatchVisitor<T>, coords: &[usize]) -> T {
+    fn compute_one<'v>(&self, input: *const T, visitor: &'v PatchVisitor<T>, coords: &[usize]) -> T {
         let pair = visitor
             .at(&coords)
-            .map(|ov| ov.map(|v| (v, true)).unwrap_or((T::zero(), false)))
+            .map(|offset| offset.map(|offset| unsafe { (*input.offset(offset),true) }).unwrap_or((T::zero(),false)))
             .filter(|pair| pair.1 || self.count_include_pad)
             .fold((T::zero(), 0), |acc, pair| (acc.0 + pair.0, acc.1 + 1));
         pair.0 / (pair.1.as_())
