@@ -3,7 +3,6 @@ use ndarray::prelude::*;
 use num_traits::{AsPrimitive, Float};
 
 use super::{DataFormat, DataShape, PaddingSpec, Patch, PatchSpec};
-use crate::ops::nn::patches::PatchVisitor;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
@@ -299,21 +298,20 @@ where
     pub fn generic(&self, input: &ArrayViewD<T>) -> TractResult<ArrayD<T>> {
         let input = input.view();
         let ptr = input.as_ptr();
-        let visitor = self.patch.wrap(&input);
         let output = ArrayD::from_shape_fn(&*self.output_shape.shape, |coords| {
-            self.compute_one(ptr, &visitor, coords.slice())
+            self.compute_one(ptr, coords.slice())
         });
         Ok(output)
     }
 
-    fn compute_one<'v>(&self, input: *const T, visitor: &'v PatchVisitor, coords: &[usize]) -> T {
+    fn compute_one<'v>(&self, input: *const T, coords: &[usize]) -> T {
         unsafe {
-            assert_eq!(coords.len(), visitor.patch.spec.kernel_shape.len() + 2);
+            assert_eq!(coords.len(), self.patch.spec.kernel_shape.len() + 2);
             let shape = &self.input_shape;
             let input = input.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
             let input = input.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
-            let pair = visitor
-                .attt(&coords[shape.hw_axes()])
+            let pair = self.patch
+                .at(&coords[shape.hw_axes()])
                 .map(|offset| {
                     offset.map(|offset| (*input.offset(offset), true)).unwrap_or((T::zero(), false))
                 })

@@ -161,10 +161,6 @@ impl Patch {
         self.spec.input_shape.len()
     }
 
-    pub fn wrap<'i, 'p, T>(&'p self, input: &ArrayViewD<'i, T>) -> PatchVisitor<'p> {
-        PatchVisitor { patch: &self }
-    }
-
     unsafe fn is_valid(&self, coords: &[usize]) -> bool {
         for ix in 0..self.rank() {
             let c = *coords.get_unchecked(ix) as isize;
@@ -257,43 +253,32 @@ impl Patch {
     pub fn visit_invalid_d(&self) -> impl Iterator<Item = (TVec<usize>, Option<bool>)> + '_ {
         self.invalid_output_zones.iter().flat_map(move |z| self.visit_zone_d(z, Some(false)))
     }
-}
 
-#[derive(Debug)]
-pub struct PatchVisitor<'p> {
-    pub patch: &'p Patch,
-}
-
-impl<'p> PatchVisitor<'p> {
-    pub fn attt<'v>(&'p self, coords: &[usize]) -> PatchIterator<'p, 'v>
-    where
-        'p: 'v,
+    pub fn at<'p>(&'p self, coords: &[usize]) -> PatchIterator<'p>
     {
         self.at_hint(coords, None)
     }
 
-    pub fn at_hint<'v>(&'p self, coords: &[usize], hint: Option<bool>) -> PatchIterator<'p, 'v>
-    where
-        'p: 'v,
+    pub fn at_hint<'p>(&'p self, coords: &[usize], hint: Option<bool>) -> PatchIterator<'p>
     {
         unsafe {
-            assert_eq!(coords.len(), self.patch.spec.kernel_shape.len());
+            assert_eq!(coords.len(), self.spec.kernel_shape.len());
             let mut center = 0;
-            for i in 0..self.patch.op_strides_times_input_storage_strides.len() {
-                center += *self.patch.op_strides_times_input_storage_strides.get_unchecked(i)
+            for i in 0..self.op_strides_times_input_storage_strides.len() {
+                center += *self.op_strides_times_input_storage_strides.get_unchecked(i)
                     * *coords.get_unchecked(i) as isize;
             }
-            let valid = hint.unwrap_or_else(|| !self.patch.padded || self.patch.is_valid(coords));
+            let valid = hint.unwrap_or_else(|| !self.padded || self.is_valid(coords));
             if valid {
-                PatchIterator::Fast(FastPatchIterator { visitor: &self, center, item: 0 })
+                PatchIterator::Fast(FastPatchIterator { patch: &self, center, item: 0 })
             } else {
                 let mut input_patch_center: TVec<_> = coords.into();
                 input_patch_center
                     .iter_mut()
-                    .zip(self.patch.spec.strides.iter())
+                    .zip(self.spec.strides.iter())
                     .for_each(|(a, &b)| *a *= b as usize);
                 PatchIterator::Safe(SafePatchIterator {
-                    visitor: self,
+                    patch: self,
                     item: 0,
                     input_patch_center,
                     center,
@@ -303,21 +288,21 @@ impl<'p> PatchVisitor<'p> {
     }
 
     pub fn global_offset_for(&self, coords: &[usize], patch_index: usize) -> usize {
-        assert_eq!(coords.len(), self.patch.spec.kernel_shape.len());
-        let center = zip(coords, &self.patch.op_strides_times_input_storage_strides)
+        assert_eq!(coords.len(), self.spec.kernel_shape.len());
+        let center = zip(coords, &self.op_strides_times_input_storage_strides)
             .map(|(a, b)| *a as isize * *b)
             .sum::<isize>();
-        (center + self.patch.standard_layout_data_field[patch_index]) as usize
+        (center + self.standard_layout_data_field[patch_index]) as usize
     }
 }
 
 #[derive(Debug)]
-pub enum PatchIterator<'p: 'v, 'v> {
-    Fast(FastPatchIterator<'p, 'v>),
-    Safe(SafePatchIterator<'p, 'v>),
+pub enum PatchIterator<'p> {
+    Fast(FastPatchIterator<'p>),
+    Safe(SafePatchIterator<'p>),
 }
 
-impl<'p: 'v, 'v> Iterator for PatchIterator<'p, 'v> {
+impl<'p> Iterator for PatchIterator<'p> {
     type Item = Option<isize>;
     #[inline(always)]
     fn next(&mut self) -> Option<Option<isize>> {
@@ -329,23 +314,23 @@ impl<'p: 'v, 'v> Iterator for PatchIterator<'p, 'v> {
 }
 
 #[derive(Debug)]
-pub struct FastPatchIterator<'p: 'v, 'v> {
-    visitor: &'v PatchVisitor<'p>,
+pub struct FastPatchIterator<'p> {
+    patch: &'p Patch,
     center: isize,
     item: usize,
 }
 
-impl<'p: 'v, 'v> Iterator for FastPatchIterator<'p, 'v> {
+impl<'p> Iterator for FastPatchIterator<'p> {
     type Item = Option<isize>;
     #[inline(always)]
     #[cfg_attr(not(debug_assertions), no_panic)]
     fn next(&mut self) -> Option<Option<isize>> {
-        if self.item == self.visitor.patch.standard_layout_data_field.len() {
+        if self.item == self.patch.standard_layout_data_field.len() {
             return None;
         }
         unsafe {
             let position = self.center
-                + self.visitor.patch.standard_layout_data_field.get_unchecked(self.item);
+                + self.patch.standard_layout_data_field.get_unchecked(self.item);
             self.item += 1;
             Some(Some(position))
         }
@@ -353,25 +338,24 @@ impl<'p: 'v, 'v> Iterator for FastPatchIterator<'p, 'v> {
 }
 
 #[derive(Debug)]
-pub struct SafePatchIterator<'p: 'v, 'v> {
-    visitor: &'v PatchVisitor<'p>,
+pub struct SafePatchIterator<'p> {
+    patch: &'p Patch,
     item: usize,
     input_patch_center: TVec<usize>,
     center: isize,
 }
 
-impl<'p: 'v, 'v> Iterator for SafePatchIterator<'p, 'v> {
+impl<'p> Iterator for SafePatchIterator<'p> {
     type Item = Option<isize>;
     #[cfg_attr(not(debug_assertions), no_panic)]
     fn next(&mut self) -> Option<Option<isize>> {
         unsafe {
-            let patch = self.visitor.patch;
-            if self.item == patch.standard_layout_data_field.len() {
+            if self.item == self.patch.standard_layout_data_field.len() {
                 return None;
             }
-            let input_shape = &patch.spec.input_shape;
+            let input_shape = &self.patch.spec.input_shape;
             let img_offset =
-                patch.data_field.as_ptr().offset((self.item * input_shape.len()) as isize);
+                self.patch.data_field.as_ptr().offset((self.item * input_shape.len()) as isize);
 
             for ix in 0..input_shape.len() {
                 let pos = *self.input_patch_center.get_unchecked(ix) as isize
@@ -381,7 +365,7 @@ impl<'p: 'v, 'v> Iterator for SafePatchIterator<'p, 'v> {
                     return Some(None);
                 }
             }
-            let position = self.center + patch.standard_layout_data_field.get_unchecked(self.item);
+            let position = self.center + self.patch.standard_layout_data_field.get_unchecked(self.item);
             self.item += 1;
             Some(Some(position))
         }

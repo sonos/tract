@@ -103,12 +103,11 @@ where
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
         let ptr = img.as_ptr();
-        let visitor = self.patch.wrap(&img);
         let shape = &self.input_shape;
         let mut output = unsafe { ArrayD::<T>::from_shape_fn(&*self.output_shape.shape, |coords| {
             let ptr = ptr.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
             let ptr = ptr.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
-            let it = visitor.attt(&coords.slice()[shape.hw_axes()]);
+            let it = self.patch.at(&coords.slice()[shape.hw_axes()]);
             let channel = coords[shape.c_axis()];
             let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
             kernel

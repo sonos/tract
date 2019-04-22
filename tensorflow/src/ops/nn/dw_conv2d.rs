@@ -78,7 +78,6 @@ impl StatelessOp for DepthwiseConv2d {
             .with_strides(self.strides[input_shape.hw_axes()].into())
             .into_patch();
         let out_channels = ker.shape()[2] * ker.shape()[3];
-        let visitor = patch.wrap(&img);
         let output_shape =
             self.data_format.from_n_c_hw(input_shape.n(), out_channels, &*patch.output_shape);
         unsafe {
@@ -88,7 +87,7 @@ impl StatelessOp for DepthwiseConv2d {
                 let k = c / ker.shape()[3];
                 let q = c % ker.shape()[3];
                 let ptr = ptr.offset((input_shape.c_stride() * k) as isize);
-                let mut it = visitor.attt(&coords.slice()[input_shape.hw_axes()]);
+                let mut it = patch.at(&coords.slice()[input_shape.hw_axes()]);
                 let mut sum = 0.0f32;
                 for di in 0..ker.shape()[0] {
                     for dj in 0..ker.shape()[1] {

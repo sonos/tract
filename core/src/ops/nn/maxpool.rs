@@ -39,7 +39,6 @@ impl StatelessOp for MaxPool {
 
         let patch = self.patch(input.shape());
         let output_shape = shape.fmt.from_n_c_hw(shape.n(), shape.c(), &*patch.output_shape);
-        let visitor = patch.wrap(&input);
 
         let mut values = unsafe { ArrayD::<f32>::uninitialized(&*output_shape.shape) };
         let mut indices = if self.with_index_outputs.is_some() {
@@ -50,15 +49,15 @@ impl StatelessOp for MaxPool {
         ::ndarray::indices(&*output_shape.shape).into_iter().for_each(|coords| unsafe {
             let input_ptr = input_ptr.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
             let input_ptr = input_ptr.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
-            let max = visitor
-                .attt(&coords.slice()[shape.hw_axes()])
+            let max = patch
+                .at(&coords.slice()[shape.hw_axes()])
                 .enumerate()
                 .filter_map(|(ix, v)| v.map(|v| (ix, *input_ptr.offset(v))))
                 .fold((0, ::std::f32::MIN), |acc, v| if acc.1 < v.1 { v } else { acc });
             values[&coords] = max.1;
             if self.with_index_outputs.is_some() {
                 indices.as_mut().unwrap()[coords] =
-                    visitor.global_offset_for(&coords.slice()[shape.hw_axes()], max.0) as i32;
+                    patch.global_offset_for(&coords.slice()[shape.hw_axes()], max.0) as i32;
             }
         });
         if let Some(dt) = self.with_index_outputs {
