@@ -14,15 +14,13 @@ pub struct MaxPool {
 
 impl MaxPool {
     fn patch(&self, input_full_shape: &[usize]) -> Patch {
-        let hw_rank = self.data_format.shape(input_full_shape).hw_rank();
-        PatchSpec {
-            data_format: self.data_format,
-            dilations: tvec![1; hw_rank],
-            kernel_shape: self.kernel_shape.clone(),
-            padding: self.padding.clone(),
-            strides: self.strides.clone().unwrap_or_else(|| tvec![1; hw_rank]),
-            input_full_shape: input_full_shape.into(),
-        }.into_patch()
+        let mut spec = PatchSpec::for_full_shape(self.data_format.clone(), input_full_shape)
+            .with_kernel_shape(self.kernel_shape.clone())
+            .with_padding(self.padding.clone());
+        if let Some(strides) = self.strides.clone() {
+            spec = spec.with_strides(strides);
+        }
+        spec.into_patch()
     }
 }
 

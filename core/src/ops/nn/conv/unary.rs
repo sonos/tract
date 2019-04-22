@@ -62,17 +62,12 @@ impl ConvUnary {
     fn patch(&self, input_full_shape: &[usize]) -> Patch {
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..(input_full_shape.len() - 2)];
-
-        trace!("kernel spatial shape {:?}", kernel_spatial_shape);
-
-        PatchSpec {
-            data_format: self.data_format,
-            dilations: self.dilations.clone(),
-            kernel_shape: kernel_spatial_shape.into(),
-            padding: self.padding.clone(),
-            strides: self.strides.clone(),
-            input_full_shape: input_full_shape.into(),
-        }.into_patch()
+        let spec = PatchSpec::for_full_shape(self.data_format.clone(), input_full_shape)
+            .with_kernel_shape(kernel_spatial_shape.into())
+            .with_padding(self.padding.clone())
+            .with_dilations(self.dilations.clone())
+            .with_strides(self.strides.clone());
+        spec.into_patch()
     }
 
     fn input_channels(&self) -> usize {

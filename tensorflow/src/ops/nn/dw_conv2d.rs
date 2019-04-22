@@ -71,14 +71,12 @@ impl StatelessOp for DepthwiseConv2d {
         let ptr = img.as_ptr();
         let ker = ker.to_array_view::<f32>()?;
         let input_shape = self.data_format.shape(img.shape());
-        let patch = PatchSpec {
-            data_format: self.data_format.clone(),
-            dilations: self.dilations[input_shape.hw_axes()].into(),
-            kernel_shape: ker.shape()[0..2].into(),
-            padding: self.padding.clone(),
-            strides: self.strides[input_shape.hw_axes()].into(),
-            input_full_shape: img.shape().into()
-        }.into_patch();
+        let patch = PatchSpec::for_full_shape(self.data_format, img.shape())
+            .with_dilations(self.dilations[input_shape.hw_axes()].into())
+            .with_kernel_shape(ker.shape()[0..2].into())
+            .with_padding(self.padding.clone())
+            .with_strides(self.strides[input_shape.hw_axes()].into())
+            .into_patch();
         let out_channels = ker.shape()[2] * ker.shape()[3];
         let visitor = patch.wrap(&img);
         let output_shape = patch.output_full_shape(out_channels);
