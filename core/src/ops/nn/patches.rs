@@ -4,7 +4,9 @@ use ndarray::prelude::*;
 #[cfg(not(debug_assertions))]
 use no_panic::no_panic;
 
-use std::ops::Range;
+use std::ops::{Range};
+
+use itertools::zip;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatchSpec {
@@ -51,21 +53,16 @@ impl PatchSpec {
             .map(|col| (col.iter().min().cloned().unwrap(), col.iter().max().cloned().unwrap()))
             .collect();
 
-        let mut input_layout_strides: Vec<usize> = vec![1];
+        let mut input_layout_strides: Vec<isize> = vec![1];
         for dim in input_shape.shape.iter().skip(1).rev() {
             let previous = input_layout_strides.last().cloned().unwrap_or(1);
-            input_layout_strides.push(dim * previous);
+            input_layout_strides.push(*dim as isize * previous);
         }
         input_layout_strides.reverse();
+        let input_layout_strides:TVec<isize> = input_layout_strides[input_shape.hw_axes()].into();
         let standard_layout_data_field: Vec<isize> = data_field
             .outer_iter()
-            .map(|coords| {
-                coords
-                    .iter()
-                    .zip(input_layout_strides.iter().skip(input_shape.h_axis()))
-                    .map(|(&a, &b)| (a as isize * b as isize))
-                    .sum()
-            })
+            .map(|coords| zip(coords,&input_layout_strides).map(|(a, b)| a * b).sum::<isize>())
             .collect();
 
         let mut valid_output_zone = tvec!();
@@ -94,6 +91,8 @@ impl PatchSpec {
             valid_output_zone.push(min..max)
         }
 
+        let op_strides_times_input_storage_strides = zip(&self.strides, &input_layout_strides).map(|(a,b)| (*a as isize * b)).collect();
+
         Patch {
             spec: self,
             padded: pad_before.iter().any(|&p| p != 0) || pad_after.iter().any(|&p| p != 0),
@@ -104,6 +103,7 @@ impl PatchSpec {
             data_field,
             data_field_min_max,
             standard_layout_data_field,
+            op_strides_times_input_storage_strides,
             valid_output_zone,
             invalid_output_zones,
         }
@@ -121,6 +121,7 @@ pub struct Patch {
     pub data_field: Array2<isize>,
     pub data_field_min_max: TVec<(isize, isize)>,
     pub standard_layout_data_field: Vec<isize>,
+    pub op_strides_times_input_storage_strides: TVec<isize>,
     pub valid_output_zone: TVec<Range<usize>>,
     pub invalid_output_zones: TVec<TVec<Range<usize>>>,
 }
@@ -134,19 +135,18 @@ impl Patch {
     }
 
     pub fn wrap<'i, 'p, T>(&'p self, input: &ArrayViewD<'i, T>) -> PatchVisitor<'p> {
-        let valid = !self.padded; //input.is_standard_layout() && !self.padded;
         let mut fast_strides: Vec<_> = input.strides().into();
         fast_strides[self.input_shape.hw_axes()]
             .iter_mut()
             .zip(self.spec.strides.iter())
             .for_each(|(a, &b)| *a *= b as isize);
-        PatchVisitor { patch: &self, valid, fast_strides }
+
+        PatchVisitor { patch: &self }
     }
 
     unsafe fn is_valid(&self, coords: &[usize]) -> bool {
-        let spatial_coords = coords.get_unchecked(self.input_shape.hw_axes());
         for ix in 0..self.input_shape.hw_dims().len() {
-            let c = *spatial_coords.get_unchecked(ix) as isize;
+            let c = *coords.get_unchecked(ix) as isize;
             let strides = *self.spec.strides.get_unchecked(ix) as isize;
             let pos = c * strides;
             let min_max = self.data_field_min_max.get_unchecked(ix);
@@ -240,13 +240,11 @@ impl Patch {
 
 #[derive(Debug)]
 pub struct PatchVisitor<'p> {
-    patch: &'p Patch,
-    valid: bool,
-    fast_strides: Vec<isize>, // kernel strides * storage strides
+    pub patch: &'p Patch,
 }
 
 impl<'p> PatchVisitor<'p> {
-    pub fn at<'v>(&'p self, coords: &[usize]) -> PatchIterator<'p, 'v>
+    pub fn attt<'v>(&'p self, coords: &[usize]) -> PatchIterator<'p, 'v>
     where
         'p: 'v,
     {
@@ -258,16 +256,18 @@ impl<'p> PatchVisitor<'p> {
         'p: 'v,
     {
         unsafe {
+            assert_eq!(coords.len(), self.patch.spec.kernel_shape.len());
             let mut center = 0;
-            for i in 0..self.fast_strides.len() {
-                center += *self.fast_strides.get_unchecked(i) * *coords.get_unchecked(i) as isize;
+            for i in 0..self.patch.op_strides_times_input_storage_strides.len() {
+                center += *self.patch.op_strides_times_input_storage_strides.get_unchecked(i)
+                    * *coords.get_unchecked(i) as isize;
             }
-            let valid = hint.unwrap_or_else(|| self.valid || self.patch.is_valid(coords));
+            let valid = hint.unwrap_or_else(|| !self.patch.padded || self.patch.is_valid(coords));
             if valid {
                 PatchIterator::Fast(FastPatchIterator { visitor: &self, center, item: 0 })
             } else {
                 let mut input_patch_center: TVec<_> = coords.into();
-                input_patch_center[self.patch.input_shape.hw_axes()]
+                input_patch_center
                     .iter_mut()
                     .zip(self.patch.spec.strides.iter())
                     .for_each(|(a, &b)| *a *= b as usize);
@@ -282,11 +282,8 @@ impl<'p> PatchVisitor<'p> {
     }
 
     pub fn global_offset_for(&self, coords: &[usize], patch_index: usize) -> usize {
-        let center = coords
-            .iter()
-            .zip(self.fast_strides.iter())
-            .map(|(&a, &b)| b * a as isize)
-            .sum::<isize>();
+        assert_eq!(coords.len(), self.patch.spec.kernel_shape.len());
+        let center = zip(coords, &self.patch.op_strides_times_input_storage_strides).map(|(a,b)| *a as isize* *b).sum::<isize>();
         (center + self.patch.standard_layout_data_field[patch_index]) as usize
     }
 }
@@ -357,7 +354,7 @@ impl<'p: 'v, 'v> Iterator for SafePatchIterator<'p, 'v> {
 
             for ix in 0..(input_shape.shape.len() - 2) {
                 let ax = input_shape.h_axis() + ix;
-                let pos = *self.input_patch_center.get_unchecked(ax) as isize
+                let pos = *self.input_patch_center.get_unchecked(ix) as isize
                     + *img_offset.offset(ix as isize);
                 if pos < 0 || pos as usize >= *input_shape.shape.get_unchecked(ax) {
                     self.item += 1;
@@ -486,7 +483,7 @@ pub mod test {
                 let inside_valid = in_zone(coords.slice(), h_axis, valid_zone);
                 let invalid_count = invalid_zones.iter().filter(|z| in_zone(coords.slice(), h_axis, z)).count();
                 unsafe {
-                    prop_assert_eq!(inside_valid, p.is_valid(coords.slice()), "coords {:?}, valid_zone: {:?} inside_valid: {:?}", coords.slice(), valid_zone, inside_valid);
+                    prop_assert_eq!(inside_valid, p.is_valid(&coords.slice()[p.input_shape.hw_axes()]), "coords {:?}, valid_zone: {:?} inside_valid: {:?}", coords.slice(), valid_zone, inside_valid);
                 }
                 if inside_valid {
                     prop_assert_eq!(invalid_count, 0);

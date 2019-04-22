@@ -302,12 +302,18 @@ where
     }
 
     fn compute_one<'v>(&self, input: *const T, visitor: &'v PatchVisitor, coords: &[usize]) -> T {
-        let pair = visitor
-            .at(&coords)
-            .map(|offset| offset.map(|offset| unsafe { (*input.offset(offset),true) }).unwrap_or((T::zero(),false)))
-            .filter(|pair| pair.1 || self.count_include_pad)
-            .fold((T::zero(), 0), |acc, pair| (acc.0 + pair.0, acc.1 + 1));
-        pair.0 / (pair.1.as_())
+        unsafe {
+            assert_eq!(coords.len(), visitor.patch.spec.kernel_shape.len() + 2);
+            let shape = &self.patch.input_shape;
+            let input = input.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
+            let input = input.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
+            let pair = visitor
+                .attt(&coords[shape.hw_axes()])
+                .map(|offset| offset.map(|offset| (*input.offset(offset),true)).unwrap_or((T::zero(),false)))
+                .filter(|pair| pair.1 || self.count_include_pad)
+                .fold((T::zero(), 0), |acc, pair| (acc.0 + pair.0, acc.1 + 1));
+            pair.0 / (pair.1.as_())
+        }
     }
 }
 

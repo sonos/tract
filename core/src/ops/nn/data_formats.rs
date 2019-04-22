@@ -89,4 +89,23 @@ where
     pub fn c(&self) -> D {
         unsafe { *self.shape.as_ref().get_unchecked(self.c_axis()) }
     }
+
+    pub fn n_stride(&self) -> D {
+        self.c_dim() * self.hw_dims().iter().cloned().product::<D>()
+    }
+
+    pub fn w_stride(&self) -> D {
+        match self.fmt {
+            DataFormat::NHWC => self.c_dim(),
+            DataFormat::NCHW => 1.into(),
+        }
+    }
+
+    pub fn c_stride(&self) -> D {
+        match self.fmt {
+            DataFormat::NHWC => 1.into(),
+            DataFormat::NCHW => self.hw_dims().iter().cloned().product::<D>(),
+        }
+    }
+
 }

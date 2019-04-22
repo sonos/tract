@@ -169,27 +169,29 @@ impl Patcher {
         let ptr = input.as_ptr();
         let mut mega_matrix = unsafe { Array2::<T>::uninitialized((im2col.k, im2col.n)) };
         let visitor = im2col.patch.wrap(input);
-        let mut coords = vec![0; im2col.patch.input_shape.rank()];
-        coords[im2col.patch.input_shape.n_axis()] = i;
-        for (spatial, mut col) in ndarray::indices(&*im2col.patch.output_spatial_shape)
-            .into_iter()
-            .zip(mega_matrix.axis_iter_mut(Axis(1)))
-        {
-            let mut col = col.iter_mut();
-            coords[im2col.patch.input_shape.hw_axes()].copy_from_slice(spatial.slice());
-            for ci in 0..im2col.ci_per_group {
-                coords[im2col.patch.input_shape.c_axis()] = ci + g * im2col.ci_per_group;
-                for v in visitor.at(&*coords) {
-                    *col.next().expect("geometry error in conv") = v.map(|o| unsafe { *ptr.offset(o) } ).unwrap_or(T::default());
+        let shape = &im2col.patch.input_shape;
+        unsafe {
+            let ptr = ptr.offset((shape.n_stride() * i) as isize);
+            let ptr = ptr.offset((shape.c_stride() * (g * im2col.ci_per_group)) as isize);
+            for (spatial, mut col) in ndarray::indices(&*im2col.patch.output_spatial_shape)
+                .into_iter()
+                .zip(mega_matrix.axis_iter_mut(Axis(1)))
+            {
+                let mut col = col.iter_mut();
+                for ci in 0..im2col.ci_per_group {
+                    let ptr = ptr.offset((shape.c_stride() * ci) as isize);
+                    for v in visitor.attt(spatial.slice()) {
+                        *col.next().expect("geometry error in conv") = v.map(|o| *ptr.offset(o) ).unwrap_or(T::default());
+                    }
                 }
             }
+            im2col.b_pack.pack(
+                pack.as_mut_ptr(),
+                mega_matrix.as_ptr(),
+                mega_matrix.strides()[0],
+                mega_matrix.strides()[1],
+            );
         }
-        im2col.b_pack.pack(
-            pack.as_mut_ptr(),
-            mega_matrix.as_ptr(),
-            mega_matrix.strides()[0],
-            mega_matrix.strides()[1],
-        );
     }
 
     #[inline(never)]

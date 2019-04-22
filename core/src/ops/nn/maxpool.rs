@@ -39,25 +39,28 @@ impl StatelessOp for MaxPool {
         let input_ptr = input.as_ptr();
 
         let patch = self.patch(input.shape());
-        let shape: TVec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
+        let output_shape: TVec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
         let visitor = patch.wrap(&input);
 
-        let mut values = unsafe { ArrayD::uninitialized(&*shape) };
+        let mut values = unsafe { ArrayD::<f32>::uninitialized(&*output_shape) };
         let mut indices = if self.with_index_outputs.is_some() {
-            Some(unsafe { ArrayD::uninitialized(&*shape) })
+            Some(unsafe { ArrayD::uninitialized(&*output_shape) })
         } else {
             None
         };
-        ::ndarray::indices(&*shape).into_iter().for_each(|coords| {
+        let shape = &patch.input_shape;
+        ::ndarray::indices(&*output_shape).into_iter().for_each(|coords| unsafe {
+            let input_ptr = input_ptr.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
+            let input_ptr = input_ptr.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
             let max = visitor
-                .at(&coords.slice())
+                .attt(&coords.slice()[shape.hw_axes()])
                 .enumerate()
-                .filter_map(|(ix, v)| v.map(|v| (ix, unsafe { *input_ptr.offset(v) })))
+                .filter_map(|(ix, v)| v.map(|v| (ix, *input_ptr.offset(v))))
                 .fold((0, ::std::f32::MIN), |acc, v| if acc.1 < v.1 { v } else { acc });
             values[&coords] = max.1;
             if self.with_index_outputs.is_some() {
                 indices.as_mut().unwrap()[coords] =
-                    visitor.global_offset_for(&coords.slice(), max.0) as i32;
+                    visitor.global_offset_for(&coords.slice()[shape.hw_axes()], max.0) as i32;
             }
         });
         if let Some(dt) = self.with_index_outputs {

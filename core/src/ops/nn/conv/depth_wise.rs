@@ -20,22 +20,32 @@ impl<T> DepthWise<T>
 where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
+    /*
     fn eval3(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
         let ptr = img.as_ptr();
         let visitor = self.patch.wrap(&img);
+        let shape = &self.patch.input_shape;
         let output_shape = self.patch.output_full_shape(self.out_channels);
-        let mut output = Array3::<T>::from_shape_fn(
-            (output_shape[0], output_shape[1], output_shape[2]),
-            |coords| {
-                let coords = [coords.0, coords.1, coords.2];
-                let it = visitor.at(&coords);
-                let channel = coords[self.patch.input_shape.c_axis()];
-                let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
-                kernel.iter().zip(it).map(|(&k, v)| k * v.map(|v| unsafe { *ptr.offset(v) }).unwrap_or(T::zero())).sum()
-            },
-        );
+        let mut output = unsafe {
+            Array3::<T>::from_shape_fn(
+                (output_shape[0], output_shape[1], output_shape[2]),
+                |coords| {
+                    let coords = [coords.0, coords.1, coords.2];
+                    let ptr = ptr.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
+                    let ptr = ptr.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
+                    let it = visitor.attt(&coords[shape.hw_axes()]);
+                    let channel = coords[self.patch.input_shape.c_axis()];
+                    let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
+                    kernel
+                        .iter()
+                        .zip(it)
+                        .map(|(&k, v)| k * v.map(|v| *ptr.offset(v)).unwrap_or(T::zero()))
+                        .sum()
+                },
+            )
+        };
         if let Some(ref bias) = self.bias {
             output += bias;
         }
@@ -58,18 +68,23 @@ where
         let mut full_coords = tvec!(0; output_shape.len());
         for i in 0..self.patch.input_shape.n() {
             unsafe {
+                let ptr = ptr.offset((self.patch.input_shape.n_stride() * i) as isize);
                 full_coords[n_axis] = i;
                 for (coords, hint) in self.patch.visit_all_2() {
                     *full_coords.get_unchecked_mut(h_axis) = coords.0;
                     *full_coords.get_unchecked_mut(h_axis + 1) = coords.1;
                     for c in 0..self.out_channels {
+                        let ptr = ptr.offset((self.patch.input_shape.c_stride() * c) as isize);
                         *full_coords.get_unchecked_mut(c_axis) = c;
                         let k = kernel.get_unchecked((kernel_stride * c)..);
                         let mut sum = T::zero();
-                        let mut it = visitor.at_hint(&*full_coords, hint);
+                        let mut it = visitor.at_hint(&[coords.0, coords.1], hint);
                         for i in 0..len {
-                            sum +=
-                                *k.get_unchecked(i) * it.next().unsafe_unwrap().map(|o| *ptr.offset(o)).unwrap_or(T::zero())
+                            sum += *k.get_unchecked(i)
+                                * it.next()
+                                    .unsafe_unwrap()
+                                    .map(|o| *ptr.offset(o))
+                                    .unwrap_or(T::zero())
                         }
                         output[&*full_coords] = sum
                     }
@@ -81,19 +96,27 @@ where
         }
         Ok(tvec!(output.into()))
     }
+    */
 
     fn evald(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
         let ptr = img.as_ptr();
         let visitor = self.patch.wrap(&img);
+        let shape = &self.patch.input_shape;
         let output_shape = self.patch.output_full_shape(self.out_channels);
-        let mut output = ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
-            let it = visitor.at(&coords.slice());
+        let mut output = unsafe { ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
+            let ptr = ptr.offset((shape.n_stride() * coords[shape.n_axis()]) as isize);
+            let ptr = ptr.offset((shape.c_stride() * coords[shape.c_axis()]) as isize);
+            let it = visitor.attt(&coords.slice()[shape.hw_axes()]);
             let channel = coords[self.patch.input_shape.c_axis()];
             let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
-            kernel.iter().zip(it).map(|(&k, v)| k * v.map(|o| unsafe { *ptr.offset(o) }).unwrap_or(T::zero())).sum()
-        });
+            kernel
+                .iter()
+                .zip(it)
+                .map(|(&k, v)| k * v.map(|o| *ptr.offset(o)).unwrap_or(T::zero()))
+                .sum()
+        })};;
         if let Some(ref bias) = self.bias {
             output += bias;
         }
@@ -124,8 +147,10 @@ where
 {
     fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         match inputs[0].shape().len() {
+            /*
             3 => self.eval3(inputs),
             4 => self.eval4(inputs),
+            */
             _ => self.evald(inputs),
         }
     }

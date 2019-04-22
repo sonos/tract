@@ -18,14 +18,14 @@ use ndarray::prelude::*;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseResult;
 use protobuf::Message;
+use tract_core::internal::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 
 fn img_and_pool() -> BoxedStrategy<(Array4<f32>, (usize, usize), String, usize)> {
-    (1usize..8, 1usize..8, 1usize..8)
-        .prop_flat_map(move |(ih, iw, ic)| (Just((ih, iw, ic)), (1usize..3, 1usize..3)))
-        .prop_flat_map(|((ih, iw, ic), k)| {
+    (1usize..5, 1usize..5, 1usize..5, (1usize..3, 1usize..3))
+        .prop_flat_map(|(ih, iw, ic, k)| {
             let i_size = iw * ih * ic;
             (
                 Just((1, ih, iw, ic)),
@@ -85,6 +85,11 @@ proptest! {
 #[test]
 fn maxpool_1() {
     pool("MaxPool", &Array4::<f32>::zeros((1, 1, 4, 1)), (1, 2), "SAME", 1).unwrap();
+}
+
+#[test]
+fn maxpool_2() {
+    pool("MaxPool", &arr4(&[[[[0.0]], [[-1.0]]]]), (2, 1), "SAME", 1).unwrap();
 }
 
 #[test]

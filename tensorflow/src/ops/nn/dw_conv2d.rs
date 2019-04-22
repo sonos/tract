@@ -82,22 +82,26 @@ impl StatelessOp for DepthwiseConv2d {
         let out_channels = ker.shape()[2] * ker.shape()[3];
         let visitor = patch.wrap(&img);
         let output_shape = patch.output_full_shape(out_channels);
-        let output = ArrayD::<f32>::from_shape_fn(&*output_shape, |mut coords| {
-            let k = coords[input_shape.c_axis()] / ker.shape()[3];
-            let q = coords[input_shape.c_axis()] % ker.shape()[3];
-            coords[input_shape.c_axis()] = k;
-            let mut it = visitor.at(coords.slice());
-            let mut sum = 0.0f32;
-            for di in 0..ker.shape()[0] {
-                for dj in 0..ker.shape()[1] {
-                    let vi = it.next().unwrap().map(|o| unsafe { *ptr.offset(o) }).unwrap_or(0.0);
-                    let vk = ker[[di, dj, k, q]];
-                    sum += vi * vk;
+        unsafe {
+            let output = ArrayD::<f32>::from_shape_fn(&*output_shape, |coords| {
+                let ptr = ptr.offset((input_shape.n_stride() * coords[input_shape.n_axis()]) as isize);
+                let c = coords[input_shape.c_axis()];
+                let ptr = ptr.offset((input_shape.c_stride() * c) as isize);
+                let k = c / ker.shape()[3];
+                let q = c % ker.shape()[3];
+                let mut it = visitor.attt(&coords.slice()[input_shape.hw_axes()]);
+                let mut sum = 0.0f32;
+                for di in 0..ker.shape()[0] {
+                    for dj in 0..ker.shape()[1] {
+                        let vi = it.next().unwrap().map(|o| *ptr.offset(o)).unwrap_or(0.0);
+                        let vk = ker[[di, dj, k, q]];
+                        sum += vi * vk;
+                    }
                 }
-            }
-            sum
-        });
-        Ok(tvec!(output.into()))
+                sum
+            });
+            Ok(tvec!(output.into()))
+        }
     }
 }
 
