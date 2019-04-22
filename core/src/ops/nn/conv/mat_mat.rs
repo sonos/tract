@@ -5,7 +5,7 @@ use crate::internal::*;
 use ndarray::prelude::*;
 
 use crate::ops::nn::conv::KernelFormat;
-use crate::ops::nn::{DataFormat, Patch};
+use crate::ops::nn::{DataFormat, Patch, DataShape};
 
 use tract_linalg::MatMul;
 
@@ -41,7 +41,7 @@ where
     T: Datum + Add + Mul + Zero + Copy,
 {
     pub patch: Patch,
-    pub full_output_shape: TVec<usize>,
+    pub output_shape: DataShape<usize, TVec<usize>>,
     pub m: usize,
     pub k: usize,
     pub n: usize,
@@ -61,23 +61,22 @@ where
         &'i self,
         packed_input: &'i ArrayView3<'i, T>,
     ) -> TractResult<ArrayD<T>> {
-        let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.full_output_shape) };
+        let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
         let packed_b_len = self.mm.b_pack().len();
-        let input_shape = &self.patch.input_shape;
 
-        let co_per_group = self.full_output_shape[input_shape.c_axis()] / self.group;
+        let co_per_group = self.output_shape.c() / self.group;
 
-        for i in 0..input_shape.n_dim() {
+        for i in 0..self.output_shape.n() {
             unsafe {
                 let output_i =
-                    output.as_mut_ptr().offset(output.strides()[input_shape.n_axis()] * i as isize);
+                    output.as_mut_ptr().offset(self.output_shape.n_stride() as isize * i as isize);
                 for g in 0..self.group {
                     let a = &self.packed_kernels[g];
                     let output_i_g = output_i.offset(
-                        output.strides()[input_shape.c_axis()] * co_per_group as isize * g as isize,
+                        self.output_shape.c_stride() as isize * co_per_group as isize * g as isize,
                     );
 
-                    let (rsc, csc) = match self.patch.input_shape.fmt {
+                    let (rsc, csc) = match self.output_shape.fmt {
                         DataFormat::NHWC => (1, (self.m * self.group) as isize),
                         DataFormat::NCHW => (self.n as isize, 1),
                     };
