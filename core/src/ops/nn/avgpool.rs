@@ -301,7 +301,7 @@ where
         Ok(output)
     }
 
-    fn compute_one<'v>(&self, input: *const T, visitor: &'v PatchVisitor<T>, coords: &[usize]) -> T {
+    fn compute_one<'v>(&self, input: *const T, visitor: &'v PatchVisitor, coords: &[usize]) -> T {
         let pair = visitor
             .at(&coords)
             .map(|offset| offset.map(|offset| unsafe { (*input.offset(offset),true) }).unwrap_or((T::zero(),false)))

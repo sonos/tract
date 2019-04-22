@@ -25,9 +25,9 @@ impl PatchSpec {
             &*self.dilations,
             &*self.strides,
         );
-        let output:TVec<usize> = dims.iter().map(|d| d.output).collect();
-        let pad_before:TVec<usize> = dims.iter().map(|d| d.pad_before).collect();
-        let pad_after:TVec<usize> = dims.iter().map(|d| d.pad_after).collect();
+        let output: TVec<usize> = dims.iter().map(|d| d.output).collect();
+        let pad_before: TVec<usize> = dims.iter().map(|d| d.pad_before).collect();
+        let pad_after: TVec<usize> = dims.iter().map(|d| d.pad_after).collect();
 
         let data_field: Vec<isize> = ::ndarray::indices(&*self.kernel_shape)
             .into_iter()
@@ -133,17 +133,14 @@ impl Patch {
         v
     }
 
-    pub fn wrap<'i, 'p, T: Copy + Datum>(
-        &'p self,
-        input: &'i ArrayViewD<'i, T>,
-    ) -> PatchVisitor<'i, 'p, T> {
+    pub fn wrap<'i, 'p, T>(&'p self, input: &ArrayViewD<'i, T>) -> PatchVisitor<'p> {
         let valid = !self.padded; //input.is_standard_layout() && !self.padded;
         let mut fast_strides: Vec<_> = input.strides().into();
         fast_strides[self.input_shape.hw_axes()]
             .iter_mut()
             .zip(self.spec.strides.iter())
             .for_each(|(a, &b)| *a *= b as isize);
-        PatchVisitor { patch: &self, input, valid, fast_strides }
+        PatchVisitor { patch: &self, valid, fast_strides }
     }
 
     unsafe fn is_valid(&self, coords: &[usize]) -> bool {
@@ -242,29 +239,22 @@ impl Patch {
 }
 
 #[derive(Debug)]
-pub struct PatchVisitor<'i, 'p, T: Copy + Datum> {
+pub struct PatchVisitor<'p> {
     patch: &'p Patch,
-    input: &'i ArrayViewD<'i, T>,
     valid: bool,
     fast_strides: Vec<isize>, // kernel strides * storage strides
 }
 
-impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
-    pub fn at<'v>(&'p self, coords: &[usize]) -> PatchIterator<'i, 'p, 'v, T>
+impl<'p> PatchVisitor<'p> {
+    pub fn at<'v>(&'p self, coords: &[usize]) -> PatchIterator<'p, 'v>
     where
-        'i: 'v,
         'p: 'v,
     {
         self.at_hint(coords, None)
     }
 
-    pub fn at_hint<'v>(
-        &'p self,
-        coords: &[usize],
-        hint: Option<bool>,
-    ) -> PatchIterator<'i, 'p, 'v, T>
+    pub fn at_hint<'v>(&'p self, coords: &[usize], hint: Option<bool>) -> PatchIterator<'p, 'v>
     where
-        'i: 'v,
         'p: 'v,
     {
         unsafe {
@@ -274,12 +264,7 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
             }
             let valid = hint.unwrap_or_else(|| self.valid || self.patch.is_valid(coords));
             if valid {
-                PatchIterator::Fast(FastPatchIterator {
-                    visitor: &self,
-                    ptr: self.input.as_ptr(),
-                    center,
-                    item: 0,
-                })
+                PatchIterator::Fast(FastPatchIterator { visitor: &self, center, item: 0 })
             } else {
                 let mut input_patch_center: TVec<_> = coords.into();
                 input_patch_center[self.patch.input_shape.hw_axes()]
@@ -291,7 +276,6 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
                     item: 0,
                     input_patch_center,
                     center,
-                    ptr: self.input.as_ptr(),
                 })
             }
         }
@@ -308,12 +292,12 @@ impl<'i, 'p, T: Copy + Datum> PatchVisitor<'i, 'p, T> {
 }
 
 #[derive(Debug)]
-pub enum PatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
-    Fast(FastPatchIterator<'i, 'p, 'v, T>),
-    Safe(SafePatchIterator<'i, 'p, 'v, T>),
+pub enum PatchIterator<'p: 'v, 'v> {
+    Fast(FastPatchIterator<'p, 'v>),
+    Safe(SafePatchIterator<'p, 'v>),
 }
 
-impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for PatchIterator<'p, 'i, 'v, T> {
+impl<'p: 'v, 'v> Iterator for PatchIterator<'p, 'v> {
     type Item = Option<isize>;
     #[inline(always)]
     fn next(&mut self) -> Option<Option<isize>> {
@@ -325,16 +309,13 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator for PatchIterator
 }
 
 #[derive(Debug)]
-pub struct FastPatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
-    visitor: &'v PatchVisitor<'i, 'p, T>,
-    ptr: *const T,
+pub struct FastPatchIterator<'p: 'v, 'v> {
+    visitor: &'v PatchVisitor<'p>,
     center: isize,
     item: usize,
 }
 
-impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
-    for FastPatchIterator<'i, 'p, 'v, T>
-{
+impl<'p: 'v, 'v> Iterator for FastPatchIterator<'p, 'v> {
     type Item = Option<isize>;
     #[inline(always)]
     #[cfg_attr(not(debug_assertions), no_panic)]
@@ -352,17 +333,14 @@ impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
 }
 
 #[derive(Debug)]
-pub struct SafePatchIterator<'i: 'v, 'p: 'v, 'v, T: Copy + Datum> {
-    visitor: &'v PatchVisitor<'i, 'p, T>,
+pub struct SafePatchIterator<'p: 'v, 'v> {
+    visitor: &'v PatchVisitor<'p>,
     item: usize,
     input_patch_center: TVec<usize>,
-    ptr: *const T,
     center: isize,
 }
 
-impl<'i: 'v, 'p: 'v, 'v, T: Copy + Datum + PartialEq> Iterator
-    for SafePatchIterator<'i, 'p, 'v, T>
-{
+impl<'p: 'v, 'v> Iterator for SafePatchIterator<'p, 'v> {
     type Item = Option<isize>;
     #[cfg_attr(not(debug_assertions), no_panic)]
     fn next(&mut self) -> Option<Option<isize>> {
@@ -415,7 +393,8 @@ pub mod test {
             padding: PaddingSpec::Explicit(tvec![pad_before], tvec![bad_after]),
             strides: tvec![stride],
             input_full_shape: tvec![1, 1, input],
-        }.into_patch();
+        }
+        .into_patch();
         patch.output_spatial_shape[0]
     }
 
@@ -447,7 +426,8 @@ pub mod test {
             padding: PaddingSpec::Explicit(tvec![0; kdim.len()], tvec![0; kdim.len()]),
             strides: tvec![1; kdim.len()],
             input_full_shape: tvec![10; kdim.len() + 2],
-        }.into_patch();
+        }
+        .into_patch();
         patch.data_field
     }
 
@@ -481,7 +461,8 @@ pub mod test {
                     padding: pad,
                     strides: tvec![strides.0, strides.1],
                     input_full_shape: tvec!(1, c, inp.0, inp.1),
-                }.into_patch()
+                }
+                .into_patch()
             })
             .boxed()
     }
@@ -535,7 +516,8 @@ pub mod test {
             padding: PaddingSpec::SameLower,
             strides: tvec![1, 2],
             input_full_shape: tvec!(1, 1, 2, 2),
-        }.into_patch();
+        }
+        .into_patch();
         let mut output = ndarray::ArrayD::<i32>::zeros(&*p.output_full_shape(1));
         for (c, _v) in p.visit_all_2() {
             assert!(output[[0, 0, c.0, c.1]] == 0);
