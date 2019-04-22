@@ -23,6 +23,7 @@ where
     fn eval3(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
+        let ptr = img.as_ptr();
         let visitor = self.patch.wrap(&img);
         let output_shape = self.patch.output_full_shape(self.out_channels);
         let mut output = Array3::<T>::from_shape_fn(
@@ -32,7 +33,7 @@ where
                 let it = visitor.at(&coords);
                 let channel = coords[self.patch.input_shape.c_axis()];
                 let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
-                kernel.iter().zip(it).map(|(&k, v)| k * v.unwrap_or(T::zero())).sum()
+                kernel.iter().zip(it).map(|(&k, v)| k * v.map(|v| unsafe { *ptr.offset(v) }).unwrap_or(T::zero())).sum()
             },
         );
         if let Some(ref bias) = self.bias {
@@ -44,6 +45,7 @@ where
     fn eval4(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
+        let ptr = img.as_ptr();
         let visitor = self.patch.wrap(&img);
         let output_shape = self.patch.output_full_shape(self.out_channels);
         let len = self.patch.spec.kernel_shape.iter().cloned().product::<usize>();
@@ -67,7 +69,7 @@ where
                         let mut it = visitor.at_hint(&*full_coords, hint);
                         for i in 0..len {
                             sum +=
-                                *k.get_unchecked(i) * it.next().unsafe_unwrap().unwrap_or(T::zero())
+                                *k.get_unchecked(i) * it.next().unsafe_unwrap().map(|o| *ptr.offset(o)).unwrap_or(T::zero())
                         }
                         output[&*full_coords] = sum
                     }
@@ -83,13 +85,14 @@ where
     fn evald(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
+        let ptr = img.as_ptr();
         let visitor = self.patch.wrap(&img);
         let output_shape = self.patch.output_full_shape(self.out_channels);
         let mut output = ArrayD::<T>::from_shape_fn(&*output_shape, |coords| {
             let it = visitor.at(&coords.slice());
             let channel = coords[self.patch.input_shape.c_axis()];
             let kernel = self.kernel_chw.slice_axis(Axis(0), (channel..=channel).into());
-            kernel.iter().zip(it).map(|(&k, v)| k * v.unwrap_or(T::zero())).sum()
+            kernel.iter().zip(it).map(|(&k, v)| k * v.map(|o| unsafe { *ptr.offset(o) }).unwrap_or(T::zero())).sum()
         });
         if let Some(ref bias) = self.bias {
             output += bias;

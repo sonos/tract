@@ -8,7 +8,7 @@ use itertools::Itertools;
 use tract_core::internal::*;
 
 use crate::display_graph::DisplayOptions;
-use crate::{Parameters, ProfilingMode, SomeGraphDef};
+use crate::{Parameters, ProfilingMode};
 
 mod regular;
 //mod streaming;

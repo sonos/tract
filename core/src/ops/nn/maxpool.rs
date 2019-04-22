@@ -36,6 +36,7 @@ impl StatelessOp for MaxPool {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<f32> = input.to_array_view()?;
+        let input_ptr = input.as_ptr();
 
         let patch = self.patch(input.shape());
         let shape: TVec<usize> = patch.output_full_shape(patch.input_shape.c_dim());
@@ -51,7 +52,7 @@ impl StatelessOp for MaxPool {
             let max = visitor
                 .at(&coords.slice())
                 .enumerate()
-                .filter_map(|(ix, v)| v.map(|v| (ix, v)))
+                .filter_map(|(ix, v)| v.map(|v| (ix, unsafe { *input_ptr.offset(v) })))
                 .fold((0, ::std::f32::MIN), |acc, v| if acc.1 < v.1 { v } else { acc });
             values[&coords] = max.1;
             if self.with_index_outputs.is_some() {
