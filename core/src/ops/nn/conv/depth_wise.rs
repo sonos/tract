@@ -63,13 +63,11 @@ where
         let kernel_stride: usize = self.kernel_chw.strides()[0] as usize;
         let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
         let optr = output.as_mut_ptr();
-        for i in 0..self.input_shape.n() {
+        for n in 0..self.input_shape.n() {
             unsafe {
-                let iptr = iptr.offset((self.input_shape.n_stride() * i) as isize);
-                let optr = optr.offset((self.output_shape.n_stride() * i) as isize);
+                let iptr = iptr.offset((self.input_shape.n_stride() * n) as isize);
+                let optr = optr.offset((self.output_shape.n_stride() * n) as isize);
                 for (coords, hint) in self.patch.visit_all_2() {
-                    let iptr = iptr.offset(coords.0 as isize * *self.patch.op_strides_times_input_storage_strides.get_unchecked(0));
-                    let iptr = iptr.offset(coords.1 as isize * *self.patch.op_strides_times_input_storage_strides.get_unchecked(1));
                     let optr = optr.offset(coords.0 as isize * *self.output_shape.hw_strides().get_unchecked(0) as isize);
                     let optr = optr.offset(coords.1 as isize * *self.output_shape.hw_strides().get_unchecked(1) as isize);
                     for c in 0..self.output_shape.c() {
@@ -79,11 +77,12 @@ where
                         let mut sum = T::zero();
                         let mut it = self.patch.at_hint(&[coords.0, coords.1], hint);
                         for i in 0..len {
-                            sum += *k.get_unchecked(i)
-                                * it.next()
-                                    .unsafe_unwrap()
+                            let vk = *k.get_unchecked(i);
+                            let vi = it.next()
+                                    .unwrap()
                                     .map(|o| *iptr.offset(o))
-                                    .unwrap_or(T::zero())
+                                    .unwrap_or(T::zero());
+                            sum += vk * vi;
                         }
                         *optr = sum
                     }
