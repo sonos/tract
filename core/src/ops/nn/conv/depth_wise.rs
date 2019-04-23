@@ -52,42 +52,40 @@ where
         }
         Ok(tvec!(output.into()))
     }
+    */
 
     fn eval4(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
-        let ptr = img.as_ptr();
-        let visitor = self.patch.wrap(&img);
-        let output_shape = self.patch.output_full_shape(self.out_channels);
+        let iptr = img.as_ptr();
         let len = self.patch.spec.kernel_shape.iter().cloned().product::<usize>();
-        let c_axis = self.patch.input_shape.c_axis();
-        let n_axis = self.patch.input_shape.n_axis();
-        let h_axis = self.patch.input_shape.h_axis();
         let kernel = self.kernel_chw.as_slice_memory_order().unwrap();
         let kernel_stride: usize = self.kernel_chw.strides()[0] as usize;
-        let mut output = unsafe { ArrayD::<T>::uninitialized(&*output_shape) };
-        let mut full_coords = tvec!(0; output_shape.len());
-        for i in 0..self.patch.input_shape.n() {
+        let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
+        let optr = output.as_mut_ptr();
+        for i in 0..self.input_shape.n() {
             unsafe {
-                let ptr = ptr.offset((self.patch.input_shape.n_stride() * i) as isize);
-                full_coords[n_axis] = i;
+                let iptr = iptr.offset((self.input_shape.n_stride() * i) as isize);
+                let optr = optr.offset((self.output_shape.n_stride() * i) as isize);
                 for (coords, hint) in self.patch.visit_all_2() {
-                    *full_coords.get_unchecked_mut(h_axis) = coords.0;
-                    *full_coords.get_unchecked_mut(h_axis + 1) = coords.1;
-                    for c in 0..self.out_channels {
-                        let ptr = ptr.offset((self.patch.input_shape.c_stride() * c) as isize);
-                        *full_coords.get_unchecked_mut(c_axis) = c;
+                    let iptr = iptr.offset(coords.0 as isize * *self.patch.op_strides_times_input_storage_strides.get_unchecked(0));
+                    let iptr = iptr.offset(coords.1 as isize * *self.patch.op_strides_times_input_storage_strides.get_unchecked(1));
+                    let optr = optr.offset(coords.0 as isize * *self.output_shape.hw_strides().get_unchecked(0) as isize);
+                    let optr = optr.offset(coords.1 as isize * *self.output_shape.hw_strides().get_unchecked(1) as isize);
+                    for c in 0..self.output_shape.c() {
+                        let iptr = iptr.offset(c as isize * self.input_shape.c_stride() as isize);
+                        let optr = optr.offset(c as isize * self.output_shape.c_stride() as isize);
                         let k = kernel.get_unchecked((kernel_stride * c)..);
                         let mut sum = T::zero();
-                        let mut it = visitor.at_hint(&[coords.0, coords.1], hint);
+                        let mut it = self.patch.at_hint(&[coords.0, coords.1], hint);
                         for i in 0..len {
                             sum += *k.get_unchecked(i)
                                 * it.next()
                                     .unsafe_unwrap()
-                                    .map(|o| *ptr.offset(o))
+                                    .map(|o| *iptr.offset(o))
                                     .unwrap_or(T::zero())
                         }
-                        output[&*full_coords] = sum
+                        *optr = sum
                     }
                 }
             }
@@ -97,7 +95,6 @@ where
         }
         Ok(tvec!(output.into()))
     }
-    */
 
     fn evald(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
@@ -148,8 +145,8 @@ where
         match inputs[0].shape().len() {
             /*
             3 => self.eval3(inputs),
-            4 => self.eval4(inputs),
             */
+            4 => self.eval4(inputs),
             _ => self.evald(inputs),
         }
     }
