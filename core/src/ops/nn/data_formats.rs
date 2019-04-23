@@ -1,7 +1,6 @@
 use crate::model::TVec;
 use crate::dim::DimLike;
 use std::fmt;
-use std::marker::PhantomData;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum DataFormat {
@@ -21,7 +20,13 @@ impl DataFormat {
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
     {
-        DataShape { fmt: *self, shape, _phantom: PhantomData }
+        let mut strides: TVec<D> = tvec![1.into()];
+        for dim in shape.as_ref().iter().skip(1).rev() {
+            let previous = strides.last().unwrap();
+            strides.push(*previous * *dim);
+        }
+        strides.reverse();
+        DataShape { fmt: *self, shape, strides }
     }
 
     pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> DataShape<D, TVec<D>>
@@ -41,7 +46,7 @@ impl DataFormat {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DataShape<D, S>
 where
     D: DimLike,
@@ -49,7 +54,7 @@ where
 {
     pub fmt: DataFormat,
     pub shape: S,
-    _phantom: PhantomData<D>,
+    pub strides: TVec<D>,
 }
 
 impl<D, S> DataShape<D, S>
@@ -108,21 +113,19 @@ where
     }
 
     pub fn n_stride(&self) -> D {
-        self.c_dim() * self.hw_dims().iter().cloned().product::<D>()
+        unsafe { *self.strides.get_unchecked(self.n_axis()) }
+    }
+
+    pub fn hw_strides(&self) -> &[D] {
+        unsafe { self.strides.as_ref().get_unchecked(self.hw_axes()) }
     }
 
     pub fn w_stride(&self) -> D {
-        match self.fmt {
-            DataFormat::NHWC => self.c_dim(),
-            DataFormat::NCHW => 1.into(),
-        }
+        unsafe { *self.hw_strides().get_unchecked(self.hw_rank()-1) }
     }
 
     pub fn c_stride(&self) -> D {
-        match self.fmt {
-            DataFormat::NHWC => 1.into(),
-            DataFormat::NCHW => self.hw_dims().iter().cloned().product::<D>(),
-        }
+        unsafe { *self.strides.get_unchecked(self.c_axis()) }
     }
 
 }
