@@ -23,7 +23,7 @@ matrix:
     - rust: stable
     - rust: stable
       os: osx
-      osx_image: xcode8.3
+      osx_image: xcode9
     - rust: stable
       env: PLATFORM=raspbian
     - rust: stable
@@ -47,7 +47,7 @@ matrix:
       env: PLATFORM=x86_64-linux-android
     - rust: stable
       os: osx
-      osx_image: xcode8.3
+      osx_image: xcode9
       env: PLATFORM=aarch64-apple-ios
     - rust: beta
     - rust: nightly
