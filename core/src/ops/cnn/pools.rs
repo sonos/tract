@@ -1,7 +1,7 @@
 use crate::internal::*;
 
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
-use crate::ops::nn::{DataFormat, Shape};
+use crate::ops::nn::{DataFormat, DataShape};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct PoolSpec {
@@ -12,7 +12,7 @@ pub struct PoolSpec {
 }
 
 impl PoolSpec {
-    pub fn compute_geo(&self, input_full_shape: &[usize]) -> (Shape, Patch, Shape) {
+    pub fn compute_geo(&self, input_full_shape: &[usize]) -> (DataShape, Patch, DataShape) {
         let input_shape = self.data_format.shape(input_full_shape.into());
         let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
             .with_output_inner_stride(input_shape.w_stride())

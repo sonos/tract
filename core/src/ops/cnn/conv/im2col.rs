@@ -4,7 +4,7 @@ use crate::internal::*;
 use ndarray::prelude::*;
 
 use crate::ops::cnn::Patch;
-use crate::ops::nn::Shape;
+use crate::ops::nn::DataShape;
 
 use num_traits::Zero;
 use std::ops::Mul;
@@ -12,8 +12,8 @@ use std::ops::Mul;
 #[derive(Debug, Clone)]
 pub(super) struct Im2Col<T: Copy + Datum + Mul + Zero> {
     pub patch: Patch,
-    pub input_shape: Shape,
-    pub output_shape: Shape,
+    pub input_shape: DataShape,
+    pub output_shape: DataShape,
     pub m: usize,
     pub k: usize,
     pub n: usize,
@@ -37,7 +37,7 @@ impl<T: Copy + Datum + Mul + Zero> PartialEq for Im2Col<T> {
 impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
     pub fn new(
         patch: Patch,
-        input_shape: Shape,
+        input_shape: DataShape,
         m: usize,
         k: usize,
         n: usize,

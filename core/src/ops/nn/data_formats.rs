@@ -15,7 +15,7 @@ impl Default for DataFormat {
 }
 
 impl DataFormat {
-    pub fn shape<D, S>(&self, shape: S) -> DataShape<D, S>
+    pub fn shape<D, S>(&self, shape: S) -> BaseDataShape<D, S>
     where
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
@@ -26,10 +26,10 @@ impl DataFormat {
             strides.push(*previous * *dim);
         }
         strides.reverse();
-        DataShape { fmt: *self, shape, strides }
+        BaseDataShape { fmt: *self, shape, strides }
     }
 
-    pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> DataShape<D, TVec<D>>
+    pub fn from_n_c_hw<D, S>(&self, n: D, c: D, shape: S) -> BaseDataShape<D, TVec<D>>
     where
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
@@ -46,10 +46,10 @@ impl DataFormat {
     }
 }
 
-pub type Shape = DataShape<usize, TVec<usize>>;
+pub type DataShape = BaseDataShape<usize, TVec<usize>>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct DataShape<D, S>
+pub struct BaseDataShape<D, S>
 where
     D: DimLike,
     S: AsRef<[D]> + fmt::Debug,
@@ -59,7 +59,7 @@ where
     pub strides: TVec<D>,
 }
 
-impl<D, S> DataShape<D, S>
+impl<D, S> BaseDataShape<D, S>
 where
     D: DimLike,
     S: AsRef<[D]> + fmt::Debug,

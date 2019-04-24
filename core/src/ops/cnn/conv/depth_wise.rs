@@ -1,6 +1,6 @@
 use crate::internal::*;
 use crate::ops::cnn::Patch;
-use crate::ops::nn::Shape;
+use crate::ops::nn::DataShape;
 use ndarray::*;
 use std::iter::Sum;
 
@@ -12,8 +12,8 @@ where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
     patch: Patch,
-    input_shape: Shape,
-    output_shape: Shape,
+    input_shape: DataShape,
+    output_shape: DataShape,
     kernel_chw: ArrayD<T>,
     bias: Option<ArrayD<T>>,
 }

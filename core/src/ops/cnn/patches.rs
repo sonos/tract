@@ -1,6 +1,6 @@
 use crate::internal::*;
 use crate::ops::cnn::PaddingSpec;
-use crate::ops::nn::{DataFormat, Shape};
+use crate::ops::nn::{DataFormat, DataShape};
 use ndarray::prelude::*;
 #[cfg(not(debug_assertions))]
 use no_panic::no_panic;
@@ -26,7 +26,7 @@ impl PatchSpec {
         Self::for_data_shape(shape)
     }
 
-    pub fn for_data_shape(data_shape: Shape) -> PatchSpec {
+    pub fn for_data_shape(data_shape: DataShape) -> PatchSpec {
         let input_shape: TVec<usize> = data_shape.hw_dims().into();
         PatchSpec {
             kernel_shape: tvec!(1; input_shape.len()),
@@ -446,7 +446,7 @@ pub mod test {
         assert_eq!(field(&[2, 2], &[2, 1]), arr2(&[[0, 0], [0, 1], [2, 0], [2, 1]]));
     }
 
-    pub fn patch_2d() -> BoxedStrategy<(Shape, Patch)> {
+    pub fn patch_2d() -> BoxedStrategy<(DataShape, Patch)> {
         (
             Just(DataFormat::NCHW),
             (1usize..3, 1usize..3),
