@@ -10,7 +10,7 @@ use criterion::Criterion;
 use tract_core::model::*;
 use tract_core::*;
 
-use tract_core::ops::nn::ConvUnary;
+use tract_core::ops::cnn::ConvUnary;
 use tract_core::internal::*;
 
 #[derive(Debug, new)]
@@ -59,12 +59,12 @@ impl Problem {
     pub fn to_unary(&self) -> Box<ConvUnary> {
         let kernel =
             Tensor::from(ndarray::Array4::<f32>::zeros((self.kh, self.kw, self.ci, self.co)));
-        let conv = tract_core::ops::nn::Conv::new(
+        let conv = tract_core::ops::cnn::Conv::new(
             tract_core::ops::nn::DataFormat::NHWC,
-            tract_core::ops::nn::KernelFormat::HWIO,
+            tract_core::ops::cnn::KernelFormat::HWIO,
             Some(tvec!(self.dil_h, self.dil_w)),
             Some(kernel.shape()[0..2].into()),
-            tract_core::ops::nn::PaddingSpec::Valid,
+            tract_core::ops::cnn::PaddingSpec::Valid,
             Some(tvec!(self.stride_h, self.stride_w)),
             1,
         );

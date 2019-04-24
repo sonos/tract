@@ -2,8 +2,9 @@ use crate::internal::*;
 use ndarray::prelude::*;
 use num_traits::{AsPrimitive, Float};
 
-use crate::ops::nn::{DataFormat, DataShape, Patch};
-use super::{PoolSpec, Shape};
+use crate::ops::cnn::pools::PoolSpec;
+use crate::ops::cnn::Patch;
+use crate::ops::nn::{DataFormat, Shape};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
@@ -48,7 +49,12 @@ impl Op for AvgPool {
             {
                 Box::new(FixedAvgPool::new(patch, input_shape, output_shape, count_include_pad))
             }
-            let op = dispatch_floatlike!(fixed(dt)(patch, input_shape, output_shape, self.count_include_pad));
+            let op = dispatch_floatlike!(fixed(dt)(
+                patch,
+                input_shape,
+                output_shape,
+                self.count_include_pad
+            ));
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
@@ -82,8 +88,8 @@ where
     usize: AsPrimitive<T>,
 {
     patch: Patch,
-    input_shape: DataShape<usize, TVec<usize>>,
-    output_shape: DataShape<usize, TVec<usize>>,
+    input_shape: Shape,
+    output_shape: Shape,
     count_include_pad: bool,
     _phantom: PhantomData<T>,
 }
@@ -342,13 +348,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::ops::nn::patches::test::patch_2d;
     use super::*;
+    use crate::ops::cnn::patches::test::patch_2d;
     use proptest::collection::vec;
     use proptest::prelude::*;
     use proptest::*;
 
-    pub fn patch_2d_and_data() -> BoxedStrategy<(DataShape<usize, TVec<usize>>, Patch, Array4<f32>)>
+    pub fn patch_2d_and_data() -> BoxedStrategy<(Shape, Patch, Array4<f32>)>
     {
         patch_2d()
             .prop_flat_map(|(i, p)| {

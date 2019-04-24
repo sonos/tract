@@ -46,6 +46,8 @@ impl DataFormat {
     }
 }
 
+pub type Shape = DataShape<usize, TVec<usize>>;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataShape<D, S>
 where

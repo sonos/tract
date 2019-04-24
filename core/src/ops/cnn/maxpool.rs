@@ -1,7 +1,7 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 
-use super::PoolSpec;
+use crate::ops::cnn::pools::PoolSpec;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct MaxPool {
@@ -29,8 +29,10 @@ impl StatelessOp for MaxPool {
             None
         };
         ::ndarray::indices(&*output_shape.shape).into_iter().for_each(|coords| unsafe {
-            let input_ptr = input_ptr.offset((input_shape.n_stride() * coords[input_shape.n_axis()]) as isize);
-            let input_ptr = input_ptr.offset((input_shape.c_stride() * coords[input_shape.c_axis()]) as isize);
+            let input_ptr =
+                input_ptr.offset((input_shape.n_stride() * coords[input_shape.n_axis()]) as isize);
+            let input_ptr =
+                input_ptr.offset((input_shape.c_stride() * coords[input_shape.c_axis()]) as isize);
             let max = patch
                 .at(&coords.slice()[input_shape.hw_axes()])
                 .enumerate()

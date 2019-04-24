@@ -4,8 +4,9 @@ use std::ops::{Add, AddAssign, Mul};
 use crate::internal::*;
 use ndarray::prelude::*;
 
-use crate::ops::nn::conv::KernelFormat;
-use crate::ops::nn::{DataFormat, DataShape, Patch};
+use crate::ops::cnn::conv::KernelFormat;
+use crate::ops::cnn::Patch;
+use crate::ops::nn::{DataFormat, Shape};
 
 use tract_linalg::VecMatMul;
 
@@ -15,7 +16,7 @@ where
     T: Datum + Add + Mul + Zero + Copy,
 {
     pub patch: Patch,
-    pub output_shape: DataShape<usize, TVec<usize>>,
+    pub output_shape: Shape,
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,
@@ -59,7 +60,7 @@ where
                             .as_ptr()
                             .offset(((self.group * i + g) * packed_b_len) as isize),
                         output_i_g,
-                        stride_output
+                        stride_output,
                     );
                 }
             }
@@ -87,10 +88,7 @@ where
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
-        Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
-            batch * self.group * self.vmm.k() * self.vmm.n()
-        )))
+        Ok(tvec!((Cost::FMA(f32::datum_type()), batch * self.group * self.vmm.k() * self.vmm.n())))
     }
 }
 
@@ -103,7 +101,6 @@ where
         let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into()))
     }
-
 }
 
 impl<D> InferenceRulesOp for VecMat<D>

@@ -4,8 +4,9 @@ use std::ops::{Add, AddAssign, Mul};
 use crate::internal::*;
 use ndarray::prelude::*;
 
-use crate::ops::nn::conv::KernelFormat;
-use crate::ops::nn::{DataFormat, Patch, DataShape};
+use crate::ops::cnn::conv::KernelFormat;
+use crate::ops::cnn::Patch;
+use crate::ops::nn::{DataFormat, Shape};
 
 use tract_linalg::MatMul;
 
@@ -41,7 +42,7 @@ where
     T: Datum + Add + Mul + Zero + Copy,
 {
     pub patch: Patch,
-    pub output_shape: DataShape<usize, TVec<usize>>,
+    pub output_shape: Shape,
     pub m: usize,
     pub k: usize,
     pub n: usize,
@@ -132,7 +133,6 @@ where
         let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into()))
     }
-
 }
 
 impl<D> InferenceRulesOp for MatMat<D>

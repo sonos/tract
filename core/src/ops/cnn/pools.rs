@@ -1,11 +1,7 @@
 use crate::internal::*;
 
-pub mod avgpool;
-pub mod maxpool;
-
-use super::{DataFormat, DataShape, PaddingSpec, Patch, PatchSpec};
-
-type Shape = DataShape<usize, TVec<usize>>;
+use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
+use crate::ops::nn::{DataFormat, Shape};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct PoolSpec {
@@ -16,7 +12,7 @@ pub struct PoolSpec {
 }
 
 impl PoolSpec {
-    fn compute_geo(&self, input_full_shape: &[usize]) -> (Shape, Patch, Shape) {
+    pub fn compute_geo(&self, input_full_shape: &[usize]) -> (Shape, Patch, Shape) {
         let input_shape = self.data_format.shape(input_full_shape.into());
         let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
             .with_output_inner_stride(input_shape.w_stride())
@@ -31,7 +27,7 @@ impl PoolSpec {
         (input_shape, patch, output_shape)
     }
 
-    fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
+    pub fn rules_for_shape<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
         inputs: &'p [TensorProxy],
@@ -58,4 +54,3 @@ impl PoolSpec {
         })
     }
 }
-

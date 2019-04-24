@@ -1,5 +1,5 @@
 use ndarray::*;
-use tract_core::ops::nn::ConvUnary;
+use tract_core::ops::cnn::ConvUnary;
 use tract_core::internal::*;
 
 #[derive(Debug, Copy, Clone)]

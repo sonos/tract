@@ -5,9 +5,9 @@ extern crate tract_core;
 use criterion::Criterion;
 
 use tract_core::internal::*;
-use tract_core::ops::nn::PaddingSpec;
-use tract_core::ops::nn::PaddingSpec::SameUpper as Same;
-use tract_core::ops::nn::PaddingSpec::Valid;
+use tract_core::ops::cnn::PaddingSpec;
+use tract_core::ops::cnn::PaddingSpec::SameUpper as Same;
+use tract_core::ops::cnn::PaddingSpec::Valid;
 
 fn b(
     c: &mut Criterion,
@@ -23,9 +23,9 @@ fn b(
 ) {
     let image = Tensor::from(ndarray::Array4::<f32>::zeros((1, h, w, ci)));
     let kernel = Tensor::from(ndarray::Array4::<f32>::zeros((kh, kw, ci, co)));
-    let conv = tract_core::ops::nn::Conv::new(
+    let conv = tract_core::ops::cnn::Conv::new(
         tract_core::ops::nn::DataFormat::NHWC,
-        tract_core::ops::nn::KernelFormat::HWIO,
+        tract_core::ops::cnn::KernelFormat::HWIO,
         None,
         Some(kernel.shape()[0..2].into()),
         padding,

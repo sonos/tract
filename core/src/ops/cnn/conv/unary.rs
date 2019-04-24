@@ -11,8 +11,9 @@ use super::im2col::Im2Col;
 use super::mat_mat::MatMat;
 use super::vec_mat::VecMat;
 use super::Conv;
-use crate::ops::nn::conv::KernelFormat;
-use crate::ops::nn::{DataFormat, PaddingSpec, Patch, PatchSpec};
+use crate::ops::cnn::conv::KernelFormat;
+use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
+use crate::ops::nn::DataFormat;
 
 use std::iter::Sum;
 
@@ -92,8 +93,11 @@ impl ConvUnary {
 
         let patch = self.patch(input_full_shape);
         let input_shape = self.data_format.shape(input_full_shape);
-        let output_shape =
-            self.data_format.from_n_c_hw(input_shape.n(), self.output_channels(), &*patch.output_shape);
+        let output_shape = self.data_format.from_n_c_hw(
+            input_shape.n(),
+            self.output_channels(),
+            &*patch.output_shape,
+        );
         let channel_stride = input_shape.c_stride();
         let rpatch = &patch;
         let data_offsets: Vec<isize> = ndarray::indices(&*patch.output_shape)
@@ -179,8 +183,11 @@ impl ConvUnary {
         trace!("to_im2col_pair: {:?}", self);
         let patch = self.patch(input_full_shape);
         let input_shape = self.data_format.shape(input_full_shape.into());
-        let output_shape =
-            self.data_format.from_n_c_hw(input_shape.n(), self.output_channels(), &*patch.output_shape);
+        let output_shape = self.data_format.from_n_c_hw(
+            input_shape.n(),
+            self.output_channels(),
+            &*patch.output_shape,
+        );
         let kernel = self.kernel.to_array_view::<T>()?;
 
         trace!("output channels: {:?}", self.output_channels());
@@ -345,8 +352,11 @@ impl ConvUnary {
     {
         let patch = self.patch(shape);
         let input_shape = self.data_format.shape(shape.into());
-        let output_shape =
-            self.data_format.from_n_c_hw(input_shape.n(), self.output_channels(), &*patch.output_shape);
+        let output_shape = self.data_format.from_n_c_hw(
+            input_shape.n(),
+            self.output_channels(),
+            &*patch.output_shape,
+        );
         let op = DepthWise::<T>::new(
             patch,
             input_shape,

@@ -2,9 +2,9 @@ use crate::internal::*;
 
 use super::ConvUnary;
 use crate::dim::DimLike;
-use crate::ops::nn::conv::KernelFormat;
+use crate::ops::cnn::conv::KernelFormat;
+use crate::ops::cnn::PaddingSpec;
 use crate::ops::nn::DataFormat;
-use crate::ops::nn::PaddingSpec;
 use std::borrow::Borrow;
 
 #[derive(Debug, Clone, new)]
@@ -33,11 +33,7 @@ impl ::std::default::Default for Conv {
 }
 
 impl Conv {
-    fn output_shape<D: DimLike>(
-        &self,
-        ishape: &[D],
-        kshape: &[usize],
-    ) -> TVec<D> {
+    fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TVec<D> {
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_format.shape(ishape);
         let spatial_rank = ishape.hw_rank();
@@ -60,7 +56,10 @@ impl Conv {
         result
     }
 
-    pub fn to_unary(&self, inputs: &[impl Borrow<TypedTensorInfo>]) -> TractResult<Option<ConvUnary>> {
+    pub fn to_unary(
+        &self,
+        inputs: &[impl Borrow<TypedTensorInfo>],
+    ) -> TractResult<Option<ConvUnary>> {
         let input = &inputs[0];
         let kernel = &inputs[1];
         if inputs.len() == 2 {
@@ -78,7 +77,9 @@ impl Conv {
             }
         } else {
             let bias = &inputs[2];
-            if let (Some(kvalue), Some(bias)) = (kernel.borrow().konst.clone(), bias.borrow().konst.clone()) {
+            if let (Some(kvalue), Some(bias)) =
+                (kernel.borrow().konst.clone(), bias.borrow().konst.clone())
+            {
                 let ishape: TVec<TDim> = input.borrow().shape.iter().collect();
                 let reduced = ConvUnary::new(
                     &self,
@@ -101,7 +102,8 @@ impl Op for Conv {
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
-        let unary = self.to_unary(&*inputs)?.ok_or_else(|| format!("Can not unarize conv: {:?}", self))?;
+        let unary =
+            self.to_unary(&*inputs)?.ok_or_else(|| format!("Can not unarize conv: {:?}", self))?;
         unary.cost(&[inputs[0]])
     }
 
@@ -121,7 +123,8 @@ impl Op for Conv {
 
 impl StatelessOp for Conv {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let inputs_info:TVec<TypedTensorInfo> = inputs.iter().map(|t| TypedTensorInfo::from(t.as_tensor())).collect();
+        let inputs_info: TVec<TypedTensorInfo> =
+            inputs.iter().map(|t| TypedTensorInfo::from(t.as_tensor())).collect();
         let unary = self.to_unary(&*inputs_info)?.unwrap();
         unary.eval(tvec!(inputs.remove(0)))
     }
@@ -169,7 +172,8 @@ impl InferenceRulesOp for Conv {
         })?;
         s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, ishape, kshape| {
             if kshape.iter().all(|d| d.to_integer().is_ok()) {
-                let kshape:TVec<usize> = kshape.iter().map(|d| d.to_integer().unwrap() as _).collect();
+                let kshape: TVec<usize> =
+                    kshape.iter().map(|d| d.to_integer().unwrap() as _).collect();
                 let oshape = self.output_shape(&*ishape, &*kshape);
                 s.equals(&outputs[0].shape, oshape)?;
             }
@@ -181,7 +185,7 @@ impl InferenceRulesOp for Conv {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ops::nn::conv::KernelFormat::HWIO;
+    use crate::ops::cnn::conv::KernelFormat::HWIO;
     use crate::ops::nn::DataFormat::NHWC;
     use ndarray::*;
 

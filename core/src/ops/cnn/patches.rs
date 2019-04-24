@@ -1,5 +1,6 @@
-use super::{DataFormat, DataShape, PaddingSpec};
 use crate::internal::*;
+use crate::ops::cnn::PaddingSpec;
+use crate::ops::nn::{DataFormat, Shape};
 use ndarray::prelude::*;
 #[cfg(not(debug_assertions))]
 use no_panic::no_panic;
@@ -25,7 +26,7 @@ impl PatchSpec {
         Self::for_data_shape(shape)
     }
 
-    pub fn for_data_shape(data_shape: DataShape<usize, TVec<usize>>) -> PatchSpec {
+    pub fn for_data_shape(data_shape: Shape) -> PatchSpec {
         let input_shape: TVec<usize> = data_shape.hw_dims().into();
         PatchSpec {
             kernel_shape: tvec!(1; input_shape.len()),
@@ -260,13 +261,11 @@ impl Patch {
         self.invalid_output_zones.iter().flat_map(move |z| self.visit_zone_d(z, Some(false)))
     }
 
-    pub fn at<'p>(&'p self, coords: &[usize]) -> PatchIterator<'p>
-    {
+    pub fn at<'p>(&'p self, coords: &[usize]) -> PatchIterator<'p> {
         self.at_hint(coords, None)
     }
 
-    pub fn at_hint<'p>(&'p self, coords: &[usize], hint: Option<bool>) -> PatchIterator<'p>
-    {
+    pub fn at_hint<'p>(&'p self, coords: &[usize], hint: Option<bool>) -> PatchIterator<'p> {
         unsafe {
             assert_eq!(coords.len(), self.spec.kernel_shape.len());
             let mut center = 0;
@@ -341,8 +340,8 @@ impl<'p> Iterator for FastPatchIterator<'p> {
             return None;
         }
         unsafe {
-            let position = self.center
-                + self.patch.standard_layout_data_field.get_unchecked(self.item);
+            let position =
+                self.center + self.patch.standard_layout_data_field.get_unchecked(self.item);
             self.item += 1;
             Some(Some(position))
         }
@@ -377,7 +376,8 @@ impl<'p> Iterator for SafePatchIterator<'p> {
                     return Some(None);
                 }
             }
-            let position = self.center + self.patch.standard_layout_data_field.get_unchecked(self.item);
+            let position =
+                self.center + self.patch.standard_layout_data_field.get_unchecked(self.item);
             self.item += 1;
             Some(Some(position))
         }
@@ -446,7 +446,7 @@ pub mod test {
         assert_eq!(field(&[2, 2], &[2, 1]), arr2(&[[0, 0], [0, 1], [2, 0], [2, 1]]));
     }
 
-    pub fn patch_2d() -> BoxedStrategy<(DataShape<usize, TVec<usize>>, Patch)> {
+    pub fn patch_2d() -> BoxedStrategy<(Shape, Patch)> {
         (
             Just(DataFormat::NCHW),
             (1usize..3, 1usize..3),

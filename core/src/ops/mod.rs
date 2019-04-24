@@ -10,6 +10,7 @@ pub mod macros;
 
 pub mod array;
 pub mod cast;
+pub mod cnn;
 pub mod identity;
 #[cfg(features = "image_ops")]
 pub mod image;
