@@ -1,6 +1,7 @@
-use tract_core::ops as tractops;
-use tract_core::ops::nn::{DataFormat, KernelFormat, PaddingSpec};
 use tract_core::internal::*;
+use tract_core::ops as tractops;
+use tract_core::ops::cnn::{KernelFormat, PaddingSpec};
+use tract_core::ops::nn::DataFormat;
 
 use crate::model::OnnxOpRegister;
 use crate::pb::NodeProto;
@@ -109,7 +110,7 @@ pub fn batch_normalization(node: &NodeProto) -> TractResult<Box<Op>> {
 pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
     let kernel_shape = node.get_attr_opt_tvec("kernel_shape")?;
     let group = node.get_attr_opt("group")?.unwrap_or(1);
-    Ok(Box::new(tractops::nn::Conv::new(
+    Ok(Box::new(tractops::cnn::Conv::new(
         DataFormat::NCHW,
         KernelFormat::OIHW,
         dilations(node)?,
@@ -125,13 +126,8 @@ pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
     let pad = pad(node)?;
     let strides = strides(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
-    Ok(Box::new(tractops::nn::AvgPool::new(
-        tractops::nn::PoolSpec::new(
-            DataFormat::NCHW,
-            kernel_shape,
-            pad,
-            strides,
-        ),
+    Ok(Box::new(tractops::cnn::AvgPool::new(
+        tractops::cnn::PoolSpec::new(DataFormat::NCHW, kernel_shape, pad, strides),
         count_include_pad,
     )))
 }
@@ -184,13 +180,8 @@ pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node)?;
     let strides = strides(node)?;
-    Ok(Box::new(tractops::nn::MaxPool::new(
-        tractops::nn::PoolSpec::new(
-            DataFormat::NCHW,
-            kernel_shape,
-            pad,
-            strides,
-        ),
+    Ok(Box::new(tractops::cnn::MaxPool::new(
+        tractops::cnn::PoolSpec::new(DataFormat::NCHW, kernel_shape, pad, strides),
         if node.get_output().len() == 2 { Some(DatumType::I64) } else { None },
     )))
 }

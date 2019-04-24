@@ -1,6 +1,7 @@
 use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops::nn::*;
+use tract_core::ops::cnn::*;
 
 pub fn depthwise_conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let data_format = super::data_format(pb)?;
@@ -51,7 +52,7 @@ impl Op for DepthwiseConv2d {
         let inputs = model.node_input_facts(node.id)?;
         let input_shape = inputs[0].shape.to_tvec();
         let shape = self.data_format.shape(&input_shape);
-        let conv = tract_core::ops::nn::Conv::new(
+        let conv = tract_core::ops::cnn::Conv::new(
             self.data_format.clone(),
             KernelFormat::HWIO,
             Some(self.dilations[shape.hw_axes()].into()),

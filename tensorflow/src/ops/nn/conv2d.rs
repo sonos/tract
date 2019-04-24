@@ -1,5 +1,5 @@
-use tract_core::ops::nn::*;
 use tract_core::internal::*;
+use tract_core::ops::cnn::*;
 
 pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let data_format = super::data_format(pb)?;
@@ -21,7 +21,8 @@ mod tests {
     #![allow(non_snake_case)]
     use super::*;
     use ndarray::*;
-    use tract_core::ops::nn::{Conv, DataFormat, KernelFormat, PaddingSpec};
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec};
+    use tract_core::ops::nn::DataFormat;
 
     fn mk(sizes: &[usize]) -> Tensor {
         ::ndarray::Array::range(1f32, sizes.iter().product::<usize>() as f32 + 1.0, 1.0)

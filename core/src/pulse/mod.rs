@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_simple_conv() {
-        use crate::ops::nn::*;
+        use crate::ops::cnn::*;
 
         let mut model = Model::default();
         let ker = model.add_const("kernel", arr3(&[[[0.5f32, 1.0, -0.1]]]).into()).unwrap();

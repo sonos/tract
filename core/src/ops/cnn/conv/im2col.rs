@@ -3,7 +3,8 @@ use tract_linalg::PackB;
 use crate::internal::*;
 use ndarray::prelude::*;
 
-use crate::ops::nn::{ DataShape, Patch };
+use crate::ops::cnn::Patch;
+use crate::ops::nn::Shape;
 
 use num_traits::Zero;
 use std::ops::Mul;
@@ -11,8 +12,8 @@ use std::ops::Mul;
 #[derive(Debug, Clone)]
 pub(super) struct Im2Col<T: Copy + Datum + Mul + Zero> {
     pub patch: Patch,
-    pub input_shape: DataShape<usize, TVec<usize>>,
-    pub output_shape: DataShape<usize, TVec<usize>>,
+    pub input_shape: Shape,
+    pub output_shape: Shape,
     pub m: usize,
     pub k: usize,
     pub n: usize,
@@ -36,7 +37,7 @@ impl<T: Copy + Datum + Mul + Zero> PartialEq for Im2Col<T> {
 impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
     pub fn new(
         patch: Patch,
-        input_shape: DataShape<usize, TVec<usize>>,
+        input_shape: Shape,
         m: usize,
         k: usize,
         n: usize,
@@ -63,9 +64,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
 
     pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, T>) -> TractResult<Tensor> {
         let mut packed = unsafe {
-            Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape,
-                self.b_pack.alignment(),
-            )?
+            Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
         };
         for i in 0..self.input_shape.n_dim() {
             for g in 0..self.group {
@@ -81,7 +80,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
 
 impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
     fn name(&self) -> Cow<str> {
-        "Im2col".into()
+        "Conv::Im2col".into()
     }
 
     impl_op_same_as!();
@@ -180,7 +179,8 @@ impl Patcher {
                 for ci in 0..im2col.ci_per_group {
                     let ptr = ptr.offset((shape.c_stride() * ci) as isize);
                     for v in im2col.patch.at(spatial.slice()) {
-                        *col.next().expect("geometry error in conv") = v.map(|o| *ptr.offset(o) ).unwrap_or(T::default());
+                        *col.next().expect("geometry error in conv") =
+                            v.map(|o| *ptr.offset(o)).unwrap_or(T::default());
                     }
                 }
             }
@@ -206,8 +206,7 @@ impl Patcher {
                 * im2col.patch.spec.strides[0] as isize;
             let c_stride = input.strides()[im2col.input_shape.c_axis()] as isize;
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
-            let iptr =
-                input.slice_axis(Axis(im2col.input_shape.n_axis()), (i..=i).into()).as_ptr();
+            let iptr = input.slice_axis(Axis(im2col.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
@@ -238,8 +237,7 @@ impl Patcher {
             let input_width = im2col.input_shape.hw_dims()[1] as isize;
             let kernel_len = im2col.patch.standard_layout_data_field.len();
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
-            let iptr =
-                input.slice_axis(Axis(im2col.input_shape.n_axis()), (i..=i).into()).as_ptr();
+            let iptr = input.slice_axis(Axis(im2col.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride_ptr);
                 for kitem in 0..kernel_len {
@@ -285,8 +283,7 @@ impl Patcher {
                 * im2col.patch.spec.strides[1] as isize;
             let c_stride = input.strides()[im2col.input_shape.c_axis()] as isize;
             let mut writer = im2col.b_pack.write_packed_by_rows(pack);
-            let iptr =
-                input.slice_axis(Axis(im2col.input_shape.n_axis()), (i..=i).into()).as_ptr();
+            let iptr = input.slice_axis(Axis(im2col.input_shape.n_axis()), (i..=i).into()).as_ptr();
             for ci in (im2col.ci_per_group * g)..(im2col.ci_per_group * (g + 1)) {
                 let iptr = iptr.offset(ci as isize * c_stride);
                 for koffset in &im2col.patch.standard_layout_data_field {
