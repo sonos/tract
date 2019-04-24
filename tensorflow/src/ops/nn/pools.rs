@@ -1,6 +1,6 @@
 use crate::tfpb::node_def::NodeDef;
-use tract_core::ops::nn::*;
 use tract_core::internal::*;
+use tract_core::ops::nn::*;
 
 pub fn avgpool(pb: &NodeDef) -> TractResult<Box<Op>> {
     let ksize: Vec<usize> = pb.get_attr_list_int("ksize")?;
@@ -9,10 +9,12 @@ pub fn avgpool(pb: &NodeDef) -> TractResult<Box<Op>> {
     let strides = super::strides(pb)?;
     let padding = super::padding(pb)?;
     Ok(Box::new(AvgPool::new(
-        data_format,
-        kshape.hw_dims().into(),
-        padding,
-        Some(strides[kshape.hw_axes()].into()),
+        PoolSpec::new(
+            data_format,
+            kshape.hw_dims().into(),
+            padding,
+            Some(strides[kshape.hw_axes()].into()),
+        ),
         false,
     )))
 }
@@ -24,10 +26,12 @@ pub fn maxpool(pb: &NodeDef) -> TractResult<Box<Op>> {
     let strides = super::strides(pb)?;
     let padding = super::padding(pb)?;
     Ok(Box::new(MaxPool::new(
-        data_format,
-        kshape.hw_dims().into(),
-        padding,
-        Some(strides[kshape.hw_axes()].into()),
+        PoolSpec::new(
+            data_format,
+            kshape.hw_dims().into(),
+            padding,
+            Some(strides[kshape.hw_axes()].into()),
+        ),
         None,
     )))
 }

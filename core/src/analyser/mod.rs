@@ -83,6 +83,14 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             debug!("Starting step for #{} {} ({})", node.id, node.name, node.op.name(),);
 
             let (inputs, outputs) = self.model.borrow().node_facts(node.id)?;
+            if log_enabled!(log::Level::Trace) {
+                for (ix, i) in inputs.iter().enumerate() {
+                    trace!("  Input  #{}: {:?}", ix, i);
+                }
+                for (ix, o) in outputs.iter().enumerate() {
+                    trace!("  Output #{}: {:?}", ix, o);
+                }
+            }
 
             let inferred = node
                 .op

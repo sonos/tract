@@ -12,6 +12,7 @@ use itertools::zip;
 pub struct PatchSpec {
     pub input_shape: TVec<usize>,
     pub input_inner_stride: usize,
+    pub output_inner_stride: usize,
     pub kernel_shape: TVec<usize>,
     pub strides: TVec<usize>,
     pub dilations: TVec<usize>,
@@ -29,6 +30,7 @@ impl PatchSpec {
         PatchSpec {
             kernel_shape: tvec!(1; input_shape.len()),
             input_inner_stride: data_shape.w_stride(),
+            output_inner_stride: 1,
             strides: tvec!(1; input_shape.len()),
             dilations: tvec!(1; input_shape.len()),
             padding: PaddingSpec::Valid,
@@ -50,6 +52,10 @@ impl PatchSpec {
 
     pub fn with_padding(self, padding: PaddingSpec) -> PatchSpec {
         PatchSpec { padding, ..self }
+    }
+
+    pub fn with_output_inner_stride(self, output_inner_stride: usize) -> PatchSpec {
+        PatchSpec { output_inner_stride, ..self }
     }
 
     pub fn into_patch(self) -> Patch {
@@ -294,6 +300,12 @@ impl Patch {
             .sum::<isize>();
         (center + self.standard_layout_data_field[patch_index]) as usize
     }
+}
+
+struct Window {
+    pub output_center_offset: isize,
+    pub input_center_offset: isize,
+    pub valid_hint: Option<bool>,
 }
 
 #[derive(Debug)]
