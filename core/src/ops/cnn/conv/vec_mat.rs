@@ -6,7 +6,7 @@ use ndarray::prelude::*;
 
 use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
-use crate::ops::nn::{DataFormat, Shape};
+use crate::ops::nn::{DataFormat, DataShape};
 
 use tract_linalg::VecMatMul;
 
@@ -16,7 +16,7 @@ where
     T: Datum + Add + Mul + Zero + Copy,
 {
     pub patch: Patch,
-    pub output_shape: Shape,
+    pub output_shape: DataShape,
     pub k: usize,
     pub n: usize,
     pub kernel_fmt: KernelFormat,

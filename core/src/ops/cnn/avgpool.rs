@@ -4,7 +4,7 @@ use num_traits::{AsPrimitive, Float};
 
 use crate::ops::cnn::pools::PoolSpec;
 use crate::ops::cnn::Patch;
-use crate::ops::nn::{DataFormat, Shape};
+use crate::ops::nn::{DataFormat, DataShape};
 
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
@@ -39,8 +39,8 @@ impl Op for AvgPool {
             let dt = inputs[0].datum_type;
             fn fixed<T>(
                 patch: Patch,
-                input_shape: Shape,
-                output_shape: Shape,
+                input_shape: DataShape,
+                output_shape: DataShape,
                 count_include_pad: bool,
             ) -> Box<Op>
             where
@@ -88,8 +88,8 @@ where
     usize: AsPrimitive<T>,
 {
     patch: Patch,
-    input_shape: Shape,
-    output_shape: Shape,
+    input_shape: DataShape,
+    output_shape: DataShape,
     count_include_pad: bool,
     _phantom: PhantomData<T>,
 }
@@ -354,7 +354,7 @@ mod tests {
     use proptest::prelude::*;
     use proptest::*;
 
-    pub fn patch_2d_and_data() -> BoxedStrategy<(Shape, Patch, Array4<f32>)>
+    pub fn patch_2d_and_data() -> BoxedStrategy<(DataShape, Patch, Array4<f32>)>
     {
         patch_2d()
             .prop_flat_map(|(i, p)| {
