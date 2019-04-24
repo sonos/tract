@@ -126,10 +126,12 @@ pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
     let strides = strides(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
     Ok(Box::new(tractops::nn::AvgPool::new(
-        DataFormat::NCHW,
-        kernel_shape,
-        pad,
-        strides,
+        tractops::nn::PoolSpec::new(
+            DataFormat::NCHW,
+            kernel_shape,
+            pad,
+            strides,
+        ),
         count_include_pad,
     )))
 }
@@ -183,10 +185,12 @@ pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
     let pad = pad(node)?;
     let strides = strides(node)?;
     Ok(Box::new(tractops::nn::MaxPool::new(
-        DataFormat::NCHW,
-        kernel_shape,
-        pad,
-        strides,
+        tractops::nn::PoolSpec::new(
+            DataFormat::NCHW,
+            kernel_shape,
+            pad,
+            strides,
+        ),
         if node.get_output().len() == 2 { Some(DatumType::I64) } else { None },
     )))
 }
