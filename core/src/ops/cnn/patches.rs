@@ -5,9 +5,12 @@ use ndarray::prelude::*;
 #[cfg(not(debug_assertions))]
 use no_panic::no_panic;
 
+use super::PatchAxis;
+
 use std::ops::Range;
 
 use itertools::zip;
+use itertools::Itertools;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatchSpec {
@@ -92,16 +95,70 @@ impl PatchSpec {
             .map(|col| (col.iter().min().cloned().unwrap(), col.iter().max().cloned().unwrap()))
             .collect();
 
-        let mut input_layout_strides: Vec<isize> = vec![self.input_inner_stride as isize];
-        for dim in self.input_shape.iter().skip(1).rev() {
-            let previous = input_layout_strides.last().unwrap();
-            input_layout_strides.push(*dim as isize * previous);
+        fn strides(shape: &[usize], inner: usize) -> TVec<isize> {
+            let mut strides: TVec<isize> = tvec![inner as isize];
+            for dim in shape.into_iter().skip(1).rev() {
+                let previous = strides.last().unwrap();
+                strides.push(*dim as isize * previous);
+            }
+            strides.reverse();
+            strides
         }
-        input_layout_strides.reverse();
+
+        let input_layout_strides = strides(&*self.input_shape, self.input_inner_stride);
+        let output_layout_strides = strides(&*output, self.output_inner_stride);
+
         let standard_layout_data_field: Vec<isize> = data_field
             .outer_iter()
             .map(|coords| zip(coords, &input_layout_strides).map(|(a, b)| a * b).sum::<isize>())
             .collect();
+
+        // regions[axis][range+mask]
+        let regions: TVec<TVec<_>> = dims
+            .iter()
+            .enumerate()
+            .map(|(ix, d)| {
+                PatchAxis {
+                    input_dim: self.input_shape[ix],
+                    kernel_dim: self.kernel_shape[ix],
+                    pad_before: d.pad_before,
+                    pad_after: d.pad_after,
+                    output_dim: d.output,
+                    stride: self.strides[ix],
+                    dilation: self.dilations[ix],
+                }
+                .regions()
+            })
+            .collect::<TVec<_>>();
+
+        let zone_strides = strides(&regions.iter().map(|d| d.len()).collect::<TVec<_>>(), 1);
+
+        let zones: Vec<Zone> = regions
+            .iter()
+            .multi_cartesian_product()
+            .map(|regions| Zone {
+                input_zone_offset: 0,
+                output_ranges: regions.iter().map(|reg| reg.range.clone()).collect(),
+                output_shape: regions.iter().map(|reg| reg.range.end - reg.range.start).collect(),
+                output_zone_offset: zip(&regions, &output_layout_strides)
+                    .map(|(reg, &stride)| reg.range.start as isize * stride)
+                    .sum::<isize>(),
+                valid: regions.iter().all(|reg| reg.mask.is_none()),
+                values_offsets: itertools::izip!(
+                    0..,
+                    ndarray::indices(&*self.kernel_shape),
+                    &standard_layout_data_field
+                )
+                .filter(|(_ix, coords, _offset)| {
+                    zip(coords.slice(), &regions)
+                        .all(|(&x, axis)| !axis.mask.as_ref().map(|mask| mask[x]).unwrap_or(false))
+                })
+                .map(|(ix, _coords, &window_offset)| (ix, window_offset))
+                .collect(),
+            })
+            .collect();
+
+        let valid_zone = zones.iter().position(|z| z.valid);
 
         let mut valid_output_zone = tvec!();
         let mut invalid_output_zones = tvec!();
@@ -141,9 +198,13 @@ impl PatchSpec {
             data_field,
             data_field_min_max,
             standard_layout_data_field,
+            input_layout_strides,
             op_strides_times_input_storage_strides,
             valid_output_zone,
             invalid_output_zones,
+            zones,
+            valid_zone,
+            zone_strides,
         }
     }
 }
@@ -161,9 +222,14 @@ pub struct Patch {
     pub op_strides_times_input_storage_strides: TVec<isize>,
     pub valid_output_zone: TVec<Range<usize>>,
     pub invalid_output_zones: TVec<TVec<Range<usize>>>,
+    pub zones: Vec<Zone>,
+    pub valid_zone: Option<usize>,
+    pub zone_strides: TVec<isize>,
+    pub input_layout_strides: TVec<isize>,
 }
 
 impl Patch {
+    #[inline]
     pub fn rank(&self) -> usize {
         self.spec.input_shape.len()
     }
@@ -183,6 +249,16 @@ impl Patch {
         true
     }
 
+    #[inline]
+    pub fn visit_output(&self, mut acceptor: impl FnMut(&Scanner)) {
+        let mut scanner = Scanner::new(self);
+        while !scanner.done() {
+            acceptor(&scanner);
+            scanner.next();
+        }
+    }
+
+    /*
     pub fn visit_zone_1<'p>(
         &'p self,
         zone: &'p [Range<usize>],
@@ -209,7 +285,9 @@ impl Patch {
             )
         })
     }
+    */
 
+    /*
     pub fn visit_zone_d<'p>(
         &'p self,
         zone: &'p [Range<usize>],
@@ -260,6 +338,7 @@ impl Patch {
     pub fn visit_invalid_d(&self) -> impl Iterator<Item = (TVec<usize>, Option<bool>)> + '_ {
         self.invalid_output_zones.iter().flat_map(move |z| self.visit_zone_d(z, Some(false)))
     }
+    */
 
     pub fn at<'p>(&'p self, coords: &[usize]) -> PatchIterator<'p> {
         self.at_hint(coords, None)
@@ -301,10 +380,111 @@ impl Patch {
     }
 }
 
-struct Window {
-    pub output_center_offset: isize,
+#[derive(Clone, Debug, PartialEq)]
+pub struct Zone {
+    valid: bool,
+    input_zone_offset: isize,
+    output_zone_offset: isize,
+    output_ranges: TVec<Range<usize>>,
+    output_shape: TVec<usize>,
+    /// (index, raw offset)
+    values_offsets: TVec<(usize, isize)>,
+}
+
+impl Zone {
+    pub fn contains_output(&self, coords: &[usize]) -> bool {
+        self.output_ranges.iter().zip(coords).all(|(range, &x)| x >= range.start && x < range.end)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scanner<'p> {
+    pub patch: &'p Patch,
+    pub zone_id: usize,
+    pub zone_coords: TVec<usize>,
+    pub zone: &'p Zone,
+    pub output_offset: isize,
+    pub output_coords: TVec<usize>,
+    pub input_coords: TVec<usize>,
     pub input_center_offset: isize,
-    pub valid_hint: Option<bool>,
+    done: bool,
+}
+
+impl<'p> Scanner<'p> {
+    fn new(patch: &'p Patch) -> Scanner<'p> {
+        let rank = patch.rank();
+        let zone = &patch.zones[0];
+        Scanner {
+            patch,
+            zone_coords: tvec!(0; rank),
+            zone,
+            zone_id: 0,
+            output_offset: 0,
+            input_center_offset: 0,
+            input_coords: tvec!(0; rank),
+            output_coords: tvec!(0; rank),
+            done: false,
+        }
+    }
+
+    /*
+    pub fn valid_offsets_with_indexes(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
+        self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
+    }
+    */
+
+    #[inline]
+    pub fn valid_offsets(&self) -> impl Iterator<Item = isize> + '_ {
+        self.zone.values_offsets.iter().map(move |pair| pair.1 + self.input_center_offset)
+    }
+
+    #[inline]
+    pub fn next(&mut self) {
+        let rank = self.patch.rank();
+        let inner_dim = rank - 1;
+        self.output_coords[inner_dim] += 1;
+        self.input_coords[inner_dim] += self.patch.spec.strides[inner_dim];
+        self.output_offset += self.patch.spec.output_inner_stride as isize;
+        self.input_center_offset += self.patch.op_strides_times_input_storage_strides[inner_dim];
+        if self.output_coords[inner_dim] < self.zone.output_ranges[inner_dim].end {
+            return;
+        }
+        if self.output_coords[inner_dim] < self.patch.output_shape[inner_dim] {
+            self.zone_id += 1;
+            self.zone_coords[inner_dim] += 1;
+            self.zone = &self.patch.zones[self.zone_id];
+        } else {
+            for axis in (0..rank - 1).rev() {
+                self.output_coords[axis + 1] = 0;
+                self.input_coords[axis + 1] = 0;
+                self.output_coords[axis] += 1;
+                self.input_coords[axis] += self.patch.spec.strides[axis];
+                self.zone_coords[axis + 1] = 0;
+                if self.output_coords[axis] == self.zone.output_ranges[axis].end {
+                    self.zone_coords[axis] += 1;
+                }
+                if self.output_coords[axis] < self.patch.output_shape[axis] {
+                    break;
+                }
+            }
+            if self.output_coords[0] == self.patch.output_shape[0] {
+                self.done = true;
+                return;
+            }
+            self.zone_id = zip(&self.zone_coords, &self.patch.zone_strides)
+                .map(|(&a, &b)| a * b as usize)
+                .sum();
+            self.zone = &self.patch.zones[self.zone_id];
+            self.input_center_offset =
+                zip(&self.input_coords, &self.patch.input_layout_strides)
+                    .map(|(&a, &b)| a as isize * b)
+                    .sum();
+        }
+    }
+
+    pub fn done(&self) -> bool {
+        self.done
+    }
 }
 
 #[derive(Debug)]
@@ -505,15 +685,19 @@ pub mod test {
         }
 
         #[test]
-        #[ignore]
         fn test_zone_visitor((input_shape, p) in patch_2d()) {
-            let output_full_shape = input_shape.fmt.from_n_c_hw(input_shape.n(), 1, &*p.output_shape);
-            let mut output = ndarray::ArrayD::<i32>::zeros(&*output_full_shape.shape);
-            for (c, _v) in p.visit_all_2() {
-                prop_assert!(output[[0, 0, c.0, c.1]] == 0);
-                output[[0, 0, c.0, c.1]] = 1;
+            let output_shape = input_shape.fmt.from_n_c_hw(input_shape.n(), 1, &*p.output_shape);
+            let mut output = ndarray::ArrayD::<i32>::zeros(&*output_shape.shape);
+            let mut count = 0;
+            for n in 0..output_shape.n() as isize {
+                p.visit_output(|w| {
+                    let offset = (n*output_shape.n_stride() as isize + w.output_offset) as usize;
+                    output.as_slice_mut().unwrap()[offset] = 1;
+                    count += 1;
+                });
             }
-            assert!(output.iter().all(|&x| x == 1));
+            prop_assert!(output.iter().all(|&x| x == 1));
+            prop_assert_eq!(count, output.len());
         }
     }
     #[test]
@@ -525,10 +709,11 @@ pub mod test {
             .into_patch();
         let output_shape = DataFormat::NCHW.from_n_c_hw(1, 1, &*p.output_shape);
         let mut output = ndarray::ArrayD::<i32>::zeros(&*output_shape.shape);
-        for (c, _v) in p.visit_all_2() {
-            assert!(output[[0, 0, c.0, c.1]] == 0);
-            output[[0, 0, c.0, c.1]] = 1;
-        }
+        let mut count = 0;
+        p.visit_output(|w| {
+            output.as_slice_mut().unwrap()[w.output_offset as usize] = 1;
+            count += 1;
+        });
         assert!(output.iter().all(|&x| x == 1));
     }
 }

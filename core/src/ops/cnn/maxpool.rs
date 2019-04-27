@@ -24,26 +24,35 @@ impl StatelessOp for MaxPool {
 
         let mut values = unsafe { ArrayD::<f32>::uninitialized(&*output_shape.shape) };
         let mut indices = if self.with_index_outputs.is_some() {
-            Some(unsafe { ArrayD::uninitialized(&*output_shape.shape) })
+            Some(unsafe { ArrayD::<i32>::uninitialized(&*output_shape.shape) })
         } else {
             None
         };
-        ::ndarray::indices(&*output_shape.shape).into_iter().for_each(|coords| unsafe {
-            let input_ptr =
-                input_ptr.offset((input_shape.n_stride() * coords[input_shape.n_axis()]) as isize);
-            let input_ptr =
-                input_ptr.offset((input_shape.c_stride() * coords[input_shape.c_axis()]) as isize);
-            let max = patch
-                .at(&coords.slice()[input_shape.hw_axes()])
-                .enumerate()
-                .filter_map(|(ix, v)| v.map(|v| (ix, *input_ptr.offset(v))))
-                .fold((0, ::std::f32::MIN), |acc, v| if acc.1 < v.1 { v } else { acc });
-            values[&coords] = max.1;
-            if self.with_index_outputs.is_some() {
-                indices.as_mut().unwrap()[coords] =
-                    patch.global_offset_for(&coords.slice()[input_shape.hw_axes()], max.0) as i32;
+        for n in 0..input_shape.n() {
+            let input_offset = input_shape.n_stride() * n;
+            let output_offset = output_shape.n_stride() * n;
+            for c in 0..input_shape.c() {
+                let input_offset = input_offset + input_shape.c_stride() * c;
+                let output_offset = output_offset + output_shape.c_stride() * c;
+                unsafe {
+                    patch.visit_output(|visitor| {
+                        let max = visitor
+                            .valid_offsets()
+                            .map(|v| (v, *input_ptr.offset(v + input_offset as isize)))
+                            .fold((0, ::std::f32::MIN), |acc, v| if acc.1 < v.1 { v } else { acc });
+                        *values
+                            .as_mut_ptr()
+                            .offset(output_offset as isize + visitor.output_offset) = max.1;
+                        if let Some(ref mut indices) = indices {
+                            *indices
+                                .as_mut_ptr()
+                                .offset(output_offset as isize + visitor.output_offset) =
+                                max.0 as i32 / patch.spec.output_inner_stride as i32;
+                        }
+                    })
+                }
             }
-        });
+        }
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(
                 values.into(),

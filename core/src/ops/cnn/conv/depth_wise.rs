@@ -53,7 +53,6 @@ where
         }
         Ok(tvec!(output.into()))
     }
-    */
 
     fn eval4(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
@@ -99,6 +98,7 @@ where
         }
         Ok(tvec!(output.into()))
     }
+    */
 
     fn evald(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let img = args_1!(inputs);
@@ -151,8 +151,8 @@ where
         match inputs[0].shape().len() {
             /*
             3 => self.eval3(inputs),
-            */
             4 => self.eval4(inputs),
+            */
             _ => self.evald(inputs),
         }
     }

@@ -149,7 +149,7 @@ fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
                 //                println!("expected: {:?}", expected[ix].dump(true));
                 if !a.close_enough(b, true) {
                     panic!(
-                        "Different result for output #{}: got:{:?} expected:{:?}",
+                        "Different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}",
                         ix,
                         a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                         b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
