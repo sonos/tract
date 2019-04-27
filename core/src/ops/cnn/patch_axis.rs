@@ -3,22 +3,29 @@ use crate::internal::*;
 use itertools::Itertools;
 use std::ops::Range;
 
-#[derive(Clone, Debug, new)]
+#[derive(Clone, Debug, new, PartialEq)]
+pub struct Region {
+    pub range: Range<usize>,
+    pub mask: Option<TVec<bool>>
+}
+
+#[derive(Clone, Debug, new, PartialEq)]
 pub struct PatchAxis {
-    input_dim: usize,
-    kernel_dim: usize,
-    pad_before: usize,
-    pad_after: usize,
-    output_dim: usize,
-    stride: usize,
-    dilation: usize,
+    pub input_dim: usize,
+    pub kernel_dim: usize,
+    pub pad_before: usize,
+    pub pad_after: usize,
+    pub output_dim: usize,
+    pub stride: usize,
+    pub dilation: usize,
 }
 
 impl PatchAxis {
     fn valid_range(&self) -> Range<usize> {
         let min = self.pad_before.div_ceil(self.stride);
-        let max = self.output_dim - self.pad_after.div_ceil(self.stride);
-        min..max
+        let field = (self.kernel_dim - 1) * self.dilation;
+        let valid = (self.input_dim - field) / self.stride;
+        min..(min + valid)
     }
 
     fn invalid_at_left(&self, pos: usize) -> usize {
@@ -28,10 +35,12 @@ impl PatchAxis {
 
     fn invalid_at_right(&self, pos: usize) -> usize {
         let center_pos = pos * self.stride;
-        self.pad_after.saturating_sub(self.input_dim - center_pos - 1).div_ceil(self.dilation)
+        let last_valid = self.input_dim + self.pad_before;
+        let valid = (last_valid - center_pos).div_ceil(self.dilation);
+        self.kernel_dim.saturating_sub(valid)
     }
 
-    fn make_invalid_zones(&self, range: Range<usize>) -> TVec<(Range<usize>, Option<TVec<bool>>)> {
+    fn make_invalid_regions(&self, range: Range<usize>) -> TVec<Region> {
         range
             .map(move |ix| (ix, (self.invalid_at_left(ix), self.invalid_at_right(ix))))
             .group_by(|&pair| pair.1)
@@ -45,34 +54,32 @@ impl PatchAxis {
                 for i in 0..invalid.1 {
                     mask[self.kernel_dim - 1 - i] = true;
                 }
-                (min..max + 1, Some(mask))
+                Region::new(min..max + 1, Some(mask))
             })
             .collect()
     }
 
-    fn zones(&self) -> TVec<(Range<usize>, Option<TVec<bool>>)> {
-        let mut zones = tvec!();
+    pub fn regions(&self) -> TVec<Region> {
+        let mut regions = tvec!();
         let valid_range = self.valid_range();
         if valid_range.start > 0 {
-            zones.extend(self.make_invalid_zones(0..valid_range.start));
+            regions.extend(self.make_invalid_regions(0..valid_range.start));
         }
         if valid_range.start != valid_range.end {
-            zones.push((valid_range.clone(), None));
+            regions.push(Region::new(valid_range.clone(), None));
         }
         if valid_range.end < self.output_dim {
-            zones.extend(self.make_invalid_zones(valid_range.end..self.output_dim));
+            regions.extend(self.make_invalid_regions(valid_range.end..self.output_dim));
         }
-        zones
+        regions
     }
 }
 
 #[cfg(test)]
 pub mod test {
-    use super::super::DataFormat;
     use super::*;
-    use proptest::prelude::*;
-    use proptest::test_runner::TestCaseResult;
-    use proptest::*;
+    use crate::ops::cnn::{PaddingSpec, PatchSpec};
+    use ndarray::*;
 
     // • 0 1 2 3 4 • -> 3 -> (0) 1 2 3 (4)
     fn axis_5_3() -> PatchAxis {
@@ -101,7 +108,7 @@ pub mod test {
 
     // 0 1 2 3 4 5 6 7 8 9 -> 2 -> 0 3 6
     fn axis_10_2_s3_valid() -> PatchAxis {
-        PatchAxis::new(10, 2, 0, 0, 3, 1, 1)
+        PatchAxis::new(10, 2, 0, 0, 3, 3, 1)
     }
 
     #[test]
@@ -148,70 +155,90 @@ pub mod test {
     }
 
     #[test]
-    fn axis_5_3_zones() {
-        let zones = axis_5_3().zones();
+    fn axis_5_3_regions() {
+        let regions = axis_5_3().regions();
         assert_eq!(
-            zones,
+            regions,
             tvec!(
-                (0..1, Some(tvec!(true, false, false))),
-                (1..4, None),
-                (4..5, Some(tvec!(false, false, true)))
+                Region::new(0..1, Some(tvec!(true, false, false))),
+                Region::new(1..4, None),
+                Region::new(4..5, Some(tvec!(false, false, true)))
             )
         );
     }
 
     #[test]
-    fn axis_5_3_s2_zones() {
-        let zones = axis_5_3_s2().zones();
+    fn axis_5_3_s2_regions() {
+        let regions = axis_5_3_s2().regions();
         assert_eq!(
-            zones,
+            regions,
             tvec!(
-                (0..1, Some(tvec!(true, false, false))),
-                (1..2, None),
-                (2..3, Some(tvec!(false, false, true)))
+                Region::new(0..1, Some(tvec!(true, false, false))),
+                Region::new(1..2, None),
+                Region::new(2..3, Some(tvec!(false, false, true)))
             )
         );
     }
 
     #[test]
-    fn axis_5_3_d2_zones() {
-        let zones = axis_5_3_d2().zones();
+    fn axis_5_3_d2_regions() {
+        let regions = axis_5_3_d2().regions();
         assert_eq!(
-            zones,
+            regions,
             tvec!(
-                (0..2, Some(tvec!(true, false, false))),
-                (2..3, None),
-                (3..5, Some(tvec!(false, false, true)))
+                Region::new(0..2, Some(tvec!(true, false, false))),
+                Region::new(2..3, None),
+                Region::new(3..5, Some(tvec!(false, false, true)))
             )
         );
     }
 
     #[test]
-    fn axis_10_2_s3_valid_zones() {
-        let zones = axis_10_2_s3_valid().zones();
-        assert_eq!(zones, tvec!((0..3, None),));
-    }
-
-    fn field(kdim: &[usize], dilations: &[usize]) -> Array2<isize> {
-        let patch = PatchSpec {
-            input_shape: tvec![10; kdim.len()],
-            kernel_shape: kdim.into(),
-            dilations: dilations.into(),
-            strides: tvec![1; kdim.len()],
-            padding: PaddingSpec::Explicit(tvec![0; kdim.len()], tvec![0; kdim.len()]),
-            input_storage_stride: 1,
-            output_storage_stride: 1,
-        }
-        .into_patch();
-        patch.data_field
+    fn axis_10_2_s3_valid_regions() {
+        let regions = axis_10_2_s3_valid().regions();
+        assert_eq!(regions, tvec!(Region::new(0..3, None),));
     }
 
     #[test]
-    #[ignore]
-    fn test_field() {
-        assert_eq!(field(&[3], &[1]), arr2(&[[0], [1], [2]]));
-        assert_eq!(field(&[3], &[2]), arr2(&[[0], [2], [4]]));
-        assert_eq!(field(&[2, 2], &[1, 1]), arr2(&[[0, 0], [0, 1], [1, 0], [1, 1]]));
-        assert_eq!(field(&[2, 2], &[2, 1]), arr2(&[[0, 0], [0, 1], [2, 0], [2, 1]]));
+    fn axis_7_3_s2_regions() {
+        // • 0 1 2 3 4 5 6 • -> 3 -> (0) 2 4 (6)
+        let regions = PatchAxis::new(7, 3, 1, 1, 4, 2, 1).regions();
+        assert_eq!(
+            regions,
+            tvec!(
+                Region::new(0..1, Some(tvec!(true, false, false))),
+                Region::new(1..3, None),
+                Region::new(3..4, Some(tvec!(false, false, true)))
+            )
+        );
+    }
+
+    #[test]
+    fn axis_5_2_s2_regions() {
+        // • 0 1 2 3 4 • -> 2 -> (0) 2 4
+        let regions = PatchAxis::new(5, 2, 1, 1, 3, 2, 1).regions();
+        assert_eq!(
+            regions,
+            tvec!(
+                Region::new(0..1, Some(tvec!(true, false))),
+                Region::new(1..3, None),
+            )
+        );
+    }
+
+    #[test]
+    fn axis_28_3_very_padded_regions() {
+        // • • 0 1 2 3 ... 26 27 • • -> 2 -> (-1) (0) (1) 2 3 4 ... 26 (27) (28) (29)
+        let regions = PatchAxis::new(28, 3, 2, 2, 30, 1, 1).regions();
+        assert_eq!(
+            regions,
+            tvec!(
+                Region::new(0..1, Some(tvec!(true, true, false))),
+                Region::new(1..2, Some(tvec!(true, false, false))),
+                Region::new(2..28, None),
+                Region::new(28..29, Some(tvec!(false, false, true))),
+                Region::new(29..30, Some(tvec!(false, true, true))),
+            )
+        );
     }
 }
