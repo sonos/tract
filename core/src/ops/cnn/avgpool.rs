@@ -19,7 +19,6 @@ impl AvgPool {
         usize: AsPrimitive<T>,
     {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(inputs[0].shape());
-        println!("{:?} {:?} {:?}", input_shape, patch, output_shape);
         FixedAvgPool::new(patch, input_shape, output_shape, self.count_include_pad).eval(inputs)
     }
 }
