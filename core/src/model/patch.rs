@@ -55,12 +55,15 @@ impl<TI: TensorInfo> ModelPatch<TI> {
     ) -> TractResult<ModelPatch<TI>> {
         let mut patch = ModelPatch::default();
         let new_op = new_op.into();
-        let by = patch.add_node(&*node.name, new_op, tvec!(objekt::clone(&node.outputs[0].fact)))?;
+        let outputs = node.outputs.iter().map(|o| objekt::clone(&o.fact)).collect();
+        let by = patch.add_node(&*node.name, new_op, outputs)?;
         for (ix, i) in inputs.iter().enumerate() {
             let o = patch.tap_model(&patched_model, *i)?;
             patch.add_edge(o, InletId::new(by, ix))?;
         }
-        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(by, 0))?;
+        for ix in 0..node.outputs.len() {
+            patch.shunt_outside(OutletId::new(node.id, ix), OutletId::new(by, ix))?;
+        }
         Ok(patch)
     }
 

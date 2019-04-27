@@ -442,43 +442,48 @@ impl<'p> Scanner<'p> {
     pub fn next(&mut self) {
         let rank = self.patch.rank();
         let inner_dim = rank - 1;
-        self.output_coords[inner_dim] += 1;
-        self.input_coords[inner_dim] += self.patch.spec.strides[inner_dim];
-        self.output_offset += self.patch.spec.output_inner_stride as isize;
-        self.input_center_offset += self.patch.op_strides_times_input_storage_strides[inner_dim];
-        if self.output_coords[inner_dim] < self.zone.output_ranges[inner_dim].end {
-            return;
-        }
-        if self.output_coords[inner_dim] < self.patch.output_shape[inner_dim] {
-            self.zone_id += 1;
-            self.zone_coords[inner_dim] += 1;
-            self.zone = &self.patch.zones[self.zone_id];
-        } else {
-            for axis in (0..rank - 1).rev() {
-                self.output_coords[axis + 1] = 0;
-                self.input_coords[axis + 1] = 0;
-                self.output_coords[axis] += 1;
-                self.input_coords[axis] += self.patch.spec.strides[axis];
-                self.zone_coords[axis + 1] = 0;
-                if self.output_coords[axis] == self.zone.output_ranges[axis].end {
-                    self.zone_coords[axis] += 1;
-                }
-                if self.output_coords[axis] < self.patch.output_shape[axis] {
-                    break;
-                }
-            }
-            if self.output_coords[0] == self.patch.output_shape[0] {
-                self.done = true;
+        unsafe {
+            *self.output_coords.get_unchecked_mut(inner_dim) += 1;
+            *self.input_coords.get_unchecked_mut(inner_dim) +=
+                *self.patch.spec.strides.get_unchecked(inner_dim);
+            self.output_offset += self.patch.spec.output_inner_stride as isize;
+            self.input_center_offset +=
+                self.patch.op_strides_times_input_storage_strides.get_unchecked(inner_dim);
+            if *self.output_coords.get_unchecked(inner_dim)
+                < self.zone.output_ranges.get_unchecked(inner_dim).end
+            {
                 return;
             }
-            self.zone_id = zip(&self.zone_coords, &self.patch.zone_strides)
-                .map(|(&a, &b)| a * b as usize)
-                .sum();
-            self.zone = &self.patch.zones[self.zone_id];
-            self.input_center_offset =
-                zip(&self.input_coords, &self.patch.input_layout_strides)
-                    .map(|(&a, &b)| a as isize * b)
-                    .sum();
+            if self.output_coords.get_unchecked(inner_dim) < self.patch.output_shape.get_unchecked(inner_dim) {
+                self.zone_id += 1;
+                *self.zone_coords.get_unchecked_mut(inner_dim) += 1;
+                self.zone = self.patch.zones.get_unchecked(self.zone_id);
+            } else {
+                for axis in (0..rank - 1).rev() {
+                    *self.output_coords.get_unchecked_mut(axis + 1) = 0;
+                    *self.input_coords.get_unchecked_mut(axis + 1) = 0;
+                    *self.output_coords.get_unchecked_mut(axis) += 1;
+                    *self.input_coords.get_unchecked_mut(axis) += self.patch.spec.strides.get_unchecked(axis);
+                    *self.zone_coords.get_unchecked_mut(axis + 1) = 0;
+                    if *self.output_coords.get_unchecked(axis) == self.zone.output_ranges.get_unchecked(axis).end {
+                        *self.zone_coords.get_unchecked_mut(axis) += 1;
+                    }
+                    if *self.output_coords.get_unchecked(axis) < *self.patch.output_shape.get_unchecked(axis) {
+                        break;
+                    }
+                }
+                if self.output_coords.get_unchecked(0) == self.patch.output_shape.get_unchecked(0) {
+                    self.done = true;
+                    return;
+                }
+                self.zone_id = 0;
+                self.input_center_offset = 0;
+                for i in 0..rank {
+                    self.zone_id += *self.zone_coords.get_unchecked(i) as usize * *self.patch.zone_strides.get_unchecked(i) as usize;
+                    self.input_center_offset += *self.input_coords.get_unchecked(i) as isize * *self.patch.input_layout_strides.get_unchecked(i) as isize;
+                }
+                self.zone = &self.patch.zones.get_unchecked(self.zone_id);
+            }
         }
     }
 

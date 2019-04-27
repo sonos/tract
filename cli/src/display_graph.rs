@@ -32,7 +32,7 @@ impl DisplayOptions {
             return Ok(node.name.starts_with(&*node_name));
         }
         if let Some(op_name) = self.op_name.as_ref() {
-            return Ok(op_name == &node.op().name());
+            return Ok(node.op().name().starts_with(op_name))
         }
         if let Some(successor) = self.successors {
             return Ok(node.inputs.iter().any(|i| i.node == successor))

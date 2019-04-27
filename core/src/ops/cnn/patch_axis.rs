@@ -78,8 +78,6 @@ impl PatchAxis {
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::ops::cnn::{PaddingSpec, PatchSpec};
-    use ndarray::*;
 
     // • 0 1 2 3 4 • -> 3 -> (0) 1 2 3 (4)
     fn axis_5_3() -> PatchAxis {
