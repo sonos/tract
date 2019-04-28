@@ -119,7 +119,7 @@ impl TypedModel {
     }
 
     pub fn into_optimized(self) -> TractResult<TypedModel> {
-        let model = self.codegen()?;
+        let model = self.declutter()?.codegen()?;
         compact::compact(&model)
     }
 }

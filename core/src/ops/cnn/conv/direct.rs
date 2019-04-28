@@ -1,12 +1,13 @@
 use crate::internal::*;
 use ndarray::prelude::*;
 use tract_linalg::Conv;
+use crate::ops::nn::DataShape;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {
     conv: Box<Conv<f32>>,
-    input_shape: TVec<usize>,
-    output_shape: TVec<usize>,
+    input_shape: DataShape,
+    output_shape: DataShape,
     #[debug(skip)]
     packed_filters: Tensor,
 }
@@ -27,6 +28,10 @@ impl Op for Direct {
             batch * self.conv.n() * self.conv.co() * self.conv.k()
         )))
     }
+
+    fn rounding_errors(&self) -> bool {
+        true
+    }
 }
 
 impl StatelessOp for Direct {
@@ -34,16 +39,16 @@ impl StatelessOp for Direct {
         let input = args_1!(inputs);
         unsafe {
             let input = input.to_array_view::<f32>()?;
-            let mut output = ArrayD::<f32>::uninitialized(&*self.output_shape);
-            for n in 0..input.shape()[0] {
+            let mut output = ArrayD::<f32>::uninitialized(&*self.output_shape.shape);
+            for n in 0..self.input_shape.n() {
                 let input = input.slice_axis(Axis(0), (n..=n).into());
                 let mut output = output.slice_axis_mut(Axis(0), (n..=n).into());
                 self.conv.conv(
                     self.packed_filters.as_slice::<f32>()?.as_ptr(),
                     input.as_ptr(),
                     output.as_mut_ptr(),
-                    self.conv.n() as isize,
-                    1,
+                    self.output_shape.c_stride() as isize,
+                    self.output_shape.w_stride() as isize,
                 );
             }
             Ok(tvec!(output.into()))

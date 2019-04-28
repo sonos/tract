@@ -82,7 +82,7 @@ impl InferenceRulesOp for Pack {
                 s.equals(&outputs[0].shape[d], &inputs[0].shape[d])?;
             }
             if r > 0 {
-                for d in axis..(r as usize - 1) {
+                for d in axis..r as usize {
                     s.equals(&outputs[0].shape[d + 1], &inputs[0].shape[d])?
                 }
             }

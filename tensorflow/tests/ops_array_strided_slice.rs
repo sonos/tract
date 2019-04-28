@@ -21,13 +21,8 @@ use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 
-fn strided_slice_strat() -> BoxedStrategy<(
-    Tensor,
-    Tensor,
-    Tensor,
-    Tensor,
-    (i32, i32, i32, i32, i32),
-)> {
+fn strided_slice_strat(
+) -> BoxedStrategy<(Tensor, Tensor, Tensor, Tensor, (i32, i32, i32, i32, i32))> {
     ::proptest::collection::vec(
         (1..5).prop_flat_map(|n| {
             // each dim max
@@ -79,9 +74,9 @@ proptest! {
     fn strided_slice((ref i, ref b, ref e, ref s, ref masks) in strided_slice_strat()) {
         let graph = tfpb::graph()
             .node(placeholder_i32("input"))
-            .node(placeholder_i32("begin"))
-            .node(placeholder_i32("end"))
-            .node(placeholder_i32("stride"))
+            .node(const_i32("begin", b))
+            .node(const_i32("end", e))
+            .node(const_i32("stride", s))
             .node(tfpb::node().name("op")
                   .attr("T", DT_INT32)
                   .attr("Index", DT_INT32)
@@ -93,7 +88,7 @@ proptest! {
                   .op("StridedSlice")
             ).write_to_bytes().unwrap();
 
-        let inputs = vec!(("input", i.clone()),("begin", b.clone()), ("end", e.clone()), ("stride", s.clone()));
+        let inputs = vec!(("input", i.clone()));
         let res = compare(&graph, inputs, "op")?;
         res
     }
@@ -103,9 +98,9 @@ proptest! {
 fn strided_slice_1() {
     let graph = tfpb::graph()
         .node(placeholder_i32("input"))
-        .node(placeholder_i32("begin"))
-        .node(placeholder_i32("end"))
-        .node(placeholder_i32("stride"))
+        .node(const_i32("begin", &arr1(&[0]).into()))
+        .node(const_i32("end", &arr1(&[2]).into()))
+        .node(const_i32("stride", &arr1(&[1]).into()))
         .node(
             tfpb::node()
                 .name("op")
@@ -120,12 +115,7 @@ fn strided_slice_1() {
         .write_to_bytes()
         .unwrap();
 
-    let inputs = vec![
-        ("input", arr2(&[[0, 6], [0, 0]]).into()),
-        ("begin", arr1(&[0]).into()),
-        ("end", arr1(&[2]).into()),
-        ("stride", arr1(&[1]).into()),
-    ];
+    let inputs = vec![("input", arr2(&[[0, 6], [0, 0]]).into())];
     compare(&graph, inputs, "op").unwrap()
 }
 
@@ -133,9 +123,9 @@ fn strided_slice_1() {
 fn strided_slice_2() {
     let graph = tfpb::graph()
         .node(placeholder_i32("input"))
-        .node(placeholder_i32("begin"))
-        .node(placeholder_i32("end"))
-        .node(placeholder_i32("stride"))
+        .node(const_i32("begin", &arr1(&[0]).into()))
+        .node(const_i32("end", &arr1(&[0]).into()))
+        .node(const_i32("stride", &arr1(&[1]).into()))
         .node(
             tfpb::node()
                 .name("op")
@@ -153,9 +143,6 @@ fn strided_slice_2() {
 
     let inputs = vec![
         ("input", arr1(&[0]).into()),
-        ("begin", arr1(&[0]).into()),
-        ("end", arr1(&[0]).into()),
-        ("stride", arr1(&[1]).into()),
     ];
     compare(&graph, inputs, "op").unwrap()
 }
