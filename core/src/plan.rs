@@ -255,7 +255,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     }
 
     pub fn set_input(&mut self, input: usize, t: Tensor) -> TractResult<()> {
-        let id = self.model().input_outlets()?[input].node;
+        let id = self.model().input_outlets()?.get(input).ok_or_else(|| format!("Invalid input id for model ({}).", input))?.node;
         self.values[id] = Some(tvec![t.into()]);
         Ok(())
     }

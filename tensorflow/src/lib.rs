@@ -1,6 +1,6 @@
-//! # SharedTensor Deploy, SharedTensor module
+//! # Tract TensorFlow module
 //!
-//! Tiny, no-nonsense, self contained, portable SharedTensor inference.
+//! Tiny, no-nonsense, self contained, portable inference.
 //!
 //! ## Example
 //!

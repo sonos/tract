@@ -21,7 +21,12 @@ use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
 
-fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u8>> {
+fn convolution_pb(
+    v_stride: usize,
+    h_stride: usize,
+    valid: bool,
+    kernel: &Tensor,
+) -> Result<Vec<u8>> {
     let conv = tfpb::node()
         .name("conv")
         .op("Conv2D")
@@ -32,7 +37,7 @@ fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u
         .attr("T", DT_FLOAT);
 
     let graph =
-        tfpb::graph().node(placeholder_f32("data")).node(placeholder_f32("kernel")).node(conv);
+        tfpb::graph().node(placeholder_f32("data")).node(const_f32("kernel", kernel)).node(conv);
 
     Ok(graph.write_to_bytes()?)
 }
@@ -72,8 +77,8 @@ proptest! {
     fn conv_compare((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
         //::tract_core::setup_test_logger();
-        let model = convolution_pb(strides.0, strides.1, valid).unwrap();
-        compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
+        let model = convolution_pb(strides.0, strides.1, valid,& k).unwrap();
+        compare(&model, vec!(("data", i.clone())), "conv")?;
     }
 
     #[test]
@@ -84,8 +89,8 @@ proptest! {
             prop_assume!(i.shape()[1] >= k.shape()[0]);
             prop_assume!(i.shape()[2] >= k.shape()[1]);
         }
-        let model = convolution_pb(strides.0, strides.1, valid).unwrap();
-        infer(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
+        let model = convolution_pb(strides.0, strides.1, valid, &k).unwrap();
+        infer(&model, vec!(("data", i.clone())),  "conv")?;
     }
 }
 
@@ -94,18 +99,18 @@ fn conv_infer_facts_1() {
     //   ::conform::setup_test_logger();
     let i: Tensor = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
     let k: Tensor = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
-    let model = convolution_pb(1, 1, false).unwrap();
-    infer(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    infer(&model, vec![("data", i.into())], "conv").unwrap();
 }
 
 #[test]
 fn conv_eval_1() {
     use tract_core::tensor::arr4;
-    //   ::conform::setup_test_logger();
+    // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
-    let model = convolution_pb(1, 1, false).unwrap();
-    compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
 }
 
 #[test]
@@ -114,8 +119,38 @@ fn conv_eval_2() {
     // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
-    let model = convolution_pb(1, 1, false).unwrap();
-    compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_3() {
+    use tract_core::tensor::arr4;
+    // ::tract_core::setup_test_logger();
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_4() {
+    use tract_core::tensor::arr4;
+    // ::tract_core::setup_test_logger();
+    let i: Tensor = Tensor::from(arr4(&[[[[1.0f32], [1.0], [0.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0f32, 0.0]], [[0.0, -1.0]]]]));
+    let model = convolution_pb(1, 1, true, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_5() {
+    use tract_core::tensor::arr4;
+    // ::tract_core::setup_test_logger();
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0]], [[0.0, 1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0f32, 0.0], [0.0, 0.0]]], [[[0.0, 0.0], [0.0, 1.0]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
 }
 
 #[test]
@@ -124,6 +159,6 @@ fn conv_eval_mobilenet_v2() {
     // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
-    let model = convolution_pb(1, 1, false).unwrap();
-    compare(&model, vec![("data", i.into()), ("kernel", k.into())], "conv").unwrap();
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
 }

@@ -258,6 +258,17 @@ impl Patch {
         }
     }
 
+    pub fn centers_offsets(&self) -> Vec<isize> {
+        let mut scanner = Scanner::new(self);
+        let len = self.output_shape.iter().cloned().product();
+        let mut v = Vec::with_capacity(len);
+        for _ in 0..len {
+            v.push(scanner.input_center_offset);
+            scanner.next()
+        }
+        v
+    }
+
     /*
     pub fn visit_zone_1<'p>(
         &'p self,
@@ -436,6 +447,11 @@ impl<'p> Scanner<'p> {
     #[inline]
     pub fn valid_offsets(&self) -> impl Iterator<Item = isize> + '_ {
         self.zone.values_offsets.iter().map(move |pair| pair.1 + self.input_center_offset)
+    }
+
+    #[inline]
+    pub fn valid_offsets_with_indexes(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
+        self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
     }
 
     #[inline]

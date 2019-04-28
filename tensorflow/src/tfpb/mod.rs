@@ -55,6 +55,20 @@ pub fn tensor_f32(dim:Vec<usize>, values:Vec<f32>) -> tensor::TensorProto {
     tensor
 }
 
+pub fn tensor_i32(dim:Vec<usize>, values:Vec<i32>) -> tensor::TensorProto {
+    let mut tensor = tensor::TensorProto::new();
+    tensor.set_dtype(types::DataType::DT_INT32);
+    let mut shape = tensor_shape::TensorShapeProto::new();
+    shape.set_dim(dim.into_iter().map(|i| {
+        let mut d = tensor_shape::TensorShapeProto_Dim::new();
+        d.set_size(i as _);
+        d
+    }).collect());
+    tensor.set_tensor_shape(shape);
+    tensor.set_int_val(values);
+    tensor
+}
+
 impl graph::GraphDef {
     pub fn node(mut self, n: node_def::NodeDef) -> Self {
         self.mut_node().push(n);

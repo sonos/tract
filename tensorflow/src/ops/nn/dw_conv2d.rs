@@ -51,7 +51,13 @@ impl Op for DepthwiseConv2d {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         let input_shape = inputs[0].shape.to_tvec();
+        let kernel_shape = if let Some(s) = inputs[1].shape.as_finite() {
+            s
+        } else {
+            bail!("Do not expect streaming on kernel dims")
+        };
         let shape = self.data_format.shape(&input_shape);
+        let group = kernel_shape[2];
         let conv = tract_core::ops::cnn::Conv::new(
             self.data_format.clone(),
             KernelFormat::HWIO,
@@ -59,7 +65,7 @@ impl Op for DepthwiseConv2d {
             None,
             self.padding.clone(),
             Some(self.strides[shape.hw_axes()].into()),
-            shape.c_dim().to_integer()? as usize,
+            group
         );
         Ok(Some(TypedModelPatch::replace_single_op(model, node, &*node.inputs, conv)?))
     }

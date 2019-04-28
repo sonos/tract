@@ -73,15 +73,15 @@ proptest! {
     fn space_to_batch((ref i, ref bs, ref p) in space_to_batch_strat()) {
         let graph = tfpb::graph()
             .node(placeholder_f32("input"))
-            .node(placeholder("block_shape", DT_INT32, tensor_shape(bs.shape())))
-            .node(placeholder_i32("paddings"))
+            .node(const_i32("block_shape", bs))
+            .node(const_i32("paddings", p))
             .node(tfpb::node().name("op").op("SpaceToBatchND").input("input")
             .input("block_shape")
             .input("paddings")
             .attr("T", DT_FLOAT)
             );
         let graph = graph.write_to_bytes()?;
-        let inputs = vec!(("input", i.clone()), ("block_shape", bs.clone()), ("paddings", p.clone()));
+        let inputs = vec!(("input", i.clone()));
         compare(&graph, inputs, "op")?
     }
 }
@@ -107,15 +107,15 @@ proptest! {
     fn batch_to_space((ref b, ref bs, ref c) in batch_to_space_strat()) {
         let graph = tfpb::graph()
             .node(placeholder_f32("input"))
-            .node(placeholder("block_shape", DT_INT32, tensor_shape(bs.shape())))
-            .node(placeholder_i32("crops"))
+            .node(const_i32("block_shape", bs))
+            .node(const_i32("crops", c))
             .node(tfpb::node().name("op").op("BatchToSpaceND").input("input")
             .input("block_shape")
             .input("crops")
             .attr("T", DT_FLOAT)
             );
         let graph = graph.write_to_bytes()?;
-        let inputs = vec!(("input", b.clone()), ("block_shape", bs.clone()), ("crops", c.clone()));
+        let inputs = vec!(("input", b.clone()));
         compare(&graph, inputs, "op")?
     }
 }
@@ -125,8 +125,8 @@ fn space_to_batch_1() {
     use ndarray::*;
     let graph = tfpb::graph()
         .node(placeholder_f32("input"))
-        .node(placeholder("block_shape", DT_INT32, tensor_shape(&[2])))
-        .node(placeholder_i32("paddings"))
+        .node(const_i32("block_shape", &Tensor::from(arr1(&[2i32, 2]))))
+        .node(const_i32("paddings", &Tensor::from(arr2(&[[0i32, 0], [0, 0]]))))
         .node(
             tfpb::node()
                 .name("op")
@@ -138,9 +138,7 @@ fn space_to_batch_1() {
         );
     let graph = graph.write_to_bytes().unwrap();
     let i = arr4(&[[[[1.0f32], [2.0]], [[3.0], [4.0]]]]).into();
-    let bs = arr1(&[2, 2]).into();
-    let p = arr2(&[[0, 0], [0, 0]]).into();
-    let inputs = vec![("input", i), ("block_shape", bs), ("paddings", p)];
+    let inputs = vec![("input", i)];
     compare(&graph, inputs, "op").unwrap()
 }
 
@@ -149,8 +147,8 @@ fn batch_to_space_1() {
     use ndarray::*;
     let graph = tfpb::graph()
         .node(placeholder_f32("input"))
-        .node(placeholder("block_shape", DT_INT32, tensor_shape(&[2])))
-        .node(placeholder_i32("crops"))
+        .node(const_i32("block_shape", &Tensor::from(arr1(&[2i32, 2]))))
+        .node(const_i32("crops", &Tensor::from(arr2(&[[0i32, 0], [0, 0]]))))
         .node(
             tfpb::node()
                 .name("op")
@@ -162,8 +160,6 @@ fn batch_to_space_1() {
         );
     let graph = graph.write_to_bytes().unwrap();
     let i = arr4(&[[[[1.0f32]]], [[[2.0]]], [[[3.0]]], [[[4.0]]]]).into();
-    let bs = arr1(&[2, 2]).into();
-    let p = arr2(&[[0, 0], [0, 0]]).into();
-    let inputs = vec![("input", i), ("block_shape", bs), ("crops", p)];
+    let inputs = vec![("input", i)];
     compare(&graph, inputs, "op").unwrap()
 }

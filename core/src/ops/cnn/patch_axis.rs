@@ -24,7 +24,7 @@ impl PatchAxis {
     fn valid_range(&self) -> Range<usize> {
         let min = self.pad_before.div_ceil(self.stride);
         let field = (self.kernel_dim - 1) * self.dilation;
-        let valid = (self.input_dim - field) / self.stride;
+        let valid = self.input_dim.saturating_sub(field) / self.stride;
         min..(min + valid)
     }
 

@@ -4,8 +4,6 @@ use crate::internal::*;
 use crate::model::*;
 use insideout::InsideOut;
 
-use itertools::zip;
-
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
 use super::mat_mat::MatMat;
@@ -65,11 +63,16 @@ impl ConvUnary {
     fn patch(&self, input_full_shape: &[usize]) -> Patch {
         let kernel_spatial_shape =
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..(input_full_shape.len() - 2)];
+        let output_inner_stride = match self.data_format {
+            DataFormat::NHWC => self.output_channels(),
+            DataFormat::NCHW => 1,
+        };
         let spec = PatchSpec::for_full_shape(self.data_format.clone(), input_full_shape)
             .with_kernel_shape(kernel_spatial_shape.into())
             .with_padding(self.padding.clone())
             .with_dilations(self.dilations.clone())
-            .with_strides(self.strides.clone());
+            .with_strides(self.strides.clone())
+            .with_output_inner_stride(output_inner_stride);
         spec.into_patch()
     }
 
@@ -92,7 +95,9 @@ impl ConvUnary {
         );
 
         let patch = self.patch(input_full_shape);
-        let input_shape = self.data_format.shape(input_full_shape);
+        assert!(!patch.padded);
+
+        let input_shape = self.data_format.shape(input_full_shape.into());
         let output_shape = self.data_format.from_n_c_hw(
             input_shape.n(),
             self.output_channels(),
@@ -100,14 +105,7 @@ impl ConvUnary {
         );
         let channel_stride = input_shape.c_stride();
         let rpatch = &patch;
-        let data_offsets: Vec<isize> = ndarray::indices(&*patch.output_shape)
-            .into_iter()
-            .map(move |coords| {
-                zip(coords.slice(), &rpatch.op_strides_times_input_storage_strides)
-                    .map(|(a, b)| *a as isize * b)
-                    .sum::<isize>()
-            })
-            .collect();
+        let data_offsets: Vec<isize> = patch.centers_offsets();
         let kernel_offsets: Vec<isize> = (0..self.input_channels())
             .flat_map(|ici| {
                 rpatch
@@ -130,7 +128,7 @@ impl ConvUnary {
             kernel.strides()[2],
         );
 
-        Ok(super::Direct::new(conv, input_full_shape.into(), output_shape.shape, packed))
+        Ok(super::Direct::new(conv, input_shape, output_shape, packed))
     }
 
     fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
@@ -352,11 +350,12 @@ impl ConvUnary {
     {
         let patch = self.patch(shape);
         let input_shape = self.data_format.shape(shape.into());
-        let output_shape = self.data_format.from_n_c_hw(
-            input_shape.n(),
-            self.output_channels(),
-            &*patch.output_shape,
-        );
+        let output_shape = self
+            .full_output_shape
+            .iter()
+            .map(|a| a.to_integer().map(|a| a as usize))
+            .collect::<TractResult<TVec<usize>>>()?;
+        let output_shape = self.data_format.shape(output_shape);
         let op = DepthWise::<T>::new(
             patch,
             input_shape,
@@ -458,7 +457,7 @@ impl Op for ConvUnary {
                 {
                     let op = self.to_direct(&*shape)?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-                } else if self.group == self.output_channels() {
+                } else if self.group != 1 && self.group * self.input_channels() == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
                         model,
                         node,

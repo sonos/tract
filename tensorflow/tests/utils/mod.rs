@@ -16,17 +16,18 @@ pub fn compare_optim<S: AsRef<str>>(
     output: &str,
     optim: bool,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    // Run TFD
+    // tract_core::setup_test_logger();
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
     for (ix, (_, tf)) in inputs.iter().enumerate() {
-        model.set_input_fact(ix, TensorFact::from(tf.clone()))?;
+        model.set_input_fact(ix, TensorFact::dt_shape(tf.datum_type(), tf.shape()))?;
     }
     let mut model = model.into_typed()?;
     if optim {
         model = model.into_optimized()?;
     }
+    trace!("{:#?}", model);
     let plan = SimplePlan::new(&model)?;
     let mut state = SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
@@ -34,10 +35,9 @@ pub fn compare_optim<S: AsRef<str>>(
     }
     let output = model.node_by_name(output)?;
     info!("Checking {} behaviour against tensorflow", output.name);
-    state.compute_one(output.id)?;
+    state.compute_recursively(output.id)?;
     let found = &state.values[output.id].as_ref().unwrap();
 
-    // Run SharedTensor
     let tf_inputs: Vec<(&str, Tensor)> =
         inputs.iter().map(|(s, m)| (s.as_ref(), m.clone())).collect();
     let expected =
@@ -58,10 +58,13 @@ pub fn infer<S: AsRef<str>>(
     inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    // Run TFD
+    // tract_core::setup_test_logger();
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
+    for (ix, (_, tf)) in inputs.iter().enumerate() {
+        model.set_input_fact(ix, TensorFact::dt_shape(tf.datum_type(), tf.shape()))?;
+    }
     let plan = SimplePlan::new(&model)?;
     let mut state = SimpleState::new(&plan)?;
     for (ix, (_, t)) in inputs.iter().enumerate() {
@@ -69,7 +72,7 @@ pub fn infer<S: AsRef<str>>(
     }
     let output = model.node_by_name(output)?;
     info!("Checking {} behaviour against tensorflow", output.name);
-    state.compute_one(output.id)?;
+    state.compute_recursively(output.id)?;
     let _found = &state.values[output.id].as_ref().unwrap();
 
     info!("Checking inference consistency on {}", output.name);
