@@ -457,7 +457,7 @@ impl Op for ConvUnary {
                 {
                     let op = self.to_direct(&*shape)?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-                } else if self.group != 1 && self.group * self.input_channels() == self.output_channels() {
+                } else if self.group != 1 && self.group == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
                         model,
                         node,
