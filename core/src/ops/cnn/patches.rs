@@ -445,6 +445,11 @@ impl<'p> Scanner<'p> {
     */
 
     #[inline]
+    pub fn valid_count(&self) -> usize {
+        self.zone.values_offsets.len()
+    }
+
+    #[inline]
     pub fn valid_offsets(&self) -> impl Iterator<Item = isize> + '_ {
         self.zone.values_offsets.iter().map(move |pair| pair.1 + self.input_center_offset)
     }
