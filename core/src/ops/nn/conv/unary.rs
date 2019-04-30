@@ -169,7 +169,7 @@ impl ConvUnary {
 
     fn bias_reshaped<T>(&self, output_shape: &[usize]) -> TractResult<Option<ArrayD<T>>>
     where
-        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq,
+        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T>,
     {
         Ok(self
             .bias
@@ -178,7 +178,6 @@ impl ConvUnary {
                 let mut bias_shape: Vec<usize> =
                     ::std::iter::repeat(1).take(output_shape.len()).collect();
                 bias_shape[self.data_fmt.shape(output_shape).c_axis()] = self.output_channels();
-                println!("BIAS_shape: {:?}", bias_shape);
                 Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
             })
             .inside_out()?)
@@ -189,7 +188,7 @@ impl ConvUnary {
         input_full_shape: &[usize],
     ) -> TractResult<(Im2Col<T>, TVec<usize>, Box<Op>)>
     where
-        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq,
+        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
     {
         trace!("to_im2col_pair: {:?}", self);
         let patch = self.patch(input_full_shape);
@@ -207,12 +206,7 @@ impl ConvUnary {
         let mut packed_kernels: Vec<Tensor> = vec![];
 
         let (op2, b_pack): (Box<Op>, _) = if m > 1 {
-            let mm = T::packed_mat_mul(m, k, n).ok_or_else(|| {
-                format!(
-                    "Can not perfom convolution on {:?} (not a linear algebra type)",
-                    T::datum_type()
-                )
-            })?;
+            let mm = T::packed_mat_mul(m, k, n);
             let b_pack = mm.b_pack();
 
             trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
@@ -246,12 +240,7 @@ impl ConvUnary {
             );
             (Box::new(conv_gemm), b_pack)
         } else {
-            let mm = T::packed_vec_mat_mul(k, n).ok_or_else(|| {
-                format!(
-                    "Can not perfom convolution on {:?} (not a linear algebra type)",
-                    T::datum_type()
-                )
-            })?;
+            let mm = T::packed_vec_mat_mul(k, n);
             let b_pack = mm.b_pack();
 
             trace!("Gemm iters={} m={} k={} n={}", patch.input_shape.n_dim() * self.group, m, k, n);
@@ -302,7 +291,7 @@ impl ConvUnary {
         input_full_shape: &[usize],
     ) -> TractResult<(Box<Op>, TVec<usize>, Box<Op>)>
     where
-        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
     {
         let (op1, shape, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
         Ok((Box::new(op1), shape, op2))
@@ -310,7 +299,7 @@ impl ConvUnary {
 
     fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
     where
-        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+        T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
     {
         let input = args_1!(inputs);
         let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;

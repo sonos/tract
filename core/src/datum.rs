@@ -106,9 +106,6 @@ pub trait Datum:
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
-
-    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Option<Box<tract_linalg::MatMul<Self>>>;
-    fn packed_vec_mat_mul(k: usize, n: usize) -> Option<Box<tract_linalg::VecMatMul<Self>>>;
 }
 
 pub trait TryInto<D> {
@@ -117,9 +114,6 @@ pub trait TryInto<D> {
 
 macro_rules! datum {
     ($t:ident, $v:ident) => {
-        datum!($t, $v, |_, _, _| None, |_, _| None);
-    };
-    ($t:ident, $v:ident, $matmul:expr, $vecmatmul:expr) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
                 arr0(it).into()
@@ -133,21 +127,6 @@ macro_rules! datum {
 
             fn datum_type() -> DatumType {
                 DatumType::$v
-            }
-
-            fn packed_mat_mul(
-                m: usize,
-                k: usize,
-                n: usize,
-            ) -> Option<Box<tract_linalg::MatMul<Self>>> {
-                $matmul(m, k, n)
-            }
-
-            fn packed_vec_mat_mul(
-                k: usize,
-                n: usize,
-            ) -> Option<Box<tract_linalg::VecMatMul<Self>>> {
-                $vecmatmul(k, n)
             }
         }
     };
@@ -264,9 +243,7 @@ impl TryInto<f32> for String {
 
 datum!(bool, Bool);
 datum!(f16, F16);
-datum!(f32, F32, |m, k, n| Some((tract_linalg::ops().smm)(m, k, n)), |k, n| Some(
-    (tract_linalg::ops().svmm)(k, n)
-));
+datum!(f32, F32);
 datum!(f64, F64);
 datum!(i8, I8);
 datum!(i16, I16);
@@ -276,6 +253,48 @@ datum!(u8, U8);
 datum!(u16, U16);
 datum!(TDim, TDim);
 datum!(String, String);
+
+pub trait FloatLike: Datum {
+    fn packed_direct_conv(m: usize, kernel_offsets: Vec<isize>, data_offsets:Vec<isize>) -> Box<tract_linalg::Conv<Self>>;
+    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<tract_linalg::MatMul<Self>>;
+    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<tract_linalg::VecMatMul<Self>>;
+}
+
+impl FloatLike for f16 {
+    fn packed_direct_conv(_m: usize, _kernel_offsets: Vec<isize>, _data_offsets:Vec<isize>) -> Box<tract_linalg::Conv<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn packed_mat_mul(_m: usize, _k: usize, _n: usize) -> Box<tract_linalg::MatMul<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<tract_linalg::VecMatMul<Self>> {
+        unimplemented!("f16 ops");
+    }
+}
+
+impl FloatLike for f32 {
+    fn packed_direct_conv(m: usize, kernel_offsets: Vec<isize>, data_offsets:Vec<isize>) -> Box<tract_linalg::Conv<Self>> {
+        (tract_linalg::ops().sconv)(m, kernel_offsets, data_offsets)
+    }
+    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<tract_linalg::MatMul<Self>> {
+        (tract_linalg::ops().smm)(m, k ,n)
+    }
+    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<tract_linalg::VecMatMul<Self>> {
+        (tract_linalg::ops().svmm)(k ,n)
+    }
+}
+
+impl FloatLike for f64 {
+    fn packed_direct_conv(_m: usize, _kernel_offsets: Vec<isize>, _data_offsets:Vec<isize>) -> Box<tract_linalg::Conv<Self>> {
+        unimplemented!("f64 ops");
+    }
+    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<tract_linalg::MatMul<Self>> {
+        (tract_linalg::ops().dmm)(m, k ,n)
+    }
+    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<tract_linalg::VecMatMul<Self>> {
+        unimplemented!("f64 ops");
+    }
+}
 
 #[cfg(test)]
 mod tests {
