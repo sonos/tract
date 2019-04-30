@@ -23,9 +23,9 @@ pub struct PatchAxis {
 impl PatchAxis {
     fn valid_range(&self) -> Range<usize> {
         let min = self.pad_before.div_ceil(self.stride);
-        let field = (self.kernel_dim - 1) * self.dilation;
-        let valid = self.input_dim.saturating_sub(field) / self.stride;
-        min..(min + valid)
+        let field = (self.kernel_dim - 1) * self.dilation + 1;
+        let max = (self.input_dim + self.pad_before).saturating_sub(field) / self.stride;
+        min..(max+1)
     }
 
     fn invalid_at_left(&self, pos: usize) -> usize {
@@ -236,6 +236,17 @@ pub mod test {
                 Region::new(2..28, None),
                 Region::new(28..29, Some(tvec!(false, false, true))),
                 Region::new(29..30, Some(tvec!(false, true, true))),
+            )
+        );
+    }
+    #[test]
+    fn axis_7_1_s2_regions() {
+        // 0 1 2 3 4 5 6 -> 1 -> 0 2 4 6
+        let regions = PatchAxis::new(7, 1, 0, 0, 4, 2, 1).regions();
+        assert_eq!(
+            regions,
+            tvec!(
+                Region::new(0..4, None),
             )
         );
     }
