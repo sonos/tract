@@ -20,7 +20,6 @@ pub(super) struct Im2Col<T: Copy + Datum + Mul + Zero> {
     pub group: usize,
     pub ci_per_group: usize,
     pub b_pack: PackB<T>,
-    patcher: Patcher,
 }
 
 impl<T: Copy + Datum + Mul + Zero> PartialEq for Im2Col<T> {
@@ -45,6 +44,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         ci_per_group: usize,
         b_pack: PackB<T>,
     ) -> Im2Col<T> {
+        /*
         let patcher = if !patch.padded && patch.rank() == 2 {
             Patcher::Valid2d
         } else if patch.rank() == 2 {
@@ -54,8 +54,9 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         } else {
             Patcher::Generic
         };
+        */
         let output_shape = input_shape.fmt.shape(tvec!(input_shape.n_dim(), group, b_pack.len()));
-        Im2Col { patch, input_shape, output_shape, m, k, n, group, ci_per_group, b_pack, patcher }
+        Im2Col { patch, input_shape, output_shape, m, k, n, group, ci_per_group, b_pack }
     }
 
     pub(super) fn output_shape(&self) -> &[usize] {
@@ -67,11 +68,29 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
             Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
         };
         for i in 0..self.input_shape.n_dim() {
-            for g in 0..self.group {
-                let mut packed = packed.to_array_view_mut::<T>()?;
-                packed.slice_axis_inplace(Axis(0), (i..=i).into());
-                packed.slice_axis_inplace(Axis(1), (g..=g).into());
-                self.patcher.patch(self, input, packed.as_slice_mut().unwrap(), i, g);
+            unsafe {
+                let iptr = input.as_ptr().offset((self.input_shape.n_stride() * i) as isize);
+                for g in 0..self.group {
+                    let mut packed = packed.to_array_view_mut::<T>()?;
+                    packed.slice_axis_inplace(Axis(0), (i..=i).into());
+                    packed.slice_axis_inplace(Axis(1), (g..=g).into());
+                    let mut writer =
+                        self.b_pack.write_packed_by_rows(packed.as_slice_mut().unwrap());
+                    for ci in 0..self.ci_per_group {
+                        let iptr = iptr.offset(
+                            (self.input_shape.c_stride() * (ci + g * self.ci_per_group)) as isize,
+                        );
+                        for kgeo in 0..self.patch.standard_layout_data_field.len() {
+                            self.patch.visit_output(|v| {
+                                if let Some(of) = v.nth_offset_if_valid(kgeo) {
+                                    writer.write(*iptr.offset(of))
+                                } else {
+                                    writer.write(T::zero())
+                                }
+                            });
+                        }
+                    }
+                }
             }
         }
         Ok(packed)
@@ -113,6 +132,8 @@ impl<T: Copy + Datum + Mul + Zero> InferenceRulesOp for Im2Col<T> {
         Ok(())
     }
 }
+
+/*
 
 #[derive(Copy, Clone, Debug)]
 enum Patcher {
@@ -299,3 +320,4 @@ impl Patcher {
         }
     }
 }
+*/

@@ -144,7 +144,7 @@ impl ConvUnary {
             KernelFormat::HWIO => {
                 let mut shape = kernel.shape().to_vec();
                 shape.insert(hw_rank, self.group);
-                shape[hw_rank] /= self.group;
+                shape[hw_rank+1] /= self.group;
                 let kernel = kernel.into_shape(shape)?;
                 let mut permutation: Vec<usize> = vec![hw_rank, hw_rank + 2, hw_rank + 1];
                 permutation.extend(0..hw_rank);

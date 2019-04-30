@@ -136,25 +136,34 @@ impl PatchSpec {
         let zones: Vec<Zone> = regions
             .iter()
             .multi_cartesian_product()
-            .map(|regions| Zone {
-                input_zone_offset: 0,
-                output_ranges: regions.iter().map(|reg| reg.range.clone()).collect(),
-                output_shape: regions.iter().map(|reg| reg.range.end - reg.range.start).collect(),
-                output_zone_offset: zip(&regions, &output_layout_strides)
-                    .map(|(reg, &stride)| reg.range.start as isize * stride)
-                    .sum::<isize>(),
-                valid: regions.iter().all(|reg| reg.mask.is_none()),
-                values_offsets: itertools::izip!(
-                    0..,
-                    ndarray::indices(&*self.kernel_shape),
-                    &standard_layout_data_field
-                )
-                .filter(|(_ix, coords, _offset)| {
-                    zip(coords.slice(), &regions)
-                        .all(|(&x, axis)| !axis.mask.as_ref().map(|mask| mask[x]).unwrap_or(false))
-                })
-                .map(|(ix, _coords, &window_offset)| (ix, window_offset))
-                .collect(),
+            .map(|regions| {
+                let validity = ndarray::indices(&*self.kernel_shape)
+                    .into_iter()
+                    .map(|coords| {
+                        zip(coords.slice(), &regions).all(|(&x, axis)| {
+                            axis.mask.as_ref().map(|mask| !mask[x]).unwrap_or(true)
+                        })
+                    })
+                    .collect::<TVec<bool>>();
+                Zone {
+                    input_zone_offset: 0,
+                    output_ranges: regions.iter().map(|reg| reg.range.clone()).collect(),
+                    output_shape: regions
+                        .iter()
+                        .map(|reg| reg.range.end - reg.range.start)
+                        .collect(),
+                    output_zone_offset: zip(&regions, &output_layout_strides)
+                        .map(|(reg, &stride)| reg.range.start as isize * stride)
+                        .sum::<isize>(),
+                    valid: validity.iter().all(|x| *x),
+                    values_offsets: standard_layout_data_field
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .filter(|(ix, _)| validity[*ix])
+                        .collect(),
+                    validity,
+                }
             })
             .collect();
 
@@ -400,6 +409,7 @@ pub struct Zone {
     output_shape: TVec<usize>,
     /// (index, raw offset)
     values_offsets: TVec<(usize, isize)>,
+    validity: TVec<bool>,
 }
 
 impl Zone {
@@ -438,12 +448,6 @@ impl<'p> Scanner<'p> {
         }
     }
 
-    /*
-    pub fn valid_offsets_with_indexes(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
-        self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
-    }
-    */
-
     #[inline]
     pub fn valid_count(&self) -> usize {
         self.zone.values_offsets.len()
@@ -452,6 +456,20 @@ impl<'p> Scanner<'p> {
     #[inline]
     pub fn valid_offsets(&self) -> impl Iterator<Item = isize> + '_ {
         self.zone.values_offsets.iter().map(move |pair| pair.1 + self.input_center_offset)
+    }
+
+    #[inline]
+    pub unsafe fn is_nth_valid(&self, n: usize) -> bool {
+        *self.zone.validity.get_unchecked(n)
+    }
+
+    #[inline]
+    pub unsafe fn nth_offset_if_valid(&self, n: usize) -> Option<isize> {
+        if self.is_nth_valid(n) {
+            Some(self.input_center_offset + *self.patch.standard_layout_data_field.get_unchecked(n))
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -475,7 +493,9 @@ impl<'p> Scanner<'p> {
             {
                 return;
             }
-            if self.output_coords.get_unchecked(inner_dim) < self.patch.output_shape.get_unchecked(inner_dim) {
+            if self.output_coords.get_unchecked(inner_dim)
+                < self.patch.output_shape.get_unchecked(inner_dim)
+            {
                 self.zone_id += 1;
                 *self.zone_coords.get_unchecked_mut(inner_dim) += 1;
                 self.zone = self.patch.zones.get_unchecked(self.zone_id);
@@ -484,12 +504,17 @@ impl<'p> Scanner<'p> {
                     *self.output_coords.get_unchecked_mut(axis + 1) = 0;
                     *self.input_coords.get_unchecked_mut(axis + 1) = 0;
                     *self.output_coords.get_unchecked_mut(axis) += 1;
-                    *self.input_coords.get_unchecked_mut(axis) += self.patch.spec.strides.get_unchecked(axis);
+                    *self.input_coords.get_unchecked_mut(axis) +=
+                        self.patch.spec.strides.get_unchecked(axis);
                     *self.zone_coords.get_unchecked_mut(axis + 1) = 0;
-                    if *self.output_coords.get_unchecked(axis) == self.zone.output_ranges.get_unchecked(axis).end {
+                    if *self.output_coords.get_unchecked(axis)
+                        == self.zone.output_ranges.get_unchecked(axis).end
+                    {
                         *self.zone_coords.get_unchecked_mut(axis) += 1;
                     }
-                    if *self.output_coords.get_unchecked(axis) < *self.patch.output_shape.get_unchecked(axis) {
+                    if *self.output_coords.get_unchecked(axis)
+                        < *self.patch.output_shape.get_unchecked(axis)
+                    {
                         break;
                     }
                 }
@@ -500,8 +525,10 @@ impl<'p> Scanner<'p> {
                 self.zone_id = 0;
                 self.input_center_offset = 0;
                 for i in 0..rank {
-                    self.zone_id += *self.zone_coords.get_unchecked(i) as usize * *self.patch.zone_strides.get_unchecked(i) as usize;
-                    self.input_center_offset += *self.input_coords.get_unchecked(i) as isize * *self.patch.input_layout_strides.get_unchecked(i) as isize;
+                    self.zone_id += *self.zone_coords.get_unchecked(i) as usize
+                        * *self.patch.zone_strides.get_unchecked(i) as usize;
+                    self.input_center_offset += *self.input_coords.get_unchecked(i) as isize
+                        * *self.patch.input_layout_strides.get_unchecked(i) as isize;
                 }
                 self.zone = &self.patch.zones.get_unchecked(self.zone_id);
             }
