@@ -11,7 +11,6 @@ pub struct Direct<T: Datum + Copy + Add + Mul + Zero + FloatLike> {
     conv: Box<Conv<T>>,
     input_shape: DataShape,
     output_shape: DataShape,
-    #[debug(skip)]
     packed_filters: Vec<Tensor>,
     ci_per_group: usize,
     co_per_group: usize,
@@ -36,7 +35,7 @@ where
         );
         let data_offsets: Vec<isize> = patch.centers_offsets();
         let channel_stride = input_shape.c_stride();
-        let kernel_offsets: Vec<isize> = (0..input_shape.c())
+        let kernel_offsets: Vec<isize> = (0..ci_per_group)
             .flat_map(|c| {
                 patch
                     .standard_layout_data_field

@@ -151,10 +151,8 @@ pub mod internal {
     pub use crate::{ element_map };
 }
 
-/*
 #[cfg(test)]
 #[allow(dead_code)]
-*/
 pub fn setup_test_logger() {
     let _ =
         env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).try_init();
