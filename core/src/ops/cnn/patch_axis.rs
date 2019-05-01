@@ -22,8 +22,11 @@ pub struct PatchAxis {
 
 impl PatchAxis {
     fn valid_range(&self) -> Option<Range<usize>> {
-        let min = self.pad_before.div_ceil(self.stride);
         let field = (self.kernel_dim - 1) * self.dilation + 1;
+        if field > self.input_dim {
+            return None
+        }
+        let min = self.pad_before.div_ceil(self.stride);
         let max = (self.input_dim + self.pad_before).saturating_sub(field) / self.stride;
         if max >= min {
             Some(min..(max+1))
@@ -76,7 +79,7 @@ impl PatchAxis {
                 regions.extend(self.make_invalid_regions(valid_range.end..self.output_dim));
             }
         } else {
-                regions.extend(self.make_invalid_regions(0..self.output_dim));
+            regions.extend(self.make_invalid_regions(0..self.output_dim));
         }
         regions
     }
@@ -246,6 +249,7 @@ pub mod test {
             )
         );
     }
+
     #[test]
     fn axis_7_1_s2_regions() {
         // 0 1 2 3 4 5 6 -> 1 -> 0 2 4 6
@@ -254,6 +258,18 @@ pub mod test {
             regions,
             tvec!(
                 Region::new(0..4, None),
+            )
+        );
+    }
+
+    #[test]
+    fn axis_1_2_regions() {
+        // 0 -> 2 -> (0)
+        let regions = PatchAxis::new(1, 2, 0, 1, 1, 1, 1).regions();
+        assert_eq!(
+            regions,
+            tvec!(
+                Region::new(0..1, Some(tvec!(false, true))),
             )
         );
     }

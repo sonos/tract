@@ -93,6 +93,12 @@ fn maxpool_2() {
 }
 
 #[test]
+fn maxpool_3() {
+    pool("MaxPool", &arr4(&[[[[-1.0]]]] ), (1, 2), "SAME", 1).unwrap();
+}
+
+#[test]
 fn avgpool_1() {
     pool("AvgPool", &Array4::<f32>::zeros((1, 1, 6, 1)), (1, 1), "SAME", 2).unwrap();
 }
+

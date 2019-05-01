@@ -69,7 +69,6 @@ impl PatchSpec {
             &*self.dilations,
             &*self.strides,
         );
-        println!("{:?}", self);
         let output: TVec<usize> = dims.iter().map(|d| d.output).collect();
         let pad_before: TVec<usize> = dims.iter().map(|d| d.pad_before).collect();
         let pad_after: TVec<usize> = dims.iter().map(|d| d.pad_after).collect();
@@ -133,7 +132,6 @@ impl PatchSpec {
             .collect::<TVec<_>>();
 
         let zone_strides = strides(&regions.iter().map(|d| d.len()).collect::<TVec<_>>(), 1);
-        println!("regions: {:?}", regions);
         let zones: Vec<Zone> = regions
             .iter()
             .multi_cartesian_product()
@@ -269,6 +267,25 @@ impl Zone {
     pub fn contains_output(&self, coords: &[usize]) -> bool {
         self.output_ranges.iter().zip(coords).all(|(range, &x)| x >= range.start && x < range.end)
     }
+
+    pub fn output_ranges(&self) -> &[Range<usize>] {
+        &*self.output_ranges
+    }
+
+    pub fn input_center_offsets(&self, patch: &Patch) -> Vec<isize> {
+        ndarray::indices(&*self.output_shape)
+            .into_iter()
+            .map(|coords| {
+                itertools::izip!(
+                    coords.slice(),
+                    &self.output_ranges,
+                    &patch.op_strides_times_input_storage_strides
+                ).into_iter()
+                .map(|(x, range, stride)| (x + range.start) as isize * stride)
+                .sum::<isize>()
+            })
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -357,12 +374,10 @@ impl<'p> ByZoneScanner<'p> {
 
     #[inline]
     pub fn next(&mut self) {
-        println!(">{:?} ({:?})", self.output_coords, self.zone);
         let rank = self.patch.rank();
         let inner_dim = rank - 1;
         unsafe {
             *self.output_coords.get_unchecked_mut(inner_dim) += 1;
-            println!("    >{:?}", self.output_coords);
             *self.input_coords.get_unchecked_mut(inner_dim) +=
                 *self.patch.spec.strides.get_unchecked(inner_dim);
             self.output_offset += self.patch.spec.output_inner_stride as isize;
@@ -373,7 +388,6 @@ impl<'p> ByZoneScanner<'p> {
             {
                 return;
             }
-            println!("not inner");
             for axis in (0..rank - 1).rev() {
                 *self.output_coords.get_unchecked_mut(axis + 1) =
                     self.zone.output_ranges.get_unchecked(axis + 1).start;
@@ -384,11 +398,9 @@ impl<'p> ByZoneScanner<'p> {
                 *self.output_coords.get_unchecked_mut(axis) += 1;
                 *self.input_coords.get_unchecked_mut(axis) +=
                     self.patch.spec.strides.get_unchecked(axis);
-                println!("output_coords: {:?}", self.output_coords);
                 if *self.output_coords.get_unchecked(axis)
                     < self.zone.output_ranges.get_unchecked(axis).end
                 {
-                    println!("reset in zone");
                     self.reset_raw_offsets();
                     return;
                 }
@@ -414,13 +426,11 @@ impl<'p> ByZoneScanner<'p> {
     #[inline]
     fn next_zone(&mut self) {
         self.zone_id += 1;
-        println!("zone: {}", self.zone_id);
         if self.zone_id == self.patch.zones.len() {
             self.done = true;
             return;
         }
         unsafe { self.zone = self.patch.zones.get_unchecked(self.zone_id) }
-        println!("new zone: {:?}", self.zone);
         if self.skip_valid && self.zone.valid {
             self.next_zone()
         }
@@ -723,7 +733,6 @@ pub mod test {
         let valid_zone = p.zones.iter().find(|z| z.valid).unwrap();
         let invalid_zones = p.zones.iter().filter(|z| !z.valid).collect::<Vec<_>>();
         let output_full_shape = input_shape.fmt.from_n_c_hw(input_shape.n(), 1, &*p.output_shape);
-        println!("{:?}", output_full_shape);
         for coords in ndarray::indices(&*output_full_shape.shape) {
             let geo = &coords.slice()[output_full_shape.hw_axes()];
             let inside_valid = valid_zone.contains_output(geo);

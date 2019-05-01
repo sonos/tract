@@ -17,6 +17,7 @@ use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
 use tract_core::prelude::*;
+use tract_core::tensor::arr4;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
@@ -76,7 +77,6 @@ proptest! {
     #[test]
     fn conv_compare((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
-        //::tract_core::setup_test_logger();
         let model = convolution_pb(strides.0, strides.1, valid,& k).unwrap();
         compare(&model, vec!(("data", i.clone())), "conv")?;
     }
@@ -84,7 +84,6 @@ proptest! {
     #[test]
     fn conv_infer_facts((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
-//        ::conform::setup_test_logger();
         if valid {
             prop_assume!(i.shape()[1] >= k.shape()[0]);
             prop_assume!(i.shape()[2] >= k.shape()[1]);
@@ -96,7 +95,6 @@ proptest! {
 
 #[test]
 fn conv_infer_facts_1() {
-    //   ::conform::setup_test_logger();
     let i: Tensor = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
     let k: Tensor = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
     let model = convolution_pb(1, 1, false, &k).unwrap();
@@ -106,7 +104,6 @@ fn conv_infer_facts_1() {
 #[test]
 fn conv_eval_1() {
     use tract_core::tensor::arr4;
-    // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
     let model = convolution_pb(1, 1, false, &k).unwrap();
@@ -116,7 +113,6 @@ fn conv_eval_1() {
 #[test]
 fn conv_eval_2() {
     use tract_core::tensor::arr4;
-    // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let model = convolution_pb(1, 1, false, &k).unwrap();
@@ -125,8 +121,6 @@ fn conv_eval_2() {
 
 #[test]
 fn conv_eval_3() {
-    use tract_core::tensor::arr4;
-    // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32]]]]));
     let model = convolution_pb(1, 1, false, &k).unwrap();
@@ -135,8 +129,6 @@ fn conv_eval_3() {
 
 #[test]
 fn conv_eval_4() {
-    use tract_core::tensor::arr4;
-    // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[1.0f32], [1.0], [0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0f32, 0.0]], [[0.0, -1.0]]]]));
     let model = convolution_pb(1, 1, true, &k).unwrap();
@@ -145,8 +137,6 @@ fn conv_eval_4() {
 
 #[test]
 fn conv_eval_5() {
-    use tract_core::tensor::arr4;
-    // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0]], [[0.0, 1.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0f32, 0.0], [0.0, 0.0]]], [[[0.0, 0.0], [0.0, 1.0]]]]));
     let model = convolution_pb(1, 1, false, &k).unwrap();
@@ -154,9 +144,24 @@ fn conv_eval_5() {
 }
 
 #[test]
+fn conv_eval_6() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[0.0], [1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0f32]],[[1.0]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_7() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32]],[[0.0]], [[0.0]], [[1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32]]],[[[1.0]]]]));
+    let model = convolution_pb(2, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+
+#[test]
 fn conv_eval_mobilenet_v2() {
-    use tract_core::tensor::arr4;
-    // ::tract_core::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let model = convolution_pb(1, 1, false, &k).unwrap();
