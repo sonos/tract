@@ -9,8 +9,10 @@ use tract_linalg::Conv;
 #[derive(CustomDebug, Clone)]
 pub struct Direct<T: Datum + Copy + Add + AddAssign + Mul + Zero + FloatLike> {
     conv: Box<Conv<T>>,
+    patch: Patch,
     input_shape: DataShape,
     output_shape: DataShape,
+    filters_as_group_o_i_hw: Option<Array4<T>>,
     packed_filters: Vec<Tensor>,
     ci_per_group: usize,
     co_per_group: usize,
@@ -19,12 +21,12 @@ pub struct Direct<T: Datum + Copy + Add + AddAssign + Mul + Zero + FloatLike> {
 
 impl<T> Direct<T>
 where
-    T: Datum + Copy + Add + AddAssign + Mul + Zero + FloatLike,
+    T: Datum + Copy + Add + AddAssign + Mul<T, Output = T> + Zero + FloatLike,
 {
     pub fn new(
         input_shape: DataShape,
         patch: Patch,
-        filters_as_group_o_i_hw: ArrayView4<T>,
+        filters_as_group_o_i_hw: Array4<T>,
         bias: Option<ArrayD<T>>,
     ) -> TractResult<Direct<T>> {
         let group = filters_as_group_o_i_hw.shape()[0];
@@ -63,8 +65,11 @@ where
 
         Ok(Direct {
             conv,
+            patch,
             input_shape,
             output_shape,
+            //filters_as_group_o_i_hw: if !patch.valid { Some(filters_as_group_o_i_hw) } else { None },
+            filters_as_group_o_i_hw: Some(filters_as_group_o_i_hw),
             packed_filters,
             ci_per_group,
             co_per_group,
@@ -75,7 +80,7 @@ where
 
 impl<T> Op for Direct<T>
 where
-    T: Datum + Copy + Add + AddAssign + Mul + Zero + FloatLike,
+    T: Datum + Copy + Add + AddAssign + Mul<T, Output = T> + Zero + FloatLike,
 {
     fn name(&self) -> Cow<str> {
         format!("Conv::Direct<{:?}>", T::datum_type()).into()
@@ -100,7 +105,7 @@ where
 
 impl<T> StatelessOp for Direct<T>
 where
-    T: Datum + Copy + Add + AddAssign + Mul + Zero + FloatLike,
+    T: Datum + Copy + Add + AddAssign + Mul<T, Output = T> + Zero + FloatLike,
 {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
@@ -111,6 +116,32 @@ where
                 for g in 0..self.packed_filters.len() {
                     let input = input.slice_axis(Axis(0), (n..=n).into());
                     let mut output = output.slice_axis_mut(Axis(0), (n..=n).into());
+                    let iptr = input
+                        .as_ptr()
+                        .offset((g * self.ci_per_group * self.input_shape.c_stride()) as isize);
+                    let optr = output
+                        .as_mut_ptr()
+                        .offset((g * self.co_per_group * self.output_shape.c_stride()) as isize);
+                    let filters =
+                        self.filters_as_group_o_i_hw.as_ref().unwrap().index_axis(Axis(0), g);
+                    self.patch.visit_output(|pt| {
+                        for co in 0..self.co_per_group {
+                            let mut sum = T::zero();
+                            let filter = filters.index_axis(Axis(0), co);
+                            for ci in 0..self.ci_per_group {
+                                let filter = filter.index_axis(Axis(0), ci);
+                                let iptr = iptr.offset((self.input_shape.c_stride() * ci) as isize);
+                                for (ix, offset) in pt.valid_offsets_with_indexes() {
+                                    sum += filter.as_slice().unwrap()[ix]
+                                        * *iptr.offset(offset as isize);
+                                }
+                            }
+                            *optr.offset(
+                                pt.output_offset + (self.output_shape.c_stride() * co) as isize,
+                            ) = sum;
+                        }
+                    });
+                    /*
                     self.conv.conv(
                         self.packed_filters.get_unchecked(g).as_ptr()?,
                         input
@@ -122,6 +153,7 @@ where
                         self.output_shape.c_stride() as isize,
                         self.output_shape.w_stride() as isize,
                     );
+                    */
                 }
             }
             if let Some(ref bias) = self.bias {

@@ -91,10 +91,6 @@ impl ConvUnary {
         &self,
         input_full_shape: &[usize],
     ) -> TractResult<Box<Op>> {
-        assert!(
-            (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax))
-        );
-
         let input_shape = self.data_format.shape(input_full_shape.into());
         let patch = self.patch(input_full_shape);
         let output_shape = self.data_format.from_n_c_hw(
@@ -105,7 +101,7 @@ impl ConvUnary {
         Ok(Box::new(super::Direct::<T>::new(
             input_shape,
             patch,
-            self.kernel_as_group_o_i_hw()?.view(),
+            self.kernel_as_group_o_i_hw()?,
             self.bias_reshaped(&output_shape.shape)?,
         )?))
     }
@@ -433,10 +429,11 @@ impl Op for ConvUnary {
         } else {
             if let Some(shape) = inputs[0].shape.as_finite() {
                 let dt = inputs[0].datum_type;
+                debug!("Translating to direct: {:?}", self);
+                let op = dispatch_floatlike!(Self::to_direct(dt)(self, &*shape))?;
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+                /*
                 if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax)) {
-                    debug!("Translating to direct: {:?}", self);
-                    let op = dispatch_floatlike!(Self::to_direct(dt)(self, &*shape))?;
-                    return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
                 } else if self.group != 1 && self.group == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
                         model,
@@ -462,6 +459,7 @@ impl Op for ConvUnary {
                     patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
                     return Ok(Some(patch));
                 }
+                */
             }
         }
         Ok(None)
