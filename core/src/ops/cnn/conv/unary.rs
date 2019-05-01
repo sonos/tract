@@ -16,7 +16,7 @@ use crate::ops::nn::DataFormat;
 use num_traits::Zero;
 
 use std::iter::Sum;
-use std::ops::{ Add, Mul };
+use std::ops::{Add, AddAssign, Mul};
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
@@ -87,32 +87,52 @@ impl ConvUnary {
         self.data_format.shape(&self.full_output_shape).c_dim().to_integer().unwrap() as usize
     }
 
-    pub fn to_direct<T: Datum + Copy + Add + Mul + Zero + FloatLike>(&self, input_full_shape: &[usize]) -> TractResult<Box<Op>> {
+    pub fn to_direct<T: Datum + Copy + Add + AddAssign + Mul + Zero + FloatLike + ndarray::LinalgScalar>(
+        &self,
+        input_full_shape: &[usize],
+    ) -> TractResult<Box<Op>> {
         assert!(
             (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax))
-                && self.bias.is_none()
         );
 
         let input_shape = self.data_format.shape(input_full_shape.into());
         let patch = self.patch(input_full_shape);
-        assert!(!patch.padded);
-        Ok(Box::new(super::Direct::<T>::new(input_shape, patch, self.kernel_as_group_o_i_hw()?.view())?))
+        let output_shape = self.data_format.from_n_c_hw(
+            input_shape.n(),
+            self.output_channels(),
+            &*patch.output_shape,
+        );
+        Ok(Box::new(super::Direct::<T>::new(
+            input_shape,
+            patch,
+            self.kernel_as_group_o_i_hw()?.view(),
+            self.bias_reshaped(&output_shape.shape)?,
+        )?))
     }
 
     fn kernel_as_group_o_i_hw<T: Datum>(&self) -> TractResult<Array4<T>> {
         let kernel = self.kernel.to_array_view::<T>()?;
-        let hw = kernel.shape()[self.kernel_fmt.h_axis()..][..kernel.shape().len()-2].iter().cloned().product::<usize>();
+        let hw = kernel.shape()[self.kernel_fmt.h_axis()..][..kernel.shape().len() - 2]
+            .iter()
+            .cloned()
+            .product::<usize>();
         let o = self.output_channels() / self.group;
         let i = self.input_channels() / self.group;
         let final_shape = (self.group, o, i, hw);
-        trace!("Shuffling kernel: from {:?} {:?} to g_o_i_hw: {:?}", self.kernel_fmt, kernel.shape(), final_shape);
+        trace!(
+            "Shuffling kernel: from {:?} {:?} to g_o_i_hw: {:?}",
+            self.kernel_fmt,
+            kernel.shape(),
+            final_shape
+        );
         match self.kernel_fmt {
             KernelFormat::HWIO => {
                 // H W I O -> HW G I O
                 let hw_g_i_o = kernel.into_shape((hw, self.group, i, o))?;
                 // HW G I O -> G O I HW
                 let g_o_i_hw = hw_g_i_o.permuted_axes([1, 3, 2, 0]);
-                let result = Array4::<T>::from_shape_vec(final_shape, g_o_i_hw.iter().cloned().collect())?;
+                let result =
+                    Array4::<T>::from_shape_vec(final_shape, g_o_i_hw.iter().cloned().collect())?;
                 Ok(result)
             }
             KernelFormat::OIHW => Ok(kernel.into_shape(final_shape)?.to_owned()),
@@ -209,11 +229,7 @@ impl ConvUnary {
                         mm.packed_a_alignment(),
                     )?
                 };
-                mm.pack_a(
-                    packed.as_slice_mut()?.as_mut_ptr(),
-                    subkernel.as_ptr(),
-                    1
-                );
+                mm.pack_a(packed.as_slice_mut()?.as_mut_ptr(), subkernel.as_ptr(), 1);
                 packed_kernels.push(packed);
             }
             let conv_gemm = VecMat::new(
@@ -417,9 +433,7 @@ impl Op for ConvUnary {
         } else {
             if let Some(shape) = inputs[0].shape.as_finite() {
                 let dt = inputs[0].datum_type;
-                if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
-                    && self.bias.is_none()
-                {
+                if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax)) {
                     debug!("Translating to direct: {:?}", self);
                     let op = dispatch_floatlike!(Self::to_direct(dt)(self, &*shape))?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
