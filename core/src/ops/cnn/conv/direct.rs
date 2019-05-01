@@ -7,7 +7,7 @@ use num_traits::Zero;
 use std::ops::{Add, Mul};
 
 #[derive(CustomDebug, Clone)]
-pub struct Direct<T: Datum + Copy + Add + Mul + Zero> {
+pub struct Direct<T: Datum + Copy + Add + Mul + Zero + FloatLike> {
     conv: Box<Conv<T>>,
     input_shape: DataShape,
     output_shape: DataShape,
@@ -16,7 +16,7 @@ pub struct Direct<T: Datum + Copy + Add + Mul + Zero> {
 }
 
 impl<T> Direct<T>
-where T: Datum + Copy + Add + Mul + Zero
+where T: Datum + Copy + Add + Mul + Zero + FloatLike
 {
     pub fn new(input_shape: DataShape, patch: Patch, filters_as_group_o_i_hw: ArrayView4<T>) -> TractResult<Direct<T>> {
         let output_shape = input_shape.fmt.from_n_c_hw(
@@ -24,29 +24,26 @@ where T: Datum + Copy + Add + Mul + Zero
             filters_as_group_o_i_hw.shape()[1],
             &*patch.output_shape,
         );
-        let channel_stride = input_shape.c_stride();
-        let rpatch = &patch;
         let data_offsets: Vec<isize> = patch.centers_offsets();
+        let channel_stride = input_shape.c_stride();
         let kernel_offsets: Vec<isize> = (0..input_shape.c())
             .flat_map(|c| {
-                rpatch
+                patch
                     .standard_layout_data_field
                     .iter()
                     .map(move |x| x + (c * channel_stride) as isize)
             })
             .collect();
-        let conv =
-            (tract_linalg::ops().sconv)(self.output_channels(), kernel_offsets, data_offsets);
+        let conv = T::packed_direct_conv(output_shape.c(), kernel_offsets, data_offsets);
 
-        let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed_filters = unsafe {
-            Tensor::uninitialized_aligned::<f32>(&[conv.packed_a_len()], conv.packed_a_alignment())?
+            Tensor::uninitialized_aligned::<T>(&[conv.packed_a_len()], conv.packed_a_alignment())?
         };
         conv.pack_a(
             packed_filters.as_slice_mut()?.as_mut_ptr(),
-            kernel.as_slice().unwrap().as_ptr(),
-            kernel.strides()[1],
-            kernel.strides()[2],
+            filters_as_group_o_i_hw.as_slice().unwrap().as_ptr(),
+            filters_as_group_o_i_hw.strides()[1],
+            1
         );
 
         Ok(Direct { conv, input_shape, output_shape, packed_filters })
@@ -54,7 +51,7 @@ where T: Datum + Copy + Add + Mul + Zero
 }
 
 impl<T> Op for Direct<T>
-where T: Datum + Copy + Add + Mul + Zero
+where T: Datum + Copy + Add + Mul + Zero + FloatLike
 {
     fn name(&self) -> Cow<str> {
         format!("Conv::Direct<{:?}>", T::datum_type()).into()
@@ -67,7 +64,7 @@ where T: Datum + Copy + Add + Mul + Zero
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
+            Cost::FMA(T::datum_type()),
             batch * self.conv.n() * self.conv.co() * self.conv.k()
         )))
     }
@@ -77,13 +74,13 @@ where T: Datum + Copy + Add + Mul + Zero
     }
 }
 
-impl<T> StatelessOp
-where T: Datum + Copy + Add + Mul + Zero
+impl<T> StatelessOp for Direct<T>
+where T: Datum + Copy + Add + Mul + Zero + FloatLike
 {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         unsafe {
-            let input = input.to_array_view::<f32>()?;
+            let input = input.to_array_view::<T>()?;
             let mut output = ArrayD::<T>::uninitialized(&*self.output_shape.shape);
             for n in 0..self.input_shape.n() {
                 let input = input.slice_axis(Axis(0), (n..=n).into());
@@ -101,8 +98,8 @@ where T: Datum + Copy + Add + Mul + Zero
     }
 }
 
-impl<T> InferenceRulesOp
-where T: Datum + Copy + Add + Mul + Zero
+impl<T> InferenceRulesOp for Direct<T>
+where T: Datum + Copy + Add + Mul + Zero + FloatLike
 {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,

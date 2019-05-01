@@ -77,7 +77,7 @@ impl Problem {
     pub fn to_direct(&self) -> SimplePlan<TypedTensorInfo, TypedModel> {
         let unary = self.to_unary();
 
-        let direct = unary.to_direct(&*self.image_shape()).unwrap();
+        let direct = unary.to_direct::<f32>(&*self.image_shape()).unwrap();
         let mut model_direct = InferenceModel::default();
         model_direct.add_source_default("input").unwrap();
         model_direct.chain_default("conv", direct).unwrap();

@@ -7,6 +7,7 @@ pub fn dir() -> path::PathBuf {
 }
 
 pub fn ensure_onnx_git_checkout() {
+    println!("cargo:rerun-if-changed={}", dir().to_str().unwrap());
     use std::sync::Once;
     static START: Once = Once::new();
     START.call_once(|| {

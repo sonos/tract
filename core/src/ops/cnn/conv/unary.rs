@@ -13,7 +13,10 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::{PaddingSpec, Patch, PatchSpec};
 use crate::ops::nn::DataFormat;
 
+use num_traits::Zero;
+
 use std::iter::Sum;
+use std::ops::{ Add, Mul };
 
 #[derive(Debug, Clone)]
 pub struct ConvUnary {
@@ -77,79 +80,41 @@ impl ConvUnary {
     }
 
     fn input_channels(&self) -> usize {
-        match self.kernel_fmt {
-            KernelFormat::OIHW => self.kernel.shape()[1],
-            KernelFormat::HWIO => self.kernel.shape()[self.kernel.shape().len() - 2],
-        }
+        self.data_format.shape(&self.full_input_shape).c_dim().to_integer().unwrap() as usize
     }
 
     fn output_channels(&self) -> usize {
         self.data_format.shape(&self.full_output_shape).c_dim().to_integer().unwrap() as usize
     }
 
-    pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
+    pub fn to_direct<T: Datum + Copy + Add + Mul + Zero + FloatLike>(&self, input_full_shape: &[usize]) -> TractResult<Box<Op>> {
         assert!(
             (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax))
                 && self.group == 1
                 && self.bias.is_none()
         );
 
+        let input_shape = self.data_format.shape(input_full_shape.into());
         let patch = self.patch(input_full_shape);
         assert!(!patch.padded);
-
-        let input_shape = self.data_format.shape(input_full_shape.into());
-        let output_shape = self.data_format.from_n_c_hw(
-            input_shape.n(),
-            self.output_channels(),
-            &*patch.output_shape,
-        );
-        let channel_stride = input_shape.c_stride();
-        let rpatch = &patch;
-        let data_offsets: Vec<isize> = patch.centers_offsets();
-        let kernel_offsets: Vec<isize> = (0..self.input_channels())
-            .flat_map(|ici| {
-                rpatch
-                    .standard_layout_data_field
-                    .iter()
-                    .map(move |x| x + (ici * channel_stride) as isize)
-            })
-            .collect();
-        let conv =
-            (tract_linalg::ops().sconv)(self.output_channels(), kernel_offsets, data_offsets);
-
-        let kernel = self.kernel_as_group_o_ihw()?;
-        let mut packed = unsafe {
-            Tensor::uninitialized_aligned::<f32>(&[conv.packed_a_len()], conv.packed_a_alignment())?
-        };
-        conv.pack_a(
-            packed.as_slice_mut()?.as_mut_ptr(),
-            kernel.as_slice().unwrap().as_ptr(),
-            kernel.strides()[1],
-            kernel.strides()[2],
-        );
-
-        Ok(super::Direct::new(conv, input_shape, output_shape, packed))
+        Ok(Box::new(super::Direct::<T>::new(input_shape, patch, self.kernel_as_group_o_i_hw()?.view())?))
     }
 
-    fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
+    fn kernel_as_group_o_i_hw<T: Datum>(&self) -> TractResult<Array4<T>> {
         let kernel = self.kernel.to_array_view::<T>()?;
-        let final_shape = (
-            self.group,
-            self.output_channels() / self.group,
-            kernel.len() / self.output_channels(),
-        );
-        trace!("kernel shape (group, output, rest) = {:?}", final_shape);
-        let hw_rank = kernel.ndim() - 2;
+        let hw = kernel.shape()[self.kernel_fmt.h_axis()..][..kernel.shape().len()-2].iter().cloned().product::<usize>();
+        let o = self.output_channels() / self.group;
+        let i = self.input_channels() / self.group;
+        let final_shape = (self.group, o, i, hw);
+        trace!("Shuffling kernel: from {:?} {:?} to g_o_i_hw: {:?}", self.kernel_fmt, kernel.shape(), final_shape);
         match self.kernel_fmt {
             KernelFormat::HWIO => {
-                let mut shape = kernel.shape().to_vec();
-                shape.insert(hw_rank, self.group);
-                shape[hw_rank+1] /= self.group;
-                let kernel = kernel.into_shape(shape)?;
-                let mut permutation: Vec<usize> = vec![hw_rank, hw_rank + 2, hw_rank + 1];
-                permutation.extend(0..hw_rank);
-                let permuted = kernel.permuted_axes(permutation);
-                Ok(Array3::<T>::from_shape_vec(final_shape, permuted.iter().cloned().collect())?)
+                // H W I O -> HW G I O
+                let hw_g_i_o = kernel.into_shape((hw, self.group, i, o))?;
+                // HW G I O -> G O I HW
+                let g_o_i_hw = hw_g_i_o.permuted_axes([1, 3, 2, 0]);
+                let result = Array4::<T>::from_shape_vec(final_shape, g_o_i_hw.iter().cloned().collect())?;
+                Ok(result)
             }
             KernelFormat::OIHW => Ok(kernel.into_shape(final_shape)?.to_owned()),
         }
@@ -178,7 +143,6 @@ impl ConvUnary {
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
     {
-        trace!("to_im2col_pair: {:?}", self);
         let patch = self.patch(input_full_shape);
         let input_shape = self.data_format.shape(input_full_shape.into());
         let output_shape = self.data_format.from_n_c_hw(
@@ -195,14 +159,14 @@ impl ConvUnary {
 
         let bias = self.bias_reshaped(&*output_shape.shape)?;
 
-        let kernel = self.kernel_as_group_o_ihw()?;
+        let kernel = self.kernel_as_group_o_i_hw()?;
         let mut packed_kernels: Vec<Tensor> = vec![];
 
         let (op2, b_pack): (Box<Op>, _) = if m > 1 {
             let mm = T::packed_mat_mul(m, k, n);
             let b_pack = mm.b_pack();
 
-            trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
+            trace!("Gemm iters={} {:?}", input_shape.n_dim() * self.group, mm);
 
             for subkernel in kernel.outer_iter() {
                 let mut packed = unsafe {
@@ -214,11 +178,12 @@ impl ConvUnary {
                 mm.pack_a(
                     packed.as_slice_mut()?.as_mut_ptr(),
                     subkernel.as_ptr(),
-                    subkernel.strides()[0],
-                    subkernel.strides()[1],
+                    subkernel.strides()[0], // o
+                    1,
                 );
                 packed_kernels.push(packed);
             }
+            trace!("packed_kernels: {:?}", packed_kernels);
             let conv_gemm = MatMat::new(
                 patch.clone(),
                 output_shape,
@@ -236,7 +201,7 @@ impl ConvUnary {
             let mm = T::packed_vec_mat_mul(k, n);
             let b_pack = mm.b_pack();
 
-            trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
+            trace!("vmm iters={} {:?}", input_shape.n_dim() * self.group, mm);
 
             for subkernel in kernel.outer_iter() {
                 let mut packed = unsafe {
@@ -248,7 +213,7 @@ impl ConvUnary {
                 mm.pack_a(
                     packed.as_slice_mut()?.as_mut_ptr(),
                     subkernel.as_ptr(),
-                    subkernel.strides()[1],
+                    1
                 );
                 packed_kernels.push(packed);
             }
@@ -296,10 +261,12 @@ impl ConvUnary {
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
     {
+        debug!("Running by im2col (unoptimized): {:?}", self);
         let input = args_1!(inputs);
         let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
-        trace!("im2col: {:?}", mega);
+        trace!("im2col: {:?}", mega.to_array_view::<T>());
+        trace!("conv_gemm: {:?}", conv_gemm);
         conv_gemm.as_stateless().unwrap().eval(tvec!(mega.into()))
     }
 
@@ -360,7 +327,7 @@ impl ConvUnary {
             patch,
             input_shape,
             output_shape,
-            self.kernel_as_group_o_ihw()?.into_dyn(),
+            self.kernel_as_group_o_i_hw()?.into_dyn(),
             self.bias_reshaped(&*shape)?,
         );
         Ok(Box::new(op))
@@ -437,6 +404,7 @@ impl Op for ConvUnary {
             && self.group == 1
             && self.bias.is_none()
         {
+            debug!("Translating to simple matmul: {:?}", self);
             if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
@@ -455,7 +423,8 @@ impl Op for ConvUnary {
                     && self.group == 1
                     && self.bias.is_none()
                 {
-                    let op = self.to_direct(&*shape)?;
+                    debug!("Translating to direct: {:?}", self);
+                    let op = dispatch_floatlike!(Self::to_direct(dt)(self, &*shape))?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
                 } else if self.group != 1 && self.group == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
@@ -464,6 +433,7 @@ impl Op for ConvUnary {
                         dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
                     )?));
                 } else {
+                    debug!("Translating to im2col: {:?}", self);
                     let (op1, shape, op2) =
                         dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
                     let mut patch = TypedModelPatch::default();

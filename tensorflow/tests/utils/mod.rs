@@ -16,6 +16,7 @@ pub fn compare_optim<S: AsRef<str>>(
     output: &str,
     optim: bool,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
+    info!("Checking {} output against tensorflow (optimized: {:?})", output, optim);
     // tract_core::setup_test_logger();
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
@@ -34,7 +35,6 @@ pub fn compare_optim<S: AsRef<str>>(
         state.set_input(ix, t.clone()).unwrap();
     }
     let output = model.node_by_name(output)?;
-    info!("Checking {} behaviour against tensorflow", output.name);
     state.compute_recursively(output.id)?;
     let found = &state.values[output.id].as_ref().unwrap();
 
