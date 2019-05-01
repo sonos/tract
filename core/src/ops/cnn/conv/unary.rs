@@ -90,7 +90,6 @@ impl ConvUnary {
     pub fn to_direct<T: Datum + Copy + Add + Mul + Zero + FloatLike>(&self, input_full_shape: &[usize]) -> TractResult<Box<Op>> {
         assert!(
             (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax))
-                && self.group == 1
                 && self.bias.is_none()
         );
 
@@ -419,8 +418,6 @@ impl Op for ConvUnary {
             if let Some(shape) = inputs[0].shape.as_finite() {
                 let dt = inputs[0].datum_type;
                 if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
-                    && dt == f32::datum_type()
-                    && self.group == 1
                     && self.bias.is_none()
                 {
                     debug!("Translating to direct: {:?}", self);
