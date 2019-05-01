@@ -21,11 +21,15 @@ pub struct PatchAxis {
 }
 
 impl PatchAxis {
-    fn valid_range(&self) -> Range<usize> {
+    fn valid_range(&self) -> Option<Range<usize>> {
         let min = self.pad_before.div_ceil(self.stride);
         let field = (self.kernel_dim - 1) * self.dilation + 1;
         let max = (self.input_dim + self.pad_before).saturating_sub(field) / self.stride;
-        min..(max+1)
+        if max >= min {
+            Some(min..(max+1))
+        } else {
+            None
+        }
     }
 
     fn invalid_at_left(&self, pos: usize) -> usize {
@@ -61,15 +65,18 @@ impl PatchAxis {
 
     pub fn regions(&self) -> TVec<Region> {
         let mut regions = tvec!();
-        let valid_range = self.valid_range();
-        if valid_range.start > 0 {
-            regions.extend(self.make_invalid_regions(0..valid_range.start));
-        }
-        if valid_range.start != valid_range.end {
-            regions.push(Region::new(valid_range.clone(), None));
-        }
-        if valid_range.end < self.output_dim {
-            regions.extend(self.make_invalid_regions(valid_range.end..self.output_dim));
+        if let Some(valid_range) = self.valid_range() {
+            if valid_range.start > 0 {
+                regions.extend(self.make_invalid_regions(0..valid_range.start));
+            }
+            if valid_range.start != valid_range.end {
+                regions.push(Region::new(valid_range.clone(), None));
+            }
+            if valid_range.end < self.output_dim {
+                regions.extend(self.make_invalid_regions(valid_range.end..self.output_dim));
+            }
+        } else {
+                regions.extend(self.make_invalid_regions(0..self.output_dim));
         }
         regions
     }
@@ -111,11 +118,11 @@ pub mod test {
 
     #[test]
     fn axis_valid_ranges() {
-        assert_eq!(axis_5_3().valid_range(), 1..4);
-        assert_eq!(axis_5_4().valid_range(), 2..4);
-        assert_eq!(axis_5_5().valid_range(), 2..3);
-        assert_eq!(axis_5_3_s2().valid_range(), 1..2);
-        assert_eq!(axis_5_3_d2().valid_range(), 2..3);
+        assert_eq!(axis_5_3().valid_range(), Some(1..4));
+        assert_eq!(axis_5_4().valid_range(), Some(2..4));
+        assert_eq!(axis_5_5().valid_range(), Some(2..3));
+        assert_eq!(axis_5_3_s2().valid_range(), Some(1..2));
+        assert_eq!(axis_5_3_d2().valid_range(), Some(2..3));
     }
 
     #[test]

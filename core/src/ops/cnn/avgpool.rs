@@ -100,7 +100,7 @@ where
 
         let mut values = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
         unsafe {
-            self.patch.visit_output(|visitor| {
+            self.patch.visit_output_in_order(|visitor| {
                 let div = if self.count_include_pad {
                     self.patch.standard_layout_data_field.len()
                 } else {
@@ -120,7 +120,7 @@ where
 
                         *values
                             .as_mut_ptr()
-                            .offset(output_offset as isize + visitor.output_offset) = sum * div;
+                            .offset(output_offset as isize + visitor.output_offset()) = sum * div;
                     }
                 }
             });

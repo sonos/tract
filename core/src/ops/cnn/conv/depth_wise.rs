@@ -30,7 +30,7 @@ where
         let k_stride_i = self.kernel_chw.strides()[1];
         let mult = self.output_shape.c() / self.input_shape.c();
         unsafe {
-            self.patch.visit_output(|visitor| {
+            self.patch.visit_output_in_order(|visitor| {
                 for n in 0..self.input_shape.n() {
                     let input_offset = self.input_shape.n_stride() * n;
                     let output_offset = self.output_shape.n_stride() * n;
@@ -47,7 +47,7 @@ where
                                 let i = *iptr.offset(input_offset as isize + v);
                                 sum += k * i;
                             }
-                            *optr.offset(output_offset as isize + visitor.output_offset) = sum;
+                            *optr.offset(output_offset as isize + visitor.output_offset()) = sum;
                         }
                     }
                 }

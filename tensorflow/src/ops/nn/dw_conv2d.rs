@@ -1,5 +1,4 @@
 use tract_core::internal::*;
-use tract_core::ndarray::*;
 use tract_core::ops::nn::*;
 use tract_core::ops::cnn::*;
 
@@ -21,6 +20,24 @@ pub struct DepthwiseConv2d {
     strides: TVec<usize>,
     dilations: TVec<usize>,
 }
+
+impl DepthwiseConv2d {
+    fn to_core(&self, input_shape: &[TDim], kernel_shape: &[usize]) -> TractResult<Conv> {
+        let shape = self.data_format.shape(&input_shape);
+        let group = kernel_shape[2];
+        let conv = Conv::new(
+            self.data_format.clone(),
+            KernelFormat::HWIO,
+            Some(self.dilations[shape.hw_axes()].into()),
+            None,
+            self.padding.clone(),
+            Some(self.strides[shape.hw_axes()].into()),
+            group
+        );
+        Ok(conv)
+    }
+}
+
 
 impl Op for DepthwiseConv2d {
     fn name(&self) -> Cow<str> {
@@ -56,57 +73,16 @@ impl Op for DepthwiseConv2d {
         } else {
             bail!("Do not expect streaming on kernel dims")
         };
-        let shape = self.data_format.shape(&input_shape);
-        let group = kernel_shape[2];
-        let conv = tract_core::ops::cnn::Conv::new(
-            self.data_format.clone(),
-            KernelFormat::HWIO,
-            Some(self.dilations[shape.hw_axes()].into()),
-            None,
-            self.padding.clone(),
-            Some(self.strides[shape.hw_axes()].into()),
-            group
-        );
+        let conv = self.to_core(&*input_shape, kernel_shape)?;
         Ok(Some(TypedModelPatch::replace_single_op(model, node, &*node.inputs, conv)?))
     }
 }
 
 impl StatelessOp for DepthwiseConv2d {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let (img, ker) = args_2!(inputs);
-        let img = img.to_array_view::<f32>()?;
-        let ptr = img.as_ptr();
-        let ker = ker.to_array_view::<f32>()?;
-        let input_shape = self.data_format.shape(img.shape());
-        let patch = PatchSpec::for_full_shape(self.data_format, img.shape())
-            .with_dilations(self.dilations[input_shape.hw_axes()].into())
-            .with_kernel_shape(ker.shape()[0..2].into())
-            .with_padding(self.padding.clone())
-            .with_strides(self.strides[input_shape.hw_axes()].into())
-            .into_patch();
-        let out_channels = ker.shape()[2] * ker.shape()[3];
-        let output_shape =
-            self.data_format.from_n_c_hw(input_shape.n(), out_channels, &*patch.output_shape);
-        unsafe {
-            let output = ArrayD::<f32>::from_shape_fn(&*output_shape.shape, |coords| {
-                let ptr = ptr.offset((input_shape.n_stride() * coords[input_shape.n_axis()]) as isize);
-                let c = coords[input_shape.c_axis()];
-                let k = c / ker.shape()[3];
-                let q = c % ker.shape()[3];
-                let ptr = ptr.offset((input_shape.c_stride() * k) as isize);
-                let mut it = patch.at(&coords.slice()[input_shape.hw_axes()]);
-                let mut sum = 0.0f32;
-                for di in 0..ker.shape()[0] {
-                    for dj in 0..ker.shape()[1] {
-                        let vi = it.next().unwrap().map(|o| *ptr.offset(o)).unwrap_or(0.0);
-                        let vk = ker[[di, dj, k, q]];
-                        sum += vi * vk;
-                    }
-                }
-                sum
-            });
-            Ok(tvec!(output.into()))
-        }
+    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+        let ishape:TVec<TDim> = inputs[0].shape().iter().map(|i| i.to_dim()).collect();
+        let kshape = inputs[1].shape();
+        self.to_core(&*ishape, kshape)?.eval(inputs)
     }
 }
 

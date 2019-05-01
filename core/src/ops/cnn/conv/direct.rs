@@ -124,7 +124,7 @@ where
                         .offset((g * self.co_per_group * self.output_shape.c_stride()) as isize);
                     let filters =
                         self.filters_as_group_o_i_hw.as_ref().unwrap().index_axis(Axis(0), g);
-                    self.patch.visit_output(|pt| {
+                    self.patch.visit_output_by_zone(|pt| {
                         for co in 0..self.co_per_group {
                             let mut sum = T::zero();
                             let filter = filters.index_axis(Axis(0), co);
@@ -137,7 +137,7 @@ where
                                 }
                             }
                             *optr.offset(
-                                pt.output_offset + (self.output_shape.c_stride() * co) as isize,
+                                pt.output_offset() + (self.output_shape.c_stride() * co) as isize,
                             ) = sum;
                         }
                     });

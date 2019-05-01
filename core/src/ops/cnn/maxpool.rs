@@ -96,7 +96,7 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
             None
         };
         unsafe {
-            self.patch.visit_output(|visitor| {
+            self.patch.visit_output_in_order(|visitor| {
                 for n in 0..self.input_shape.n() {
                     let input_offset = self.input_shape.n_stride() * n;
                     let output_offset = self.output_shape.n_stride() * n;
@@ -109,11 +109,11 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
                             .fold((0, T::min_value()), |acc, v| if acc.1 < v.1 { v } else { acc });
                         *values
                             .as_mut_ptr()
-                            .offset(output_offset as isize + visitor.output_offset) = max.1;
+                            .offset(output_offset as isize + visitor.output_offset()) = max.1;
                         if let Some(ref mut indices) = indices {
                             *indices
                                 .as_mut_ptr()
-                                .offset(output_offset as isize + visitor.output_offset) =
+                                .offset(output_offset as isize + visitor.output_offset()) =
                                 max.0 as i32 / self.patch.spec.output_inner_stride as i32;
                         }
                     }
