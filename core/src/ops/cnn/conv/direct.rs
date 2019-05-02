@@ -169,25 +169,25 @@ where
                             self.output_shape.w_stride() as isize,
                         );
                     }
-                    let filters =
-                        self.filters_as_group_o_i_hw.as_ref().unwrap().index_axis(Axis(0), g);
-                    self.patch.visit_invalid(|pt| {
-                        for co in 0..self.co_per_group {
-                            let mut sum = T::zero();
-                            let filter = filters.index_axis(Axis(0), co);
-                            for ci in 0..self.ci_per_group {
-                                let filter = filter.index_axis(Axis(0), ci);
-                                let iptr = iptr.offset((self.input_shape.c_stride() * ci) as isize);
-                                for (ix, offset) in pt.valid_offsets_with_indexes() {
-                                    sum += filter.as_slice().unwrap()[ix]
-                                        * *iptr.offset(offset as isize);
+                    if let Some(ref filters) = self.filters_as_group_o_i_hw {
+                        let fptr = filters.slice_axis(Axis(0), (g..=g).into()).as_ptr();
+                        self.patch.visit_invalid(|pt| {
+                            for co in 0..self.co_per_group {
+                                let fptr = fptr.offset(co as isize * filters.strides().get_unchecked(1));
+                                let mut sum = T::zero();
+                                for ci in 0..self.ci_per_group {
+                                    let fptr = fptr.offset(ci as isize * filters.strides().get_unchecked(2));
+                                    let iptr = iptr.offset((self.input_shape.c_stride() * ci) as isize);
+                                    for (ix, offset) in pt.valid_offsets_with_indexes() {
+                                        sum += *fptr.offset(ix as isize) * *iptr.offset(offset as isize);
+                                    }
                                 }
+                                *optr.offset(
+                                    pt.output_offset() + (self.output_shape.c_stride() * co) as isize,
+                                ) = sum;
                             }
-                            *optr.offset(
-                                pt.output_offset() + (self.output_shape.c_stride() * co) as isize,
-                            ) = sum;
-                        }
-                    });
+                        });
+                    }
                 }
             }
             if let Some(ref bias) = self.bias {
