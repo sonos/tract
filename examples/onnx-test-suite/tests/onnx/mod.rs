@@ -8,8 +8,7 @@ use tract_onnx::*;
 
 #[allow(dead_code)]
 fn setup_test_logger() {
-    let _ =
-        env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).try_init();
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
 }
 
 pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
@@ -36,7 +35,7 @@ pub fn load_dataset(path: &path::Path) -> (TVec<Tensor>, TVec<Tensor>) {
 }
 
 pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
-    // setup_test_logger();
+    setup_test_logger();
     let test_path = root.as_ref().join(test);
     let path = if test_path.join("data.json").exists() {
         use fs2::FileExt;
@@ -85,6 +84,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
+    info!("Test model (optim: {:?}) {:#?}", optim, path);
     if optim {
         let optimized = model.into_optimized().unwrap();
         trace!("Run optimized model:\n{:#?}", optimized);

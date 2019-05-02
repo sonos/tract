@@ -1,5 +1,10 @@
 use tract_core::prelude::*;
 
+fn setup_test_logger() {
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+}
+
+
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
     inputs: Vec<(S, Tensor)>,
@@ -16,7 +21,8 @@ pub fn compare_optim<S: AsRef<str>>(
     output: &str,
     optim: bool,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    // tract_core::setup_test_logger();
+    setup_test_logger();
+    info!("Checking {} output against tensorflow (optimized: {:?})", output, optim);
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
@@ -34,7 +40,6 @@ pub fn compare_optim<S: AsRef<str>>(
         state.set_input(ix, t.clone()).unwrap();
     }
     let output = model.node_by_name(output)?;
-    info!("Checking {} behaviour against tensorflow", output.name);
     state.compute_recursively(output.id)?;
     let found = &state.values[output.id].as_ref().unwrap();
 
@@ -45,7 +50,7 @@ pub fn compare_optim<S: AsRef<str>>(
 
     prop_assert!(
         expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true),
-        "expected: {:?} found: {:?}",
+        "\nexpected:\n{:?}\nfound:\n{:?}\n",
         expected[0].to_array_view::<f32>().unwrap(),
         found[0].to_array_view::<f32>().unwrap(),
     );
@@ -58,7 +63,7 @@ pub fn infer<S: AsRef<str>>(
     inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    // tract_core::setup_test_logger();
+    setup_test_logger();
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
