@@ -173,4 +173,12 @@ mod tests {
         );
     }
 
+    #[test]
+    fn same_upper() {
+        assert_eq!(
+            PaddingSpec::same(7usize, 1usize, 1, 2, true),
+            ComputedPaddedDim::new(4, 0, 0)
+        );
+    }
+
 }

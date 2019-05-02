@@ -4,8 +4,6 @@ use crate::ops::nn::DataShape;
 use ndarray::*;
 use std::iter::Sum;
 
-use unsafe_unwrap::UnsafeUnwrap;
-
 #[derive(Debug, Clone, new)]
 pub struct DepthWise<T>
 where
