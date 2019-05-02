@@ -143,7 +143,7 @@ impl PatchSpec {
                             axis.mask.as_ref().map(|mask| !mask[x]).unwrap_or(true)
                         })
                     })
-                    .collect::<TVec<bool>>();
+                    .collect::<Vec<bool>>();
                 Zone {
                     output_ranges: regions.iter().map(|reg| reg.range.clone()).collect(),
                     output_shape: regions
@@ -259,8 +259,8 @@ pub struct Zone {
     output_ranges: TVec<Range<usize>>,
     output_shape: TVec<usize>,
     /// (index, raw offset)
-    values_offsets: TVec<(usize, isize)>,
-    validity: TVec<bool>,
+    values_offsets: Vec<(usize, isize)>,
+    validity: Vec<bool>,
 }
 
 impl Zone {
@@ -334,13 +334,18 @@ impl<'p> ByZoneScanner<'p> {
             output_coords: tvec!(0; rank),
             done: false,
         };
-        scanner.to_zone_start();
+        unsafe { scanner.to_zone_start(); }
         scanner
     }
 
     #[inline]
     pub fn output_offset(&self) -> isize {
         self.output_offset
+    }
+
+    #[inline]
+    pub fn input_center_offset(&self) -> isize {
+        self.input_center_offset
     }
 
     #[inline]
@@ -368,11 +373,19 @@ impl<'p> ByZoneScanner<'p> {
     }
 
     #[inline]
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
     pub fn valid_offsets_with_indexes(&self) -> impl Iterator<Item = (usize, isize)> + '_ {
         self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
     }
 
     #[inline]
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
+    pub fn valid_kernel_offsets_with_indexes(&self) -> &[(usize, isize)] {
+        &self.zone.values_offsets
+    }
+
+    #[inline]
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
     pub fn next(&mut self) {
         let rank = self.patch.rank();
         let inner_dim = rank - 1;
@@ -410,44 +423,40 @@ impl<'p> ByZoneScanner<'p> {
     }
 
     #[inline]
-    fn reset_raw_offsets(&mut self) {
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
+    unsafe fn reset_raw_offsets(&mut self) {
         self.input_center_offset = 0;
         self.output_offset = 0;
-        unsafe {
-            for ix in 0..self.patch.rank() {
-                self.input_center_offset += *self.patch.input_layout_strides.get_unchecked(ix)
-                    * *self.input_coords.get_unchecked(ix) as isize;
-                self.output_offset += self.patch.output_layout_strides.get_unchecked(ix)
-                    * *self.output_coords.get_unchecked(ix) as isize;
-            }
+        for ix in 0..self.patch.rank() {
+            self.input_center_offset += *self.patch.input_layout_strides.get_unchecked(ix)
+                * *self.input_coords.get_unchecked(ix) as isize;
+            self.output_offset += self.patch.output_layout_strides.get_unchecked(ix)
+                * *self.output_coords.get_unchecked(ix) as isize;
         }
     }
 
     #[inline]
-    fn next_zone(&mut self) {
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
+    unsafe fn next_zone(&mut self) {
         self.zone_id += 1;
+        while self.skip_valid && self.patch.zones.get_unchecked(self.zone_id).valid && self.zone_id < self.patch.zones.len() {
+            self.zone_id += 1;
+        }
         if self.zone_id == self.patch.zones.len() {
             self.done = true;
             return;
         }
-        unsafe { self.zone = self.patch.zones.get_unchecked(self.zone_id) }
-        if self.skip_valid && self.zone.valid {
-            self.next_zone()
-        }
+        self.zone = self.patch.zones.get_unchecked(self.zone_id);
         self.to_zone_start()
     }
 
     #[inline]
-    fn to_zone_start(&mut self) {
-        self.input_coords = self
-            .zone
-            .output_ranges
-            .iter()
-            .map(|r| r.start)
-            .zip(self.patch.spec.strides.iter())
-            .map(|(a, b)| (a * b))
-            .collect();
-        self.output_coords = self.zone.output_ranges.iter().map(|r| r.start).collect();
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
+    unsafe fn to_zone_start(&mut self) {
+        for ix in 0..self.patch.rank() {
+            *self.input_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start * self.patch.spec.strides.get_unchecked(ix);
+            *self.output_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start;
+        }
         self.reset_raw_offsets()
     }
 

@@ -6,6 +6,8 @@ use num_traits::Zero;
 use std::ops::{Add, AddAssign, Mul};
 use tract_linalg::Conv;
 
+use unsafe_unwrap::UnsafeUnwrap;
+
 #[derive(CustomDebug, Clone)]
 pub struct Direct<T: Datum + Copy + Add + AddAssign + Mul + Zero + FloatLike> {
     conv_direct: Option<(Box<Conv<T>>, Vec<Tensor>, isize)>,
@@ -110,6 +112,41 @@ where
             bias,
         })
     }
+
+    unsafe fn eval_one_group(&self, g:usize, iptr: *const T, optr: *mut T) {
+        if let Some((ref cv, ref filters, output_offset)) = self.conv_direct {
+            cv.conv(
+                filters.get_unchecked(g).as_ptr().unsafe_unwrap(),
+                iptr,
+                optr.offset(output_offset),
+                self.output_shape.c_stride() as isize,
+                self.output_shape.w_stride() as isize,
+            );
+        }
+        self.eval_one_group_invalid(g, iptr, optr)
+    }
+
+    unsafe fn eval_one_group_invalid(&self, g:usize, iptr: *const T, optr: *mut T) {
+        if let Some(ref filters) = self.filters_as_group_o_i_hw {
+            let fptr = filters.as_ptr().offset(g as isize * filters.strides().get_unchecked(0));
+            self.patch.visit_invalid(|pt| {
+                let iptr = iptr.offset(pt.input_center_offset());
+                let optr = optr.offset(pt.output_offset());
+                for co in 0..self.co_per_group {
+                    let fptr = fptr.offset(co as isize * filters.strides().get_unchecked(1));
+                    let mut sum = T::zero();
+                    for ci in 0..self.ci_per_group {
+                        let fptr = fptr.offset(ci as isize * filters.strides().get_unchecked(2));
+                        let iptr = iptr.offset((self.input_shape.c_stride() * ci) as isize);
+                        for (ix, offset) in pt.valid_kernel_offsets_with_indexes() {
+                            sum += *fptr.offset(*ix as isize) * *iptr.offset(*offset as isize);
+                        }
+                    }
+                    *optr.offset((self.output_shape.c_stride() * co) as isize) = sum;
+                }
+            });
+        }
+    }
 }
 
 impl<T> Op for Direct<T>
@@ -160,34 +197,7 @@ where
                     let optr = output
                         .as_mut_ptr()
                         .offset((g * self.co_per_group * self.output_shape.c_stride()) as isize);
-                    if let Some((ref cv, ref filters, output_offset)) = self.conv_direct {
-                        cv.conv(
-                            filters.get_unchecked(g).as_ptr()?,
-                            iptr,
-                            optr.offset(output_offset),
-                            self.output_shape.c_stride() as isize,
-                            self.output_shape.w_stride() as isize,
-                        );
-                    }
-                    if let Some(ref filters) = self.filters_as_group_o_i_hw {
-                        let fptr = filters.slice_axis(Axis(0), (g..=g).into()).as_ptr();
-                        self.patch.visit_invalid(|pt| {
-                            for co in 0..self.co_per_group {
-                                let fptr = fptr.offset(co as isize * filters.strides().get_unchecked(1));
-                                let mut sum = T::zero();
-                                for ci in 0..self.ci_per_group {
-                                    let fptr = fptr.offset(ci as isize * filters.strides().get_unchecked(2));
-                                    let iptr = iptr.offset((self.input_shape.c_stride() * ci) as isize);
-                                    for (ix, offset) in pt.valid_offsets_with_indexes() {
-                                        sum += *fptr.offset(ix as isize) * *iptr.offset(offset as isize);
-                                    }
-                                }
-                                *optr.offset(
-                                    pt.output_offset() + (self.output_shape.c_stride() * co) as isize,
-                                ) = sum;
-                            }
-                        });
-                    }
+                    self.eval_one_group(g, iptr, optr);
                 }
             }
             if let Some(ref bias) = self.bias {
