@@ -5,11 +5,11 @@ members = [
     "tensorflow",
     "onnx",
     "cli",
-    "examples/lstm-proptest-onnx-vs-tf",
-    "examples/onnx-test-suite",
-    "examples/tf-inceptionv3",
-    "examples/tf-mobilenet-v2",
-    "examples/tf-moz-deepspeech",
+    "harness/lstm-proptest-onnx-vs-tf",
+    "harness/onnx-test-suite",
+    "harness/tf-inceptionv3",
+    "harness/tf-mobilenet-v2",
+    "harness/tf-moz-deepspeech",
 ]
 
 [profile.release]
