@@ -126,23 +126,30 @@ where
         self.eval_one_group_invalid(g, iptr, optr)
     }
 
-    unsafe fn eval_one_group_invalid(&self, g:usize, iptr: *const T, optr: *mut T) {
+    #[inline(never)]
+    pub unsafe fn eval_one_group_invalid(&self, g:usize, iptr: *const T, optr: *mut T) {
         if let Some(ref filters) = self.filters_as_group_o_i_hw {
-            let fptr = filters.as_ptr().offset(g as isize * filters.strides().get_unchecked(0));
+            let i_c_stride = self.input_shape.c_stride();
+            let o_c_stride = self.output_shape.c_stride();
+            let f_g_stride = filters.strides().get_unchecked(0);
+            let f_co_stride = filters.strides().get_unchecked(1);
+            let f_ci_stride = filters.strides().get_unchecked(2);
+            let fptr = filters.as_ptr().offset(g as isize * f_g_stride);
             self.patch.visit_invalid(|pt| {
-                let iptr = iptr.offset(pt.input_center_offset());
-                let optr = optr.offset(pt.output_offset());
+                let (i_offset, o_offset) = pt.point_offsets();
+                let iptr = iptr.offset(i_offset);
+                let optr = optr.offset(o_offset);
                 for co in 0..self.co_per_group {
-                    let fptr = fptr.offset(co as isize * filters.strides().get_unchecked(1));
+                    let fptr = fptr.offset(co as isize * f_co_stride);
                     let mut sum = T::zero();
                     for ci in 0..self.ci_per_group {
-                        let fptr = fptr.offset(ci as isize * filters.strides().get_unchecked(2));
-                        let iptr = iptr.offset((self.input_shape.c_stride() * ci) as isize);
+                        let fptr = fptr.offset(ci as isize * f_ci_stride);
+                        let iptr = iptr.offset((i_c_stride * ci) as isize);
                         for (ix, offset) in pt.valid_kernel_offsets_with_indexes() {
                             sum += *fptr.offset(*ix as isize) * *iptr.offset(*offset as isize);
                         }
                     }
-                    *optr.offset((self.output_shape.c_stride() * co) as isize) = sum;
+                    *optr.offset((o_c_stride * co) as isize) = sum;
                 }
             });
         }

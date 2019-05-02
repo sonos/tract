@@ -2,8 +2,6 @@ use crate::internal::*;
 use crate::ops::cnn::PaddingSpec;
 use crate::ops::nn::{DataFormat, DataShape};
 use ndarray::prelude::*;
-#[cfg(not(debug_assertions))]
-use no_panic::no_panic;
 
 use super::PatchAxis;
 
@@ -11,6 +9,8 @@ use std::ops::Range;
 
 use itertools::zip;
 use itertools::Itertools;
+
+use unsafe_unwrap::UnsafeUnwrap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatchSpec {
@@ -131,6 +131,9 @@ impl PatchSpec {
             })
             .collect::<TVec<_>>();
 
+        let op_strides_times_input_storage_strides =
+            zip(&self.strides, &input_layout_strides).map(|(a, b)| (*a as isize * b)).collect();
+
         let zone_strides = strides(&regions.iter().map(|d| d.len()).collect::<TVec<_>>(), 1);
         let zones: Vec<Zone> = regions
             .iter()
@@ -144,16 +147,44 @@ impl PatchSpec {
                         })
                     })
                     .collect::<Vec<bool>>();
+                let valid = validity.iter().all(|x| *x);
+                let output_shape: TVec<usize> =
+                    regions.iter().map(|reg| reg.range.end - reg.range.start).collect();
+                let invalid_point_offset_pairs = if !valid {
+                    Some(
+                        ndarray::indices(&*output_shape)
+                            .into_iter()
+                            .map(|coords| {
+                                (
+                                    itertools::izip!(
+                                        coords.slice(),
+                                        regions.iter(),
+                                        &op_strides_times_input_storage_strides
+                                    )
+                                    .map(|(a, r, &b)| ((a + r.range.start) as isize * b))
+                                    .sum::<isize>(),
+                                    itertools::izip!(
+                                        coords.slice(),
+                                        regions.iter(),
+                                        &output_layout_strides
+                                    )
+                                    .map(|(a, r, &b)| ((a + r.range.start) as isize * b))
+                                    .sum::<isize>(),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    None
+                };
                 Zone {
+                    invalid_point_offset_pairs,
                     output_ranges: regions.iter().map(|reg| reg.range.clone()).collect(),
-                    output_shape: regions
-                        .iter()
-                        .map(|reg| reg.range.end - reg.range.start)
-                        .collect(),
+                    output_shape,
                     output_zone_offset: zip(&regions, &output_layout_strides)
                         .map(|(reg, &stride)| reg.range.start as isize * stride)
                         .sum::<isize>(),
-                    valid: validity.iter().all(|x| *x),
+                    valid,
                     values_offsets: standard_layout_data_field
                         .iter()
                         .cloned()
@@ -166,9 +197,6 @@ impl PatchSpec {
             .collect();
 
         let valid_zone = zones.iter().position(|z| z.valid);
-
-        let op_strides_times_input_storage_strides =
-            zip(&self.strides, &input_layout_strides).map(|(a, b)| (*a as isize * b)).collect();
 
         Patch {
             spec: self,
@@ -232,8 +260,8 @@ impl Patch {
     }
 
     #[inline]
-    pub fn visit_invalid(&self, mut acceptor: impl FnMut(&ByZoneScanner)) {
-        let mut scanner = ByZoneScanner::new(self, true);
+    pub fn visit_invalid(&self, mut acceptor: impl FnMut(&InvalidScanner)) {
+        let mut scanner = InvalidScanner::new(self);
         while !scanner.done() {
             acceptor(&scanner);
             scanner.next();
@@ -260,6 +288,7 @@ pub struct Zone {
     output_shape: TVec<usize>,
     /// (index, raw offset)
     values_offsets: Vec<(usize, isize)>,
+    invalid_point_offset_pairs: Option<Vec<(isize, isize)>>,
     validity: Vec<bool>,
 }
 
@@ -280,11 +309,87 @@ impl Zone {
                     coords.slice(),
                     &self.output_ranges,
                     &patch.op_strides_times_input_storage_strides
-                ).into_iter()
+                )
+                .into_iter()
                 .map(|(x, range, stride)| (x + range.start) as isize * stride)
                 .sum::<isize>()
             })
             .collect()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InvalidScanner<'p> {
+    patch: &'p Patch,
+    zone: &'p Zone,
+    zone_id: usize,
+    point_id: usize,
+    done: bool,
+}
+
+impl<'p> InvalidScanner<'p> {
+    fn new(patch: &'p Patch) -> InvalidScanner<'p> {
+        let zone_id = if let Some(inv) = patch.zones.iter().position(|z| !z.valid) {
+            inv
+        } else {
+            return InvalidScanner {
+                patch,
+                zone: &patch.zones[0],
+                zone_id: 0,
+                point_id: 0,
+                done: true,
+            };
+        };
+        let mut scanner = InvalidScanner {
+            patch,
+            zone: &patch.zones[zone_id],
+            zone_id,
+            point_id: 0,
+            done: false,
+        };
+        scanner
+    }
+
+    #[inline]
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
+    pub unsafe fn point_offsets(&self) -> (isize,isize) {
+        *self.zone.invalid_point_offset_pairs.as_ref().unsafe_unwrap().get_unchecked(self.point_id)
+    }
+
+    #[inline]
+    pub fn valid_count(&self) -> usize {
+        self.zone.values_offsets.len()
+    }
+
+    #[inline]
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
+    pub fn valid_kernel_offsets_with_indexes(&self) -> &[(usize, isize)] {
+        &self.zone.values_offsets
+    }
+
+    #[inline]
+    #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
+    pub fn next(&mut self) {
+        unsafe {
+            self.point_id += 1;
+            if self.point_id < self.zone.invalid_point_offset_pairs.as_ref().unsafe_unwrap().len() {
+                return
+            }
+            self.point_id = 0;
+            self.zone_id += 1;
+            while self.zone_id < self.patch.zones.len() && self.patch.zones.get_unchecked(self.zone_id).valid {
+                self.zone_id += 1
+            }
+            if self.zone_id < self.patch.zones.len() {
+                self.zone = self.patch.zones.get_unchecked(self.zone_id)
+            } else {
+                self.done = true
+            }
+        }
+    }
+
+    pub fn done(&self) -> bool {
+        self.done
     }
 }
 
@@ -334,7 +439,9 @@ impl<'p> ByZoneScanner<'p> {
             output_coords: tvec!(0; rank),
             done: false,
         };
-        unsafe { scanner.to_zone_start(); }
+        unsafe {
+            scanner.to_zone_start();
+        }
         scanner
     }
 
@@ -439,7 +546,10 @@ impl<'p> ByZoneScanner<'p> {
     #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
     unsafe fn next_zone(&mut self) {
         self.zone_id += 1;
-        while self.skip_valid && self.patch.zones.get_unchecked(self.zone_id).valid && self.zone_id < self.patch.zones.len() {
+        while self.skip_valid
+            && self.patch.zones.get_unchecked(self.zone_id).valid
+            && self.zone_id < self.patch.zones.len()
+        {
             self.zone_id += 1;
         }
         if self.zone_id == self.patch.zones.len() {
@@ -454,8 +564,11 @@ impl<'p> ByZoneScanner<'p> {
     #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
     unsafe fn to_zone_start(&mut self) {
         for ix in 0..self.patch.rank() {
-            *self.input_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start * self.patch.spec.strides.get_unchecked(ix);
-            *self.output_coords.get_unchecked_mut(ix) = self.zone.output_ranges.get_unchecked(ix).start;
+            *self.input_coords.get_unchecked_mut(ix) =
+                self.zone.output_ranges.get_unchecked(ix).start
+                    * self.patch.spec.strides.get_unchecked(ix);
+            *self.output_coords.get_unchecked_mut(ix) =
+                self.zone.output_ranges.get_unchecked(ix).start;
         }
         self.reset_raw_offsets()
     }
@@ -727,12 +840,14 @@ pub mod test {
 
     fn visit_invalid(_input_shape: DataShape, p: PatchSpec) -> TestCaseResult {
         let p = p.into_patch();
-        let mut output_coords = ndarray::ArrayD::<i32>::from_elem(&*p.output_shape, 0);
+        let mut output = ndarray::ArrayD::<i32>::from_elem(&*p.output_shape, 0);
         p.visit_invalid(|w| {
-            output_coords[&*w.output_coords] = 1;
+            unsafe {
+                output.as_slice_mut().unwrap()[w.point_offsets().1 as usize] = 1;
+            }
         });
         for coords in ndarray::indices(&*p.output_shape) {
-            prop_assert!((output_coords[&coords] == 0) == is_valid(&p, coords.slice()));
+            prop_assert!((output[&coords] == 0) == is_valid(&p, coords.slice()));
         }
         Ok(())
     }

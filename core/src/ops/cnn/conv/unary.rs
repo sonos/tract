@@ -429,11 +429,15 @@ impl Op for ConvUnary {
         } else {
             if let Some(shape) = inputs[0].shape.as_finite() {
                 let dt = inputs[0].datum_type;
+                /*
                 debug!("Translating to direct: {:?}", self);
                 let op = dispatch_floatlike!(Self::to_direct(dt)(self, &*shape))?;
                 return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-                /*
+                */
                 if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax)) {
+                    debug!("Translating to direct: {:?}", self);
+                    let op = dispatch_floatlike!(Self::to_direct(dt)(self, &*shape))?;
+                    return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
                 } else if self.group != 1 && self.group == self.output_channels() {
                     return Ok(Some(TypedModelPatch::single_unary_op(
                         model,
@@ -459,7 +463,6 @@ impl Op for ConvUnary {
                     patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
                     return Ok(Some(patch));
                 }
-                */
             }
         }
         Ok(None)
