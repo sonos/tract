@@ -5,6 +5,7 @@ members = [
     "tensorflow",
     "onnx",
     "cli",
+    "examples/tensorflow-mobilenet-v2",
     "harness/lstm-proptest-onnx-vs-tf",
     "harness/onnx-test-suite",
     "harness/tf-inceptionv3",
