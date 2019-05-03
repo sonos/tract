@@ -6,29 +6,33 @@ process an image with MobileNetV2.
 The example assume the following command are run in the directory of this
 example project, where this README lives.
 
-```
+```sh
 git clone https://github.com/snipsco/tract
-cd  tract/examples/tensorflow-mobilenet-v2/
+cd tract/examples/tensorflow-mobilenet-v2/
 ```
 
 ## Obtaining the model 
 
+MobileNet is a response to the ImageNet challenge. The goal is to categorize
+images and associate them with one of 1000 labels. In other words, recognize a
+dog, a cat, a rabbit, or a military uniform.
+
 See https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet for more information.
 
-These files are too big to be included on the github repository, so you will need to download them.
+You will need to download the models. For instance:
 
-For instance:
-
-```
+```sh
 wget https://storage.googleapis.com/mobilenet_v2/checkpoints/mobilenet_v2_1.4_224.tgz
 tar zxf mobilenet_v2_1.4_224.tgz
 ```
 
-This will expand a half-dozen files in the directory. The only one of interest for us is the frozen TensorFlow model: `mobilenet_v2_1.4_224_frozen.pb`.
+This expands a half-dozen files in the directory. The only one of interest
+for us is the frozen TensorFlow model: `mobilenet_v2_1.4_224_frozen.pb`.
 
 ## Converting the input image
 
-As in TensorFlow documentation, we will use a portrait of Grace Hopper.
+As in TensorFlow documentation, we will use a portrait of Grace Hopper
+(included with this example).
 
 ```
 grace_hopper.jpg: JPEG image data, JFIF standard 1.02, resolution (DPI), density 96x96, segment length 16, baseline, precision 8, 517x606, components 3
@@ -36,25 +40,21 @@ grace_hopper.jpg: JPEG image data, JFIF standard 1.02, resolution (DPI), density
 
 ## Try it
 
-`cargo run` should print a lot of things, and ultimately: `result: Some((653, 0.32560226))`.
+`cargo run` should print a lot of things, and ultimately: `result: Some((0.32560226, 654))`.
 
-This is actually good. It is the rank and a confidence indicator of the
-inferred label.
+This is actually good. It is the rank (654) and a confidence indicator (0.32)
+of the inferred label.
 
 ```
-$ cat -n imagenet_slim_labels.txt | grep -C 3 653
-   650  medicine chest
+$ cat -n imagenet_slim_labels.txt | grep -C 3 654
    651  megalith
    652  microphone
    653  microwave
    654  military uniform
    655  milk can
    656  minibus
+   657  miniskirt
 ```
-
-There is a one-off error as the 1000 "real" labels list includes a "dummy"
-label at its top, but tract and mobilenet correctly found out about Grace
-Hopper military uniform.
 
 ## A look at the code
 
@@ -70,7 +70,8 @@ Everything happens in [src/main.rs](src/main.rs). It uses three crates:
 
 ### Loading the model
 
-This line creates a tract-tensorflow context, and uses it to load the protobuf model.
+This line creates a tract-tensorflow context, and uses it to load the protobuf
+model.
 
 ```rust
     let mut model =
@@ -85,8 +86,8 @@ types and shapes in the network.
 
 MobileNet assumes its input in in the NHWC convention: [batch, height, width,
 channels]. The MobileNet variant we have picked works with a 224x224 square
-pictures of RGB pictures (C=3), we will only process one image at a time (N=1).
-It operates on single precision floats.
+RGB (C=3) pictures. We will only process one image at a time (N=1).
+And it operates on single precision floats (aka `f32`).
 
 ```rust
     model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), tvec!(1, 224, 224, 3)))?;
@@ -135,6 +136,7 @@ score, with its index, and diplay it...
         .iter()
         .cloned()
         .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        .zip(1..)
+        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     println!("result: {:?}", best);
 ```

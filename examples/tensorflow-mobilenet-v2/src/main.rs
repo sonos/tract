@@ -29,8 +29,8 @@ fn main() -> TractResult<()> {
         .to_array_view::<f32>()?
         .iter()
         .cloned()
-        .enumerate()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        .zip(1..)
+        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     println!("result: {:?}", best);
     Ok(())
 }
