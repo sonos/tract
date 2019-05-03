@@ -9,9 +9,13 @@ _This project used to be called tfdeploy, or Tensorflow-deploy-rust._
 
 ## What ?
 
-`tract` is a tensorflow-compatible inference library. It loads a Tensorflow
-or ONNX frozen model from the regular protobuf format, and flows data through
-it.
+`tract` is a tensorflow- and ONNX- compatible inference library. It loads a 
+Tensorflow or ONNX frozen model from the regular protobuf format, and flows
+data through it.
+
+## Quick start
+
+MobileNet v2 with TensorFlow: see `examples/tensorflow-mobilenet-v2`.
 
 ## Real-time streaming support
 
