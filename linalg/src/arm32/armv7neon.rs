@@ -173,6 +173,9 @@ mod test {
     proptest! {
         #[test]
         fn vec_mat_mul_prepacked((k, n, ref a, ref b) in strat_vec_mat_mul()) {
+            if !has_neon() {
+                return Ok(())
+            }
             let mm = PackedVecMatMul::<SVecMatMul1x8, f32>::new(k, n);
             test_vec_mat_mul_prep_f32(mm, k, n, a, b)?
         }
