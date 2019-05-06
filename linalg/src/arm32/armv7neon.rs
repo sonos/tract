@@ -21,6 +21,14 @@ extern "C" {
         rsc: size_t,
         csc: size_t,
     );
+
+    fn armv7neon_vm_s1x8(
+        k: size_t,
+        a: *const f32,
+        b: *const f32,
+        c: *mut f32,
+        stride: size_t,
+    );
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -87,14 +95,46 @@ impl frame::conv::ConvKer<f32> for SConv8x4 {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct SVecMatMul1x8;
+
+impl frame::vecmatmul::VecMatMulKer<f32> for SVecMatMul1x8 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "neon"
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        8
+    }
+    fn alignment_bytes_a() -> usize {
+        4
+    }
+    fn alignment_bytes_b() -> usize {
+        16
+    }
+    #[inline(never)]
+    fn kernel(
+        k: usize,
+        a: *const f32,
+        b: *const f32,
+        c: *mut f32,
+        stride: usize,
+    ) {
+        unsafe { armv7neon_vm_s1x8(k, a, b, c, stride) }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::arm32::has_neon;
     use crate::frame::conv::test::*;
     use crate::frame::matmul::test::*;
+    use crate::frame::vecmatmul::test::*;
     use crate::frame::PackedConv;
     use crate::frame::PackedMatMul;
+    use crate::frame::PackedVecMatMul;
     use proptest::*;
 
     proptest! {
@@ -129,4 +169,13 @@ mod test {
             prop_assert_eq!(found, expected)
         }
     }
+
+    proptest! {
+        #[test]
+        fn vec_mat_mul_prepacked((k, n, ref a, ref b) in strat_vec_mat_mul()) {
+            let mm = PackedVecMatMul::<SVecMatMul1x8, f32>::new(k, n);
+            test_vec_mat_mul_prep_f32(mm, k, n, a, b)?
+        }
+    }
+
 }
