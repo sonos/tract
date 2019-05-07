@@ -15,7 +15,7 @@ data through it.
 
 ## Quick start
 
-MobileNet v2 with TensorFlow: see `examples/tensorflow-mobilenet-v2`.
+* [MobileNet v2 with TensorFlow](examples/tensorflow-mobilenet-v2)
 
 ## Real-time streaming support
 
