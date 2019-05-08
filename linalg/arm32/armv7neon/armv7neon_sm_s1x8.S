@@ -34,7 +34,7 @@ LOOP:
     subs        r0, r0, #1
     bne         LOOP
 
-    ldr         r0, [sp, #8]
+    ldr         r0, [sp, #4]
     lsl         r0, r0, #2
 
     vstr        s0, [ r3 ]
@@ -44,6 +44,7 @@ LOOP:
     vstr        s2, [ r3 ]
     add         r3, r3, r0
     vstr        s3, [ r3 ]
+
     add         r3, r3, r0
     vstr        s4, [ r3 ]
     add         r3, r3, r0
@@ -52,7 +53,6 @@ LOOP:
     vstr        s6, [ r3 ]
     add         r3, r3, r0
     vstr        s7, [ r3 ]
-    add         r3, r3, r0
 
     vpop        { s16 }
     bx          lr

@@ -5,6 +5,10 @@ pub unsafe fn alloc_bytes(size: usize, alignment: usize) -> *mut u8 {
     alloc::alloc(alloc::Layout::from_size_align(size, alignment).unwrap())
 }
 
+pub unsafe fn alloc_zeroed_bytes(size: usize, alignment: usize) -> *mut u8 {
+    alloc::alloc_zeroed(alloc::Layout::from_size_align(size, alignment).unwrap())
+}
+
 pub unsafe fn vec_bytes(capacity: usize, alignment: usize) -> Vec<u8> {
     let aligned_buffer = alloc_bytes(capacity, alignment);
     Vec::from_raw_parts(aligned_buffer as _, 0, capacity)
@@ -17,6 +21,11 @@ pub unsafe fn uninitialized_bytes(size: usize, alignment: usize) -> Vec<u8> {
 
 pub unsafe fn uninitialized<T>(size: usize, alignment_bytes: usize) -> Vec<T> {
     let aligned_buffer = alloc_bytes(size * mem::size_of::<T>(), alignment_bytes);
+    Vec::from_raw_parts(aligned_buffer as _, size, size)
+}
+
+pub unsafe fn zeroed<T>(size: usize, alignment_bytes: usize) -> Vec<T> {
+    let aligned_buffer = alloc_zeroed_bytes(size * mem::size_of::<T>(), alignment_bytes);
     Vec::from_raw_parts(aligned_buffer as _, size, size)
 }
 

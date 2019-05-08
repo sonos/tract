@@ -181,4 +181,16 @@ mod test {
         }
     }
 
+    #[test]
+    fn vec_mat_mul_prepacked_1() {
+        if !has_neon() {
+            return
+        }
+        let n = 19;
+        let mm = PackedVecMatMul::<SVecMatMul1x8, f32>::new(1, n);
+        let a = vec!(1.0f32);
+        let b = (0..n).map(|a| a as _).collect::<Vec<f32>>();
+        test_vec_mat_mul_prep_f32(mm, 1, n, &a, &b).unwrap()
+    }
+
 }
