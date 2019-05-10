@@ -33,6 +33,8 @@ set_version() {
     done
 }
 
+cargo update
+
 set_version $CRATE/Cargo.toml $VERSION
 (cd $CRATE ; cargo publish --dry-run --allow-dirty)
 
@@ -42,3 +44,4 @@ git push -f --tags
 
 (cd $CRATE ; cargo publish --allow-dirty)
 cargo update
+sleep 5
