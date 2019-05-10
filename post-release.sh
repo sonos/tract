@@ -14,10 +14,10 @@ set_version() {
     FILE=$1
     VERSION=$2
     sed -i.back "s/^version *= *\".*\"/version = \"$2\"/" $FILE
-    for dep in `grep "^tract-" $FILE | cut -d " " -f 1
+    for dep in `grep "^tract-" $FILE | cut -d " " -f 1`
     do
         short_dep=`echo $dep | sed "s/^tract-//"`
-        cargo add --manifest-path $FILE --path ../$short_dep
+        cargo add --manifest-path $FILE --path ../$short_dep tract-$short_dep
     done
 }
 
