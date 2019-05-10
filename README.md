@@ -1,4 +1,4 @@
-# Tract
+![tract-logo](assets/tract-logo/PNG/tract-horizontal-blue.png)
 
 [![Build Status](https://travis-ci.org/snipsco/tract.svg?branch=master)](https://travis-ci.org/snipsco/tract)
 [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
