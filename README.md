@@ -40,11 +40,26 @@ signal has been processed up to the end.
 
 ### ONNX
 
-As of today (feb 2019), `tract` passes successfully about 85% of ONNX backends
+As of today (May 2019), `tract` passes successfully about 85% of ONNX backends
 tests. `squeezenet`, `densenet121`, `resnet50`, `inception_v2` and `vgg19` tests
 are passing.
 
-Making a ONNX backend out of `tract` is on the roadmap.
+Covering all of ONNX and making a ONNX backend out of `tract` is on the roadmap.
+
+The following operartors are implemented and tested:
+
+Acos, Acosh, Add, And, ArgMax, ArgMin, Asin, Asinh, Atan, Atanh, AveragePool,
+BatchNormalization, Cast, Ceil, Clip, Concat, Constant, ConstantLike,
+ConstantOfShape, Conv, Cos, Cosh, Div, Dropout, Elu, Equal, Exp, Expand,
+EyeLike, Flatten, Floor, Gather, Gemm, GlobalAveragePool, GlobalLpPool,
+GlobalMaxPool, Greater, HardSigmoid, Hardmax, Identity, IsNaN, LRN, LSTM,
+LeakyRelu, Less, Log, LogSoftmax, MatMul, Max, MaxPool, Mean, Min, Mul, Neg,
+Not, Or, PRelu, Pad, ParametricSoftplus, Pow, Reciprocal, ReduceL1, ReduceL2,
+ReduceLogSum, ReduceLogSumExp, ReduceMax, ReduceMean, ReduceMin, ReduceProd,
+ReduceSum, ReduceSumSquare, Relu, Reshape, Rsqrt, ScaledTanh, Selu, Shape,
+Shrink, Sigmoid, Sign, Sin, Sinh, Size, Slice, Softmax, Softplus, Softsign,
+Split, Sqrt, Squeeze, Sub, Sum, Tan, Tanh, ThresholdedRelu, Tile, Transpose,
+Unsqueeze, Xor
 
 ### TensorFlow
 
@@ -52,6 +67,17 @@ Even if `tract` is very far from supporting any arbitrary model, it can run
 Google Inception v3 and Snips wake word models. Missing operators are easy
 to add. The lack of easy to reuse test suite, and the wide diversity of 
 operators in Tensorflow make it difficult to target a full support.
+
+The following operartors are implemented and tested:
+
+Abs, Add, AddN, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast,
+Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, ExpandDims,
+FakeQuantWithMinMaxVars, Fill, FloorMod, FusedBatchNorm, GatherNd, Identity,
+Less, Log, MatMul, Max, MaxPool, Maximum, Merge, Minimum, Mul, Neg, NoOp, Pack,
+Pad, Placeholder, Pow, Range, RealDiv, Relu, Relu6, Reshape, Rsqrt, Shape,
+Sigmoid, Softmax, SpaceToBatchND, Squeeze, StridedSlice, Sub, Switch, Tanh,
+Tile, Transpose, VariableV2
+
 
 ### TensorFlow-Lite
 
@@ -65,6 +91,11 @@ for CPU of the previous generation (ARM VFP), also targetting devices in the
 Raspberry Pi Zero family.
 
 ## Example of supported networks
+
+These models among others, are used to track tract performance evolution as
+part of the Continuous Integration jobs. See [.travis/README.md](readme) and 
+[.travis/bundle-entrypoint.sh](.travis/bundle-entrypoint.sh) for more
+information.
 
 ### Keyword spotting on Arm Cortex-M Microcontrollers
 
