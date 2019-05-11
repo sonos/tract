@@ -57,7 +57,6 @@ extern crate downcast_rs;
 pub extern crate error_chain;
 #[cfg(feature = "image_ops")]
 extern crate image;
-extern crate insideout;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate itertools;

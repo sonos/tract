@@ -3,7 +3,6 @@ extern crate box_drawing;
 extern crate clap;
 #[macro_use]
 extern crate error_chain;
-extern crate insideout;
 extern crate itertools;
 #[macro_use]
 extern crate log;
@@ -30,7 +29,6 @@ use std::str::FromStr;
 
 #[cfg(feature = "tf")]
 use crate::tfpb::graph::GraphDef;
-use insideout::InsideOut;
 use tract_core::internal::*;
 use tract_core::model::{InferenceModel, NormalizedModel, TypedModel};
 #[cfg(feature = "tf")]
@@ -340,7 +338,7 @@ impl Parameters {
             None
         };
 
-        let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).inside_out()?;
+        let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
 
         //        println!("{:?}", raw_model);
 
@@ -417,12 +415,12 @@ impl ProfilingMode {
         let max_iters = matches
             .value_of("max_iters")
             .map(u64::from_str)
-            .inside_out()?
+            .transpose()?
             .unwrap_or(DEFAULT_MAX_ITERS);
         let max_time = matches
             .value_of("max-time")
             .map(u64::from_str)
-            .inside_out()?
+            .transpose()?
             .unwrap_or(DEFAULT_MAX_TIME);
         let mode = if matches.is_present("bench") {
             ProfilingMode::RegularBenching { max_iters, max_time }

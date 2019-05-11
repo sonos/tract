@@ -2,7 +2,6 @@ use ndarray::*;
 
 use crate::internal::*;
 use crate::model::*;
-use insideout::InsideOut;
 
 use super::depth_wise::DepthWise;
 use super::im2col::Im2Col;
@@ -168,7 +167,7 @@ impl ConvUnary {
                 bias_shape[self.data_format.shape(output_shape).c_axis()] = self.output_channels();
                 Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
             })
-            .inside_out()?)
+            .transpose()?)
     }
 
     fn to_im2col_pair<T>(
