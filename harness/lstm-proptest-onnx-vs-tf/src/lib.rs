@@ -50,9 +50,9 @@ impl LstmProblem {
         op.initial_c = Some(self.c0.clone().into());
         let lstm =
             model.chain("lstm", op, tvec!(TensorFact::default(), TensorFact::default())).unwrap();
-        model.plug_const(InletId::new(lstm, 1), "w", w_iofc.into())?;
-        model.plug_const(InletId::new(lstm, 2), "r", r_iofc.into())?;
-        model.plug_const(InletId::new(lstm, 3), "b", b_iofc.into())?;
+        model.plug_const(InletId::new(lstm, 1), "w", w_iofc)?;
+        model.plug_const(InletId::new(lstm, 2), "r", r_iofc)?;
+        model.plug_const(InletId::new(lstm, 3), "b", b_iofc)?;
         model.set_output_outlets(&[OutletId::new(lstm, 0)])?;
         model.analyse(false)?;
         Ok(model.into_typed()?)
@@ -104,16 +104,16 @@ impl LstmProblem {
         model.plug_const(
             InletId::new(lstm, 0),
             "seq_length",
-            Tensor::from(self.chunk_length as i64).into(),
+            tensor0(self.chunk_length as i64),
         )?;
         model.add_edge(OutletId::new(x, 0), InletId::new(lstm, 1))?;
         model.add_edge(OutletId::new(cs, 0), InletId::new(lstm, 2))?;
         model.add_edge(OutletId::new(h, 0), InletId::new(lstm, 3))?;
-        model.plug_const(InletId::new(lstm, 4), "w", self.w_xh_icfo.clone().into())?;
-        model.plug_const(InletId::new(lstm, 5), "wc1", Tensor::from(arr1(&[0f32])).into())?;
-        model.plug_const(InletId::new(lstm, 6), "wc2", Tensor::from(arr1(&[0f32])).into())?;
-        model.plug_const(InletId::new(lstm, 7), "wc3", Tensor::from(arr1(&[0f32])).into())?;
-        model.plug_const(InletId::new(lstm, 8), "b", self.b_icfo.clone().into())?;
+        model.plug_const(InletId::new(lstm, 4), "w", self.w_xh_icfo.clone())?;
+        model.plug_const(InletId::new(lstm, 5), "wc1", tensor1(&[0f32]))?;
+        model.plug_const(InletId::new(lstm, 6), "wc2", tensor1(&[0f32]))?;
+        model.plug_const(InletId::new(lstm, 7), "wc3", tensor1(&[0f32]))?;
+        model.plug_const(InletId::new(lstm, 8), "b", self.b_icfo.clone())?;
 
         let last_h = model.add_node(
             "last_h",
@@ -171,7 +171,7 @@ impl LstmProblem {
             tvec!(TensorFact::default()),
         )?;
         model.add_edge(OutletId::new(h, 0), InletId::new(a_h0, 0))?;
-        model.plug_const(InletId::new(a_h0, 1), "h0", self.h0.clone().into())?;
+        model.plug_const(InletId::new(a_h0, 1), "h0", self.h0.clone())?;
 
         let a_cs0 = model.add_node(
             "a_cs0",
@@ -179,7 +179,7 @@ impl LstmProblem {
             tvec!(TensorFact::default()),
         )?;
         model.add_edge(OutletId::new(cs, 0), InletId::new(a_cs0, 0))?;
-        model.plug_const(InletId::new(a_cs0, 1), "cs0", self.c0.clone().into())?;
+        model.plug_const(InletId::new(a_cs0, 1), "cs0", self.c0.clone())?;
 
         let init = model.add_node(
             "init",
@@ -202,9 +202,9 @@ impl LstmProblem {
         let mut state = SimpleState::new(plan)?;
         let mut result = vec![];
         for x in self.x.iter() {
-            let mut y = state.run(tvec!(x.clone().to_tensor()))?.remove(0).to_array::<f32>()?;
+            let mut y = state.run(tvec!(x.clone().into_tensor()))?.remove(0).into_tensor().into_array::<f32>()?;
             y.index_axis_inplace(Axis(1), 0);
-            result.push(y.into());
+            result.push(y.into_arc_tensor());
         }
         Ok(result)
     }
@@ -223,7 +223,7 @@ impl LstmProblem {
         state.run_plan(tvec!(), 0)?;
         let mut result = vec![];
         for x in self.x.iter() {
-            result.push(state.run_plan(tvec!(x.clone().to_tensor()), 1)?.remove(0));
+            result.push(state.run_plan(tvec!(x.clone().into_tensor()), 1)?.remove(0));
         }
         Ok(result)
     }
@@ -256,7 +256,7 @@ fn strat() -> BoxedStrategy<LstmProblem> {
                         x[i * range..(i + 1) * range].to_vec(),
                     )
                     .unwrap()
-                    .into()
+                    .into_arc_tensor()
                 })
                 .collect();
             let w_xh_icfo =
@@ -288,11 +288,11 @@ fn test_x() {
         chunk_length: 1,
         batch_size: 1,
         cell_size: 1,
-        x: vec![arr3(&[[[-3f32]]]).into()],
-        w_xh_icfo: arr2(&[[0.0f32, -1.0, 0.0, -6.0], [0.0, 0.0, 0.0, 0.0]]).into(),
-        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]).into(),
-        h0: arr2(&[[0.0f32]]).into(),
-        c0: arr2(&[[0.0f32]]).into(),
+        x: vec![rctensor3(&[[[-3f32]]])],
+        w_xh_icfo: arr2(&[[0.0f32, -1.0, 0.0, -6.0], [0.0, 0.0, 0.0, 0.0]]),
+        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
+        h0: arr2(&[[0.0f32]]),
+        c0: arr2(&[[0.0f32]]),
     };
     let o = pb.onnx_run().unwrap();
     let t = pb.tf_run().unwrap();
@@ -306,11 +306,11 @@ fn test_c0() {
         chunk_length: 1,
         batch_size: 1,
         cell_size: 1,
-        x: vec![arr3(&[[[-0f32]]]).into()],
-        w_xh_icfo: arr2(&[[0.0f32, -0.0, 0.0, -0.0], [0.0, 0.0, 0.0, 0.0]]).into(),
-        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]).into(),
-        h0: arr2(&[[0.0f32]]).into(),
-        c0: arr2(&[[1.0f32]]).into(),
+        x: vec![rctensor3(&[[[-0f32]]])],
+        w_xh_icfo: arr2(&[[0.0f32, -0.0, 0.0, -0.0], [0.0, 0.0, 0.0, 0.0]]),
+        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
+        h0: arr2(&[[0.0f32]]),
+        c0: arr2(&[[1.0f32]]),
     };
     let o = pb.onnx_run().unwrap();
     let t = pb.tf_run().unwrap();
@@ -324,11 +324,11 @@ fn test_b() {
         chunk_length: 1,
         batch_size: 1,
         cell_size: 2,
-        x: vec![arr3(&[[[0f32, 0.0]]]).into()],
+        x: vec![rctensor3(&[[[0f32, 0.0]]])],
         w_xh_icfo: Array2::<f32>::zeros((4, 8)).into(),
-        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]).into(),
-        h0: arr2(&[[0.0f32, 0.0]]).into(),
-        c0: arr2(&[[0.0f32, 0.0]]).into(),
+        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
+        h0: arr2(&[[0.0f32, 0.0]]),
+        c0: arr2(&[[0.0f32, 0.0]]),
     };
     let o = pb.onnx_run().unwrap();
     let t = pb.tf_run().unwrap();
@@ -342,16 +342,16 @@ fn test_w() {
         chunk_length: 2,
         batch_size: 1,
         cell_size: 2,
-        x: vec![arr3(&[[[2.0f32, 1.0]], [[0.0, -3.0]]]).into()],
+        x: vec![rctensor3(&[[[2.0f32, 1.0]], [[0.0, -3.0]]])],
         w_xh_icfo: arr2(&[
             [0f32, -2.0, 0.0, 0.0, -2.0, -2.0, -3.0, -3.0],
             [0.0, -3.0, 2.0, 0.0, -2.0, 2.0, 1.0, -3.0],
             [0.0, 2.0, 1.0, 0.0, -3.0, -2.0, -3.0, -1.0],
             [0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         ]),
-        b_icfo: arr1(&[0.0f32, 0.0, -3.0, -1.0, -1.0, 0.0, 2.0, -2.0]).into(),
-        h0: arr2(&[[1.0f32, 0.0]]).into(),
-        c0: arr2(&[[-1.0f32, -2.0]]).into(),
+        b_icfo: arr1(&[0.0f32, 0.0, -3.0, -1.0, -1.0, 0.0, 2.0, -2.0]),
+        h0: arr2(&[[1.0f32, 0.0]]),
+        c0: arr2(&[[-1.0f32, -2.0]]),
     };
     let o = pb.onnx_run().unwrap();
     let t = pb.tf_run().unwrap();
@@ -365,11 +365,11 @@ fn test_loops() {
         chunk_length: 1,
         batch_size: 1,
         cell_size: 1,
-        x: vec![arr3(&[[[0.0f32]]]).into(), arr3(&[[[0.0f32]]]).into()],
+        x: vec![rctensor3(&[[[0.0f32]]]), rctensor3(&[[[0.0f32]]])],
         w_xh_icfo: Array2::<f32>::zeros((2, 4)).into(),
-        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]).into(),
-        h0: arr2(&[[0.0f32]]).into(),
-        c0: arr2(&[[1.0f32]]).into(),
+        b_icfo: arr1(&[0.0f32, 0.0, 0.0, 0.0]),
+        h0: arr2(&[[0.0f32]]),
+        c0: arr2(&[[1.0f32]]),
     };
     let o = pb.onnx_run().unwrap();
     let t = pb.tf_run().unwrap();

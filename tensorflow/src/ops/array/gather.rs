@@ -92,8 +92,8 @@ mod tests {
     fn simple_indexing() {
         let g = GatherNd::new();
         assert_eq!(
-            g.eval(tvec!(arr2(&[[1, 2], [3, 4]]).into(), arr2(&[[0, 0], [1, 1]]).into())).unwrap(),
-            tvec!(SharedTensor::from(arr1(&[1, 4])))
+            g.eval(tvec!(rctensor2(&[[1, 2], [3, 4]]), rctensor2(&[[0, 0], [1, 1]]))).unwrap(),
+            tvec!(rctensor1(&[1, 4]))
         );
     }
 
@@ -101,38 +101,38 @@ mod tests {
     fn slice_indexing() {
         let g = GatherNd::new();
         assert_eq!(
-            g.eval(tvec!(arr2(&[[1, 2], [3, 4]]).into(), arr2(&[[1], [0]]).into())).unwrap(),
-            tvec!(SharedTensor::from(arr2(&[[3, 4], [1, 2]])))
+            g.eval(tvec!(rctensor2(&[[1, 2], [3, 4]]), rctensor2(&[[1], [0]]))).unwrap(),
+            tvec!(rctensor2(&[[3, 4], [1, 2]]))
         );
     }
 
     #[test]
     fn tensor_3d_1() {
         let g = GatherNd::new();
-        let t = SharedTensor::from(arr3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]));
+        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), arr2(&[[1]]).into())).unwrap(),
-            tvec!(SharedTensor::from(arr3(&[[[11, 21], [31, 41]]])))
+            g.eval(tvec!(t.clone(), rctensor2(&[[1]]))).unwrap(),
+            tvec!(rctensor3(&[[[11, 21], [31, 41]]]))
         );
     }
 
     #[test]
     fn tensor_3d_2() {
         let g = GatherNd::new();
-        let t = SharedTensor::from(arr3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]));
+        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), arr2(&[[0, 1], [1, 0]]).into())).unwrap(),
-            tvec!(SharedTensor::from(arr2(&[[30, 40], [11, 21]])))
+            g.eval(tvec!(t.clone(), rctensor2(&[[0, 1], [1, 0]]))).unwrap(),
+            tvec!(rctensor2(&[[30, 40], [11, 21]]))
         );
     }
 
     #[test]
     fn tensor_3d_3() {
         let g = GatherNd::new();
-        let t = SharedTensor::from(arr3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]));
+        let t = rctensor3(&[[[10, 20], [30, 40]], [[11, 21], [31, 41]]]);
         assert_eq!(
-            g.eval(tvec!(t.clone(), arr2(&[[0, 0, 1], [1, 0, 1]]).into())).unwrap(),
-            tvec!(SharedTensor::from(arr1(&[20, 21])))
+            g.eval(tvec!(t.clone(), rctensor2(&[[0, 0, 1], [1, 0, 1]]))).unwrap(),
+            tvec!(rctensor1(&[20, 21]))
         );
     }
 }

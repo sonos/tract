@@ -1,4 +1,3 @@
-use ndarray::prelude::*;
 use num_traits::AsPrimitive;
 
 use crate::internal::*;
@@ -14,7 +13,7 @@ impl Size {
         T: Copy + Datum,
         usize: AsPrimitive<T>,
     {
-        Ok(Tensor::from(arr0(size.as_())).into())
+        Ok(rctensor0(size.as_()))
     }
 }
 

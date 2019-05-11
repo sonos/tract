@@ -2,8 +2,8 @@
 use crate::dim::TDim;
 use crate::tensor::Tensor;
 use crate::TractResult;
-use ndarray::prelude::*;
 use std::fmt;
+use crate::tensor::litteral::*;
 
 use tract_linalg::f16::f16;
 
@@ -116,7 +116,7 @@ macro_rules! datum {
     ($t:ident, $v:ident) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
-                arr0(it).into()
+                tensor0(it)
             }
         }
 
@@ -298,20 +298,20 @@ impl FloatLike for f64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::datum::*;
-    use crate::dim::ToDim;
+    use crate::internal::*;
+    use ndarray::arr1;
 
     #[test]
     fn test_array_to_tensor_to_array() {
         let array = arr1(&[12i32, 42]);
-        let dt_array = Tensor::from(array.clone());
-        let view = dt_array.to_array_view::<i32>().unwrap();
+        let tensor = Tensor::from(array.clone());
+        let view = tensor.to_array_view::<i32>().unwrap();
         assert_eq!(array, view.into_dimensionality().unwrap());
     }
 
     #[test]
     fn test_cast_dim_to_dim() {
-        let t_dim: Tensor = arr1(&[12isize.to_dim(), 42isize.to_dim()]).into();
+        let t_dim: Tensor = tensor1(&[12isize.to_dim(), 42isize.to_dim()]);
         let t_i32 = t_dim.cast_to::<i32>().unwrap();
         let t_dim_2 = t_i32.cast_to::<TDim>().unwrap().into_owned();
         assert_eq!(t_dim, t_dim_2);
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_cast_i32_to_dim() {
-        let t_i32: Tensor = arr1(&[0i32, 0]).into();
+        let t_i32: Tensor = tensor1(&[0i32, 0]);
         t_i32.cast_to::<TDim>().unwrap();
     }
 }

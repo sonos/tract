@@ -22,7 +22,7 @@ mod tests {
     where
         I: Into<Tensor>,
     {
-        op.eval(tvec![input.into().into()]).unwrap().pop().unwrap().to_tensor()
+        op.eval(tvec![input.into().into()]).unwrap().pop().unwrap().into_tensor()
     }
 
     #[test]

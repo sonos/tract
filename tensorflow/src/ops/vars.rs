@@ -171,8 +171,8 @@ mod tests {
                 VariableV2::new(None, None, "var".into(), "xxx".into(), tvec![], f32::datum_type()),
             )
             .unwrap();
-        let zero = model.add_const("zero".to_string(), 0f32.into()).unwrap();
-        let one = model.add_const("one".to_string(), 1f32.into()).unwrap();
+        let zero = model.add_const("zero".to_string(), tensor0(0f32)).unwrap();
+        let one = model.add_const("one".to_string(), tensor0(1f32)).unwrap();
         let reset = model.add_node_default("reset", Assign::new(Some("xxx".into()))).unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(reset, 0)).unwrap();
         model.add_edge(OutletId::new(zero, 0), InletId::new(reset, 1)).unwrap();

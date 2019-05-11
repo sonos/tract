@@ -137,7 +137,7 @@ fn space_to_batch_1() {
                 .attr("T", DT_FLOAT),
         );
     let graph = graph.write_to_bytes().unwrap();
-    let i = arr4(&[[[[1.0f32], [2.0]], [[3.0], [4.0]]]]).into();
+    let i = tensor4(&[[[[1.0f32], [2.0]], [[3.0], [4.0]]]]);
     let inputs = vec![("input", i)];
     compare(&graph, inputs, "op").unwrap()
 }
@@ -159,7 +159,7 @@ fn batch_to_space_1() {
                 .attr("T", DT_FLOAT),
         );
     let graph = graph.write_to_bytes().unwrap();
-    let i = arr4(&[[[[1.0f32]]], [[[2.0]]], [[[3.0]]], [[[4.0]]]]).into();
+    let i = tensor4(&[[[[1.0f32]]], [[[2.0]]], [[[3.0]]], [[[4.0]]]]);
     let inputs = vec![("input", i)];
     compare(&graph, inputs, "op").unwrap()
 }

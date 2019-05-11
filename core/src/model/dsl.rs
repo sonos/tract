@@ -113,7 +113,7 @@ pub trait ModelDslConst {
         &mut self,
         inlet: InletId,
         name: impl Into<String>,
-        v: SharedTensor,
+        v: impl IntoArcTensor,
     ) -> TractResult<()>;
 }
 
@@ -127,7 +127,7 @@ impl ModelDslConst for super::InferenceModel {
         &mut self,
         inlet: InletId,
         name: impl Into<String>,
-        v: SharedTensor,
+        v: impl IntoArcTensor,
     ) -> TractResult<()> {
         let cst = self.add_const(name, v)?;
         self.add_edge(OutletId::new(cst, 0), inlet)?;
@@ -145,7 +145,7 @@ impl ModelDslConst for super::TypedModel {
         &mut self,
         inlet: InletId,
         name: impl Into<String>,
-        v: SharedTensor,
+        v: impl IntoArcTensor,
     ) -> TractResult<()> {
         let cst = self.add_const(name, v)?;
         self.add_edge(OutletId::new(cst, 0), inlet)?;

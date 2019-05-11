@@ -98,9 +98,9 @@ proptest! {
 fn strided_slice_1() {
     let graph = tfpb::graph()
         .node(placeholder_i32("input"))
-        .node(const_i32("begin", &arr1(&[0]).into()))
-        .node(const_i32("end", &arr1(&[2]).into()))
-        .node(const_i32("stride", &arr1(&[1]).into()))
+        .node(const_i32("begin", &tensor1(&[0])))
+        .node(const_i32("end", &tensor1(&[2])))
+        .node(const_i32("stride", &tensor1(&[1])))
         .node(
             tfpb::node()
                 .name("op")
@@ -115,7 +115,7 @@ fn strided_slice_1() {
         .write_to_bytes()
         .unwrap();
 
-    let inputs = vec![("input", arr2(&[[0, 6], [0, 0]]).into())];
+    let inputs = vec![("input", tensor2(&[[0, 6], [0, 0]]))];
     compare(&graph, inputs, "op").unwrap()
 }
 
@@ -123,9 +123,9 @@ fn strided_slice_1() {
 fn strided_slice_2() {
     let graph = tfpb::graph()
         .node(placeholder_i32("input"))
-        .node(const_i32("begin", &arr1(&[0]).into()))
-        .node(const_i32("end", &arr1(&[0]).into()))
-        .node(const_i32("stride", &arr1(&[1]).into()))
+        .node(const_i32("begin", &tensor1(&[0])))
+        .node(const_i32("end", &tensor1(&[0])))
+        .node(const_i32("stride", &tensor1(&[1])))
         .node(
             tfpb::node()
                 .name("op")
@@ -142,7 +142,7 @@ fn strided_slice_2() {
         .unwrap();
 
     let inputs = vec![
-        ("input", arr1(&[0]).into()),
+        ("input", tensor1(&[0])),
     ];
     compare(&graph, inputs, "op").unwrap()
 }
