@@ -13,8 +13,8 @@ pub fn fill(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 impl Fill {
     fn eval_t<T: Datum + Copy>(
         &self,
-        mut inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let (shape, value) = args_2!(inputs);
         let value = *value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
@@ -34,7 +34,7 @@ impl Op for Fill {
 }
 
 impl StatelessOp for Fill {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_copy!(Self::eval_t(self.dt)(self, inputs))
     }
 }

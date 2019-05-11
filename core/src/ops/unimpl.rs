@@ -19,7 +19,7 @@ impl Op for UnimplementedOp {
 }
 
 impl StatelessOp for UnimplementedOp {
-    fn eval(&self, _inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         bail!("unimplemented operation: {}", self.name)
     }
 }

@@ -62,7 +62,7 @@ impl Op for SpaceToBatchUnary {
 }
 
 impl StatelessOp for SpaceToBatchUnary {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
@@ -121,7 +121,7 @@ impl Op for BatchToSpaceUnary {
 }
 
 impl StatelessOp for BatchToSpaceUnary {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {

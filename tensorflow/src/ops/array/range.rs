@@ -14,7 +14,7 @@ pub fn range(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 }
 
 impl Range {
-    fn eval_t<T>(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>
+    fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
     where
         T: Datum
             + AsPrimitive<usize>
@@ -41,7 +41,7 @@ impl Op for Range {
 }
 
 impl StatelessOp for Range {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_numbers!(Self::eval_t(self.dtype)(self, inputs))
     }
 }

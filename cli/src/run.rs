@@ -31,7 +31,7 @@ pub fn handle(params: Parameters) -> CliResult<()> {
 fn run_regular_t<TI: TensorInfo>(
     tract: &Model<TI>,
     params: &Parameters,
-) -> CliResult<TVec<SharedTensor>> {
+) -> CliResult<TVec<Arc<Tensor>>> {
     let plan = SimplePlan::new(tract)?;
     let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
@@ -47,7 +47,7 @@ fn run_regular_t<TI: TensorInfo>(
     Ok(plan.run(inputs)?)
 }
 
-fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<SharedTensor>> {
+fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
     let input_fact = model.input_fact(0)?;
     let output_fact = model.output_fact(0)?;
 

@@ -111,9 +111,9 @@ impl BaseStridedSlice {
     fn prepare(
         &self,
         input_shape: &[usize],
-        begin: SharedTensor,
-        end: SharedTensor,
-        strides: SharedTensor,
+        begin: Arc<Tensor>,
+        end: Arc<Tensor>,
+        strides: Arc<Tensor>,
     ) -> TractResult<(Vec<Dim>, Vec<usize>, Vec<usize>)> {
         let casted_begin = begin.cast_to::<TDim>()?;
         let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
@@ -144,8 +144,8 @@ impl BaseStridedSlice {
 
     fn eval<T: Copy + Datum>(
         &self,
-        mut inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -210,7 +210,7 @@ pub struct StridedSlice<T: Copy + Datum> {
 }
 
 impl<T: Copy + Datum> StatelessOp for StridedSlice<T> {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         self.base.eval::<T>(inputs)
     }
 }
@@ -278,7 +278,7 @@ pub struct StridedSliceD {
 }
 
 impl StatelessOp for StridedSliceD {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let dt = inputs[0].datum_type();
         match dt {
             DatumType::TDim => self.base.eval::<TDim>(inputs),

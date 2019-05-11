@@ -26,7 +26,7 @@ impl Op for FakeQuantWithMinMaxVars {
 }
 
 impl StatelessOp for FakeQuantWithMinMaxVars {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, min, max) = args_3!(inputs);
         let min = min.to_scalar::<f32>()?;
         let max = max.to_scalar::<f32>()?;

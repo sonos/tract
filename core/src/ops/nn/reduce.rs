@@ -43,7 +43,7 @@ pub enum Reducer {
 }
 
 impl Reducer {
-    fn reduce(&self, reduce: &Reduce, input: SharedTensor) -> TractResult<SharedTensor> {
+    fn reduce(&self, reduce: &Reduce, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let dt = input.datum_type();
         match self {
             Reducer::L1 => match dt {
@@ -78,9 +78,9 @@ impl Reducer {
     fn reduce_t<T, F>(
         &self,
         reduce: &Reduce,
-        input: SharedTensor,
+        input: Arc<Tensor>,
         f: F,
-    ) -> TractResult<SharedTensor>
+    ) -> TractResult<Arc<Tensor>>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Copy + Datum,
@@ -251,7 +251,7 @@ impl Op for Reduce {
 }
 
 impl StatelessOp for Reduce {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(self.reducer.reduce(&self, args_1!(inputs))?))
     }
 }

@@ -49,12 +49,12 @@ pub trait OpState: Debug + Send + objekt::Clone {
         &mut self,
         session: &mut SessionState,
         op: &Op,
-        inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>>;
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>>;
 }
 
 pub trait StatelessOp: Op {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>;
 }
 
 pub trait StatefullOp {
@@ -74,7 +74,7 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
     }
 }
 
-/// A SharedTensor operation.
+/// A Arc<Tensor> operation.
 impl_downcast!(Op);
 pub trait Op:
     Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp

@@ -15,9 +15,9 @@ impl Op for Gather {
 impl Gather {
     fn eval_t<T: Datum>(
         &self,
-        data: SharedTensor,
-        indices: &SharedTensor,
-    ) -> TractResult<SharedTensor> {
+        data: Arc<Tensor>,
+        indices: &Arc<Tensor>,
+    ) -> TractResult<Arc<Tensor>> {
         let data_view = data.to_array_view::<T>()?;
         let rank = data.shape().len() as i64;
         let axis = {
@@ -67,7 +67,7 @@ impl Gather {
 
 impl StatelessOp for Gather {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
         Ok(tvec!(dispatch_datum!(Self::eval_t(data.datum_type())(&self, data, &indices))?))
     }

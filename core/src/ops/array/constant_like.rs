@@ -8,7 +8,7 @@ pub struct ConstantLike {
 }
 
 impl ConstantLike {
-    pub fn make<T>(&self, shape: &[usize]) -> TractResult<SharedTensor>
+    pub fn make<T>(&self, shape: &[usize]) -> TractResult<Arc<Tensor>>
     where
         T: Datum + Copy,
         f32: AsPrimitive<T>,
@@ -25,7 +25,7 @@ impl Op for ConstantLike {
 
 impl StatelessOp for ConstantLike {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(self, input.shape()))?))
     }
@@ -62,7 +62,7 @@ pub struct EyeLike {
 }
 
 impl EyeLike {
-    pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<SharedTensor>
+    pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<Arc<Tensor>>
     where
         T: Copy + Datum + num_traits::One + num_traits::Zero,
         f32: AsPrimitive<T>,
@@ -86,7 +86,7 @@ impl Op for EyeLike {
 
 impl StatelessOp for EyeLike {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(
             self,

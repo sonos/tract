@@ -4,7 +4,7 @@ extern crate tract_tensorflow;
 use tract_core::prelude::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use tract_tensorflow::ToSharedTensor;
+use tract_tensorflow::ToTensorflow;
 
 fn main() {
     let plus3 =

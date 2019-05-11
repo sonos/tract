@@ -111,7 +111,7 @@ pub fn handle_t<TI: TensorInfo>(
                     .unwrap_or(node.outputs.len());
                 let expected: Vec<TensorFact> =
                     tf_output.iter().take(wanted).map(|m| m.clone().into()).collect();
-                let tract_output: &[SharedTensor] = &*state.values[n].as_ref().unwrap();
+                let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
                 match check_outputs(&tract_output, &expected) {
                     Err(e) => {
                         failing.push(n);

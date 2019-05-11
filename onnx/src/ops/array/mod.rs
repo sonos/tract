@@ -33,7 +33,7 @@ pub fn concat(node: &NodeProto) -> TractResult<Box<Op>> {
     Ok(Box::new(tractops::array::Concat::new(axis)))
 }
 
-pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<SharedTensor>
+pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<Arc<Tensor>>
 where
     T: Copy + Datum,
     f32: AsPrimitive<T>,
@@ -63,7 +63,7 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
 
 pub fn constant_of_shape(node: &NodeProto) -> TractResult<Box<Op>> {
     let value = match node.get_attr_opt::<Tensor>("value")? {
-        Some(val) => val.into_tensor(),
+        Some(val) => val.into_arc_tensor(),
         None => make_const::<f32>(&vec![1], 0.0 as f32)?,
     };
     Ok(Box::new(tractops::array::ConstantOfShape::new(value)))

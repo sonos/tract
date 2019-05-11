@@ -16,7 +16,7 @@ pub struct ConcatV2<T: Copy + Datum> {
 }
 
 impl<T: Copy + Datum> StatelessOp for ConcatV2<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();

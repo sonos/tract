@@ -128,7 +128,7 @@ impl<D> StatelessOp for MatMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into_arc_tensor()))

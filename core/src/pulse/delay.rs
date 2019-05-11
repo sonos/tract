@@ -11,8 +11,8 @@ impl DelayState {
     pub fn eval_t<T: Copy + Datum>(
         &mut self,
         op: &Delay,
-        input: SharedTensor,
-    ) -> TractResult<SharedTensor> {
+        input: Arc<Tensor>,
+    ) -> TractResult<Arc<Tensor>> {
         let axis = Axis(op.input_fact.axis);
         let input = input.to_array_view::<T>()?;
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
@@ -54,8 +54,8 @@ impl OpState for DelayState {
         &mut self,
         _state: &mut SessionState,
         op: &Op,
-        mut inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
         Ok(tvec!(dispatch_copy!(Self::eval_t(input.datum_type())(self, op, input))?))

@@ -19,7 +19,7 @@ impl Op for Switch {
 }
 
 impl StatelessOp for Switch {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, pred) = args_2!(inputs);
         let null = unsafe { Tensor::null_dt(input.datum_type(), input.shape())? };
         if *pred.to_scalar::<bool>()? {
@@ -65,7 +65,7 @@ impl Op for Merge {
 }
 
 impl StatelessOp for Merge {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let index =
             inputs.iter().position(|t| !t.is_null()).ok_or("No tensor received in merge")?;
         Ok(tvec!(inputs.remove(index), Tensor::from(index as i32).into()))

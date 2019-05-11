@@ -262,7 +262,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     tf_model: (),
 
-    inputs: Option<Vec<Option<tract_core::internal::SharedTensor>>>,
+    inputs: Option<Vec<Option<tract_core::internal::Arc<Tensor>>>>,
 
     assertions: Option<Assertions>,
 

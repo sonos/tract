@@ -17,10 +17,10 @@ pub fn max(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 impl Max {
     fn eval_t<T>(
         &self,
-        input: SharedTensor,
+        input: Arc<Tensor>,
         full_output_shape: TVec<usize>,
         axes: TVec<usize>,
-    ) -> TractResult<TVec<SharedTensor>>
+    ) -> TractResult<TVec<Arc<Tensor>>>
     where
         T: Copy + Datum + PartialOrd + num_traits::Bounded,
     {
@@ -55,7 +55,7 @@ impl Op for Max {
 }
 
 impl StatelessOp for Max {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, axes) = args_2!(inputs);
         let axes: TVec<usize> = axes
             .cast_to::<i32>()?

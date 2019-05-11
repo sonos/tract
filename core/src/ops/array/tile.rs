@@ -7,9 +7,9 @@ pub struct Tile;
 impl Tile {
     fn eval_t<T: Datum + Copy>(
         &self,
-        data: &SharedTensor,
+        data: &Arc<Tensor>,
         indices: &[usize],
-    ) -> TractResult<SharedTensor> {
+    ) -> TractResult<Arc<Tensor>> {
         let data = data.to_array_view::<T>()?;
         let output_shape: TVec<usize> =
             data.shape().iter().zip(indices.iter()).map(|(&d, &m)| d * m as usize).collect();
@@ -30,7 +30,7 @@ impl Op for Tile {
 }
 
 impl StatelessOp for Tile {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, multipliers) = args_2!(inputs);
         let multipliers: TVec<usize> = multipliers
             .cast_to::<i32>()?

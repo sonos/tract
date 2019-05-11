@@ -4,11 +4,11 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct ConstantOfShape {
-    value: SharedTensor,
+    value: Arc<Tensor>,
 }
 
 impl ConstantOfShape {
-    pub fn make<T>(&self, shape: &SharedTensor) -> TractResult<SharedTensor>
+    pub fn make<T>(&self, shape: &Arc<Tensor>) -> TractResult<Arc<Tensor>>
     where
         T: Datum + Copy,
     {
@@ -26,7 +26,7 @@ impl Op for ConstantOfShape {
 
 impl StatelessOp for ConstantOfShape {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(dispatch_numbers!(Self::make(self.value.datum_type())(self, &inputs[0]))?))
     }
 }

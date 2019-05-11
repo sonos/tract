@@ -35,7 +35,7 @@ impl Op for Direct {
 }
 
 impl StatelessOp for Direct {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         unsafe {
             let input = input.to_array_view::<f32>()?;

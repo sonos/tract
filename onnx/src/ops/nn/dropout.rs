@@ -25,7 +25,7 @@ impl Op for Dropout {
 
 impl StatelessOp for Dropout {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mask = ArrayD::from_elem(input.shape(), true);
         Ok(tvec!(input, mask.into_arc_tensor()))

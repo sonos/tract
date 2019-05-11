@@ -1,4 +1,4 @@
-//! `Tensor` is the equivalent of SharedTensor Tensor.
+//! `Tensor` is the equivalent of Arc<Tensor> Tensor.
 use crate::dim::TDim;
 use crate::tensor::Tensor;
 use crate::TractResult;

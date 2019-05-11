@@ -37,7 +37,7 @@ impl<T> StatelessOp for DepthWise<T>
 where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let img = args_1!(inputs);
         let img = img.to_array_view::<T>()?;
         let iptr = img.as_ptr();

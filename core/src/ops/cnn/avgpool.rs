@@ -45,7 +45,7 @@ impl Op for AvgPool {
 }
 
 impl StatelessOp for AvgPool {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let op = dispatch_floatlike!(AvgPool::to_fixed(inputs[0].datum_type())(
             self,
             inputs[0].shape()
@@ -93,7 +93,7 @@ impl<T: Datum + Float + Sum> StatelessOp for AvgPoolFixed<T>
 where
     usize: AsPrimitive<T>,
 {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();

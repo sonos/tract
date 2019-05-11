@@ -16,7 +16,7 @@ error_chain! {
 
 impl ::std::convert::From<::tensorflow::Status> for Error {
     fn from(tfs: ::tensorflow::Status) -> Error {
-        format!("SharedTensor error: {:?}", tfs).into()
+        format!("Arc<Tensor> error: {:?}", tfs).into()
     }
 }
 

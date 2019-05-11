@@ -95,8 +95,8 @@ impl OpState for LSTMState {
         &mut self,
         _session: &mut SessionState,
         op: &Op,
-        inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let op: &LSTM = op.downcast_ref::<LSTM>().ok_or("LSTM state passed wrong op")?;
         let x: ArrayView3<f32> = inputs[0].to_array_view::<f32>()?.into_dimensionality()?; // [seq_length, batch_size, input_size]
         let w: ArrayView3<f32> = inputs[1].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 4*hidden_size, input_size]

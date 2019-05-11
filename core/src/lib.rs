@@ -1,6 +1,6 @@
 //! # Tract
 //!
-//! Tiny, no-nonsense, self contained, portable SharedTensor and ONNX inference.
+//! Tiny, no-nonsense, self contained, portable Arc<Tensor> and ONNX inference.
 //!
 //! ## Example
 //!
@@ -122,7 +122,7 @@ pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
-    pub use crate::tensor::{IntoArcTensor, IntoTensor, SharedTensor, Tensor};
+    pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tensor::litteral::*;
     pub use crate::tvec;
 }

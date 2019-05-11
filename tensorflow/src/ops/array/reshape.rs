@@ -26,7 +26,7 @@ impl<T: Datum> Op for Reshape<T> {
 }
 
 impl<T: Datum> StatelessOp for Reshape<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, dims) = args_2!(inputs);
 
         let input = input.into_tensor().into_array::<T>()?;

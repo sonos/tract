@@ -16,10 +16,10 @@ pub fn batch_to_space_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box
 }
 
 fn space_to_batch<T: Copy + Datum + Zero>(
-    input: SharedTensor,
+    input: Arc<Tensor>,
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
-) -> TractResult<SharedTensor> {
+) -> TractResult<Arc<Tensor>> {
     let mut data = input.into_tensor().into_array::<T>()?;
 
     for (ix, pad) in paddings.view().outer_iter().enumerate() {
@@ -66,10 +66,10 @@ fn space_to_batch<T: Copy + Datum + Zero>(
 }
 
 fn batch_to_space<T: Copy + Datum + Zero>(
-    input: SharedTensor,
+    input: Arc<Tensor>,
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,
-) -> TractResult<SharedTensor> {
+) -> TractResult<Arc<Tensor>> {
     let data = input.into_tensor().into_array()?;
     let input_shape = data.shape().to_vec();
     let crops: ArrayView2<i32> = crops.view().into_dimensionality()?;

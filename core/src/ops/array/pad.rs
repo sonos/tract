@@ -23,7 +23,7 @@ pub struct Pad {
 }
 
 impl Pad {
-    fn eval_t<T>(&self, input: SharedTensor) -> TractResult<SharedTensor>
+    fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
     where
         T: Copy + Datum,
         f32: AsPrimitive<T>,
@@ -142,7 +142,7 @@ impl Op for Pad {
 
 impl StatelessOp for Pad {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))
     }
@@ -177,8 +177,8 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
         &mut self,
         session: &mut SessionState,
         op: &Op,
-        mut inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<PulsePad<T>>().ok_or("Wrong Op type")?;
         let current_pos = self.current_pos;

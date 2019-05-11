@@ -12,9 +12,9 @@ pub fn gather_nd(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
 impl GatherNd {
     fn eval_t<T: Datum + Copy>(
         &self,
-        data: &SharedTensor,
+        data: &Arc<Tensor>,
         indices: &ArrayViewD<i32>,
-    ) -> TractResult<TVec<SharedTensor>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let data = data.to_array_view::<T>()?;
         let mut shape: TVec<usize> = indices.shape().into();
         let n = shape.pop().unwrap();
@@ -44,7 +44,7 @@ impl Op for GatherNd {
 }
 
 impl StatelessOp for GatherNd {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
         let indices = indices.cast_to::<i32>()?;
         let indices = indices.to_array_view::<i32>()?;

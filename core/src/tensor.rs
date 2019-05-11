@@ -16,8 +16,6 @@ use crate::datum::TryInto;
 
 pub mod litteral;
 
-pub type SharedTensor = Arc<Tensor>;
-
 pub struct Tensor {
     null: bool,
     dt: DatumType,
@@ -96,10 +94,6 @@ impl Tensor {
 
     pub fn is_null(&self) -> bool {
         self.null
-    }
-
-    pub fn into_tensor(self) -> SharedTensor {
-        SharedTensor::from(self)
     }
 
     pub fn shape(&self) -> &[usize] {

@@ -3,11 +3,11 @@ use std::fmt::Debug;
 
 pub trait OpState: Debug {
     type Op: Op;
-    fn eval(&mut self, op: &Self::Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
+    fn eval(&mut self, op: &Self::Op, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>;
 }
 
 impl OpState for Option<Box<OpState>> {
-    fn eval(&mut self, op: &Op, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&mut self, op: &Op, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         match self {
             None => op.as_stateless().unwrap().eval(inputs),
             Some(state) => {
@@ -19,12 +19,12 @@ impl OpState for Option<Box<OpState>> {
 }
 
 pub trait StatelessOp: Op {
-    fn eval(&self, _inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>>;
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>;
 }
 
 pub trait StatefullOp: Op {
     type State: OpState;
-    fn dispatch_eval(&self, state: &mut OpState, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn dispatch_eval(&self, state: &mut OpState, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
     }
 }
 
