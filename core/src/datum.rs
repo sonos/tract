@@ -1,4 +1,4 @@
-//! `Tensor` is the equivalent of Arc<Tensor> Tensor.
+//! `Tensor` is the main data container for tract
 use crate::dim::TDim;
 use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
@@ -108,7 +108,7 @@ pub trait Datum:
     fn datum_type() -> DatumType;
 }
 
-pub trait TryInto<D> {
+pub(crate) trait TryInto<D> {
     fn try_into(&self) -> TractResult<D>;
 }
 

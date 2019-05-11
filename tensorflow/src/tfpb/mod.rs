@@ -30,6 +30,8 @@ pub mod versions;
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
+use std::convert::TryInto;
+
 use tract_core::internal::*;
 
 pub fn graph() -> graph::GraphDef {
@@ -144,7 +146,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
-            Ok(Some(t.get_field_type().tractify()?))
+            Ok(Some(t.get_field_type().try_into()?))
         } else {
             Ok(None)
         }
@@ -157,7 +159,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<usize>>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_shape()) {
-            Ok(Some(t.tractify()?))
+            Ok(Some(t.try_into()?))
         } else {
             Ok(None)
         }
@@ -170,7 +172,7 @@ impl node_def::NodeDef {
 
     pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::internal::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
-            Ok(Some(t.tractify()?))
+            Ok(Some(t.try_into()?))
         } else {
             Ok(None)
         }

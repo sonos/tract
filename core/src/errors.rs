@@ -11,6 +11,7 @@ error_chain! {
         NdarrayShape(::ndarray::ShapeError);
         StrUtf8(::std::str::Utf8Error);
         NumParseInt(::std::num::ParseIntError);
+        Infallible(std::convert::Infallible);
     }
     errors {
         TFString {}

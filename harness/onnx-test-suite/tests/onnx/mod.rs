@@ -6,6 +6,8 @@ use tract_core::internal::*;
 use tract_onnx::pb::TensorProto;
 use tract_onnx::*;
 
+use std::convert::TryInto;
+
 #[allow(dead_code)]
 fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
@@ -24,7 +26,7 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
             fs::File::open(filename).map_err(|e| format!("accessing {:?}, {:?}", path, e)).unwrap();
         let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
         debug!("{:?}", tensor);
-        vec.push(tensor.tractify().unwrap())
+        vec.push(tensor.try_into().unwrap())
     }
     debug!("{:?}: {:?}", path, vec);
     vec

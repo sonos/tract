@@ -5,8 +5,8 @@ use ansi_term::Color::*;
 use ansi_term::Style;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use tract_core::prelude::{Model, Node, TensorInfo};
-use tract_core::Tractify;
+use std::convert::TryFrom;
+use tract_core::prelude::{Model, Node, Tensor, TensorInfo};
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
@@ -205,7 +205,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
                 let mut v = vec![];
                 for a in gnode.get_attribute().iter() {
                     let value = if a.has_t() {
-                        format!("{:?}", ::tract_core::prelude::Tensor::tractify(a.get_t())?)
+                        format!("{:?}", Tensor::try_from(a.get_t())?)
                     } else {
                         format!("{:?}", a)
                     };

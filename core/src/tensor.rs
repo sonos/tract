@@ -12,8 +12,6 @@ use tract_linalg::f16::f16;
 use serde::ser::{Serialize, Serializer};
 use std::sync::Arc;
 
-use crate::datum::TryInto;
-
 pub mod litteral;
 
 pub struct Tensor {
@@ -289,13 +287,13 @@ impl Tensor {
         unsafe { Ok(&*(self.data.as_ptr() as *const D)) }
     }
 
-    fn cast_data<Source: Datum + TryInto<Target>, Target: Datum>(
+    fn cast_data<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(
         &self,
     ) -> TractResult<Vec<Target>> {
         self.as_slice::<Source>()?.iter().map(|s| s.try_into()).collect()
     }
 
-    fn cast<Source: Datum + TryInto<Target>, Target: Datum>(&self) -> TractResult<Tensor> {
+    fn cast<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(&self) -> TractResult<Tensor> {
         let data = self.cast_data::<Source, Target>()?;
         Ok(Tensor {
             null: self.null,

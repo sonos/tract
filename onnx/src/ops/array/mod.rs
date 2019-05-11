@@ -1,5 +1,7 @@
 mod slice;
 
+use std::convert::TryInto;
+
 use tract_core::internal::*;
 use tract_core::ops as tractops;
 
@@ -50,7 +52,7 @@ pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {
                 .ok_or_else(|| {
                     format!("Can not convert integer {} into a TensorProto_DataType", dt)
                 })?
-                .tractify()?,
+                .try_into()?,
             None => f32::datum_type(),
         };
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
@@ -77,7 +79,7 @@ pub fn eye_like(node: &NodeProto) -> TractResult<Box<Op>> {
                 .ok_or_else(|| {
                     format!("Can not convert integer {} into a TensorProto_DataType", dt)
                 })?
-                .tractify()?,
+                .try_into()?,
         ),
         None => None,
     };

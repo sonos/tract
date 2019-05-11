@@ -55,13 +55,8 @@ pub mod conform;
 
 pub mod model;
 pub mod ops;
-// mod optim;
 pub mod tensor;
 pub mod tfpb;
-
-pub trait ToTensorflow<Tf>: Sized {
-    fn to_tf(&self) -> tract_core::TractResult<Tf>;
-}
 
 pub use model::Tensorflow;
 use tract_core::internal::*;

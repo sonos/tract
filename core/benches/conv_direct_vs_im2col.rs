@@ -13,6 +13,8 @@ use tract_core::*;
 use tract_core::internal::*;
 use tract_core::ops::cnn::ConvUnary;
 
+use std::convert::TryInto;
+
 #[derive(Debug, new)]
 struct Problem {
     h: usize,

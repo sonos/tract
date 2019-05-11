@@ -1,22 +1,24 @@
 use crate::pb::*;
 use tract_core::internal::*;
 use tract_core::*;
+use std::convert::{ TryFrom, TryInto };
 
-impl Tractify<TensorProto_DataType> for DatumType {
-    fn tractify(t: &TensorProto_DataType) -> TractResult<DatumType> {
+impl TryFrom<TensorProto_DataType> for DatumType {
+    type Error = TractError;
+    fn try_from(t: TensorProto_DataType) -> TractResult<DatumType> {
         use self::TensorProto_DataType::*;
         match t {
-            &BOOL => Ok(DatumType::Bool),
-            &UINT8 => Ok(DatumType::U8),
-            &UINT16 => Ok(DatumType::U16),
-            &INT8 => Ok(DatumType::I8),
-            &INT16 => Ok(DatumType::I16),
-            &INT32 => Ok(DatumType::I32),
-            &INT64 => Ok(DatumType::I64),
-            &FLOAT16 => Ok(DatumType::F16),
-            &FLOAT => Ok(DatumType::F32),
-            &DOUBLE => Ok(DatumType::F64),
-            &STRING => Ok(DatumType::String),
+            BOOL => Ok(DatumType::Bool),
+            UINT8 => Ok(DatumType::U8),
+            UINT16 => Ok(DatumType::U16),
+            INT8 => Ok(DatumType::I8),
+            INT16 => Ok(DatumType::I16),
+            INT32 => Ok(DatumType::I32),
+            INT64 => Ok(DatumType::I64),
+            FLOAT16 => Ok(DatumType::F16),
+            FLOAT => Ok(DatumType::F32),
+            DOUBLE => Ok(DatumType::F64),
+            STRING => Ok(DatumType::String),
             _ => Err(format!("Unknown DatumType {:?}", t))?,
         }
     }
@@ -37,11 +39,12 @@ impl Tractify<TensorProto_DataType> for DatumType {
     */
 }
 
-impl Tractify<TypeProto_Tensor> for TensorFact {
-    fn tractify(t: &TypeProto_Tensor) -> TractResult<TensorFact> {
+impl<'a> TryFrom<&'a TypeProto_Tensor> for TensorFact {
+    type Error = TractError;
+    fn try_from(t: &'a TypeProto_Tensor) -> TractResult<TensorFact> {
         let mut fact = TensorFact::default();
         if t.has_elem_type() {
-            fact = fact.with_datum_type(t.get_elem_type().tractify()?);
+            fact = fact.with_datum_type(t.get_elem_type().try_into()?);
         }
         if t.has_shape() {
             let shape = t.get_shape();
@@ -62,9 +65,17 @@ impl Tractify<TypeProto_Tensor> for TensorFact {
     }
 }
 
-impl Tractify<TensorProto> for Tensor {
-    fn tractify(t: &TensorProto) -> TractResult<Tensor> {
-        let dt = t.get_data_type().tractify()?;
+impl TryFrom<TypeProto_Tensor> for TensorFact {
+    type Error = TractError;
+    fn try_from(t: TypeProto_Tensor) -> TractResult<TensorFact> {
+        (&t).try_into()
+    }
+}
+
+impl<'a> TryFrom<&'a TensorProto> for Tensor {
+    type Error = TractError;
+    fn try_from(t: &TensorProto) -> TractResult<Tensor> {
+        let dt = t.get_data_type().try_into()?;
         let shape: Vec<usize> = t.get_dims().iter().map(|&i| i as usize).collect();
         if t.has_raw_data() {
             unsafe {
@@ -142,7 +153,14 @@ impl Tractify<TensorProto> for Tensor {
     }
 }
 
+impl TryFrom<TensorProto> for Tensor {
+    type Error = TractError;
+    fn try_from(t: TensorProto) -> TractResult<Tensor> {
+        (&t).try_into()
+    }
+}
+
 pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<Tensor> {
     let tensor: TensorProto = ::protobuf::parse_from_reader(&mut r).unwrap();
-    tensor.tractify()
+    tensor.try_into()
 }
