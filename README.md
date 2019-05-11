@@ -46,7 +46,7 @@ are passing.
 
 Covering all of ONNX and making a ONNX backend out of `tract` is on the roadmap.
 
-The following operartors are implemented and tested:
+The following operators are implemented and tested:
 
 Acos, Acosh, Add, And, ArgMax, ArgMin, Asin, Asinh, Atan, Atanh, AveragePool,
 BatchNormalization, Cast, Ceil, Clip, Concat, Constant, ConstantLike,
@@ -68,7 +68,7 @@ Google Inception v3 and Snips wake word models. Missing operators are easy
 to add. The lack of easy to reuse test suite, and the wide diversity of 
 operators in Tensorflow make it difficult to target a full support.
 
-The following operartors are implemented and tested:
+The following operators are implemented and tested:
 
 Abs, Add, AddN, Assign, AvgPool, BatchToSpaceND, BiasAdd, BlockLSTM, Cast,
 Ceil, ConcatV2, Const, Conv2D, DepthwiseConv2dNative, Div, ExpandDims,
