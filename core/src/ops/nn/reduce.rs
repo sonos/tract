@@ -75,12 +75,7 @@ impl Reducer {
         }
     }
 
-    fn reduce_t<T, F>(
-        &self,
-        reduce: &Reduce,
-        input: Arc<Tensor>,
-        f: F,
-    ) -> TractResult<Arc<Tensor>>
+    fn reduce_t<T, F>(&self, reduce: &Reduce, input: Arc<Tensor>, f: F) -> TractResult<Arc<Tensor>>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Copy + Datum,

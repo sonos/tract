@@ -1,6 +1,6 @@
-use crate::prelude::*;
 use crate::datum::TryInto;
 use crate::model::{InletId, Model, OutletId, TensorInfo};
+use crate::prelude::*;
 use std::collections::HashMap;
 
 pub(crate) fn compact<TI1, TI2>(old: &Model<TI1>) -> TractResult<Model<TI2>>
@@ -35,6 +35,7 @@ where
         .iter()
         .filter_map(|i| map.get(&i.node).map(|&n| OutletId::new(n, i.slot)))
         .collect();
-    model.outputs = old.output_outlets()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
+    model.outputs =
+        old.output_outlets()?.iter().map(|o| OutletId::new(map[&o.node], o.slot)).collect();
     Ok(model)
 }

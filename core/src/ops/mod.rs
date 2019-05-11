@@ -139,7 +139,7 @@ pub trait Op:
         Ok(None)
     }
 
-    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost,TDim)>> {
+    fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         Ok(tvec!())
     }
 

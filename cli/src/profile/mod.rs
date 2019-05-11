@@ -19,7 +19,6 @@ pub struct ProfileData {
 }
 
 impl ProfileData {
-
     pub fn add<TI: TensorInfo>(
         &mut self,
         node: &Node<TI>,

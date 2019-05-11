@@ -1,5 +1,5 @@
-use tract_core::ops::array::Squeeze;
 use tract_core::internal::*;
+use tract_core::ops::array::Squeeze;
 
 pub fn squeeze(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;

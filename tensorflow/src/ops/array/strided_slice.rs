@@ -390,7 +390,13 @@ mod tests {
     #[test]
     fn eval_5() {
         assert_eq!(
-            eval(StridedSlice::default(), tensor1(&[0, 0]), tensor1(&[0]), tensor1(&[-1]), tensor1(&[1])),
+            eval(
+                StridedSlice::default(),
+                tensor1(&[0, 0]),
+                tensor1(&[0]),
+                tensor1(&[-1]),
+                tensor1(&[1])
+            ),
             tensor1(&[0])
         )
     }
@@ -447,7 +453,10 @@ mod tests {
     fn eval_shrink_to_scalar() {
         let mut op = StridedSlice::default();
         op.base.shrink_axis_mask = 1;
-        assert_eq!(eval(op, tensor1(&[0]), tensor1(&[0]), tensor1(&[0]), tensor1(&[1])), tensor0::<i32>(0))
+        assert_eq!(
+            eval(op, tensor1(&[0]), tensor1(&[0]), tensor1(&[0]), tensor1(&[1])),
+            tensor0::<i32>(0)
+        )
     }
 
     #[test]

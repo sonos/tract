@@ -1,6 +1,6 @@
-use tract_core::internal::*;
 use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
+use tract_core::internal::*;
 
 pub type TfOpRegister = OpRegister<NodeDef>;
 

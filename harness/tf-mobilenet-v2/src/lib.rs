@@ -87,7 +87,7 @@ mod tests {
         let label = &labels[label_id];
         assert_eq!(label, "military uniform");
     }
-    
+
     #[test]
     fn optimized() {
         let mut tfd = ::tract_tensorflow::tensorflow().model_for_path(mobilenet_v2()).unwrap();

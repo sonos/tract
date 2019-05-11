@@ -114,7 +114,6 @@ pub use crate::errors::*;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {
-    pub use std::sync::Arc;
     pub use crate::analyser::types::TensorFact;
     pub use crate::datum::{Datum, DatumType, TryInto};
     pub use crate::dim::TDim;
@@ -122,9 +121,10 @@ pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
-    pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tensor::litteral::*;
+    pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor};
     pub use crate::tvec;
+    pub use std::sync::Arc;
 }
 
 /// This prelude is meant for code extending tract (like implementing new ops).
@@ -135,21 +135,22 @@ pub mod internal {
     pub use crate::analyser::types::*;
     pub use crate::datum::FloatLike;
     pub use crate::dim::{DimLike, TDim, ToDim};
+    pub use crate::element_map;
     pub use crate::framework::*;
     pub use crate::model::*;
     pub use crate::ops::{
-        check_input_arity, check_output_arity, Cost, InferenceOp, Op, OpState, StatefullOp, StatelessOp,
+        check_input_arity, check_output_arity, Cost, InferenceOp, Op, OpState, StatefullOp,
+        StatelessOp,
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use crate::pulse::PulsedModel;
+    pub use crate::{args_1, args_2, args_3, args_4};
     pub use crate::{ToTract, Tractify};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
-    pub use crate::{ args_1, args_2, args_3, args_4 };
-    pub use crate::{ element_map };
 }
 
 /*

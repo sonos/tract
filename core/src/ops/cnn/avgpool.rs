@@ -3,9 +3,9 @@ use ndarray::prelude::*;
 use num_traits::{AsPrimitive, Float};
 use std::iter::Sum;
 
-use crate::ops::nn::DataShape;
 use crate::ops::cnn::pools::PoolSpec;
 use crate::ops::cnn::Patch;
+use crate::ops::nn::DataShape;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {

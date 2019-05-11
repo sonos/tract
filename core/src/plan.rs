@@ -1,9 +1,9 @@
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
+use crate::internal::*;
 use crate::model::order::eval_order_for_nodes;
 use crate::model::{Model, OutletId, TensorInfo};
-use crate::internal::*;
 
 #[derive(Debug, Default)]
 pub struct SessionState {
@@ -178,7 +178,9 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                             );
                         }
                         for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
-                            if f.to_tensor_fact().is_concrete() && f.to_tensor_fact().stream_info()?.is_some() {
+                            if f.to_tensor_fact().is_concrete()
+                                && f.to_tensor_fact().stream_info()?.is_some()
+                            {
                                 continue;
                             }
                             if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
@@ -211,7 +213,9 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
                             );
                         }
                         for (ix, (v, f)) in vs.iter().zip(facts.iter()).enumerate() {
-                            if f.to_tensor_fact().is_concrete() && f.to_tensor_fact().stream_info()?.is_some() {
+                            if f.to_tensor_fact().is_concrete()
+                                && f.to_tensor_fact().stream_info()?.is_some()
+                            {
                                 continue;
                             }
                             if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
@@ -255,7 +259,12 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     }
 
     pub fn set_input(&mut self, input: usize, t: Tensor) -> TractResult<()> {
-        let id = self.model().input_outlets()?.get(input).ok_or_else(|| format!("Invalid input id for model ({}).", input))?.node;
+        let id = self
+            .model()
+            .input_outlets()?
+            .get(input)
+            .ok_or_else(|| format!("Invalid input id for model ({}).", input))?
+            .node;
         self.values[id] = Some(tvec![t.into()]);
         Ok(())
     }

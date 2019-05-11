@@ -141,8 +141,6 @@ fn strided_slice_2() {
         .write_to_bytes()
         .unwrap();
 
-    let inputs = vec![
-        ("input", tensor1(&[0])),
-    ];
+    let inputs = vec![("input", tensor1(&[0]))];
     compare(&graph, inputs, "op").unwrap()
 }

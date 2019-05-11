@@ -296,9 +296,8 @@ mod test {
     #[test]
     fn test_eval_ntc_simple() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let result = op
-            .eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]])))
-            .unwrap();
+        let result =
+            op.eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
         assert_eq!(result, tvec!(rctensor3(&[[[2.0f32], [0.0f32]]])));
     }
 
@@ -315,9 +314,8 @@ mod test {
     #[test]
     fn test_eval_ntc_batch() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let result = op
-            .eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]])))
-            .unwrap();
+        let result =
+            op.eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]]))).unwrap();
         assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]])));
     }
 

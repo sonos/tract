@@ -4,7 +4,6 @@ fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
 }
 
-
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
     inputs: Vec<(S, Tensor)>,

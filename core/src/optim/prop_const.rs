@@ -1,5 +1,5 @@
-use crate::model::*;
 use crate::model::order::eval_order_for_nodes;
+use crate::model::*;
 use crate::TractResult;
 use bit_set;
 

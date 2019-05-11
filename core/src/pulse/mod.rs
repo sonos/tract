@@ -182,7 +182,8 @@ mod tests {
         axis: usize,
     ) -> TestCaseResult {
         let mut ref_model = model.clone();
-        ref_model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), input_array.shape()))?;
+        ref_model
+            .set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), input_array.shape()))?;
         let input = Tensor::from(input_array.clone());
         let plan = SimplePlan::new(&ref_model).unwrap();
         let outputs = plan.run(tvec!(input.clone())).unwrap();

@@ -27,11 +27,7 @@ pub trait ModelDsl<TI: TensorInfo> {
 
 impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
     fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize> {
-        let id = self.add_node(
-            name,
-            crate::ops::source::Source::new(),
-            tvec!(fact),
-        )?;
+        let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
         Ok(id)
     }
 

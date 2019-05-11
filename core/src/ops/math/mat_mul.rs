@@ -4,7 +4,10 @@ use std::ops::{Add, Mul};
 use crate::internal::*;
 use ndarray::*;
 
-fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(a: &Tensor, b: &Tensor) -> TractResult<Tensor> {
+fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
+    a: &Tensor,
+    b: &Tensor,
+) -> TractResult<Tensor> {
     let a = a.to_array_view::<T>()?;
     let b = b.to_array_view::<T>()?;
     let geo = Geo::<T>::new(a.shape(), b.shape())?;
@@ -17,9 +20,8 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(a: &Tensor, b: &Tensor) ->
     let mut pa = unsafe {
         Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_a_len()], geo.mm.packed_a_alignment())?
     };
-    let mut pb = unsafe {
-        Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())?
-    };
+    let mut pb =
+        unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
 
     for prefix in indices(&*geo.c_shape_prefix).into_iter() {
         let mut a = a.view();
@@ -166,8 +168,7 @@ impl Op for MatMul {
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let dt = inputs[0].datum_type;
         let (bc_a_shape, bc_b_shape, bc_c_shape) =
-            infer_shapes(inputs[0].shape.iter().collect(), 
-                         inputs[1].shape.iter().collect())?;
+            infer_shapes(inputs[0].shape.iter().collect(), inputs[1].shape.iter().collect())?;
         let mul = bc_c_shape.iter().rev().skip(2).cloned().product::<TDim>();
         let m = bc_a_shape[bc_a_shape.len() - 2];
         let k = bc_a_shape[bc_a_shape.len() - 1];
@@ -316,9 +317,8 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplASimpleB<T> 
         let shape_a_internal = [a_len / geo_ext.k, geo_ext.k];
         let geo = Geo::new(&shape_a_internal, b.shape())?;
         let b_pack = geo.mm.b_pack();
-        let mut packed_b = unsafe {
-            Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())?
-        };
+        let mut packed_b =
+            unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
         b_pack.pack(packed_b.as_ptr_mut()?, b.as_ptr(), b.strides()[0], b.strides()[1]);
         Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
     }
@@ -368,7 +368,9 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> InferenceRulesOp for MatMulUnaryImplASimpleB<T> {
+impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> InferenceRulesOp
+    for MatMulUnaryImplASimpleB<T>
+{
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -400,9 +402,8 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplA<T> {
         packed_bs_shape.pop();
         packed_bs_shape.pop();
         packed_bs_shape.push(packed_b_len);
-        let mut packed_bs = unsafe {
-            Tensor::uninitialized_aligned::<T>(&packed_bs_shape, b_pack.alignment())?
-        };
+        let mut packed_bs =
+            unsafe { Tensor::uninitialized_aligned::<T>(&packed_bs_shape, b_pack.alignment())? };
         for (ix, prefix) in indices(&geo.b_shape[..geo.b_shape.len() - 2]).into_iter().enumerate() {
             let mut b = b.view();
             for (axis, &dim) in prefix.slice().iter().enumerate() {

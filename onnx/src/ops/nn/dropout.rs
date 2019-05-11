@@ -1,6 +1,6 @@
 use ndarray::*;
-use tract_core::ops::identity::Identity;
 use tract_core::internal::*;
+use tract_core::ops::identity::Identity;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Dropout;

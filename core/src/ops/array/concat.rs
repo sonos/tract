@@ -22,10 +22,7 @@ impl Concat {
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum + Copy>(
-        &self,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T: Datum + Copy>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
         let mut slices: TVec<FixedConcatSlice<T>> = tvec![];
         for input in &inputs {
