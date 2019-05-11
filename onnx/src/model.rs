@@ -30,7 +30,7 @@ impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.get_input().iter() {
             if let Some(init) = initializers.remove(input.get_name()) {
-                let id = model.add_const(input.get_name().to_owned(), init.into())?;
+                let id = model.add_const(input.get_name().to_owned(), init)?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             } else {
                 let fact = input.get_field_type().get_tensor_type().tractify()?;

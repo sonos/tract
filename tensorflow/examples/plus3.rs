@@ -13,7 +13,7 @@ fn main() {
         .op("Const")
         .name("three")
         .attr("dtype", DT_FLOAT)
-        .attr("value", SharedTensor::from(::ndarray::arr1(&[3.0f32])).to_tf().unwrap());
+        .attr("value", tensor1(&[3.0f32]).to_tf().unwrap());
     let input = tfpb::node().op("Placeholder").name("input").attr("dtype", DT_FLOAT);
     let graph = tfpb::graph().node(input).node(konst).node(plus3);
     graph.save_to("tests/plus3.pb").unwrap();

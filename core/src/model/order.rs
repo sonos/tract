@@ -48,7 +48,7 @@ mod tests {
         let mut model = Model::default();
         model.add_source_default("a").unwrap();
         model.chain_default("add", Add::default()).unwrap();
-        model.add_const("b", Tensor::from(12.0f32).into()).unwrap();
+        model.add_const("b", Tensor::from(12.0f32)).unwrap();
         model.add_edge(OutletId::new(2, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 2, 1));
     }

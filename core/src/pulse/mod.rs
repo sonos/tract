@@ -278,7 +278,7 @@ mod tests {
         use crate::ops::cnn::*;
 
         let mut model = Model::default();
-        let ker = model.add_const("kernel", arr3(&[[[0.5f32, 1.0, -0.1]]]).into()).unwrap();
+        let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
         let _ = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S))) // NCT
             .unwrap();

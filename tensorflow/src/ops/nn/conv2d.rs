@@ -60,7 +60,7 @@ mod tests {
     fn testConv2D3CNoopFilter() {
         verify(
             mk(&[1, 2, 3, 3]),
-            arr4(&[[[[1.0f32, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]]).into(),
+            tensor4(&[[[[1.0f32, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]]]),
             1,
             PaddingSpec::Valid,
             &[
@@ -144,10 +144,10 @@ mod tests {
     fn test_conv_1() {
         let conv = make_conv(1, 1, PaddingSpec::SameUpper);
         // NHWC
-        let data: SharedTensor = arr4(&[[[[1f32]]]]).into();
+        let data = rctensor4(&[[[[1f32]]]]);
         // HWIO
-        let filter: SharedTensor = arr4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]).into();
-        let exp: SharedTensor = arr4(&[[[[1f32]]]]).into();
+        let filter = rctensor4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]);
+        let exp = rctensor4(&[[[[1f32]]]]);
 
         let result = conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap().remove(0);
         assert_eq!(exp, result);
@@ -156,12 +156,10 @@ mod tests {
     #[test]
     fn test_conv_2() {
         let conv = make_conv(1, 1, PaddingSpec::SameUpper);
-        let data: SharedTensor =
-            arr4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]).into();
-        let filter: SharedTensor =
-            arr4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]).into();
-        let exp: SharedTensor =
-            arr4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]).into();
+        let data = rctensor4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]);
+        let filter =
+            rctensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
+        let exp = rctensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
         let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
         //println!("{:?}", got);
         //println!("{:?}", exp);
@@ -171,8 +169,8 @@ mod tests {
     #[test]
     fn inference_1() {
         let op = make_conv(1, 3, PaddingSpec::Valid);
-        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]));
-        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]));
+        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]).into_tensor());
+        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]).into_tensor());
         let any = TensorFact::default();
 
         let (_, output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();
@@ -186,8 +184,8 @@ mod tests {
     #[test]
     fn inference_2() {
         let op = make_conv(1, 1, PaddingSpec::SameUpper);
-        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
-        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]));
+        let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
+        let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
         let any = TensorFact::default();
 
         let (_, output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();

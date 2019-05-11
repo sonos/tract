@@ -237,8 +237,8 @@ mod test {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let res = op
             .eval(tvec!(
-                ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into(),
-                ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into()
+                ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into_arc_tensor(),
+                ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into_arc_tensor()
             ))
             .unwrap();
         assert_close!(res[0], Tensor::from(ArrayD::<f32>::zeros(vec!(1, 2, 2, 1))).into());
@@ -257,10 +257,10 @@ mod test {
     #[test]
     fn test_eval_nhwc_2() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
-        let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
-        let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
-        let e: Tensor = Tensor::from(arr4(&[[[[1.0f32], [0.0]]]]));
-        let res = op.eval(tvec!(i.into(), k.into())).unwrap();
+        let i = rctensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
+        let k = rctensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
+        let e = rctensor4(&[[[[1.0f32], [0.0]]]]);
+        let res = op.eval(tvec!(i, k)).unwrap();
         assert_eq!(res, tvec!(e.into()));
     }
 
@@ -268,20 +268,19 @@ mod test {
     fn test_eval_nhwc_3() {
         //        ::setup_test_logger();
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::Valid, None, 1);
-        let i: Tensor =
-            Tensor::from(arr4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]));
-        let k: Tensor = Tensor::from(arr4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]));
-        let res = op.eval(tvec!(i.clone().into(), k.into())).unwrap();
-        assert_eq!(res, tvec!(i.into()));
+        let i = rctensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
+        let k = rctensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
+        let res = op.eval(tvec!(i.clone(), k)).unwrap();
+        assert_eq!(res, tvec!(i));
     }
 
     #[test]
     fn test_eval_nhwc_batch() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
-            .eval(tvec!(arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(), arr4(&[[[[1.0f32]]]]).into()))
+            .eval(tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]]), rctensor4(&[[[[1.0f32]]]])))
             .unwrap();
-        assert_eq!(result, tvec!(arr4(&[[[[2.0f32]]], [[[0.0f32]]]]).into()));
+        assert_eq!(result, tvec!(rctensor4(&[[[[2.0f32]]], [[[0.0f32]]]])));
     }
 
     #[test]
@@ -298,9 +297,9 @@ mod test {
     fn test_eval_ntc_simple() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
-            .eval(tvec!(arr3(&[[[2.0f32], [0.0f32]]]).into(), arr3(&[[[1.0f32]]]).into()))
+            .eval(tvec!(rctensor3(&[[[2.0f32], [0.0f32]]]), rctensor3(&[[[1.0f32]]])))
             .unwrap();
-        assert_eq!(result, tvec!(arr3(&[[[2.0f32], [0.0f32]]]).into()));
+        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32], [0.0f32]]])));
     }
 
     #[test]
@@ -317,9 +316,9 @@ mod test {
     fn test_eval_ntc_batch() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
-            .eval(tvec!(arr3(&[[[2.0f32]], [[0.0f32]]]).into(), arr3(&[[[1.0f32]]]).into()))
+            .eval(tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]]), rctensor3(&[[[1.0f32]]])))
             .unwrap();
-        assert_eq!(result, tvec!(arr3(&[[[2.0f32]], [[0.0f32]]]).into()));
+        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]], [[0.0f32]]])));
     }
 
     #[test]
@@ -336,8 +335,8 @@ mod test {
     fn test_eval_ntc_channel() {
         let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let result = op
-            .eval(tvec!(arr3(&[[[2.0f32, 0.0f32]]]).into(), arr3(&[[[1.0f32], [0.0f32]]]).into()))
+            .eval(tvec!(rctensor3(&[[[2.0f32, 0.0f32]]]), rctensor3(&[[[1.0f32], [0.0f32]]])))
             .unwrap();
-        assert_eq!(result, tvec!(arr3(&[[[2.0f32]]]).into()));
+        assert_eq!(result, tvec!(rctensor3(&[[[2.0f32]]])));
     }
 }

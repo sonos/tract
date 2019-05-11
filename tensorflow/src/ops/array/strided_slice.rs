@@ -327,7 +327,7 @@ mod tests {
         .unwrap()
         .pop()
         .unwrap()
-        .to_tensor()
+        .into_tensor()
     }
 
     // https://www.tensorflow.org/api_docs/python/tf/strided_slice
@@ -337,9 +337,9 @@ mod tests {
             eval(
                 StridedSlice::default(),
                 arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
-                arr1(&[1, 0, 0]),
-                arr1(&[2, 1, 3]),
-                arr1(&[1, 1, 1])
+                tensor1(&[1, 0, 0]),
+                tensor1(&[2, 1, 3]),
+                tensor1(&[1, 1, 1])
             ),
             Tensor::from(arr3(&[[[3, 3, 3]]])),
         );
@@ -351,9 +351,9 @@ mod tests {
             eval(
                 StridedSlice::default(),
                 arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
-                arr1(&[1, 0, 0]),
-                arr1(&[2, 2, 3]),
-                arr1(&[1, 1, 1])
+                tensor1(&[1, 0, 0]),
+                tensor1(&[2, 2, 3]),
+                tensor1(&[1, 1, 1])
             ),
             Tensor::from(arr3(&[[[3, 3, 3], [4, 4, 4]]])),
         );
@@ -365,9 +365,9 @@ mod tests {
             eval(
                 StridedSlice::default(),
                 arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
-                arr1(&[1, -1, 0]),
-                arr1(&[2, -3, 3]),
-                arr1(&[1, -1, 1])
+                tensor1(&[1, -1, 0]),
+                tensor1(&[2, -3, 3]),
+                tensor1(&[1, -1, 1])
             ),
             Tensor::from(arr3(&[[[4, 4, 4], [3, 3, 3]]])),
         );
@@ -378,20 +378,20 @@ mod tests {
         assert_eq!(
             eval(
                 StridedSlice::default(),
-                arr3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
-                arr1(&[1, 0, 0]),
-                arr1(&[2, 2, 4]),
-                arr1(&[1, 1, 2])
+                tensor3(&[[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]], [[5, 5, 5], [6, 6, 6]],]),
+                tensor1(&[1, 0, 0]),
+                tensor1(&[2, 2, 4]),
+                tensor1(&[1, 1, 2])
             ),
-            Tensor::from(arr3(&[[[3, 3], [4, 4]]])),
+            tensor3(&[[[3, 3], [4, 4]]]),
         );
     }
 
     #[test]
     fn eval_5() {
         assert_eq!(
-            eval(StridedSlice::default(), arr1(&[0, 0]), arr1(&[0]), arr1(&[-1]), arr1(&[1])),
-            Tensor::from(arr1(&[0]))
+            eval(StridedSlice::default(), tensor1(&[0, 0]), tensor1(&[0]), tensor1(&[-1]), tensor1(&[1])),
+            tensor1(&[0])
         )
     }
 
@@ -400,12 +400,12 @@ mod tests {
         assert_eq!(
             eval(
                 StridedSlice::default(),
-                arr2(&[[1, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]]),
-                arr1(&[-3, -4]),
-                arr1(&[-1, -1]),
-                arr1(&[1, 2])
+                tensor2(&[[1, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0]]),
+                tensor1(&[-3, -4]),
+                tensor1(&[-1, -1]),
+                tensor1(&[1, 2])
             ),
-            Tensor::from(arr2(&[[1, 0], [3, 0]]))
+            tensor2(&[[1, 0], [3, 0]])
         )
     }
 
@@ -414,12 +414,12 @@ mod tests {
         assert_eq!(
             eval(
                 StridedSlice::default(),
-                arr2(&[[0, 6], [0, 0]]),
-                arr1(&[0]),
-                arr1(&[2]),
-                arr1(&[1])
+                tensor2(&[[0, 6], [0, 0]]),
+                tensor1(&[0]),
+                tensor1(&[2]),
+                tensor1(&[1])
             ),
-            Tensor::from(arr2(&[[0, 6], [0, 0]]))
+            tensor2(&[[0, 6], [0, 0]])
         )
     }
 
@@ -428,8 +428,8 @@ mod tests {
         let mut op = StridedSlice::default();
         op.base.begin_mask = 1;
         assert_eq!(
-            eval(op, arr1(&[0, 1]), arr1(&[1]), arr1(&[1]), arr1(&[1])),
-            Tensor::from(arr1(&[0]))
+            eval(op, tensor1(&[0, 1]), tensor1(&[1]), tensor1(&[1]), tensor1(&[1])),
+            Tensor::from(tensor1(&[0]))
         )
     }
 
@@ -438,8 +438,8 @@ mod tests {
         let mut op = StridedSlice::default();
         op.base.shrink_axis_mask = 1;
         assert_eq!(
-            eval(op, arr2(&[[0]]), arr1(&[0, 0]), arr1(&[0, 0]), arr1(&[1, 1])),
-            arr1::<i32>(&[]).into()
+            eval(op, arr2(&[[0]]), tensor1(&[0, 0]), tensor1(&[0, 0]), tensor1(&[1, 1])),
+            tensor1::<i32>(&[])
         )
     }
 
@@ -447,16 +447,16 @@ mod tests {
     fn eval_shrink_to_scalar() {
         let mut op = StridedSlice::default();
         op.base.shrink_axis_mask = 1;
-        assert_eq!(eval(op, arr1(&[0]), arr1(&[0]), arr1(&[0]), arr1(&[1])), arr0::<i32>(0).into())
+        assert_eq!(eval(op, tensor1(&[0]), tensor1(&[0]), tensor1(&[0]), tensor1(&[1])), tensor0::<i32>(0))
     }
 
     #[test]
     fn inference_1() {
         let op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
         let input = TensorFact::default().with_datum_type(DatumType::F32);
-        let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
-        let end = TensorFact::from(arr1(&[0i32, 0, 0]));
-        let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+        let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
+        let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
+        let strides = TensorFact::from(tensor1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
         let (input_facts, output_facts) =
@@ -480,9 +480,9 @@ mod tests {
     fn inference_2() {
         let op = StridedSlice::<f32>::new(BaseStridedSlice::new(1, 1, 2));
         let input = TensorFact::default().with_datum_type(DatumType::F32);
-        let begin = TensorFact::from(arr1(&[0i32, 0]));
-        let end = TensorFact::from(arr1(&[0i32, 1]));
-        let strides = TensorFact::from(arr1(&[1i32, 1]));
+        let begin = TensorFact::from(tensor1(&[0i32, 0]));
+        let end = TensorFact::from(tensor1(&[0i32, 1]));
+        let strides = TensorFact::from(tensor1(&[1i32, 1]));
         let any = TensorFact::default();
 
         let (input_facts, output_facts) =
@@ -506,9 +506,9 @@ mod tests {
     fn inference_3() {
         let op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
         let input = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
-        let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
-        let end = TensorFact::from(arr1(&[0i32, 0, 0]));
-        let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+        let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
+        let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
+        let strides = TensorFact::from(tensor1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
         let (_, output_facts) =
@@ -524,9 +524,9 @@ mod tests {
     fn inference_4() {
         let op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
         let input = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
-        let begin = TensorFact::from(arr1(&[0i32, 2, 0]));
-        let end = TensorFact::from(arr1(&[0i32, 0, 0]));
-        let strides = TensorFact::from(arr1(&[1i32, 1, 1]));
+        let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
+        let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
+        let strides = TensorFact::from(tensor1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
         let (_, output_facts) =

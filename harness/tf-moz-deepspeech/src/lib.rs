@@ -38,7 +38,7 @@ fn parse_scalar<T: Datum + FromStr>(s: &str) -> TractResult<Tensor> {
     let mut tokens = s.split(" ");
     let _name = tokens.next().unwrap();
     let value: T = tokens.next().unwrap().parse().map_err(|_| "foo")?;
-    Ok(arr0(value).into())
+    Ok(tensor0(value))
 }
 
 fn cachedir() -> path::PathBuf {
@@ -83,7 +83,7 @@ fn deepspeech() -> TractResult<()> {
         }
         if line.starts_with("INPUT_LENGTH") {
             let length = parse_scalar::<i32>(line)?;
-            inputs[1] = arr1(&[*length.to_scalar::<i32>()?]).into();
+            inputs[1] = tensor1(&[*length.to_scalar::<i32>()?]);
         }
         if line.starts_with("H:") {
             h = Some(parse_tensor::<f32>(line)?);

@@ -1,4 +1,4 @@
-//! `Tensor` and `SharedTensor`
+//! `Tensor`
 use crate::internal::*;
 use ndarray::prelude::*;
 use std::alloc;
@@ -14,62 +14,9 @@ use std::sync::Arc;
 
 use crate::datum::TryInto;
 
+pub mod litteral;
+
 pub type SharedTensor = Arc<Tensor>;
-
-/*
-#[derive(Clone)]
-pub struct SharedTensor(Arc<Tensor>);
-
-impl SharedTensor {
-    /// Returns a reference to the Tensor wrapped inside a SharedTensor.
-    pub fn as_tensor(&self) -> &Tensor {
-        self.0.as_ref()
-    }
-
-    pub fn to_tensor(self) -> Tensor {
-        Arc::try_unwrap(self.0).unwrap_or_else(|arc| arc.as_ref().clone())
-    }
-
-    pub fn to_array<'a, D: crate::datum::Datum>(self) -> TractResult<::ndarray::ArrayD<D>> {
-        self.to_tensor().into_array()
-    }
-}
-
-impl<M> From<M> for SharedTensor
-where
-    Tensor: From<M>,
-{
-    fn from(m: M) -> SharedTensor {
-        Arc::new(m.into())
-    }
-}
-*/
-/*
-impl From<Arc<Tensor>> for SharedTensor {
-    fn from(m: Arc<Tensor>) -> SharedTensor {
-        SharedTensor(m)
-    }
-}
-
-impl ::std::ops::Deref for SharedTensor {
-    type Target = Tensor;
-    fn deref(&self) -> &Tensor {
-        self.0.as_ref()
-    }
-}
-
-impl PartialEq for SharedTensor {
-    fn eq(&self, other: &SharedTensor) -> bool {
-        self.as_tensor() == other.as_tensor()
-    }
-}
-
-impl fmt::Debug for SharedTensor {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(fmt)
-    }
-}
-*/
 
 pub struct Tensor {
     null: bool,
@@ -552,96 +499,5 @@ impl IntoArcTensor for Tensor {
 impl IntoArcTensor for Arc<Tensor> {
     fn into_arc_tensor(self) -> Arc<Tensor> {
         self
-    }
-}
-
-pub mod tensor_litterals {
-    use super::Tensor;
-    use crate::datum::Datum;
-    use std::sync::Arc;
-    use ndarray::*;
-
-    pub fn arr4<A, V, U, T>(xs: &[V]) -> Array4<A>
-    where
-        V: FixedInitializer<Elem = U> + Clone,
-        U: FixedInitializer<Elem = T> + Clone,
-        T: FixedInitializer<Elem = A> + Clone,
-        A: Clone,
-    {
-        use ndarray::*;
-        let mut xs = xs.to_vec();
-        let dim = Ix4(xs.len(), V::len(), U::len(), T::len());
-        let ptr = xs.as_mut_ptr();
-        let len = xs.len();
-        let cap = xs.capacity();
-        let expand_len = len * V::len() * U::len() * T::len();
-        ::std::mem::forget(xs);
-        unsafe {
-            let v = if ::std::mem::size_of::<A>() == 0 {
-                Vec::from_raw_parts(ptr as *mut A, expand_len, expand_len)
-            } else if V::len() == 0 || U::len() == 0 || T::len() == 0 {
-                Vec::new()
-            } else {
-                let expand_cap = cap * V::len() * U::len() * T::len();
-                Vec::from_raw_parts(ptr as *mut A, expand_len, expand_cap)
-            };
-            ArrayBase::from_shape_vec_unchecked(dim, v)
-        }
-    }
-
-    pub fn tensor1<A: Datum>(xs: &[A]) -> Tensor {
-        Tensor::from(arr1(xs))
-    }
-
-    pub fn tensor2<A: Datum, T>(xs: &[T]) -> Tensor
-    where
-        T: FixedInitializer<Elem = A> + Clone,
-    {
-        Tensor::from(arr2(xs))
-    }
-
-    pub fn tensor3<A: Datum, T, U>(xs: &[U]) -> Tensor
-    where
-        U: FixedInitializer<Elem = T> + Clone,
-        T: FixedInitializer<Elem = A> + Clone,
-    {
-        Tensor::from(arr3(xs))
-    }
-
-    pub fn tensor4<A: Datum, T, U, V>(xs: &[V]) -> Tensor
-    where
-        V: FixedInitializer<Elem = U> + Clone,
-        U: FixedInitializer<Elem = T> + Clone,
-        T: FixedInitializer<Elem = A> + Clone,
-    {
-        Tensor::from(arr4(xs))
-    }
-
-    pub fn rctensor1<A: Datum>(xs: &[A]) -> Arc<Tensor> {
-        Arc::new(Tensor::from(arr1(xs)))
-    }
-
-    pub fn rctensor2<A: Datum, T>(xs: &[T]) -> Arc<Tensor>
-    where
-        T: FixedInitializer<Elem = A> + Clone,
-    {
-        Arc::new(Tensor::from(arr2(xs)))
-    }
-
-    pub fn rctensor3<A: Datum, T, U>(xs: &[U]) -> Arc<Tensor>
-    where
-        U: FixedInitializer<Elem = T> + Clone,
-        T: FixedInitializer<Elem = A> + Clone,
-    {
-        Arc::new(Tensor::from(arr3(xs)))
-    }
-
-    pub fn rctensor4<A: Datum, T, U, V>(xs: &[V]) -> Arc<Tensor>
-    where
-        V: FixedInitializer<Elem = U> + Clone,
-        U: FixedInitializer<Elem = T> + Clone,
-        T: FixedInitializer<Elem = A> + Clone,
-    {
-        Arc::new(Tensor::from(arr4(xs)))
     }
 }

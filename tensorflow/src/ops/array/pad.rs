@@ -102,22 +102,20 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
 mod tests {
     use tract_core::internal::*;
     use super::*;
-    use ndarray::arr2;
 
     #[test]
     fn pad_0() {
         let inputs = tvec![
-            Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]])).into(),
-            Tensor::from(arr2(&[[1, 1], [2, 2]])).into(),
+            rctensor2(&[[1, 2, 3], [4, 5, 6]]),
+            rctensor2(&[[1, 1], [2, 2]]),
         ];
 
-        let expected: TVec<_> = tvec!(Tensor::from(arr2(&[
+        let expected: TVec<_> = tvec!(rctensor2(&[
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 1, 2, 3, 0, 0],
             [0, 0, 4, 5, 6, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],
-        ]))
-        .into());
+        ]));
 
         assert_eq!(Pad::<i32>::new().eval(inputs).unwrap(), expected);
     }

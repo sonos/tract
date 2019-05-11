@@ -15,7 +15,7 @@
 //! let mut model = InferenceModel::default();
 //!
 //! let input = model.add_source_default("input").unwrap();
-//! let three = model.add_const("three".to_string(), 3f32.into()).unwrap();
+//! let three = model.add_const("three".to_string(), tensor0(3f32)).unwrap();
 //! let add = model.add_node_default("add".to_string(),
 //!     tract_core::ops::math::Add::default(),
 //!     ).unwrap();
@@ -123,6 +123,7 @@ pub mod prelude {
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
     pub use crate::tensor::{IntoArcTensor, IntoTensor, SharedTensor, Tensor};
+    pub use crate::tensor::litteral::*;
     pub use crate::tvec;
 }
 
@@ -142,7 +143,6 @@ pub mod internal {
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;
     pub use crate::pulse::PulsedModel;
-    pub use crate::tensor::arr4;
     pub use crate::{ToTract, Tractify};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;

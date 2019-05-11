@@ -96,27 +96,26 @@ impl InferenceRulesOp for Pack {
 mod tests {
     #![allow(non_snake_case)]
     use super::*;
-    use ndarray::prelude::*;
     use num_traits::Zero;
 
     #[test]
     fn pack_0() {
-        let inputs = tvec![arr1(&[1, 4]).into(), arr1(&[2, 5]).into(), arr1(&[3, 6]).into(),];
+        let inputs = tvec![rctensor1(&[1, 4]), rctensor1(&[2, 5]), rctensor1(&[3, 6]),];
         assert_eq!(
-            Pack::new(DatumType::I32, 3, 0).eval(inputs.clone()).unwrap().remove(0).to_tensor(),
-            Tensor::from(arr2(&[[1, 4], [2, 5], [3, 6]]))
+            Pack::new(DatumType::I32, 3, 0).eval(inputs.clone()).unwrap().remove(0),
+            rctensor2(&[[1, 4], [2, 5], [3, 6]])
         );
         assert_eq!(
-            Pack::new(DatumType::I32, 3, 1).eval(inputs.clone()).unwrap().remove(0).to_tensor(),
-            Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]]))
+            Pack::new(DatumType::I32, 3, 1).eval(inputs.clone()).unwrap().remove(0),
+            rctensor2(&[[1, 2, 3], [4, 5, 6]])
         );
     }
 
     #[test]
     fn pack_1() {
         let pack = Pack::new(DatumType::I32, 3, 0);
-        let input = arr1::<i32>(&[]).into();
-        let exp: SharedTensor = arr2::<i32, _>(&[[]]).into();
+        let input = rctensor1::<i32>(&[]);
+        let exp = rctensor2::<i32, _>(&[[]]);
         let found = pack.eval(tvec![input]).unwrap();
 
         assert!(exp.close_enough(&found[0], false), "expected: {:?} found: {:?}", exp, found[0])
@@ -136,11 +135,11 @@ mod tests {
     #[test]
     fn inference_2() {
         let pack = Pack::new(DatumType::I32, 2, 0);
-        let a = TensorFact::from(Tensor::from(0i32));
-        let b = TensorFact::from(Tensor::from(TDim::zero()));
+        let a = TensorFact::from(rctensor0(0i32));
+        let b = TensorFact::from(rctensor0(TDim::zero()));
         let any = TensorFact::default();
         let (_, output_facts) = pack.infer(tvec![&a, &b], tvec![&any]).unwrap();
-        let exp: TVec<TensorFact> = tvec!(Tensor::from(arr1(&[TDim::zero(), TDim::zero()])).into());
+        let exp: TVec<TensorFact> = tvec!(tensor1(&[TDim::zero(), TDim::zero()]).into());
         assert_eq!(output_facts, exp);
     }
 
