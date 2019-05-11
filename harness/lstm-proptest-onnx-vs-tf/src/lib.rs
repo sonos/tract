@@ -101,11 +101,7 @@ impl LstmProblem {
             ),
             tvec!(memory_fact),
         )?;
-        model.plug_const(
-            InletId::new(lstm, 0),
-            "seq_length",
-            tensor0(self.chunk_length as i64),
-        )?;
+        model.plug_const(InletId::new(lstm, 0), "seq_length", tensor0(self.chunk_length as i64))?;
         model.add_edge(OutletId::new(x, 0), InletId::new(lstm, 1))?;
         model.add_edge(OutletId::new(cs, 0), InletId::new(lstm, 2))?;
         model.add_edge(OutletId::new(h, 0), InletId::new(lstm, 3))?;
@@ -202,7 +198,11 @@ impl LstmProblem {
         let mut state = SimpleState::new(plan)?;
         let mut result = vec![];
         for x in self.x.iter() {
-            let mut y = state.run(tvec!(x.clone().into_tensor()))?.remove(0).into_tensor().into_array::<f32>()?;
+            let mut y = state
+                .run(tvec!(x.clone().into_tensor()))?
+                .remove(0)
+                .into_tensor()
+                .into_array::<f32>()?;
             y.index_axis_inplace(Axis(1), 0);
             result.push(y.into_arc_tensor());
         }

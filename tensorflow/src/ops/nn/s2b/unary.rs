@@ -1,6 +1,6 @@
 use ndarray::*;
-use tract_core::ops::cnn::ConvUnary;
 use tract_core::internal::*;
+use tract_core::ops::cnn::ConvUnary;
 
 #[derive(Debug, Copy, Clone)]
 pub enum PaddingStrat {

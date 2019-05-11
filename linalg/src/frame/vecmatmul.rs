@@ -107,13 +107,7 @@ where
                 );
             }
             if n % nr != 0 {
-                K::kernel(
-                    k,
-                    pa,
-                    pb.offset((n / nr * k * nr) as isize),
-                    tmpc.as_mut_ptr(),
-                    1,
-                );
+                K::kernel(k, pa, pb.offset((n / nr * k * nr) as isize), tmpc.as_mut_ptr(), 1);
                 for x in 0..(n % nr) {
                     *y.offset((x + n / nr * nr) as isize * sy) = tmpc[x];
                 }
@@ -168,12 +162,7 @@ pub mod test {
 
             let mut found = vec![9999.0f32; n];
 
-            mm.vec_mat_mul_prepacked(
-                packed_a.as_ptr(),
-                packed_b.as_ptr(),
-                found.as_mut_ptr(),
-                1,
-            );
+            mm.vec_mat_mul_prepacked(packed_a.as_ptr(), packed_b.as_ptr(), found.as_mut_ptr(), 1);
             let mut expect = vec![0.0f32; n];
             for x in 0..n {
                 for i in 0..k {

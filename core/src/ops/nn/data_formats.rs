@@ -1,5 +1,5 @@
-use crate::model::TVec;
 use crate::dim::DimLike;
+use crate::model::TVec;
 use std::fmt;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -123,11 +123,10 @@ where
     }
 
     pub fn w_stride(&self) -> D {
-        unsafe { *self.hw_strides().get_unchecked(self.hw_rank()-1) }
+        unsafe { *self.hw_strides().get_unchecked(self.hw_rank() - 1) }
     }
 
     pub fn c_stride(&self) -> D {
         unsafe { *self.strides.get_unchecked(self.c_axis()) }
     }
-
 }

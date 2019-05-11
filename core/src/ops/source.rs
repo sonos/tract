@@ -1,8 +1,7 @@
 use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
-pub struct Source {
-}
+pub struct Source {}
 
 impl Op for Source {
     fn name(&self) -> Cow<str> {

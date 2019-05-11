@@ -6,7 +6,7 @@ use std::ops::Range;
 #[derive(Clone, Debug, new, PartialEq)]
 pub struct Region {
     pub range: Range<usize>,
-    pub mask: Option<TVec<bool>>
+    pub mask: Option<TVec<bool>>,
 }
 
 #[derive(Clone, Debug, new, PartialEq)]
@@ -24,12 +24,12 @@ impl PatchAxis {
     fn valid_range(&self) -> Option<Range<usize>> {
         let field = (self.kernel_dim - 1) * self.dilation + 1;
         if field > self.input_dim {
-            return None
+            return None;
         }
         let min = self.pad_before.div_ceil(self.stride);
         let max = (self.input_dim + self.pad_before).saturating_sub(field) / self.stride;
         if max >= min {
-            Some(min..(max+1))
+            Some(min..(max + 1))
         } else {
             None
         }
@@ -227,10 +227,7 @@ pub mod test {
         let regions = PatchAxis::new(5, 2, 1, 1, 3, 2, 1).regions();
         assert_eq!(
             regions,
-            tvec!(
-                Region::new(0..1, Some(tvec!(true, false))),
-                Region::new(1..3, None),
-            )
+            tvec!(Region::new(0..1, Some(tvec!(true, false))), Region::new(1..3, None),)
         );
     }
 
@@ -254,23 +251,13 @@ pub mod test {
     fn axis_7_1_s2_regions() {
         // 0 1 2 3 4 5 6 -> 1 -> 0 2 4 6
         let regions = PatchAxis::new(7, 1, 0, 0, 4, 2, 1).regions();
-        assert_eq!(
-            regions,
-            tvec!(
-                Region::new(0..4, None),
-            )
-        );
+        assert_eq!(regions, tvec!(Region::new(0..4, None),));
     }
 
     #[test]
     fn axis_1_2_regions() {
         // 0 -> 2 -> (0)
         let regions = PatchAxis::new(1, 2, 0, 1, 1, 1, 1).regions();
-        assert_eq!(
-            regions,
-            tvec!(
-                Region::new(0..1, Some(tvec!(false, true))),
-            )
-        );
+        assert_eq!(regions, tvec!(Region::new(0..1, Some(tvec!(false, true))),));
     }
 }

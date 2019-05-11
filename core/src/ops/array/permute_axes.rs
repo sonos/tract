@@ -23,7 +23,11 @@ impl PermuteAxes {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
         if let Some(ref axes) = self.axes {
-            Ok(tvec![input.into_tensor().into_array::<T>()?.permuted_axes(&**axes).into_arc_tensor()])
+            Ok(tvec![input
+                .into_tensor()
+                .into_array::<T>()?
+                .permuted_axes(&**axes)
+                .into_arc_tensor()])
         } else {
             Ok(tvec![input.into_tensor().into_array::<T>()?.reversed_axes().into_arc_tensor()])
         }

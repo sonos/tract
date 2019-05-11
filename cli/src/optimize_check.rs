@@ -57,7 +57,10 @@ pub fn handle(params: Parameters, _options: display_graph::DisplayOptions) -> Cl
             }
             println!("Checked {} - {}", orig, optim);
         } else {
-            println!("Could not link node {} to optimized model", original_state.model().node(orig));
+            println!(
+                "Could not link node {} to optimized model",
+                original_state.model().node(orig)
+            );
         }
     }
 

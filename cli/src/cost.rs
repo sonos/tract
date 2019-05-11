@@ -1,6 +1,6 @@
-use crate::format::Row;
 use crate::display_graph::*;
 use crate::errors::*;
+use crate::format::Row;
 use crate::{Parameters, SomeModel};
 use tract_core::internal::*;
 
@@ -19,7 +19,7 @@ fn handle_t(
     params: &Parameters,
     options: DisplayOptions,
 ) -> CliResult<()> {
-    let mut total:HashMap<Cost,TDim> = HashMap::default();
+    let mut total: HashMap<Cost, TDim> = HashMap::default();
     let mut display_graph =
         DisplayGraph::from_model_and_options(model, options)?.with_graph_def(&params.graph)?;
     for i in ::tract_core::model::eval_order(&model)? {
@@ -28,7 +28,7 @@ fn handle_t(
         if !cost.is_empty() {
             let rows = cost
                 .iter()
-                .inspect(|(c,i)| *total.entry(*c).or_insert(0.to_dim()) += *i)
+                .inspect(|(c, i)| *total.entry(*c).or_insert(0.to_dim()) += *i)
                 .map(|(c, i)| Row::Double(format!("{:?}", c), format!("{:?}", i)))
                 .collect();
             display_graph.add_node_section(i, rows)?;

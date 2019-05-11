@@ -142,7 +142,7 @@ pub fn handle_t<TI: TensorInfo>(
         }
 
         if !display_options.filter(model, node)? {
-            continue
+            continue;
         }
         state.compute_recursively(n)?;
 

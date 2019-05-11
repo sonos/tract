@@ -104,7 +104,7 @@ impl PaddingSpec {
         let output = input.div_ceil(stride);
         let kernel_field = (kernel - 1) * dilation + 1;
         let pad = if let Ok(input) = input.to_integer() {
-            let pad = ((((output - 1) * stride + kernel_field)).to_integer().unwrap() - input).max(0);
+            let pad = (((output - 1) * stride + kernel_field).to_integer().unwrap() - input).max(0);
             (pad as usize).into()
         } else {
             (output - 1) * stride + kernel_field - input
@@ -175,10 +175,7 @@ mod tests {
 
     #[test]
     fn same_upper() {
-        assert_eq!(
-            PaddingSpec::same(7usize, 1usize, 1, 2, true),
-            ComputedPaddedDim::new(4, 0, 0)
-        );
+        assert_eq!(PaddingSpec::same(7usize, 1usize, 1, 2, true), ComputedPaddedDim::new(4, 0, 0));
     }
 
 }

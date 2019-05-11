@@ -5,7 +5,7 @@ use ansi_term::Color::*;
 use ansi_term::Style;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use tract_core::prelude::{Model, Node, TensorInfo };
+use tract_core::prelude::{Model, Node, TensorInfo};
 use tract_core::Tractify;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
@@ -26,17 +26,16 @@ pub struct DisplayOptions {
 impl DisplayOptions {
     pub fn filter<TI: TensorInfo>(&self, _model: &Model<TI>, node: &Node<TI>) -> CliResult<bool> {
         if let Some(nodes) = self.node_ids.as_ref() {
-            return Ok(nodes.contains(&node.id))
+            return Ok(nodes.contains(&node.id));
         }
         if let Some(node_name) = self.node_name.as_ref() {
             return Ok(node.name.starts_with(&*node_name));
         }
         if let Some(op_name) = self.op_name.as_ref() {
-            return Ok(node.op().name().starts_with(op_name))
+            return Ok(node.op().name().starts_with(op_name));
         }
         if let Some(successor) = self.successors {
-            return Ok(node.inputs.iter().any(|i| i.node == successor))
-
+            return Ok(node.inputs.iter().any(|i| i.node == successor));
         }
         Ok(node.op().name() != "Const" || self.konst)
     }

@@ -106,7 +106,10 @@ pub fn handle_t<TI: TensorInfo>(
                     .enumerate()
                     .position(|(ix, o)| {
                         o.successors.len() == 0
-                            && !tract.output_outlets().unwrap().contains(&OutletId::new(node.id, ix))
+                            && !tract
+                                .output_outlets()
+                                .unwrap()
+                                .contains(&OutletId::new(node.id, ix))
                     })
                     .unwrap_or(node.outputs.len());
                 let expected: Vec<TensorFact> =
@@ -134,11 +137,7 @@ pub fn handle_t<TI: TensorInfo>(
 
                                 Row::Double(
                                     Red.paint(format!("{} {}", header, reason)).to_string(),
-                                    format!(
-                                        "TF    {:?}\ntract {:?}",
-                                        tf_output[n],
-                                        data
-                                    ),
+                                    format!("TF    {:?}\ntract {:?}", tf_output[n], data),
                                 )
                             })
                             .collect::<Vec<_>>();

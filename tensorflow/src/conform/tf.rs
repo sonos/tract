@@ -85,9 +85,7 @@ impl From<Tensor> for TensorHolder {
                     panic!("Streaming used in tensorflow settings")
                 }
             }
-            DatumType::String => {
-                TensorHolder::String(Self::to_tensor(m.into_array().unwrap()))
-            }
+            DatumType::String => TensorHolder::String(Self::to_tensor(m.into_array().unwrap())),
         }
     }
 }

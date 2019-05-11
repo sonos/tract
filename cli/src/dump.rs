@@ -29,8 +29,11 @@ fn handle_t<TI: TensorInfo>(
             }
         }
         if let Some(asserts) = &asserts.assert_output_facts {
-            let outputs_facts: Vec<TensorFact> =
-                tract.output_outlets()?.iter().map(|o| tract.outlet_fact(*o).unwrap().to_tensor_fact()).collect();
+            let outputs_facts: Vec<TensorFact> = tract
+                .output_outlets()?
+                .iter()
+                .map(|o| tract.outlet_fact(*o).unwrap().to_tensor_fact())
+                .collect();
             crate::utils::check_inferred(&*outputs_facts, &*asserts)?;
         }
     }

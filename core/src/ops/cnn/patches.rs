@@ -393,7 +393,9 @@ impl<'p> Scanner<'p> {
             {
                 return;
             }
-            if self.output_coords.get_unchecked(inner_dim) < self.patch.output_shape.get_unchecked(inner_dim) {
+            if self.output_coords.get_unchecked(inner_dim)
+                < self.patch.output_shape.get_unchecked(inner_dim)
+            {
                 self.zone_id += 1;
                 *self.zone_coords.get_unchecked_mut(inner_dim) += 1;
                 self.zone = self.patch.zones.get_unchecked(self.zone_id);
@@ -402,12 +404,17 @@ impl<'p> Scanner<'p> {
                     *self.output_coords.get_unchecked_mut(axis + 1) = 0;
                     *self.input_coords.get_unchecked_mut(axis + 1) = 0;
                     *self.output_coords.get_unchecked_mut(axis) += 1;
-                    *self.input_coords.get_unchecked_mut(axis) += self.patch.spec.strides.get_unchecked(axis);
+                    *self.input_coords.get_unchecked_mut(axis) +=
+                        self.patch.spec.strides.get_unchecked(axis);
                     *self.zone_coords.get_unchecked_mut(axis + 1) = 0;
-                    if *self.output_coords.get_unchecked(axis) == self.zone.output_ranges.get_unchecked(axis).end {
+                    if *self.output_coords.get_unchecked(axis)
+                        == self.zone.output_ranges.get_unchecked(axis).end
+                    {
                         *self.zone_coords.get_unchecked_mut(axis) += 1;
                     }
-                    if *self.output_coords.get_unchecked(axis) < *self.patch.output_shape.get_unchecked(axis) {
+                    if *self.output_coords.get_unchecked(axis)
+                        < *self.patch.output_shape.get_unchecked(axis)
+                    {
                         break;
                     }
                 }
@@ -418,8 +425,10 @@ impl<'p> Scanner<'p> {
                 self.zone_id = 0;
                 self.input_center_offset = 0;
                 for i in 0..rank {
-                    self.zone_id += *self.zone_coords.get_unchecked(i) as usize * *self.patch.zone_strides.get_unchecked(i) as usize;
-                    self.input_center_offset += *self.input_coords.get_unchecked(i) as isize * *self.patch.input_layout_strides.get_unchecked(i) as isize;
+                    self.zone_id += *self.zone_coords.get_unchecked(i) as usize
+                        * *self.patch.zone_strides.get_unchecked(i) as usize;
+                    self.input_center_offset += *self.input_coords.get_unchecked(i) as isize
+                        * *self.patch.input_layout_strides.get_unchecked(i) as isize;
                 }
                 self.zone = &self.patch.zones.get_unchecked(self.zone_id);
             }

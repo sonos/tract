@@ -56,8 +56,10 @@ where
                         for m in 0..mult {
                             let output_offset =
                                 output_offset + self.output_shape.c_stride() * (m + c * mult);
-                            let kptr =
-                                self.kernel_chw.as_ptr().offset(k_stride_i * c as isize + k_stride_o * m as isize);
+                            let kptr = self
+                                .kernel_chw
+                                .as_ptr()
+                                .offset(k_stride_i * c as isize + k_stride_o * m as isize);
                             let mut sum = T::zero();
                             for (ix, v) in visitor.valid_offsets_with_indexes() {
                                 let k = *kptr.offset(ix as isize);

@@ -1,8 +1,7 @@
-
 use super::Tensor;
 use crate::datum::Datum;
-use std::sync::Arc;
 use ndarray::*;
+use std::sync::Arc;
 
 pub fn arr4<A, V, U, T>(xs: &[V]) -> Array4<A>
 where

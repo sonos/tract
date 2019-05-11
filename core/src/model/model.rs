@@ -53,7 +53,6 @@ impl<TI: TensorInfo> Model<TI> {
         Ok(id)
     }
 
-
     pub(crate) fn clear_inputs(&mut self, node: usize) -> TractResult<()> {
         for ix in 0..self.nodes[node].inputs.len() {
             let previous = self.nodes[node].inputs[ix];
@@ -102,7 +101,7 @@ impl<TI: TensorInfo> Model<TI> {
         &mut self,
         inputs: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> TractResult<()> {
-        let mut ids = vec!();
+        let mut ids = vec![];
         for i in inputs.into_iter() {
             let node = self.node_by_name(i.as_ref())?;
             for o in 0..node.outputs.len() {
@@ -152,7 +151,7 @@ impl<TI: TensorInfo> Model<TI> {
 
     // nodes and their facts
 
-    pub fn node_names(&self) -> impl Iterator<Item=&str> {
+    pub fn node_names(&self) -> impl Iterator<Item = &str> {
         self.nodes.iter().map(|s| &*s.name)
     }
 
@@ -211,7 +210,6 @@ impl<TI: TensorInfo> Model<TI> {
     pub fn eval_order(&self) -> TractResult<Vec<usize>> {
         eval_order(&self)
     }
-
 
     pub fn check_edges(&self) -> TractResult<()> {
         for node in self.eval_order()? {

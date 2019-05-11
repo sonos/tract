@@ -36,8 +36,11 @@ fn render_t<TI: TensorInfo>(model: &Model<TI>, options: DisplayOptions) -> CliRe
     let mut wires: Vec<Option<(OutletId, Style, usize, bool)>> = vec![];
     for node in model.eval_order()? {
         let node = &model.nodes()[node];
-        let inputs =
-            if model.input_outlets()?.contains(&OutletId::new(node.id, 0)) { &[] } else { &*node.inputs };
+        let inputs = if model.input_outlets()?.contains(&OutletId::new(node.id, 0)) {
+            &[]
+        } else {
+            &*node.inputs
+        };
         let mut memory_wires: Vec<_> = wires.clone();
         for i in inputs {
             let pos = memory_wires.iter().position(|w| *i == w.as_ref().unwrap().0).unwrap();

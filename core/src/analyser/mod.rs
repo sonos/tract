@@ -1,8 +1,8 @@
 use std::borrow::BorrowMut;
 use std::collections::BTreeSet;
 
-use crate::model::*;
 use crate::internal::*;
+use crate::model::*;
 
 pub mod types;
 

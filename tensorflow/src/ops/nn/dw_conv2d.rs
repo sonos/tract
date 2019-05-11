@@ -1,6 +1,6 @@
 use tract_core::internal::*;
-use tract_core::ops::nn::*;
 use tract_core::ops::cnn::*;
+use tract_core::ops::nn::*;
 
 pub fn depthwise_conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
     let data_format = super::data_format(pb)?;
@@ -32,12 +32,11 @@ impl DepthwiseConv2d {
             None,
             self.padding.clone(),
             Some(self.strides[shape.hw_axes()].into()),
-            group
+            group,
         );
         Ok(conv)
     }
 }
-
 
 impl Op for DepthwiseConv2d {
     fn name(&self) -> Cow<str> {
@@ -48,16 +47,18 @@ impl Op for DepthwiseConv2d {
         let img = inputs[0];
         let ker = inputs[1].shape.as_finite().ok_or("Can not stream kernel")?;
         let shape = self.data_format.shape(img.shape.to_tvec());
-        let output_dims = self.padding.compute(shape.hw_dims(), &ker[0..2], &self.dilations[1..3], &self.strides[1..3]);
+        let output_dims = self.padding.compute(
+            shape.hw_dims(),
+            &ker[0..2],
+            &self.dilations[1..3],
+            &self.strides[1..3],
+        );
         let n_output_points: TDim = output_dims.iter().map(|d| d.output).product::<TDim>();
         let kernel_surface = ker[0] * ker[1];
         let out_channels = ker[2] * ker[3];
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            shape.n()
-                * out_channels
-                * n_output_points
-                * kernel_surface
+            shape.n() * out_channels * n_output_points * kernel_surface
         )))
     }
 
@@ -80,7 +81,7 @@ impl Op for DepthwiseConv2d {
 
 impl StatelessOp for DepthwiseConv2d {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let ishape:TVec<TDim> = inputs[0].shape().iter().map(|i| i.to_dim()).collect();
+        let ishape: TVec<TDim> = inputs[0].shape().iter().map(|i| i.to_dim()).collect();
         let kshape = inputs[1].shape();
         self.to_core(&*ishape, kshape)?.eval(inputs)
     }
@@ -105,7 +106,8 @@ impl InferenceRulesOp for DepthwiseConv2d {
             s.equals(&inputs[1].shape[2], &inputs[0].shape[img.c_axis()])?;
             s.equals(&outputs[0].shape[img.n_axis()], img.n_dim())?;
             if ker.iter().all(|d| d.to_integer().is_ok()) {
-                let ker:TVec<usize> = ker.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+                let ker: TVec<usize> =
+                    ker.iter().map(|d| d.to_integer().unwrap() as usize).collect();
                 let output_shape = self.padding.compute(
                     img.hw_dims(),
                     &ker[0..2],

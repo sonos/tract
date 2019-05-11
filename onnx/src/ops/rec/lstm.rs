@@ -1,7 +1,7 @@
 use crate::pb::NodeProto;
+use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
-use tract_core::internal::*;
 
 pub fn lstm(_pb: &NodeProto) -> TractResult<Box<Op>> {
     Ok(Box::new(LSTM::default()))
@@ -151,13 +151,25 @@ impl OpState for LSTMState {
             //  dbg!(&iofc);
             let iofc = iofc.into_shape((batch_size, 4, hidden_size))?;
             // dbg!(&iofc);
-            let i = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (0..=0).into()).to_owned().into_arc_tensor()))?;
+            let i = op.f.eval(tvec!(iofc
+                .slice_axis(Axis(1), (0..=0).into())
+                .to_owned()
+                .into_arc_tensor()))?;
             // dbg!(&i);
-            let o = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (1..=1).into()).to_owned().into_arc_tensor()))?;
-            let f = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (2..=2).into()).to_owned().into_arc_tensor()))?;
+            let o = op.f.eval(tvec!(iofc
+                .slice_axis(Axis(1), (1..=1).into())
+                .to_owned()
+                .into_arc_tensor()))?;
+            let f = op.f.eval(tvec!(iofc
+                .slice_axis(Axis(1), (2..=2).into())
+                .to_owned()
+                .into_arc_tensor()))?;
             // dbg!(&iofc.slice_axis(Axis(1), (3..=3).into()));
 
-            let c = op.g.eval(tvec!(iofc.slice_axis(Axis(1), (3..=3).into()).to_owned().into_arc_tensor()))?;
+            let c = op.g.eval(tvec!(iofc
+                .slice_axis(Axis(1), (3..=3).into())
+                .to_owned()
+                .into_arc_tensor()))?;
             // dbg!(&c);
             let i = i[0]
                 .to_array_view::<f32>()?

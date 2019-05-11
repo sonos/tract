@@ -100,15 +100,12 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
 
 #[cfg(test)]
 mod tests {
-    use tract_core::internal::*;
     use super::*;
+    use tract_core::internal::*;
 
     #[test]
     fn pad_0() {
-        let inputs = tvec![
-            rctensor2(&[[1, 2, 3], [4, 5, 6]]),
-            rctensor2(&[[1, 1], [2, 2]]),
-        ];
+        let inputs = tvec![rctensor2(&[[1, 2, 3], [4, 5, 6]]), rctensor2(&[[1, 1], [2, 2]]),];
 
         let expected: TVec<_> = tvec!(rctensor2(&[
             [0, 0, 0, 0, 0, 0, 0],

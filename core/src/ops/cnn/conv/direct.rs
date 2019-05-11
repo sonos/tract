@@ -1,7 +1,7 @@
 use crate::internal::*;
+use crate::ops::nn::DataShape;
 use ndarray::prelude::*;
 use tract_linalg::Conv;
-use crate::ops::nn::DataShape;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {
@@ -54,7 +54,6 @@ impl StatelessOp for Direct {
             Ok(tvec!(output.into_arc_tensor()))
         }
     }
-
 }
 
 impl InferenceRulesOp for Direct {
