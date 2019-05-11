@@ -101,7 +101,6 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tract_core::internal::*;
 
     #[test]
     fn pad_0() {

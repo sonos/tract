@@ -7,6 +7,8 @@ use std::borrow::Cow;
 use std::fmt::{self, Debug, Display};
 use std::str;
 
+use std::convert::TryInto;
+
 pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
     #[must_use]
     fn try_collect<B: Default + Extend<T>>(mut self) -> Result<B, E> {
@@ -97,7 +99,7 @@ pub trait AttrScalarType<'a>: 'a + Sized {
 impl<'a> AttrScalarType<'a> for Tensor {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
         node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)?
-            .and_try(|attr| attr.get_t().tractify())
+            .and_try(|attr| attr.get_t().try_into())
     }
 }
 
@@ -239,7 +241,7 @@ where
 impl<'a> AttrTVecType<'a> for Tensor {
     fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
         node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSORS)?
-            .and_try(|attr| attr.get_tensors().iter().map(|t| t.tractify()).try_collect())
+            .and_try(|attr| attr.get_tensors().iter().map(|t| t.try_into()).try_collect())
     }
 }
 

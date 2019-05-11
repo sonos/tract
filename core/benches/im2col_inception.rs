@@ -9,6 +9,8 @@ use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::cnn::PaddingSpec::SameUpper as Same;
 use tract_core::ops::cnn::PaddingSpec::Valid;
 
+use std::convert::TryInto;
+
 fn b(
     c: &mut Criterion,
     name: &str,

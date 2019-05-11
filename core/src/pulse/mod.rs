@@ -2,6 +2,8 @@ use crate::internal::*;
 use crate::ops::source::Source;
 use std::fmt;
 
+use std::convert::TryFrom;
+
 pub mod delay;
 
 #[derive(Clone, PartialEq)]
@@ -34,9 +36,10 @@ impl TensorInfo for PulsedTensorFact {
     }
 }
 
-impl TryInto<TypedTensorInfo> for PulsedTensorFact {
-    fn try_into(&self) -> TractResult<TypedTensorInfo> {
-        Ok(TypedTensorInfo { shape: (&self.shape).into(), datum_type: self.dt, konst: None })
+impl TryFrom<PulsedTensorFact> for TypedTensorInfo {
+    type Error = TractError;
+    fn try_from(fact: PulsedTensorFact) -> TractResult<TypedTensorInfo> {
+        Ok(TypedTensorInfo { shape: (&fact.shape).into(), datum_type: fact.dt, konst: None })
     }
 }
 

@@ -1,13 +1,13 @@
-use crate::datum::TryInto;
 use crate::model::{InletId, Model, OutletId, TensorInfo};
 use crate::prelude::*;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
-pub(crate) fn compact<TI1, TI2>(old: &Model<TI1>) -> TractResult<Model<TI2>>
+pub(crate) fn compact<TI1, TI2, E>(old: &Model<TI1>) -> TractResult<Model<TI2>>
 where
-    TI1: TensorInfo,
-    TI2: TensorInfo,
-    TI1: TryInto<TI2>,
+    TractError: From<E>,
+    TI1: TensorInfo + Clone,
+    TI2: TensorInfo + TryFrom<TI1, Error=E>,
 {
     let mut model = Model::default();
     let mut map = HashMap::new();
@@ -16,7 +16,7 @@ where
         let facts = old_node
             .outputs
             .iter()
-            .map(|of| of.fact.try_into())
+            .map(|of| Ok(TI2::try_from(of.fact.clone())?))
             .collect::<TractResult<TVec<_>>>()
             .map_err(|e| format!("While translating {}: {:?}", old_node, e))?;
         let new_id = model.add_node(old_node.name.clone(), old_node.op.clone(), facts)?;

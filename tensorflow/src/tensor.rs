@@ -1,37 +1,40 @@
 use crate::tfpb::tensor::TensorProto;
 use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use crate::tfpb::types::DataType;
-use crate::ToTensorflow;
+use std::convert::{TryFrom, TryInto};
 use tract_core::internal::*;
 
-impl Tractify<DataType> for DatumType {
-    fn tractify(t: &DataType) -> TractResult<DatumType> {
+impl TryFrom<DataType> for DatumType {
+    type Error = TractError;
+    fn try_from(t: DataType) -> TractResult<DatumType> {
         match t {
-            &DataType::DT_BOOL => Ok(DatumType::Bool),
-            &DataType::DT_UINT8 => Ok(DatumType::U8),
-            &DataType::DT_UINT16 => Ok(DatumType::U16),
-            &DataType::DT_INT8 => Ok(DatumType::I8),
-            &DataType::DT_INT16 => Ok(DatumType::I16),
-            &DataType::DT_INT32 => Ok(DatumType::I32),
-            &DataType::DT_INT64 => Ok(DatumType::I64),
-            &DataType::DT_HALF => Ok(DatumType::F16),
-            &DataType::DT_FLOAT => Ok(DatumType::F32),
-            &DataType::DT_DOUBLE => Ok(DatumType::F64),
-            &DataType::DT_STRING => Ok(DatumType::String),
+            DataType::DT_BOOL => Ok(DatumType::Bool),
+            DataType::DT_UINT8 => Ok(DatumType::U8),
+            DataType::DT_UINT16 => Ok(DatumType::U16),
+            DataType::DT_INT8 => Ok(DatumType::I8),
+            DataType::DT_INT16 => Ok(DatumType::I16),
+            DataType::DT_INT32 => Ok(DatumType::I32),
+            DataType::DT_INT64 => Ok(DatumType::I64),
+            DataType::DT_HALF => Ok(DatumType::F16),
+            DataType::DT_FLOAT => Ok(DatumType::F32),
+            DataType::DT_DOUBLE => Ok(DatumType::F64),
+            DataType::DT_STRING => Ok(DatumType::String),
             _ => Err(format!("Unknown DatumType {:?}", t))?,
         }
     }
 }
 
-impl Tractify<TensorShapeProto> for TVec<usize> {
-    fn tractify(t: &TensorShapeProto) -> TractResult<TVec<usize>> {
+impl<'a> TryFrom<&'a TensorShapeProto> for TVec<usize> {
+    type Error = TractError;
+    fn try_from(t: &'a TensorShapeProto) -> TractResult<TVec<usize>> {
         Ok(t.get_dim().iter().map(|d| d.size as usize).collect::<TVec<_>>())
     }
 }
 
-impl ToTensorflow<DataType> for DatumType {
-    fn to_tf(&self) -> TractResult<DataType> {
-        match self {
+impl TryFrom<DatumType> for DataType  {
+    type Error = TractError;
+    fn try_from(dt: DatumType) -> TractResult<DataType> {
+        match dt {
             DatumType::Bool => Ok(DataType::DT_BOOL),
             DatumType::U8 => Ok(DataType::DT_UINT8),
             DatumType::U16 => Ok(DataType::DT_UINT16),
@@ -48,10 +51,11 @@ impl ToTensorflow<DataType> for DatumType {
     }
 }
 
-impl Tractify<TensorProto> for Tensor {
-    fn tractify(t: &TensorProto) -> TractResult<Tensor> {
+impl<'a> TryFrom<&'a TensorProto> for Tensor {
+    type Error = TractError;
+    fn try_from(t: &TensorProto) -> TractResult<Tensor> {
         let dtype = t.get_dtype();
-        let dims: TVec<usize> = t.get_tensor_shape().tractify()?;
+        let dims: TVec<usize> = t.get_tensor_shape().try_into()?;
         let rank = dims.len();
         let content = t.get_tensor_content();
         let mat: Tensor = if content.len() != 0 {
@@ -83,10 +87,11 @@ impl Tractify<TensorProto> for Tensor {
     }
 }
 
-impl ToTensorflow<TensorProto> for Tensor {
-    fn to_tf(&self) -> TractResult<TensorProto> {
+impl<'a> TryFrom<&'a Tensor> for TensorProto {
+    type Error = TractError;
+    fn try_from(from: &Tensor) -> TractResult<TensorProto> {
         let mut shape = TensorShapeProto::new();
-        let dims = self
+        let dims = from
             .shape()
             .iter()
             .map(|d| {
@@ -98,24 +103,24 @@ impl ToTensorflow<TensorProto> for Tensor {
         shape.set_dim(::protobuf::RepeatedField::from_vec(dims));
         let mut tensor = TensorProto::new();
         tensor.set_tensor_shape(shape);
-        match self.datum_type() {
+        match from.datum_type() {
             DatumType::F32 => {
-                tensor.set_dtype(DatumType::F32.to_tf()?);
-                tensor.set_float_val(self.to_array_view::<f32>()?.iter().cloned().collect());
+                tensor.set_dtype(DatumType::F32.try_into()?);
+                tensor.set_float_val(from.to_array_view::<f32>()?.iter().cloned().collect());
             }
             DatumType::F64 => {
-                tensor.set_dtype(DatumType::F64.to_tf()?);
-                tensor.set_double_val(self.to_array_view::<f64>()?.iter().cloned().collect());
+                tensor.set_dtype(DatumType::F64.try_into()?);
+                tensor.set_double_val(from.to_array_view::<f64>()?.iter().cloned().collect());
             }
             DatumType::I32 => {
-                tensor.set_dtype(DatumType::I32.to_tf()?);
-                tensor.set_int_val(self.to_array_view::<i32>()?.iter().cloned().collect());
+                tensor.set_dtype(DatumType::I32.try_into()?);
+                tensor.set_int_val(from.to_array_view::<i32>()?.iter().cloned().collect());
             }
             DatumType::I64 => {
-                tensor.set_dtype(DatumType::I64.to_tf()?);
-                tensor.set_int64_val(self.to_array_view::<i64>()?.iter().cloned().collect());
+                tensor.set_dtype(DatumType::I64.try_into()?);
+                tensor.set_int64_val(from.to_array_view::<i64>()?.iter().cloned().collect());
             }
-            _ => unimplemented!("missing type {:?}", self.datum_type()),
+            _ => unimplemented!("missing type {:?}", from.datum_type()),
         }
         Ok(tensor)
     }

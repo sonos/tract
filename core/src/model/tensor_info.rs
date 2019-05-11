@@ -1,8 +1,8 @@
-use crate::datum::TryInto;
 use crate::dim::ToDim;
 use crate::internal::*;
 use crate::prelude::*;
 use crate::tensor::Tensor;
+use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
 pub trait TensorInfo: std::fmt::Debug + objekt::Clone {
@@ -11,23 +11,18 @@ pub trait TensorInfo: std::fmt::Debug + objekt::Clone {
 
 objekt::clone_trait_object!(TensorInfo);
 
-impl<TI: TensorInfo> TryInto<TI> for TI {
-    fn try_into(&self) -> TractResult<TI> {
-        Ok(objekt::clone(self))
-    }
-}
-
 impl TensorInfo for TensorFact {
     fn to_tensor_fact(&self) -> TensorFact {
         self.clone()
     }
 }
 
-impl TryInto<TypedTensorInfo> for TensorFact {
-    fn try_into(&self) -> TractResult<TypedTensorInfo> {
+impl<'a> TryFrom<&'a TensorFact> for TypedTensorInfo {
+    type Error = TractError;
+    fn try_from(fact: &TensorFact) -> TractResult<TypedTensorInfo> {
         use crate::analyser::types::Fact;
         if let (Some(datum_type), Some(shape)) =
-            (self.datum_type.concretize(), self.shape.concretize())
+            (fact.datum_type.concretize(), fact.shape.concretize())
         {
             let stream_info = shape
                 .iter()
@@ -37,10 +32,17 @@ impl TryInto<TypedTensorInfo> for TensorFact {
                 .map(|(axis, len)| StreamInfo { axis, len });
             let shape = shape.iter().map(|d| d.to_integer().unwrap_or(0) as usize).collect();
             let shape = ShapeInfo { shape, stream_info };
-            Ok(TypedTensorInfo { datum_type, shape, konst: self.value.concretize() })
+            Ok(TypedTensorInfo { datum_type, shape, konst: fact.value.concretize() })
         } else {
-            bail!("Can not make a TypedTensorInfo out of {:?}", self)
+            bail!("Can not make a TypedTensorInfo out of {:?}", fact)
         }
+    }
+}
+
+impl TryFrom<TensorFact> for TypedTensorInfo {
+    type Error = TractError;
+    fn try_from(fact: TensorFact) -> TractResult<TypedTensorInfo> {
+        (&fact).try_into()
     }
 }
 
@@ -154,13 +156,14 @@ impl From<Arc<Tensor>> for TypedTensorInfo {
     }
 }
 
-impl TryInto<NormalizedTensorInfo> for TypedTensorInfo {
-    fn try_into(&self) -> TractResult<NormalizedTensorInfo> {
-        match self.konst {
+impl TryFrom<TypedTensorInfo> for NormalizedTensorInfo {
+    type Error = TractError;
+    fn try_from(fact: TypedTensorInfo) -> TractResult<NormalizedTensorInfo> {
+        match fact.konst {
             None => {
-                Ok(NormalizedTensorInfo { shape: self.shape.clone(), datum_type: self.datum_type })
+                Ok(NormalizedTensorInfo { shape: fact.shape.clone(), datum_type: fact.datum_type })
             }
-            _ => bail!("Constant tensor are excluded from declutterd stage: {:?}", self),
+            _ => bail!("Constant tensor are excluded from declutterd stage: {:?}", fact),
         }
     }
 }
@@ -186,9 +189,10 @@ impl TensorInfo for NormalizedTensorInfo {
     }
 }
 
-impl TryInto<TypedTensorInfo> for NormalizedTensorInfo {
-    fn try_into(&self) -> TractResult<TypedTensorInfo> {
-        Ok(TypedTensorInfo { shape: self.shape.clone(), datum_type: self.datum_type, konst: None })
+impl TryFrom<NormalizedTensorInfo> for TypedTensorInfo {
+    type Error = TractError;
+    fn try_from(fact: NormalizedTensorInfo) -> TractResult<TypedTensorInfo> {
+        Ok(TypedTensorInfo { shape: fact.shape.clone(), datum_type: fact.datum_type, konst: None })
     }
 }
 

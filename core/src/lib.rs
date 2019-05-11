@@ -4,7 +4,6 @@
 //!
 //! ## Example
 //!
-//!
 //! ```
 //! # extern crate tract_core;
 //! # extern crate ndarray;
@@ -23,8 +22,8 @@
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
 //! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();
 //!
-//! // we build an execution plan. default input and output are inferred from
-//! // the model graph
+//! // We build an execution plan. Default inputs and outputs are inferred from
+//! // the model graph.
 //! let plan = SimplePlan::new(&model).unwrap();
 //!
 //! // run the computation.
@@ -40,13 +39,10 @@
 //! # }
 //! ```
 //!
-//!
-//! While creating a model from Rust code is usefull for testing the library,
+//! While creating a model from Rust code is useful for testing the library,
 //! real-life use-cases will usually load a TensorFlow or ONNX model using
 //! tract-tensorflow or tract-onnx crates.
 //!
-
-// TODO: show Plan-based API in doc instead of shortcut
 
 extern crate bit_set;
 #[cfg(feature = "blis")]
@@ -115,7 +111,7 @@ pub use crate::errors::*;
 /// This prelude is meant for code using tract.
 pub mod prelude {
     pub use crate::analyser::types::TensorFact;
-    pub use crate::datum::{Datum, DatumType, TryInto};
+    pub use crate::datum::{Datum, DatumType};
     pub use crate::dim::TDim;
     pub use crate::errors::*;
     pub use crate::framework::Framework;
@@ -146,32 +142,16 @@ pub mod internal {
     pub use crate::prelude::*;
     pub use crate::pulse::PulsedModel;
     pub use crate::{args_1, args_2, args_3, args_4};
-    pub use crate::{ToTract, Tractify};
     pub use std::borrow::Cow;
     pub use std::collections::HashMap;
     pub use std::marker::PhantomData;
     pub use tract_linalg::f16::f16;
 }
 
-/*
 #[cfg(test)]
 #[allow(dead_code)]
-*/
-pub fn setup_test_logger() {
+fn setup_test_logger() {
     let _ =
         env_logger::Builder::from_default_env().filter_level(log::LevelFilter::Trace).try_init();
 }
 
-pub trait Tractify<Other>: Sized {
-    fn tractify(t: &Other) -> TractResult<Self>;
-}
-
-pub trait ToTract<Tract>: Sized {
-    fn tractify(&self) -> TractResult<Tract>;
-}
-
-impl<PB, Tract: Tractify<PB>> crate::ToTract<Tract> for PB {
-    fn tractify(&self) -> TractResult<Tract> {
-        Tract::tractify(self)
-    }
-}

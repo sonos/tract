@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use std::collections::HashMap;
 
 use tract_core::internal::*;
@@ -25,7 +27,7 @@ impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
         let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
             .iter()
-            .map(|init| Ok((init.get_name(), init.tractify()?)))
+            .map(|init| Ok((init.get_name(), init.try_into()?)))
             .collect::<TractResult<_>>()?;
         let mut outlets_by_name = HashMap::<String, OutletId>::new();
         for input in graph.get_input().iter() {
@@ -33,7 +35,7 @@ impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
                 let id = model.add_const(input.get_name().to_owned(), init)?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             } else {
-                let fact = input.get_field_type().get_tensor_type().tractify()?;
+                let fact = input.get_field_type().get_tensor_type().try_into()?;
                 let id = model.add_source(input.get_name(), fact)?;
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             }
@@ -59,7 +61,7 @@ impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
         }
         let mut outputs = vec![];
         for output in graph.get_output().iter() {
-            let fact = output.get_field_type().get_tensor_type().tractify()?;
+            let fact = output.get_field_type().get_tensor_type().try_into()?;
             outputs.push(outlets_by_name[output.get_name()]);
             model.set_outlet_fact(outlets_by_name[output.get_name()], fact)?;
         }
