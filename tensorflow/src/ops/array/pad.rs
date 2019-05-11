@@ -58,7 +58,7 @@ where
 }
 
 impl<T: Copy + Datum + Zero> StatelessOp for Pad<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;

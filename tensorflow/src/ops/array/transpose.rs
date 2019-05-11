@@ -24,9 +24,9 @@ impl Transpose {
 
     fn eval_t<T: Datum>(
         &self,
-        input: SharedTensor,
+        input: Arc<Tensor>,
         perm: &[usize],
-    ) -> TractResult<TVec<SharedTensor>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec![input.into_tensor().into_array::<T>()?.permuted_axes(perm).into_arc_tensor()])
     }
 }
@@ -53,7 +53,7 @@ impl Op for Transpose {
 }
 
 impl StatelessOp for Transpose {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, perm) = args_2!(inputs);
         let perm: TVec<usize> =
             perm.cast_to::<i32>()?.as_slice::<i32>()?.iter().map(|&x| x as usize).collect();

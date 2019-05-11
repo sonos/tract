@@ -2,7 +2,7 @@ use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Const {
-    value: SharedTensor,
+    value: Arc<Tensor>,
 }
 
 impl Const {
@@ -18,7 +18,7 @@ impl Op for Const {
 }
 
 impl StatelessOp for Const {
-    fn eval(&self, _inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec![self.value.clone()])
     }
 }

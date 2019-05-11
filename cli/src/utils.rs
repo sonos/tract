@@ -2,7 +2,7 @@ use crate::CliResult;
 use tract_core::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[SharedTensor], expected: &[TensorFact]) -> CliResult<()> {
+pub fn check_outputs(got: &[Arc<Tensor>], expected: &[TensorFact]) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }

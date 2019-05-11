@@ -9,8 +9,8 @@ pub struct GlobalAvgPool {
 impl GlobalAvgPool {
     fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -36,7 +36,7 @@ impl Op for GlobalAvgPool {
 }
 
 impl StatelessOp for GlobalAvgPool {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -61,8 +61,8 @@ pub struct GlobalLpPool {
 impl GlobalLpPool {
     fn eval_t<D: Datum + ::num_traits::Float>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -93,7 +93,7 @@ impl Op for GlobalLpPool {
 }
 
 impl StatelessOp for GlobalLpPool {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -118,8 +118,8 @@ pub struct GlobalMaxPool {
 impl GlobalMaxPool {
     fn eval_t<D: Datum + ::num_traits::Float>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -144,7 +144,7 @@ impl Op for GlobalMaxPool {
 }
 
 impl StatelessOp for GlobalMaxPool {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

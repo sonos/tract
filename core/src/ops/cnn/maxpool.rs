@@ -41,7 +41,7 @@ impl Op for MaxPool {
 }
 
 impl StatelessOp for MaxPool {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let op = dispatch_floatlike!(MaxPool::to_fixed(inputs[0].datum_type())(
             self,
             inputs[0].shape()
@@ -84,7 +84,7 @@ impl<T: Datum + Float> Op for MaxPoolFixed<T> {
 }
 
 impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let input: ArrayViewD<T> = input.to_array_view()?;
         let input_ptr = input.as_ptr();

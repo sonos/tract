@@ -59,7 +59,7 @@ pub mod ops;
 pub mod tensor;
 pub mod tfpb;
 
-pub trait ToSharedTensor<Tf>: Sized {
+pub trait ToTensorflow<Tf>: Sized {
     fn to_tf(&self) -> tract_core::TractResult<Tf>;
 }
 

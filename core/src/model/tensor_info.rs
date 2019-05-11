@@ -120,7 +120,7 @@ impl fmt::Debug for ShapeInfo {
 pub struct TypedTensorInfo {
     pub datum_type: DatumType,
     pub shape: ShapeInfo,
-    pub konst: Option<SharedTensor>,
+    pub konst: Option<Arc<Tensor>>,
 }
 
 impl TensorInfo for TypedTensorInfo {
@@ -134,7 +134,7 @@ impl TensorInfo for TypedTensorInfo {
 
 impl From<Tensor> for TypedTensorInfo {
     fn from(t: Tensor) -> TypedTensorInfo {
-        TypedTensorInfo::from(SharedTensor::from(t))
+        TypedTensorInfo::from(t.into_arc_tensor())
     }
 }
 
@@ -144,8 +144,8 @@ impl<'t> From<&'t Tensor> for TypedTensorInfo {
     }
 }
 
-impl From<SharedTensor> for TypedTensorInfo {
-    fn from(t: SharedTensor) -> TypedTensorInfo {
+impl From<Arc<Tensor>> for TypedTensorInfo {
+    fn from(t: Arc<Tensor>) -> TypedTensorInfo {
         TypedTensorInfo {
             datum_type: t.datum_type(),
             shape: ShapeInfo { shape: t.shape().into(), stream_info: None },

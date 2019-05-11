@@ -28,8 +28,8 @@ impl OpState for VariableV2State {
         &mut self,
         session: &mut SessionState,
         op: &Op,
-        _inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        _inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op
             .downcast_ref::<VariableV2>()
             .ok_or_else(|| format!("wrong op for variable state"))?;
@@ -105,8 +105,8 @@ impl OpState for AssignState {
         &mut self,
         session: &mut SessionState,
         op: &Op,
-        mut inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let (_current, new) = args_2!(inputs);
         let op =
             op.downcast_ref::<Assign>().ok_or_else(|| format!("wrong op for variable state"))?;

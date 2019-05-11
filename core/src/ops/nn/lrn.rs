@@ -12,8 +12,8 @@ pub struct Lrn {
 impl Lrn {
     fn eval_t<T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::std::iter::Sum>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = input.to_array_view::<T>()?;
         let channels = input.shape()[1];
         let output = Array::from_shape_fn(input.shape(), |mut coords| {
@@ -42,7 +42,7 @@ impl Op for Lrn {
 }
 
 impl StatelessOp for Lrn {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

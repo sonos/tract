@@ -24,8 +24,8 @@ impl Concat {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum + Copy>(
         &self,
-        inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
         let mut slices: TVec<FixedConcatSlice<T>> = tvec![];
         for input in &inputs {
@@ -91,7 +91,7 @@ impl Op for Concat {
 
 impl StatelessOp for Concat {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let super_type: DatumType =
             DatumType::super_type_for(inputs.iter().map(|x| x.datum_type()))
                 .ok_or_else(|| format!("No supertype found"))?;
@@ -236,7 +236,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
 
 impl<T: Datum + Copy> StatelessOp for NormConcat<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let casted_inputs: TVec<Cow<Tensor>> =
             inputs.iter().map(|x| x.cast_to::<T>()).collect::<TractResult<_>>()?;
         let mut mats: TVec<ArrayViewD<T>> = tvec![];
@@ -437,8 +437,8 @@ impl<T: Datum + Copy> OpState for PulsedSameAxisConcatState<T> {
         &mut self,
         session: &mut SessionState,
         op: &Op,
-        mut inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<PulsedSameAxisConcat<T>>().ok_or("Wrong Op type")?;
         let input = args_1!(inputs);
         let mut data = input.into_tensor().into_array::<T>()?;
@@ -487,7 +487,7 @@ pub enum FixedConcatSlice<T> {
 
 impl<T: Datum + Copy> StatelessOp for FixedConcat<T> {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let casted_inputs: TVec<Cow<Tensor>> =
             inputs.iter().map(|x| x.cast_to::<T>()).collect::<TractResult<_>>()?;
         let mut mats: TVec<ArrayViewD<T>> = tvec![];

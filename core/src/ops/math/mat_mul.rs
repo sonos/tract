@@ -177,7 +177,7 @@ impl Op for MatMul {
 }
 
 impl StatelessOp for MatMul {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (a, b) = args_2!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(&*a, &*b))?;
         Ok(tvec!(c.into_arc_tensor()))
@@ -272,7 +272,7 @@ impl Op for MatMulUnaryA {
 }
 
 impl StatelessOp for MatMulUnaryA {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let a = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(&*a, &self.b))?;
         Ok(tvec!(c.into()))
@@ -342,7 +342,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimp
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnaryImplASimpleB<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let a = args_1!(inputs);
         let a = a.to_array_view::<T>()?;
 
@@ -440,7 +440,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplA<T> 
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnaryImplA<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let a = args_1!(inputs);
         let a = a.to_array_view::<T>()?.into_shape(&*self.geo.bc_a_shape)?;
 
@@ -512,7 +512,7 @@ impl Op for MatMulUnaryB {
 }
 
 impl StatelessOp for MatMulUnaryB {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let b = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, &*b))?;
         Ok(tvec!(c.into()))

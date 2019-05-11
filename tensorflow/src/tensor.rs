@@ -1,7 +1,7 @@
 use crate::tfpb::tensor::TensorProto;
 use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use crate::tfpb::types::DataType;
-use crate::ToSharedTensor;
+use crate::ToTensorflow;
 use tract_core::internal::*;
 
 impl Tractify<DataType> for DatumType {
@@ -29,7 +29,7 @@ impl Tractify<TensorShapeProto> for TVec<usize> {
     }
 }
 
-impl ToSharedTensor<DataType> for DatumType {
+impl ToTensorflow<DataType> for DatumType {
     fn to_tf(&self) -> TractResult<DataType> {
         match self {
             DatumType::Bool => Ok(DataType::DT_BOOL),
@@ -83,7 +83,7 @@ impl Tractify<TensorProto> for Tensor {
     }
 }
 
-impl ToSharedTensor<TensorProto> for Tensor {
+impl ToTensorflow<TensorProto> for Tensor {
     fn to_tf(&self) -> TractResult<TensorProto> {
         let mut shape = TensorShapeProto::new();
         let dims = self

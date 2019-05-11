@@ -12,7 +12,7 @@ pub struct LstmProblem {
     pub chunk_length: usize,
     pub batch_size: usize,
     pub cell_size: usize,
-    pub x: Vec<SharedTensor>,
+    pub x: Vec<Arc<Tensor>>,
     pub w_xh_icfo: Array2<f32>,
     pub b_icfo: Array1<f32>,
     pub h0: Array2<f32>,
@@ -196,7 +196,7 @@ impl LstmProblem {
         Ok(model.into_typed()?)
     }
 
-    pub fn onnx_run(&self) -> TractResult<Vec<SharedTensor>> {
+    pub fn onnx_run(&self) -> TractResult<Vec<Arc<Tensor>>> {
         let model = self.onnx_model()?;
         let plan = SimplePlan::new(model)?;
         let mut state = SimpleState::new(plan)?;
@@ -209,7 +209,7 @@ impl LstmProblem {
         Ok(result)
     }
 
-    pub fn tf_run(&self) -> TractResult<Vec<SharedTensor>> {
+    pub fn tf_run(&self) -> TractResult<Vec<Arc<Tensor>>> {
         let model = self.tf_model()?;
         let init_id = model.node_by_name("init")?.id;
         let lstm_id = model.node_by_name("lstm")?.id;

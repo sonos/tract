@@ -122,7 +122,7 @@ impl Op for Conv {
 }
 
 impl StatelessOp for Conv {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let inputs_info: TVec<TypedTensorInfo> =
             inputs.iter().map(|t| TypedTensorInfo::from(&**t)).collect();
         let unary = self.to_unary(&*inputs_info)?.unwrap();

@@ -47,7 +47,7 @@ macro_rules! impl_output {
 impl_output!(IntFact, Int, "Int");
 impl_output!(TypeFact, Type, "DatumType");
 impl_output!(ShapeFact, Shape, "Shape");
-impl_output!(ValueFact, SharedTensor, "Tensor");
+impl_output!(ValueFact, Tensor, "Tensor");
 impl_output!(DimFact, Dim, "TDim");
 
 // Converts back and forth between Wrapped and usize.
@@ -80,12 +80,12 @@ impl Output for i32 {
 }
 
 // Converts back and forth between Wrapped and Tensor.
-impl Output for SharedTensor {
-    fn into_wrapped(source: SharedTensor) -> Wrapped {
+impl Output for Arc<Tensor> {
+    fn into_wrapped(source: Arc<Tensor>) -> Wrapped {
         ValueFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TractResult<SharedTensor> {
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<Arc<Tensor>> {
         let message = format!("Tried to convert {:?} to a tensor.", wrapped);
 
         ValueFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
@@ -111,7 +111,7 @@ pub enum Wrapped {
     Int(IntFact),
     Type(TypeFact),
     Shape(ShapeFact),
-    SharedTensor(ValueFact),
+    Tensor(ValueFact),
     Dim(DimFact),
 }
 
@@ -539,7 +539,7 @@ impl IntoExp<ShapeFact> for TVec<TDim> {
     }
 }
 
-// SharedTensor
+// Arc<Tensor>
 
 impl IntoExp<ValueFact> for ValueProxy {
     fn bex(self) -> Exp<ValueFact> {
@@ -553,7 +553,7 @@ impl<'a> IntoExp<ValueFact> for &'a ValueProxy {
     }
 }
 
-impl IntoExp<ValueFact> for SharedTensor {
+impl IntoExp<ValueFact> for Arc<Tensor> {
     fn bex(self) -> Exp<ValueFact> {
         ConstantExp(self.into()).bex()
     }

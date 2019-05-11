@@ -9,9 +9,9 @@ impl Flatten {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(
         &self,
-        input: SharedTensor,
+        input: Arc<Tensor>,
         shape: (usize, usize),
-    ) -> TractResult<TVec<SharedTensor>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(shape)?.into_arc_tensor()])
     }
 }
@@ -23,7 +23,7 @@ impl Op for Flatten {
 }
 
 impl StatelessOp for Flatten {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let shape_0 = input.shape()[..self.axis].iter().product::<usize>();
         let shape_1 = input.shape()[self.axis..].iter().product::<usize>();

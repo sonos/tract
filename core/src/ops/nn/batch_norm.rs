@@ -16,8 +16,8 @@ impl BatchNorm {
         T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
     >(
         &self,
-        mut inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>>
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>>
     where
         f32: AsPrimitive<T>,
     {
@@ -56,10 +56,10 @@ impl Op for BatchNorm {
             fn fixed<T>(
                 c_axis: usize,
                 c_dim: usize,
-                scale: SharedTensor,
-                beta: SharedTensor,
-                mean: SharedTensor,
-                var: SharedTensor,
+                scale: Arc<Tensor>,
+                beta: Arc<Tensor>,
+                mean: Arc<Tensor>,
+                var: Arc<Tensor>,
                 epsilon: f32,
             ) -> TractResult<Box<Op>>
             where
@@ -88,7 +88,7 @@ impl Op for BatchNorm {
 }
 
 impl StatelessOp for BatchNorm {
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
@@ -145,10 +145,10 @@ where
     fn new(
         c_axis: usize,
         c_dim: usize,
-        scale: SharedTensor,
-        beta: SharedTensor,
-        mean: SharedTensor,
-        var: SharedTensor,
+        scale: Arc<Tensor>,
+        beta: Arc<Tensor>,
+        mean: Arc<Tensor>,
+        var: Arc<Tensor>,
         epsilon: f32,
     ) -> TractResult<FixedBatchNorm<T>> {
         let scale = scale.into_tensor().into_array::<T>()?.into_shape((c_dim,))?;
@@ -192,7 +192,7 @@ where
     T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
     f32: AsPrimitive<T>,
 {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let x = args_1!(inputs);
         let mut x = x.into_tensor().into_array::<T>()?;
         for c in 0..self.c_dim {

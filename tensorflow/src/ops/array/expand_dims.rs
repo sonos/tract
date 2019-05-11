@@ -10,9 +10,9 @@ pub struct ExpandDims;
 impl ExpandDims {
     fn eval_t<T: Datum + Copy>(
         &self,
-        data: SharedTensor,
+        data: Arc<Tensor>,
         shape: &[usize],
-    ) -> TractResult<TVec<SharedTensor>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let data = data.into_tensor().into_array::<T>()?;
         Ok(tvec![Tensor::from(data.into_shape(&*shape)?).into()])
     }
@@ -42,7 +42,7 @@ impl Op for ExpandDims {
 }
 
 impl StatelessOp for ExpandDims {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, dims) = args_2!(inputs);
         let dims = dims.to_array_view::<i32>()?;
         let mut shape: TVec<usize> = data.shape().into();

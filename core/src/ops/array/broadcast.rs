@@ -4,7 +4,7 @@ use crate::internal::*;
 pub struct MultiBroadcastTo;
 
 impl MultiBroadcastTo {
-    fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<Arc<Tensor>>> {
         let input = input.to_array_view::<T>()?;
         let output = input.broadcast(&*shape).ok_or("incompatible shapes")?;
         Ok(tvec![output.to_owned().into_arc_tensor()])
@@ -19,7 +19,7 @@ impl Op for MultiBroadcastTo {
 
 impl StatelessOp for MultiBroadcastTo {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, dims) = args_2!(inputs);
         let dims: Vec<usize> = dims.to_array_view::<i64>()?.iter().map(|i| *i as usize).collect();
         let dims = crate::broadcast::multi_broadcast(&[&*dims, &*input.shape()])

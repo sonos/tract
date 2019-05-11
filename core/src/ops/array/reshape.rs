@@ -29,9 +29,9 @@ impl Reshape {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(
         &self,
-        input: SharedTensor,
+        input: Arc<Tensor>,
         shape: &[usize],
-    ) -> TractResult<TVec<SharedTensor>> {
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(shape)?.into_arc_tensor()])
     }
 }
@@ -43,7 +43,7 @@ impl Op for Reshape {
 }
 
 impl StatelessOp for Reshape {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, shape) = args_2!(inputs);
         let shape: Vec<isize> =
             shape.cast_to::<i64>()?.to_array_view::<i64>()?.iter().map(|&i| i as isize).collect();

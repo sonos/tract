@@ -8,7 +8,7 @@ pub struct Slice {
 }
 
 impl Slice {
-    fn eval_t<T: Datum>(&self, input: SharedTensor) -> TractResult<SharedTensor> {
+    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let input = input.to_array_view::<T>()?;
         let slice_spec: Vec<SliceOrIndex> = self
             .prune
@@ -54,7 +54,7 @@ impl Op for Slice {
 
 impl StatelessOp for Slice {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, input))?))
     }

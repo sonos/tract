@@ -19,8 +19,8 @@ impl Pack {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Copy + Datum>(
         &self,
-        inputs: TVec<SharedTensor>,
-    ) -> TractResult<TVec<SharedTensor>> {
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         use ndarray::Axis;
         let arrays =
             inputs.iter().map(|m| Ok(m.cast_to::<T>()?)).collect::<TractResult<Vec<_>>>()?;
@@ -41,7 +41,7 @@ impl Op for Pack {
 
 impl StatelessOp for Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let dt = DatumType::super_type_for(inputs.iter().map(|dt| dt.datum_type()))
             .ok_or("Could not find a supertype")?;
         match dt {

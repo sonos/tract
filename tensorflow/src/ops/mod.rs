@@ -59,7 +59,7 @@ impl Op for Noop {
 }
 
 impl StatelessOp for Noop {
-    fn eval(&self, _inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(Tensor::from(false).into()))
     }
 }
@@ -103,7 +103,7 @@ impl Op for Identity {
 }
 
 impl StatelessOp for Identity {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(inputs.remove(0)))
     }
 }

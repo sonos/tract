@@ -1,4 +1,4 @@
-//! Generated protobuf codec for SharedTensor models, plus a handful of helper for
+//! Generated protobuf codec for Arc<Tensor> models, plus a handful of helper for
 //! writting tests.
 
 #![allow(unknown_lints)]
