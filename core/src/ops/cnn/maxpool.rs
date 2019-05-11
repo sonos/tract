@@ -122,11 +122,11 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
         }
         if let Some(dt) = self.with_index_outputs {
             Ok(tvec!(
-                values.into(),
-                Tensor::from(indices.unwrap()).cast_to_dt(dt)?.into_owned().into_tensor()
+                values.into_arc_tensor(),
+                indices.unwrap().into_tensor().cast_to_dt(dt)?.into_owned().into_arc_tensor()
             ))
         } else {
-            Ok(tvec!(values.into()))
+            Ok(tvec!(values.into_arc_tensor()))
         }
     }
 }

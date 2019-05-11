@@ -30,7 +30,7 @@ impl Range {
         let delta = *delta.to_scalar::<T>()?;
         let value =
             Array1::from_shape_fn(((limit - start) / delta).as_(), |ix| ix.as_() * delta + start);
-        Ok(tvec![value.into()])
+        Ok(tvec![value.into_arc_tensor()])
     }
 }
 

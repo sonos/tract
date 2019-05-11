@@ -18,8 +18,8 @@ macro_rules! element_map {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
                 $(if dt == <$type>::datum_type() {
-                    let a = a.to_array::<$type>()?;
-                    return Ok(tvec!(a.mapv($expr).into()));
+                    let a = a.into_tensor().into_array::<$type>()?;
+                    return Ok(tvec!(a.mapv($expr).into_arc_tensor()));
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
@@ -84,9 +84,9 @@ macro_rules! element_map_with_params {
                 let dt = a.datum_type();
                 $expr;
                 $(if dt == <$type>::datum_type() {
-                    let mut a = a.to_array::<$type>()?;
+                    let mut a = a.into_tensor().into_array::<$type>()?;
                     a.mapv_inplace(|x| eval_one(self,x));
-                    return Ok(tvec![a.into()])
+                    return Ok(tvec![a.into_arc_tensor()])
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
@@ -153,7 +153,7 @@ macro_rules! element_bin {
                         .and_broadcast(&a)
                         .and_broadcast(&b.to_array_view::<$type>()?)
                         .apply(|c,&a:&$type,&b:&$type| *c = $expr(a,b));
-                    return Ok(c.into())
+                    return Ok(c.into_arc_tensor())
                 })*
                 bail!("{} not covering {:?}", stringify!($name), dt)
             }
@@ -401,7 +401,7 @@ macro_rules! element_nary {
                         let values:Vec<$type> = broadcasted.iter().map(|i| i[&dims]).collect();
                         $expr(&values)
                     });
-                    return Ok(tvec![c.into()])
+                    return Ok(tvec![c.into_arc_tensor()])
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }

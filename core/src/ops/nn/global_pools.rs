@@ -82,7 +82,7 @@ impl GlobalLpPool {
                 .fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs().powi(self.p as i32))
                 .map(|a| a.powf(D::from(self.p).unwrap().recip()) / divisor)
         };
-        Ok(tvec!(result.into_shape(final_shape)?.into()))
+        Ok(tvec!(result.into_shape(final_shape)?.into_arc_tensor()))
     }
 }
 

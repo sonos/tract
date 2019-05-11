@@ -151,10 +151,10 @@ where
         var: SharedTensor,
         epsilon: f32,
     ) -> TractResult<FixedBatchNorm<T>> {
-        let scale = scale.to_array::<T>()?.into_shape((c_dim,))?;
-        let beta = beta.to_array::<T>()?.into_shape((c_dim,))?;
-        let mean = mean.to_array::<T>()?.into_shape((c_dim,))?;
-        let var = var.to_array::<T>()?.into_shape((c_dim,))?;
+        let scale = scale.into_tensor().into_array::<T>()?.into_shape((c_dim,))?;
+        let beta = beta.into_tensor().into_array::<T>()?.into_shape((c_dim,))?;
+        let mean = mean.into_tensor().into_array::<T>()?.into_shape((c_dim,))?;
+        let var = var.into_tensor().into_array::<T>()?.into_shape((c_dim,))?;
 
         let denominator = (var + epsilon.as_()).map(|x| x.sqrt());
 
@@ -194,12 +194,12 @@ where
 {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let x = args_1!(inputs);
-        let mut x = x.to_array::<T>()?;
+        let mut x = x.into_tensor().into_array::<T>()?;
         for c in 0..self.c_dim {
             x.slice_axis_mut(Axis(self.c_axis), (c..=c).into())
                 .mapv_inplace(|x| x * self.slope[c] + self.intercept[c]);
         }
-        return Ok(tvec!(x.into()));
+        return Ok(tvec!(x.into_arc_tensor()));
     }
 }
 

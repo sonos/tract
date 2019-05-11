@@ -53,7 +53,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(a: &Tensor, b: &Tensor) ->
             c.strides()[prefix.ndim() + 1],
         );
     }
-    Ok(c.into())
+    Ok(c.into_tensor())
 }
 
 fn infer_shapes<D: DimLike>(
@@ -179,8 +179,8 @@ impl Op for MatMul {
 impl StatelessOp for MatMul {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (a, b) = args_2!(inputs);
-        let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), b.as_tensor()))?;
-        Ok(tvec!(c.into()))
+        let c = dispatch_floatlike!(self::eval_t(a.datum_type())(&*a, &*b))?;
+        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 
@@ -274,7 +274,7 @@ impl Op for MatMulUnaryA {
 impl StatelessOp for MatMulUnaryA {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let a = args_1!(inputs);
-        let c = dispatch_floatlike!(self::eval_t(a.datum_type())(a.as_tensor(), &self.b))?;
+        let c = dispatch_floatlike!(self::eval_t(a.datum_type())(&*a, &self.b))?;
         Ok(tvec!(c.into()))
     }
 }
@@ -364,7 +364,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
             1,
         );
 
-        Ok(tvec!(c.into()))
+        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 
@@ -479,7 +479,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
                 c.strides()[prefix.ndim() + 1],
             );
         }
-        Ok(tvec!(c.into()))
+        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 
@@ -514,7 +514,7 @@ impl Op for MatMulUnaryB {
 impl StatelessOp for MatMulUnaryB {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let b = args_1!(inputs);
-        let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, b.as_tensor()))?;
+        let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, &*b))?;
         Ok(tvec!(c.into()))
     }
 }

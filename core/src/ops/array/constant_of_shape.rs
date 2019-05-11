@@ -14,7 +14,7 @@ impl ConstantOfShape {
     {
         let shape: TVec<usize> =
             shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
-        Ok(Array::<T, _>::from_elem(&*shape, *self.value.to_scalar()?).into())
+        Ok(Array::<T, _>::from_elem(&*shape, *self.value.to_scalar()?).into_arc_tensor())
     }
 }
 

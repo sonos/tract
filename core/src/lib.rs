@@ -114,6 +114,7 @@ pub use crate::errors::*;
 
 /// This prelude is meant for code using tract.
 pub mod prelude {
+    pub use std::sync::Arc;
     pub use crate::analyser::types::TensorFact;
     pub use crate::datum::{Datum, DatumType, TryInto};
     pub use crate::dim::TDim;
@@ -121,7 +122,7 @@ pub mod prelude {
     pub use crate::framework::Framework;
     pub use crate::model::*;
     pub use crate::plan::{SimplePlan, SimpleState};
-    pub use crate::tensor::{SharedTensor, Tensor};
+    pub use crate::tensor::{IntoArcTensor, IntoTensor, SharedTensor, Tensor};
     pub use crate::tvec;
 }
 

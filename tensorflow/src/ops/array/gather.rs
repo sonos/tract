@@ -33,7 +33,7 @@ impl GatherNd {
             }
             dst.assign(&src);
         }
-        Ok(tvec![array.into()])
+        Ok(tvec![array.into_arc_tensor()])
     }
 }
 

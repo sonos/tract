@@ -31,7 +31,7 @@ impl Lrn {
                 + T::from(self.alpha).unwrap() / T::from(self.size).unwrap() * square_sum)
                 .powf(T::from(self.beta).unwrap())
         });
-        Ok(tvec!(output.into()))
+        Ok(tvec!(output.into_arc_tensor()))
     }
 }
 

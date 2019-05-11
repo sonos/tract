@@ -13,7 +13,7 @@ impl ConstantLike {
         T: Datum + Copy,
         f32: AsPrimitive<T>,
     {
-        Ok(Array::<T, _>::from_elem(shape, self.value.as_()).into())
+        Ok(Array::<T, _>::from_elem(shape, self.value.as_()).into_arc_tensor())
     }
 }
 
@@ -74,7 +74,7 @@ impl EyeLike {
                 array[(y, x as usize)] = T::one()
             }
         }
-        Ok(array.into_dyn().into())
+        Ok(array.into_dyn().into_arc_tensor())
     }
 }
 

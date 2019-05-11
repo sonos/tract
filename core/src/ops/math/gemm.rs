@@ -28,7 +28,7 @@ impl Gemm {
         let bt = if self.trans_b { b.t() } else { b };
         let c_shape = (at.rows(), bt.cols());
         let mut c = if c.shape() == &[c_shape.0, c_shape.1] {
-            c.to_array::<T>()?.into_dimensionality::<Ix2>()?.to_owned()
+            c.into_tensor().into_array::<T>()?.into_dimensionality::<Ix2>()?.to_owned()
         } else {
             c.to_array_view::<T>()?
                 .broadcast(c_shape)
@@ -36,7 +36,7 @@ impl Gemm {
                 .to_owned()
         };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
-        Ok(tvec!(c.into()))
+        Ok(tvec!(c.into_arc_tensor()))
     }
 
     fn eval_t_2<T: Datum + Float>(
@@ -54,7 +54,7 @@ impl Gemm {
         let c_shape = (at.rows(), bt.cols());
         let mut c = unsafe { Array::uninitialized((c_shape.0, c_shape.1)) };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, T::zero(), &mut c);
-        Ok(tvec!(c.into()))
+        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 
@@ -217,7 +217,7 @@ impl GemmUnaryA {
             unsafe { Array::uninitialized((c_shape.0, c_shape.1)) }
         };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
-        Ok(tvec!(c.into()))
+        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 
@@ -307,7 +307,7 @@ impl GemmUnaryB {
             unsafe { Array::uninitialized((c_shape.0, c_shape.1)) }
         };
         ::ndarray::linalg::general_mat_mul(self.alpha.as_(), &at, &bt, self.beta.as_(), &mut c);
-        Ok(tvec!(c.into()))
+        Ok(tvec!(c.into_arc_tensor()))
     }
 }
 

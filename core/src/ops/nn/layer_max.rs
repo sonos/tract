@@ -10,7 +10,7 @@ impl LayerHardmax {
         &self,
         input: SharedTensor,
     ) -> TractResult<TVec<SharedTensor>> {
-        let array = input.to_array::<D>()?;
+        let array = input.into_tensor().into_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis =
             if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
@@ -30,7 +30,7 @@ impl LayerHardmax {
                 .enumerate()
                 .for_each(|(ix, r)| *r = D::from_usize((ix == max) as usize).unwrap());
         });
-        Ok(tvec!(array.into_shape(shape)?.into()))
+        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
     }
 }
 
@@ -68,7 +68,7 @@ impl LayerLogSoftmax {
         &self,
         input: SharedTensor,
     ) -> TractResult<TVec<SharedTensor>> {
-        let array = input.to_array::<D>()?;
+        let array = input.into_tensor().into_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis =
             if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
@@ -85,7 +85,7 @@ impl LayerLogSoftmax {
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| (x / divisor).ln());
         });
-        Ok(tvec!(array.into_shape(shape)?.into()))
+        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
     }
 }
 
@@ -123,7 +123,7 @@ impl LayerSoftmax {
         &self,
         input: SharedTensor,
     ) -> TractResult<TVec<SharedTensor>> {
-        let array = input.to_array::<D>()?;
+        let array = input.into_tensor().into_array::<D>()?;
         let shape = array.shape().to_vec();
         let axis =
             if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
@@ -140,7 +140,7 @@ impl LayerSoftmax {
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| x / divisor);
         });
-        Ok(tvec!(array.into_shape(shape)?.into()))
+        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
     }
 }
 

@@ -25,7 +25,7 @@ impl Max {
         T: Copy + Datum + PartialOrd + num_traits::Bounded,
     {
         use ndarray::*;
-        let input: ArrayD<T> = input.to_array::<T>()?;
+        let input = input.to_array_view::<T>()?;
         let mut result = Array::from_shape_fn(&*full_output_shape, |coords| {
             let slice_spec: Vec<SliceOrIndex> = coords
                 .slice()
@@ -44,7 +44,7 @@ impl Max {
                 }
             }
         }
-        Ok(tvec!(result.into()))
+        Ok(tvec!(result.into_arc_tensor()))
     }
 }
 

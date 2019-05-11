@@ -62,7 +62,7 @@ impl<T: Copy + Datum + Zero> StatelessOp for Pad<T> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
-        Ok(tvec![Self::compute(&input, paddings, None)?.into()])
+        Ok(tvec![Self::compute(&input, paddings, None)?.into_arc_tensor()])
     }
 }
 

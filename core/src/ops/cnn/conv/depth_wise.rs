@@ -73,7 +73,7 @@ where
         if let Some(ref bias) = self.bias {
             output += bias;
         }
-        Ok(tvec!(output.into()))
+        Ok(tvec!(output.into_arc_tensor()))
     }
 }
 

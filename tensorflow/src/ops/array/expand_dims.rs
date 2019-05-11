@@ -13,7 +13,7 @@ impl ExpandDims {
         data: SharedTensor,
         shape: &[usize],
     ) -> TractResult<TVec<SharedTensor>> {
-        let data = data.to_array::<T>()?;
+        let data = data.into_tensor().into_array::<T>()?;
         Ok(tvec![Tensor::from(data.into_shape(&*shape)?).into()])
     }
 }

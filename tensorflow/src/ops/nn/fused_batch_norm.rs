@@ -25,17 +25,17 @@ impl StatelessOp for FusedBatchNorm {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (data, scale, offset, mean, variance) = args_5!(inputs);
-        let mut data = data.to_array::<f32>()?;
-        let scale = scale.to_array::<f32>()?;
-        let offset = offset.to_array::<f32>()?;
-        let mean = mean.to_array::<f32>()?;
-        let variance = variance.to_array::<f32>()?;
+        let mut data = data.into_tensor().into_array::<f32>()?;
+        let scale = scale.to_array_view::<f32>()?;
+        let offset = offset.to_array_view::<f32>()?;
+        let mean = mean.to_array_view::<f32>()?;
+        let variance = variance.to_array_view::<f32>()?;
         let rsqrt_var = variance.mapv(|x| (x + self.epsilon).sqrt().recip());
         data -= &mean;
         data *= &rsqrt_var;
         data *= &scale;
         data += &offset;
-        Ok(tvec!(data.into()))
+        Ok(tvec!(data.into_arc_tensor()))
     }
 }
 

@@ -99,7 +99,7 @@ where
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
-        Ok(tvec!(output.into()))
+        Ok(tvec!(output.into_arc_tensor()))
     }
 }
 

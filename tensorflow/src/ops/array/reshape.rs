@@ -29,11 +29,11 @@ impl<T: Datum> StatelessOp for Reshape<T> {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let (input, dims) = args_2!(inputs);
 
-        let input = input.to_array::<T>()?;
+        let input = input.into_tensor().into_array::<T>()?;
         let dims = dims.to_array_view::<i32>()?;
         let dims = Self::true_dims(dims, input.len());
         let output = input.into_shape(&*dims)?.into_dyn();
-        Ok(tvec![output.into()])
+        Ok(tvec![output.into_arc_tensor()])
     }
 }
 

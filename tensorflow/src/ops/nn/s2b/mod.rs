@@ -20,7 +20,7 @@ fn space_to_batch<T: Copy + Datum + Zero>(
     block_shape: &ArrayView1<i32>,
     paddings: &ArrayView2<i32>,
 ) -> TractResult<SharedTensor> {
-    let mut data = input.to_array::<T>()?;
+    let mut data = input.into_tensor().into_array::<T>()?;
 
     for (ix, pad) in paddings.view().outer_iter().enumerate() {
         if pad[0] != 0 {
@@ -62,7 +62,7 @@ fn space_to_batch<T: Copy + Datum + Zero>(
     let data: Vec<T> = data.into_iter().map(|x| *x).collect();
     let data = ::ndarray::ArrayD::from_shape_vec(final_shape, data)?;
 
-    Ok(data.into())
+    Ok(data.into_arc_tensor())
 }
 
 fn batch_to_space<T: Copy + Datum + Zero>(
@@ -70,7 +70,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
     block_shape: &ArrayView1<i32>,
     crops: &ArrayView2<i32>,
 ) -> TractResult<SharedTensor> {
-    let data = input.to_array()?;
+    let data = input.into_tensor().into_array()?;
     let input_shape = data.shape().to_vec();
     let crops: ArrayView2<i32> = crops.view().into_dimensionality()?;
 
@@ -103,7 +103,7 @@ fn batch_to_space<T: Copy + Datum + Zero>(
             data = data.slice_axis(Axis(i + 1), range.into()).map(|x| *x).to_owned();
         }
     }
-    Ok(data.into())
+    Ok(data.into_arc_tensor())
 }
 
 #[cfg(test)]

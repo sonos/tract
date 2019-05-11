@@ -1,9 +1,9 @@
 use ndarray::*;
 
 use crate::tfpb::node_def::NodeDef;
+use tract_core::internal::*;
 use tract_core::ops::nn::sigmoid::sigmoid_f32;
 use tract_core::ops::nn::tanh::tanh_f32;
-use tract_core::internal::*;
 
 pub fn block_lstm(node: &NodeDef) -> TractResult<Box<Op>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);
@@ -126,7 +126,15 @@ impl StatelessOp for BlockLSTM {
             co.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
             h.slice_axis_mut(Axis(0), (len..).into()).fill(0.0);
         }
-        Ok(tvec!(i.into(), cs.into(), f.into(), o.into(), ci.into(), co.into(), h.into()))
+        Ok(tvec!(
+            i.into_arc_tensor(),
+            cs.into_arc_tensor(),
+            f.into_arc_tensor(),
+            o.into_arc_tensor(),
+            ci.into_arc_tensor(),
+            co.into_arc_tensor(),
+            h.into_arc_tensor()
+        ))
     }
 }
 
