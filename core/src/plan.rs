@@ -266,7 +266,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
         for o in plans[0].borrow().model().output_outlets()?.iter() {
             let vs = values[o.node].as_mut().ok_or_else(|| {
                 format!(
-                    "Arc<Tensor> for {:?} is not computed",
+                    "Outputs of {:?} are not computed",
                     &plans[0].borrow().model().nodes()[o.node]
                 )
             })?;

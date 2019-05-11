@@ -362,10 +362,6 @@ impl Tensor {
     fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
         dispatch_datum!(Self::eq_t(self.dt)(self, other))
     }
-
-    pub fn arc(self) -> Arc<Tensor> {
-        Arc::new(self)
-    }
 }
 
 impl PartialEq for Tensor {

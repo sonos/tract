@@ -137,7 +137,7 @@ pub fn handle_t<TI: TensorInfo>(
                                     format!(
                                         "TF    {:?}\ntract {:?}",
                                         tf_output[n],
-                                        data.as_tensor()
+                                        data
                                     ),
                                 )
                             })

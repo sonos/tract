@@ -1,8 +1,7 @@
-//! Generated protobuf codec for Arc<Tensor> models, plus a handful of helper for
+//! Generated protobuf codec for TensorFlow models, plus a handful of helper for
 //! writting tests.
 
 #![allow(unknown_lints)]
-#![allow(clippy)]
 
 #![cfg_attr(rustfmt, rustfmt_skip)]
 

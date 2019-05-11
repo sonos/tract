@@ -1,6 +1,6 @@
 //! # Tract
 //!
-//! Tiny, no-nonsense, self contained, portable Arc<Tensor> and ONNX inference.
+//! Tiny, no-nonsense, self contained, portable TensorFlow and ONNX inference.
 //!
 //! ## Example
 //!
