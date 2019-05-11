@@ -21,7 +21,7 @@ impl<T: Copy + Datum> StatelessOp for ConcatV2<T> {
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
-        Ok(tvec![result.into()])
+        Ok(tvec![result.into_arc_tensor()])
     }
 }
 

@@ -151,13 +151,13 @@ impl OpState for LSTMState {
             //  dbg!(&iofc);
             let iofc = iofc.into_shape((batch_size, 4, hidden_size))?;
             // dbg!(&iofc);
-            let i = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (0..=0).into()).to_owned().into()))?;
+            let i = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (0..=0).into()).to_owned().into_arc_tensor()))?;
             // dbg!(&i);
-            let o = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (1..=1).into()).to_owned().into()))?;
-            let f = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (2..=2).into()).to_owned().into()))?;
+            let o = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (1..=1).into()).to_owned().into_arc_tensor()))?;
+            let f = op.f.eval(tvec!(iofc.slice_axis(Axis(1), (2..=2).into()).to_owned().into_arc_tensor()))?;
             // dbg!(&iofc.slice_axis(Axis(1), (3..=3).into()));
 
-            let c = op.g.eval(tvec!(iofc.slice_axis(Axis(1), (3..=3).into()).to_owned().into()))?;
+            let c = op.g.eval(tvec!(iofc.slice_axis(Axis(1), (3..=3).into()).to_owned().into_arc_tensor()))?;
             // dbg!(&c);
             let i = i[0]
                 .to_array_view::<f32>()?
@@ -191,7 +191,7 @@ impl OpState for LSTMState {
             */
             let big_c = f * &ct + i * c;
             // dbg!(&big_c);
-            let big_h = o * op.h.eval(tvec!(big_c.clone().into()))?[0]
+            let big_h = o * op.h.eval(tvec!(big_c.clone().into_arc_tensor()))?[0]
                 .to_array_view::<f32>()?
                 .to_owned()
                 .into_dimensionality::<Ix2>()?;
@@ -204,6 +204,6 @@ impl OpState for LSTMState {
         let ht_list = ht_list.into_shape((seq_length, 1, batch_size, hidden_size))?;
         let hto = ht.to_owned().into_shape((1, batch_size, hidden_size))?;
 
-        Ok(tvec!(ht_list.into(), hto.into()))
+        Ok(tvec!(ht_list.into_arc_tensor(), hto.into_arc_tensor()))
     }
 }

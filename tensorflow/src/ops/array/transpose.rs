@@ -27,7 +27,7 @@ impl Transpose {
         input: SharedTensor,
         perm: &[usize],
     ) -> TractResult<TVec<SharedTensor>> {
-        Ok(tvec![input.to_array::<T>()?.permuted_axes(perm).into()])
+        Ok(tvec![input.into_tensor().into_array::<T>()?.permuted_axes(perm).into_arc_tensor()])
     }
 }
 

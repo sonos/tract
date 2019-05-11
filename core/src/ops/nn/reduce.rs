@@ -87,7 +87,7 @@ impl Reducer {
     {
         use ndarray::*;
         let rank = input.shape().len();
-        let input = input.to_array::<T>()?;
+        let input = input.to_array_view::<T>()?;
         let full_output_shape: Vec<usize> = input
             .shape()
             .iter()
@@ -112,7 +112,7 @@ impl Reducer {
                 }
             }
         }
-        Ok(result.into())
+        Ok(result.into_arc_tensor())
     }
 }
 

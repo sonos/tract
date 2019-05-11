@@ -29,7 +29,7 @@ impl Pack {
             .map(|v| v.to_array_view::<T>().unwrap().insert_axis(Axis(self.axis)))
             .collect();
         let array = ::ndarray::stack(Axis(self.axis), &*views)?;
-        Ok(tvec![array.into()])
+        Ok(tvec![array.into_arc_tensor()])
     }
 }
 

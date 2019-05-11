@@ -271,7 +271,7 @@ impl<T: Datum + Copy> StatelessOp for NormConcat<T> {
         }
 
         let result = ::ndarray::stack(Axis(self.axis), &mats)?;
-        Ok(tvec![result.into()])
+        Ok(tvec![result.into_arc_tensor()])
     }
 }
 
@@ -441,7 +441,7 @@ impl<T: Datum + Copy> OpState for PulsedSameAxisConcatState<T> {
     ) -> TractResult<TVec<SharedTensor>> {
         let op = op.downcast_ref::<PulsedSameAxisConcat<T>>().ok_or("Wrong Op type")?;
         let input = args_1!(inputs);
-        let mut data = input.to_array::<T>()?;
+        let mut data = input.into_tensor().into_array::<T>()?;
         let pulse = data.shape()[op.axis];
         let current_pos = self.current_pos;
         self.current_pos += pulse;
@@ -467,7 +467,7 @@ impl<T: Datum + Copy> OpState for PulsedSameAxisConcatState<T> {
             );
         }
 
-        return Ok(tvec!(data.into()));
+        return Ok(tvec!(data.into_arc_tensor()));
     }
 }
 
@@ -518,7 +518,7 @@ impl<T: Datum + Copy> StatelessOp for FixedConcat<T> {
         }
 
         let result = ::ndarray::stack(Axis(self.axis), &mats)?;
-        Ok(tvec![result.into()])
+        Ok(tvec![result.into_arc_tensor()])
     }
 }
 

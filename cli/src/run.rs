@@ -37,7 +37,7 @@ fn run_regular_t<TI: TensorInfo>(
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         if let Some(input) = params.inputs.as_ref().and_then(|v| v.get(ix)).and_then(|t| t.as_ref())
         {
-            inputs.push(input.as_tensor().to_owned());
+            inputs.push(Arc::clone(input).into_tensor());
         } else {
             let fact = tract.outlet_fact(*input)?;
             inputs.push(crate::tensor::tensor_for_fact(&fact.to_tensor_fact(), None)?);
@@ -95,5 +95,5 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Share
     }
     result.slice_axis_inplace(::ndarray::Axis(output_fact.axis), (output_fact.delay..).into());
     result.slice_axis_inplace(::ndarray::Axis(output_fact.axis), (..output_dim as usize).into());
-    Ok(tvec!(result.into()))
+    Ok(tvec!(result.into_arc_tensor()))
 }

@@ -33,9 +33,9 @@ impl StatelessOp for FakeQuantWithMinMaxVars {
         let amplitude = max - min;
         let scale_len = 2_usize.pow(self.num_bits as u32) - 1 - self.narrow_range as usize;
         let step = amplitude / scale_len as f32;
-        let mut tensor = input.to_array::<f32>()?;
+        let mut tensor = input.into_tensor().into_array::<f32>()?;
         tensor.mapv_inplace(|v| ((v - min) / step).round() * step + min);
-        Ok(tvec!(tensor.into()))
+        Ok(tvec!(tensor.into_arc_tensor()))
     }
 }
 

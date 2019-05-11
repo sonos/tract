@@ -37,7 +37,7 @@ impl Gather {
             return Ok(data_view
                 .index_axis(Axis(axis), *indices.to_scalar::<i64>()? as usize)
                 .to_owned()
-                .into());
+                .into_arc_tensor());
         }
 
         let mut output_shape: Vec<usize> = vec![];
@@ -61,7 +61,7 @@ impl Gather {
                 to_update.assign(&data_view.index_axis(Axis(axis), *index as usize));
             }
         }
-        Ok(output.into())
+        Ok(output.into_arc_tensor())
     }
 }
 

@@ -38,7 +38,7 @@ where
     T: Copy + Datum,
     f32: AsPrimitive<T>,
 {
-    Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into())
+    Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into_arc_tensor())
 }
 
 pub fn constant_like(node: &NodeProto) -> TractResult<Box<Op>> {

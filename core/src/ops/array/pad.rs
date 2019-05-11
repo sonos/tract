@@ -81,7 +81,7 @@ impl Pad {
                 }
             }
         }
-        Ok(output.into())
+        Ok(output.into_arc_tensor())
     }
 }
 
@@ -192,9 +192,9 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
                 .map(|s| current_pos >= op.end_input.eval(s as i32).unwrap() as usize)
                 .unwrap_or(false)
         {
-            return Ok(tvec!(ArrayD::from_elem(input.shape(), op.constant).into()));
+            return Ok(tvec!(ArrayD::from_elem(input.shape(), op.constant).into_arc_tensor()));
         }
-        let mut data = input.to_tensor().into_array::<T>()?;
+        let mut data = input.into_tensor().into_array::<T>()?;
         if current_pos < op.begin_input {
             data.slice_axis_mut(Axis(op.axis), (0..op.begin_input - current_pos).into())
                 .fill(op.constant);
@@ -206,7 +206,7 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
                     .fill(op.constant);
             }
         }
-        Ok(tvec!(data.into()))
+        Ok(tvec!(data.into_arc_tensor()))
     }
 }
 

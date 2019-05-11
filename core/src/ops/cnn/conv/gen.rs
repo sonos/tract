@@ -69,7 +69,7 @@ impl Conv {
                     &self,
                     &ishape,
                     &self.output_shape(&*ishape, kvalue.shape()),
-                    kvalue.to_tensor(),
+                    kvalue.into_tensor(),
                     None,
                     self.group,
                 )?;
@@ -85,8 +85,8 @@ impl Conv {
                     &self,
                     &ishape,
                     &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue.to_tensor(),
-                    Some(bias.to_tensor()),
+                    kvalue.into_tensor(),
+                    Some(bias.into_tensor()),
                     self.group,
                 )?;
                 return Ok(Some(reduced));
@@ -124,7 +124,7 @@ impl Op for Conv {
 impl StatelessOp for Conv {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let inputs_info: TVec<TypedTensorInfo> =
-            inputs.iter().map(|t| TypedTensorInfo::from(t.as_tensor())).collect();
+            inputs.iter().map(|t| TypedTensorInfo::from(&**t)).collect();
         let unary = self.to_unary(&*inputs_info)?.unwrap();
         unary.eval(tvec!(inputs.remove(0)))
     }

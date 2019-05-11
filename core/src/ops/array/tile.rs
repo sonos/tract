@@ -19,7 +19,7 @@ impl Tile {
             data[&*coords]
         });
 
-        Ok(output.into())
+        Ok(output.into_arc_tensor())
     }
 }
 

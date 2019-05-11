@@ -28,7 +28,7 @@ impl StatelessOp for Dropout {
     fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
         let input = args_1!(inputs);
         let mask = ArrayD::from_elem(input.shape(), true);
-        Ok(tvec!(input, mask.into()))
+        Ok(tvec!(input, mask.into_arc_tensor()))
     }
 }
 

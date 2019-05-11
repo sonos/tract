@@ -108,7 +108,7 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
 }
 
 pub trait ModelDslConst {
-    fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize>;
+    fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize>;
     fn plug_const(
         &mut self,
         inlet: InletId,
@@ -118,7 +118,8 @@ pub trait ModelDslConst {
 }
 
 impl ModelDslConst for super::InferenceModel {
-    fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize> {
+    fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize> {
+        let v = v.into_arc_tensor();
         let facts = tvec!(v.clone().into());
         self.add_node(name, crate::ops::konst::Const::new(v), facts)
     }
@@ -135,7 +136,8 @@ impl ModelDslConst for super::InferenceModel {
 }
 
 impl ModelDslConst for super::TypedModel {
-    fn add_const(&mut self, name: impl Into<String>, v: SharedTensor) -> TractResult<usize> {
+    fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize> {
+        let v = v.into_arc_tensor();
         let facts = tvec!(v.clone().into());
         self.add_node(name, crate::ops::konst::Const::new(v), facts)
     }

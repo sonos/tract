@@ -7,7 +7,7 @@ impl MultiBroadcastTo {
     fn eval_t<T: Datum>(input: &Tensor, shape: &[usize]) -> TractResult<TVec<SharedTensor>> {
         let input = input.to_array_view::<T>()?;
         let output = input.broadcast(&*shape).ok_or("incompatible shapes")?;
-        Ok(tvec![output.to_owned().into()])
+        Ok(tvec![output.to_owned().into_arc_tensor()])
     }
 }
 
@@ -24,7 +24,7 @@ impl StatelessOp for MultiBroadcastTo {
         let dims: Vec<usize> = dims.to_array_view::<i64>()?.iter().map(|i| *i as usize).collect();
         let dims = crate::broadcast::multi_broadcast(&[&*dims, &*input.shape()])
             .ok_or("incompatible shapes")?;
-        dispatch_datum!(Self::eval_t(input.datum_type())(input.as_tensor(), &*dims))
+        dispatch_datum!(Self::eval_t(input.datum_type())(&*input, &*dims))
     }
 }
 

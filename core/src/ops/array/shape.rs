@@ -15,7 +15,7 @@ impl Shape {
         usize: AsPrimitive<T>,
     {
         let array = Array1::from_vec(shape.iter().map(|i| i.as_()).collect());
-        Ok(array.into())
+        Ok(array.into_arc_tensor())
     }
 }
 
@@ -54,21 +54,21 @@ impl InferenceRulesOp for Shape {
             if shape.iter().any(|&d| d.to_integer().is_err()) {
                 s.equals(&outputs[0].datum_type, DatumType::TDim)?;
                 let array1: Array1<TDim> = Array1::from_iter(shape);
-                let tensor: SharedTensor = array1.into();
+                let tensor = array1.into_arc_tensor();
                 s.equals(&outputs[0].value, tensor)
             } else if self.dt == DatumType::I64 {
                 s.equals(&outputs[0].datum_type, DatumType::I64)?;
                 let array1: Array1<i64> = Array1::from_vec(
                     shape.iter().map(|&i| i.to_integer().unwrap() as i64).collect(),
                 );
-                let tensor: SharedTensor = array1.into();
+                let tensor = array1.into_arc_tensor();
                 s.equals(&outputs[0].value, tensor)
             } else {
                 s.equals(&outputs[0].datum_type, DatumType::I32)?;
                 let array1: Array1<i32> = Array1::from_vec(
                     shape.iter().map(|&i| i.to_integer().unwrap() as i32).collect(),
                 );
-                let tensor: SharedTensor = array1.into();
+                let tensor = array1.into_arc_tensor();
                 s.equals(&outputs[0].value, tensor)
             }
         })

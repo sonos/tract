@@ -31,7 +31,7 @@ impl Split {
                     ArrayD::<T>::default(&*shape)
                 };
                 current += d;
-                slice.into()
+                slice.into_arc_tensor()
             })
             .collect())
     }

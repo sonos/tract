@@ -23,7 +23,7 @@ impl Fill {
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
             value,
         );
-        Ok(tvec![array.into()])
+        Ok(tvec![array.into_arc_tensor()])
     }
 }
 

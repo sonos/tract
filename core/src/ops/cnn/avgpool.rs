@@ -125,7 +125,7 @@ where
                 }
             });
         }
-        Ok(tvec!(values.into()))
+        Ok(tvec!(values.into_arc_tensor()))
     }
 }
 

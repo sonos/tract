@@ -21,7 +21,7 @@ impl Slice {
             .collect();
         let slice_info = SliceInfo::<_, IxDyn>::new(slice_spec).unwrap();
         let slice = input.slice(&slice_info.as_ref());
-        Ok(slice.to_owned().into())
+        Ok(slice.to_owned().into_arc_tensor())
     }
 }
 

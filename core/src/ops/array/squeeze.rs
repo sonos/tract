@@ -25,7 +25,7 @@ impl Squeeze {
     /// Evaluates the operation given the input tensors.
     fn eval_t<T: Datum>(&self, input: SharedTensor) -> TractResult<TVec<SharedTensor>> {
         let shape = self.compute_shape(input.shape())?;
-        Ok(tvec![input.to_array::<T>()?.into_shape(&*shape)?.into()])
+        Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(&*shape)?.into_arc_tensor()])
     }
 }
 

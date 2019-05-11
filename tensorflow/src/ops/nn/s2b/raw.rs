@@ -46,7 +46,7 @@ impl Op for SpaceToBatch {
                 self.datum_type,
                 input.shape.iter().collect(),
                 output.shape.iter().collect(),
-                block_shape.clone().to_array::<i32>()?.into_dimensionality()?,
+                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
@@ -126,7 +126,7 @@ impl Op for BatchToSpace {
                 self.datum_type,
                 input.shape.iter().collect(),
                 output.shape.iter().collect(),
-                block_shape.clone().to_array::<i32>()?.into_dimensionality()?,
+                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
                 paddings,
             );
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
@@ -182,7 +182,7 @@ fn rules<'r, 'p: 'r>(
     s.equals(&paddings.rank, 2)?;
     s.equals(&block_shape.shape[0], &paddings.shape[0])?;
     s.given(&block_shape.value, move |s, block_shape| {
-        let block_shape = block_shape.to_array::<i32>()?;
+        let block_shape = block_shape.into_tensor().into_array::<i32>()?;
         let block_shape_prod = block_shape.iter().map(|s| *s as usize).product::<usize>();
         s.equals(&batch.shape[0], (block_shape_prod as i32) * space.shape[0].bex())?;
         s.given(&paddings.value, move |s, paddings| {
@@ -198,7 +198,7 @@ fn rules<'r, 'p: 'r>(
         })
     })?;
     s.given(&block_shape.value, move |s, block_shape| {
-        let block_shape = block_shape.to_array::<i32>()?;
+        let block_shape = block_shape.into_tensor().into_array::<i32>()?;
         s.given(&space.rank, move |s, rank: i32| {
             for d in block_shape.len() + 1..(rank as usize) {
                 s.equals(&space.shape[d], &batch.shape[d])?

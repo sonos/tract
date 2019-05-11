@@ -51,7 +51,7 @@ impl StatelessOp for Direct {
                     self.output_shape.w_stride() as isize,
                 );
             }
-            Ok(tvec!(output.into()))
+            Ok(tvec!(output.into_arc_tensor()))
         }
     }
 

@@ -346,9 +346,9 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
     pub fn take(&mut self, id: usize) -> TractResult<TVec<Tensor>> {
         Ok(self.values[id]
             .take()
-            .ok_or("SharedTensor is not computed")?
+            .ok_or("Node is not computed")?
             .into_iter()
-            .map(|v| v.to_tensor())
+            .map(|v| Arc::try_unwrap(v).unwrap_or_else(|v| (*v).clone()))
             .collect())
     }
 

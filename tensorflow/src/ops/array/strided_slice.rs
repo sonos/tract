@@ -162,7 +162,7 @@ impl BaseStridedSlice {
             input[&*coord]
         });
         let output = output.into_shape(end_shape)?;
-        Ok(tvec![output.into()])
+        Ok(tvec![output.into_arc_tensor()])
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(

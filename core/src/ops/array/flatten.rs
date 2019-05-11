@@ -12,7 +12,7 @@ impl Flatten {
         input: SharedTensor,
         shape: (usize, usize),
     ) -> TractResult<TVec<SharedTensor>> {
-        Ok(tvec![input.to_array::<T>()?.into_shape(shape)?.into()])
+        Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(shape)?.into_arc_tensor()])
     }
 }
 
