@@ -1,6 +1,6 @@
 [package]
 name = "tract-tensorflow"
-version = "0.3.3-pre"
+version = "0.3.3"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -21,7 +21,7 @@ ndarray = { version = "0.12" }
 num-traits = "0.2"
 protobuf = "2.0"
 tensorflow = { version = "0", optional = true }
-tract-core = { path = "../core" }
+tract-core = "0.3.3"
 
 [features]
 conform = [ "tensorflow" ]
