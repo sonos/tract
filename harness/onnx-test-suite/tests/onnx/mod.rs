@@ -118,7 +118,7 @@ fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
                         .as_concrete_finite()
                         .unwrap()
                         .unwrap();
-                    i.into_shape(&shape).unwrap()
+                    unsafe { i.into_shape(&shape).unwrap() }
                 })
                 .collect();
             let expected: TVec<Tensor> = expected
@@ -134,7 +134,7 @@ fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
                         .as_concrete_finite()
                         .unwrap()
                         .unwrap();
-                    i.into_shape(&shape).unwrap()
+                    unsafe { i.into_shape(&shape).unwrap() }
                 })
                 .collect();
             // println!("inputs: {:?}", inputs[0].dump(true));
