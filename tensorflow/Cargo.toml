@@ -4,14 +4,14 @@ version = "0.3.2-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/kali/tract"
+repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "kali/tract" }
+travis-ci = { repository = "snipsco/tract" }
 
 [dependencies]
 derive-new = "0.5"

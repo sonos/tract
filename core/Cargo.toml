@@ -4,14 +4,14 @@ version = "0.3.2-pre"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/kali/tract"
+repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "kali/tract" }
+travis-ci = { repository = "snipsco/tract" }
 
 [dependencies]
 accelerate-src = { version = "0.3", optional = true, default-features=false }
