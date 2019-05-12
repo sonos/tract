@@ -84,7 +84,7 @@ pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo>;
 impl InferenceModel {
     /// Analyse one node of the graph.
     pub fn analyse_one(&mut self, id: usize) -> TractResult<()> {
-        crate::analyser::Analyser::new(self)?.analyse_one(id)?;
+        crate::analyser::Analyser::new(self).analyse_one(id)?;
         Ok(())
     }
 
@@ -92,7 +92,7 @@ impl InferenceModel {
     ///
     /// Will stop on first error unless `obstinate` is `true`.
     pub fn analyse(&mut self, obstinate: bool) -> TractResult<()> {
-        crate::analyser::Analyser::new(self)?.analyse_obstinate(obstinate)
+        crate::analyser::Analyser::new(self).analyse_obstinate(obstinate)
     }
 
     /// List OutletId with incomplete type information.
