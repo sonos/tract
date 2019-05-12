@@ -327,7 +327,7 @@ impl ConvUnary {
         }
         let kernel_shape: TVec<usize> =
             copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
-        let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
+        let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? }; 
         let new_op = ConvUnary {
             data_format: self.data_format,
             kernel_fmt: self.kernel_fmt,
@@ -439,7 +439,7 @@ impl Op for ConvUnary {
             if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
-                let kernel = self.kernel.clone().into_shape(&kernel_shape)?;
+                let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? }; 
                 return Ok(Some(TypedModelPatch::single_unary_op(
                     model,
                     node,

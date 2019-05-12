@@ -1,4 +1,4 @@
-//! `Tensor`
+//! `Tensor`, tract main data object of interest.
 use crate::internal::*;
 use ndarray::prelude::*;
 use std::alloc;
@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 pub mod litteral;
 
+/// Tensor is a concrete tensor in tract.
 pub struct Tensor {
     null: bool,
     dt: DatumType,
@@ -44,6 +45,7 @@ impl Default for Tensor {
 }
 
 impl Tensor {
+    /// Create an uninitialized tensor with a given alignment (in bytes).
     pub unsafe fn uninitialized_aligned<T: Datum>(
         shape: &[usize],
         alignment: usize,
@@ -61,6 +63,10 @@ impl Tensor {
         };
         Ok(Tensor { null: false, dt: T::datum_type(), shape: shape.into(), alignment, data })
     }
+
+    /// Create an tensor from raw data.
+    ///
+    /// It copies the data, aligning it to the size of T.
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
         let data = align::realign_slice(content, size_of::<T>());
         Ok(Tensor {
@@ -72,6 +78,7 @@ impl Tensor {
         })
     }
 
+    /// Re-align a tensor to a byte alignment.
     pub fn into_aligned(self, alignment: usize) -> TractResult<Tensor> {
         Ok(Tensor {
             null: self.null,
@@ -82,30 +89,39 @@ impl Tensor {
         })
     }
 
+    /// Creates a null tensor (this is rare, and should stay that way).
     pub unsafe fn null<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
         Self::null_dt(T::datum_type(), shape)
     }
 
+    /// Creates a null tensor (this is rare, and should stay that way).
     pub unsafe fn null_dt(dt: DatumType, shape: &[usize]) -> TractResult<Tensor> {
         Ok(Tensor { null: true, dt, shape: shape.into(), data: vec![], alignment: dt.alignment() })
     }
 
+    /// Check weather self is a null tensor.
     pub fn is_null(&self) -> bool {
         self.null
     }
 
+    /// Get the shape of the tensor.
     pub fn shape(&self) -> &[usize] {
         &self.shape
     }
 
-    pub fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
+    /// Reshape the tensor to `shape`.
+    pub unsafe fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
         Ok(Tensor { shape: shape.into(), ..self })
     }
 
+    /// Get the datum type of the tensor.
     pub fn datum_type(&self) -> DatumType {
         self.dt
     }
 
+    /// Dump the tensor in a human readable form.
+    ///
+    /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
         use itertools::Itertools;
         let spec = TensorFact::dt_shape(D::datum_type(), &*self.shape);
@@ -118,10 +134,14 @@ impl Tensor {
         Ok(s)
     }
 
+    /// Dump the tensor in a human readable form.
+    ///
+    /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
         dispatch_datum!(Self::dump_t(self.dt)(self, force_full))
     }
 
+    /// Compare two tensors, allowing for rounding errors.
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
         if self.is_null() != other.is_null() {
             return false;
@@ -151,6 +171,7 @@ impl Tensor {
                 .all(|t| t.2)
     }
 
+    /// Transform the tensor into a `ndarray::Array`.
     pub fn into_array<D: Datum>(self) -> TractResult<ArrayD<D>> {
         if self.datum_type() != D::datum_type() {
             bail!(
@@ -166,40 +187,7 @@ impl Tensor {
         unsafe { Ok(ArrayD::from_shape_vec_unchecked(&*self.shape, casted)) }
     }
 
-    pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
-        if self.datum_type() != D::datum_type() {
-            bail!(
-                "Incompatible datum type. Required {:?}, got {:?}",
-                D::datum_type(),
-                self.datum_type()
-            );
-        }
-        if self.is_null() {
-            bail!("Null tensor")
-        }
-        Ok(self.data.as_ptr() as *const D)
-    }
-
-    pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
-        if self.datum_type() != D::datum_type() {
-            bail!(
-                "Incompatible datum type. Required {:?}, got {:?}",
-                D::datum_type(),
-                self.datum_type()
-            );
-        }
-        if self.is_null() {
-            bail!("Null tensor")
-        }
-        let datum_size = ::std::mem::size_of::<D>();
-        unsafe {
-            Ok(std::slice::from_raw_parts::<D>(
-                self.data.as_ptr() as *const D,
-                self.data.len() / datum_size,
-            ))
-        }
-    }
-
+    /// Transform the data as a `ndarray::Array`.
     pub fn to_array_view<'a, D: Datum>(&'a self) -> TractResult<ArrayViewD<'a, D>> {
         if self.datum_type() != D::datum_type() {
             bail!(
@@ -220,40 +208,7 @@ impl Tensor {
         }
     }
 
-    pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
-        if self.datum_type() != D::datum_type() {
-            bail!(
-                "Incompatible datum type. Required {:?}, got {:?}",
-                D::datum_type(),
-                self.datum_type()
-            );
-        }
-        if self.is_null() {
-            bail!("Null tensor")
-        }
-        let datum_size = ::std::mem::size_of::<D>();
-        unsafe {
-            Ok(std::slice::from_raw_parts_mut::<D>(
-                self.data.as_mut_ptr() as *mut D,
-                self.data.len() / datum_size,
-            ))
-        }
-    }
-
-    pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
-        if self.datum_type() != D::datum_type() {
-            bail!(
-                "Incompatible datum type. Required {:?}, got {:?}",
-                D::datum_type(),
-                self.datum_type()
-            );
-        }
-        if self.is_null() {
-            bail!("Null tensor")
-        }
-        Ok(self.data.as_mut_ptr() as *mut D)
-    }
-
+    /// Transform the data as a mutable `ndarray::Array`.
     pub fn to_array_view_mut<'a, D: Datum>(&'a mut self) -> TractResult<ArrayViewMutD<'a, D>> {
         if self.datum_type() != D::datum_type() {
             bail!(
@@ -273,6 +228,49 @@ impl Tensor {
         }
     }
 
+    /// Access the data as a pointer.
+    pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
+        if self.datum_type() != D::datum_type() {
+            bail!(
+                "Incompatible datum type. Required {:?}, got {:?}",
+                D::datum_type(),
+                self.datum_type()
+            );
+        }
+        if self.is_null() {
+            bail!("Null tensor")
+        }
+        Ok(self.data.as_ptr() as *const D)
+    }
+
+    /// Access the data as a mutable pointer.
+    pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
+        self.as_ptr::<D>().map(|p| p as *mut D)
+    }
+
+    /// Access the data as a slice.
+    pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
+        let datum_size = ::std::mem::size_of::<D>();
+        unsafe {
+            Ok(std::slice::from_raw_parts::<D>(
+                self.as_ptr()?,
+                self.data.len() / datum_size,
+            ))
+        }
+    }
+
+    /// Access the data as a mutable slice.
+    pub fn as_slice_mut<D: Datum>(&mut self) -> TractResult<&mut [D]> {
+        let datum_size = ::std::mem::size_of::<D>();
+        unsafe {
+            Ok(std::slice::from_raw_parts_mut::<D>(
+                self.as_ptr_mut()?,
+                self.data.len() / datum_size,
+            ))
+        }
+    }
+
+    /// Access the data as a scalar.
     pub fn to_scalar<'a, D: Datum>(&'a self) -> TractResult<&D> {
         if self.datum_type() != D::datum_type() {
             bail!(
@@ -287,12 +285,14 @@ impl Tensor {
         unsafe { Ok(&*(self.data.as_ptr() as *const D)) }
     }
 
+    /// Convert data to a new DatumType.
     fn cast_data<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(
         &self,
     ) -> TractResult<Vec<Target>> {
         self.as_slice::<Source>()?.iter().map(|s| s.try_into()).collect()
     }
 
+    /// Convert data to a tensor for a new DatumType.
     fn cast<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(&self) -> TractResult<Tensor> {
         let data = self.cast_data::<Source, Target>()?;
         Ok(Tensor {
@@ -304,10 +304,12 @@ impl Tensor {
         })
     }
 
+    /// Optionnaly convert data to a tensor for a new DatumType.
     pub fn cast_to<D: Datum>(&self) -> TractResult<Cow<Tensor>> {
         self.cast_to_dt(D::datum_type())
     }
 
+    /// Optionnaly convert data to a tensor for a new DatumType.
     pub fn cast_to_dt(&self, dt: DatumType) -> TractResult<Cow<Tensor>> {
         use DatumType::*;
         if self.dt == dt {
@@ -353,10 +355,12 @@ impl Tensor {
         Ok(Cow::Owned(target))
     }
 
+    /// Strict equality test on tensors.
     fn eq_t<D: Datum>(&self, other: &Tensor) -> TractResult<bool> {
         Ok(self.to_array_view::<D>()? == other.to_array_view::<D>()?)
     }
 
+    /// Strict equality test on tensors.
     fn eq_dt(&self, other: &Tensor) -> TractResult<bool> {
         dispatch_datum!(Self::eq_t(self.dt)(self, other))
     }
@@ -452,11 +456,19 @@ impl<D: ::ndarray::Dimension, T: Datum> From<Array<T, D>> for Tensor {
     }
 }
 
+/// Convenient conversion to Tensor.
 pub trait IntoTensor: Sized {
+    /// Convert Self to a Tensor.
+    ///
+    /// May perform a copy
     fn into_tensor(self) -> Tensor;
 }
 
+/// Convenient conversion to Arc<Tensor>.
 pub trait IntoArcTensor: Sized {
+    /// Convert Self to a Arc<Tensor>.
+    ///
+    /// May perform a copy
     fn into_arc_tensor(self) -> Arc<Tensor>;
 }
 
