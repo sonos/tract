@@ -1,3 +1,4 @@
+//! Model graph type inference.
 use std::borrow::BorrowMut;
 use std::collections::BTreeSet;
 
@@ -14,15 +15,12 @@ pub mod helpers;
 pub mod rules;
 
 /// A graph analyser, along with its current state.
+#[derive(new)]
 pub struct Analyser<M: BorrowMut<InferenceModel>> {
     model: M,
 }
 
 impl<M: BorrowMut<InferenceModel>> Analyser<M> {
-    pub fn new(model: M) -> TractResult<Analyser<M>> {
-        Ok(Analyser { model })
-    }
-
     /// Runs the entire analysis at once. Will not stop on error if obstinate is
     /// true.
     pub fn analyse_obstinate(&mut self, obstinate: bool) -> TractResult<()> {

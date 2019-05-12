@@ -1,3 +1,4 @@
+//! Extended dimension support
 use std::fmt;
 use std::ops;
 use std::str::FromStr;
@@ -12,6 +13,12 @@ mod tree;
 use self::stack::Stack;
 use crate::TractResult;
 
+/// A super-trait for value acting as tensor dimensions in tract.
+///
+/// Implemented by:
+///
+/// * `usize` for regular dimensions
+/// * `TDim` supporting regular and streaming dimensions
 pub trait DimLike:
     Copy
     + Clone
@@ -36,10 +43,12 @@ pub trait DimLike:
     + std::iter::Product
     + std::iter::Sum
 {
+    /// Integer divise, rounding up to next integer.
     fn div_ceil(&self, other: usize) -> Self {
         (*self + other - 1) / other
     }
 
+    /// Convert to regular integer.
     fn to_integer(&self) -> TractResult<i32>;
 }
 
@@ -55,6 +64,8 @@ impl DimLike for usize {
     }
 }
 
+/// An arithmetic expression built with integer and the special value S for
+/// the streaming dimension.
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct TDim(Stack);
@@ -78,34 +89,42 @@ impl fmt::Display for TDim {
 }
 
 impl TDim {
+    /// Is this value One?
     pub fn is_one(&self) -> bool {
         self.as_const().map(|i| i == 1).unwrap_or(false)
     }
 
+    /// The special value S, for streaming.
     pub fn s() -> TDim {
         TDim(Stack::sym('S'))
     }
 
+    /// The special value S, for streaming.
     pub fn stream() -> TDim {
         Self::s()
     }
 
+    /// Try to convert the value to an integer, if it does not contains S.
     pub fn as_const(&self) -> Option<i32> {
         self.to_integer().ok()
     }
 
+    /// Eval the value for a given value of S.
     pub fn eval(&self, s: i32) -> Option<i32> {
         self.0.eval(&hashmap!('S' => s)).ok()
     }
 
+    /// Is the value dependend on S ?
     pub fn is_stream(&self) -> bool {
         self.as_const().is_none()
     }
 
+    /// Convert to integer if possible.
     pub fn to_integer(&self) -> TractResult<i32> {
         self.0.eval(&hashmap!())
     }
 
+    /// Integer division rounding above.
     pub fn div_ceil(&self, other: TDim) -> TDim {
         TDim(self.0.div_ceil(&other.0))
     }
@@ -215,7 +234,9 @@ impl ::std::iter::Product for TDim {
     }
 }
 
+/// Convenience trait to convert values to TDim.
 pub trait ToDim {
+    /// Convert self to a TDim.
     fn to_dim(self) -> TDim;
 }
 
