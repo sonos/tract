@@ -2,13 +2,28 @@ use crate::internal::*;
 
 pub use super::{InletId, Model, Node, OutletId};
 
+/// Extensions on Model to explore and build graph models more easily.
 pub trait ModelDsl<TI: TensorInfo> {
+    /// Find the lone precursor of a node, if applicable.
     fn single_prec(&self, id: usize) -> TractResult<Option<&Node<TI>>>;
+    /// Find the count-th precursor of a node `id` in a chain of single tensor
+    /// operation, if applicable.
     fn single_prec_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<TI>>>;
+    /// Find the lone succesor of a node, if applicable.
     fn single_succ(&self, id: usize) -> TractResult<Option<&Node<TI>>>;
+    /// Find the count-th successor of a node `id` in a chain of single tensor
+    /// operation, if applicable.
     fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&Node<TI>>>;
 
+    /// Adds a source op to the network.
+    ///
+    /// The model will assume this is an input.
     fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize>;
+    /// Chain a node to the latest inserted node.
+    ///
+    /// * creates a node with name and op
+    /// * connect the 0-th input of the new node to the 0-th outlet of the
+    /// latest previously inserted node.
     fn chain(
         &mut self,
         name: impl Into<String>,
@@ -16,6 +31,10 @@ pub trait ModelDsl<TI: TensorInfo> {
         facts: TVec<TI>,
     ) -> TractResult<usize>;
 
+    /// Chain a node to an arbitrary node.
+    ///
+    /// * creates a node with name and op
+    /// * connect the 0-th input of the new node to `tap`
     fn chain_after(
         &mut self,
         tap: OutletId,
@@ -103,8 +122,11 @@ impl<TI: TensorInfo> ModelDsl<TI> for Model<TI> {
     }
 }
 
+/// Extension to add constants to model that tolerates them.
 pub trait ModelDslConst {
+    /// Add a constant node to the graph.
     fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize>;
+    /// Add a constant node to the graph and connect its output to `inlet`.
     fn plug_const(
         &mut self,
         inlet: InletId,
@@ -149,13 +171,17 @@ impl ModelDslConst for super::TypedModel {
     }
 }
 
+/// Model extension for InferenceModel
 pub trait ModelDslInfer {
+    /// Add a source with no tensor information.
     fn add_source_default(&mut self, name: impl Into<String>) -> TractResult<usize>;
+    /// Add a node without tensor information.
     fn add_node_default(
         &mut self,
         name: impl Into<String>,
         op: impl Into<Box<Op>>,
     ) -> TractResult<usize>;
+    /// Chain a node without tensor information.
     fn chain_default(
         &mut self,
         name: impl Into<String>,
