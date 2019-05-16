@@ -137,6 +137,9 @@ impl InferenceRulesOp for Conv {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        if inputs.len() < 2 {
+            bail!("Wrong number of inputs. Expected 2 or more, got {}", inputs.len());
+        }
         if let Some(kshape) = &self.kernel_shape {
             s.equals(&inputs[1].rank, kshape.len() as i32 + 2)?;
             for (ix, dim) in kshape.iter().enumerate() {

@@ -265,8 +265,8 @@ macro_rules! element_bin {
 
             #[derive(Debug, Clone, new)]
             pub struct UnaryA {
-                dt: TypeFact,
-                b: Arc<Tensor>,
+                pub dt: TypeFact,
+                pub b: Arc<Tensor>,
             }
 
             impl StatelessOp for UnaryA {
