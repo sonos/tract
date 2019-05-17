@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use tract_core::internal::*;
 
-pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let n = pb.get_attr_int("N")?;
     let t = pb.get_attr_datum_type("T")?;
     let tidx = pb.get_attr_datum_type("Tidx")?;
@@ -73,4 +73,6 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
             s.equals_zero(concat_dim)
         })
     }
+
+    inference_op_as_op!();
 }

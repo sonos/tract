@@ -35,4 +35,6 @@ impl InferenceRulesOp for Const {
         s.equals(&outputs[0].value, self.value.clone().bex())?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

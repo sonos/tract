@@ -72,4 +72,7 @@ impl InferenceRulesOp for Tile {
         */
         Ok(())
     }
+
+
+    inference_op_as_op!();
 }

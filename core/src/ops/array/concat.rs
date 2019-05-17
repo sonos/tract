@@ -129,6 +129,8 @@ impl InferenceRulesOp for Concat {
         })?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 /// NormConcatSlice: fully decluttered Concat equivalent
@@ -407,19 +409,8 @@ impl<T: Datum + Copy> Op for PulsedSameAxisConcat<T> {
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsedSameAxisConcat<T> {
-    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         return Ok(Some(Box::new(PulsedSameAxisConcatState::<T>::default())));
-    }
-}
-
-impl<T: Datum + Copy> InferenceRulesOp for PulsedSameAxisConcat<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!();
     }
 }
 
@@ -525,24 +516,3 @@ impl<T: Datum + Copy> Op for FixedConcat<T> {
     }
 }
 
-impl<T: Datum + Copy> InferenceRulesOp for FixedConcat<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!();
-    }
-}
-
-impl<T: Datum + Copy> InferenceRulesOp for NormConcat<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!();
-    }
-}

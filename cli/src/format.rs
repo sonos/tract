@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::cmp::min;
+use std::fmt::{Debug, Display};
 
 use ansi_term::Colour::*;
 use ansi_term::Style;
@@ -9,7 +10,7 @@ use prettytable::Table;
 use terminal_size::{terminal_size, Width};
 use textwrap;
 use tract_core;
-use tract_core::model::{Model, Node, TensorInfo};
+use tract_core::model::{Model, BaseNode, Op, TensorInfo};
 use tract_core::plan::{SimplePlan, SimpleState};
 
 use crate::format;
@@ -183,14 +184,16 @@ pub fn print_box(
 
 /// Returns information about a node.
 #[allow(unused_variables, unused_mut)]
-fn node_info<TI: TensorInfo, M, P>(
-    node: &tract_core::model::Node<TI>,
+fn node_info<TI, O, M, P>(
+    node: &BaseNode<TI, O>,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState<TI, M, P>>,
+    state: Option<&SimpleState<TI, O, M, P>>,
 ) -> Vec<Vec<Row>>
 where
-    M: Borrow<Model<TI>>,
-    P: Borrow<SimplePlan<TI, M>>,
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    M: Borrow<Model<TI, O>>,
+    P: Borrow<SimplePlan<TI, O, M>>,
 {
     // First section: node attributes.
     let mut attributes = Vec::new();
@@ -240,20 +243,22 @@ where
 }
 
 /// Prints information about a node.
-pub fn print_node<TI, M, P>(
-    node: &Node<TI>,
+pub fn print_node<TI, O, M, P>(
+    node: &BaseNode<TI, O>,
     graph: &SomeGraphDef,
-    state: Option<&SimpleState<TI, M, P>>,
+    state: Option<&SimpleState<TI, O, M, P>>,
     status: &[impl AsRef<str>],
     sections: Vec<Vec<Row>>,
-) where
+)
+where
     TI: TensorInfo,
-    M: Borrow<Model<TI>>,
-    P: Borrow<SimplePlan<TI, M>>,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    M: Borrow<Model<TI, O>>,
+    P: Borrow<SimplePlan<TI, O, M>>,
 {
     format::print_box(
         &format!("{}", node.id),
-        &node.op.name(),
+        &node.op.as_ref().name(),
         &node.name,
         &status,
         [format::node_info(&node, &graph, state), sections].concat(),

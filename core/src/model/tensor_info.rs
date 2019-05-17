@@ -150,6 +150,23 @@ pub struct TypedTensorInfo {
     pub konst: Option<Arc<Tensor>>,
 }
 
+impl TypedTensorInfo {
+    pub fn shape<T:Datum>(shape: &[usize]) -> TypedTensorInfo {
+        TypedTensorInfo {
+            datum_type: T::datum_type(),
+            shape: ShapeInfo::from(shape),
+            konst: None
+        }
+    }
+    pub fn dt_shape(datum_type: DatumType, shape: &[usize]) -> TypedTensorInfo {
+        TypedTensorInfo {
+            datum_type,
+            shape: ShapeInfo::from(shape),
+            konst: None
+        }
+    }
+}
+
 impl TensorInfo for TypedTensorInfo {
     fn to_tensor_fact(&self) -> TensorFact {
         match self.konst.clone() {

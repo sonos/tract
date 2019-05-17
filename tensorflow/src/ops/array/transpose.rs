@@ -7,7 +7,7 @@ pub struct Transpose {
     t_perm: DatumType,
 }
 
-pub fn transpose(pb: &NodeDef) -> TractResult<Box<Op>> {
+pub fn transpose(pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;
     let t_perm = pb.get_attr_datum_type("Tperm")?;
     Ok(Box::new(Transpose::new(t, t_perm)))
@@ -82,4 +82,6 @@ impl InferenceRulesOp for Transpose {
             s.equals(&outputs[0].shape, output_shape)
         })
     }
+
+    inference_op_as_op!();
 }

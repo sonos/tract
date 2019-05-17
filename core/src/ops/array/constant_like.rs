@@ -53,6 +53,8 @@ impl InferenceRulesOp for ConstantLike {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -127,4 +129,6 @@ impl InferenceRulesOp for EyeLike {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }

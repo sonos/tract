@@ -51,4 +51,6 @@ impl InferenceRulesOp for MultiBroadcastTo {
             })
         })
     }
+
+    inference_op_as_op!();
 }

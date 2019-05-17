@@ -51,6 +51,8 @@ impl InferenceRulesOp for GlobalAvgPool {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -108,6 +110,8 @@ impl InferenceRulesOp for GlobalLpPool {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -159,6 +163,8 @@ impl InferenceRulesOp for GlobalMaxPool {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(

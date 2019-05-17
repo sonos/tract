@@ -8,7 +8,7 @@ pub struct Range {
     dtype: DatumType,
 }
 
-pub fn range(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn range(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("Tidx")?;
     Ok(Box::new(Range::new(dtype)))
 }
@@ -65,4 +65,6 @@ impl InferenceRulesOp for Range {
         s.equals(&outputs[0].rank, 1)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

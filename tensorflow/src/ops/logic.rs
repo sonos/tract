@@ -46,9 +46,11 @@ impl InferenceRulesOp for Switch {
         }
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
-fn merge(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+fn merge(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let inputs = pb.get_attr_int::<i32>("N")?;
     Ok(Box::new(Merge::new(inputs as usize)))
 }
@@ -89,4 +91,6 @@ impl InferenceRulesOp for Merge {
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

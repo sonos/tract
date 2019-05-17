@@ -66,4 +66,6 @@ impl InferenceRulesOp for RmDims {
             s.equals(&outputs[0].shape, output_shape)
         })
     }
+
+    inference_op_as_op!();
 }

@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::model::*;
 use std::ops::{Deref, DerefMut};
+use std::fmt::{ Display, Debug };
 
 /// A change to apply to a model.
 ///
@@ -8,15 +9,21 @@ use std::ops::{Deref, DerefMut};
 /// inserted, plus information about how to connect these new nodes to the
 /// pre-existing graph.
 #[derive(Clone, Debug)]
-pub struct ModelPatch<TI: TensorInfo> {
+pub struct ModelPatch<TI, O>
+where TI: TensorInfo,
+      O: Display + Debug + AsRef<Op> + AsMut<Op>
+{
     /// the model-like 'patch' of nodes to add to the model
-    pub model: Model<TI>,
+    pub model: Model<TI, O>,
     incoming: HashMap<OutletId, OutletId>,
     shunt_outlet_by: HashMap<OutletId, OutletId>,
 }
 
-impl<TI: TensorInfo> Default for ModelPatch<TI> {
-    fn default() -> ModelPatch<TI> {
+impl<TI, O> Default for ModelPatch<TI, O>
+where TI: TensorInfo,
+      O: Display + Debug + AsRef<Op> + AsMut<Op>
+{
+    fn default() -> ModelPatch<TI, O> {
         ModelPatch {
             model: Model::default(),
             incoming: HashMap::new(),
@@ -25,24 +32,33 @@ impl<TI: TensorInfo> Default for ModelPatch<TI> {
     }
 }
 
-impl<TI: TensorInfo> Deref for ModelPatch<TI> {
-    type Target = Model<TI>;
-    fn deref(&self) -> &Model<TI> {
+impl<TI, O> Deref for ModelPatch<TI, O>
+where TI: TensorInfo,
+      O: Display + Debug + AsRef<Op> + AsMut<Op>
+{
+    type Target = Model<TI, O>;
+    fn deref(&self) -> &Model<TI, O> {
         &self.model
     }
 }
 
-impl<TI: TensorInfo> DerefMut for ModelPatch<TI> {
-    fn deref_mut(&mut self) -> &mut Model<TI> {
+impl<TI, O> DerefMut for ModelPatch<TI, O>
+where TI: TensorInfo,
+      O: Display + Debug + AsRef<Op> + AsMut<Op>
+{
+    fn deref_mut(&mut self) -> &mut Model<TI, O> {
         &mut self.model
     }
 }
 
-impl<TI: TensorInfo> ModelPatch<TI> {
+impl<TI, O> ModelPatch<TI, O>
+where TI: TensorInfo,
+      O: Display + Debug + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op>
+{
     /// Draw a tap from a preexisting node.
     ///
     /// returns an OutletId usable in the little "patch" model
-    pub fn tap_model(&mut self, model: &Model<TI>, outlet: OutletId) -> TractResult<OutletId> {
+    pub fn tap_model(&mut self, model: &Model<TI, O>, outlet: OutletId) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let node_id = self
             .add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), objekt::clone(fact))?;
@@ -58,12 +74,12 @@ impl<TI: TensorInfo> ModelPatch<TI> {
     }
 
     /// Convenience method creating a patch that replace a single operation.
-    pub fn replace_single_op<O: Into<Box<Op>>>(
-        patched_model: &Model<TI>,
+    pub fn replace_single_op<IO: Into<O>>(
+        patched_model: &Model<TI, O>,
         node: &Node<TI>,
         inputs: &[OutletId],
-        new_op: O,
-    ) -> TractResult<ModelPatch<TI>> {
+        new_op: IO,
+    ) -> TractResult<ModelPatch<TI,O>> {
         let mut patch = ModelPatch::default();
         let new_op = new_op.into();
         let outputs = node.outputs.iter().map(|o| objekt::clone(&o.fact)).collect();
@@ -79,22 +95,22 @@ impl<TI: TensorInfo> ModelPatch<TI> {
     }
 
     /// Convenience method creating a patch that replace a single unary operation.
-    pub fn single_unary_op<O: Into<Box<Op>>>(
-        patched_model: &Model<TI>,
+    pub fn single_unary_op<IO: Into<O>>(
+        patched_model: &Model<TI, O>,
         node: &Node<TI>,
-        new_op: O,
-    ) -> TractResult<ModelPatch<TI>> {
+        new_op: IO,
+    ) -> TractResult<ModelPatch<TI, O>> {
         Self::replace_single_op(patched_model, node, &[node.inputs[0]], new_op)
     }
 
     /// Apply all changes in the patch to the target model.
-    pub fn apply(self, target: &mut Model<TI>) -> TractResult<()> {
+    pub fn apply(self, target: &mut Model<TI, O>) -> TractResult<()> {
         let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by } = self;
         for node in patch.nodes {
             if node.op_is::<crate::ops::source::Source>() {
                 continue;
             }
-            let Node { id, name, inputs, op, outputs } = node;
+            let BaseNode { id, name, inputs, op, outputs } = node;
             let n_outputs = outputs.len();
             let facts = outputs.into_iter().map(|of| of.fact).collect();
             let added_node_id = target.add_node_disable_output_guess(name, op, facts, true)?;

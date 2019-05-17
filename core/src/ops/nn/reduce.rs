@@ -286,4 +286,6 @@ impl InferenceRulesOp for Reduce {
             s.equals(&outputs[0].shape, out_shape)
         })
     }
+
+    inference_op_as_op!();
 }

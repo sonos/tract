@@ -183,6 +183,8 @@ impl InferenceRulesOp for Conv {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]

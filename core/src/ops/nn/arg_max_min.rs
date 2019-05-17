@@ -75,4 +75,6 @@ impl InferenceRulesOp for ArgMaxMin {
         };
         Ok(())
     }
+
+    inference_op_as_op!();
 }

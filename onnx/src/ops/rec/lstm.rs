@@ -3,7 +3,7 @@ use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
 
-pub fn lstm(_pb: &NodeProto) -> TractResult<Box<Op>> {
+pub fn lstm(_pb: &NodeProto) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(LSTM::default()))
 }
 
@@ -39,7 +39,7 @@ impl Op for LSTM {
 }
 
 impl StatefullOp for LSTM {
-    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         Ok(Some(Box::new(LSTMState { h_c: None })))
     }
 }
@@ -83,6 +83,8 @@ impl InferenceRulesOp for LSTM {
         }
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]

@@ -1,13 +1,18 @@
 use super::*;
 use crate::ops::Op;
+use std::fmt;
 
 /// Main model class
 ///
 /// Parameterized by a TensorInfo class.
 #[derive(Clone, Debug)]
-pub struct Model<TI: TensorInfo> {
+pub struct Model<TI, O>
+where
+    TI: TensorInfo,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+{
     /// all nodes in the model
-    pub(super) nodes: Vec<Node<TI>>,
+    pub(super) nodes: Vec<BaseNode<TI, O>>,
     /// index of nodes per name
     nodes_by_name: HashMap<String, usize>,
     /// model inputs
@@ -16,18 +21,26 @@ pub struct Model<TI: TensorInfo> {
     pub(crate) outputs: Vec<OutletId>,
 }
 
-impl<TI: TensorInfo> Default for Model<TI> {
-    fn default() -> Model<TI> {
+impl<TI, O> Default for Model<TI, O>
+where
+    TI: TensorInfo,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+{
+    fn default() -> Model<TI, O> {
         Model { nodes: vec![], nodes_by_name: HashMap::new(), inputs: vec![], outputs: vec![] }
     }
 }
 
-impl<TI: TensorInfo> Model<TI> {
+impl<TI, O> Model<TI, O>
+where
+    TI: TensorInfo,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+{
     /// add a node to the model, returning its id
     pub fn add_node(
         &mut self,
         name: impl Into<String>,
-        op: impl Into<Box<Op>>,
+        op: impl Into<O>,
         output_facts: TVec<TI>,
     ) -> TractResult<usize> {
         self.add_node_disable_output_guess(name, op, output_facts, false)
@@ -36,7 +49,7 @@ impl<TI: TensorInfo> Model<TI> {
     pub(crate) fn add_node_disable_output_guess(
         &mut self,
         name: impl Into<String>,
-        op: impl Into<Box<Op>>,
+        op: impl Into<O>,
         output_facts: TVec<TI>,
         disable_output_guess: bool,
     ) -> TractResult<usize> {
@@ -44,12 +57,11 @@ impl<TI: TensorInfo> Model<TI> {
         let name = name.into();
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
-        let is_input = op.name() == "Source";
         let noutputs = output_facts.len();
         let outputs =
             output_facts.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
-        let node = Node { id, name, op, inputs: vec![], outputs };
-        if is_input {
+        let node = BaseNode { id, name, op, inputs: vec![], outputs };
+        if node.op_is::<crate::ops::source::Source>() {
             self.inputs.push(OutletId::new(id, 0));
         }
         if !disable_output_guess {
@@ -175,29 +187,29 @@ impl<TI: TensorInfo> Model<TI> {
     }
 
     /// Find a node by its name.
-    pub fn node_by_name(&self, name: &str) -> TractResult<&Node<TI>> {
+    pub fn node_by_name(&self, name: &str) -> TractResult<&BaseNode<TI, O>> {
         let id: &usize =
             self.nodes_by_name.get(name).ok_or_else(|| format!("Node named {} not found", name))?;
         Ok(&self.nodes[*id])
     }
 
     /// Find a node by its id.
-    pub fn node(&self, id: usize) -> &Node<TI> {
+    pub fn node(&self, id: usize) -> &BaseNode<TI, O> {
         &self.nodes[id]
     }
 
     /// Find a node by its id.
-    pub fn node_mut(&mut self, id: usize) -> &mut Node<TI> {
+    pub fn node_mut(&mut self, id: usize) -> &mut BaseNode<TI, O> {
         &mut self.nodes[id]
     }
 
     /// Access the nodes table.
-    pub fn nodes(&self) -> &[Node<TI>] {
+    pub fn nodes(&self) -> &[BaseNode<TI, O>] {
         &*self.nodes
     }
 
     /// Access the nodes table.
-    pub fn nodes_mut(&mut self) -> &mut [Node<TI>] {
+    pub fn nodes_mut(&mut self) -> &mut [BaseNode<TI, O>] {
         &mut *self.nodes
     }
 

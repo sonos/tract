@@ -1,13 +1,15 @@
-use crate::rusage::Duration;
-use ansi_term::Color::*;
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 
-use crate::errors::*;
-use crate::format::*;
+use ansi_term::Color::*;
 use itertools::Itertools;
+
 use tract_core::internal::*;
 
 use crate::display_graph::DisplayOptions;
+use crate::errors::*;
+use crate::format::*;
+use crate::rusage::Duration;
 use crate::{Parameters, ProfilingMode};
 
 mod regular;
@@ -19,9 +21,9 @@ pub struct ProfileData {
 }
 
 impl ProfileData {
-    pub fn add<TI: TensorInfo>(
+    pub fn add<TI: TensorInfo, O>(
         &mut self,
-        node: &Node<TI>,
+        node: &BaseNode<TI, O>,
         dur: Duration,
     ) -> ::tract_core::TractResult<()> {
         *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
@@ -43,7 +45,11 @@ impl ProfileData {
         Ok(top)
     }
 
-    pub fn print_most_consuming_ops<TI: TensorInfo>(&self, model: &Model<TI>) -> CliResult<()> {
+    pub fn print_most_consuming_ops<TI, O>(&self, model: &Model<TI, O>) -> CliResult<()>
+    where
+        TI: TensorInfo,
+        O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    {
         let sum = self.summed();
         println!("Most time consuming operations:");
         let mut operations = HashMap::new();
@@ -51,14 +57,14 @@ impl ProfileData {
         for (node, dur) in &self.nodes {
             let node = &model.nodes()[*node];
             let mut cell =
-                operations.entry(node.op.name().to_string()).or_insert(Duration::default());
+                operations.entry(node.op.as_ref().name().to_string()).or_insert(Duration::default());
             // do not use duration addition here, as we are summing for real
             // instead of averaging
             cell.total_real += dur.avg_real();
             cell.total_sys += dur.avg_sys();
             cell.total_user += dur.avg_user();
             cell.counter = 1;
-            *counters.entry(node.op.name().to_string()).or_insert(0) += 1;
+            *counters.entry(node.op.as_ref().name().to_string()).or_insert(0) += 1;
         }
         let mut operations: Vec<(&str, Duration)> =
             operations.iter().map(|(s, d)| (&**s, *d)).collect();

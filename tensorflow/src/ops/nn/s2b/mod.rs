@@ -5,12 +5,12 @@ pub mod raw;
 pub mod unary;
 use tract_core::internal::*;
 
-pub fn space_to_batch_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn space_to_batch_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::SpaceToBatch::new(datum_type)))
 }
 
-pub fn batch_to_space_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn batch_to_space_nd(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::BatchToSpace::new(datum_type)))
 }

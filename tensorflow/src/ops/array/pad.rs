@@ -8,7 +8,7 @@ pub struct Pad<T: Copy + Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn pad(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }
@@ -96,6 +96,8 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]

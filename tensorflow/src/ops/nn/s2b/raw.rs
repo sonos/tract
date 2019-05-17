@@ -83,6 +83,8 @@ impl InferenceRulesOp for SpaceToBatch {
         check_output_arity(&outputs, 1)?;
         rules(s, self.datum_type, &outputs[0], &inputs[0], &inputs[1], &inputs[2])
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -164,6 +166,8 @@ impl InferenceRulesOp for BatchToSpace {
         check_output_arity(&outputs, 1)?;
         rules(s, self.datum_type, &inputs[0], &outputs[0], &inputs[1], &inputs[2])
     }
+
+    inference_op_as_op!();
 }
 
 fn rules<'r, 'p: 'r>(

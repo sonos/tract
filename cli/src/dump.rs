@@ -1,6 +1,7 @@
 use crate::display_graph::*;
 use crate::errors::*;
 use crate::{Parameters, SomeModel};
+use std::fmt::{Debug, Display};
 use tract_core::internal::*;
 
 pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
@@ -13,11 +14,15 @@ pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
     }
 }
 
-fn handle_t<TI: TensorInfo>(
-    tract: &Model<TI>,
+fn handle_t<TI, O>(
+    tract: &Model<TI, O>,
     params: &Parameters,
     options: DisplayOptions,
-) -> CliResult<()> {
+) -> CliResult<()>
+where
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+{
     let display_graph =
         DisplayGraph::from_model_and_options(tract, options)?.with_graph_def(&params.graph)?;
     display_graph.render()?;

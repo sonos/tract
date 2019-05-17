@@ -1,7 +1,7 @@
 use ndarray::prelude::*;
 use tract_core::internal::*;
 
-pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
@@ -270,6 +270,8 @@ impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Default, Clone, new)]
@@ -303,6 +305,8 @@ impl InferenceRulesOp for StridedSliceD {
     ) -> InferenceResult {
         self.base.rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]

@@ -25,7 +25,6 @@ pub fn load_half_dataset(prefix: &str, path: &path::Path) -> TVec<Tensor> {
         let mut file =
             fs::File::open(filename).map_err(|e| format!("accessing {:?}, {:?}", path, e)).unwrap();
         let tensor: TensorProto = ::protobuf::parse_from_reader(&mut file).unwrap();
-        debug!("{:?}", tensor);
         vec.push(tensor.try_into().unwrap())
     }
     debug!("{:?}: {:?}", path, vec);
@@ -86,6 +85,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
+    let model = model.into_typed().unwrap();
     info!("Test model (optim: {:?}) {:#?}", optim, path);
     if optim {
         let optimized = model.into_optimized().unwrap();
@@ -97,7 +97,7 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     };
 }
 
-fn run_model<TI: TensorInfo>(model: Model<TI>, path: &path::Path) {
+fn run_model(model: TypedModel, path: &path::Path) {
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();

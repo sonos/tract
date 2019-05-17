@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use crate::errors::*;
 use crate::{Parameters, SomeModel};
 use tract_core::internal::*;
@@ -28,10 +30,14 @@ pub fn handle(params: Parameters) -> CliResult<()> {
     Ok(())
 }
 
-fn run_regular_t<TI: TensorInfo>(
-    tract: &Model<TI>,
+fn run_regular_t<TI, O>(
+    tract: &Model<TI, O>,
     params: &Parameters,
-) -> CliResult<TVec<Arc<Tensor>>> {
+) -> CliResult<TVec<Arc<Tensor>>>
+where
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+{
     let plan = SimplePlan::new(tract)?;
     let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {

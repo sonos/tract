@@ -93,21 +93,21 @@ fn strides(node: &NodeProto) -> TractResult<Option<TVec<usize>>> {
     node.get_attr_opt_tvec("strides")
 }
 
-pub fn arg_max_min(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn arg_max_min(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let max = node.get_op_type() == "ArgMax";
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let keepdims = node.get_attr_opt("keepdims")?.unwrap_or(true);
     Ok(Box::new(tractops::nn::ArgMaxMin::new(max, axis, keepdims)))
 }
 
-pub fn batch_normalization(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn batch_normalization(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5);
     let spatial = node.get_attr_opt("spatial")?.unwrap_or(0);
     assert_eq!(spatial, 0);
     Ok(Box::new(tractops::nn::BatchNorm::new(DataFormat::NCHW, epsilon, spatial != 0)))
 }
 
-pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn conv(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let kernel_shape = node.get_attr_opt_tvec("kernel_shape")?;
     let group = node.get_attr_opt("group")?.unwrap_or(1);
     Ok(Box::new(tractops::cnn::Conv::new(
@@ -121,7 +121,7 @@ pub fn conv(node: &NodeProto) -> TractResult<Box<Op>> {
     )))
 }
 
-pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn average_pool(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node)?;
     let strides = strides(node)?;
@@ -132,43 +132,43 @@ pub fn average_pool(node: &NodeProto) -> TractResult<Box<Op>> {
     )))
 }
 
-pub fn elu(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn elu(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
     Ok(Box::new(tractops::nn::Elu::new(alpha)))
 }
 
-pub fn global_lp_pool(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn global_lp_pool(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let p: usize = node.get_attr_opt("p")?.unwrap_or(2);
     Ok(Box::new(tractops::nn::GlobalLpPool::new(p)))
 }
 
-pub fn hard_sigmoid(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn hard_sigmoid(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.2);
     let beta = node.get_attr_opt("beta")?.unwrap_or(0.5);
     Ok(Box::new(tractops::nn::Hardsigmoid::new(alpha, beta)))
 }
 
-pub fn layer_hard_max(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn layer_hard_max(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::LayerHardmax::new(axis)))
 }
 
-pub fn layer_log_soft_max(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn layer_log_soft_max(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::LayerLogSoftmax::new(axis)))
 }
 
-pub fn layer_soft_max(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn layer_soft_max(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
     Ok(Box::new(tractops::nn::LayerSoftmax::new(axis)))
 }
 
-pub fn leaky_relu(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn leaky_relu(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.01);
     Ok(Box::new(tractops::nn::LeakyRelu::new(alpha)))
 }
 
-pub fn lrn(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn lrn(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.0001);
     let beta = node.get_attr_opt("beta")?.unwrap_or(0.75);
     let bias = node.get_attr_opt("bias")?.unwrap_or(1.);
@@ -176,7 +176,7 @@ pub fn lrn(node: &NodeProto) -> TractResult<Box<Op>> {
     Ok(Box::new(tractops::nn::Lrn::new(alpha, beta, bias, size)))
 }
 
-pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn max_pool(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node)?;
     let strides = strides(node)?;
@@ -186,7 +186,7 @@ pub fn max_pool(node: &NodeProto) -> TractResult<Box<Op>> {
     )))
 }
 
-pub fn parametric_softplus(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn parametric_softplus(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr("alpha")?;
     let beta = node.get_attr("beta")?;
     Ok(Box::new(tractops::nn::ParametricSoftplus::new(alpha, beta)))
@@ -201,7 +201,7 @@ element_bin!(Prelu, match
     f64 => f64 { |a, b| if a < 0.0 { a*b } else { a } }
 );
 
-pub fn scaled_tanh(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn scaled_tanh(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr("alpha")?;
     let beta = node.get_attr("beta")?;
     Ok(Box::new(tractops::nn::ScaledTanh::new(alpha, beta)))
@@ -216,19 +216,19 @@ element_map_with_params!(Shrink, [f16, f32, f64], { bias: f32, lambd: f32 },
     }
 );
 
-pub fn shrink(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn shrink(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let bias = node.get_attr_opt("bias")?.unwrap_or(0.0);
     let lambd = node.get_attr_opt("lambd")?.unwrap_or(0.5);
     Ok(Box::new(Shrink::new(bias, lambd)))
 }
 
-pub fn selu(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn selu(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.67326);
     let gamma = node.get_attr_opt("gamma")?.unwrap_or(1.0507);
     Ok(Box::new(tractops::nn::Selu::new(alpha, gamma)))
 }
 
-pub fn thresholded_relu(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn thresholded_relu(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
     Ok(Box::new(tractops::nn::ThresholdedRelu::new(alpha)))
 }

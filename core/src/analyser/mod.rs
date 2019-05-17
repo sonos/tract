@@ -77,7 +77,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
     pub fn analyse_one(&mut self, node: usize) -> TractResult<Vec<(OutletId, TensorFact)>> {
         let mut changed_edges = vec![];
         {
-            let node = &self.model.borrow().nodes()[node];
+            let node:&InferenceNode = &self.model.borrow().nodes()[node];
             debug!("Starting step for #{} {} ({})", node.id, node.name, node.op.name(),);
 
             let (inputs, outputs) = self.model.borrow().node_facts(node.id)?;

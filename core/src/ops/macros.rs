@@ -1,4 +1,17 @@
 #[macro_export]
+macro_rules! inference_op_as_op {
+    () => {
+        fn as_op(&self) -> &Op {
+            self
+        }
+
+        fn as_op_mut(&mut self) -> &mut Op {
+            self
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! element_map {
     ($Name:ident, [$($type:ty),*], $expr:expr) => {
         element_map!($Name, match $($type => { $expr } ),*);
@@ -63,6 +76,8 @@ macro_rules! element_map {
                 })?;
                 s.equals(&inputs[0].shape, &outputs[0].shape)
             }
+
+            inference_op_as_op!();
         }
     };
 }
@@ -114,6 +129,8 @@ macro_rules! element_map_with_params {
                 ])?;
                 s.equals(&inputs[0].shape, &outputs[0].shape)
             }
+
+            inference_op_as_op!();
         }
     };
 }
@@ -261,6 +278,8 @@ macro_rules! element_bin {
                         })
                     })
                 }
+
+                inference_op_as_op!();
             }
 
             #[derive(Debug, Clone, new)]
@@ -295,35 +314,6 @@ macro_rules! element_bin {
                     })*
                     let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
                     Ok(tvec!(OutletId::new(id, 0)))
-                }
-            }
-
-            impl InferenceRulesOp for UnaryA {
-                /// Infers properties about the input and output tensors.
-                fn rules<'r, 'p: 'r, 's: 'r>(
-                    &'s self,
-                    s: &mut Solver<'r>,
-                    inputs: &'p [TensorProxy],
-                    outputs: &'p [TensorProxy],
-                ) -> InferenceResult {
-                    let a = &inputs[0];
-                    let c = &outputs[0];
-
-                    s.given(&inputs[0].datum_type, move |s, dt| {
-                        $(if dt == <$type>::datum_type() {
-                            return s.equals(&outputs[0].datum_type, <$to>::datum_type());
-                        })*
-                        bail!("{} not covering {:?}", stringify!($name), dt)
-                    })?;
-                    check_input_arity(&inputs, 1)?;
-                    check_output_arity(&outputs, 1)?;
-                    s.with(&a.shape, move |s, a_shape| {
-                        let b_shape = self.b.shape();
-                        if let Ok(Some(c_shape)) = $crate::analyser::helpers::infer_shape_broadcasting(&[&a_shape, &b_shape.into()]) {
-                            s.equals(&c.shape, c_shape)?;
-                        }
-                        Ok(())
-                    })
                 }
             }
         }
@@ -435,6 +425,8 @@ macro_rules! element_nary {
                     Ok(())
                 })
             }
+
+            inference_op_as_op!();
         }
     }
 }
@@ -523,9 +515,9 @@ macro_rules! boxed_new {
     ($op:tt($dtype:expr)($($arg:expr),*)) => { {
         use $crate::datum::DatumType;
         match $dtype {
-            DatumType::I32 => Box::new($op::<i32>::new($($arg),*)) as Box<Op>,
-            DatumType::F32 => Box::new($op::<f32>::new($($arg),*)) as Box<Op>,
-            DatumType::F64 => Box::new($op::<f64>::new($($arg),*)) as Box<Op>,
+            DatumType::I32 => Box::new($op::<i32>::new($($arg),*)) as _,
+            DatumType::F32 => Box::new($op::<f32>::new($($arg),*)) as _,
+            DatumType::F64 => Box::new($op::<f64>::new($($arg),*)) as _,
             _ => unimplemented!("missing type")
         }
     } }

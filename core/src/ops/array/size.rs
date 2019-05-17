@@ -43,4 +43,6 @@ impl InferenceRulesOp for Size {
         s.equals(&outputs[0].rank, 0)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

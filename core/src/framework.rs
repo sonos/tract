@@ -7,17 +7,22 @@ use std::io::Read;
 use std::path::Path;
 
 /// Build an Op from its proto representation (not necessarily protobuf).
-pub type OpBuilder<ProtoOp> = fn(&ProtoOp) -> TractResult<Box<Op>>;
+pub type OpBuilder<ProtoOp, O> = fn(&ProtoOp) -> TractResult<O>;
 
 /// An index of OpBuilder by name.
-#[derive(Default)]
-pub struct OpRegister<ProtoOp>(HashMap<String, OpBuilder<ProtoOp>>);
+pub struct OpRegister<ProtoOp, O>(HashMap<String, OpBuilder<ProtoOp, O>>);
 
-impl<ProtoOp> OpRegister<ProtoOp> {
-    pub fn get(&self, name: &str) -> Option<&OpBuilder<ProtoOp>> {
+impl<ProtoOp, O> Default for OpRegister<ProtoOp, O> {
+    fn default() -> OpRegister<ProtoOp, O> {
+        OpRegister(HashMap::new())
+    }
+}
+
+impl<ProtoOp, O> OpRegister<ProtoOp, O> {
+    pub fn get(&self, name: &str) -> Option<&OpBuilder<ProtoOp, O>> {
         self.0.get(name)
     }
-    pub fn insert(&mut self, name: impl AsRef<str>, b: OpBuilder<ProtoOp>) {
+    pub fn insert(&mut self, name: impl AsRef<str>, b: OpBuilder<ProtoOp, O>) {
         self.0.insert(name.as_ref().to_string(), b);
     }
     pub fn names(&self) -> impl Iterator<Item = &str> {
@@ -29,9 +34,9 @@ impl<ProtoOp> OpRegister<ProtoOp> {
 ///
 /// The ProtoModel is the parsed representation of the imported model. It does
 /// not have to be Protobuf based.
-pub trait Framework<ProtoOp: Debug, ProtoModel: Debug> {
+pub trait Framework<ProtoOp: Debug, O: From<UnimplementedOp>, ProtoModel: Debug> {
     /// Find the OpBuilder for an operation name.
-    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<ProtoOp>>;
+    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<ProtoOp, O>>;
 
     /// Parse a proto model from a reader.
     fn proto_model_for_read(&self, reader: &mut Read) -> TractResult<ProtoModel>;
@@ -62,10 +67,11 @@ pub trait Framework<ProtoOp: Debug, ProtoModel: Debug> {
     /// Build an op from its representation in the ProtoModel.
     ///
     /// This method stub wraps unknown operations in UnimplementedOp.
-    fn build_op(&self, name: &str, payload: &ProtoOp) -> TractResult<Box<Op>> {
+    fn build_op(&self, name: &str, payload: &ProtoOp) -> TractResult<O> {
         match self.op_builder_for_name(name) {
             Some(builder) => builder(payload),
-            None => Ok(Box::new(UnimplementedOp::new(name, format!("{:?}", payload)))),
+            None => Ok(UnimplementedOp::new(name, format!("{:?}", payload)).into()),
         }
     }
+
 }

@@ -76,4 +76,6 @@ impl InferenceRulesOp for Slice {
         }
         Ok(())
     }
+
+    inference_op_as_op!();
 }

@@ -52,4 +52,6 @@ impl InferenceRulesOp for ConstantOfShape {
         //        })?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

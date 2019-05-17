@@ -170,7 +170,7 @@ impl ConvUnary {
             .transpose()?)
     }
 
-    fn to_im2col_pair<T>(
+    pub fn to_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
     ) -> TractResult<(Im2Col<T>, TVec<usize>, Box<Op>)>
@@ -563,21 +563,5 @@ impl Op for ConvUnary {
 impl StatelessOp for ConvUnary {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
-    }
-}
-
-impl InferenceRulesOp for ConvUnary {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, self.full_input_shape.clone())?;
-        s.equals(&outputs[0].shape, self.full_output_shape.clone())?;
-        Ok(())
     }
 }

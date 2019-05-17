@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use ansi_term::Colour::*;
 use atty;
 use pbr::ProgressBar;
@@ -24,7 +26,11 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
     }
 }
 
-pub fn make_inputs_for_model<TI: TensorInfo>(model: &Model<TI>) -> CliResult<TVec<Tensor>> {
+pub fn make_inputs_for_model<TI, O>(model: &Model<TI, O>) -> CliResult<TVec<Tensor>>
+where
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+{
     Ok(make_inputs(
         &*model
             .input_outlets()?
@@ -34,11 +40,15 @@ pub fn make_inputs_for_model<TI: TensorInfo>(model: &Model<TI>) -> CliResult<TVe
     )?)
 }
 
-fn handle_benching_t<TI: TensorInfo>(
-    model: &Model<TI>,
+fn handle_benching_t<TI, O>(
+    model: &Model<TI, O>,
     params: &Parameters,
     profiling: ProfilingMode,
-) -> CliResult<()> {
+) -> CliResult<()>
+where
+    TI: TensorInfo + Clone,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
+{
     let (max_iters, max_time) =
         if let ProfilingMode::RegularBenching { max_iters, max_time } = profiling {
             (max_iters, max_time)
@@ -82,12 +92,16 @@ pub fn handle(
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
-pub fn handle_t<TI: TensorInfo>(
-    model: &Model<TI>,
+pub fn handle_t<TI, O>(
+    model: &Model<TI, O>,
     params: &Parameters,
     profiling: ProfilingMode,
     mut display_options: DisplayOptions,
-) -> CliResult<()> {
+) -> CliResult<()>
+where
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+{
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
         (max_iters, max_time)
     } else {
@@ -127,7 +141,7 @@ pub fn handle_t<TI: TensorInfo>(
             progress.inc();
         }
 
-        if node.op.name() == "Source" {
+        if node.op.as_ref().name() == "Source" {
             if log_enabled!(Info) {
                 print_node(
                     &node,

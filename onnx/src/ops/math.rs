@@ -50,13 +50,13 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Gemm", gemm);
 }
 
-pub fn clip(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn clip(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let min = node.get_attr_opt("min")?.unwrap_or(::std::f32::MIN);
     let max = node.get_attr_opt("max")?.unwrap_or(::std::f32::MAX);
     Ok(Box::new(tractops::math::Clip::new(min, max)))
 }
 
-pub fn gemm(node: &NodeProto) -> TractResult<Box<Op>> {
+pub fn gemm(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.);
     let beta = node.get_attr_opt("beta")?.unwrap_or(1.);
     let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
