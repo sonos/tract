@@ -7,7 +7,7 @@ pub struct Max {
     keep_dims: bool,
 }
 
-pub fn max(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn max(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;
     let t_idx = pb.get_attr_datum_type("Tidx")?;
     let keep_dims = pb.get_attr_bool("keep_dims")?;
@@ -121,4 +121,6 @@ impl InferenceRulesOp for Max {
         )?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

@@ -1,18 +1,19 @@
 //! Evaluation order for nodes.
 use crate::internal::*;
 use bit_set;
+use std::fmt::{Debug, Display};
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
-pub fn eval_order<TI: TensorInfo>(model: &super::Model<TI>) -> TractResult<Vec<usize>> {
+pub fn eval_order<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsMut<Op>>(model: &super::Model<TI, O>) -> TractResult<Vec<usize>> {
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 
 /// Find a working evaluation order for a list of nodes.
-pub fn eval_order_for_nodes<TI: TensorInfo>(
-    nodes: &[Node<TI>],
+pub fn eval_order_for_nodes<TI: TensorInfo, O:Debug + Display + AsRef<Op> + AsMut<Op>>(
+    nodes: &[BaseNode<TI, O>],
     inputs: &[usize],
     targets: &[usize],
 ) -> TractResult<Vec<usize>> {

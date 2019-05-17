@@ -51,4 +51,6 @@ impl InferenceRulesOp for Dropout {
         }
         Ok(())
     }
+
+    inference_op_as_op!();
 }

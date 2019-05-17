@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
 use crate::internal::*;
@@ -12,26 +13,36 @@ pub struct SessionState {
 }
 
 #[derive(Debug, Clone)]
-pub struct SimplePlan<TI: TensorInfo, M: Borrow<Model<TI>>> {
+pub struct SimplePlan<TI, O, M>
+where
+    TI: TensorInfo,
+    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    M: Borrow<Model<TI, O>>,
+{
     pub model: M,
     pub outputs: Vec<OutletId>,
     pub order: Vec<usize>,
     pub flush_lists: Vec<TVec<usize>>,
-    _casper: PhantomData<TI>,
+    _casper: PhantomData<(TI, O)>,
 }
 
-impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
+impl<TI, O, M> SimplePlan<TI, O, M>
+where
+    TI: TensorInfo,
+    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    M: Borrow<Model<TI, O>>,
+{
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
-    pub fn new(model: M) -> TractResult<SimplePlan<TI, M>> {
+    pub fn new(model: M) -> TractResult<SimplePlan<TI, O, M>> {
         let outputs = model.borrow().output_outlets()?.iter().cloned().collect::<Vec<OutletId>>();
         Self::new_for_outputs(model, &outputs)
     }
     /// This contructor returns a plan that will compute the specified output.
-    pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<TI, M>> {
+    pub fn new_for_output(model: M, output: OutletId) -> TractResult<SimplePlan<TI, O, M>> {
         Self::new_for_outputs(model, &[output])
     }
     /// This contructor returns a plan that will compute all specified outputs in one pass.
-    pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<TI, M>> {
+    pub fn new_for_outputs(model: M, outputs: &[OutletId]) -> TractResult<SimplePlan<TI, O, M>> {
         let inputs = model.borrow().input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
         let order = eval_order_for_nodes(model.borrow().nodes(), &inputs, &outputs_nodes)?;
@@ -64,24 +75,34 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> SimplePlan<TI, M> {
         state.run(inputs)
     }
 
-    pub fn model(&self) -> &Model<TI> {
+    pub fn model(&self) -> &Model<TI, O> {
         self.model.borrow()
     }
 }
 
 #[derive(Debug)]
-pub struct SimpleState<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> {
+pub struct SimpleState<TI, O, M, P>
+where
+    TI: TensorInfo,
+    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    M: Borrow<Model<TI, O>>,
+    P: Borrow<SimplePlan<TI, O, M>>,
+{
     plans: Vec<P>,
     pub states: Vec<Option<Box<OpState>>>,
     pub session_state: SessionState,
     pub values: Vec<Option<TVec<Arc<Tensor>>>>,
-    _phantom: PhantomData<(M, TI)>,
+    _phantom: PhantomData<(M, TI, O)>,
 }
 
-impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>> + Clone> Clone
-    for SimpleState<TI, M, P>
+impl<TI, O, M, P> Clone for SimpleState<TI, O, M, P>
+where
+    TI: TensorInfo,
+    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    M: Borrow<Model<TI, O>>,
+    P: Borrow<SimplePlan<TI, O, M>> + Clone,
 {
-    fn clone(&self) -> SimpleState<TI, M, P> {
+    fn clone(&self) -> SimpleState<TI, O, M, P> {
         let states = self
             .states
             .iter()
@@ -99,17 +120,26 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>> + Clone>
     }
 }
 
-impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleState<TI, M, P> {
-    pub fn new(plan: P) -> TractResult<SimpleState<TI, M, P>> {
+impl<TI, O, M, P> SimpleState<TI, O, M, P>
+where
+    TI: TensorInfo,
+    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    M: Borrow<Model<TI, O>>,
+    P: Borrow<SimplePlan<TI, O, M>> + Clone,
+{
+    pub fn new(plan: P) -> TractResult<SimpleState<TI, O, M, P>> {
         Self::new_multiplan(vec![plan])
     }
 
-    pub fn new_multiplan(plans: Vec<P>) -> TractResult<SimpleState<TI, M, P>> {
+    pub fn new_multiplan(plans: Vec<P>) -> TractResult<SimpleState<TI, O, M, P>> {
         let values = vec![None; plans[0].borrow().model.borrow().nodes().len()];
         let mut session = SessionState::default();
         let model = plans[0].borrow().model();
-        let states =
-            model.nodes().iter().map(|n| n.op().state(&mut session)).collect::<TractResult<_>>()?;
+        let states = model
+            .nodes()
+            .iter()
+            .map(|n: &BaseNode<TI, O>| n.op().state(&mut session, n.id))
+            .collect::<TractResult<_>>()?;
         Ok(SimpleState { plans, states, session_state: session, values, _phantom: PhantomData })
     }
 
@@ -127,7 +157,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             .model()
             .nodes()
             .iter()
-            .map(|n| n.op().state(session_state))
+            .map(|n| n.op().state(session_state, n.id))
             .collect::<TractResult<_>>()?;
         Ok(())
     }
@@ -154,85 +184,86 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             let plan = plans[plan].borrow();
             let model = plan.model().borrow();
             for (step, n) in plan.order.iter().enumerate() {
+                if model.inputs.iter().any(|o| o.node == *n) {
+                    continue;
+                }
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
-                if !model.inputs.iter().any(|outlet| outlet.node == *n) {
-                    let mut inputs: TVec<Arc<Tensor>> = tvec![];
-                    for i in &node.inputs {
-                        trace!("  use input {:?}", i);
-                        let prec_node = model.node(i.node);
-                        let prec = values[i.node].as_ref().ok_or_else(|| {
-                            format!("Computing {}, precursor {} not done:", node, prec_node)
-                        })?;
-                        inputs.push(prec[i.slot].clone().into())
-                    }
-
-                    if cfg!(debug_assertions) {
-                        let facts = model.node_input_facts(node.id)?;
-                        if facts.len() != inputs.len() {
-                            bail!(
-                                "Evaluating {}: expected {} inputs, got {}",
-                                node,
-                                facts.len(),
-                                inputs.len()
-                            );
-                        }
-                        for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
-                            if f.to_tensor_fact().is_concrete()
-                                && f.to_tensor_fact().stream_info()?.is_some()
-                            {
-                                continue;
-                            }
-                            if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
-                                bail!(
-                                    "Evaluating {}: input {:?}, expected {:?}, got {:?} ({})",
-                                    node,
-                                    ix,
-                                    f,
-                                    v,
-                                    e
-                                );
-                            }
-                        }
-                    }
-
-                    let vs = match states[node.id] {
-                        Some(ref mut state) => state.eval(session_state, node.op(), inputs),
-                        None => node.op().as_stateless().unwrap().eval(inputs),
-                    }
-                    .map_err(|e| format!("Evaluating {}: {}", node, e))?;
-
-                    if cfg!(debug_assertions) {
-                        let facts = model.node_output_facts(node.id)?;
-                        if facts.len() != vs.len() {
-                            bail!(
-                                "Evaluating {}: expected {} outputs, got {}",
-                                node,
-                                facts.len(),
-                                vs.len()
-                            );
-                        }
-                        for (ix, (v, f)) in vs.iter().zip(facts.iter()).enumerate() {
-                            if f.to_tensor_fact().is_concrete()
-                                && f.to_tensor_fact().stream_info()?.is_some()
-                            {
-                                continue;
-                            }
-                            if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
-                                bail!(
-                                    "Evaluating {}: output {:?}, expected {:?}, got {:?} ({})",
-                                    node,
-                                    ix,
-                                    f,
-                                    v,
-                                    e
-                                );
-                            }
-                        }
-                    }
-
-                    values[node.id] = Some(vs);
+                let mut inputs: TVec<Arc<Tensor>> = tvec![];
+                for i in &node.inputs {
+                    trace!("  use input {:?}", i);
+                    let prec_node = model.node(i.node);
+                    let prec = values[i.node].as_ref().ok_or_else(|| {
+                        format!("Computing {}, precursor {} not done:", node, prec_node)
+                    })?;
+                    inputs.push(prec[i.slot].clone().into())
                 }
+
+                if cfg!(debug_assertions) {
+                    let facts = model.node_input_facts(node.id)?;
+                    if facts.len() != inputs.len() {
+                        bail!(
+                            "Evaluating {}: expected {} inputs, got {}",
+                            node,
+                            facts.len(),
+                            inputs.len()
+                        );
+                    }
+                    for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
+                        if f.to_tensor_fact().is_concrete()
+                            && f.to_tensor_fact().stream_info()?.is_some()
+                        {
+                            continue;
+                        }
+                        if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
+                            bail!(
+                                "Evaluating {}: input {:?}, expected {:?}, got {:?} ({})",
+                                node,
+                                ix,
+                                f,
+                                v,
+                                e
+                            );
+                        }
+                    }
+                }
+
+                let vs = match states[node.id] {
+                    Some(ref mut state) => state.eval(session_state, node.op(), inputs),
+                    None => node.op().as_stateless().unwrap().eval(inputs),
+                }
+                .map_err(|e| format!("Evaluating {}: {}", node, e))?;
+
+                if cfg!(debug_assertions) {
+                    let facts = model.node_output_facts(node.id)?;
+                    if facts.len() != vs.len() {
+                        bail!(
+                            "Evaluating {}: expected {} outputs, got {}",
+                            node,
+                            facts.len(),
+                            vs.len()
+                        );
+                    }
+                    for (ix, (v, f)) in vs.iter().zip(facts.iter()).enumerate() {
+                        if f.to_tensor_fact().is_concrete()
+                            && f.to_tensor_fact().stream_info()?.is_some()
+                        {
+                            continue;
+                        }
+                        if let Err(e) = f.to_tensor_fact().unify(&v.clone().into()) {
+                            bail!(
+                                "Evaluating {}: output {:?}, expected {:?}, got {:?} ({})",
+                                node,
+                                ix,
+                                f,
+                                v,
+                                e
+                            );
+                        }
+                    }
+                }
+
+                values[node.id] = Some(vs);
                 for flush in &plan.flush_lists[step] {
                     trace!("  flushing node {} {}", flush, node);
                     values[*flush] = None;
@@ -265,7 +296,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             .get(input)
             .ok_or_else(|| format!("Invalid input id for model ({}).", input))?
             .node;
-        self.values[id] = Some(tvec![t.into()]);
+        self.values[id] = Some(tvec!(t.into()));
         Ok(())
     }
 
@@ -361,11 +392,11 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>, P: Borrow<SimplePlan<TI, M>>> SimpleS
             .collect())
     }
 
-    pub fn plan(&self) -> &SimplePlan<TI, M> {
+    pub fn plan(&self) -> &SimplePlan<TI, O, M> {
         &self.plans[0].borrow()
     }
 
-    pub fn model(&self) -> &Model<TI> {
+    pub fn model(&self) -> &Model<TI, O> {
         self.plan().model()
     }
 }

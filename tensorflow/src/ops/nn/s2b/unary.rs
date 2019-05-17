@@ -86,24 +86,6 @@ impl StatelessOp for SpaceToBatchUnary {
     }
 }
 
-impl InferenceRulesOp for SpaceToBatchUnary {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, self.datum_type)?;
-        s.equals(&outputs[0].datum_type, self.datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        s.equals(&outputs[0].shape, self.batch_shape.clone())?;
-        s.equals(&inputs[0].shape, self.space_shape.clone())?;
-        Ok(())
-    }
-}
 
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpaceUnary {
@@ -145,21 +127,3 @@ impl StatelessOp for BatchToSpaceUnary {
     }
 }
 
-impl InferenceRulesOp for BatchToSpaceUnary {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, self.datum_type)?;
-        s.equals(&outputs[0].datum_type, self.datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        s.equals(&inputs[0].shape, self.batch_shape.clone())?;
-        s.equals(&outputs[0].shape, self.space_shape.clone())?;
-        Ok(())
-    }
-}

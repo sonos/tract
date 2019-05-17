@@ -202,6 +202,8 @@ impl InferenceRulesOp for MatMul {
         })?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -280,25 +282,6 @@ impl StatelessOp for MatMulUnaryA {
     }
 }
 
-impl InferenceRulesOp for MatMulUnaryA {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.given(&inputs[0].shape, move |s, ashape| {
-            let bshape: TVec<TDim> = self.b.shape().iter().map(|x| x.to_dim()).collect();
-            let (_, _, cshape) = infer_shapes(ashape, bshape)?;
-            s.equals(&outputs[0].shape, cshape)
-        })?;
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct MatMulUnaryImplASimpleB<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     geo: Geo<T>,
@@ -365,25 +348,6 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
         );
 
         Ok(tvec!(c.into_arc_tensor()))
-    }
-}
-
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> InferenceRulesOp
-    for MatMulUnaryImplASimpleB<T>
-{
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, T::datum_type())?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, ShapeFact::from(&*self.a_shape))?;
-        s.equals(&outputs[0].shape, ShapeFact::from(&*self.c_shape))?;
-        Ok(())
     }
 }
 
@@ -484,23 +448,6 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> InferenceRulesOp for MatMulUnaryImplA<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, T::datum_type())?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, ShapeFact::from(&*self.geo.a_shape))?;
-        s.equals(&outputs[0].shape, ShapeFact::from(&*self.geo.c_shape))?;
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnaryB {
     a: Tensor,
@@ -517,24 +464,5 @@ impl StatelessOp for MatMulUnaryB {
         let b = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, &*b))?;
         Ok(tvec!(c.into()))
-    }
-}
-
-impl InferenceRulesOp for MatMulUnaryB {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.given(&inputs[0].shape, move |s, bshape| {
-            let ashape: TVec<TDim> = self.a.shape().iter().map(|x| x.to_dim()).collect();
-            let (_, _, cshape) = infer_shapes(ashape, bshape)?;
-            s.equals(&outputs[0].shape, cshape)
-        })?;
-        Ok(())
     }
 }

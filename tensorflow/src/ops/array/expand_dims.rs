@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 
-pub fn build(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn build(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(ExpandDims))
 }
 
@@ -91,4 +91,6 @@ impl InferenceRulesOp for ExpandDims {
             })
         })
     }
+
+    inference_op_as_op!();
 }

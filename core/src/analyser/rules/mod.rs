@@ -43,9 +43,12 @@ pub trait InferenceRulesOp {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult;
+
+    fn as_op(&self) -> &Op;
+    fn as_op_mut(&mut self) -> &mut Op;
 }
 
-impl<O: InferenceRulesOp> crate::ops::InferenceOp for O {
+impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
     fn infer_facts(
         &self,
         inputs: TVec<&TensorFact>,
@@ -59,5 +62,13 @@ impl<O: InferenceRulesOp> crate::ops::InferenceOp for O {
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;
         solver.infer_facts((inputs, outputs))
+    }
+
+    fn as_op(&self) -> &Op {
+        self.as_op()
+    }
+
+    fn as_op_mut(&mut self) -> &mut Op {
+        self.as_op_mut()
     }
 }

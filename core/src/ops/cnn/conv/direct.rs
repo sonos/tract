@@ -12,6 +12,12 @@ pub struct Direct {
     packed_filters: Tensor,
 }
 
+impl Direct {
+    pub fn output_shape(&self) -> &[usize] {
+        &self.output_shape.shape
+    }
+}
+
 impl Op for Direct {
     fn name(&self) -> Cow<str> {
         "ConvDirect".into()
@@ -56,13 +62,3 @@ impl StatelessOp for Direct {
     }
 }
 
-impl InferenceRulesOp for Direct {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!()
-    }
-}

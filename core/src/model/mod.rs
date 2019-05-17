@@ -57,29 +57,30 @@ pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
 pub use self::tensor_info::*;
 pub use crate::analyser::types::TensorFact;
+pub use crate::ops::{InferenceOp, Op};
 
 use crate::TractResult;
 
 /// A model with partially types and shapes, as produced by parsing ONNX or
 /// Tensorflow graphs.
-pub type InferenceModel = Model<TensorFact>;
+pub type InferenceModel = Model<TensorFact, Box<InferenceOp>>;
 /// Node for InferenceModel graph
-pub type InferenceNode = Node<TensorFact>;
+pub type InferenceNode = BaseNode<TensorFact, Box<InferenceOp>>;
 
 /// A model with completely determined types and shapes.
-pub type TypedModel = Model<TypedTensorInfo>;
+pub type TypedModel = Model<TypedTensorInfo, Box<Op>>;
 /// Node for TypedModel graph
 pub type TypedNode = Node<TypedTensorInfo>;
 /// A ModelPatch for TypedModel.
-pub type TypedModelPatch = ModelPatch<TypedTensorInfo>;
+pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<Op>>;
 
 /// A model with determined types and shapes, where constant have been
 /// eleminated from the graph.
-pub type NormalizedModel = Model<NormalizedTensorInfo>;
+pub type NormalizedModel = Model<NormalizedTensorInfo, Box<Op>>;
 /// A Node for NormalizedModel.
 pub type NormalizedNode = Node<NormalizedTensorInfo>;
 /// A ModelPatch for NormalizedModel.
-pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo>;
+pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<Op>>;
 
 impl InferenceModel {
     /// Analyse one node of the graph.

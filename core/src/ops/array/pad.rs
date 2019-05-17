@@ -164,6 +164,8 @@ impl InferenceRulesOp for Pad {
         }
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, Default, new)]
@@ -226,20 +228,8 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
-    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         Ok(Some(Box::new(PulsePadOpState::<T>::default())))
     }
 }
 
-impl<T: Datum + Copy> InferenceRulesOp for PulsePad<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        Ok(())
-    }
-}

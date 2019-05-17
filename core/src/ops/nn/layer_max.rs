@@ -56,6 +56,8 @@ impl InferenceRulesOp for LayerHardmax {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -111,6 +113,8 @@ impl InferenceRulesOp for LayerLogSoftmax {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -166,6 +170,8 @@ impl InferenceRulesOp for LayerSoftmax {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(

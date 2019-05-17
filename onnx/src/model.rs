@@ -6,14 +6,14 @@ use tract_core::internal::*;
 
 use crate::pb;
 
-pub type OnnxOpRegister = OpRegister<pb::NodeProto>;
+pub type OnnxOpRegister = OpRegister<pb::NodeProto, Box<InferenceOp>>;
 
 pub struct Onnx {
     pub op_register: OnnxOpRegister,
 }
 
-impl Framework<pb::NodeProto, pb::ModelProto> for Onnx {
-    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<pb::NodeProto>> {
+impl Framework<pb::NodeProto, Box<InferenceOp>, pb::ModelProto> for Onnx {
+    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<pb::NodeProto, Box<InferenceOp>>> {
         self.op_register.get(name)
     }
 

@@ -10,7 +10,7 @@ use num_traits::Zero;
 use std::ops::Mul;
 
 #[derive(Debug, Clone)]
-pub(super) struct Im2Col<T: Copy + Datum + Mul + Zero> {
+pub struct Im2Col<T: Copy + Datum + Mul + Zero> {
     pub patch: Patch,
     pub input_shape: DataShape,
     pub output_shape: DataShape,
@@ -58,7 +58,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         Im2Col { patch, input_shape, output_shape, m, k, n, group, ci_per_group, b_pack, patcher }
     }
 
-    pub(super) fn output_shape(&self) -> &[usize] {
+    pub fn output_shape(&self) -> &[usize] {
         &self.output_shape.shape
     }
 
@@ -94,23 +94,6 @@ impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let tensor = self.im2col(&inputs[0].to_array_view()?)?;
         Ok(tvec!(tensor.into()))
-    }
-}
-
-impl<T: Copy + Datum + Mul + Zero> InferenceRulesOp for Im2Col<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, T::datum_type())?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, ShapeFact::from(&*self.input_shape.shape))?;
-        s.equals(&outputs[0].shape, ShapeFact::from(&*self.output_shape.shape))?;
-        Ok(())
     }
 }
 

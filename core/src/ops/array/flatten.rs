@@ -45,4 +45,6 @@ impl InferenceRulesOp for Flatten {
             s.equals(&outputs[0].shape, ShapeFact::from(vec![shape_0, shape_1]))
         })
     }
+
+    inference_op_as_op!();
 }

@@ -2,7 +2,7 @@ use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
 
-pub type TfOpRegister = OpRegister<NodeDef>;
+pub type TfOpRegister = OpRegister<NodeDef, Box<InferenceOp>>;
 
 pub struct Tensorflow {
     pub op_register: TfOpRegister,
@@ -25,8 +25,8 @@ impl Tensorflow {
     }
 }
 
-impl Framework<NodeDef, GraphDef> for Tensorflow {
-    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<NodeDef>> {
+impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
+    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<NodeDef, Box<InferenceOp>>> {
         self.op_register.get(name)
     }
     fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<GraphDef> {

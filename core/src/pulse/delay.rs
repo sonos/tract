@@ -82,23 +82,11 @@ fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
 }
 
 impl StatefullOp for Delay {
-    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         let mut buffer_shape: TVec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
         let buffer = dispatch_copy!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
         Ok(Some(Box::new(DelayState { buffer })))
-    }
-}
-
-impl InferenceRulesOp for Delay {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        Ok(())
     }
 }
 
@@ -108,16 +96,23 @@ mod test {
     use crate::*;
 
     fn test_pulse_delay_over(pulse: usize, delay: usize, overlap: usize) {
-        let mut model = Model::default();
-        let fact = PulsedTensorFact {
+        let mut model = PulsedModel::default();
+        let fact1 = PulsedTensorFact {
             dt: u8::datum_type(),
             shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source("source", fact.to_pulse_fact().to_tensor_fact()).unwrap();
-        model.chain_default("delay", Delay::new(fact, delay, overlap)).unwrap();
+        model.add_source("source", fact1.clone()).unwrap();
+        let fact2 = PulsedTensorFact {
+            dt: u8::datum_type(),
+            shape: tvec![pulse + overlap],
+            axis: 0,
+            dim: TDim::s(),
+            delay,
+        };
+        model.chain("delay", Delay::new(fact1, delay, overlap), tvec!(fact2)).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = crate::plan::SimpleState::new(plan).unwrap();
@@ -155,24 +150,31 @@ mod test {
     #[test]
     fn test_two_delays() {
         let pulse = 4;
-        let mut model = Model::default();
-        let fact = PulsedTensorFact {
+        let mut model = PulsedModel::default();
+        let fact_0 = PulsedTensorFact {
             dt: u8::datum_type(),
             shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 0,
         };
-        model.add_source("source", fact.to_pulse_fact().to_tensor_fact()).unwrap();
-        model.chain_default("delay-1", Delay::new(fact, 2, 0)).unwrap();
-        let fact = PulsedTensorFact {
+        model.add_source("source", fact_0.clone()).unwrap();
+        let fact_1 = PulsedTensorFact {
             dt: u8::datum_type(),
             shape: tvec![pulse],
             axis: 0,
             dim: TDim::s(),
             delay: 2,
         };
-        model.chain_default("delay-2", Delay::new(fact, 2, 0)).unwrap();
+        model.chain("delay-1", Delay::new(fact_0, 2, 0), tvec!(fact_1.clone())).unwrap();
+        let fact_2 = PulsedTensorFact {
+            dt: u8::datum_type(),
+            shape: tvec![pulse],
+            axis: 0,
+            dim: TDim::s(),
+            delay: 4,
+        };
+        model.chain("delay-2", Delay::new(fact_1, 2, 0), tvec!(fact_2)).unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = crate::plan::SimpleState::new(plan).unwrap();

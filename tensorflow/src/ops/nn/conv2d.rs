@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 use tract_core::ops::cnn::*;
 
-pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let data_format = super::data_format(pb)?;
     let padding = super::padding(pb)?;
     let strides = super::strides(pb)?;
@@ -31,7 +31,7 @@ mod tests {
             .into()
     }
 
-    fn make_conv(h_stride: usize, v_stride: usize, padding: PaddingSpec) -> Box<Op> {
+    fn make_conv(h_stride: usize, v_stride: usize, padding: PaddingSpec) -> Box<InferenceOp> {
         Box::new(Conv::new(
             DataFormat::NHWC,
             KernelFormat::HWIO,

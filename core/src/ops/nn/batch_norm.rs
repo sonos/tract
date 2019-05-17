@@ -123,6 +123,8 @@ impl InferenceRulesOp for BatchNorm {
         })?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -203,22 +205,3 @@ where
     }
 }
 
-impl<T> InferenceRulesOp for FixedBatchNorm<T>
-where
-    T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
-    f32: AsPrimitive<T>,
-{
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, T::datum_type())?;
-        s.equals(&outputs[0].datum_type, T::datum_type())?;
-        s.equals(&outputs[0].shape, &inputs[0].shape)?;
-        Ok(())
-    }
-}

@@ -1,8 +1,10 @@
+use std::fmt::{Debug, Display};
+
 use crate::display_graph::DisplayOptions;
 use crate::{CliResult, SomeModel};
 use ansi_term::{Color, Style};
 use box_drawing::light::*;
-use tract_core::model::{Model, OutletId, TensorInfo};
+use tract_core::model::{Model, Op, OutletId, TensorInfo};
 use tract_core::ops::konst::Const;
 
 pub fn render(model: &SomeModel, options: DisplayOptions) -> CliResult<()> {
@@ -14,7 +16,11 @@ pub fn render(model: &SomeModel, options: DisplayOptions) -> CliResult<()> {
     }
 }
 
-fn render_t<TI: TensorInfo>(model: &Model<TI>, options: DisplayOptions) -> CliResult<()> {
+fn render_t<TI, O>(model: &Model<TI, O>, options: DisplayOptions) -> CliResult<()> 
+where
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+{
     let colors: &[Style] = &[
         Color::Red.normal(),
         Color::Green.normal(),
@@ -135,7 +141,7 @@ fn render_t<TI: TensorInfo>(model: &Model<TI>, options: DisplayOptions) -> CliRe
             println!(
                 " {} {} {}",
                 node_color.paint(format!("{}", node.id)),
-                node.op.name(),
+                node.op.as_ref().name(),
                 node.name
             );
         }

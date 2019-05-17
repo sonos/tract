@@ -8,7 +8,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("VariableV2", variable_v2);
 }
 
-fn variable_v2(node: &NodeDef) -> TractResult<Box<Op>> {
+fn variable_v2(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let shared_name = node.get_attr_str("shared_name")?;
     let shared_name = if shared_name != "" { Some(shared_name) } else { None };
     let container = node.get_attr_str("container")?;
@@ -58,7 +58,7 @@ impl Op for VariableV2 {
 }
 
 impl StatefullOp for VariableV2 {
-    fn state(&self, state: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
             ::ndarray::ArrayD::<T>::default(shape).into()
         }
@@ -82,6 +82,8 @@ impl InferenceRulesOp for VariableV2 {
         s.equals(&outputs[0].shape, ShapeFact::from(&*self.shape))?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 // need some dummy state to make sure Assign is a StatefullOp, and will not be
@@ -134,7 +136,7 @@ impl OpState for AssignState {
 }
 
 impl StatefullOp for Assign {
-    fn state(&self, _state: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         Ok(Some(Box::new(AssignState)))
     }
 }
@@ -155,6 +157,8 @@ impl InferenceRulesOp for Assign {
         s.equals(&outputs[0].value, &inputs[1].value)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]

@@ -15,7 +15,7 @@ pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
 }
 
 fn handle_t(
-    model: &Model<TypedTensorInfo>,
+    model: &TypedModel,
     params: &Parameters,
     options: DisplayOptions,
 ) -> CliResult<()> {

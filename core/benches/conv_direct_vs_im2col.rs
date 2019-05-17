@@ -58,6 +58,10 @@ impl Problem {
         TensorFact::dt_shape(DatumType::F32, self.image_shape())
     }
 
+    pub fn image_type(&self) -> TypedTensorInfo {
+        TypedTensorInfo::shape::<f32>(&*self.image_shape())
+    }
+
     pub fn to_unary(&self) -> Box<ConvUnary> {
         let kernel =
             Tensor::from(ndarray::Array4::<f32>::zeros((self.kh, self.kw, self.ci, self.co)));
@@ -76,25 +80,26 @@ impl Problem {
         Box::new(unary.unwrap())
     }
 
-    pub fn to_direct(&self) -> SimplePlan<TypedTensorInfo, TypedModel> {
+    pub fn to_direct(&self) -> SimplePlan<TypedTensorInfo, Box<Op>, TypedModel> {
         let unary = self.to_unary();
 
         let direct = unary.to_direct(&*self.image_shape()).unwrap();
-        let mut model_direct = InferenceModel::default();
-        model_direct.add_source_default("input").unwrap();
-        model_direct.chain_default("conv", direct).unwrap();
-        SimplePlan::new(model_direct.into_typed().unwrap()).unwrap()
+        let mut model_direct = TypedModel::default();
+        model_direct.add_source("input", self.image_type()).unwrap();
+        model_direct.chain("conv", direct.clone(), tvec!(TypedTensorInfo::shape::<f32>(direct.output_shape()))).unwrap();
+        SimplePlan::new(model_direct).unwrap()
     }
 
-    pub fn to_im2col(&self) -> SimplePlan<TypedTensorInfo, TypedModel> {
+    pub fn to_im2col(&self) -> SimplePlan<TypedTensorInfo, Box<Op>, TypedModel> {
         let unary = self.to_unary();
+        let output_shape:TVec<usize> = unary.full_output_shape.iter().map(|a| a.to_integer().unwrap() as usize).collect();
 
-        let (im2col, _, cvgemm) = unary.to_boxed_im2col_pair::<f32>(&*self.image_shape()).unwrap();
-        let mut model_im2col = InferenceModel::default();
-        model_im2col.add_source_default("input").unwrap();
-        model_im2col.chain_default("im2col", im2col).unwrap();
-        model_im2col.chain_default("gemm", cvgemm).unwrap();
-        SimplePlan::new(model_im2col.into_typed().unwrap()).unwrap()
+        let (im2col, im2col_shape, cvgemm) = unary.to_im2col_pair::<f32>(&*self.image_shape()).unwrap();
+        let mut model_im2col = TypedModel::default();
+        model_im2col.add_source("input", self.image_type()).unwrap();
+        model_im2col.chain("im2col", im2col, tvec!(TypedTensorInfo::shape::<f32>(&*im2col_shape))).unwrap();
+        model_im2col.chain("gemm", cvgemm, tvec!(TypedTensorInfo::shape::<f32>(&*output_shape))).unwrap();
+        SimplePlan::new(model_im2col).unwrap()
     }
 }
 

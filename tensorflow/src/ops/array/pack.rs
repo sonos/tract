@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 
-pub fn pack(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn pack(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;
@@ -87,6 +87,8 @@ impl InferenceRulesOp for Pack {
         })?;
         s.equals(&outputs[0].shape[axis], self.n.to_dim())
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]

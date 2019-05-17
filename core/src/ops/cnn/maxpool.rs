@@ -66,6 +66,8 @@ impl InferenceRulesOp for MaxPool {
         }
         self.pool_spec.rules_for_shape(s, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -128,16 +130,5 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
         } else {
             Ok(tvec!(values.into_arc_tensor()))
         }
-    }
-}
-
-impl<T: Datum + Float> InferenceRulesOp for MaxPoolFixed<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!()
     }
 }

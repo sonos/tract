@@ -21,12 +21,12 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     rec::register_all_ops(reg);
 }
 
-fn konst(node: &NodeProto) -> TractResult<Box<Op>> {
+fn konst(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     let v = node.get_attr("value")?;
     Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(v)))
 }
 
-fn cast(node: &NodeProto) -> TractResult<Box<Op>> {
+fn cast(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     use protobuf::ProtobufEnum;
     let to = node.get_attr("to")?;
     let to = pb::TensorProto_DataType::from_i32(to)

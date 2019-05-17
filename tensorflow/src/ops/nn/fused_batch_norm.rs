@@ -1,7 +1,7 @@
 use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
 
-pub fn fused_batch_norm(node: &NodeDef) -> TractResult<Box<Op>> {
+pub fn fused_batch_norm(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let epsilon = node.get_attr_float::<f32>("epsilon")?;
     Ok(Box::new(FusedBatchNorm::new(epsilon)))
 }
@@ -66,4 +66,6 @@ impl InferenceRulesOp for FusedBatchNorm {
         s.equals(&inputs[4].shape[0], &inputs[0].shape[3])?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

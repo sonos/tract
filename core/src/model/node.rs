@@ -2,10 +2,11 @@ use super::*;
 use crate::ops::Op;
 use itertools::Itertools;
 use std::fmt;
+use std::fmt::{Debug, Display};
 
 /// A Smallvec instantiation with 4 embeddable values.
 ///
-/// Used about everywhere in tract, for node inputs and outputs, or 
+/// Used about everywhere in tract, for node inputs and outputs, or
 /// tensor dimensions.
 pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 
@@ -15,7 +16,7 @@ pub type TVec<T> = ::smallvec::SmallVec<[T; 4]>;
 /// model.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
-pub struct Node<TI: TensorInfo> {
+pub struct BaseNode<TI: TensorInfo, O> {
     /// node id in the model
     ///
     /// Caution: this id will not be persistent during networks transformation
@@ -30,21 +31,23 @@ pub struct Node<TI: TensorInfo> {
     pub inputs: Vec<OutletId>,
     /// The actual operation the node performs.
     #[cfg_attr(feature = "serialize", serde(skip))]
-    pub op: Box<Op>,
+    pub op: O,
     /// List of ouputs, with their descendant and tensor type information.
     pub outputs: TVec<OutletFact<TI>>,
 }
 
-impl<TI: TensorInfo> fmt::Display for Node<TI> {
+impl<TI: TensorInfo, O: std::fmt::Display> fmt::Display for BaseNode<TI, O> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op().name())
+        write!(fmt, "#{} \"{}\" {}", self.id, self.name, self.op)
     }
 }
 
-impl<TI: TensorInfo> Node<TI> {
+pub type Node<TI> = BaseNode<TI, Box<Op>>;
+
+impl<TI: TensorInfo, NodeOp: Debug + Display + AsRef<Op> + AsMut<Op> + AsMut<Op>> BaseNode<TI, NodeOp> {
     /// Access the op of the node
     pub fn op(&self) -> &Op {
-        &*self.op
+        self.op.as_ref()
     }
 
     /// Try to downcast the node operation to O.
@@ -54,7 +57,7 @@ impl<TI: TensorInfo> Node<TI> {
 
     /// Try to downcast the node operation to O.
     pub fn op_as_mut<O: Op>(&mut self) -> Option<&mut O> {
-        self.op.downcast_mut::<O>()
+        self.op.as_mut().downcast_mut::<O>()
     }
 
     /// Check if the node operation is of type O.
@@ -63,8 +66,8 @@ impl<TI: TensorInfo> Node<TI> {
     }
 
     /// Check that this node produce the same outputs as `other`.
-    pub fn same_as(&self, other: &Node<TI>) -> bool {
-        self.inputs == other.inputs && self.op.same_as(other.op.as_ref())
+    pub fn same_as(&self, other: &BaseNode<TI,NodeOp>) -> bool {
+        self.inputs == other.inputs && self.op().same_as(other.op())
     }
 }
 

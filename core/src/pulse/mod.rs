@@ -78,7 +78,7 @@ impl PulsedTensorFact {
     }
 }
 
-pub type PulsedModel = Model<PulsedTensorFact>;
+pub type PulsedModel = Model<PulsedTensorFact, Box<Op>>;
 
 impl PulsedModel {
     pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {

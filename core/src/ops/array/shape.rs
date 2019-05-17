@@ -73,6 +73,8 @@ impl InferenceRulesOp for Shape {
             }
         })
     }
+
+    inference_op_as_op!();
 }
 
 /*

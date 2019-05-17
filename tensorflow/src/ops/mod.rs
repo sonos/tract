@@ -29,12 +29,12 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Placeholder", placeholder);
 }
 
-pub fn cast(node: &NodeDef) -> TractResult<Box<Op>> {
+pub fn cast(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = node.get_attr_datum_type("DstT")?;
     Ok(Box::new(::tract_core::ops::cast::Cast::new(dtype)))
 }
 
-pub fn konst(node: &NodeDef) -> TractResult<Box<Op>> {
+pub fn konst(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = node.get_attr_datum_type("dtype")?;
     let mat = node.get_attr_tensor("value")?;
 
@@ -45,7 +45,7 @@ pub fn konst(node: &NodeDef) -> TractResult<Box<Op>> {
     Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(mat)))
 }
 
-pub fn placeholder(_node: &NodeDef) -> TractResult<Box<Op>> {
+pub fn placeholder(_node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(::tract_core::ops::source::Source::new()))
 }
 
@@ -75,6 +75,8 @@ impl InferenceRulesOp for Noop {
         s.equals(&outputs[0].rank, 0)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Clone, Debug, new, Default)]
@@ -120,4 +122,6 @@ impl InferenceRulesOp for Identity {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

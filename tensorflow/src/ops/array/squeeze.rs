@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 use tract_core::ops::array::Squeeze;
 
-pub fn squeeze(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn squeeze(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
     if let Some(mut squeeze_dims) = squeeze_dims {
         if squeeze_dims.len() > 0 {

@@ -71,4 +71,6 @@ impl InferenceRulesOp for Reshape {
             s.equals(&outputs[0].shape, ShapeFact::from(shape))
         })
     }
+
+    inference_op_as_op!();
 }

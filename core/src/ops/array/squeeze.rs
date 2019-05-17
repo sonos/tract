@@ -75,4 +75,6 @@ impl InferenceRulesOp for Squeeze {
             s.equals(&outputs[0].shape, output_shape)
         })
     }
+
+    inference_op_as_op!();
 }

@@ -5,7 +5,7 @@ pub struct Fill {
     dt: DatumType,
 }
 
-pub fn fill(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn fill(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(Box::new(Fill::new(dtype)))
 }
@@ -60,4 +60,6 @@ impl InferenceRulesOp for Fill {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }

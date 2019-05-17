@@ -1,5 +1,5 @@
 //! Ops
-use std::fmt::Debug;
+use std::fmt;
 
 use downcast_rs::Downcast;
 
@@ -44,7 +44,7 @@ pub enum Cost {
 
 use crate::internal::*;
 
-pub trait OpState: Debug + Send + objekt::Clone {
+pub trait OpState: fmt::Debug + Send + objekt::Clone {
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -58,14 +58,14 @@ pub trait StatelessOp: Op {
 }
 
 pub trait StatefullOp {
-    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>>;
+    fn state(&self, _session: &mut SessionState, node_id: usize) -> TractResult<Option<Box<OpState>>>;
     fn as_stateless(&self) -> Option<&StatelessOp> {
         None
     }
 }
 
 impl<O: StatelessOp + Clone> StatefullOp for O {
-    fn state(&self, _session: &mut SessionState) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         Ok(None)
     }
 
@@ -74,44 +74,11 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
     }
 }
 
-/// A Arc<Tensor> operation.
-impl_downcast!(Op);
+/// A base operation
 pub trait Op:
-    Debug + objekt::Clone + Send + Sync + 'static + InferenceOp + Downcast + StatefullOp
+    fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
 {
     fn name(&self) -> Cow<str>;
-
-    /// Infers properties about the input and output tensors.
-    ///
-    /// The `inputs` and `outputs` arguments correspond to properties about
-    /// the input and output tensors that are already known.
-    ///
-    /// Returns Err in case of an unrecoverable error during the inference,
-    /// and the refined properties about the inputs and outputs otherwise.
-    fn infer(
-        &self,
-        inputs: TVec<&TensorFact>,
-        outputs: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
-
-        if let Some(stateless) = self.as_stateless() {
-            if infered_inputs.iter().all(|i| i.value.is_concrete()) {
-                let input_values = infered_inputs
-                    .iter()
-                    .map(|i| i.value.concretize().unwrap().clone().into())
-                    .collect(); // checked
-                let output_values = stateless
-                    .eval(input_values)?
-                    .into_iter()
-                    .map(|t| t.into())
-                    .collect::<TVec<_>>();
-                return Ok((infered_inputs, output_values));
-            }
-        }
-
-        Ok((infered_inputs, infered_outputs))
-    }
 
     fn declutter(
         &self,
@@ -156,19 +123,113 @@ pub trait Op:
     }
 }
 
-pub trait InferenceOp {
+
+/// An operation with tensor type inference
+pub trait InferenceOp:
+    Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
+{
+    /// Infers properties about the input and output tensors.
+    ///
+    /// The `inputs` and `outputs` arguments correspond to properties about
+    /// the input and output tensors that are already known.
+    ///
+    /// Returns Err in case of an unrecoverable error during the inference,
+    /// and the refined properties about the inputs and outputs otherwise.
+    fn infer(
+        &self,
+        inputs: TVec<&TensorFact>,
+        outputs: TVec<&TensorFact>,
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+        let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
+
+        if self.as_op().downcast_ref::<crate::ops::source::Source>().is_some() {
+            return Ok((infered_inputs, infered_outputs))
+        }
+
+        if let Some(stateless) = self.as_stateless() {
+            if infered_inputs.iter().all(|i| i.value.is_concrete()) {
+                let input_values = infered_inputs
+                    .iter()
+                    .map(|i| i.value.concretize().unwrap().clone().into())
+                    .collect(); // checked
+                let output_values = stateless
+                    .eval(input_values)?
+                    .into_iter()
+                    .map(|t| t.into())
+                    .collect::<TVec<_>>();
+                return Ok((infered_inputs, output_values));
+            }
+        }
+
+        return Ok((infered_inputs, infered_outputs))
+    }
+
     fn infer_facts(
         &self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)>;
+
+    fn as_op(&self) -> &Op;
+    fn as_op_mut(&mut self) -> &mut Op;
 }
+
+impl_downcast!(Op);
 
 clone_trait_object!(Op);
 clone_trait_object!(StatelessOp);
+clone_trait_object!(InferenceOp);
 
 impl<O: Op> From<O> for Box<Op> {
     fn from(it: O) -> Box<Op> {
         Box::new(it)
+    }
+}
+
+impl<O: InferenceOp> From<O> for Box<InferenceOp> {
+    fn from(it: O) -> Box<InferenceOp> {
+        Box::new(it)
+    }
+}
+
+impl From<Box<InferenceOp>> for Box<Op> {
+    fn from(it: Box<InferenceOp>) -> Box<Op> {
+        objekt::clone_box(it.as_op())
+    }
+}
+
+impl AsRef<Op> for InferenceOp {
+    fn as_ref(&self) -> &Op {
+        self.as_op()
+    }
+}
+
+impl AsRef<Op> for Box<InferenceOp> {
+    fn as_ref(&self) -> &Op {
+        self.as_op()
+    }
+}
+
+impl AsMut<Op> for InferenceOp {
+    fn as_mut(&mut self) -> &mut Op {
+        self.as_op_mut()
+    }
+}
+
+impl AsMut<Op> for Box<InferenceOp> {
+    fn as_mut(&mut self) -> &mut Op {
+        self.as_op_mut()
+    }
+}
+
+impl std::fmt::Display for Box<Op> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.name())
+    }
+}
+
+impl std::fmt::Display for Box<InferenceOp> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.name())
     }
 }

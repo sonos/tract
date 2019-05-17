@@ -33,4 +33,6 @@ impl InferenceRulesOp for UnimplementedOp {
     ) -> InferenceResult {
         Ok(())
     }
+
+    inference_op_as_op!();
 }

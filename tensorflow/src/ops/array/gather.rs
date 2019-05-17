@@ -5,7 +5,7 @@ use tract_core::internal::*;
 #[derive(Debug, Clone, new)]
 pub struct GatherNd {}
 
-pub fn gather_nd(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn gather_nd(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(GatherNd::new()))
 }
 
@@ -81,6 +81,8 @@ impl InferenceRulesOp for GatherNd {
             )
         })
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]

@@ -66,6 +66,8 @@ impl InferenceRulesOp for AvgPool {
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         self.pool_spec.rules_for_shape(s, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -129,16 +131,3 @@ where
     }
 }
 
-impl<T: Datum + Float + Sum> InferenceRulesOp for AvgPoolFixed<T>
-where
-    usize: AsPrimitive<T>,
-{
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!()
-    }
-}

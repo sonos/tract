@@ -78,17 +78,3 @@ where
         Ok(tvec!(output.into_arc_tensor()))
     }
 }
-
-impl<T> InferenceRulesOp for DepthWise<T>
-where
-    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
-{
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!()
-    }
-}

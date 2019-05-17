@@ -86,6 +86,8 @@ impl InferenceRulesOp for Gather {
         s.equals(inputs[0].rank.bex() - 1 + inputs[1].rank.bex(), outputs[0].rank.bex())?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]

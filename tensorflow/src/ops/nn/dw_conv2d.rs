@@ -2,7 +2,7 @@ use tract_core::internal::*;
 use tract_core::ops::cnn::*;
 use tract_core::ops::nn::*;
 
-pub fn depthwise_conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn depthwise_conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let data_format = super::data_format(pb)?;
     let padding = super::padding(pb)?;
     let strides = super::strides(pb)?.into();
@@ -124,4 +124,6 @@ impl InferenceRulesOp for DepthwiseConv2d {
         })?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

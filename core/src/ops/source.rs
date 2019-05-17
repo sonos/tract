@@ -7,14 +7,6 @@ impl Op for Source {
     fn name(&self) -> Cow<str> {
         "Source".into()
     }
-
-    fn infer(
-        &self,
-        inputs: TVec<&TensorFact>,
-        outputs: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        self.infer_facts(inputs, outputs)
-    }
 }
 
 impl StatelessOp for Source {
@@ -36,4 +28,6 @@ impl InferenceRulesOp for Source {
         check_output_arity(&outputs, 1)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

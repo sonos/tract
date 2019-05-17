@@ -59,4 +59,6 @@ impl InferenceRulesOp for Lrn {
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

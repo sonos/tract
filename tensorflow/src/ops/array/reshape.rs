@@ -4,7 +4,7 @@ use tract_core::internal::*;
 #[derive(Debug, Clone, new)]
 pub struct Reshape<T: Datum>(PhantomData<T>);
 
-pub fn reshape(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn reshape(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Reshape(dtype)()))
 }
@@ -60,4 +60,6 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }

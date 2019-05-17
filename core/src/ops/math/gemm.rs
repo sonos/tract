@@ -174,6 +174,8 @@ impl InferenceRulesOp for Gemm {
         s.equals(&inputs[1].shape[cb], &outputs[0].shape[1])?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -245,27 +247,6 @@ impl StatelessOp for GemmUnaryA {
     }
 }
 
-impl InferenceRulesOp for GemmUnaryA {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        s.equals(&inputs[0].rank, 2)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].rank, 2)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
-        let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
-        s.equals(&inputs[0].shape[ra], &outputs[0].shape[0])?;
-        s.equals(&inputs[0].shape[ca], self.b.shape()[rb].to_dim())?;
-        s.equals(self.b.shape()[cb].to_dim(), &outputs[0].shape[1])?;
-        Ok(())
-    }
-}
-
 #[derive(Debug, Clone, new)]
 pub struct GemmUnaryB {
     alpha: f32,
@@ -319,26 +300,5 @@ impl Op for GemmUnaryB {
 impl StatelessOp for GemmUnaryB {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
-    }
-}
-
-impl InferenceRulesOp for GemmUnaryB {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        s.equals(&inputs[0].rank, 2)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].rank, 2)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        let (ca, ra) = if self.trans_a { (0, 1) } else { (1, 0) };
-        let (cb, rb) = if self.trans_b { (0, 1) } else { (1, 0) };
-        s.equals(self.a.shape()[ra].to_dim(), &outputs[0].shape[0])?;
-        s.equals(self.a.shape()[ca].to_dim(), &inputs[0].shape[rb])?;
-        s.equals(&inputs[0].shape[cb], &outputs[0].shape[1])?;
-        Ok(())
     }
 }

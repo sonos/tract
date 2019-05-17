@@ -6,7 +6,8 @@ use ansi_term::Style;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use tract_core::prelude::{Model, Node, Tensor, TensorInfo};
+use std::fmt::{Debug, Display};
+use tract_core::prelude::{Model, BaseNode, Op, Tensor, TensorInfo};
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
@@ -24,7 +25,11 @@ pub struct DisplayOptions {
 }
 
 impl DisplayOptions {
-    pub fn filter<TI: TensorInfo>(&self, _model: &Model<TI>, node: &Node<TI>) -> CliResult<bool> {
+    pub fn filter<TI, O>(&self, _model: &Model<TI, O>, node: &BaseNode<TI, O>) -> CliResult<bool>
+    where
+        TI: TensorInfo,
+        O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    {
         if let Some(nodes) = self.node_ids.as_ref() {
             return Ok(nodes.contains(&node.id));
         }
@@ -42,15 +47,25 @@ impl DisplayOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct DisplayGraph<TI: TensorInfo, M: Borrow<Model<TI>>> {
+pub struct DisplayGraph<TI, O, M>
+where
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    M: Borrow<Model<TI, O>>,
+{
     model: M,
     pub options: DisplayOptions,
     node_labels: HashMap<usize, Vec<String>>,
     node_sections: HashMap<usize, Vec<Vec<Row>>>,
-    _bloody_baron: ::std::marker::PhantomData<TI>,
+    _bloody_baron: ::std::marker::PhantomData<(TI,O)>,
 }
 
-impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
+impl<TI, O, M> DisplayGraph<TI, O, M>
+where
+    TI: TensorInfo,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    M: Borrow<Model<TI, O>>,
+{
     pub fn render(&self) -> CliResult<()> {
         if self.options.quiet {
             return Ok(());
@@ -66,7 +81,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
         Ok(())
     }
 
-    pub fn render_node(&self, node: &Node<TI>) -> CliResult<()> {
+    pub fn render_node(&self, node: &BaseNode<TI,O>) -> CliResult<()> {
         let bold = Style::new().bold();
         let mut sections: Vec<Vec<Row>> = vec![];
         if let Some(id) =
@@ -132,7 +147,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
         }
         crate::format::print_box(
             &node.id.to_string(),
-            &node.op.name(),
+            &node.op.as_ref().name(),
             &node.name,
             self.node_labels.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]),
             sections,
@@ -143,7 +158,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
     pub fn from_model_and_options(
         model: M,
         options: DisplayOptions,
-    ) -> CliResult<DisplayGraph<TI, M>> {
+    ) -> CliResult<DisplayGraph<TI, O, M>> {
         Ok(DisplayGraph {
             model,
             options,
@@ -153,7 +168,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
         })
     }
 
-    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<TI, M>> {
+    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<TI, O, M>> {
         match graph_def {
             #[cfg(feature = "tf")]
             SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
@@ -174,7 +189,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
     }
 
     #[cfg(feature = "tf")]
-    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<TI, M>> {
+    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<TI, O, M>> {
         let bold = Style::new().bold();
         for gnode in graph_def.get_node().iter() {
             if let Ok(node_id) = self.model.borrow().node_by_name(gnode.get_name()).map(|n| n.id) {
@@ -194,7 +209,7 @@ impl<TI: TensorInfo, M: Borrow<Model<TI>>> DisplayGraph<TI, M> {
     }
 
     #[cfg(feature = "onnx")]
-    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<TI, M>> {
+    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<TI, O, M>> {
         let bold = Style::new().bold();
         for gnode in model_proto.get_graph().get_node().iter() {
             let mut node_name = gnode.get_name();

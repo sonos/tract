@@ -102,17 +102,3 @@ where
         Ok(tvec!(output.into_arc_tensor()))
     }
 }
-
-impl<D> InferenceRulesOp for VecMat<D>
-where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D>,
-{
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        _s: &mut Solver<'r>,
-        _inputs: &'p [TensorProxy],
-        _outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        unreachable!()
-    }
-}
