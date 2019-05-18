@@ -12,8 +12,6 @@ pub mod array;
 pub mod cast;
 pub mod cnn;
 pub mod identity;
-#[cfg(features = "image_ops")]
-pub mod image;
 pub mod konst;
 pub mod logic;
 pub mod math;
