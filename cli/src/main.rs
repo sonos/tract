@@ -37,7 +37,6 @@ use tract_tensorflow::tfpb;
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
 
-#[cfg(feature = "conform")]
 mod compare;
 mod cost;
 mod display_graph;
@@ -103,6 +102,15 @@ fn main() {
     let compare = clap::SubCommand::with_name("compare")
         .help("Compares the output of tract and tensorflow on randomly generated input.");
     app = app.subcommand(output_options(compare));
+
+    let compare_npz = clap::SubCommand::with_name("compare-npz")
+        .help("Compares the output of tract to a refrence npz file.")
+        .arg(
+            Arg::with_name("npz")
+                .takes_value(true)
+                .required(true)
+                .help("Npz filename"));
+    app = app.subcommand(output_options(compare_npz));
 
     let dump = clap::SubCommand::with_name("dump")
         .help("Dumps the Tensorflow graph in human readable form.")
@@ -486,9 +494,11 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
     match matches.subcommand() {
         #[cfg(feature = "conform")]
-        ("compare", Some(m)) => compare::handle(params, display_options_from_clap(m)?),
+        ("compare", Some(m)) => compare::handle_tensorflow(params, display_options_from_clap(m)?),
         #[cfg(not(feature = "conform"))]
         ("compare", _) => bail!("Need conform feature to be able to run comparison"),
+
+        ("compare-npz", Some(m)) => compare::handle_npz(m.value_of("npz").unwrap(), params, display_options_from_clap(m)?),
 
         ("run", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);
