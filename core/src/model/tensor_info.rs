@@ -50,6 +50,12 @@ impl TryFrom<TensorFact> for TypedTensorInfo {
     }
 }
 
+impl<'a> From<&'a Tensor> for TensorFact {
+    fn from(t: &'a Tensor) -> TensorFact {
+        TensorFact::from(t.clone())
+    }
+}
+
 /// Streaming information for a streamed tensor.
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct StreamInfo {
@@ -247,5 +253,11 @@ impl TryFrom<NormalizedTensorInfo> for TypedTensorInfo {
 impl fmt::Debug for NormalizedTensorInfo {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{:?}x{:?}", self.shape, self.datum_type)
+    }
+}
+
+impl<'t> From<&'t Tensor> for NormalizedTensorInfo {
+    fn from(t: &'t Tensor) -> NormalizedTensorInfo {
+        NormalizedTensorInfo { datum_type: t.datum_type(), shape: t.shape().into() }
     }
 }

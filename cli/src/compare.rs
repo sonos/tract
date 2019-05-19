@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Display};
+
 use ansi_term::Color::*;
 
 use log::Level::Info;
@@ -7,24 +9,30 @@ use crate::display_graph::DisplayOptions;
 use crate::utils::*;
 use crate::*;
 
-pub fn handle(mut params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
-    let tf = params.tf_model.take().unwrap();
-    match &params.tract_model {
-        SomeModel::Inference(m) => handle_t(m, tf, &params, output_params),
-        SomeModel::Typed(m) => handle_t(m, tf, &params, output_params),
-        SomeModel::Normalized(m) => handle_t(m, tf, &params, output_params),
-        SomeModel::Pulsed(_, m) => handle_t(m, tf, &params, output_params),
+#[cfg(feature = "conform")]
+pub fn handle_tensorflow(mut params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
+    {
+        let tf = params.tf_model.take().unwrap();
+        return match &params.tract_model {
+            SomeModel::Inference(m) => handle_tensorflow_t(m, tf, &params, output_params),
+            SomeModel::Typed(m) => handle_tensorflow_t(m, tf, &params, output_params),
+            SomeModel::Normalized(m) => handle_tensorflow_t(m, tf, &params, output_params),
+            SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
+        }
     }
 }
 
-pub fn handle_t<TI: TensorInfo>(
-    tract: &Model<TI>,
+#[cfg(feature = "conform")]
+fn handle_tensorflow_t<TI: TensorInfo, O>(
+    tract: &Model<TI, O>,
     mut tf: tract_tensorflow::conform::tf::Tensorflow,
     params: &Parameters,
     output_params: DisplayOptions,
-) -> CliResult<()> {
-    use crate::format::Row;
-
+) -> CliResult<()>
+where
+    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
+{
     // First generate random values for the inputs.
     let generated = crate::tensor::make_inputs(&[tract.input_fact(0)?.to_tensor_fact()])?;
 
@@ -54,13 +62,69 @@ pub fn handle_t<TI: TensorInfo>(
         }
     }
 
-    let mut tf_outputs = tf.run_get_many(pairs, wanted_outputs)?;
+    let mut all_values:HashMap<String, TVec<Tensor>> = tf.run_get_many(pairs, wanted_outputs)?.into_iter().map(|(k,v)| (k.to_string(), v.into())).collect();
+    for (ix, input) in tract.input_outlets()?.iter().enumerate() {
+        let name = &tract.node(input.node).name;
+        all_values.insert(name.to_string(), tvec!(generated[ix].clone()));
+    }
+    compare(tract, &all_values, params, output_params)
+}
+
+pub fn handle_npz(npz: &str, params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
+    {
+        return match &params.tract_model {
+            SomeModel::Inference(m) => handle_npz_t(m, npz, &params, output_params),
+            SomeModel::Typed(m) => handle_npz_t(m, npz, &params, output_params),
+            SomeModel::Normalized(m) => handle_npz_t(m, npz, &params, output_params),
+            SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
+        }
+    }
+}
+
+pub fn handle_npz_t<TI, O>(
+    tract: &Model<TI, O>,
+    npz: &str,
+    params: &Parameters,
+    output_params: DisplayOptions,
+) -> CliResult<()>
+where
+    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
+{
+    let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
+    let mut values = HashMap::new();
+    for name in npz.names()? {
+        println!("name: {}", name);
+        if let Ok(value) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&name) {
+            let name = name.trim_end_matches(".npy");
+            values.insert(name.to_string(), tvec!(value.into()));
+        }
+    }
+    compare(tract, &values, params, output_params)
+}
+
+pub fn compare<TI, O>(
+    tract: &Model<TI, O>,
+    all_values: &HashMap<String, TVec<Tensor>>,
+    params: &Parameters,
+    output_params: DisplayOptions,
+) -> CliResult<()>
+where
+    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
+{
+    use crate::format::Row;
+
+    let eval_order = ::tract_core::model::eval_order(&tract)?;
 
     // Execute the model step-by-step on tract.
     let plan = SimplePlan::new(tract)?;
     let mut state = SimpleState::new(plan)?;
-    for (ix, input) in generated.clone().into_iter().enumerate() {
-        state.set_input(ix, input)?;
+
+    for (ix, input) in tract.input_outlets()?.iter().enumerate() {
+        let name = &tract.node(input.node).name;
+        let value = &all_values[name][0];
+        state.set_input(ix, value.clone())?;
     }
 
     let mut display_graph =
@@ -84,8 +148,7 @@ pub fn handle_t<TI: TensorInfo>(
             continue;
         }
 
-        debug!("Computing {} in tensorflow", node);
-        let tf_output = match tf_outputs.remove(&*node.name) {
+        let tf_output = match all_values.get(&*node.name) {
             Some(it) => it,
             None => continue,
         };
@@ -116,29 +179,26 @@ pub fn handle_t<TI: TensorInfo>(
                     tf_output.iter().take(wanted).map(|m| m.clone().into()).collect();
                 let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
                 match check_outputs(&tract_output, &expected) {
-                    Err(e) => {
+                    Err(_) => {
                         failing.push(n);
-                        let header = Yellow.bold().paint(format!("Output {}", n));
                         let mismatches = tract_output
                             .iter()
                             .enumerate()
                             .map(|(n, data)| {
-                                let reason = if n >= tf_output.len() {
-                                    "Too many outputs".into()
+                                let (color, reason) = if n >= tf_output.len() {
+                                    (Yellow, "Unexpected output".into())
                                 } else if tf_output[n].shape() != data.shape() {
-                                    "Wrong shape".into()
+                                    (Red, "Wrong shape".into())
                                 } else if !tf_output[n]
-                                    .close_enough(data, node.op.rounding_errors())
+                                    .close_enough(data, node.op().rounding_errors())
                                 {
-                                    "Too far away".into()
+                                    let msg = format!("expected: {:?}\ngot     : {:?}", tf_output[n], data);
+                                    (Red, msg)
                                 } else {
-                                    format!("Other error: {}", e)
+                                    (Green, "ok".into())
                                 };
 
-                                Row::Double(
-                                    Red.paint(format!("{} {}", header, reason)).to_string(),
-                                    format!("TF    {:?}\ntract {:?}", tf_output[n], data),
-                                )
+                                Row::Double(color.paint(format!("Output {}", n)).to_string(), reason.to_string())
                             })
                             .collect::<Vec<_>>();
                         let inputs = tract.nodes()[n]
@@ -164,7 +224,7 @@ pub fn handle_t<TI: TensorInfo>(
 
         // Use the output from tensorflow to keep tract from drifting.
         trace!("copy tensorflow output in state: for node {}, {:?}", node.id, tf_output);
-        state.set_values(node.id, tf_output.into())?;
+        // state.set_values(node.id, tf_output.clone().into())?;
     }
 
     if failing.len() > 0 {

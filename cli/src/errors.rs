@@ -17,5 +17,6 @@ error_chain! {
         Io(::std::io::Error);
         NumParseInt(::std::num::ParseIntError);
         NdarrayShape(ndarray::ShapeError);
+        NdarrayNpyReadNpz(ndarray_npy::ReadNpzError);
     }
 }
