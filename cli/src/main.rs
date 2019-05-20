@@ -100,16 +100,14 @@ fn main() {
     );
 
     let compare = clap::SubCommand::with_name("compare")
-        .help("Compares the output of tract and tensorflow on randomly generated input.");
+        .help("Compares the output of tract and tensorflow on randomly generated input.")
+        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"));
     app = app.subcommand(output_options(compare));
 
     let compare_npz = clap::SubCommand::with_name("compare-npz")
         .help("Compares the output of tract to a refrence npz file.")
-        .arg(
-            Arg::with_name("npz")
-                .takes_value(true)
-                .required(true)
-                .help("Npz filename"));
+        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"))
+        .arg(Arg::with_name("npz").takes_value(true).required(true).help("Npz filename"));
     app = app.subcommand(output_options(compare_npz));
 
     let dump = clap::SubCommand::with_name("dump")
@@ -494,11 +492,20 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
     match matches.subcommand() {
         #[cfg(feature = "conform")]
-        ("compare", Some(m)) => compare::handle_tensorflow(params, display_options_from_clap(m)?),
+        ("compare", Some(m)) => compare::handle_tensorflow(
+            m.is_present("cumulative"),
+            params,
+            display_options_from_clap(m)?,
+        ),
         #[cfg(not(feature = "conform"))]
         ("compare", _) => bail!("Need conform feature to be able to run comparison"),
 
-        ("compare-npz", Some(m)) => compare::handle_npz(m.value_of("npz").unwrap(), params, display_options_from_clap(m)?),
+        ("compare-npz", Some(m)) => compare::handle_npz(
+            m.is_present("cumulative"),
+            m.value_of("npz").unwrap(),
+            params,
+            display_options_from_clap(m)?,
+        ),
 
         ("run", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);

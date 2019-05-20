@@ -19,9 +19,9 @@ impl Lrn {
         let output = Array::from_shape_fn(input.shape(), |mut coords| {
             let c = coords[1];
             let x = input[&coords];
-            let c_min = (c as isize - ((self.size as isize - 1) / 2)).max(0) as usize;
+            let c_min = c.saturating_sub((self.size - 1) / 2);
             let c_max = (c + ((self.size - 1).div_ceil(2))).min(channels - 1);
-            let square_sum: T = (c_min..c_max)
+            let square_sum: T = (c_min..=c_max)
                 .map(|c| {
                     coords[1] = c;
                     input[&coords].powi(2)
@@ -55,6 +55,8 @@ impl InferenceRulesOp for Lrn {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())

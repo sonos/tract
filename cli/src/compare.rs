@@ -10,13 +10,13 @@ use crate::utils::*;
 use crate::*;
 
 #[cfg(feature = "conform")]
-pub fn handle_tensorflow(mut params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
+pub fn handle_tensorflow(cumulative: bool, mut params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
     {
         let tf = params.tf_model.take().unwrap();
         return match &params.tract_model {
-            SomeModel::Inference(m) => handle_tensorflow_t(m, tf, &params, output_params),
-            SomeModel::Typed(m) => handle_tensorflow_t(m, tf, &params, output_params),
-            SomeModel::Normalized(m) => handle_tensorflow_t(m, tf, &params, output_params),
+            SomeModel::Inference(m) => handle_tensorflow_t(cumulative, m, tf, &params, output_params),
+            SomeModel::Typed(m) => handle_tensorflow_t(cumulative, m, tf, &params, output_params),
+            SomeModel::Normalized(m) => handle_tensorflow_t(cumulative, m, tf, &params, output_params),
             SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
         }
     }
@@ -24,6 +24,7 @@ pub fn handle_tensorflow(mut params: Parameters, output_params: DisplayOptions) 
 
 #[cfg(feature = "conform")]
 fn handle_tensorflow_t<TI: TensorInfo, O>(
+    cumulative: bool,
     tract: &Model<TI, O>,
     mut tf: tract_tensorflow::conform::tf::Tensorflow,
     params: &Parameters,
@@ -67,21 +68,22 @@ where
         let name = &tract.node(input.node).name;
         all_values.insert(name.to_string(), tvec!(generated[ix].clone()));
     }
-    compare(tract, &all_values, params, output_params)
+    compare(cumulative, tract, &all_values, params, output_params)
 }
 
-pub fn handle_npz(npz: &str, params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
+pub fn handle_npz(cumulative: bool, npz: &str, params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
     {
         return match &params.tract_model {
-            SomeModel::Inference(m) => handle_npz_t(m, npz, &params, output_params),
-            SomeModel::Typed(m) => handle_npz_t(m, npz, &params, output_params),
-            SomeModel::Normalized(m) => handle_npz_t(m, npz, &params, output_params),
+            SomeModel::Inference(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
+            SomeModel::Typed(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
+            SomeModel::Normalized(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
             SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
         }
     }
 }
 
 pub fn handle_npz_t<TI, O>(
+    cumulative: bool,
     tract: &Model<TI, O>,
     npz: &str,
     params: &Parameters,
@@ -94,16 +96,16 @@ where
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values = HashMap::new();
     for name in npz.names()? {
-        println!("name: {}", name);
         if let Ok(value) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&name) {
             let name = name.trim_end_matches(".npy");
             values.insert(name.to_string(), tvec!(value.into()));
         }
     }
-    compare(tract, &values, params, output_params)
+    compare(cumulative, tract, &values, params, output_params)
 }
 
 pub fn compare<TI, O>(
+    cumulative: bool,
     tract: &Model<TI, O>,
     all_values: &HashMap<String, TVec<Tensor>>,
     params: &Parameters,
@@ -216,15 +218,18 @@ where
                     }
 
                     _ => {
+                        println!("{}", node);
                         display_graph.add_node_label(n, Green.paint("OK").to_string())?;
                     }
                 }
             }
         };
 
-        // Use the output from tensorflow to keep tract from drifting.
-        trace!("copy tensorflow output in state: for node {}, {:?}", node.id, tf_output);
-        // state.set_values(node.id, tf_output.clone().into())?;
+        if !cumulative {
+            // Use the output from tensorflow to keep tract from drifting.
+            trace!("copy tensorflow output in state: for node {}, {:?}", node.id, tf_output);
+            state.set_values(node.id, tf_output.clone().into())?;
+        }
     }
 
     if failing.len() > 0 {
