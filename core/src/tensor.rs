@@ -109,6 +109,11 @@ impl Tensor {
         &self.shape
     }
 
+    /// Get the number of valeus in the tensor.
+    pub fn len(&self) -> usize {
+        self.shape.iter().cloned().product::<usize>()
+    }
+
     /// Reshape the tensor to `shape`.
     pub unsafe fn into_shape(self, shape: &[usize]) -> TractResult<Tensor> {
         Ok(Tensor { shape: shape.into(), ..self })
@@ -141,34 +146,41 @@ impl Tensor {
         dispatch_datum!(Self::dump_t(self.dt)(self, force_full))
     }
 
+    /// Compute a normalized L1 distance between two tensors.
+    pub fn l1(&self, other: &Self) -> TractResult<f64> {
+        let ma = self.cast_to::<f32>()?;
+        let ma = ma.to_array_view::<f32>()?;
+        let mb = other.cast_to::<f32>()?;
+        let mb = mb.to_array_view::<f32>()?;
+        let sum = ma.iter().zip(mb.iter()).map(|(a, b)| (a - b).abs() as f64).sum::<f64>();
+        Ok(sum / self.len() as f64)
+    }
+
+    pub fn all_close_default(&self, other: &Self) -> TractResult<bool> {
+        self.all_close(other, 1e-4, 1e-4)
+    }
+
+    pub fn all_close(&self, other: &Self, rtol: f32, atol: f32) -> TractResult<bool> {
+        let ma = self.cast_to::<f32>()?;
+        let ma = ma.to_array_view::<f32>()?;
+        let mb = other.cast_to::<f32>()?;
+        let mb = mb.to_array_view::<f32>()?;
+        Ok(ma.iter().zip(mb.iter()).all(|(a, b)| {
+            if (a - b).abs() > atol + rtol * b.abs() {
+                println!("|{}-{}| = {} > {}", a, b, (a-b).abs(), atol + rtol * b.abs());
+            }
+            (a.is_nan() && b.is_nan())
+                || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
+                || (a - b).abs() <= atol + rtol * b.abs()
+        }))
+    }
+
     /// Compare two tensors, allowing for rounding errors.
     pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
         if self.is_null() != other.is_null() {
             return false;
         }
-        let ma = self.cast_to::<f32>().unwrap();
-        let ma = ma.to_array_view::<f32>().unwrap();
-        let mb = other.cast_to::<f32>().unwrap();
-        let mb = mb.to_array_view::<f32>().unwrap();
-        let avg =
-            ma.iter().filter(|a| a.is_finite()).map(|&a| a.abs()).sum::<f32>() / ma.len() as f32;
-        let dev = (ma.iter().filter(|a| a.is_finite()).map(|&a| (a - avg).powi(2)).sum::<f32>()
-            / ma.len() as f32)
-            .sqrt();
-        let margin = if approx { (dev / 5.0).max(avg.abs() / 10_000.0).max(1e-5) } else { 0.0 };
-        ma.shape() == mb.shape()
-            && mb
-                .iter()
-                .zip(ma.iter())
-                .map(|(&a, &b)| {
-                    (
-                        a,
-                        b,
-                        a.is_nan() && b.is_nan() || a == b || (b - a).abs() <= margin,
-                    )
-                })
-                //.inspect(|t| println!("{:?}", t))
-                .all(|t| t.2)
+        self.all_close_default(other).unwrap()
     }
 
     /// Transform the tensor into a `ndarray::Array`.
@@ -251,12 +263,7 @@ impl Tensor {
     /// Access the data as a slice.
     pub fn as_slice<D: Datum>(&self) -> TractResult<&[D]> {
         let datum_size = ::std::mem::size_of::<D>();
-        unsafe {
-            Ok(std::slice::from_raw_parts::<D>(
-                self.as_ptr()?,
-                self.data.len() / datum_size,
-            ))
-        }
+        unsafe { Ok(std::slice::from_raw_parts::<D>(self.as_ptr()?, self.data.len() / datum_size)) }
     }
 
     /// Access the data as a mutable slice.
@@ -293,7 +300,9 @@ impl Tensor {
     }
 
     /// Convert data to a tensor for a new DatumType.
-    fn cast<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(&self) -> TractResult<Tensor> {
+    fn cast<Source: Datum + crate::datum::TryInto<Target>, Target: Datum>(
+        &self,
+    ) -> TractResult<Tensor> {
         let data = self.cast_data::<Source, Target>()?;
         Ok(Tensor {
             null: self.null,
