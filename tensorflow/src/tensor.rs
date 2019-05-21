@@ -31,7 +31,7 @@ impl<'a> TryFrom<&'a TensorShapeProto> for TVec<usize> {
     }
 }
 
-impl TryFrom<DatumType> for DataType  {
+impl TryFrom<DatumType> for DataType {
     type Error = TractError;
     fn try_from(dt: DatumType) -> TractResult<DataType> {
         match dt {
@@ -64,7 +64,7 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                     DataType::DT_FLOAT => Self::from_raw::<f32>(&dims, content)?,
                     DataType::DT_INT32 => Self::from_raw::<i32>(&dims, content)?,
                     DataType::DT_INT64 => Self::from_raw::<i64>(&dims, content)?,
-                    _ => unimplemented!("missing type {:?}", dtype),
+                    _ => unimplemented!("missing type (for get_tensor_content) {:?}", dtype),
                 }
             }
         } else {
@@ -79,7 +79,19 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                 DataType::DT_FLOAT => {
                     Array::from_shape_vec(&*dims, t.get_float_val().to_vec())?.into()
                 }
-                _ => unimplemented!("missing type {:?}", dtype),
+                DataType::DT_STRING => {
+                    let strings = t
+                        .get_string_val()
+                        .iter()
+                        .map(|s| {
+                            std::str::from_utf8(s).map(|s| s.to_owned()).map_err(|_| {
+                                format!("Invalid UTF-8: {}", String::from_utf8_lossy(s)).into()
+                            })
+                        })
+                        .collect::<TractResult<Vec<String>>>()?;
+                    Array::from_shape_vec(&*dims,strings)?.into()
+                }
+                _ => unimplemented!("missing type (for _val()) {:?}", dtype),
             }
         };
         assert_eq!(rank, mat.shape().len());

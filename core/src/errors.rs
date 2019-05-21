@@ -11,6 +11,7 @@ error_chain! {
         StrUtf8(::std::str::Utf8Error);
         NumParseInt(::std::num::ParseIntError);
         Infallible(std::convert::Infallible);
+        AllocLayout(std::alloc::LayoutErr);
     }
     errors {
         TFString {}
