@@ -114,6 +114,12 @@ pub(crate) trait TryInto<D> {
 
 macro_rules! datum {
     ($t:ident, $v:ident) => {
+        impl From<$t> for Tensor {
+            fn from(it: $t) -> Tensor {
+                tensor0(it)
+            }
+        }
+
         impl Datum for $t {
             fn name() -> &'static str {
                 stringify!($t)
@@ -125,41 +131,6 @@ macro_rules! datum {
         }
     };
 }
-
-datum!(bool, Bool);
-datum!(f16, F16);
-datum!(f32, F32);
-datum!(f64, F64);
-datum!(i8, I8);
-datum!(i16, I16);
-datum!(i32, I32);
-datum!(i64, I64);
-datum!(u8, U8);
-datum!(u16, U16);
-datum!(TDim, TDim);
-datum!(String, String);
-
-macro_rules! from_scalar {
-    ($t:ty) => {
-        impl From<$t> for Tensor {
-            fn from(it: $t) -> Tensor {
-                tensor0(it)
-            }
-        }
-    };
-}
-
-from_scalar!(bool);
-from_scalar!(f16);
-from_scalar!(f32);
-from_scalar!(f64);
-from_scalar!(i8);
-from_scalar!(i16);
-from_scalar!(i32);
-from_scalar!(i64);
-from_scalar!(u8);
-from_scalar!(u16);
-from_scalar!(TDim);
 
 macro_rules! try_into {
     ($f:ty, $t:ty) => {
@@ -269,6 +240,19 @@ impl TryInto<f32> for String {
         }
     }
 }
+
+datum!(bool, Bool);
+datum!(f16, F16);
+datum!(f32, F32);
+datum!(f64, F64);
+datum!(i8, I8);
+datum!(i16, I16);
+datum!(i32, I32);
+datum!(i64, I64);
+datum!(u8, U8);
+datum!(u16, U16);
+datum!(TDim, TDim);
+datum!(String, String);
 
 pub trait FloatLike: Datum {
     fn packed_direct_conv(
