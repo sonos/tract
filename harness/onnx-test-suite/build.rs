@@ -24,6 +24,7 @@ pub fn make_test_file(tests_set: &str) {
     let node_tests = dir().join("onnx/backend/test/data").join(tests_set);
     assert!(node_tests.exists());
     let working_list_file = path::PathBuf::from(".").join(tests_set).with_extension("txt");
+    println!("cargo:rerun-if-changed={}", working_list_file.to_str().unwrap());
     let working_list: Vec<String> = if let Ok(list) = fs::read_to_string(&working_list_file) {
         list.split("\n")
             .map(|s| s.to_string())
