@@ -49,6 +49,7 @@ impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
             let name = pbnode.get_name().to_string();
             let output_arity = arities.get(&*name).cloned().unwrap_or(1);
             let facts = tvec!(TensorFact::default(); output_arity);
+
             let node_id = model.add_node(
                 name.clone(),
                 self.build_op(&*pbnode.get_op(), pbnode)
@@ -67,27 +68,31 @@ impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
         }
 
         for (node_id, pbnode) in graph.get_node().iter().enumerate() {
+            if pbnode.get_op() == "NextIteration" {
+                continue
+            }
             for (ix, i) in pbnode.get_input().iter().enumerate() {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
-                let outlet = OutletId::new(prec, input.1);
-                let inlet = InletId::new(node_id, ix);
-                model.add_edge(outlet, inlet)?;
+                if i.starts_with("^") {
+                    model.node_mut(node_id).control_inputs.push(prec);
+                } else {
+                    let outlet = OutletId::new(prec, input.1);
+                    let inlet = InletId::new(node_id, ix);
+                    model.add_edge(outlet, inlet)?;
+                }
             }
         }
 
         // variable -> assign rewire
-        // in protobuf:
-        //  * VariableV2 has a single output (a byref tensor)
         //  * Assign consumes this by_ref tensor on #0 and somehow performs
         //      updates on it (it has a second input on #1 for the value to
         //      assign)
         //
         // in tract:
-        //  * VariableV2 has two outputs: first is the value, second is an
-        //      opaque ptr to be used by Assign (pointing to the state)
-        //  * Assign will plug a third input (#2) into the VariableV2
-        //      output #1 to access the opaque ptr
+        //  * VariableV2 outputs a regular tensor stored in the session state
+        //  * Assign has the same inputs, but do not uses the #0, udating the
+        //      state session instead
         for id in 0..model.nodes().len() {
             use crate::ops::vars::*;
             if model.node(id).op_is::<Assign>() {

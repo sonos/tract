@@ -24,7 +24,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
-    reg.insert("Identity", |_| Ok(Box::new(Identity::default())));
+    reg.insert("Identity", |_| Ok(Box::new(tract_core::ops::identity::Identity)));
     reg.insert("NoOp", |_| Ok(Box::new(Noop)));
     reg.insert("Placeholder", placeholder);
 }
@@ -73,53 +73,6 @@ impl InferenceRulesOp for Noop {
     ) -> InferenceResult {
         s.equals(&outputs[0].datum_type, bool::datum_type())?;
         s.equals(&outputs[0].rank, 0)?;
-        Ok(())
-    }
-
-    inference_op_as_op!();
-}
-
-#[derive(Clone, Debug, new, Default)]
-struct Identity;
-
-impl Op for Identity {
-    fn name(&self) -> Cow<str> {
-        "tf.Identity".into()
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if node.inputs.len() == 1 {
-            Ok(Some(TypedModelPatch::single_unary_op(
-                model,
-                node,
-                tract_core::ops::identity::Identity::default(),
-            )?))
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl StatelessOp for Identity {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec!(inputs.remove(0)))
-    }
-}
-
-impl InferenceRulesOp for Identity {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].shape, &inputs[0].shape)?;
-        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         Ok(())
     }
 

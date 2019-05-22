@@ -60,7 +60,7 @@ where
         let noutputs = output_facts.len();
         let outputs =
             output_facts.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
-        let node = BaseNode { id, name, op, inputs: vec![], outputs };
+        let node = BaseNode { id, name, op, inputs: vec![], control_inputs: vec!(), outputs };
         if node.op_is::<crate::ops::source::Source>() {
             self.inputs.push(OutletId::new(id, 0));
         }

@@ -353,7 +353,7 @@ impl Parameters {
             info!("Running analyse");
             if let Err(e) = raw_model.analyse(true) {
                 // do not stop on mere analyse error
-                error!("{}", e);
+                error!("Analyse failed: {}", e);
             }
             if matches.is_present("skip_type") {
                 SomeModel::Inference(raw_model)
