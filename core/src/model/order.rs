@@ -5,37 +5,41 @@ use std::fmt::{Debug, Display};
 
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
-pub fn eval_order<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsMut<Op>>(model: &super::Model<TI, O>) -> TractResult<Vec<usize>> {
+pub fn eval_order<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsMut<Op>>(
+    model: &super::Model<TI, O>,
+) -> TractResult<Vec<usize>> {
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 
 /// Find a working evaluation order for a list of nodes.
-pub fn eval_order_for_nodes<TI: TensorInfo, O:Debug + Display + AsRef<Op> + AsMut<Op>>(
+pub fn eval_order_for_nodes<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsMut<Op>>(
     nodes: &[BaseNode<TI, O>],
     inputs: &[usize],
     targets: &[usize],
 ) -> TractResult<Vec<usize>> {
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
-    let mut needed: Vec<usize> = vec![];
     let mut order: Vec<usize> = vec![];
-    for &t in targets {
-        needed.push(t);
-    }
-    while let Some(&node) = needed.last() {
-        if done.contains(node) {
-            needed.pop();
-            continue;
-        }
-        if inputs.contains(&node) || nodes[node].inputs.iter().all(|i| done.contains(i.node)) {
-            order.push(node);
-            needed.pop();
-            done.insert(node);
-        } else {
-            for input in nodes[node].inputs.iter().rev() {
-                if !done.contains(input.node) {
-                    needed.push(input.node);
+    for &target in targets {
+        let mut current_stack:Vec<(usize, usize)> = vec!((target,0));
+        let mut pending = bit_set::BitSet::with_capacity(nodes.len());
+        pending.insert(target);
+        while let Some((current_node, current_input)) = current_stack.pop() {
+            if inputs.contains(&current_node) || current_input == nodes[current_node].inputs.len() {
+                order.push(current_node);
+                done.insert(current_node);
+                pending.remove(current_node);
+            } else {
+                let precursor = nodes[current_node].inputs[current_input].node;
+                if done.contains(precursor) {
+                    current_stack.push((current_node, current_input + 1));
+                } else if pending.contains(precursor) {
+                    bail!("Loop detected")
+                } else {
+                    pending.insert(precursor);
+                    current_stack.push((current_node, current_input));
+                    current_stack.push((precursor, 0));
                 }
             }
         }
@@ -49,7 +53,7 @@ mod tests {
     use crate::ops::math::Add;
 
     #[test]
-    fn test_simple() {
+    fn simple() {
         let mut model = Model::default();
         model.add_source_default("a").unwrap();
         model.chain_default("add", Add::default()).unwrap();
@@ -59,11 +63,24 @@ mod tests {
     }
 
     #[test]
-    fn test_diamond() {
+    fn diamond() {
         let mut model = Model::default();
         model.add_source_default("a").unwrap();
         model.chain_default("add", Add::default()).unwrap();
         model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 1));
+    }
+
+    #[test]
+    fn dodge_loop() {
+        let mut model = Model::default();
+        model.add_source_default("a").unwrap();
+        let add = model.chain_default("add", Add::default()).unwrap();
+        let neg = model.chain_default("neg", Add::default()).unwrap();
+        model.add_edge(OutletId::new(neg, 0), InletId::new(add, 1)).unwrap();
+        model.set_output_outlets(&tvec!(OutletId::new(neg, 0))).unwrap();
+        let (rx, tx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || { rx.send(model.eval_order()).unwrap(); });
+        assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
     }
 }
