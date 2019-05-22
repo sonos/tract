@@ -9,6 +9,10 @@ then
     CACHEDIR=`dirname $0`/../.cached
 fi
 
+# useful as debug_asserts will come into play
+cargo test -p tract-core
+cargo test -p onnx-test-suite -- --skip real::
+
 cargo build --release --all
 cargo build --release --benches
 cargo test --release --all
