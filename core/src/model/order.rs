@@ -22,19 +22,33 @@ pub fn eval_order_for_nodes<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsM
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut order: Vec<usize> = vec![];
     for &target in targets {
-        let mut current_stack:Vec<(usize, usize)> = vec!((target,0));
+        let mut current_stack: Vec<(usize, usize)> = vec![(target, 0)];
         let mut pending = bit_set::BitSet::with_capacity(nodes.len());
         pending.insert(target);
         while let Some((current_node, current_input)) = current_stack.pop() {
-            if inputs.contains(&current_node) || current_input == nodes[current_node].inputs.len() {
+            if inputs.contains(&current_node)
+                || current_input
+                    == nodes[current_node].inputs.len() + nodes[current_node].control_inputs.len()
+            {
                 order.push(current_node);
                 done.insert(current_node);
                 pending.remove(current_node);
             } else {
-                let precursor = nodes[current_node].inputs[current_input].node;
+                let precursor = if current_input < nodes[current_node].inputs.len() {
+                    nodes[current_node].inputs[current_input].node
+                } else {
+                    nodes[current_node].control_inputs[current_input- nodes[current_node].inputs.len()]
+                };
                 if done.contains(precursor) {
                     current_stack.push((current_node, current_input + 1));
                 } else if pending.contains(precursor) {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!("Loop detected:");
+                        current_stack
+                            .iter()
+                            .skip_while(|s| s.0 != precursor)
+                            .for_each(|n| debug!("  {}", nodes[n.0]));
+                    }
                     bail!("Loop detected")
                 } else {
                     pending.insert(precursor);
@@ -80,7 +94,9 @@ mod tests {
         model.add_edge(OutletId::new(neg, 0), InletId::new(add, 1)).unwrap();
         model.set_output_outlets(&tvec!(OutletId::new(neg, 0))).unwrap();
         let (rx, tx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || { rx.send(model.eval_order()).unwrap(); });
+        std::thread::spawn(move || {
+            rx.send(model.eval_order()).unwrap();
+        });
         assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
     }
 }

@@ -110,12 +110,15 @@ where TI: TensorInfo,
             if node.op_is::<crate::ops::source::Source>() {
                 continue;
             }
-            let BaseNode { id, name, inputs, op, outputs } = node;
+            let BaseNode { id, name, inputs, control_inputs, op, outputs } = node;
             let n_outputs = outputs.len();
             let facts = outputs.into_iter().map(|of| of.fact).collect();
             let added_node_id = target.add_node_disable_output_guess(name, op, facts, true)?;
             for (ix, input) in inputs.into_iter().enumerate() {
                 target.add_edge(mapping[&input], InletId::new(added_node_id, ix))?;
+            }
+            for &prec in control_inputs.iter() {
+                target.nodes[added_node_id].control_inputs.push(mapping[&OutletId::new(prec, 0)].node)
             }
             for ix in 0..n_outputs {
                 mapping.insert(OutletId::new(id, ix), OutletId::new(added_node_id, ix));

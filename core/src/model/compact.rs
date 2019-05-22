@@ -32,6 +32,9 @@ where
             model
                 .add_edge(OutletId::new(map[&input.node], input.slot), InletId::new(new_id, ix))?;
         }
+        for input in old_node.control_inputs.iter() {
+            model.node_mut(new_id).control_inputs.push(map[input]);
+        }
     }
     // maintaining order of i/o interface
     model.inputs = old
