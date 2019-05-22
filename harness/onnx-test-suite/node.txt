@@ -62,7 +62,7 @@ test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_DOUBLE
 test_cast_FLOAT_to_FLOAT16
 test_cast_FLOAT_to_FLOAT16
-# test_cast_FLOAT_to_STRING example strings look invalid
+# test_cast_FLOAT_to_STRING https://github.com/onnx/onnx/pull/1776
 # test_cast_STRING_to_FLOAT
 test_ceil
 test_ceil_example
