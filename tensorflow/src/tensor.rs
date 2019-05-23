@@ -51,6 +51,15 @@ impl TryFrom<DatumType> for DataType {
     }
 }
 
+fn tensor_from_repeated_field<T:Datum>(shape: &[usize], data: Vec<T>) -> TractResult<Tensor> {
+    let t = if data.len() == 1 {
+        ndarray::ArrayD::from_elem(shape, data[0].clone()).into()
+    } else {
+        ndarray::ArrayD::from_shape_vec(shape, data.to_vec())?.into()
+    };
+    Ok(t)
+}
+
 impl<'a> TryFrom<&'a TensorProto> for Tensor {
     type Error = TractError;
     fn try_from(t: &TensorProto) -> TractResult<Tensor> {
@@ -62,23 +71,18 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
             unsafe {
                 match dtype {
                     DataType::DT_FLOAT => Self::from_raw::<f32>(&dims, content)?,
+                    DataType::DT_DOUBLE => Self::from_raw::<f64>(&dims, content)?,
                     DataType::DT_INT32 => Self::from_raw::<i32>(&dims, content)?,
                     DataType::DT_INT64 => Self::from_raw::<i64>(&dims, content)?,
                     _ => unimplemented!("missing type (for get_tensor_content) {:?}", dtype),
                 }
             }
         } else {
-            use ndarray::Array;
             match dtype {
-                DataType::DT_INT32 => {
-                    Array::from_shape_vec(&*dims, t.get_int_val().to_vec())?.into()
-                }
-                DataType::DT_INT64 => {
-                    Array::from_shape_vec(&*dims, t.get_int64_val().to_vec())?.into()
-                }
-                DataType::DT_FLOAT => {
-                    Array::from_shape_vec(&*dims, t.get_float_val().to_vec())?.into()
-                }
+                DataType::DT_INT32 => tensor_from_repeated_field(&*dims, t.get_int_val().to_vec())?,
+                DataType::DT_INT64 => tensor_from_repeated_field(&*dims, t.get_int64_val().to_vec())?,
+                DataType::DT_FLOAT => tensor_from_repeated_field(&*dims, t.get_float_val().to_vec())?,
+                DataType::DT_DOUBLE => tensor_from_repeated_field(&*dims, t.get_double_val().to_vec())?,
                 DataType::DT_STRING => {
                     let strings = t
                         .get_string_val()
@@ -89,7 +93,7 @@ impl<'a> TryFrom<&'a TensorProto> for Tensor {
                             })
                         })
                         .collect::<TractResult<Vec<String>>>()?;
-                    Array::from_shape_vec(&*dims,strings)?.into()
+                    tensor_from_repeated_field(&*dims, strings)?
                 }
                 _ => unimplemented!("missing type (for _val()) {:?}", dtype),
             }
