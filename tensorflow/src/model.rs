@@ -53,7 +53,7 @@ impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
             let node_id = model.add_node(
                 name.clone(),
                 self.build_op(&*pbnode.get_op(), pbnode)
-                    .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
+                    .map_err(|e| format!("While building node {}, {}\n{:#?}", name, e.description(), pbnode))?,
                 facts,
             )?;
 

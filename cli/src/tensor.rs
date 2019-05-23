@@ -128,7 +128,7 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
                 .iter()
                 .map(|d| d.to_integer().ok().map(|d| d as usize).or(streaming_dim).unwrap())
                 .collect(),
-            fact.datum_type.concretize().unwrap(),
+            fact.datum_type.concretize().ok_or_else(|| format!("Can not generate random tensor: unknown datum_type: {:?}", fact))?
         ))
     }
 }
