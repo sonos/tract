@@ -142,10 +142,10 @@ impl ConvUnary {
         match self.kernel_fmt {
             KernelFormat::HWIO => {
                 let mut shape = kernel.shape().to_vec();
-                shape.insert(hw_rank, self.group);
+                shape.insert(hw_rank + 1, self.group);
                 shape[hw_rank] /= self.group;
                 let kernel = kernel.into_shape(shape)?;
-                let mut permutation: Vec<usize> = vec![hw_rank, hw_rank + 2, hw_rank + 1];
+                let mut permutation: Vec<usize> = vec![hw_rank + 1, hw_rank + 2, hw_rank];
                 permutation.extend(0..hw_rank);
                 let permuted = kernel.permuted_axes(permutation);
                 Ok(Array3::<T>::from_shape_vec(final_shape, permuted.iter().cloned().collect())?)
