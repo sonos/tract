@@ -163,3 +163,11 @@ fn conv_eval_6() {
     let model = convolution_pb(1, true, &k).unwrap();
     compare(&model, vec![("data", i.into())], "conv").unwrap();
 }
+
+#[test]
+fn conv_eval_7() {
+    let i: Tensor = tensor4(&[[[[1.0f32, 2.0]]]]);
+    let k: Tensor = tensor4(&[[[[3.0f32, 5.0], [7.0, 11.0]]]]);
+    let model = convolution_pb(1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
