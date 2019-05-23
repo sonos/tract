@@ -12,6 +12,7 @@ fi
 cargo build --release --all
 cargo build --release --benches
 cargo test --release --all
+(cd tensorflow; cargo test --release --all --features conform)
 
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
