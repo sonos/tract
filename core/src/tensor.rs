@@ -312,6 +312,12 @@ impl Tensor {
             (I32, F32) => self.cast::<i32, f32>()?,
             (I64, F32) => self.cast::<i64, f32>()?,
 
+            (Bool, F64) => self.cast::<bool, f64>()?,
+            (I8, F64) => self.cast::<i8, f64>()?,
+            (I16, F64) => self.cast::<i16, f64>()?,
+            (I32, F64) => self.cast::<i32, f64>()?,
+            (I64, F64) => self.cast::<i64, f64>()?,
+
             (F32, String) => self.cast::<f32, std::string::String>()?,
             (String, F32) => self.cast::<std::string::String, f32>()?,
 
