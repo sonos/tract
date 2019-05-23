@@ -174,9 +174,6 @@ impl Tensor {
         let mb = other.cast_to::<f32>()?;
         let mb = mb.to_array_view::<f32>()?;
         Ok(ma.iter().zip(mb.iter()).all(|(a, b)| {
-            if (a - b).abs() > atol + rtol * b.abs() {
-                println!("|{}-{}| = {} > {}", a, b, (a - b).abs(), atol + rtol * b.abs());
-            }
             (a.is_nan() && b.is_nan())
                 || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
                 || (a - b).abs() <= atol + rtol * b.abs()
