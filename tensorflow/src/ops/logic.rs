@@ -4,7 +4,11 @@ use tract_core::ops as tractops;
 use crate::model::TfOpRegister;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
+    reg.insert("Equal", with_T!(tractops::logic::Equals::Bin));
+    reg.insert("Greater", with_T!(tractops::logic::Greater::Bin));
+    reg.insert("GreaterEqual", with_T!(tractops::logic::GreaterEqual::Bin));
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
+    reg.insert("LessEqual", with_T!(tractops::logic::LesserEqual::Bin));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_| Ok(Box::new(Switch)));
 }
