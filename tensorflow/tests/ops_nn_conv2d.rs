@@ -17,7 +17,6 @@ use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
 use tract_core::prelude::*;
-use tract_core::tensor::arr4;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
@@ -103,7 +102,6 @@ fn conv_infer_facts_1() {
 
 #[test]
 fn conv_eval_1() {
-    use tract_core::tensor::arr4;
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
     let model = convolution_pb(1, 1, false, &k).unwrap();
@@ -112,7 +110,6 @@ fn conv_eval_1() {
 
 #[test]
 fn conv_eval_2() {
-    use tract_core::tensor::arr4;
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let model = convolution_pb(1, 1, false, &k).unwrap();
