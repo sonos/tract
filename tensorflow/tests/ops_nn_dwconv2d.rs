@@ -17,7 +17,6 @@ use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
 use tract_core::prelude::*;
-use tract_core::tensor::arr4;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;

@@ -84,11 +84,11 @@ pub fn infer<S: AsRef<str>>(
         .inputs
         .iter()
         .map(|outlet| {
-            state.values[outlet.node].as_ref().unwrap()[outlet.slot].as_tensor().clone().into()
+            state.values[outlet.node].as_ref().unwrap()[outlet.slot].clone().into_tensor().clone().into()
         })
         .collect();
     let output_vectors: TVec<TensorFact> =
-        tvec![state.values[output.id].as_ref().unwrap()[0].as_tensor().clone().into(),];
+        tvec![state.values[output.id].as_ref().unwrap()[0].clone().into_tensor().clone().into(),];
 
     let input_facts = input_vectors.iter().collect();
     let output_facts = output_vectors.iter().collect();
