@@ -11,6 +11,7 @@ pub mod logic;
 pub mod math;
 pub mod nn;
 pub mod quant;
+pub mod random;
 pub mod rec;
 pub mod vars;
 
@@ -20,6 +21,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
+    random::register_all_ops(reg);
     rec::register_all_ops(reg);
     vars::register_all_ops(reg);
     reg.insert("Cast", cast);

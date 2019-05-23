@@ -68,6 +68,13 @@ impl Drop for Tensor {
 
 impl Tensor {
     /// Create an uninitialized tensor with a given alignment (in bytes).
+    pub unsafe fn uninitialized<T: Datum>(
+        shape: &[usize],
+    ) -> TractResult<Tensor> {
+        Self::uninitialized_aligned::<T>(shape, align_of::<T>())
+    }
+
+    /// Create an uninitialized tensor with a given alignment (in bytes).
     pub unsafe fn uninitialized_aligned<T: Datum>(
         shape: &[usize],
         alignment: usize,

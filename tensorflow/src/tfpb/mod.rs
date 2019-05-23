@@ -238,6 +238,12 @@ impl<'a> From<&'a str> for AttrValue {
     }
 }
 
+impl From<i32> for AttrValue {
+    fn from(t: i32) -> AttrValue {
+        AttrValue::from(t as i64)
+    }
+}
+
 impl From<i64> for AttrValue {
     fn from(t: i64) -> AttrValue {
         let mut value = attr_value::AttrValue::new();
