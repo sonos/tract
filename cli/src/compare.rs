@@ -10,21 +10,33 @@ use crate::utils::*;
 use crate::*;
 
 #[cfg(feature = "conform")]
-pub fn handle_tensorflow(cumulative: bool, mut params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
+pub fn handle_tensorflow(
+    cumulative: bool,
+    resilient: bool,
+    mut params: Parameters,
+    output_params: DisplayOptions,
+) -> CliResult<()> {
     {
         let tf = params.tf_model.take().unwrap();
         return match &params.tract_model {
-            SomeModel::Inference(m) => handle_tensorflow_t(cumulative, m, tf, &params, output_params),
-            SomeModel::Typed(m) => handle_tensorflow_t(cumulative, m, tf, &params, output_params),
-            SomeModel::Normalized(m) => handle_tensorflow_t(cumulative, m, tf, &params, output_params),
+            SomeModel::Inference(m) => {
+                handle_tensorflow_t(cumulative, resilient, m, tf, &params, output_params)
+            }
+            SomeModel::Typed(m) => {
+                handle_tensorflow_t(cumulative, resilient, m, tf, &params, output_params)
+            }
+            SomeModel::Normalized(m) => {
+                handle_tensorflow_t(cumulative, resilient, m, tf, &params, output_params)
+            }
             SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
-        }
+        };
     }
 }
 
 #[cfg(feature = "conform")]
 fn handle_tensorflow_t<TI: TensorInfo, O>(
     cumulative: bool,
+    resilient: bool,
     tract: &Model<TI, O>,
     mut tf: tract_tensorflow::conform::tf::Tensorflow,
     params: &Parameters,
@@ -35,12 +47,17 @@ where
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
 {
     // First generate random values for the inputs.
-    let generated = crate::tensor::make_inputs(&[tract.input_fact(0)?.to_tensor_fact()])?;
+    let input_facts = tract
+        .input_outlets()?
+        .iter()
+        .map(|&i| Ok(tract.outlet_fact(i)?.to_tensor_fact()))
+        .collect::<TractResult<Vec<_>>>()?;
+    let generated = crate::tensor::make_inputs(&*input_facts)?;
 
     // Execute the model on tensorflow first.
     info!("Running the model on tensorflow.");
     trace!("Inject inputs in tensorflow graph.");
-    let pairs = tract
+    let pairs: Vec<_> = tract
         .input_outlets()
         .iter()
         .map(|s| &*tract.node(s[0].node).name)
@@ -50,6 +67,7 @@ where
     trace!("Execute the model on tensorflow.");
     let eval_order = ::tract_core::model::eval_order(&tract)?;
     let nodes = tract.nodes();
+
     let mut wanted_outputs: Vec<&str> = eval_order
         .iter()
         .filter(|&n| !tract.output_outlets().unwrap().contains(&OutletId::new(*n, 0)))
@@ -63,7 +81,28 @@ where
         }
     }
 
-    let mut all_values:HashMap<String, TVec<Tensor>> = tf.run_get_many(pairs, wanted_outputs)?.into_iter().map(|(k,v)| (k.to_string(), v.into())).collect();
+    let mut all_values: HashMap<String, TVec<Tensor>> = if resilient {
+        /*
+        wanted_outputs
+            .iter()
+            .filter_map(|name| {
+                tf.run(pairs.clone(), name).ok().map(|tensors| (name.to_string(), tensors.into()))
+            })
+            .collect::<HashMap<String, TVec<Tensor>>>();
+            */
+        wanted_outputs
+            .iter()
+            .filter_map(|name| {
+                tf.run(pairs.clone(), name).ok().map(|tensors| (name.to_string(), tensors.into()))
+            })
+            .collect()
+    } else {
+        tf.run_get_many(pairs, wanted_outputs)?
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.into()))
+            .collect()
+    };
+
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         let name = &tract.node(input.node).name;
         all_values.insert(name.to_string(), tvec!(generated[ix].clone()));
@@ -71,14 +110,19 @@ where
     compare(cumulative, tract, &all_values, params, output_params)
 }
 
-pub fn handle_npz(cumulative: bool, npz: &str, params: Parameters, output_params: DisplayOptions) -> CliResult<()> {
+pub fn handle_npz(
+    cumulative: bool,
+    npz: &str,
+    params: Parameters,
+    output_params: DisplayOptions,
+) -> CliResult<()> {
     {
         return match &params.tract_model {
             SomeModel::Inference(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
             SomeModel::Typed(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
             SomeModel::Normalized(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
             SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
-        }
+        };
     }
 }
 
@@ -136,92 +180,94 @@ where
     for n in eval_order {
         let node = &tract.nodes()[n];
 
-        if node.op_is::<tract_core::ops::source::Source>() {
-            continue;
-        }
-
-        if node.op_is::<tract_tensorflow::ops::logic::Switch>() {
-            // observing Switch is not allowed in TF. so we'll just use tract
-            // value
-            state.compute_one(n)?;
-            display_graph.add_node_label(n, "Unchecked".to_string())?;
-            continue;
-        }
-
         let tf_output = match all_values.get(&*node.name) {
             Some(it) => it,
-            None => continue,
+            None => {
+                display_graph.add_node_label(n, Yellow.paint("No ref.").to_string())?;
+                debug!("Skipping node (no reference) {}", node);
+                continue;
+            }
         };
 
-        debug!("Computing {} in tract", node);
-        match state.compute_recursively(n) {
-            Err(e) => {
-                failing.push(n);
-                display_graph.add_node_label(n, format!("{}: {}", Red.paint("ERROR"), e))?;
-            }
+        if node.op_is::<tract_core::ops::Source>() {
+            display_graph.add_node_label(n, Blue.paint("Source").to_string())?;
+        } else if node.op().validation() == Validation::Random {
+            display_graph.add_node_label(n, Blue.paint("Random").to_string())?;
+        } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
+            display_graph.add_node_label(n, Red.paint("Unimplemented").to_string())?;
+            failing.push(n);
+        } else {
+            debug!("Computing {} in tract", node);
+            match state.compute_recursively(n) {
+                Err(e) => {
+                    failing.push(n);
+                    display_graph.add_node_label(n, format!("{}: {}", Red.paint("ERROR"), e))?;
+                }
+                _ => {
+                    // how many outputs are actually required ? ignore ancilliary
+                    // training wires from tensorflow op (fused batch norm)
+                    let wanted = node
+                        .outputs
+                        .iter()
+                        .enumerate()
+                        .position(|(ix, o)| {
+                            o.successors.len() == 0
+                                && !tract
+                                    .output_outlets()
+                                    .unwrap()
+                                    .contains(&OutletId::new(node.id, ix))
+                        })
+                        .unwrap_or(node.outputs.len());
+                    let expected: Vec<TensorFact> =
+                        tf_output.iter().take(wanted).map(|m| m.clone().into()).collect();
+                    let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
+                    match check_outputs(&tract_output, &expected) {
+                        Err(_) => {
+                            failing.push(n);
+                            let mismatches = tract_output
+                                .iter()
+                                .enumerate()
+                                .map(|(n, data)| {
+                                    let (color, reason) = if n >= tf_output.len() {
+                                        (Yellow, "Unexpected output".into())
+                                    } else if tf_output[n].shape() != data.shape() {
+                                        (Red, "Wrong shape".into())
+                                    } else if !tf_output[n].close_enough(
+                                        data,
+                                        node.op().validation() == Validation::Rounding,
+                                    ) {
+                                        let msg = format!(
+                                            "expected: {:?}\ngot     : {:?}",
+                                            tf_output[n], data
+                                        );
+                                        (Red, msg)
+                                    } else {
+                                        (Green, "ok".into())
+                                    };
 
-            _ => {
-                // how many outputs are actually required ? ignore ancilliary
-                // training wires from tensorflow op (fused batch norm)
-                let wanted = node
-                    .outputs
-                    .iter()
-                    .enumerate()
-                    .position(|(ix, o)| {
-                        o.successors.len() == 0
-                            && !tract
-                                .output_outlets()
-                                .unwrap()
-                                .contains(&OutletId::new(node.id, ix))
-                    })
-                    .unwrap_or(node.outputs.len());
-                let expected: Vec<TensorFact> =
-                    tf_output.iter().take(wanted).map(|m| m.clone().into()).collect();
-                let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
-                match check_outputs(&tract_output, &expected) {
-                    Err(_) => {
-                        failing.push(n);
-                        let mismatches = tract_output
-                            .iter()
-                            .enumerate()
-                            .map(|(n, data)| {
-                                let (color, reason) = if n >= tf_output.len() {
-                                    (Yellow, "Unexpected output".into())
-                                } else if tf_output[n].shape() != data.shape() {
-                                    (Red, "Wrong shape".into())
-                                } else if !tf_output[n]
-                                    .close_enough(data, node.op().rounding_errors())
-                                {
-                                    let msg = format!("expected: {:?}\ngot     : {:?}", tf_output[n], data);
-                                    (Red, msg)
-                                } else {
-                                    (Green, "ok".into())
-                                };
-
-                                color.paint(format!("Output {}: {}", n, reason)).to_string()
-                            })
-                            .collect::<Vec<_>>();
-                        let inputs = tract.nodes()[n]
-                            .inputs
-                            .iter()
-                            .enumerate()
-                            .map(|(ix, o)| {
-                                let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
-                                format!("Input #{}: {:?}", ix, tensor)
-                            })
-                            .collect::<Vec<_>>();
-                        display_graph.add_node_section(n, inputs)?;
-                        display_graph.add_node_section(n, mismatches)?;
-                        display_graph.add_node_label(n, Red.paint("MISM.").to_string())?;
-                    }
-
-                    _ => {
-                        println!("{}", node);
-                        display_graph.add_node_label(n, Green.paint("OK").to_string())?;
+                                    color.paint(format!("Output {}: {}", n, reason)).to_string()
+                                })
+                                .collect::<Vec<_>>();
+                            let inputs = tract.nodes()[n]
+                                .inputs
+                                .iter()
+                                .enumerate()
+                                .map(|(ix, o)| {
+                                    let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
+                                    format!("Input #{}: {:?}", ix, tensor)
+                                })
+                                .collect::<Vec<_>>();
+                            display_graph.add_node_section(n, inputs)?;
+                            display_graph.add_node_section(n, mismatches)?;
+                            display_graph.add_node_label(n, Red.paint("Mismatch").to_string())?;
+                        }
+                        _ => {
+                            display_graph.add_node_label(n, Green.paint("OK").to_string())?;
+                        }
                     }
                 }
             }
-        };
+        }
 
         if !cumulative {
             // Use the output from tensorflow to keep tract from drifting.
@@ -230,15 +276,18 @@ where
         }
     }
 
-    if failing.len() > 0 {
+    if log_enabled!(Info) {
+        display_graph.render()?;
+    } else {
         for f in &failing {
             display_graph.render_node(&tract.nodes()[*f])?;
         }
+    }
+
+    if failing.len() > 0 {
         bail!("{} error(s).", failing.len())
-    } else if log_enabled!(Info) {
-        display_graph.render()?;
     } else {
         println!("{}", Green.paint("Each node passed the comparison."));
-    }
+    };
     Ok(())
 }

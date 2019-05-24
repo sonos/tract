@@ -16,8 +16,8 @@ impl Op for FusedBatchNorm {
         "tf.FusedBatchNorm".into()
     }
 
-    fn rounding_errors(&self) -> bool {
-        true
+    fn validation(&self) -> Validation {
+        Validation::Rounding
     }
 }
 

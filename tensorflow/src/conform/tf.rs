@@ -18,7 +18,6 @@ use std::collections::HashSet;
 use crate::conform::Result;
 
 pub struct Tensorflow {
-    session: Session,
     graph: Graph,
 }
 
@@ -36,8 +35,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
 pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
     let mut graph = Graph::new();
     graph.import_graph_def(buf, &::tensorflow::ImportGraphDefOptions::new())?;
-    let session = Session::new(&::tensorflow::SessionOptions::new(), &graph)?;
-    Ok(Tensorflow { session, graph })
+    Ok(Tensorflow { graph })
 }
 
 enum TensorHolder {
@@ -123,7 +121,8 @@ impl Tensorflow {
         let tokens =
             (0..op.num_outputs()).map(|ix| step.request_fetch(&op, ix as i32)).collect::<Vec<_>>();
 
-        self.session.run(&mut step)?;
+        let session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
+        session.run(&mut step)?;
 
         tokens
             .into_iter()
@@ -200,7 +199,8 @@ impl Tensorflow {
         trace!("{:?}", tokens);
 
         // Execute the graph using tensorflow.
-        self.session.run(&mut step)?;
+        let session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
+        session.run(&mut step)?;
         trace!("Tensorflow ran succesfully");
 
         // Return the output for every node.

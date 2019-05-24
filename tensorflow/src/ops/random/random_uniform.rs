@@ -44,6 +44,14 @@ impl Op for RandomUniform {
     fn name(&self) -> Cow<str> {
         "RandomUniform".into()
     }
+
+    fn validation(&self) -> Validation {
+        if self.seed1 == 0 && self.seed2 == 0 {
+            Validation::Random
+        } else {
+            Validation::Accurate
+        }
+    }
 }
 
 impl StatelessOp for RandomUniform {
