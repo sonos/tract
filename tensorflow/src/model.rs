@@ -23,12 +23,25 @@ impl Tensorflow {
         };
         Ok(pair)
     }
+
+    pub fn determinize(model: &mut GraphDef) -> TractResult<()> {
+        for pbnode in model.mut_node().iter_mut() {
+            if pbnode.get_op() == "RandomUniform" {
+                if pbnode.get_attr_int::<i64>("seed")? == 0 && pbnode.get_attr_int::<i64>("seed2")? == 0 {
+                    pbnode.mut_attr().insert("seed".to_string(), 1.into());
+                    pbnode.mut_attr().insert("seed2".to_string(), 1.into());
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
     fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<NodeDef, Box<InferenceOp>>> {
         self.op_register.get(name)
     }
+
     fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<GraphDef> {
         Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
     }
@@ -52,8 +65,9 @@ impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
 
             let node_id = model.add_node(
                 name.clone(),
-                self.build_op(&*pbnode.get_op(), pbnode)
-                    .map_err(|e| format!("While building node {}, {}\n{:#?}", name, e.description(), pbnode))?,
+                self.build_op(&*pbnode.get_op(), pbnode).map_err(|e| {
+                    format!("While building node {}, {}\n{:#?}", name, e.description(), pbnode)
+                })?,
                 facts,
             )?;
 
@@ -69,7 +83,7 @@ impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
 
         for (node_id, pbnode) in graph.get_node().iter().enumerate() {
             if pbnode.get_op() == "NextIteration" {
-                continue
+                continue;
             }
             for (ix, i) in pbnode.get_input().iter().enumerate() {
                 let input = Self::parse_input(i)?;
@@ -110,3 +124,4 @@ impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
         Ok(model)
     }
 }
+

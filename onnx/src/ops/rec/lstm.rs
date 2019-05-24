@@ -33,8 +33,8 @@ impl Op for LSTM {
         "LSTM".into()
     }
 
-    fn rounding_errors(&self) -> bool {
-        true
+    fn validation(&self) -> Validation {
+        Validation::Rounding
     }
 }
 

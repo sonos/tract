@@ -82,6 +82,8 @@ fn main() {
             "Override output nodes name (auto-detects otherwise).")
 
         (@arg proto: --("proto") "Keep proto model around after parse")
+        (@arg determinize: --determinize "Enforce a seed in random operator")
+
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
         (@arg skip_type: --("skip-type") "Analyse as much as possible, but do not enforce full typing")
 
@@ -98,7 +100,8 @@ fn main() {
 
     let compare = clap::SubCommand::with_name("compare")
         .help("Compares the output of tract and tensorflow on randomly generated input.")
-        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"));
+        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"))
+        .arg(Arg::with_name("resilient").long("resilient").takes_value(false).help("Try nodes one per one to mitigate crashes"));
     app = app.subcommand(output_options(compare));
 
     let compare_npz = clap::SubCommand::with_name("compare-npz")
@@ -298,7 +301,10 @@ impl Parameters {
             #[cfg(feature = "tf")]
             {
                 let tf = tract_tensorflow::tensorflow();
-                let graph = tf.proto_model_for_path(&name)?;
+                let mut graph = tf.proto_model_for_path(&name)?;
+                if matches.is_present("determinize") {
+                    tract_tensorflow::Tensorflow::determinize(&mut graph)?;
+                }
                 let tract = tf.model_for_proto_model(&graph)?;
                 (SomeGraphDef::Tf(graph), tract)
             }
@@ -313,7 +319,17 @@ impl Parameters {
         #[cfg(feature = "conform")]
         let tf_model = if format == "tf" {
             info!("Tensorflow version: {}", tract_tensorflow::conform::tf::version());
-            Some(tract_tensorflow::conform::tf::for_path(&name)?)
+            if matches.is_present("determinize") {
+                if let SomeGraphDef::Tf(ref graph) = graph {
+                    use tract_tensorflow::conform::Message;
+                    let graph = graph.write_to_bytes().unwrap();
+                    Some(tract_tensorflow::conform::tf::for_slice(&graph)?)
+                } else {
+                    unreachable!()
+                }
+            } else {
+                Some(tract_tensorflow::conform::tf::for_path(&name)?)
+            }
         } else {
             None
         };
@@ -493,6 +509,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         #[cfg(feature = "conform")]
         ("compare", Some(m)) => compare::handle_tensorflow(
             m.is_present("cumulative"),
+            m.is_present("resilient"),
             params,
             display_options_from_clap(m)?,
         ),

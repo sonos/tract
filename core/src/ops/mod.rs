@@ -19,6 +19,8 @@ pub mod nn;
 pub mod source;
 pub mod unimpl;
 
+pub use source::Source;
+
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
         bail!("Wrong input number. Rules expect {}, node has {}.", expected, inputs.len())
@@ -33,6 +35,17 @@ pub fn check_output_arity(outputs: &[TensorProxy], expected: usize) -> TractResu
     } else {
         Ok(())
     }
+}
+
+/// Level of precision to be expected in implementations comparisons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Validation {
+    /// Output is random
+    Random,
+    /// Implementation may induce rounding errors
+    Rounding,
+    /// Implementation must be accurate
+    Accurate
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -108,8 +121,8 @@ pub trait Op:
         Ok(tvec!())
     }
 
-    fn rounding_errors(&self) -> bool {
-        false
+    fn validation(&self) -> Validation {
+        Validation::Accurate
     }
 
     fn same_as(&self, _other: &Op) -> bool {

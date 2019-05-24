@@ -43,6 +43,7 @@ impl InferenceRulesOp for Shape {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].rank, 1)?;
+        s.equals(&outputs[0].datum_type, self.dt)?;
         s.given(&inputs[0].rank, move |s, r| s.equals(&outputs[0].shape[0], r.to_dim()))?;
         s.given(&outputs[0].shape[0], move |s, r| {
             if let Ok(d) = r.to_integer() {
