@@ -65,7 +65,7 @@ impl InferenceRulesOp for LSTM {
         s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?; // seq_lentgh
         s.equals(&outputs[0].shape[1], &inputs[1].shape[0])?; // num_directions
         s.equals(&outputs[0].shape[2], &inputs[0].shape[1])?; // batch_size
-        s.equals(&outputs[0].shape[3], &inputs[1].shape[2])?; // hidden_size
+        s.equals(&outputs[0].shape[3], &inputs[2].shape[2])?; // hidden_size
         s.equals(&outputs[1].rank, 3)?;
         s.equals(&outputs[1].shape[0], &inputs[1].shape[0])?; // num_directions
         s.equals(&outputs[1].shape[1], &inputs[0].shape[1])?; // batch_size
