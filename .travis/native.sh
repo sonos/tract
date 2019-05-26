@@ -9,14 +9,19 @@ then
     CACHEDIR=`dirname $0`/../.cached
 fi
 
-# useful as debug_asserts will come into play
-cargo test -p tract-core
-cargo test -p onnx-test-suite -- --skip real::
-
 cargo build --release --all
-cargo build --release --benches
-cargo test --release --all
-(cd tensorflow; cargo test --release --all --features conform)
+
+if [ ! "$TRAVIS_OS_NAME" = "osx" ]
+then
+    # useful as debug_asserts will come into play
+    cargo test -p tract-core
+    cargo test -p onnx-test-suite -- --skip real::
+
+    cargo build --release --benches
+    cargo test --release --all
+    (cd tensorflow; cargo test --release --all --features conform)
+fi
+
 
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
