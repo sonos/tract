@@ -1,9 +1,16 @@
 use ndarray::*;
 use tract_core::internal::*;
 use tract_core::ops::identity::Identity;
+use crate::pb::NodeProto;
+
+pub fn dropout(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+    Ok(Box::new(Dropout::new(node.get_output().len() == 2)))
+}
 
 #[derive(Debug, Clone, new, Default)]
-pub struct Dropout;
+pub struct Dropout {
+    output_mask: bool,
+}
 
 impl Op for Dropout {
     fn name(&self) -> Cow<str> {
@@ -26,9 +33,13 @@ impl Op for Dropout {
 impl StatelessOp for Dropout {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        let mask = ArrayD::from_elem(input.shape(), true);
-        Ok(tvec!(input, mask.into_arc_tensor()))
+        if self.output_mask {
+            let input = args_1!(inputs);
+            let mask = ArrayD::from_elem(input.shape(), true);
+            Ok(tvec!(input, mask.into_arc_tensor()))
+        } else {
+            Ok(inputs)
+        }
     }
 }
 
