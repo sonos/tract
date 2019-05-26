@@ -26,7 +26,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("AveragePool", average_pool);
     reg.insert("BatchNormalization", batch_normalization);
     reg.insert("Conv", conv);
-    reg.insert("Dropout", |_| Ok(Box::new(dropout::Dropout)));
+    reg.insert("Dropout", dropout::dropout);
     reg.insert("Elu", elu);
     reg.insert("GlobalAveragePool", |_| Ok(Box::new(tractops::nn::GlobalAvgPool::default())));
     reg.insert("GlobalLpPool", global_lp_pool);
