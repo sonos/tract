@@ -86,7 +86,7 @@ impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
     impl_op_same_as!();
 
     fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!("Pack: {:?}\nMatMul: {:?}", self.patch, self.b_pack)))
+        Ok(Some(format!("MatMul: (m,k,n):{:?} groups:{} {:?}", (self.m,self.k,self.n), self.group, self.b_pack)))
     }
 }
 

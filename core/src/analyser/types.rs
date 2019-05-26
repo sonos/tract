@@ -97,7 +97,7 @@ impl TensorFact {
                 self.datum_type
                     .concretize()
                     .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("___".to_string())
+                    .unwrap_or("?".to_string())
             )
         } else {
             format!(
@@ -106,7 +106,7 @@ impl TensorFact {
                 self.datum_type
                     .concretize()
                     .map(|dt| format!("{:?}", dt))
-                    .unwrap_or("___".to_string())
+                    .unwrap_or("?".to_string())
             )
         }
     }
