@@ -1,4 +1,3 @@
-use crate::format::Row;
 use crate::CliResult;
 use crate::SomeGraphDef;
 use ansi_term::Color::*;
@@ -7,7 +6,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display};
-use tract_core::prelude::{Model, BaseNode, Op, Tensor, TensorInfo};
+use tract_core::internal::*;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
 #[cfg(feature = "tf")]
@@ -56,8 +55,8 @@ where
     model: M,
     pub options: DisplayOptions,
     node_labels: HashMap<usize, Vec<String>>,
-    node_sections: HashMap<usize, Vec<Vec<Row>>>,
-    _bloody_baron: ::std::marker::PhantomData<(TI,O)>,
+    node_sections: HashMap<usize, Vec<Vec<String>>>,
+    _bloody_baron: ::std::marker::PhantomData<(TI, O)>,
 }
 
 impl<TI, O, M> DisplayGraph<TI, O, M>
@@ -81,77 +80,60 @@ where
         Ok(())
     }
 
-    pub fn render_node(&self, node: &BaseNode<TI,O>) -> CliResult<()> {
-        let bold = Style::new().bold();
-        let mut sections: Vec<Vec<Row>> = vec![];
+    pub fn render_node(&self, node: &BaseNode<TI, O>) -> CliResult<()> {
+        println!(
+            "{} {} {}",
+            White.bold().paint(format!("{}", node.id)),
+            if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
+                Red.bold().paint(format!("{}", node.op().name()))
+            } else {
+                Blue.bold().paint(format!("{}", node.op().name()))
+            },
+            White.italic().paint(&node.name)
+        );
         if let Some(id) =
             self.model.borrow().input_outlets()?.iter().position(|n| n.node == node.id)
         {
-            sections.push(vec![Row::Simple(
-                Yellow.bold().paint(format!("MODEL INPUT {}", id)).to_string(),
-            )]);
+            println!("{}", Yellow.bold().paint(format!("MODEL INPUT #{}", id)));
         }
-        sections.push(
-            node.inputs
-                .iter()
-                .enumerate()
-                .map(|(ix, a)| {
-                    Ok(Row::Double(
-                        format!(
-                            "Input {}: Node #{}/{}",
-                            bold.paint(format!("{}", ix)),
-                            bold.paint(format!("{}", a.node)),
-                            bold.paint(format!("{}", a.slot)),
-                        ),
-                        format!("{:?}", self.model.borrow().outlet_fact(*a)?),
-                    ))
-                })
-                .collect::<CliResult<_>>()?,
-        );
-        sections.push(
-            node.outputs
-                .iter()
-                .enumerate()
-                .map(|(ix, outlet)| {
-                    if let Some(pos) = self
-                        .model
-                        .borrow()
-                        .output_outlets()
-                        .unwrap()
-                        .iter()
-                        .position(|&o| o == ::tract_core::model::OutletId::new(node.id, ix))
-                    {
-                        Row::Double(
-                            format!("Output {}:", bold.paint(ix.to_string())),
-                            format!("{:?} {} #{}", outlet.fact, bold.paint("Model output"), pos),
-                        )
-                    } else {
-                        Row::Double(
-                            format!("Output {}:", bold.paint(ix.to_string())),
-                            format!("{:?}", outlet.fact),
-                        )
-                    }
-                })
-                .collect(),
-        );
+        for (ix, i) in node.inputs.iter().enumerate() {
+            let star = if ix == 0 { '*' } else { ' ' };
+            println!("  {} input  #{}: {:?} {:?}", star, ix, i, self.model.borrow().outlet_fact(*i)?);
+        }
+        for (ix, o) in node.outputs.iter().enumerate() {
+            let star = if ix == 0 { '*' } else { ' ' };
+            println!(
+                "  {} output #{}: {:?} {}",
+                star,
+                format!("{:?}", ix),
+                o.fact,
+                if let Some(id) = self
+                    .model
+                    .borrow()
+                    .output_outlets()?
+                    .iter()
+                    .position(|n| n.node == node.id && n.slot == ix)
+                {
+                    Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string()
+                } else {
+                    "".to_string()
+                }
+            );
+        }
         if let Some(info) = node.op().info()? {
-            sections.push(vec![Row::Simple(info)])
+            println!("  * {}", info);
         }
         if self.options.debug_op {
-            sections.push(vec![Row::Simple(format!("{:?}", node.op))]);
+            println!("  * {:?}", node.op());
         }
         if let Some(node_sections) = self.node_sections.get(&node.id) {
-            for s in node_sections {
-                sections.push(s.clone());
+            for section in node_sections {
+                println!("  * {}", section[0]);
+                for s in &section[1..] {
+                    println!("    {}", s);
+                }
             }
         }
-        crate::format::print_box(
-            &node.id.to_string(),
-            &node.op.as_ref().name(),
-            &node.name,
-            self.node_labels.get(&node.id).map(|v| v.as_slice()).unwrap_or(&[]),
-            sections,
-        );
         Ok(())
     }
 
@@ -170,11 +152,11 @@ where
 
     pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<TI, O, M>> {
         match graph_def {
+            SomeGraphDef::NoGraphDef => Ok(self),
             #[cfg(feature = "tf")]
             SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
             #[cfg(feature = "onnx")]
             SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
-            SomeGraphDef::_NoGraph => unreachable!(),
         }
     }
 
@@ -183,7 +165,7 @@ where
         Ok(())
     }
 
-    pub fn add_node_section(&mut self, id: usize, section: Vec<Row>) -> CliResult<()> {
+    pub fn add_node_section(&mut self, id: usize, section: Vec<String>) -> CliResult<()> {
         self.node_sections.entry(id).or_insert(vec![]).push(section);
         Ok(())
     }
@@ -200,7 +182,7 @@ where
                     } else {
                         format!("{:?}", a.1)
                     };
-                    v.push(Row::Double(format!("Attr {}:", bold.paint(a.0)), value));
+                    v.push(format!("Attr {}: {}", bold.paint(a.0), value));
                 }
                 self.add_node_section(node_id, v)?;
             }
@@ -209,7 +191,10 @@ where
     }
 
     #[cfg(feature = "onnx")]
-    pub fn with_onnx_model(mut self, model_proto: &ModelProto) -> CliResult<DisplayGraph<TI, O, M>> {
+    pub fn with_onnx_model(
+        mut self,
+        model_proto: &ModelProto,
+    ) -> CliResult<DisplayGraph<TI, O, M>> {
         let bold = Style::new().bold();
         for gnode in model_proto.get_graph().get_node().iter() {
             let mut node_name = gnode.get_name();
@@ -224,7 +209,7 @@ where
                     } else {
                         format!("{:?}", a)
                     };
-                    v.push(Row::Double(format!("Attr {}:", bold.paint(a.get_name())), value));
+                    v.push(format!("Attr {}: {}", bold.paint(a.get_name()), value));
                 }
                 self.add_node_section(id, v)?;
             }

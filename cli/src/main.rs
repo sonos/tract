@@ -7,15 +7,11 @@ extern crate itertools;
 #[macro_use]
 extern crate log;
 extern crate ndarray;
-#[macro_use]
-extern crate prettytable;
 extern crate atty;
 extern crate env_logger;
 extern crate libc;
 extern crate pbr;
 extern crate rand;
-extern crate terminal_size;
-extern crate textwrap;
 #[macro_use]
 extern crate tract_core;
 #[cfg(feature = "onnx")]
@@ -85,6 +81,7 @@ fn main() {
         (@arg output_node: --("output-node") +takes_value
             "Override output nodes name (auto-detects otherwise).")
 
+        (@arg proto: --("proto") "Keep proto model around after parse")
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
         (@arg skip_type: --("skip-type") "Analyse as much as possible, but do not enforce full typing")
 
@@ -237,11 +234,11 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
 
 #[derive(Debug)]
 pub enum SomeGraphDef {
+    NoGraphDef,
     #[cfg(feature = "tf")]
     Tf(GraphDef),
     #[cfg(feature = "onnx")]
     Onnx(tract_onnx::pb::ModelProto),
-    _NoGraph, // here to avoid "irrefutable patterns" in match statements
 }
 
 #[derive(Debug)]
@@ -254,7 +251,6 @@ pub enum SomeModel {
 
 /// Structure holding the parsed parameters.
 pub struct Parameters {
-    name: String,
     graph: SomeGraphDef,
     unoptimized_model: Option<TypedModel>,
     tract_model: SomeModel,
@@ -282,7 +278,7 @@ impl Parameters {
         } else {
             "tf"
         });
-        let (graph, mut raw_model) = if format == "onnx" {
+        let (mut graph, mut raw_model) = if format == "onnx" {
             #[cfg(not(feature = "onnx"))]
             {
                 panic!("Tract compiled without onnx feature");
@@ -307,6 +303,10 @@ impl Parameters {
                 (SomeGraphDef::Tf(graph), tract)
             }
         };
+
+        if !matches.is_present("proto") {
+            graph = SomeGraphDef::NoGraphDef;
+        }
 
         info!("Model {:?} loaded", name);
 
@@ -399,7 +399,6 @@ impl Parameters {
         info!("Model ready");
 
         Ok(Parameters {
-            name: name.to_string(),
             graph,
             unoptimized_model,
             tract_model,

@@ -128,11 +128,6 @@ where
     let mut profile = ProfileData::default();
     let mut progress = ProgressBar::new(plan.order.len() as u64);
 
-    if log_enabled!(Info) {
-        println!();
-        print_header(format!("Profiling for {}:", params.name), &White.normal());
-    }
-
     // Then execute the plan while profiling each step.
     for &n in &plan.order {
         let node = &model.nodes()[n];
@@ -142,16 +137,6 @@ where
         }
 
         if node.op.as_ref().name() == "Source" {
-            if log_enabled!(Info) {
-                print_node(
-                    &node,
-                    &params.graph,
-                    Some(&state),
-                    &[Yellow.paint("SKIP").to_string()],
-                    vec![],
-                );
-            }
-
             continue;
         }
 
