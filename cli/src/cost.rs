@@ -1,6 +1,5 @@
 use crate::display_graph::*;
 use crate::errors::*;
-use crate::format::Row;
 use crate::{Parameters, SomeModel};
 use tract_core::internal::*;
 
@@ -29,7 +28,7 @@ fn handle_t(
             let rows = cost
                 .iter()
                 .inspect(|(c, i)| *total.entry(*c).or_insert(0.to_dim()) += *i)
-                .map(|(c, i)| Row::Double(format!("{:?}", c), format!("{:?}", i)))
+                .map(|(c, i)| format!("{:?} {:?}", c, i))
                 .collect();
             display_graph.add_node_section(i, rows)?;
         }

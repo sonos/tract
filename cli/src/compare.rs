@@ -115,8 +115,6 @@ where
     TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
 {
-    use crate::format::Row;
-
     let eval_order = ::tract_core::model::eval_order(&tract)?;
 
     // Execute the model step-by-step on tract.
@@ -200,7 +198,7 @@ where
                                     (Green, "ok".into())
                                 };
 
-                                Row::Double(color.paint(format!("Output {}", n)).to_string(), reason.to_string())
+                                color.paint(format!("Output {}: {}", n, reason)).to_string()
                             })
                             .collect::<Vec<_>>();
                         let inputs = tract.nodes()[n]
@@ -209,7 +207,7 @@ where
                             .enumerate()
                             .map(|(ix, o)| {
                                 let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
-                                Row::Double(format!("Input #{}", ix), format!("{:?}", tensor))
+                                format!("Input #{}: {:?}", ix, tensor)
                             })
                             .collect::<Vec<_>>();
                         display_graph.add_node_section(n, inputs)?;
