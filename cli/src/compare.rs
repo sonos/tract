@@ -183,7 +183,8 @@ where
         let tf_output = match all_values.get(&*node.name) {
             Some(it) => it,
             None => {
-                display_graph.add_node_label(n, Yellow.paint("No ref.").to_string())?;
+                display_graph.set_node_color(n, Yellow)?;
+                display_graph.add_node_label(n, Yellow.paint("Not in reference").to_string())?;
                 debug!("Skipping node (no reference) {}", node);
                 continue;
             }
@@ -259,10 +260,10 @@ where
                                 .collect::<Vec<_>>();
                             display_graph.add_node_section(n, inputs)?;
                             display_graph.add_node_section(n, mismatches)?;
-                            display_graph.add_node_label(n, Red.paint("Mismatch").to_string())?;
+                            display_graph.set_node_color(n, Red)?;
                         }
                         _ => {
-                            display_graph.add_node_label(n, Green.paint("OK").to_string())?;
+                            display_graph.set_node_color(n, Green)?;
                         }
                     }
                 }

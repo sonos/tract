@@ -54,6 +54,7 @@ where
 {
     model: M,
     pub options: DisplayOptions,
+    node_color: HashMap<usize, Style>,
     node_labels: HashMap<usize, Vec<String>>,
     node_sections: HashMap<usize, Vec<Vec<String>>>,
     _bloody_baron: ::std::marker::PhantomData<(TI, O)>,
@@ -81,44 +82,48 @@ where
     }
 
     pub fn render_node(&self, node: &BaseNode<TI, O>) -> CliResult<()> {
+        let name_color = self.node_color.get(&node.id).cloned().unwrap_or(White.into());
         println!(
             "{} {} {}",
             White.bold().paint(format!("{}", node.id)),
-            if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
-                Red.bold().paint(format!("{}", node.op().name()))
-            } else {
-                Blue.bold().paint(format!("{}", node.op().name()))
-            },
-            White.italic().paint(&node.name)
+            (if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() { Red.bold() } else { Blue.bold() }).paint(node.op().name()),
+            name_color.italic().paint(&node.name)
         );
-        if let Some(id) =
-            self.model.borrow().input_outlets()?.iter().position(|n| n.node == node.id)
-        {
-            println!("{}", Yellow.bold().paint(format!("MODEL INPUT #{}", id)));
+        for label in self.node_labels.get(&node.id).unwrap_or(&vec!()).iter() {
+            println!("  * {}", label);
         }
         for (ix, i) in node.inputs.iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
-            println!("  {} input  #{}: {:?} {:?}", star, ix, i, self.model.borrow().outlet_fact(*i)?);
+            println!(
+                "  {} input  #{}: {:?} {:?}",
+                star,
+                ix,
+                i,
+                self.model.borrow().outlet_fact(*i)?
+            );
         }
         for (ix, o) in node.outputs.iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
-            println!(
-                "  {} output #{}: {:?} {}",
-                star,
-                format!("{:?}", ix),
-                o.fact,
-                if let Some(id) = self
-                    .model
-                    .borrow()
-                    .output_outlets()?
-                    .iter()
-                    .position(|n| n.node == node.id && n.slot == ix)
-                {
-                    Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string()
-                } else {
-                    "".to_string()
-                }
-            );
+            let io = if let Some(id) = self
+                .model
+                .borrow()
+                .input_outlets()?
+                .iter()
+                .position(|n| n.node == node.id && n.slot == ix)
+            {
+                Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string()
+            } else if let Some(id) = self
+                .model
+                .borrow()
+                .output_outlets()?
+                .iter()
+                .position(|n| n.node == node.id && n.slot == ix)
+            {
+                Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string()
+            } else {
+                "".to_string()
+            };
+            println!("  {} output #{}: {:?} {}", star, format!("{:?}", ix), o.fact, io);
         }
         if let Some(info) = node.op().info()? {
             println!("  * {}", info);
@@ -144,6 +149,7 @@ where
         Ok(DisplayGraph {
             model,
             options,
+            node_color: HashMap::new(),
             node_labels: HashMap::new(),
             node_sections: HashMap::new(),
             _bloody_baron: std::marker::PhantomData,
@@ -158,6 +164,11 @@ where
             #[cfg(feature = "onnx")]
             SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
         }
+    }
+
+    pub fn set_node_color<S: Into<Style>>(&mut self, id: usize, color: S) -> CliResult<()> {
+        self.node_color.insert(id, color.into());
+        Ok(())
     }
 
     pub fn add_node_label(&mut self, id: usize, label: String) -> CliResult<()> {
