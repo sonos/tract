@@ -325,6 +325,16 @@ impl Tensor {
             (I32, F64) => self.cast::<i32, f64>()?,
             (I64, F64) => self.cast::<i64, f64>()?,
 
+            (F32, I8) => self.cast::<f32, i8>()?,
+            (F32, I16) => self.cast::<f32, i16>()?,
+            (F32, I32) => self.cast::<f32, i32>()?,
+            (F32, I64) => self.cast::<f32, i64>()?,
+
+            (F64, I8) => self.cast::<f64, i8>()?,
+            (F64, I16) => self.cast::<f64, i16>()?,
+            (F64, I32) => self.cast::<f64, i32>()?,
+            (F64, I64) => self.cast::<f64, i64>()?,
+
             (F32, String) => self.cast::<f32, std::string::String>()?,
             (String, F32) => self.cast::<std::string::String, f32>()?,
 

@@ -169,6 +169,16 @@ try_into!(i16, f64);
 try_into!(i32, f64);
 try_into!(i64, f64);
 
+try_into!(f32, i8);
+try_into!(f32, i16);
+try_into!(f32, i32);
+try_into!(f32, i64);
+
+try_into!(f64, i8);
+try_into!(f64, i16);
+try_into!(f64, i32);
+try_into!(f64, i64);
+
 impl TryInto<TDim> for i32 {
     fn try_into(&self) -> TractResult<TDim> {
         Ok((*self).into())
