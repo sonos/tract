@@ -345,16 +345,11 @@ impl Tensor {
 
     fn from_copy_datum<D: ::ndarray::Dimension, T: Datum>(it: Array<T, D>) -> Tensor {
         let shape = it.shape().into();
-        let vec = if it.is_standard_layout() {
-            it.into_raw_vec()
-        } else {
-            it.view().into_iter().cloned().collect()
-        };
+        let vec = it.into_owned().into_iter().cloned().collect::<Box<[T]>>();
         let layout =
-            alloc::Layout::from_size_align(vec.capacity() * size_of::<T>(), align_of::<T>())
+            alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>())
                 .unwrap();
-        let data = vec.as_ptr() as *mut u8;
-        std::mem::forget(vec);
+        let data = Box::into_raw(vec) as *mut u8;
         Tensor { null: false, dt: T::datum_type(), shape, layout, data }
     }
 }
