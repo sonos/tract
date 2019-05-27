@@ -310,10 +310,6 @@ impl Parameters {
             }
         };
 
-        if !matches.is_present("proto") {
-            graph = SomeGraphDef::NoGraphDef;
-        }
-
         info!("Model {:?} loaded", name);
 
         #[cfg(feature = "conform")]
@@ -333,6 +329,10 @@ impl Parameters {
         } else {
             None
         };
+
+        if !matches.is_present("proto") {
+            graph = SomeGraphDef::NoGraphDef;
+        }
 
         #[cfg(not(feature = "conform"))]
         let tf_model = ();

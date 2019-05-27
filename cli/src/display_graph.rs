@@ -171,8 +171,8 @@ where
         Ok(())
     }
 
-    pub fn add_node_label(&mut self, id: usize, label: String) -> CliResult<()> {
-        self.node_labels.entry(id).or_insert(vec![]).push(label);
+    pub fn add_node_label<S: Into<String>>(&mut self, id: usize, label: S) -> CliResult<()> {
+        self.node_labels.entry(id).or_insert(vec![]).push(label.into());
         Ok(())
     }
 
