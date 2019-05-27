@@ -246,11 +246,12 @@ fn convert_output(
     let tract_tensor = match output_type {
         DataType::Bool => convert!(bool),
         DataType::Float => convert!(f32),
+        DataType::Double => convert!(f64),
         DataType::UInt8 => convert!(u8),
         DataType::Int8 => convert!(i8),
         DataType::Int32 => convert!(i32),
         DataType::Int64 => convert!(i64),
-        t => bail!("Missing conversion for tensorflow type {:?}", t),
+        t => bail!("Missing conversion for tensorflow to tract (type: {:?})", t),
     };
 
     Ok(tract_tensor)
