@@ -58,9 +58,9 @@ where
     info!("Running the model on tensorflow.");
     trace!("Inject inputs in tensorflow graph.");
     let pairs: Vec<_> = tract
-        .input_outlets()
+        .input_outlets()?
         .iter()
-        .map(|s| &*tract.node(s[0].node).name)
+        .map(|s| &*tract.node(s.node).name)
         .zip(generated.iter().cloned())
         .collect();
 
@@ -70,7 +70,7 @@ where
 
     let mut wanted_outputs: Vec<&str> = eval_order
         .iter()
-        .filter(|&n| !tract.output_outlets().unwrap().contains(&OutletId::new(*n, 0)))
+        .filter(|&n| !tract.input_outlets().unwrap().contains(&OutletId::new(*n, 0)))
         .map(|&n| &*nodes[n].name)
         .collect();
 
@@ -81,31 +81,20 @@ where
         }
     }
 
-    let mut all_values: HashMap<String, TVec<Tensor>> = if resilient {
-        /*
-        wanted_outputs
-            .iter()
-            .filter_map(|name| {
-                tf.run(pairs.clone(), name).ok().map(|tensors| (name.to_string(), tensors.into()))
-            })
-            .collect::<HashMap<String, TVec<Tensor>>>();
-            */
-        wanted_outputs
-            .iter()
-            .filter_map(|name| {
-                tf.run(pairs.clone(), name).ok().map(|tensors| (name.to_string(), tensors.into()))
-            })
-            .collect()
+    let mut all_values:HashMap<String, CliResult<TVec<Tensor>>> = HashMap::new();
+    if resilient {
+        for name in wanted_outputs {
+            all_values.insert(name.to_string(), tf.run(pairs.clone(), &name).map(|t| t.into()).map_err(|e| e.into()));
+        }
     } else {
-        tf.run_get_many(pairs, wanted_outputs)?
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v.into()))
-            .collect()
+        tf.run_get_many(pairs, wanted_outputs)?.into_iter().for_each(|(k, v)| {
+            all_values.insert(k.to_string(), Ok(v.into()));
+        });
     };
 
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         let name = &tract.node(input.node).name;
-        all_values.insert(name.to_string(), tvec!(generated[ix].clone()));
+        all_values.insert(name.to_string(), Ok(tvec!(generated[ix].clone())));
     }
     compare(cumulative, tract, &all_values, params, output_params)
 }
@@ -142,7 +131,7 @@ where
     for name in npz.names()? {
         if let Ok(value) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&name) {
             let name = name.trim_end_matches(".npy");
-            values.insert(name.to_string(), tvec!(value.into()));
+            values.insert(name.to_string(), Ok(tvec!(value.into())));
         }
     }
     compare(cumulative, tract, &values, params, output_params)
@@ -151,7 +140,7 @@ where
 pub fn compare<TI, O>(
     cumulative: bool,
     tract: &Model<TI, O>,
-    all_values: &HashMap<String, TVec<Tensor>>,
+    all_values: &HashMap<String, CliResult<TVec<Tensor>>>,
     params: &Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()>
@@ -167,7 +156,7 @@ where
 
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         let name = &tract.node(input.node).name;
-        let value = &all_values[name][0];
+        let value = &all_values[name].as_ref().unwrap()[0];
         state.set_input(ix, value.clone())?;
     }
 
@@ -181,7 +170,12 @@ where
         let node = &tract.nodes()[n];
 
         let tf_output = match all_values.get(&*node.name) {
-            Some(it) => it,
+            Some(Ok(it)) => it,
+            Some(Err(e)) => {
+                display_graph.set_node_color(n, Yellow)?;
+                display_graph.add_node_label(n, format!("{} {}", Yellow.paint("TF Error"), e))?;
+                continue;
+            },
             None => {
                 display_graph.set_node_color(n, Yellow)?;
                 display_graph.add_node_label(n, Yellow.paint("Not in reference").to_string())?;
@@ -191,10 +185,12 @@ where
         };
 
         if node.op_is::<tract_core::ops::Source>() {
-            display_graph.add_node_label(n, Blue.paint("Source").to_string())?;
+            display_graph.set_node_color(n, Blue)?;
         } else if node.op().validation() == Validation::Random {
+            display_graph.set_node_color(n, Blue)?;
             display_graph.add_node_label(n, Blue.paint("Random").to_string())?;
         } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
+            display_graph.set_node_color(n, Red)?;
             display_graph.add_node_label(n, Red.paint("Unimplemented").to_string())?;
             failing.push(n);
         } else {
@@ -225,42 +221,41 @@ where
                     match check_outputs(&tract_output, &expected) {
                         Err(_) => {
                             failing.push(n);
-                            let mismatches = tract_output
-                                .iter()
-                                .enumerate()
-                                .map(|(n, data)| {
-                                    let (color, reason) = if n >= tf_output.len() {
-                                        (Yellow, "Unexpected output".into())
-                                    } else if tf_output[n].shape() != data.shape() {
-                                        (Red, "Wrong shape".into())
-                                    } else if !tf_output[n].close_enough(
-                                        data,
-                                        node.op().validation() == Validation::Rounding,
-                                    ) {
-                                        let msg = format!(
-                                            "expected: {:?}\ngot     : {:?}",
-                                            tf_output[n], data
-                                        );
-                                        (Red, msg)
-                                    } else {
-                                        (Green, "ok".into())
-                                    };
-
-                                    color.paint(format!("Output {}: {}", n, reason)).to_string()
-                                })
-                                .collect::<Vec<_>>();
                             let inputs = tract.nodes()[n]
                                 .inputs
                                 .iter()
                                 .enumerate()
                                 .map(|(ix, o)| {
                                     let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
-                                    format!("Input #{}: {:?}", ix, tensor)
+                                    format!("input value #{}: {:?}", ix, tensor)
                                 })
                                 .collect::<Vec<_>>();
-                            display_graph.add_node_section(n, inputs)?;
-                            display_graph.add_node_section(n, mismatches)?;
-                            display_graph.set_node_color(n, Red)?;
+                            tract_output
+                                .iter()
+                                .enumerate()
+                                .try_for_each(|(ix, data)| -> CliResult<()> {
+                                    if ix >= tf_output.len() {
+                                        display_graph.set_node_color(n, Yellow)?;
+                                        display_graph.add_node_label(n, format!("Extra output (#{})", ix))?;
+                                    } else if tf_output[ix].shape() != data.shape() {
+                                        display_graph.set_node_color(n, Red.bold())?;
+                                        display_graph.add_node_label(n, format!("Output {} has wrong shape. Expected {:?}, got {:?}", ix, tf_output[ix].shape(), data.shape()))?;
+                                    } else if !tf_output[ix].close_enough(
+                                        data,
+                                        node.op().validation() == Validation::Rounding,
+                                    ) {
+                                        display_graph.set_node_color(n, Red.bold())?;
+                                        let mut msg = vec!(Red.bold().paint(format!("Wrong value for output {}", ix)).to_string());
+                                        msg.extend(inputs.iter().cloned());
+                                        msg.push(format!("expected: {:?}", tf_output[ix]));
+                                        msg.push(format!("got     : {:?}", data));
+                                        display_graph.add_node_section(n, msg)?;
+                                    } else {
+                                        display_graph.set_node_color(n, Red.bold())?;
+                                        display_graph.add_node_label(n, "")?;
+                                    };
+                                    Ok(())
+                                })?;
                         }
                         _ => {
                             display_graph.set_node_color(n, Green)?;

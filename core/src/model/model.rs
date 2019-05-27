@@ -233,7 +233,8 @@ where
     /// Get tensor information for a single outlet.
     pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&TI> {
         let outlets = &self.nodes[outlet.node].outputs;
-        Ok(&outlets[outlet.slot].fact)
+        outlets.get(outlet.slot).map(|o| &o.fact)
+            .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
     }
 
     /// Set tensor information for a single outlet.
