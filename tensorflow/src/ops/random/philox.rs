@@ -104,6 +104,12 @@ impl Philox4x32x10 {
 
         *counter = r3 << 96 | r2 << 64 | r1 << 32 | r0
     }
+
+    pub fn u32_iter(self) -> impl Iterator<Item=u32> {
+        self.flat_map(|big|
+            tvec![big as u32, (big >> 32) as u32, (big >> 64) as u32, (big >> 96) as u32].into_iter()
+        )
+    }
 }
 
 impl Iterator for Philox4x32x10 {
