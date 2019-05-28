@@ -11,7 +11,6 @@ extern crate atty;
 extern crate env_logger;
 extern crate libc;
 extern crate pbr;
-extern crate rand;
 #[macro_use]
 extern crate tract_core;
 #[cfg(feature = "onnx")]

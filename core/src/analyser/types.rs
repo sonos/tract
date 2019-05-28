@@ -78,7 +78,6 @@ impl TensorFact {
         self,
         shape: S,
     ) -> TensorFact {
-        use crate::dim::ToDim;
         let shape: ShapeFact = shape
             .into_iter()
             .map(|d| d.map(|d| (d as isize).to_dim()).unwrap_or(TDim::s()))

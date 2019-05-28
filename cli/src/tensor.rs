@@ -135,7 +135,6 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
 
 /// Generates a random tensor of a given size and type.
 pub fn random(sizes: Vec<usize>, datum_type: DatumType) -> Tensor {
-    use rand;
     use std::iter::repeat_with;
     fn make<D>(shape: Vec<usize>) -> Tensor
     where

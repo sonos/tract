@@ -9,6 +9,8 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("GreaterEqual", with_T!(tractops::logic::GreaterEqual::Bin));
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
     reg.insert("LessEqual", with_T!(tractops::logic::LesserEqual::Bin));
+    reg.insert("LogicalAnd", |_| Ok(Box::new(tractops::logic::And::default())));
+    reg.insert("LogicalOr", |_| Ok(Box::new(tractops::logic::Or::default())));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_| Ok(Box::new(Switch)));
 }

@@ -361,7 +361,6 @@ pub struct IntoDimExp(Exp<IntFact>);
 impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<DimFact> {
-        use crate::dim::ToDim;
         let v: IntFact = self.0.get(context)?;
         match v {
             GenericFact::Only(i) => Ok(GenericFact::Only(i.to_dim())),

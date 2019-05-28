@@ -27,7 +27,7 @@ impl<T: Copy + Datum> StatelessOp for ConcatV2<T> {
 
 impl<T: Copy + Datum> Op for ConcatV2<T> {
     fn name(&self) -> Cow<str> {
-        "tf.ConvatV2".into()
+        "tf.ConcatV2".into()
     }
 }
 
@@ -48,7 +48,7 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[self.n].value, move |s, axis| {
             let axis = *axis.to_scalar::<i32>()? as usize;
-            trace!("axis for Concatv2: {}", axis);
+            trace!("axis for ConcatV2: {}", axis);
             for d in 0..axis {
                 s.equals_all((0..self.n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
             }

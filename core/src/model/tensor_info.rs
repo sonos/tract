@@ -24,7 +24,6 @@ impl TensorInfo for TensorFact {
 impl<'a> TryFrom<&'a TensorFact> for TypedTensorInfo {
     type Error = TractError;
     fn try_from(fact: &TensorFact) -> TractResult<TypedTensorInfo> {
-        use crate::analyser::types::Fact;
         if let (Some(datum_type), Some(shape)) =
             (fact.datum_type.concretize(), fact.shape.concretize())
         {

@@ -3,7 +3,6 @@
 use ndarray;
 use tract_core;
 
-/// Configures error handling for this crate.
 error_chain! {
     types {
         CliError, CliErrorKind, CliResultExt, CliResult;

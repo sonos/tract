@@ -22,8 +22,8 @@ impl DataFormat {
     {
         let mut strides: TVec<D> = tvec![1.into()];
         for dim in shape.as_ref().iter().skip(1).rev() {
-            let previous = strides.last().unwrap();
-            strides.push(*previous * *dim);
+            let previous = *strides.last().unwrap();
+            strides.push(previous * *dim);
         }
         strides.reverse();
         BaseDataShape { fmt: *self, shape, strides }
