@@ -2,13 +2,15 @@ use ndarray::prelude::*;
 use num_traits::AsPrimitive;
 use std::ops::{Add, Div, Mul, Sub};
 use tract_core::internal::*;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
 #[derive(Debug, Clone, new)]
 pub struct Range {
     dtype: DatumType,
 }
 
-pub fn range(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn range(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("Tidx")?;
     Ok(Box::new(Range::new(dtype)))
 }

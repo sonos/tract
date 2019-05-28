@@ -6,24 +6,15 @@ use tract_core::internal::*;
 
 use crate::pb;
 
-pub type OnnxOpRegister = OpRegister<pb::NodeProto, Box<InferenceOp>>;
-
-pub struct Onnx {
-    pub op_register: OnnxOpRegister,
+pub struct ParsingContext<'a> {
+    pub framework: &'a Onnx,
+    pub model: &'a pb::ModelProto,
+    pub parent_graphs: Vec<&'a pb::GraphProto>
 }
 
-impl Framework<pb::NodeProto, Box<InferenceOp>, pb::ModelProto> for Onnx {
-    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<pb::NodeProto, Box<InferenceOp>>> {
-        self.op_register.get(name)
-    }
-
-    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<pb::ModelProto> {
-        Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
-    }
-
-    fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {
+impl<'a> ParsingContext<'a> {
+    pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<InferenceModel> {
         let mut model = Model::default();
-        let graph = proto.get_graph();
         let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
             .iter()
@@ -40,6 +31,7 @@ impl Framework<pb::NodeProto, Box<InferenceOp>, pb::ModelProto> for Onnx {
                 outlets_by_name.insert(input.get_name().to_owned(), OutletId::new(id, 0));
             }
         }
+        let consts = model.nodes().len();
         for pbnode in graph.get_node().iter() {
             let name = if pbnode.get_name() != "" {
                 pbnode.get_name().to_string()
@@ -51,12 +43,19 @@ impl Framework<pb::NodeProto, Box<InferenceOp>, pb::ModelProto> for Onnx {
             trace!("Creating node {}", name);
             let facts = (0..pbnode.get_output().len()).map(|_| TensorFact::default()).collect();
             trace!("  outputs {:?}", pbnode.get_output());
-            let id = model.add_node(name, self.build_op(pbnode.get_op_type(), pbnode)?, facts)?;
+            let op = match self.framework.op_register.0.get(pbnode.get_op_type()) {
+                Some(builder) => (builder)(&self, pbnode)?,
+                None => tract_core::ops::unimpl::UnimplementedOp::new(pbnode.get_op_type(),
+                            format!("{:?}", pbnode)).into(),
+            };
+            let id = model.add_node(name, op, facts)?;
             for (ix, output) in pbnode.get_output().iter().enumerate() {
                 outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
             }
-            for (ix, input) in pbnode.get_input().iter().enumerate() {
-                model.add_edge(outlets_by_name[&*input], InletId::new(id, ix))?;
+        }
+        for (id, pbnode) in graph.get_node().iter().enumerate() {
+            for (ix, input) in pbnode.get_input().iter().filter(|s| s.len() > 0).enumerate() {
+                model.add_edge(outlets_by_name[&*input], InletId::new(id + consts, ix))?;
             }
         }
         let mut outputs = vec![];
@@ -67,5 +66,31 @@ impl Framework<pb::NodeProto, Box<InferenceOp>, pb::ModelProto> for Onnx {
         }
         model.set_output_outlets(&outputs)?;
         Ok(model)
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct OnnxOpRegister(pub HashMap<String, fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<Box<InferenceOp>>>);
+
+impl OnnxOpRegister {
+    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<Box<InferenceOp>>) {
+        self.0.insert(s.into(), builder);
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct Onnx {
+    pub op_register: OnnxOpRegister,
+}
+
+impl Framework<pb::ModelProto> for Onnx {
+    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<pb::ModelProto> {
+        Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
+    }
+
+    fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {
+        let graph = proto.get_graph();
+        let ctx = ParsingContext { framework: self, model: proto, parent_graphs: vec!() };
+        ctx.parse_graph(&graph)
     }
 }

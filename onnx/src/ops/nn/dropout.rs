@@ -1,9 +1,10 @@
 use ndarray::*;
 use tract_core::internal::*;
 use tract_core::ops::identity::Identity;
-use crate::pb::NodeProto;
+use crate::model::ParsingContext;
+use crate::pb::*;
 
-pub fn dropout(node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn dropout(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(Dropout::new(node.get_output().len() == 2)))
 }
 

@@ -1,6 +1,7 @@
 use tract_core::internal::*;
 use tract_core::ops as tractops;
-
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
@@ -9,10 +10,10 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("GreaterEqual", with_T!(tractops::logic::GreaterEqual::Bin));
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
     reg.insert("LessEqual", with_T!(tractops::logic::LesserEqual::Bin));
-    reg.insert("LogicalAnd", |_| Ok(Box::new(tractops::logic::And::default())));
-    reg.insert("LogicalOr", |_| Ok(Box::new(tractops::logic::Or::default())));
+    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::And::default())));
+    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::Or::default())));
     reg.insert("Merge", merge);
-    reg.insert("Switch", |_| Ok(Box::new(Switch)));
+    reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }
 
 #[derive(Debug, Clone)]
@@ -56,7 +57,7 @@ impl InferenceRulesOp for Switch {
     inference_op_as_op!();
 }
 
-fn merge(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let inputs = pb.get_attr_int::<i32>("N")?;
     Ok(Box::new(Merge::new(inputs as usize)))
 }

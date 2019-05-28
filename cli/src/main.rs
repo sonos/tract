@@ -488,7 +488,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         #[cfg(feature = "onnx")]
         {
             let onnx = tract_onnx::onnx();
-            let names = onnx.op_register.names().sorted().into_iter().join(", ");
+            let names = onnx.op_register.0.keys().sorted().into_iter().join(", ");
             println!("Onnx:\n");
             println!("{}", names);
             println!("\n");
@@ -496,7 +496,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         #[cfg(feature = "tf")]
         {
             let tf = tract_tensorflow::tensorflow();
-            let names = tf.op_register.names().sorted().into_iter().join(", ");
+            let names = tf.op_register.0.keys().sorted().into_iter().join(", ");
             println!("Tensorflow:\n");
             println!("{}", names);
             println!("\n");

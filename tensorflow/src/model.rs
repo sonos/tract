@@ -2,7 +2,16 @@ use crate::tfpb::graph::GraphDef;
 use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
 
-pub type TfOpRegister = OpRegister<NodeDef, Box<InferenceOp>>;
+pub struct ParsingContext;
+
+#[derive(Clone, Default)]
+pub struct TfOpRegister(pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>>>);
+
+impl TfOpRegister {
+    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>>) {
+        self.0.insert(s.into(), builder);
+    }
+}
 
 pub struct Tensorflow {
     pub op_register: TfOpRegister,
@@ -37,11 +46,7 @@ impl Tensorflow {
     }
 }
 
-impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
-    fn op_builder_for_name(&self, name: &str) -> Option<&OpBuilder<NodeDef, Box<InferenceOp>>> {
-        self.op_register.get(name)
-    }
-
+impl Framework<GraphDef> for Tensorflow {
     fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<GraphDef> {
         Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
     }
@@ -63,14 +68,13 @@ impl Framework<NodeDef, Box<InferenceOp>, GraphDef> for Tensorflow {
             let output_arity = arities.get(&*name).cloned().unwrap_or(1);
             let facts = tvec!(TensorFact::default(); output_arity);
 
-            let node_id = model.add_node(
-                name.clone(),
-                self.build_op(&*pbnode.get_op(), pbnode).map_err(|e| {
-                    format!("While building node {}, {}\n{:#?}", name, e.description(), pbnode)
-                })?,
-                facts,
-            )?;
+            let op = match self.op_register.0.get(pbnode.get_op()) {
+                Some(builder) => (builder)(&ParsingContext, pbnode)?,
+                None => tract_core::ops::unimpl::UnimplementedOp::new(pbnode.get_op(),
+                            format!("{:?}", pbnode)).into(),
+            };
 
+            let node_id = model.add_node(name.clone(), op, facts)?;
             if pbnode.get_op() == "PlaceHolder" {
                 let dt = pbnode.get_attr_datum_type("dtype")?;
                 let mut fact = TensorFact::dt(dt);

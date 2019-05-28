@@ -1,14 +1,14 @@
 use tract_core::internal::*;
 
-use crate::model::TfOpRegister;
+use crate::model::{ ParsingContext, TfOpRegister };
 use crate::tfpb::node_def::NodeDef;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Assign", |_| Ok(Box::new(Assign::default())));
+    reg.insert("Assign", |_, _| Ok(Box::new(Assign::default())));
     reg.insert("VariableV2", variable_v2);
 }
 
-fn variable_v2(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let shared_name = node.get_attr_str("shared_name")?;
     let shared_name = if shared_name != "" { Some(shared_name) } else { None };
     let container = node.get_attr_str("container")?;

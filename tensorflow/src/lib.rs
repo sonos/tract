@@ -62,7 +62,7 @@ pub use model::Tensorflow;
 use tract_core::internal::*;
 
 pub fn tensorflow() -> Tensorflow {
-    let mut ops = tract_core::framework::OpRegister::default();
+    let mut ops = crate::model::TfOpRegister::default();
     ops::register_all_ops(&mut ops);
     Tensorflow { op_register: ops }
 }

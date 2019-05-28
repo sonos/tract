@@ -1,6 +1,9 @@
 use tract_core::internal::*;
 
-pub fn build(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
+pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(ExpandDims))
 }
 
