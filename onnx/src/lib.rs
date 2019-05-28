@@ -35,7 +35,7 @@ pub fn for_reader<R: std::io::Read>(mut r: R) -> TractResult<InferenceModel> {
 }
 
 pub fn onnx() -> Onnx {
-    let mut ops = tract_core::framework::OpRegister::default();
+    let mut ops = crate::model::OnnxOpRegister::default();
     ops::register_all_ops(&mut ops);
     Onnx { op_register: ops }
 }

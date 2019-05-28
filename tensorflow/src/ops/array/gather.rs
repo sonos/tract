@@ -2,10 +2,13 @@ use ndarray::*;
 
 use tract_core::internal::*;
 
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
 #[derive(Debug, Clone, new)]
 pub struct GatherNd {}
 
-pub fn gather_nd(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(GatherNd::new()))
 }
 

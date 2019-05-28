@@ -1,9 +1,10 @@
-use crate::pb::NodeProto;
+use crate::pb::*;
+use crate::model::ParsingContext;
 use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
 
-pub fn lstm(_pb: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn lstm(_ctx: &ParsingContext, _pb: &NodeProto) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(LSTM::default()))
 }
 

@@ -3,6 +3,8 @@ use tract_core::ops as tractops;
 
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
 
 mod max;
 
@@ -29,13 +31,13 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Tanh", with_T!(tractops::math::Tanh));
 }
 
-pub fn add_n(pb: &NodeDef) -> TractResult<Box<tractops::InferenceOp>> {
+pub fn add_n(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_attr_int("N")?;
     Ok(Box::new(tractops::math::AddN::new(dtype.into(), Some(n))))
 }
 
-pub fn mat_mul(pb: &NodeDef) -> TractResult<Box<tractops::InferenceOp>> {
+pub fn mat_mul(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let trans_a = pb.get_attr_bool("transpose_a")?;
     let trans_b = pb.get_attr_bool("transpose_b")?;
     Ok(Box::new(tract_core::ops::math::Gemm::new(1.0, 0.0, trans_a, trans_b, false)))

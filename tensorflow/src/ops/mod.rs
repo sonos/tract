@@ -2,6 +2,7 @@ use tract_core::internal::*;
 
 use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
 #[macro_use]
 mod macros;
@@ -26,17 +27,17 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     vars::register_all_ops(reg);
     reg.insert("Cast", cast);
     reg.insert("Const", konst);
-    reg.insert("Identity", |_| Ok(Box::new(tract_core::ops::identity::Identity)));
-    reg.insert("NoOp", |_| Ok(Box::new(Noop)));
-    reg.insert("Placeholder", placeholder);
+    reg.insert("Identity", |_, _| Ok(Box::new(tract_core::ops::identity::Identity)));
+    reg.insert("NoOp", |_, _| Ok(Box::new(Noop)));
+    reg.insert("Placeholder", |_, _| Ok(Box::new(::tract_core::ops::source::Source::new())));
 }
 
-pub fn cast(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = node.get_attr_datum_type("DstT")?;
     Ok(Box::new(::tract_core::ops::cast::Cast::new(dtype)))
 }
 
-pub fn konst(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = node.get_attr_datum_type("dtype")?;
     let mat = node.get_attr_tensor("value")?;
 
@@ -45,10 +46,6 @@ pub fn konst(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     }
 
     Ok(Box::new(::tract_core::ops::konst::Const::for_tensor(mat)))
-}
-
-pub fn placeholder(_node: &NodeDef) -> TractResult<Box<InferenceOp>> {
-    Ok(Box::new(::tract_core::ops::source::Source::new()))
 }
 
 #[derive(Clone, Debug, new)]

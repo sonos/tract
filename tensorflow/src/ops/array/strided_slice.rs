@@ -1,7 +1,9 @@
 use ndarray::prelude::*;
 use tract_core::internal::*;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
-pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);

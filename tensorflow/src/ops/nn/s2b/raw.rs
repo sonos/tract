@@ -1,8 +1,6 @@
 use ndarray::prelude::*;
 use tract_core::internal::*;
 
-use tract_core::analyser::rules::TensorProxy;
-
 #[derive(Debug, Clone, new)]
 pub struct SpaceToBatch {
     datum_type: DatumType,

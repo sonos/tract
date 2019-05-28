@@ -1,5 +1,6 @@
-use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
 #[derive(Debug, Clone, new)]
 pub struct Transpose {
@@ -7,7 +8,7 @@ pub struct Transpose {
     t_perm: DatumType,
 }
 
-pub fn transpose(pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn transpose(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;
     let t_perm = pb.get_attr_datum_type("Tperm")?;
     Ok(Box::new(Transpose::new(t, t_perm)))

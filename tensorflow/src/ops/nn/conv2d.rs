@@ -1,7 +1,10 @@
 use tract_core::internal::*;
 use tract_core::ops::cnn::*;
 
-pub fn conv2d(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
+pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let data_format = super::data_format(pb)?;
     let padding = super::padding(pb)?;
     let strides = super::strides(pb)?;

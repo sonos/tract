@@ -78,8 +78,8 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     let model_file = path.join("model.onnx");
     debug!("Loading {:?}", model_file);
     let onnx = onnx();
-    let mut model = onnx.model_for_path(&model_file).unwrap();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
+    let mut model = onnx.model_for_path(&model_file).unwrap();
     trace!("Model:\n{:#?}", model);
     model.analyse(false).unwrap();
     if model.missing_type_shape().unwrap().len() != 0 {

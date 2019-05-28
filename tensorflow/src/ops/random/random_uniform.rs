@@ -1,16 +1,17 @@
-use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
 use super::philox::Philox4x32x10;
 
-pub fn random_uniform(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn random_uniform(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = node.get_attr_datum_type("dtype")?;
     let seed: u64 = node.get_attr_int("seed")?;
     let seed2: u64 = node.get_attr_int("seed2")?;
     Ok(Box::new(RandomUniform::new(dtype, seed, seed2)))
 }
 
-pub fn random_uniform_int(node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn random_uniform_int(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = node.get_attr_datum_type("Tout")?;
     let seed: u64 = node.get_attr_int("seed")?;
     let seed2: u64 = node.get_attr_int("seed2")?;

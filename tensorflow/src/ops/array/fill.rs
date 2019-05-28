@@ -1,11 +1,13 @@
 use tract_core::internal::*;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
 #[derive(Debug, Clone, new)]
 pub struct Fill {
     dt: DatumType,
 }
 
-pub fn fill(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(Box::new(Fill::new(dtype)))
 }

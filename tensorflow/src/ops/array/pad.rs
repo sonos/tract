@@ -1,6 +1,9 @@
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num_traits::Zero;
 
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
 use tract_core::internal::*;
 
 #[derive(Debug, Clone, Default, new)]
@@ -8,7 +11,7 @@ pub struct Pad<T: Copy + Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn pad(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }
