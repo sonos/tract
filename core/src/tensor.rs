@@ -358,7 +358,11 @@ impl Tensor {
 
     fn from_copy_datum<D: ::ndarray::Dimension, T: Datum>(it: Array<T, D>) -> Tensor {
         let shape = it.shape().into();
-        let vec = it.into_owned().into_iter().cloned().collect::<Box<[T]>>();
+        let vec = if it.as_slice().is_some() {
+            it.into_raw_vec().into_boxed_slice()
+        } else {
+            it.into_owned().into_iter().cloned().collect::<Box<[T]>>()
+        };
         let layout =
             alloc::Layout::from_size_align(vec.len() * size_of::<T>(), align_of::<T>())
                 .unwrap();
