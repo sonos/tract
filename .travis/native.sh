@@ -9,17 +9,13 @@ then
     CACHEDIR=`dirname $0`/../.cached
 fi
 
-cargo build --release --all
+cargo test --release --all
+cargo build --release --benches
 
-if [ ! "$TRAVIS_OS_NAME" = "osx" ]
+if [ -z "$TRAVIS" ]
 then
-    # useful as debug_asserts will come into play
-    cargo test -p tract-core
-    cargo test -p onnx-test-suite -- --skip real::
-
-    cargo build --release --benches
-    cargo test --release --all
-    (cd tensorflow; cargo test --release --all --features conform)
+    sh .travis/debug-tests.sh
+    sh .travis/tf.sh
 fi
 
 
