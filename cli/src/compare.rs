@@ -219,7 +219,7 @@ where
                         tf_output.iter().take(wanted).map(|m| m.clone().into()).collect();
                     let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
                     match check_outputs(&tract_output, &expected) {
-                        Err(_) => {
+                        Err(e) => {
                             failing.push(n);
                             let inputs = tract.nodes()[n]
                                 .inputs
@@ -252,7 +252,7 @@ where
                                         display_graph.add_node_section(n, msg)?;
                                     } else {
                                         display_graph.set_node_color(n, Red.bold())?;
-                                        display_graph.add_node_label(n, "")?;
+                                        display_graph.add_node_label(n, format!("{:?}", e))?;
                                     };
                                     Ok(())
                                 })?;

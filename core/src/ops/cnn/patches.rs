@@ -98,7 +98,7 @@ impl PatchSpec {
         fn strides(shape: &[usize], inner: usize) -> TVec<isize> {
             let mut strides: TVec<isize> = tvec![inner as isize];
             for dim in shape.into_iter().skip(1).rev() {
-                let previous = strides.last().unwrap();
+                let previous = *strides.last().unwrap();
                 strides.push(*dim as isize * previous);
             }
             strides.reverse();

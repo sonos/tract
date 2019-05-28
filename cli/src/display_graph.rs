@@ -133,6 +133,9 @@ where
         }
         if let Some(node_sections) = self.node_sections.get(&node.id) {
             for section in node_sections {
+                if section.is_empty() {
+                    continue;
+                }
                 println!("  * {}", section[0]);
                 for s in &section[1..] {
                     println!("    {}", s);

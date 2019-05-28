@@ -145,6 +145,9 @@ impl Tensor {
     pub fn dump_t<D: Datum>(&self, force_full: bool) -> TractResult<String> {
         use itertools::Itertools;
         let spec = TensorFact::dt_shape(D::datum_type(), &*self.shape);
+        if self.is_null() {
+            return Ok(format!("{} (null)", spec.format_dt_shape()));
+        }
         let data = self.to_array_view::<D>()?;
         let s = if force_full || data.len() <= 12 {
             format!("{} {}", spec.format_dt_shape(), data.iter().join(", "))
