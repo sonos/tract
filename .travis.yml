@@ -22,6 +22,10 @@ matrix:
   include:
     - rust: stable
     - rust: stable
+      script: .travis/tf.sh
+    - rust: stable
+      script: .travis/debug-tests.sh
+    - rust: stable
       os: osx
       osx_image: xcode9.3
     - rust: stable
