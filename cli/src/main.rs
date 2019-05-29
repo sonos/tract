@@ -205,6 +205,7 @@ fn main() {
 fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
     use clap::*;
     command
+        .arg(Arg::with_name("natural-order").long("natural-order").help("dump nodes in id order instead of evaluation order"))
         .arg(Arg::with_name("quiet").short("q").long("quiet").help("don't dump"))
         .arg(Arg::with_name("debug-op").long("debug-op").help("show debug dump for each op"))
         .arg(
@@ -455,6 +456,7 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
     Ok(DisplayOptions {
         konst: matches.is_present("const"),
         quiet: matches.is_present("quiet"),
+        natural_order: matches.is_present("natural-order"),
         debug_op: matches.is_present("debug-op"),
         node_ids: matches.values_of("node_id").map(|id| id.map(|id| id.parse().unwrap()).collect()),
         node_name: matches.value_of("node_name").map(String::from),

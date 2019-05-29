@@ -2,6 +2,7 @@ use crate::CliResult;
 use crate::SomeGraphDef;
 use ansi_term::Color::*;
 use ansi_term::Style;
+use itertools::Itertools;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -16,6 +17,7 @@ use tract_tensorflow::tfpb::graph::GraphDef;
 pub struct DisplayOptions {
     pub konst: bool,
     pub quiet: bool,
+    pub natural_order: bool,
     pub debug_op: bool,
     pub node_ids: Option<Vec<usize>>,
     pub op_name: Option<String>,
@@ -71,7 +73,11 @@ where
             return Ok(());
         }
         let model = self.model.borrow();
-        let node_ids = ::tract_core::model::eval_order(&model)?;
+        let node_ids = if self.options.natural_order {
+            (0..model.nodes().len()).collect()
+        } else {
+            ::tract_core::model::eval_order(&model)?
+        };
         for node in node_ids {
             let node = &model.nodes()[node];
             if self.options.filter(model, node)? {
@@ -91,6 +97,9 @@ where
         );
         for label in self.node_labels.get(&node.id).unwrap_or(&vec!()).iter() {
             println!("  * {}", label);
+        }
+        if node.control_inputs.len() > 0 {
+            println!("  * control nodes: {}", node.control_inputs.iter().join(", "));
         }
         for (ix, i) in node.inputs.iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
