@@ -22,9 +22,11 @@ pub fn eval_order_for_nodes<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsM
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
     let mut order: Vec<usize> = vec![];
     for &target in targets {
+        if done.contains(target) {
+            continue;
+        }
         let mut current_stack: Vec<(usize, usize)> = vec![(target, 0)];
         let mut pending = bit_set::BitSet::with_capacity(nodes.len());
-        pending.insert(target);
         while let Some((current_node, current_input)) = current_stack.pop() {
             if inputs.contains(&current_node)
                 || current_input
