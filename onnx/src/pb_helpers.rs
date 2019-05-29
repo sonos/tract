@@ -151,6 +151,13 @@ impl<'a> AttrScalarType<'a> for usize {
     }
 }
 
+impl<'a> AttrScalarType<'a> for &'a GraphProto {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::GRAPH)?
+            .and_ok(AttributeProto::get_g)
+    }
+}
+
 fn check_int<T>(node: &NodeProto, attr: &str, int: i64, is_list: bool) -> TractResult<T>
 where
     T: AsPrimitive<i64> + Bounded + Display,

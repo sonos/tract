@@ -273,6 +273,7 @@ test_reshape_negative_dim
 test_reshape_one_dim
 test_reshape_reduced_dims
 test_reshape_reordered_dims
+test_scan9_sum
 test_selu
 test_selu_default
 test_selu_example
