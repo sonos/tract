@@ -6,6 +6,7 @@ use tract_core::internal::*;
 
 use crate::pb;
 
+#[derive(Clone)]
 pub struct ParsingContext<'a> {
     pub framework: &'a Onnx,
     pub model: &'a pb::ModelProto,
@@ -14,6 +15,8 @@ pub struct ParsingContext<'a> {
 
 impl<'a> ParsingContext<'a> {
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<InferenceModel> {
+        let mut ctx = self.clone();
+        ctx.parent_graphs.push(graph);
         let mut model = Model::default();
         let mut initializers: HashMap<&str, Tensor> = graph
             .get_initializer()
@@ -44,7 +47,7 @@ impl<'a> ParsingContext<'a> {
             let facts = (0..pbnode.get_output().len()).map(|_| TensorFact::default()).collect();
             trace!("  outputs {:?}", pbnode.get_output());
             let op = match self.framework.op_register.0.get(pbnode.get_op_type()) {
-                Some(builder) => (builder)(&self, pbnode)?,
+                Some(builder) => (builder)(&ctx, pbnode)?,
                 None => tract_core::ops::unimpl::UnimplementedOp::new(pbnode.get_op_type(),
                             format!("{:?}", pbnode)).into(),
             };
