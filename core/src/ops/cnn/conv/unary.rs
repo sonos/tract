@@ -98,7 +98,7 @@ impl ConvUnary {
 
         let input_shape = self.data_format.shape(input_full_shape.into());
         let output_shape = self.data_format.from_n_c_hw(
-            input_shape.n(),
+            *input_shape.n(),
             self.output_channels(),
             &*patch.output_shape,
         );
@@ -181,7 +181,7 @@ impl ConvUnary {
         let patch = self.patch(input_full_shape);
         let input_shape = self.data_format.shape(input_full_shape.into());
         let output_shape = self.data_format.from_n_c_hw(
-            input_shape.n(),
+            *input_shape.n(),
             self.output_channels(),
             &*patch.output_shape,
         );
@@ -264,7 +264,7 @@ impl ConvUnary {
             );
             (Box::new(conv_gemm), b_pack)
         };
-        let c_dim = input_shape.c_dim();
+        let c_dim = input_shape.c_dim().clone();
 
         let im2col = Im2Col::new(
             patch.clone(),
@@ -323,7 +323,7 @@ impl ConvUnary {
             return Ok(None);
         }
         fn copy_rm_nth<D: DimLike>(input: &[D], nth: usize) -> TVec<D> {
-            input.iter().enumerate().filter(|&(ax, _)| ax != nth).map(|(_, &d)| d).collect()
+            input.iter().enumerate().filter(|&(ax, _)| ax != nth).map(|(_, d)| d.clone()).collect()
         }
         let kernel_shape: TVec<usize> =
             copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
@@ -386,7 +386,7 @@ impl Op for ConvUnary {
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            shape.n() * shape.c() * n_output_channels * n_output_points * kernel_surface
+            *shape.n() * *shape.c() * n_output_channels * n_output_points * kernel_surface
                 / self.group
         )))
     }

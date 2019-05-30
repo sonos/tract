@@ -11,7 +11,7 @@ impl Reshape {
         let mut result: Vec<D> = shape
             .iter()
             .zip(input.iter())
-            .map(|(&shape, &input)| if shape > 0 { D::from(shape as usize) } else { input })
+            .map(|(&shape, input)| if shape > 0 { D::from(shape as usize) } else { input.clone() })
             .collect();
         if let Some(minus_one) = shape.iter().position(|d| *d == -1) {
             let prod_input: usize =

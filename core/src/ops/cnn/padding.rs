@@ -54,7 +54,7 @@ impl PaddingSpec {
             .map(|d| {
                 self.compute_one(
                     d,
-                    input_spatial_shape[d],
+                    &input_spatial_shape[d],
                     kernel_spatial_shape[d],
                     dilations[d],
                     strides[d],
@@ -66,7 +66,7 @@ impl PaddingSpec {
     pub fn compute_one<D: DimLike>(
         &self,
         axis: usize,
-        input: D,
+        input: &D,
         kernel: usize,
         dilation: usize,
         stride: usize,
@@ -82,7 +82,7 @@ impl PaddingSpec {
     }
 
     fn explicit<D: DimLike>(
-        input: D,
+        input: &D,
         kernel: usize,
         dilation: usize,
         stride: usize,
@@ -90,12 +90,12 @@ impl PaddingSpec {
         aft: usize,
     ) -> ComputedPaddedDim<D> {
         let kernel_field = (kernel - 1) * dilation + 1;
-        let output = (input + bef + aft - kernel_field + 1).div_ceil(stride);
+        let output = (input.clone() + bef + aft - kernel_field + 1).div_ceil(stride);
         ComputedPaddedDim::new(output, bef.into(), aft.into())
     }
 
     fn same<D: DimLike>(
-        input: D,
+        input: &D,
         kernel: usize,
         dilation: usize,
         stride: usize,
@@ -104,13 +104,13 @@ impl PaddingSpec {
         let output = input.div_ceil(stride);
         let kernel_field = (kernel - 1) * dilation + 1;
         let pad = if let Ok(input) = input.to_integer() {
-            let pad = (((output - 1) * stride + kernel_field).to_integer().unwrap() - input).max(0);
+            let pad = (((output.clone() - 1) * stride + kernel_field).to_integer().unwrap() - input).max(0);
             (pad as usize).into()
         } else {
-            (output - 1) * stride + kernel_field - input
+            (output.clone() - 1) * stride + kernel_field - input
         };
-        let lower_pad = pad / 2;
-        let higher_pad = pad - pad / 2;
+        let lower_pad = pad.clone() / 2;
+        let higher_pad = pad - &lower_pad;
         let (before, after) = if upper { (lower_pad, higher_pad) } else { (higher_pad, lower_pad) };
         ComputedPaddedDim::new(output, before, after)
     }
@@ -122,45 +122,45 @@ mod tests {
 
     #[test]
     fn same_stride_1() {
-        assert_eq!(PaddingSpec::same(1usize, 2usize, 1, 1, true), ComputedPaddedDim::new(1, 0, 1));
-        assert_eq!(PaddingSpec::same(2usize, 2usize, 1, 1, true), ComputedPaddedDim::new(2, 0, 1));
-        assert_eq!(PaddingSpec::same(3usize, 2usize, 1, 1, true), ComputedPaddedDim::new(3, 0, 1));
-        assert_eq!(PaddingSpec::same(4usize, 2usize, 1, 1, true), ComputedPaddedDim::new(4, 0, 1));
+        assert_eq!(PaddingSpec::same(&1usize, 2usize, 1, 1, true), ComputedPaddedDim::new(1, 0, 1));
+        assert_eq!(PaddingSpec::same(&2usize, 2usize, 1, 1, true), ComputedPaddedDim::new(2, 0, 1));
+        assert_eq!(PaddingSpec::same(&3usize, 2usize, 1, 1, true), ComputedPaddedDim::new(3, 0, 1));
+        assert_eq!(PaddingSpec::same(&4usize, 2usize, 1, 1, true), ComputedPaddedDim::new(4, 0, 1));
     }
 
     #[test]
     fn same_stride_2() {
-        assert_eq!(PaddingSpec::same(1usize, 2usize, 1, 2, true), ComputedPaddedDim::new(1, 0, 1));
-        assert_eq!(PaddingSpec::same(2usize, 2usize, 1, 2, true), ComputedPaddedDim::new(1, 0, 0));
-        assert_eq!(PaddingSpec::same(3usize, 2usize, 1, 2, true), ComputedPaddedDim::new(2, 0, 1));
-        assert_eq!(PaddingSpec::same(4usize, 2usize, 1, 2, true), ComputedPaddedDim::new(2, 0, 0));
+        assert_eq!(PaddingSpec::same(&1usize, 2usize, 1, 2, true), ComputedPaddedDim::new(1, 0, 1));
+        assert_eq!(PaddingSpec::same(&2usize, 2usize, 1, 2, true), ComputedPaddedDim::new(1, 0, 0));
+        assert_eq!(PaddingSpec::same(&3usize, 2usize, 1, 2, true), ComputedPaddedDim::new(2, 0, 1));
+        assert_eq!(PaddingSpec::same(&4usize, 2usize, 1, 2, true), ComputedPaddedDim::new(2, 0, 0));
     }
 
     #[test]
     fn same_1() {
-        assert_eq!(PaddingSpec::same(6usize, 1usize, 1, 2, true), ComputedPaddedDim::new(3, 0, 0));
+        assert_eq!(PaddingSpec::same(&6usize, 1usize, 1, 2, true), ComputedPaddedDim::new(3, 0, 0));
     }
 
     #[test]
     fn same_lower() {
         assert_eq!(
-            PaddingSpec::same(10usize, 2usize, 1, 3, false),
+            PaddingSpec::same(&10usize, 2usize, 1, 3, false),
             ComputedPaddedDim::new(4, 1, 0)
         );
     }
 
     #[test]
     fn same_ker_3() {
-        assert_eq!(PaddingSpec::same(1usize, 3usize, 1, 1, true), ComputedPaddedDim::new(1, 1, 1));
-        assert_eq!(PaddingSpec::same(2usize, 3usize, 1, 1, true), ComputedPaddedDim::new(2, 1, 1));
-        assert_eq!(PaddingSpec::same(3usize, 3usize, 1, 1, true), ComputedPaddedDim::new(3, 1, 1));
-        assert_eq!(PaddingSpec::same(4usize, 3usize, 1, 1, true), ComputedPaddedDim::new(4, 1, 1));
+        assert_eq!(PaddingSpec::same(&1usize, 3usize, 1, 1, true), ComputedPaddedDim::new(1, 1, 1));
+        assert_eq!(PaddingSpec::same(&2usize, 3usize, 1, 1, true), ComputedPaddedDim::new(2, 1, 1));
+        assert_eq!(PaddingSpec::same(&3usize, 3usize, 1, 1, true), ComputedPaddedDim::new(3, 1, 1));
+        assert_eq!(PaddingSpec::same(&4usize, 3usize, 1, 1, true), ComputedPaddedDim::new(4, 1, 1));
     }
 
     #[test]
     fn valid_1() {
         assert_eq!(
-            PaddingSpec::explicit(10usize, 2usize, 1, 3, 0, 0),
+            PaddingSpec::explicit(&10usize, 2usize, 1, 3, 0, 0),
             ComputedPaddedDim::new(3, 0, 0)
         );
     }
@@ -168,14 +168,14 @@ mod tests {
     #[test]
     fn explicit_2() {
         assert_eq!(
-            PaddingSpec::explicit(28usize, 3usize, 1, 1, 2, 2),
+            PaddingSpec::explicit(&28usize, 3usize, 1, 1, 2, 2),
             ComputedPaddedDim::new(30, 2, 2)
         );
     }
 
     #[test]
     fn same_upper() {
-        assert_eq!(PaddingSpec::same(7usize, 1usize, 1, 2, true), ComputedPaddedDim::new(4, 0, 0));
+        assert_eq!(PaddingSpec::same(&7usize, 1usize, 1, 2, true), ComputedPaddedDim::new(4, 0, 0));
     }
 
 }

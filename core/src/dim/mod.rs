@@ -20,8 +20,7 @@ use crate::TractResult;
 /// * `usize` for regular dimensions
 /// * `TDim` supporting regular and streaming dimensions
 pub trait DimLike:
-    Copy
-    + Clone
+    Clone
     + Default
     + PartialEq
     + From<usize>
@@ -31,10 +30,13 @@ pub trait DimLike:
     + fmt::Display
     + ops::Add<Self, Output = Self>
     + ops::Add<usize, Output = Self>
+    + for<'a> ops::Sub<&'a Self, Output = Self>
     + ops::Sub<Self, Output = Self>
     + ops::Sub<usize, Output = Self>
+    + for<'a> ops::Sub<&'a Self, Output = Self>
     + ops::Mul<usize, Output = Self>
     + ops::Mul<Self, Output = Self>
+    + for<'a> ops::Mul<&'a Self, Output = Self>
     + ops::Div<usize, Output = Self>
     + ops::Rem<usize, Output = Self>
     + Send
@@ -45,7 +47,7 @@ pub trait DimLike:
 {
     /// Integer divise, rounding up to next integer.
     fn div_ceil(&self, other: usize) -> Self {
-        (*self + other - 1) / other
+        (self.clone() + other - 1) / other
     }
 
     /// Convert to regular integer.
@@ -160,8 +162,22 @@ impl ops::Add<TDim> for TDim {
     }
 }
 
+impl<'a> ops::Add<&'a TDim> for TDim {
+    type Output = Self;
+    fn add(mut self, rhs: &'a TDim) -> Self {
+        self += rhs;
+        self
+    }
+}
+
 impl ops::AddAssign<TDim> for TDim {
     fn add_assign(&mut self, rhs: TDim) {
+        self.0 += rhs.0
+    }
+}
+
+impl<'a> ops::AddAssign<&'a TDim> for TDim {
+    fn add_assign(&mut self, rhs: &'a TDim) {
         self.0 += rhs.0
     }
 }
@@ -174,8 +190,22 @@ impl ops::Sub<TDim> for TDim {
     }
 }
 
+impl<'a> ops::Sub<&'a TDim> for TDim {
+    type Output = Self;
+    fn sub(mut self, rhs: &'a TDim) -> Self {
+        self -= rhs;
+        self
+    }
+}
+
 impl ops::SubAssign<TDim> for TDim {
     fn sub_assign(&mut self, rhs: TDim) {
+        self.0 -= rhs.0
+    }
+}
+
+impl<'a> ops::SubAssign<&'a TDim> for TDim {
+    fn sub_assign(&mut self, rhs: &'a TDim) {
         self.0 -= rhs.0
     }
 }
@@ -188,8 +218,22 @@ impl ops::Mul<TDim> for TDim {
     }
 }
 
+impl<'a> ops::Mul<&'a TDim> for TDim {
+    type Output = Self;
+    fn mul(mut self, rhs: &'a TDim) -> Self {
+        self *= rhs;
+        self
+    }
+}
+
 impl ops::MulAssign<TDim> for TDim {
     fn mul_assign(&mut self, rhs: TDim) {
+        self.0 *= rhs.0
+    }
+}
+
+impl<'a> ops::MulAssign<&'a TDim> for TDim {
+    fn mul_assign(&mut self, rhs: &'a TDim) {
         self.0 *= rhs.0
     }
 }

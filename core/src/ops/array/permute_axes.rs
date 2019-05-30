@@ -10,7 +10,7 @@ impl PermuteAxes {
         if let Some(ref axes) = self.axes {
             let mut new_shape = tvec![D::zero(); input.len()];
             for (ix, &d) in axes.iter().enumerate() {
-                new_shape[ix] = input[d];
+                new_shape[ix] = input[d].clone();
             }
             new_shape
         } else {

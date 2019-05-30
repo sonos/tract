@@ -11,7 +11,7 @@ impl RmDims {
             .iter()
             .enumerate()
             .filter(|(ix, _d)| !self.axes.contains(ix))
-            .map(|(_ix, d)| *d)
+            .map(|(_ix, d)| d.clone())
             .collect()
     }
 

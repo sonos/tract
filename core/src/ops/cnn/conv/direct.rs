@@ -46,15 +46,15 @@ impl StatelessOp for Direct {
         unsafe {
             let input = input.to_array_view::<f32>()?;
             let mut output = ArrayD::<f32>::uninitialized(&*self.output_shape.shape);
-            for n in 0..self.input_shape.n() {
+            for n in 0..*self.input_shape.n() {
                 let input = input.slice_axis(Axis(0), (n..=n).into());
                 let mut output = output.slice_axis_mut(Axis(0), (n..=n).into());
                 self.conv.conv(
                     self.packed_filters.as_slice::<f32>()?.as_ptr(),
                     input.as_ptr(),
                     output.as_mut_ptr(),
-                    self.output_shape.c_stride() as isize,
-                    self.output_shape.w_stride() as isize,
+                    *self.output_shape.c_stride() as isize,
+                    *self.output_shape.w_stride() as isize,
                 );
             }
             Ok(tvec!(output.into_arc_tensor()))

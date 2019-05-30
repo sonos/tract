@@ -13,7 +13,6 @@ extern crate tract_tensorflow;
 mod utils;
 
 use crate::utils::*;
-use ndarray::prelude::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use protobuf::Message;
@@ -23,7 +22,7 @@ use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType;
 
 fn random_uniform_float(shape: &[i32], seed: (i32, i32)) -> proptest::test_runner::TestCaseResult {
-    let mut graph = tfpb::graph()
+    let graph = tfpb::graph()
         .node(const_i32("shape", &tensor1(&*shape)))
         .node(tfpb::node()
             .name("op")

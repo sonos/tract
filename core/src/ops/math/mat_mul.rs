@@ -80,8 +80,8 @@ fn infer_shapes<D: DimLike>(
     ])
     .ok_or("Could not broadcast")?;
     let mut cshape: TVec<D> = cshape_prefix.clone();
-    cshape.push(ashape[ashape.len() - 2]);
-    cshape.push(bshape[bshape.len() - 1]);
+    cshape.push(ashape[ashape.len() - 2].clone());
+    cshape.push(bshape[bshape.len() - 1].clone());
     Ok((ashape, bshape, cshape))
 }
 

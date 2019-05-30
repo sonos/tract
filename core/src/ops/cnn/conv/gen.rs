@@ -51,7 +51,7 @@ impl Conv {
         };
         result[ishape.c_axis()] = channels_out.into();
         for (ix, d) in computed.iter().enumerate() {
-            result[ishape.h_axis() + ix] = d.output;
+            result[ishape.h_axis() + ix] = d.output.clone();
         }
         result
     }

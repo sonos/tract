@@ -33,7 +33,7 @@ impl PatchSpec {
         let input_shape: TVec<usize> = data_shape.hw_dims().into();
         PatchSpec {
             kernel_shape: tvec!(1; input_shape.len()),
-            input_inner_stride: data_shape.w_stride(),
+            input_inner_stride: *data_shape.w_stride(),
             output_inner_stride: 1,
             strides: tvec!(1; input_shape.len()),
             dilations: tvec!(1; input_shape.len()),
@@ -621,7 +621,7 @@ pub mod test {
         fn test_zoning((input_shape, p) in patch_2d()) {
             let valid_zone = &p.valid_output_zone;
             let invalid_zones = &p.invalid_output_zones;
-            let output_full_shape = input_shape.fmt.from_n_c_hw(input_shape.n(), 1, &*p.output_shape);
+            let output_full_shape = input_shape.fmt.from_n_c_hw(*input_shape.n(), 1, &*p.output_shape);
             let h_axis = input_shape.h_axis();
             for coords in ndarray::indices(&*output_full_shape.shape) {
                 let inside_valid = in_zone(coords.slice(), h_axis, valid_zone);
@@ -639,12 +639,12 @@ pub mod test {
 
         #[test]
         fn test_zone_visitor((input_shape, p) in patch_2d()) {
-            let output_shape = input_shape.fmt.from_n_c_hw(input_shape.n(), 1, &*p.output_shape);
+            let output_shape = input_shape.fmt.from_n_c_hw(*input_shape.n(), 1, &*p.output_shape);
             let mut output = ndarray::ArrayD::<i32>::zeros(&*output_shape.shape);
             let mut count = 0;
-            for n in 0..output_shape.n() as isize {
+            for n in 0..*output_shape.n() as isize {
                 p.visit_output(|w| {
-                    let offset = (n*output_shape.n_stride() as isize + w.output_offset) as usize;
+                    let offset = (n * *output_shape.n_stride() as isize + w.output_offset) as usize;
                     output.as_slice_mut().unwrap()[offset] = 1;
                     count += 1;
                 });
