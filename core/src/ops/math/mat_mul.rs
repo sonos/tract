@@ -170,9 +170,9 @@ impl Op for MatMul {
         let (bc_a_shape, bc_b_shape, bc_c_shape) =
             infer_shapes(inputs[0].shape.iter().collect(), inputs[1].shape.iter().collect())?;
         let mul = bc_c_shape.iter().rev().skip(2).cloned().product::<TDim>();
-        let m = bc_a_shape[bc_a_shape.len() - 2];
-        let k = bc_a_shape[bc_a_shape.len() - 1];
-        let n = bc_b_shape[bc_b_shape.len() - 1];
+        let m = &bc_a_shape[bc_a_shape.len() - 2];
+        let k = &bc_a_shape[bc_a_shape.len() - 1];
+        let n = &bc_b_shape[bc_b_shape.len() - 1];
         Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
     }
 }
@@ -253,7 +253,7 @@ impl Op for MatMulUnaryA {
             self.b.shape().iter().map(|d| d.to_dim()).collect(),
         )?;
         fact.shape = cshape_pulse;
-        fact.dim = cshape_full[fact.axis];
+        fact.dim = cshape_full[fact.axis].clone();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }

@@ -35,7 +35,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
     let mut output_shape: TVec<DimFact> = tvec![];
 
     for i in 0..bound {
-        let mut previous = None;
+        let mut previous:Option<TDim> = None;
         let mut unknown = 0;
 
         for shape in shapes.iter() {
@@ -45,18 +45,18 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
                 continue;
             }
 
-            match shape[rank - i - 1] {
+            match &shape[rank - i - 1] {
                 GenericFact::Any => unknown += 1,
-                GenericFact::Only(d) if d.is_one() => (),
-                GenericFact::Only(d) => {
-                    if previous.is_some() && previous != Some(d) {
+                GenericFact::Only(ref d) if d.is_one() => (),
+                GenericFact::Only(ref d) => {
+                    if previous.is_some() && previous.as_ref() != Some(d) {
                         bail!(
                             "Invalid shape (broadcasting): {:?} is not compatible with {:?}.",
                             d,
                             previous
                         )
                     } else {
-                        previous = Some(d)
+                        previous = Some(d.clone())
                     }
                 }
             };
@@ -71,7 +71,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
         } else if unknown == 1 && previous == None {
             output_shape.push(GenericFact::Any);
         } else if let Some(previous) = previous {
-            output_shape.push(GenericFact::Only(previous));
+            output_shape.push(GenericFact::Only(previous.clone()));
         } else {
             output_shape.push(GenericFact::Only(1.into()));
         }

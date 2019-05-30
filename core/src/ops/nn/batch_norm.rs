@@ -118,8 +118,8 @@ impl InferenceRulesOp for BatchNorm {
             &inputs[4].shape
         ))?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let c = *self.data_format.shape(shape).c_dim();
-            s.equals(&inputs[1].shape[0], c)
+            let shape = self.data_format.shape(shape);
+            s.equals(&inputs[1].shape[0], shape.c_dim())
         })?;
         Ok(())
     }

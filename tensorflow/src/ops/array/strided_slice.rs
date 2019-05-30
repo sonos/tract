@@ -33,15 +33,15 @@ struct Dim {
 
 impl Dim {
     fn len(&self) -> TractResult<usize> {
-        Ok((((self.stride.abs() as i32 - 1) + (self.end - self.begin).to_integer()?.abs() as i32)
+        Ok((((self.stride.abs() as i32 - 1) + (self.end.clone() - &self.begin).to_integer()?.abs() as i32)
             / self.stride.abs()) as usize)
     }
 
     fn soft_len(&self) -> TractResult<TDim> {
-        if let Ok(len) = (self.end - self.begin).to_integer() {
+        if let Ok(len) = (self.end.clone() - &self.begin).to_integer() {
             Ok((((self.stride.abs() as i32 - 1) + len.abs() as i32) / self.stride.abs()).to_dim())
         } else if self.stride == 1 {
-            Ok(self.end - self.begin)
+            Ok(self.end.clone() - &self.begin)
         } else {
             bail!("Streaming dimensions with strides are not supported for now")
         }
@@ -61,30 +61,30 @@ impl BaseStridedSlice {
     fn prepare_one_dim(
         &self,
         ix: usize,
-        dim: TDim,
+        dim: &TDim,
         begin: &ArrayView1<TDim>,
         end: &ArrayView1<TDim>,
         strides: &ArrayView1<i32>,
     ) -> Dim {
         // deal with too small dim begin/end/stride for input rank
         if ix >= begin.len() {
-            return Dim { begin: 0.to_dim(), end: dim, stride: 1, shrink: false };
+            return Dim { begin: 0.to_dim(), end: dim.clone(), stride: 1, shrink: false };
         }
 
         // deal with negative indexing
-        fn must_add_to_len(bound: TDim) -> bool {
+        fn must_add_to_len(bound: &TDim) -> bool {
             if let Some(b) = bound.as_const() {
                 b < 0
             } else {
                 bound.eval(100_000_000).unwrap() < 0 // FIXME
             }
         }
-        let b: TDim = if must_add_to_len(begin[ix]) { dim + begin[ix] } else { begin[ix] };
-        let e: TDim = if must_add_to_len(end[ix]) { dim + end[ix] } else { end[ix] };
+        let b: TDim = if must_add_to_len(&begin[ix]) { dim.clone() + &begin[ix] } else { begin[ix].clone() };
+        let e: TDim = if must_add_to_len(&end[ix]) { dim.clone() + &end[ix] } else { end[ix].clone() };
 
         // deal with shrinking
         if self.must_shrink(ix) {
-            return Dim { begin: b, end: b + 1, stride: 1, shrink: true };
+            return Dim { begin: b.clone(), end: b.clone() + 1, stride: 1, shrink: true };
         }
 
         // deal with begin and end masks
@@ -93,7 +93,7 @@ impl BaseStridedSlice {
             if s.signum() > 0 {
                 0.to_dim()
             } else {
-                dim - 1
+                dim.clone() - 1
             }
         } else {
             b
@@ -102,7 +102,7 @@ impl BaseStridedSlice {
             if s.signum() < 0 {
                 -1.to_dim()
             } else {
-                dim
+                dim.clone()
             }
         } else {
             e
@@ -131,7 +131,7 @@ impl BaseStridedSlice {
             strides
         );
         let bounds: Vec<Dim> = (0..input_shape.len())
-            .map(|ix| self.prepare_one_dim(ix, input_shape[ix].to_dim(), &begin, &end, &strides))
+            .map(|ix| self.prepare_one_dim(ix, &input_shape[ix].to_dim(), &begin, &end, &strides))
             .collect();
         trace!("StridedSlice bounds {:?}", bounds);
         let mid_shape: Vec<usize> =
@@ -144,7 +144,7 @@ impl BaseStridedSlice {
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Copy + Datum>(
+    fn eval<T: Datum>(
         &self,
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
@@ -161,7 +161,7 @@ impl BaseStridedSlice {
                         as usize
                 })
                 .collect();
-            input[&*coord]
+            input[&*coord].clone()
         });
         let output = output.into_shape(end_shape)?;
         Ok(tvec![output.into_arc_tensor()])
@@ -194,7 +194,7 @@ impl BaseStridedSlice {
                 let mut current_out_dim = 0;
                 for (ix, d) in input_shape.iter().enumerate() {
                     if !self.must_shrink(ix) {
-                        let preped = self.prepare_one_dim(ix, *d, &begin, &end, &stride);
+                        let preped = self.prepare_one_dim(ix, d, &begin, &end, &stride);
                         s.equals(&outputs[0].shape[current_out_dim], preped.soft_len()?)?;
                         current_out_dim += 1;
                     }
@@ -246,7 +246,7 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
             for ix in 0..input.shape.rank() {
                 let dim = self.base.prepare_one_dim(
                     ix,
-                    input.shape.dim(ix),
+                    &input.shape.dim(ix),
                     &begin_view.view(),
                     &end_view.view(),
                     &strides_view.view(),

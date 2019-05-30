@@ -53,7 +53,7 @@ impl InferenceRulesOp for Slice {
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].shape, move |s, shape| {
             (0..shape.len()).try_for_each(move |axis| {
-                let d = shape[axis];
+                let d = &shape[axis];
                 let spec = if let Some(axes) = self.axes.as_ref() {
                     if let Some(ix) = axes.iter().position(|&a| a == axis) {
                         Some((self.starts[ix], self.ends[ix]))
@@ -76,7 +76,7 @@ impl InferenceRulesOp for Slice {
                     let e = if e < 0 { d.bex() + TDim::from(e) } else { TDim::from(e).bex() };
                     s.equals(&outputs[0].shape[axis], e - b)
                 } else {
-                    s.equals(&outputs[0].shape[axis], shape[axis])
+                    s.equals(&outputs[0].shape[axis], &shape[axis])
                 }
             })
         })?;

@@ -27,7 +27,7 @@ fn handle_t(
         if !cost.is_empty() {
             let rows = cost
                 .iter()
-                .inspect(|(c, i)| *total.entry(*c).or_insert(0.to_dim()) += *i)
+                .inspect(|(c, i)| *total.entry(*c).or_insert(0.to_dim()) += i)
                 .map(|(c, i)| format!("{:?} {:?}", c, i))
                 .collect();
             display_graph.add_node_section(i, rows)?;

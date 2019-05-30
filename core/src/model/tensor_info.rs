@@ -56,7 +56,7 @@ impl<'a> From<&'a Tensor> for TensorFact {
 }
 
 /// Streaming information for a streamed tensor.
-#[derive(Debug, Copy, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct StreamInfo {
     /// Streaming axis
     pub axis: usize,
@@ -92,9 +92,9 @@ impl ShapeInfo {
     ///
     /// The TDim will wrap a plain integer for regular (non-streaming) tensors.
     pub fn dim(&self, i: usize) -> TDim {
-        if let Some(stream) = self.stream_info {
+        if let Some(ref stream) = self.stream_info {
             if stream.axis == i {
-                return stream.len;
+                return stream.len.clone();
             }
         }
         self.shape[i].to_dim()
@@ -111,9 +111,9 @@ impl ShapeInfo {
     /// Iterator over dimension of the shape.
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = TDim> + 'a {
         self.shape.clone().into_iter().enumerate().map(move |(ix, d)| {
-            if let Some(info) = self.stream_info {
+            if let Some(ref info) = self.stream_info {
                 if ix == info.axis {
-                    return info.len;
+                    return info.len.clone();
                 }
             }
             (d as i64).to_dim()

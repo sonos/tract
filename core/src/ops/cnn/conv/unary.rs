@@ -381,12 +381,12 @@ impl Op for ConvUnary {
             &*self.dilations,
             &*self.strides,
         );
-        let n_output_points: TDim = output_dims.iter().map(|d| d.output).product::<TDim>();
+        let n_output_points: TDim = output_dims.iter().map(|d| d.output.clone()).product::<TDim>();
         let n_output_channels = self.output_channels().to_dim();
         let kernel_surface = kernel_spatial_shape.into_iter().product::<usize>().to_dim();
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            *shape.n() * *shape.c() * n_output_channels * n_output_points * kernel_surface
+            shape.n().clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
                 / self.group
         )))
     }
@@ -502,7 +502,7 @@ impl Op for ConvUnary {
                 op.full_output_shape
                     .iter()
                     .enumerate()
-                    .map(|(ax, &d)| {
+                    .map(|(ax, d)| {
                         if ax == fact.axis {
                             fact.pulse()
                         } else {
@@ -535,7 +535,7 @@ impl Op for ConvUnary {
                 .full_output_shape
                 .iter()
                 .enumerate()
-                .map(|(ax, &d)| {
+                .map(|(ax, d)| {
                     if ax == fact.axis {
                         fact.pulse() / self.strides[geo_axis]
                     } else {

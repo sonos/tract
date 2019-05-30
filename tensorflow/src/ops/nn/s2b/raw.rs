@@ -192,7 +192,7 @@ fn rules<'r, 'p: 'r>(
             let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality()?;
             for d in 0..block_shape.len() {
                 s.equals(
-                    space.shape[1 + d].bex() + paddings[(d, 0)] + paddings[(d, 1)],
+                    space.shape[1 + d].bex() + &paddings[(d, 0)] + &paddings[(d, 1)],
                     (block_shape[d] as i32) * batch.shape[1 + d].bex(),
                 )?;
             }

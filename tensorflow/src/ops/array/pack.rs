@@ -20,7 +20,7 @@ pub struct Pack {
 
 impl Pack {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Copy + Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         use ndarray::Axis;
         let arrays =
             inputs.iter().map(|m| Ok(m.cast_to::<T>()?)).collect::<TractResult<Vec<_>>>()?;
@@ -28,7 +28,15 @@ impl Pack {
             .iter()
             .map(|v| v.to_array_view::<T>().unwrap().insert_axis(Axis(self.axis)))
             .collect();
-        let array = ::ndarray::stack(Axis(self.axis), &*views)?;
+        let mut shape = views[0].shape().to_vec();
+        shape[self.axis] = views.iter().map(|v| v.shape()[self.axis]).sum();
+        let mut array = ndarray::Array::<T, _>::default(&*shape);
+        let mut offset = 0;
+        for v in views {
+            let len = v.shape()[self.axis];
+            array.slice_axis_mut(Axis(self.axis), (offset..(offset + len)).into()).assign(&v);
+            offset += len;
+        }
         Ok(tvec![array.into_arc_tensor()])
     }
 }

@@ -68,7 +68,7 @@ impl DimLike for usize {
 
 /// An arithmetic expression built with integer and the special value S for
 /// the streaming dimension.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct TDim(Stack);
 
@@ -128,7 +128,7 @@ impl TDim {
 
     /// Integer division rounding above.
     pub fn div_ceil(&self, other: TDim) -> TDim {
-        TDim(self.0.div_ceil(&other.0))
+        TDim(self.0.clone().div_ceil(&other.0))
     }
 }
 
@@ -178,7 +178,7 @@ impl ops::AddAssign<TDim> for TDim {
 
 impl<'a> ops::AddAssign<&'a TDim> for TDim {
     fn add_assign(&mut self, rhs: &'a TDim) {
-        self.0 += rhs.0
+        self.0 += &rhs.0
     }
 }
 
@@ -206,7 +206,7 @@ impl ops::SubAssign<TDim> for TDim {
 
 impl<'a> ops::SubAssign<&'a TDim> for TDim {
     fn sub_assign(&mut self, rhs: &'a TDim) {
-        self.0 -= rhs.0
+        self.0 -= &rhs.0
     }
 }
 
@@ -234,7 +234,7 @@ impl ops::MulAssign<TDim> for TDim {
 
 impl<'a> ops::MulAssign<&'a TDim> for TDim {
     fn mul_assign(&mut self, rhs: &'a TDim) {
-        self.0 *= rhs.0
+        self.0 *= &rhs.0
     }
 }
 

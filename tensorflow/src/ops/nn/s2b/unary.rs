@@ -66,8 +66,8 @@ impl StatelessOp for SpaceToBatchUnary {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
-            let spread = (self.batch_shape[2 + ax] * self.block_shape[ax]
-                - self.space_shape[2 + ax])
+            let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
+                - &self.space_shape[2 + ax])
                 .to_integer()? as usize;
             let (bef, aft) = match strat {
                 PaddingStrat::FlexFixed(f) => (spread - f, f),
@@ -107,8 +107,8 @@ impl StatelessOp for BatchToSpaceUnary {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
-            let spread = (self.batch_shape[2 + ax] * self.block_shape[ax]
-                - self.space_shape[2 + ax])
+            let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
+                - &self.space_shape[2 + ax])
                 .to_integer()? as usize;
             let (bef, aft) = match strat {
                 PaddingStrat::FlexFixed(f) => (spread - f, f),

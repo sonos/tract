@@ -18,6 +18,7 @@ impl Philox4x32x10 {
         ph
     }
 
+    #[allow(unused)]
     pub fn for_seeds(seed1: u32, seed2: u32) -> Philox4x32x10 {
         Self::for_seed((seed2 as u64) << 32 | seed1 as u64)
     }
@@ -30,6 +31,7 @@ impl Philox4x32x10 {
         self.counter = self.counter.wrapping_add(n);
     }
 
+    #[allow(unused)]
     pub fn next_as_u32s(&mut self) -> [u32; 4] {
         let v = self.next();
         [v as u32, (v >> 32) as u32, (v >> 64) as u32, (v >> 96) as u32]
