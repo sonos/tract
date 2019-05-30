@@ -60,7 +60,7 @@ impl Op for DepthwiseConv2d {
         let out_channels = ker[2] * ker[3];
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            shape.n() * out_channels * n_output_points * kernel_surface
+            shape.n().clone() * out_channels * n_output_points * kernel_surface
         )))
     }
 

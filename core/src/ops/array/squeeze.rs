@@ -18,7 +18,7 @@ impl Squeeze {
             }
             Ok(shape)
         } else {
-            Ok(input.iter().cloned().filter(|&d| d != D::one()).collect())
+            Ok(input.into_iter().filter(|&d| d != &D::one()).cloned().collect())
         }
     }
 

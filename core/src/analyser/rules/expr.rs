@@ -479,6 +479,12 @@ impl IntoExp<DimFact> for TDim {
     }
 }
 
+impl IntoExp<DimFact> for &TDim {
+    fn bex(self) -> Exp<DimFact> {
+        ConstantExp(self.clone().into()).bex()
+    }
+}
+
 impl<IE: IntoExp<DimFact>> Add<IE> for Exp<DimFact> {
     type Output = Exp<DimFact>;
     fn add(self, other: IE) -> Exp<DimFact> {

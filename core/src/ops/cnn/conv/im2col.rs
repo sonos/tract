@@ -54,7 +54,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         } else {
             Patcher::Generic
         };
-        let output_shape = input_shape.fmt.shape(tvec!(input_shape.n_dim(), group, b_pack.len()));
+        let output_shape = input_shape.fmt.shape(tvec!(*input_shape.n_dim(), group, b_pack.len()));
         Im2Col { patch, input_shape, output_shape, m, k, n, group, ci_per_group, b_pack, patcher }
     }
 
@@ -66,7 +66,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
         };
-        for i in 0..self.input_shape.n_dim() {
+        for i in 0..*self.input_shape.n_dim() {
             for g in 0..self.group {
                 let mut packed = packed.to_array_view_mut::<T>()?;
                 packed.slice_axis_inplace(Axis(0), (i..=i).into());

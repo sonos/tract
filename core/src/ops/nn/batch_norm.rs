@@ -24,7 +24,7 @@ impl BatchNorm {
         let (x, scale, beta, mean, var) = args_5!(&mut inputs);
 
         let c_axis = self.data_format.shape(x.shape()).c_axis();
-        let c_dim = self.data_format.shape(x.shape()).c_dim();
+        let c_dim = *self.data_format.shape(x.shape()).c_dim();
 
         FixedBatchNorm::new(c_axis, c_dim, scale, beta, mean, var, self.epsilon)?.eval(tvec!(x))
     }
@@ -51,7 +51,7 @@ impl Op for BatchNorm {
             inputs[4].konst.as_ref(),
         ) {
             let c_axis = self.data_format.shape(&x_shape).c_axis();
-            let c_dim = self.data_format.shape(&x_shape).c_dim();
+            let c_dim = *self.data_format.shape(&x_shape).c_dim();
 
             fn fixed<T>(
                 c_axis: usize,
@@ -118,7 +118,7 @@ impl InferenceRulesOp for BatchNorm {
             &inputs[4].shape
         ))?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let c = self.data_format.shape(shape).c_dim();
+            let c = *self.data_format.shape(shape).c_dim();
             s.equals(&inputs[1].shape[0], c)
         })?;
         Ok(())

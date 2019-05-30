@@ -21,7 +21,6 @@ use tract_core::internal::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use tract_tensorflow::tfpb::types::DataType::DT_INT32;
 
 fn space_to_batch_strat() -> BoxedStrategy<(Tensor, Tensor, Tensor)> {
     use proptest::collection::vec;

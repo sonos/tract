@@ -22,8 +22,8 @@ impl DataFormat {
     {
         let mut strides: TVec<D> = tvec![1.into()];
         for dim in shape.as_ref().iter().skip(1).rev() {
-            let previous = *strides.last().unwrap();
-            strides.push(previous * *dim);
+            let previous = strides.last().unwrap().clone();
+            strides.push(previous * dim);
         }
         strides.reverse();
         BaseDataShape { fmt: *self, shape, strides }
@@ -34,13 +34,13 @@ impl DataFormat {
         D: DimLike,
         S: AsRef<[D]> + fmt::Debug,
     {
-        let mut me = tvec!(n);
+        let mut me = tvec!(n.clone());
         if *self == DataFormat::NCHW {
-            me.push(c);
+            me.push(c.clone());
         }
         me.extend(shape.as_ref().iter().cloned());
         if *self == DataFormat::NHWC {
-            me.push(c);
+            me.push(c.clone());
         }
         self.shape(me)
     }
@@ -94,39 +94,39 @@ where
         self.h_axis()..self.h_axis() + self.hw_rank()
     }
 
-    pub fn n_dim(&self) -> D {
-        unsafe { *self.shape.as_ref().get_unchecked(self.n_axis()) }
+    pub fn n_dim(&self) -> &D {
+        unsafe { self.shape.as_ref().get_unchecked(self.n_axis()) }
     }
 
-    pub fn c_dim(&self) -> D {
-        unsafe { *self.shape.as_ref().get_unchecked(self.c_axis()) }
+    pub fn c_dim(&self) -> &D {
+        unsafe { self.shape.as_ref().get_unchecked(self.c_axis()) }
     }
 
     pub fn hw_dims(&self) -> &[D] {
         unsafe { self.shape.as_ref().get_unchecked(self.hw_axes()) }
     }
 
-    pub fn n(&self) -> D {
-        unsafe { *self.shape.as_ref().get_unchecked(self.n_axis()) }
+    pub fn n(&self) -> &D {
+        unsafe { self.shape.as_ref().get_unchecked(self.n_axis()) }
     }
 
-    pub fn c(&self) -> D {
-        unsafe { *self.shape.as_ref().get_unchecked(self.c_axis()) }
+    pub fn c(&self) -> &D {
+        unsafe { self.shape.as_ref().get_unchecked(self.c_axis()) }
     }
 
-    pub fn n_stride(&self) -> D {
-        unsafe { *self.strides.get_unchecked(self.n_axis()) }
+    pub fn n_stride(&self) -> &D {
+        unsafe { self.strides.get_unchecked(self.n_axis()) }
     }
 
     pub fn hw_strides(&self) -> &[D] {
         unsafe { self.strides.as_ref().get_unchecked(self.hw_axes()) }
     }
 
-    pub fn w_stride(&self) -> D {
-        unsafe { *self.hw_strides().get_unchecked(self.hw_rank() - 1) }
+    pub fn w_stride(&self) -> &D {
+        unsafe { self.hw_strides().get_unchecked(self.hw_rank() - 1) }
     }
 
-    pub fn c_stride(&self) -> D {
-        unsafe { *self.strides.get_unchecked(self.c_axis()) }
+    pub fn c_stride(&self) -> &D {
+        unsafe { self.strides.get_unchecked(self.c_axis()) }
     }
 }

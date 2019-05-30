@@ -18,7 +18,7 @@ impl Transpose {
     fn compute_shape<D: DimLike>(shape: &[D], perm: &[i32]) -> TVec<D> {
         let mut new_shape = tvec![D::zero(); shape.len()];
         for (ix, &d) in perm.iter().enumerate() {
-            new_shape[ix] = shape[d as usize];
+            new_shape[ix] = shape[d as usize].clone();
         }
         new_shape
     }

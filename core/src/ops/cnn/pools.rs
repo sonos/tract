@@ -15,7 +15,7 @@ impl PoolSpec {
     pub fn compute_geo(&self, input_full_shape: &[usize]) -> (DataShape, Patch, DataShape) {
         let input_shape = self.data_format.shape(input_full_shape.into());
         let mut spec = PatchSpec::for_full_shape(self.data_format, input_full_shape)
-            .with_output_inner_stride(input_shape.w_stride())
+            .with_output_inner_stride(*input_shape.w_stride())
             .with_kernel_shape(self.kernel_shape.clone())
             .with_padding(self.padding.clone());
         if let Some(strides) = self.strides.clone() {
@@ -23,7 +23,7 @@ impl PoolSpec {
         }
         let patch = spec.into_patch();
         let output_shape =
-            input_shape.fmt.from_n_c_hw(input_shape.n(), input_shape.c(), &*patch.output_shape);
+            input_shape.fmt.from_n_c_hw(*input_shape.n(), *input_shape.c(), &*patch.output_shape);
         (input_shape, patch, output_shape)
     }
 

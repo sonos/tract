@@ -67,14 +67,14 @@ where
 
         let co_per_group = self.output_shape.c() / self.group;
 
-        for i in 0..self.output_shape.n() {
+        for i in 0..*self.output_shape.n() {
             unsafe {
                 let output_i =
-                    output.as_mut_ptr().offset(self.output_shape.n_stride() as isize * i as isize);
+                    output.as_mut_ptr().offset(*self.output_shape.n_stride() as isize * i as isize);
                 for g in 0..self.group {
                     let a = &self.packed_kernels[g];
                     let output_i_g = output_i.offset(
-                        self.output_shape.c_stride() as isize * co_per_group as isize * g as isize,
+                        *self.output_shape.c_stride() as isize * co_per_group as isize * g as isize,
                     );
 
                     let (rsc, csc) = match self.output_shape.fmt {
