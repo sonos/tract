@@ -162,11 +162,11 @@ pub trait IntoExp<T> {
 #[derive(new)]
 pub struct SumExp<T>(Vec<Exp<T>>)
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug;
+    T: Fact + Output + Clone + ::std::fmt::Debug + 'static;
 
 impl<T> TExp<T> for SumExp<T>
 where
-    T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug,
+    T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug + 'static,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {

@@ -310,7 +310,7 @@ impl<T: Datum + Copy> NormConcat<T> {
             )?;
             prec = OutletId::new(id, 0);
         }
-        let main_op = PulsedSameAxisConcat::new(self.axis, pre, post, fact.delay, fact.dim);
+        let main_op = PulsedSameAxisConcat::new(self.axis, pre, post, fact.delay, fact.dim.clone());
         fact.dim += (before + after).to_dim();
         fact.delay -= before;
         let id = target.chain_after(prec, &*node.name, main_op, tvec!(fact))?;

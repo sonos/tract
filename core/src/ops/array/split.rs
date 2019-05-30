@@ -65,10 +65,10 @@ impl InferenceRulesOp for Split {
             s.equals(&inputs[0].rank, &outputs[i].rank)
         })?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let dims = self.split_dims(shape[self.axis])?;
+            let dims = self.split_dims(shape[self.axis].clone())?;
             for i in 0..self.outputs {
                 let mut shape = shape.clone();
-                shape[self.axis] = dims[i];
+                shape[self.axis] = dims[i].clone();
                 s.equals(&outputs[i].shape, shape)?;
             }
             Ok(())

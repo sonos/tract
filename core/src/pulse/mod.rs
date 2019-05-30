@@ -49,10 +49,10 @@ impl PulsedTensorFact {
         pulse: usize,
     ) -> TractResult<PulsedTensorFact> {
         let dt = tf.datum_type;
-        let stream = tf.shape.stream_info.ok_or("Can not pulse a tensor with no streaming dim")?;
+        let stream = tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;
         let shape =
             tf.shape.iter().map(|d| d.to_integer().map(|d| d as usize).unwrap_or(pulse)).collect();
-        Ok(PulsedTensorFact { dt, shape, axis: stream.axis, dim: stream.len, delay: 0 })
+        Ok(PulsedTensorFact { dt, shape, axis: stream.axis, dim: stream.len.clone(), delay: 0 })
     }
 
     pub fn pulse(&self) -> usize {
@@ -67,13 +67,13 @@ impl PulsedTensorFact {
         self.shape
             .iter()
             .enumerate()
-            .map(|(ix, &d)| if ix == self.axis { self.dim } else { d.to_dim() })
+            .map(|(ix, &d)| if ix == self.axis { self.dim.clone() } else { d.to_dim() })
             .collect()
     }
 
     pub fn to_streaming_fact(&self) -> NormalizedTensorInfo {
         let mut info = self.to_pulse_fact();
-        info.shape.stream_info = Some(StreamInfo { axis: self.axis, len: self.dim });
+        info.shape.stream_info = Some(StreamInfo { axis: self.axis, len: self.dim.clone() });
         info
     }
 }

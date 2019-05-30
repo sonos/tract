@@ -169,7 +169,7 @@ macro_rules! element_bin {
                     $crate::ndarray::Zip::from(&mut c)
                         .and_broadcast(&a)
                         .and_broadcast(&b.to_array_view::<$type>()?)
-                        .apply(|c,&a:&$type,&b:&$type| *c = $expr(a,b));
+                        .apply(|c,a:&$type,b:&$type| *c = $expr(a.clone(),b.clone()));
                     return Ok(c.into_arc_tensor())
                 })*
                 bail!("{} not covering {:?}", stringify!($name), dt)
@@ -585,7 +585,6 @@ macro_rules! dispatch_copy {
             DatumType::F16  => $($path)::*::<f16>($($args),*),
             DatumType::F32  => $($path)::*::<f32>($($args),*),
             DatumType::F64  => $($path)::*::<f64>($($args),*),
-            DatumType::TDim => $($path)::*::<TDim>($($args),*),
             _ => bail!("{:?} is not Copy", $dt)
         }
     } }

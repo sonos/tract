@@ -271,7 +271,7 @@ impl InferenceRulesOp for Reduce {
             let out_shape: TVec<TDim> = shape
                 .iter()
                 .enumerate()
-                .filter_map(|(ix, &d)| {
+                .filter_map(|(ix, d)| {
                     if self.must_reduce(ix, shape.len()) {
                         if self.keep_dims {
                             Some(1.to_dim())
@@ -279,7 +279,7 @@ impl InferenceRulesOp for Reduce {
                             None
                         }
                     } else {
-                        Some(d)
+                        Some(d.clone())
                     }
                 })
                 .collect();
