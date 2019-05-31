@@ -74,6 +74,9 @@ test_clip_example
 test_clip_inbounds
 test_clip_outbounds
 test_clip_splitbounds
+test_compress_0
+test_compress_1
+test_compress_default_axis
 test_concat_1d_axis_0
 test_concat_2d_axis_0
 test_concat_2d_axis_1
