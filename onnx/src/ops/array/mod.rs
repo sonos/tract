@@ -1,3 +1,4 @@
+mod compress;
 mod slice;
 
 use std::convert::TryInto;
@@ -11,6 +12,7 @@ use crate::pb::*;
 use num_traits::AsPrimitive;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
+    reg.insert("Compress", compress::compress);
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);
