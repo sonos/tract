@@ -59,11 +59,11 @@ impl Op for VariableV2 {
 
 impl StatefullOp for VariableV2 {
     fn state(&self, state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
-        fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
+        fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
             ::ndarray::ArrayD::<T>::default(shape).into()
         }
 
-        let tensor = dispatch_copy!(make_buffer(self.dt)(&self.shape));
+        let tensor = dispatch_datum!(make_buffer(self.dt)(&self.shape));
         state.tensors.insert(self.id.clone(), tensor);
         Ok(Some(Box::new(VariableV2State)))
     }
@@ -117,7 +117,7 @@ impl OpState for AssignState {
         } else {
             bail!("Assign has not been linked to var")
         };
-        fn assign<T: Copy + Datum>(
+        fn assign<T: Datum>(
             session: &mut SessionState,
             var_id: &str,
             t: &Tensor,
@@ -130,7 +130,7 @@ impl OpState for AssignState {
                 .assign(&t.to_array_view::<T>()?);
             Ok(())
         }
-        dispatch_copy!(assign(new.datum_type())(session, var_id, &new))?;
+        dispatch_datum!(assign(new.datum_type())(session, var_id, &new))?;
         Ok(tvec!(new))
     }
 }

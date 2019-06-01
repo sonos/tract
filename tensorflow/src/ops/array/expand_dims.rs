@@ -11,7 +11,7 @@ pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<InferenceO
 pub struct ExpandDims;
 
 impl ExpandDims {
-    fn eval_t<T: Datum + Copy>(
+    fn eval_t<T: Datum>(
         &self,
         data: Arc<Tensor>,
         shape: &[usize],
@@ -53,7 +53,7 @@ impl StatelessOp for ExpandDims {
             let d = if *d >= 0 { *d } else { *d + 1 + data.shape().len() as i32 } as usize;
             shape.insert(d, 1);
         }
-        dispatch_copy!(Self::eval_t(data.datum_type())(self, data, &*shape))
+        dispatch_datum!(Self::eval_t(data.datum_type())(self, data, &*shape))
     }
 }
 

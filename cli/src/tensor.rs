@@ -66,7 +66,7 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 
     let shape: Vec<_> =
         shape.iter().map(|d| d.to_integer().map(|i| i as usize).unwrap_or(missing)).collect();
-    dispatch_copy!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
+    dispatch_datum!(parse_values(proto.datum_type.concretize().unwrap())(&*shape, values))
 }
 
 /// Parses the `data` command-line argument.
@@ -102,7 +102,7 @@ pub fn for_string(value: &str) -> CliResult<TensorFact> {
                 .shape
                 .as_concrete_finite()?
                 .ok_or("Must specify concrete shape when giving tensor value")?;
-            let tensor = dispatch_copy!(parse_values(dt)(&*shape, value.collect()))?;
+            let tensor = dispatch_datum!(parse_values(dt)(&*shape, value.collect()))?;
             Ok(tensor.into())
         } else {
             parse_spec(value)
