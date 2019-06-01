@@ -4,53 +4,6 @@ use crate::internal::*;
 use crate::pulse::delay::Delay;
 use std::ops::Range;
 
-pub trait StackViews: Sized {
-    fn stack_views(axis: usize, views:&[ArrayViewD<Self>]) -> TractResult<ArrayD<Self>>;
-}
-
-
-macro_rules! impl_stack_views_by_copy(
-    ($t: ty) => {
-        impl StackViews for $t {
-            fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> TractResult<ArrayD<$t>> {
-                Ok(ndarray::stack(ndarray::Axis(axis), views)?)
-            }
-        }
-    };
-);
-
-macro_rules! impl_stack_views_by_clone(
-    ($t: ty) => {
-        impl StackViews for $t {
-            fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> TractResult<ArrayD<$t>> {
-                let mut shape = views[0].shape().to_vec();
-                shape[axis] = views.iter().map(|v| v.shape()[axis]).sum();
-                let mut array = ndarray::Array::default(&*shape);
-                let mut offset = 0;
-                for v in views {
-                    let len = v.shape()[axis];
-                    array.slice_axis_mut(Axis(axis), (offset..(offset + len)).into()).assign(&v);
-                    offset += len;
-                }
-                Ok(array)
-            }
-        }
-    };
-);
-
-impl_stack_views_by_copy!(f16);
-impl_stack_views_by_copy!(f32);
-impl_stack_views_by_copy!(f64);
-impl_stack_views_by_copy!(bool);
-impl_stack_views_by_copy!(u8);
-impl_stack_views_by_copy!(u16);
-impl_stack_views_by_copy!(i8);
-impl_stack_views_by_copy!(i16);
-impl_stack_views_by_copy!(i32);
-impl_stack_views_by_copy!(i64);
-impl_stack_views_by_clone!(String);
-impl_stack_views_by_clone!(TDim);
-
 /// Concat: high level concat op
 #[derive(Debug, Clone, new)]
 pub struct Concat {
@@ -68,7 +21,7 @@ impl Concat {
         }
     }
 
-    fn eval<T: Datum+StackViews>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval<T: Datum>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
         let mut slices: TVec<FixedConcatSlice<T>> = tvec![];
         for input in &inputs {
@@ -94,7 +47,7 @@ impl Op for Concat {
         if let Some(super_type) = DatumType::super_type_for(inputs.iter().map(|x| x.datum_type)) {
             let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
 
-            fn fixed<T: Datum + StackViews>(
+            fn fixed<T: Datum>(
                 axis: usize,
                 inputs: &[&TypedTensorInfo],
             ) -> TractResult<Box<Op>> {
@@ -207,7 +160,7 @@ pub struct NormConcat<T> {
     slices: TVec<NormConcatSlice<T>>,
 }
 
-impl<T: Datum + StackViews> Op for NormConcat<T> {
+impl<T: Datum> Op for NormConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("NormConcat<{:?}>", T::datum_type()).into()
     }
@@ -279,7 +232,7 @@ impl<T: Datum + StackViews> Op for NormConcat<T> {
     }
 }
 
-impl<T: Datum + StackViews> StatelessOp for NormConcat<T> {
+impl<T: Datum> StatelessOp for NormConcat<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let casted_inputs: TVec<Cow<Tensor>> =
@@ -320,7 +273,7 @@ impl<T: Datum + StackViews> StatelessOp for NormConcat<T> {
     }
 }
 
-impl<T: Datum + StackViews> NormConcat<T> {
+impl<T: Datum> NormConcat<T> {
     fn pulsify_along_concat_axis(
         &self,
         _source: &NormalizedModel,
@@ -544,18 +497,18 @@ fn slices<'a, T:Datum>(slices: &'a [FixedConcatSlice<T>], inputs: &[&'a Tensor])
 }
 
 #[derive(new, Debug, Clone)]
-pub struct FixedConcat<T: Datum+StackViews> {
+pub struct FixedConcat<T: Datum> {
     axis: usize,
     slices: TVec<FixedConcatSlice<T>>,
 }
 
-impl<T:Datum+StackViews> Op for FixedConcat<T> {
+impl<T:Datum> Op for FixedConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("FixedConcat<{:?}>", T::datum_type()).into()
     }
 }
 
-impl<T: Datum+StackViews> StatelessOp for FixedConcat<T> {
+impl<T: Datum> StatelessOp for FixedConcat<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let casted_inputs: TVec<Cow<Tensor>> =

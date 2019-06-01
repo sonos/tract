@@ -7,6 +7,9 @@ use std::fmt;
 
 use tract_linalg::f16::f16;
 
+mod arrays;
+pub use arrays::ArrayDatum;
+
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 
@@ -102,7 +105,7 @@ impl DatumType {
 }
 
 pub trait Datum:
-    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
+    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq + ArrayDatum
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;

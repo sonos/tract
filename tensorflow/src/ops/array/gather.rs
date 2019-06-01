@@ -22,7 +22,7 @@ impl GatherNd {
         let mut shape: TVec<usize> = indices.shape().into();
         let n = shape.pop().unwrap();
         shape.extend(data.shape()[n..].iter().cloned());
-        let mut array = ArrayD::<T>::default(&*shape);
+        let mut array = unsafe { T::uninitialized(&*shape) };
         for prefix in ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
             let mut dst = array.view_mut();
             let mut coords = indices.view();
