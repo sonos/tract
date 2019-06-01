@@ -199,6 +199,11 @@ where
                     inputs.push(prec[i.slot].clone().into())
                 }
 
+                for flush in &plan.flush_lists[step] {
+                    trace!("  flushing node {} {}", flush, node);
+                    values[*flush] = None;
+                }
+
                 if cfg!(debug_assertions) {
                     let facts = model.node_input_facts(node.id)?;
                     if facts.len() != inputs.len() {
@@ -264,10 +269,6 @@ where
                 }
 
                 values[node.id] = Some(vs);
-                for flush in &plan.flush_lists[step] {
-                    trace!("  flushing node {} {}", flush, node);
-                    values[*flush] = None;
-                }
             }
             for output in &plan.outputs {
                 result.push(values[output.node].as_ref().unwrap()[output.slot].clone())
