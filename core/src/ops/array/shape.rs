@@ -51,7 +51,6 @@ impl InferenceRulesOp for Shape {
             Ok(())
         })?;
         s.given(&inputs[0].shape, move |s, shape| {
-            shape.iter().for_each(|d|  println!("{:?}", d.to_integer().is_err()));
             if shape.iter().any(|d| d.to_integer().is_err()) {
                 s.equals(&outputs[0].datum_type, DatumType::TDim)?;
                 let array1: Array1<TDim> = Array1::from_iter(shape);
