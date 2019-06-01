@@ -13,7 +13,7 @@ pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<Infere
 }
 
 impl GatherNd {
-    fn eval_t<T: Datum + Copy>(
+    fn eval_t<T: Datum>(
         &self,
         data: &Arc<Tensor>,
         indices: &ArrayViewD<i32>,
@@ -22,7 +22,7 @@ impl GatherNd {
         let mut shape: TVec<usize> = indices.shape().into();
         let n = shape.pop().unwrap();
         shape.extend(data.shape()[n..].iter().cloned());
-        let mut array = unsafe { ArrayD::<T>::uninitialized(&*shape) };
+        let mut array = ArrayD::<T>::default(&*shape);
         for prefix in ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
             let mut dst = array.view_mut();
             let mut coords = indices.view();
@@ -51,7 +51,7 @@ impl StatelessOp for GatherNd {
         let (data, indices) = args_2!(inputs);
         let indices = indices.cast_to::<i32>()?;
         let indices = indices.to_array_view::<i32>()?;
-        dispatch_copy!(Self::eval_t(data.datum_type())(self, &data, &indices))
+        dispatch_datum!(Self::eval_t(data.datum_type())(self, &data, &indices))
     }
 }
 

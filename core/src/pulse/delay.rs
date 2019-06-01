@@ -8,7 +8,7 @@ struct DelayState {
 }
 
 impl DelayState {
-    pub fn eval_t<T: Copy + Datum>(
+    pub fn eval_t<T: Datum>(
         &mut self,
         op: &Delay,
         input: Arc<Tensor>,
@@ -24,7 +24,7 @@ impl DelayState {
         output_shape[op.input_fact.axis] = output_pulse;
         // build output
         let output = if op.delay < input_pulse {
-            let mut output = unsafe { ArrayD::<T>::uninitialized(&*output_shape) };
+            let mut output = ArrayD::<T>::default(&*output_shape);
             let from_input = input_pulse - op.delay;
             let from_buffer = output_pulse - from_input;
             output
@@ -58,7 +58,7 @@ impl OpState for DelayState {
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<Delay>().ok_or("Wrong Op type")?;
-        Ok(tvec!(dispatch_copy!(Self::eval_t(input.datum_type())(self, op, input))?))
+        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, op, input))?))
     }
 }
 
@@ -77,7 +77,7 @@ impl Op for Delay {
     impl_op_same_as!();
 }
 
-fn make_buffer<T: Copy + Datum>(shape: &[usize]) -> Tensor {
+fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
     ::ndarray::ArrayD::<T>::default(shape).into()
 }
 
@@ -85,7 +85,7 @@ impl StatefullOp for Delay {
     fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         let mut buffer_shape: TVec<_> = self.input_fact.shape.clone();
         buffer_shape[self.input_fact.axis] = self.delay + self.overlap;
-        let buffer = dispatch_copy!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
+        let buffer = dispatch_datum!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
         Ok(Some(Box::new(DelayState { buffer })))
     }
 }

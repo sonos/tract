@@ -13,17 +13,17 @@ pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>
 }
 
 impl Fill {
-    fn eval_t<T: Datum + Copy>(
+    fn eval_t<T: Datum>(
         &self,
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let (shape, value) = args_2!(inputs);
-        let value = *value.to_scalar::<T>()?;
+        let value = value.to_scalar::<T>()?;
         let shape = shape.cast_to::<i32>()?;
         let shape = shape.to_array_view::<i32>()?;
-        let array = ::ndarray::Array::from_elem(
+        let array = ::ndarray::Array::from_shape_fn(
             shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
-            value,
+            |_| value.clone(),
         );
         Ok(tvec![array.into_arc_tensor()])
     }
@@ -37,7 +37,7 @@ impl Op for Fill {
 
 impl StatelessOp for Fill {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dispatch_copy!(Self::eval_t(self.dt)(self, inputs))
+        dispatch_datum!(Self::eval_t(self.dt)(self, inputs))
     }
 }
 
