@@ -4,6 +4,53 @@ use crate::internal::*;
 use crate::pulse::delay::Delay;
 use std::ops::Range;
 
+pub trait StackViews: Sized {
+    fn stack_views(axis: usize, views:&[ArrayViewD<Self>]) -> TractResult<ArrayD<Self>>;
+}
+
+
+macro_rules! impl_stack_views_by_copy(
+    ($t: ty) => {
+        impl StackViews for $t {
+            fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> TractResult<ArrayD<$t>> {
+                Ok(ndarray::stack(ndarray::Axis(axis), views)?)
+            }
+        }
+    };
+);
+
+macro_rules! impl_stack_views_by_clone(
+    ($t: ty) => {
+        impl StackViews for $t {
+            fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> TractResult<ArrayD<$t>> {
+                let mut shape = views[0].shape().to_vec();
+                shape[axis] = views.iter().map(|v| v.shape()[axis]).sum();
+                let mut array = ndarray::Array::default(&*shape);
+                let mut offset = 0;
+                for v in views {
+                    let len = v.shape()[axis];
+                    array.slice_axis_mut(Axis(axis), (offset..(offset + len)).into()).assign(&v);
+                    offset += len;
+                }
+                Ok(array)
+            }
+        }
+    };
+);
+
+impl_stack_views_by_copy!(f16);
+impl_stack_views_by_copy!(f32);
+impl_stack_views_by_copy!(f64);
+impl_stack_views_by_copy!(bool);
+impl_stack_views_by_copy!(u8);
+impl_stack_views_by_copy!(u16);
+impl_stack_views_by_copy!(i8);
+impl_stack_views_by_copy!(i16);
+impl_stack_views_by_copy!(i32);
+impl_stack_views_by_copy!(i64);
+impl_stack_views_by_clone!(String);
+impl_stack_views_by_clone!(TDim);
+
 /// Concat: high level concat op
 #[derive(Debug, Clone, new)]
 pub struct Concat {
@@ -21,8 +68,7 @@ impl Concat {
         }
     }
 
-    /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum + Copy>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval<T: Datum+StackViews>(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis = self.resolve_axis(inputs[0].shape().len() as i64)?;
         let mut slices: TVec<FixedConcatSlice<T>> = tvec![];
         for input in &inputs {
@@ -48,7 +94,7 @@ impl Op for Concat {
         if let Some(super_type) = DatumType::super_type_for(inputs.iter().map(|x| x.datum_type)) {
             let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
 
-            fn fixed<T: Datum + Copy>(
+            fn fixed<T: Datum + StackViews>(
                 axis: usize,
                 inputs: &[&TypedTensorInfo],
             ) -> TractResult<Box<Op>> {
@@ -68,7 +114,7 @@ impl Op for Concat {
                 Ok(Box::new(NormConcat::<T>::new(axis, slices)))
             }
 
-            let op = dispatch_copy!(fixed(super_type)(axis, &*inputs))?;
+            let op = dispatch_datum!(fixed(super_type)(axis, &*inputs))?;
             let mut patch = TypedModelPatch::default();
             let node_id = patch.add_node(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
             let mut inlet_slot = 0;
@@ -92,7 +138,7 @@ impl StatelessOp for Concat {
         let super_type: DatumType =
             DatumType::super_type_for(inputs.iter().map(|x| x.datum_type()))
                 .ok_or_else(|| format!("No supertype found"))?;
-        dispatch_copy!(Self::eval_t(super_type)(self, inputs))
+        dispatch_datum!(Self::eval(super_type)(self, inputs))
     }
 }
 
@@ -161,7 +207,7 @@ pub struct NormConcat<T> {
     slices: TVec<NormConcatSlice<T>>,
 }
 
-impl<T: Datum + Copy> Op for NormConcat<T> {
+impl<T: Datum + StackViews> Op for NormConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("NormConcat<{:?}>", T::datum_type()).into()
     }
@@ -233,7 +279,7 @@ impl<T: Datum + Copy> Op for NormConcat<T> {
     }
 }
 
-impl<T: Datum + Copy> StatelessOp for NormConcat<T> {
+impl<T: Datum + StackViews> StatelessOp for NormConcat<T> {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let casted_inputs: TVec<Cow<Tensor>> =
@@ -269,12 +315,12 @@ impl<T: Datum + Copy> StatelessOp for NormConcat<T> {
             );
         }
 
-        let result = ::ndarray::stack(Axis(self.axis), &mats)?;
+        let result = T::stack_views(self.axis, &mats)?;
         Ok(tvec![result.into_arc_tensor()])
     }
 }
 
-impl<T: Datum + Copy> NormConcat<T> {
+impl<T: Datum + StackViews> NormConcat<T> {
     fn pulsify_along_concat_axis(
         &self,
         _source: &NormalizedModel,
@@ -291,10 +337,10 @@ impl<T: Datum + Copy> NormConcat<T> {
         let var_index = self.slices.iter().position(|s| s.is_var()).unwrap();
         let pre_views: Vec<_> =
             self.slices[0..var_index].iter().map(|s| s.as_const().unwrap()).collect();
-        let pre = ::ndarray::stack(Axis(self.axis), &*pre_views)?;
+        let pre = T::stack_views(self.axis, &*pre_views)?;
         let post_views: Vec<_> =
             self.slices[var_index + 1..].iter().map(|s| s.as_const().unwrap()).collect();
-        let post = ::ndarray::stack(Axis(self.axis), &*post_views)?;
+        let post = T::stack_views(self.axis, &*post_views)?;
 
         let mut prec = input;
         let before = pre.shape()[self.axis];
@@ -352,7 +398,7 @@ fn range_in_range(needle: &Range<usize>, haystack: &Range<usize>) -> RangeInRang
     }
 }
 
-pub fn overwrite_part_of_pulse<T: Datum + Copy>(
+pub fn overwrite_part_of_pulse<T: Datum>(
     axis: usize,
     pulse_data: &mut ArrayViewMutD<T>,
     current_pos: usize,
@@ -394,7 +440,7 @@ pub fn overwrite_part_of_pulse<T: Datum + Copy>(
 
 /// Concat with pulse along concat axis
 #[derive(new, Debug, Clone)]
-pub struct PulsedSameAxisConcat<T: Datum + Copy> {
+pub struct PulsedSameAxisConcat<T: Datum> {
     axis: usize,
     pre_slice: ArrayD<T>,
     post_slice: ArrayD<T>,
@@ -402,25 +448,25 @@ pub struct PulsedSameAxisConcat<T: Datum + Copy> {
     input_len: TDim,
 }
 
-impl<T: Datum + Copy> Op for PulsedSameAxisConcat<T> {
+impl<T: Datum> Op for PulsedSameAxisConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("PulsedSameAxisConcat<{:?}>", T::datum_type()).into()
     }
 }
 
-impl<T: Datum + Copy> StatefullOp for PulsedSameAxisConcat<T> {
+impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
     fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
         return Ok(Some(Box::new(PulsedSameAxisConcatState::<T>::default())));
     }
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct PulsedSameAxisConcatState<T: Datum + Copy> {
+pub struct PulsedSameAxisConcatState<T: Datum> {
     current_pos: usize,
     _casper: PhantomData<T>,
 }
 
-impl<T: Datum + Copy> OpState for PulsedSameAxisConcatState<T> {
+impl<T: Datum> OpState for PulsedSameAxisConcatState<T> {
     fn eval(
         &mut self,
         session: &mut SessionState,
@@ -461,58 +507,62 @@ impl<T: Datum + Copy> OpState for PulsedSameAxisConcatState<T> {
 
 ////////////////////////////////////////////////
 
-#[derive(new, Debug, Clone)]
-pub struct FixedConcat<T> {
-    axis: usize,
-    slices: TVec<FixedConcatSlice<T>>,
-}
-
 #[derive(Debug, Clone)]
 pub enum FixedConcatSlice<T> {
     Const(ArrayD<T>),
     Var(TVec<usize>),
 }
 
-impl<T: Datum + Copy> StatelessOp for FixedConcat<T> {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let casted_inputs: TVec<Cow<Tensor>> =
-            inputs.iter().map(|x| x.cast_to::<T>()).collect::<TractResult<_>>()?;
-        let mut mats: TVec<ArrayViewD<T>> = tvec![];
-        let mut input_idx = 0;
-        for slice in &self.slices {
-            match slice {
-                FixedConcatSlice::Const(c) => mats.push(c.view()),
-                FixedConcatSlice::Var(shape) => {
-                    let inp_view = casted_inputs[input_idx].to_array_view::<T>()?;
-                    if inp_view.shape() != shape.as_slice() {
-                        bail!(
-                            "Unexpected input shape. Expected {:?}, found {:?}",
-                            shape,
-                            inp_view.shape()
-                        );
-                    }
-                    mats.push(inp_view);
-                    input_idx += 1
+fn slices<'a, T:Datum>(slices: &'a [FixedConcatSlice<T>], inputs: &[&'a Tensor]) -> TractResult<TVec<ArrayViewD<'a, T>>> {
+    let mut mats: TVec<ArrayViewD<T>> = tvec![];
+    let mut input_idx = 0;
+    for slice in slices {
+        match slice {
+            FixedConcatSlice::Const(c) => mats.push(c.view()),
+            FixedConcatSlice::Var(shape) => {
+                let inp_view = inputs[input_idx].to_array_view::<T>()?;
+                if inp_view.shape() != shape.as_slice() {
+                    bail!(
+                        "Unexpected input shape. Expected {:?}, found {:?}",
+                        shape,
+                        inp_view.shape()
+                    );
                 }
+                mats.push(inp_view);
+                input_idx += 1
             }
         }
-        if input_idx != inputs.len() {
-            bail!(
-                "Unexpected number of variable inputs to FixedConcat. Expected {}, got {}",
-                input_idx,
-                inputs.len()
-            );
-        }
-
-        let result = ::ndarray::stack(Axis(self.axis), &mats)?;
-        Ok(tvec![result.into_arc_tensor()])
     }
+    if input_idx != inputs.len() {
+        bail!(
+            "Unexpected number of variable inputs to FixedConcat. Expected {}, got {}",
+            input_idx,
+            inputs.len()
+        );
+    }
+    Ok(mats)
 }
 
-impl<T: Datum + Copy> Op for FixedConcat<T> {
+#[derive(new, Debug, Clone)]
+pub struct FixedConcat<T: Datum+StackViews> {
+    axis: usize,
+    slices: TVec<FixedConcatSlice<T>>,
+}
+
+impl<T:Datum+StackViews> Op for FixedConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("FixedConcat<{:?}>", T::datum_type()).into()
     }
 }
 
+impl<T: Datum+StackViews> StatelessOp for FixedConcat<T> {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let casted_inputs: TVec<Cow<Tensor>> =
+            inputs.iter().map(|x| x.cast_to::<T>()).collect::<TractResult<_>>()?;
+        let refs:TVec<&Tensor> = casted_inputs.iter().map(|i| i.as_ref()).collect();
+        let mats = slices(&self.slices, &refs)?;
+        let result = T::stack_views(self.axis, &mats)?;
+        Ok(tvec![result.into_arc_tensor()])
+    }
+}
