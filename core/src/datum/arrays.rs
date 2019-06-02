@@ -5,7 +5,7 @@ use tract_linalg::f16::f16;
 
 pub trait ArrayDatum: Sized {
     fn stack_views(axis: usize, views:&[ArrayViewD<Self>]) -> TractResult<ArrayD<Self>>;
-    unsafe fn uninitialized<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
+    unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
         Sh: ShapeBuilder<Dim = D>,
         S: DataOwned<Elem=Self>,
         D: Dimension;
@@ -17,7 +17,7 @@ macro_rules! impl_stack_views_by_copy(
             fn stack_views(axis: usize, views:&[ArrayViewD<$t>]) -> TractResult<ArrayD<$t>> {
                 Ok(ndarray::stack(ndarray::Axis(axis), views)?)
             }
-            unsafe fn uninitialized<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
+            unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
                 Sh: ShapeBuilder<Dim = D>,
                 S: DataOwned<Elem=Self>,
                 D: Dimension {
@@ -42,7 +42,7 @@ macro_rules! impl_stack_views_by_clone(
                 }
                 Ok(array)
             }
-            unsafe fn uninitialized<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
+            unsafe fn uninitialized_array<S, D, Sh>(shape: Sh) -> ArrayBase<S, D> where
                 Sh: ShapeBuilder<Dim = D>,
                 S: DataOwned<Elem=Self>,
                 D: Dimension {

@@ -50,7 +50,7 @@ impl Gather {
                 }
             }
         }
-        let mut output: Array<T, _> = Array::default(output_shape);
+        let mut output: Array<T, _> = unsafe { T::uninitialized_array(output_shape) };
         for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {
             {
                 let mut to_update = output.index_axis_mut(Axis(axis), pattern[0]);
