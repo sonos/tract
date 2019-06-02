@@ -24,7 +24,7 @@ impl DelayState {
         output_shape[op.input_fact.axis] = output_pulse;
         // build output
         let output = if op.delay < input_pulse {
-            let mut output = unsafe { T::uninitialized(&*output_shape) };
+            let mut output = unsafe { T::uninitialized_array(&*output_shape) };
             let from_input = input_pulse - op.delay;
             let from_buffer = output_pulse - from_input;
             output
