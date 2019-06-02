@@ -15,6 +15,9 @@ pub fn ensure_onnx_git_checkout() {
         if !run.success() {
             panic!("Failed to checkout onnx")
         }
+        let node_tests = dir().join("onnx/backend/test/data");
+        assert!(node_tests.exists());
+        println!("onnx checkout done");
     });
 }
 
