@@ -16,25 +16,25 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Concat", concat);
     reg.insert("ConstantLike", constant_like);
     reg.insert("ConstantOfShape", constant_of_shape);
-    reg.insert("Expand", |_, _| Ok(Box::new(tractops::array::MultiBroadcastTo::default())));
+    reg.insert("Expand", |_, _| Ok((Box::new(tractops::array::MultiBroadcastTo::default()), vec!())));
     reg.insert("EyeLike", eye_like);
     reg.insert("Flatten", flatten);
     reg.insert("Gather", gather);
     reg.insert("Pad", pad);
-    reg.insert("Reshape", |_, _| Ok(Box::new(tractops::array::Reshape::default())));
-    reg.insert("Shape", |_, _| Ok(Box::new(tractops::array::Shape::new(DatumType::I64))));
-    reg.insert("Size", |_, _| Ok(Box::new(tractops::array::Size::new(DatumType::I64))));
+    reg.insert("Reshape", |_, _| Ok((Box::new(tractops::array::Reshape::default()), vec!())));
+    reg.insert("Shape", |_, _| Ok((Box::new(tractops::array::Shape::new(DatumType::I64)), vec!())));
+    reg.insert("Size", |_, _| Ok((Box::new(tractops::array::Size::new(DatumType::I64)), vec!())));
     reg.insert("Transpose", transpose);
-    reg.insert("Tile", |_, _| Ok(Box::new(tractops::array::Tile::default())));
+    reg.insert("Tile", |_, _| Ok((Box::new(tractops::array::Tile::default()), vec!())));
     reg.insert("Slice", slice);
     reg.insert("Split", split);
     reg.insert("Squeeze", squeeze);
     reg.insert("Unsqueeze", unsqueeze);
 }
 
-pub fn concat(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn concat(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let axis = node.get_attr("axis")?;
-    Ok(Box::new(tractops::array::Concat::new(axis)))
+    Ok((Box::new(tractops::array::Concat::new(axis)), vec!()))
 }
 
 pub fn make_const<T>(shape: &[usize], v: f32) -> TractResult<Arc<Tensor>>
@@ -45,7 +45,7 @@ where
     Ok(::ndarray::Array::<T, _>::from_elem(shape, v.as_()).into_arc_tensor())
 }
 
-pub fn constant_like(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn constant_like(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let value = node.get_attr_opt("value")?.unwrap_or(0.);
     if node.get_input().len() == 0 {
         use protobuf::ProtobufEnum;
@@ -59,21 +59,21 @@ pub fn constant_like(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box
         };
         let shape: Vec<usize> = node.get_attr_vec("shape")?;
         let tensor = dispatch_numbers!(self::make_const(dt)(&shape, value))?;
-        Ok(Box::new(tractops::konst::Const::new(tensor)))
+        Ok((Box::new(tractops::konst::Const::new(tensor)), vec!()))
     } else {
-        Ok(Box::new(tractops::array::ConstantLike::new(value)))
+        Ok((Box::new(tractops::array::ConstantLike::new(value)), vec!()))
     }
 }
 
-pub fn constant_of_shape(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn constant_of_shape(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let value = match node.get_attr_opt::<Tensor>("value")? {
         Some(val) => val.into_arc_tensor(),
         None => make_const::<f32>(&vec![1], 0.0 as f32)?,
     };
-    Ok(Box::new(tractops::array::ConstantOfShape::new(value)))
+    Ok((Box::new(tractops::array::ConstantOfShape::new(value)), vec!()))
 }
 
-pub fn eye_like(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn eye_like(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     use protobuf::ProtobufEnum;
     let dt = match node.get_attr_opt("dtype")? {
         Some(dt) => Some(
@@ -86,20 +86,20 @@ pub fn eye_like(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<Infe
         None => None,
     };
     let k = node.get_attr_opt("k")?.unwrap_or(0);
-    Ok(Box::new(tractops::array::EyeLike::new(dt, k)))
+    Ok((Box::new(tractops::array::EyeLike::new(dt, k)), vec!()))
 }
 
-pub fn flatten(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn flatten(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(1);
-    Ok(Box::new(tractops::array::Flatten::new(axis)))
+    Ok((Box::new(tractops::array::Flatten::new(axis)), vec!()))
 }
 
-pub fn gather(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn gather(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
-    Ok(Box::new(tractops::array::Gather::new(axis)))
+    Ok((Box::new(tractops::array::Gather::new(axis)), vec!()))
 }
 
-pub fn pad(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn pad(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let value = node.get_attr_opt("value")?;
     let mode = match node.get_attr_opt("mode")? {
         None | Some("constant") => None,
@@ -116,33 +116,33 @@ pub fn pad(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<Inference
     let pads = node.get_attr_tvec("pads")?;
     let rank = pads.len() / 2;
     let pads = (0..rank).map(|ax| (pads[ax], pads[ax + rank])).collect();
-    Ok(Box::new(tractops::array::Pad::new(pads, mode)))
+    Ok((Box::new(tractops::array::Pad::new(pads, mode)), vec!()))
 }
 
-pub fn slice(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn slice(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
     let begin = node.get_attr_vec("starts")?;
     let end = node.get_attr_vec("ends")?;
-    Ok(Box::new(slice::Slice::new(axes, begin, end)))
+    Ok((Box::new(slice::Slice::new(axes, begin, end)), vec!()))
 }
 
-pub fn split(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn split(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let axis = node.get_attr_opt("axis")?.unwrap_or(0);
     let split = node.get_attr_opt_vec("split")?;
-    Ok(Box::new(tractops::array::Split::new(axis, node.get_output().len(), split)))
+    Ok((Box::new(tractops::array::Split::new(axis, node.get_output().len(), split)), vec!()))
 }
 
-pub fn squeeze(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn squeeze(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let axes = node.get_attr_opt_vec("axes")?;
-    Ok(Box::new(tractops::array::Squeeze::new(axes)))
+    Ok((Box::new(tractops::array::Squeeze::new(axes)), vec!()))
 }
 
-pub fn transpose(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn transpose(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let perm = node.get_attr_opt_vec("perm")?;
-    Ok(Box::new(tractops::array::PermuteAxes::new(perm)))
+    Ok((Box::new(tractops::array::PermuteAxes::new(perm)), vec!()))
 }
 
-pub fn unsqueeze(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn unsqueeze(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
     let axes = node.get_attr_vec("axes")?;
-    Ok(Box::new(tractops::array::AddDims::new(axes)))
+    Ok((Box::new(tractops::array::AddDims::new(axes)), vec!()))
 }

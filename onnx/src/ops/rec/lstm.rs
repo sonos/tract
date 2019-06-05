@@ -4,8 +4,8 @@ use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
 
-pub fn lstm(_ctx: &ParsingContext, _pb: &NodeProto) -> TractResult<Box<InferenceOp>> {
-    Ok(Box::new(LSTM::default()))
+pub fn lstm(_ctx: &ParsingContext, _pb: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
+    Ok((Box::new(LSTM::default()), vec!()))
 }
 
 #[derive(Debug, Clone, new)]
