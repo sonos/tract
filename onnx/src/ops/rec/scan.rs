@@ -3,19 +3,24 @@ use tract_core::internal::*;
 use crate::model::ParsingContext;
 use crate::pb::*;
 
-pub fn scan(ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+pub fn scan(ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>, Vec<String>)> {
     let num_scan_inputs = node.get_attr("num_scan_inputs")?;
     let graph: &GraphProto = node.get_attr("body")?;
     let scan_input_axes = node.get_attr_opt_vec("scan_input_axes")?.unwrap_or(Vec::<usize>::new());
     let scan_output_axes = node.get_attr_opt_vec("scan_output_axes")?.unwrap_or(Vec::<usize>::new());
-    let model = ctx.parse_graph(graph)?;
-    Ok(Box::new(Scan::new(model, num_scan_inputs, scan_input_axes, scan_output_axes)))
+    let (model, closure) = ctx.parse_graph(graph)?;
+    Ok((Box::new(Scan::new(model, num_scan_inputs,  closure.len(), scan_input_axes, scan_output_axes)), closure))
 }
+
+// Scan node outer interface:
+// inputs: [ hidden_state_len initial values ][ num_scan_inputs inputs ][ implicit capture inputs ]
+// outputs: [ hidden_state_len final values ][ aggregated outputs ]
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Scan {
     body: InferenceModel,
     num_scan_inputs: usize,
+    closure_inputs: usize,
     scan_input_axes: Vec<usize>,
     scan_output_axes: Vec<usize>,
 }
@@ -52,9 +57,8 @@ impl Op for Scan {
 }
 
 impl StatelessOp for Scan {
-    /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let hidden_state_len = inputs.len() - self.num_scan_inputs;
+        let hidden_state_len = inputs.len() - self.num_scan_inputs - self.closure_inputs;
 
         // extract hidden state original values from inputs
         let mut state:TVec<Tensor> = tvec!();
@@ -76,12 +80,14 @@ impl StatelessOp for Scan {
         let plan = SimplePlan::new(&self.body)?;
 
         for i in 0..iters {
-
             // body inputs are state + one slice of each input
             let mut iter_inputs:TVec<Tensor> = state.drain().collect();
             for input in 0..self.num_scan_inputs {
                 let tensor = dispatch_datum!(Self::slice_input_t(inputs[input].datum_type())(self, &*inputs, input, i))?;
                 iter_inputs.push(tensor);
+            }
+            for i in 0..self.closure_inputs {
+                iter_inputs.push(inputs[inputs.len() - self.closure_inputs + i].clone().into_tensor());
             }
             let mut iter_outputs = plan.run(iter_inputs)?;
             for _ in 0..hidden_state_len {

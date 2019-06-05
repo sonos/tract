@@ -2,8 +2,8 @@ use tract_core::internal::*;
 use crate::pb::NodeProto;
 use crate::model::ParsingContext;
 
-pub fn compress(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
-    Ok(Box::new(Compress::new(node.get_attr_opt("axis")?)))
+pub fn compress(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
+    Ok((Box::new(Compress::new(node.get_attr_opt("axis")?)), vec!()))
 }
 
 #[derive(Debug, Clone, new, Default)]

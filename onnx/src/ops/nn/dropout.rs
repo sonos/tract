@@ -4,8 +4,8 @@ use tract_core::ops::identity::Identity;
 use crate::model::ParsingContext;
 use crate::pb::*;
 
-pub fn dropout(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
-    Ok(Box::new(Dropout::new(node.get_output().len() == 2)))
+pub fn dropout(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
+    Ok((Box::new(Dropout::new(node.get_output().len() == 2)), vec!()))
 }
 
 #[derive(Debug, Clone, new, Default)]
