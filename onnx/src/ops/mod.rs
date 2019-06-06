@@ -5,6 +5,7 @@ use crate::pb::*;
 use tract_core::internal::*;
 
 mod array;
+mod category_mapper;
 mod logic;
 mod math;
 mod nn;
@@ -14,6 +15,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Cast", cast);
     reg.insert("Constant", konst);
     reg.insert("Identity", |_, _| Ok((Box::new(::tract_core::ops::identity::Identity::default()), vec!())));
+    category_mapper::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
     nn::register_all_ops(reg);

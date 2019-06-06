@@ -16,6 +16,7 @@ travis-ci = { repository = "snipsco/tract" }
 [dependencies]
 derive-new = "0.5"
 error-chain = "0.12"
+itertools = "0.8"
 log = "0.4"
 ndarray = { version = "0.12" }
 num-integer = "0.1"
