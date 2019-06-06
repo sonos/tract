@@ -72,7 +72,7 @@ impl<'a> ParsingContext<'a> {
             }
         }
         for (id, pbnode) in graph.get_node().iter().enumerate() {
-            for (ix, input) in pbnode.get_input().iter().filter(|s| s.len() > 0).enumerate() {
+            for (ix, input) in pbnode.get_input().iter().enumerate() {
                 if !outlets_by_name.contains_key(&*input) {
                     let id = model.add_source_default(input.clone())?;
                     unresolved_inputs.push(input.to_string());

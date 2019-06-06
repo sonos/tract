@@ -4,12 +4,19 @@ use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
 
-pub fn lstm(_ctx: &ParsingContext, _pb: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
+pub fn lstm(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
+    let mut lstm = LSTM::default();
+    lstm.want_output_0_y = pb.get_output().get(0).map(|s| !s.is_empty()).unwrap_or(false);
+    lstm.want_output_1_y_h = pb.get_output().get(1).map(|s| !s.is_empty()).unwrap_or(false);
+    lstm.want_output_2_y_c = pb.get_output().get(2).map(|s| !s.is_empty()).unwrap_or(false);
     Ok((Box::new(LSTM::default()), vec!()))
 }
 
 #[derive(Debug, Clone, new)]
 pub struct LSTM {
+    pub want_output_0_y: bool,
+    pub want_output_1_y_h: bool,
+    pub want_output_2_y_c: bool,
     pub f: Box<StatelessOp>,
     pub g: Box<StatelessOp>,
     pub h: Box<StatelessOp>,
@@ -20,6 +27,9 @@ pub struct LSTM {
 impl Default for LSTM {
     fn default() -> LSTM {
         LSTM {
+            want_output_0_y: false,
+            want_output_1_y_h: false,
+            want_output_2_y_c: false,
             f: Box::new(core_ops::nn::Sigmoid::new(f32::datum_type().into())),
             g: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
             h: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
@@ -55,22 +65,12 @@ impl InferenceRulesOp for LSTM {
         s.equals(&inputs[0].datum_type, &inputs[1].datum_type)?;
         s.equals(&inputs[0].datum_type, &inputs[2].datum_type)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].datum_type, &outputs[1].datum_type)?;
         s.equals(&inputs[0].rank, 3)?;
         s.equals(&inputs[1].rank, 3)?;
-        s.equals(&inputs[1].rank, 3)?;
+        s.equals(&inputs[2].rank, 3)?;
         s.equals(&inputs[1].shape[0], &inputs[2].shape[0])?; // num_directions
         s.equals(&inputs[1].shape[1], &inputs[2].shape[1])?; // 4*hidden_size
         s.equals(&inputs[2].shape[1], 4 * inputs[2].shape[2].bex())?; // hidden_size
-        s.equals(&outputs[0].rank, 4)?;
-        s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?; // seq_lentgh
-        s.equals(&outputs[0].shape[1], &inputs[1].shape[0])?; // num_directions
-        s.equals(&outputs[0].shape[2], &inputs[0].shape[1])?; // batch_size
-        s.equals(&outputs[0].shape[3], &inputs[2].shape[2])?; // hidden_size
-        s.equals(&outputs[1].rank, 3)?;
-        s.equals(&outputs[1].shape[0], &inputs[1].shape[0])?; // num_directions
-        s.equals(&outputs[1].shape[1], &inputs[0].shape[1])?; // batch_size
-        s.equals(&outputs[1].shape[2], &inputs[2].shape[2])?; // hidden_size
         if inputs.len() > 3 {
             // bias
             s.equals(&inputs[3].datum_type, &inputs[0].datum_type)?;
@@ -78,9 +78,26 @@ impl InferenceRulesOp for LSTM {
             s.equals(&inputs[3].shape[0], &inputs[2].shape[0])?; // num_directions
             s.equals(&inputs[3].shape[1], 8 * inputs[2].shape[2].bex())?; // 8 * hidden_size
         }
-        if outputs.len() == 3 {
-            s.equals(&outputs[2].datum_type, &outputs[1].datum_type)?;
-            s.equals(&outputs[2].shape, &outputs[1].shape)?;
+        if outputs.len() > 0 {
+            s.equals(&outputs[0].rank, 4)?;
+            s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?; // seq_lentgh
+            s.equals(&outputs[0].shape[1], &inputs[1].shape[0])?; // num_directions
+            s.equals(&outputs[0].shape[2], &inputs[0].shape[1])?; // batch_size
+            s.equals(&outputs[0].shape[3], &inputs[2].shape[2])?; // hidden_size
+        }
+        if outputs.len() > 1 {
+            s.equals(&inputs[0].datum_type, &outputs[1].datum_type)?;
+            s.equals(&outputs[1].rank, 3)?;
+            s.equals(&outputs[1].shape[0], &inputs[1].shape[0])?; // num_directions
+            s.equals(&outputs[1].shape[1], &inputs[0].shape[1])?; // batch_size
+            s.equals(&outputs[1].shape[2], &inputs[2].shape[2])?; // hidden_size
+        }
+        if outputs.len() > 2 {
+            s.equals(&inputs[0].datum_type, &outputs[2].datum_type)?;
+            s.equals(&outputs[2].rank, 3)?;
+            s.equals(&outputs[2].shape[0], &inputs[1].shape[0])?; // num_directions
+            s.equals(&outputs[2].shape[1], &inputs[0].shape[1])?; // batch_size
+            s.equals(&outputs[2].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
         Ok(())
     }
