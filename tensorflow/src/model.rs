@@ -52,6 +52,8 @@ impl Framework<GraphDef> for Tensorflow {
     }
 
     fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
+        use crate::ops::control_flow as cf;
+
         let mut model = InferenceModel::default();
         // compute min output arity for all nodes
         let mut arities = HashMap::new();
@@ -67,6 +69,14 @@ impl Framework<GraphDef> for Tensorflow {
             let name = pbnode.get_name().to_string();
             let output_arity = arities.get(&*name).cloned().unwrap_or(1);
             let facts = tvec!(TensorFact::default(); output_arity);
+
+            if pbnode.get_op() == "NextIteration" {
+                let source_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Source);
+                let sink_op = cf::NextIteration::new(name.clone(), cf::NextIterationRole::Sink);
+                let _source = model.add_node(name.clone(), source_op, tvec!(TensorFact::default()))?;
+                let _sink = model.add_node(format!("{}-Sink", name), sink_op, tvec!())?;
+                continue;
+            }
 
             let op = match self.op_register.0.get(pbnode.get_op()) {
                 Some(builder) => (builder)(&ParsingContext, pbnode)?,
@@ -85,10 +95,12 @@ impl Framework<GraphDef> for Tensorflow {
             }
         }
 
-        for (node_id, pbnode) in graph.get_node().iter().enumerate() {
-            if pbnode.get_op() == "NextIteration" {
-                continue;
-            }
+        for pbnode in graph.get_node().iter() {
+            let node_id = if pbnode.get_op() == "NextIteration" {
+                model.node_by_name(&*format!("{}-Sink", pbnode.get_name()))?.id
+            } else {
+                model.node_by_name(pbnode.get_name())?.id
+            };
             for (ix, i) in pbnode.get_input().iter().enumerate() {
                 let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;

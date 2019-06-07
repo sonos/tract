@@ -119,7 +119,7 @@ impl InferenceModel {
     /// Attempt full analyse and conversion to TypedModel.
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
         self.analyse(false)?;
-        compact::compact(&mut self)
+        compact::translate(&mut self)
     }
 
     /// Attempt full analyse, decluttering and conversion to NormalizedModel.
