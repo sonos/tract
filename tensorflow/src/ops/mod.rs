@@ -8,6 +8,7 @@ use crate::model::ParsingContext;
 mod macros;
 
 pub mod array;
+pub mod control_flow;
 pub mod logic;
 pub mod math;
 pub mod nn;
@@ -18,6 +19,7 @@ pub mod vars;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     array::register_all_ops(reg);
+    control_flow::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
     nn::register_all_ops(reg);
