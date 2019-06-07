@@ -26,6 +26,11 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
     pub fn analyse_obstinate(&mut self, obstinate: bool) -> TractResult<()> {
         let mut nodes_to_visit: BTreeSet<usize> =
             self.model.borrow().eval_order()?.iter().cloned().collect();
+        for node in self.model.borrow().nodes() {
+            if !nodes_to_visit.contains(&node.id) {
+                nodes_to_visit.insert(node.id);
+            }
+        }
         let mut first_error = None;
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
