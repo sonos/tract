@@ -277,7 +277,7 @@ impl Op for TreeEnsembleClassifier {
 
 impl StatelessOp for TreeEnsembleClassifier {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        Err("WIP".into())
+        unimplemented!()
     }
 }
 
