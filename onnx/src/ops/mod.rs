@@ -31,6 +31,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     category_mapper::register_all_ops(reg);
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
+    ml::register_all_ops(reg);
     nn::register_all_ops(reg);
     quant::register_all_ops(reg);
     rec::register_all_ops(reg);
