@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::*;
 
 #[derive(Debug, Clone, new)]
@@ -15,11 +15,11 @@ impl Op for Gather {
 impl Gather {
     fn eval_t<T: Datum>(
         &self,
-        data: &SharedTensor,
-        indices: &SharedTensor,
-    ) -> TractResult<SharedTensor> {
+        data: Arc<Tensor>,
+        indices: &Arc<Tensor>,
+    ) -> TractResult<Arc<Tensor>> {
         let data_view = data.to_array_view::<T>()?;
-        let rank = data_view.shape().len() as i64;
+        let rank = data.shape().len() as i64;
         let axis = {
             let axis_res: TractResult<i64> = {
                 if 0 <= self.axis && self.axis <= rank - 1 {
@@ -32,6 +32,14 @@ impl Gather {
             };
             axis_res? as usize
         };
+
+        if indices.shape().len() == 0 {
+            return Ok(data_view
+                .index_axis(Axis(axis), *indices.to_scalar::<i64>()? as usize)
+                .to_owned()
+                .into_arc_tensor());
+        }
+
         let mut output_shape: Vec<usize> = vec![];
         for (idx, dim) in data_view.shape().to_vec().iter().enumerate() {
             if idx != axis {
@@ -42,7 +50,7 @@ impl Gather {
                 }
             }
         }
-        let mut output: Array<T, _> = Array::default(output_shape);
+        let mut output: Array<T, _> = unsafe { T::uninitialized_array(output_shape) };
         for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {
             {
                 let mut to_update = output.index_axis_mut(Axis(axis), pattern[0]);
@@ -53,17 +61,15 @@ impl Gather {
                 to_update.assign(&data_view.index_axis(Axis(axis), *index as usize));
             }
         }
-        Ok(output.into())
+        Ok(output.into_arc_tensor())
     }
 }
 
 impl StatelessOp for Gather {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, indices) = args_2!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(data.datum_type())(
-            &self, &data, &indices
-        ))?))
+        Ok(tvec!(dispatch_datum!(Self::eval_t(data.datum_type())(&self, data, &indices))?))
     }
 }
 
@@ -77,10 +83,28 @@ impl InferenceRulesOp for Gather {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[1].datum_type, i64::datum_type())?;
-        s.equals(
-            inputs[0].rank.bex() - 1 + inputs[1].rank.bex(),
-            outputs[0].rank.bex(),
-        )?;
+        s.equals(inputs[0].rank.bex() - 1 + inputs[1].rank.bex(), outputs[0].rank.bex())?;
         Ok(())
+    }
+
+    inference_op_as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_should_gather_scalar_index() {
+        let data = Tensor::from(arr1(&[1i64, 2, 3]));
+        let gatherer = Gather::new(0);
+        for idx in 2..3 {
+            let index = Tensor::from(arr0(idx as i64));
+            let outputs = gatherer.eval(tvec![data.clone().into(), index.into()]).unwrap();
+            let output = &outputs[0];
+            //            println!("{:?}", output);
+            assert_eq!(output.shape().len(), 0);
+            assert_eq!(*output.to_scalar::<i64>().unwrap(), idx + 1);
+        }
     }
 }

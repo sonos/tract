@@ -22,7 +22,7 @@ macro_rules! wrap {
     ($($x:expr,)*) => (wrap![$($x),*]);
 }
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 mod cache;
 pub mod expr;
@@ -43,19 +43,32 @@ pub trait InferenceRulesOp {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult;
+
+    fn as_op(&self) -> &Op;
+    fn as_op_mut(&mut self) -> &mut Op;
 }
 
-impl<O: InferenceRulesOp> crate::ops::InferenceOp for O {
+impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
     fn infer_facts(
         &self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let inputs_proxy:TVec<TensorProxy> = (0..inputs.len()).map(|ix| TensorProxy::new(tvec!(0, ix as isize).into())).collect();
-        let outputs_proxy:TVec<TensorProxy> = (0..outputs.len()).map(|ix| TensorProxy::new(tvec!(1, ix as isize).into())).collect();
+        let inputs_proxy: TVec<TensorProxy> =
+            (0..inputs.len()).map(|ix| TensorProxy::new(tvec!(0, ix as isize).into())).collect();
+        let outputs_proxy: TVec<TensorProxy> =
+            (0..outputs.len()).map(|ix| TensorProxy::new(tvec!(1, ix as isize).into())).collect();
 
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;
         solver.infer_facts((inputs, outputs))
+    }
+
+    fn as_op(&self) -> &Op {
+        self.as_op()
+    }
+
+    fn as_op_mut(&mut self) -> &mut Op {
+        self.as_op_mut()
     }
 }

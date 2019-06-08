@@ -10,7 +10,7 @@ use tensorflow::Session;
 use tensorflow::SessionRunArgs;
 
 use ndarray::ArrayD;
-use tract_core::Tensor;
+use tract_core::prelude::*;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -18,8 +18,11 @@ use std::collections::HashSet;
 use crate::conform::Result;
 
 pub struct Tensorflow {
-    session: Session,
     graph: Graph,
+}
+
+pub fn version() -> String {
+    tf::version().unwrap()
 }
 
 pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
@@ -32,8 +35,7 @@ pub fn for_path<P: AsRef<path::Path>>(p: P) -> Result<Tensorflow> {
 pub fn for_slice(buf: &[u8]) -> Result<Tensorflow> {
     let mut graph = Graph::new();
     graph.import_graph_def(buf, &::tensorflow::ImportGraphDefOptions::new())?;
-    let session = Session::new(&::tensorflow::SessionOptions::new(), &graph)?;
-    Ok(Tensorflow { session, graph })
+    Ok(Tensorflow { graph })
 }
 
 enum TensorHolder {
@@ -61,20 +63,18 @@ impl TensorHolder {
 
 impl From<Tensor> for TensorHolder {
     fn from(m: Tensor) -> TensorHolder {
-        use tract_core::DatumType::*;
-        use tract_core::TDim;
         match m.datum_type() {
-            Bool => TensorHolder::Bool(Self::to_tensor(m.into_array().unwrap())),
-            F16 => unimplemented!(),
-            F32 => TensorHolder::F32(Self::to_tensor(m.into_array().unwrap())),
-            F64 => TensorHolder::F64(Self::to_tensor(m.into_array().unwrap())),
-            I8 => TensorHolder::I8(Self::to_tensor(m.into_array().unwrap())),
-            I16 => TensorHolder::I16(Self::to_tensor(m.into_array().unwrap())),
-            I32 => TensorHolder::I32(Self::to_tensor(m.into_array().unwrap())),
-            I64 => TensorHolder::I64(Self::to_tensor(m.into_array().unwrap())),
-            U8 => TensorHolder::U8(Self::to_tensor(m.into_array().unwrap())),
-            U16 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
-            TDim => {
+            DatumType::Bool => TensorHolder::Bool(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::F16 => unimplemented!(),
+            DatumType::F32 => TensorHolder::F32(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::F64 => TensorHolder::F64(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I8 => TensorHolder::I8(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I16 => TensorHolder::I16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I32 => TensorHolder::I32(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::I64 => TensorHolder::I64(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::U8 => TensorHolder::U8(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::U16 => TensorHolder::U16(Self::to_tensor(m.into_array().unwrap())),
+            DatumType::TDim => {
                 let dims = m.to_array_view::<TDim>().unwrap();
                 if dims.iter().all(|d| d.to_integer().is_ok()) {
                     let dims: ArrayD<i32> = dims.map(|d| d.to_integer().unwrap() as i32);
@@ -83,9 +83,7 @@ impl From<Tensor> for TensorHolder {
                     panic!("Streaming used in tensorflow settings")
                 }
             }
-            tract_core::DatumType::String => {
-                TensorHolder::String(Self::to_tensor(m.into_array().unwrap()))
-            }
+            DatumType::String => TensorHolder::String(Self::to_tensor(m.into_array().unwrap())),
         }
     }
 }
@@ -98,10 +96,8 @@ fn tensor_to_array<T: ::tensorflow::TensorType>(tensor: &tf::Tensor<T>) -> Resul
 impl Tensorflow {
     /// Executes the graph in one batch.
     pub fn run(&mut self, inputs: Vec<(&str, Tensor)>, output_name: &str) -> Result<Vec<Tensor>> {
-        let tensors: Vec<(&str, TensorHolder)> = inputs
-            .into_iter()
-            .map(|(name, mat)| (name, mat.into()))
-            .collect();
+        let tensors: Vec<(&str, TensorHolder)> =
+            inputs.into_iter().map(|(name, mat)| (name, mat.into())).collect();
 
         let mut step = SessionRunArgs::new();
         for t in &tensors {
@@ -122,20 +118,18 @@ impl Tensorflow {
         }
 
         let op = &self.graph.operation_by_name_required(output_name)?;
-        let tokens = (0..op.num_outputs())
-            .map(|ix| step.request_fetch(&op, ix as i32))
-            .collect::<Vec<_>>();
+        let tokens =
+            (0..op.num_outputs()).map(|ix| step.request_fetch(&op, ix as i32)).collect::<Vec<_>>();
 
-        self.session.run(&mut step)?;
+        let session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
+        session.run(&mut step)?;
 
         tokens
             .into_iter()
             .enumerate()
             .map(|(ix, tok)| {
-                let output_type = &self
-                    .graph
-                    .operation_by_name_required(&output_name)?
-                    .output_type(ix);
+                let output_type =
+                    &self.graph.operation_by_name_required(&output_name)?.output_type(ix);
                 convert_output(&mut step, output_type, tok)
             })
             .collect()
@@ -180,14 +174,17 @@ impl Tensorflow {
                 continue;
             }
 
-            if let Some(operation) = self
-                .graph
-                .operation_by_name(name)
-                .map_err(|e| format!("TfError: {:?}", e))?
+            if let Some(operation) =
+                self.graph.operation_by_name(name).map_err(|e| format!("TfError: {:?}", e))?
             {
                 // switch only computes one of its outputs. tf explodes during
                 // the call to run() if we registers them
                 if operation.op_type()? == "Switch" {
+                    continue;
+                }
+
+                // this one pretends to have 5 outputs, but has only one
+                if operation.op_type()? == "FusedBatchNorm" {
                     continue;
                 }
 
@@ -199,9 +196,11 @@ impl Tensorflow {
             }
         }
         trace!("Generated all output tokens");
+        trace!("{:?}", tokens);
 
         // Execute the graph using tensorflow.
-        self.session.run(&mut step)?;
+        let session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
+        session.run(&mut step)?;
         trace!("Tensorflow ran succesfully");
 
         // Return the output for every node.
@@ -211,10 +210,8 @@ impl Tensorflow {
                 .iter()
                 .enumerate()
                 .map(|(ix, tok)| {
-                    let output_type = &self
-                        .graph
-                        .operation_by_name_required(&name)?
-                        .output_type(ix);
+                    let output_type =
+                        &self.graph.operation_by_name_required(&name)?.output_type(ix);
                     convert_output(&mut step, output_type, *tok)
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -249,11 +246,12 @@ fn convert_output(
     let tract_tensor = match output_type {
         DataType::Bool => convert!(bool),
         DataType::Float => convert!(f32),
+        DataType::Double => convert!(f64),
         DataType::UInt8 => convert!(u8),
         DataType::Int8 => convert!(i8),
         DataType::Int32 => convert!(i32),
         DataType::Int64 => convert!(i64),
-        t => bail!("Missing conversion for tensorflow type {:?}", t),
+        t => bail!("Missing conversion for tensorflow to tract (type: {:?})", t),
     };
 
     Ok(tract_tensor)

@@ -2,14 +2,10 @@ use super::tree::ExpNode;
 use crate::TractResult;
 use std::collections::HashMap;
 use std::{fmt, ops};
+use crate::model::TVec;
 
-const EXP_LEN: usize = 16;
-
-#[derive(Copy, Clone)]
-pub struct Stack {
-    array: [StackOp; EXP_LEN],
-    len: usize,
-}
+#[derive(Clone)]
+pub struct Stack(TVec<StackOp>);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
@@ -53,21 +49,16 @@ impl PartialEq for Stack {
 
 impl Stack {
     pub fn empty() -> Stack {
-        Stack {
-            len: 0,
-            array: unsafe { ::std::mem::uninitialized() },
-        }
+        Stack(tvec!())
     }
 
     pub fn sym(s: char) -> Stack {
-        let mut e = Self::empty();
-        e.push(StackOp::Sym(s));
-        e
+        Stack(tvec!(StackOp::Sym(s)))
     }
 
     pub fn eval(&self, values: &HashMap<char, i32>) -> TractResult<i32> {
         use self::StackOp::*;
-        let mut stack: Vec<i32> = vec![];
+        let mut stack = tvec![];
         for op in self.as_ops().iter() {
             match op {
                 Val(v) => stack.push(*v),
@@ -115,15 +106,11 @@ impl Stack {
     }
 
     pub fn as_ops(&self) -> &[StackOp] {
-        &self.array[0..self.len]
+        &*self.0
     }
 
     pub fn push(&mut self, op: StackOp) {
-        if self.len == self.array.len() {
-            panic!("Dimension expression stack overflow");
-        }
-        self.array[self.len] = op;
-        self.len += 1;
+        self.0.push(op)
     }
 
     pub fn push_all(&mut self, other: &[StackOp]) {
@@ -133,8 +120,8 @@ impl Stack {
     }
 
     pub fn val(&self) -> Option<&i32> {
-        if let StackOp::Val(ref v) = &self.array[0] {
-            if self.len == 1 {
+        if let StackOp::Val(ref v) = &self.0[0] {
+            if self.0.len() == 1 {
                 return Some(v);
             }
         }
@@ -142,8 +129,8 @@ impl Stack {
     }
 
     pub fn mut_val(&mut self) -> Option<&mut i32> {
-        if let StackOp::Val(ref mut v) = &mut self.array[0] {
-            if self.len == 1 {
+        if self.0.len() == 1 {
+            if let StackOp::Val(ref mut v) = &mut self.0[0] {
                 return Some(v);
             }
         }
@@ -151,9 +138,7 @@ impl Stack {
     }
 
     pub fn div_ceil(self, rhs: &Stack) -> Stack {
-        ExpNode::DivCeil(Box::new(self.to_tree()), Box::new(rhs.to_tree()))
-            .reduce()
-            .to_stack()
+        ExpNode::DivCeil(Box::new(self.to_tree()), Box::new(rhs.to_tree())).reduce().to_stack()
     }
 
     pub fn to_tree(&self) -> ExpNode {
@@ -189,19 +174,24 @@ impl ops::Neg for Stack {
     }
 }
 
+impl<'a> ops::AddAssign<&'a Stack> for Stack
+{
+    fn add_assign(&mut self, rhs: &'a Stack) {
+        if let (Some(lhs), Some(rhs)) = (self.mut_val(), rhs.val()) {
+            *lhs += *rhs;
+            return;
+        }
+        *self = ExpNode::Add(vec![self.to_tree(), rhs.to_tree()]).reduce().to_stack()
+    }
+}
+
 impl<I> ops::AddAssign<I> for Stack
 where
     I: Into<Stack>,
 {
     fn add_assign(&mut self, rhs: I) {
         let rhs = rhs.into();
-        if let (Some(lhs), Some(rhs)) = (self.mut_val(), rhs.val()) {
-            *lhs += *rhs;
-            return;
-        }
-        *self = ExpNode::Add(vec![self.to_tree(), rhs.to_tree()])
-            .reduce()
-            .to_stack()
+        *self += &rhs
     }
 }
 
@@ -216,13 +206,20 @@ where
     }
 }
 
+impl<'a> ops::SubAssign<&'a Stack> for Stack {
+    fn sub_assign(&mut self, rhs: &'a Stack) {
+        use std::ops::Neg;
+        *self += rhs.clone().neg()
+    }
+}
+
 impl<I> ops::SubAssign<I> for Stack
 where
     I: Into<Stack>,
 {
     fn sub_assign(&mut self, rhs: I) {
         use std::ops::Neg;
-        *self = *self + rhs.into().neg()
+        *self += rhs.into().neg()
     }
 }
 
@@ -237,14 +234,18 @@ where
     }
 }
 
+impl<'a> ops::MulAssign<&'a Stack> for Stack {
+    fn mul_assign(&mut self, rhs: &'a Stack) {
+        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.to_tree()]).reduce().to_stack()
+    }
+}
+
 impl<I> ops::MulAssign<I> for Stack
 where
     I: Into<Stack>,
 {
     fn mul_assign(&mut self, rhs: I) {
-        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.into().to_tree()])
-            .reduce()
-            .to_stack()
+        *self = ExpNode::Mul(1, vec![self.to_tree(), rhs.into().to_tree()]).reduce().to_stack()
     }
 }
 
@@ -331,15 +332,6 @@ mod tests {
         e.push(Val(2));
         e.push(Add);
         assert!(e.eval(&hashmap! {}).is_err());
-    }
-
-    #[test]
-    #[should_panic]
-    fn overflow() {
-        let mut e = Stack::from(2);
-        for n in 1..EXP_LEN {
-            e += Stack::sym('x') / n as i32;
-        }
     }
 
     #[test]

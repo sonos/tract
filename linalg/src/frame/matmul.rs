@@ -4,16 +4,19 @@ use std::ops::{Add, Mul};
 
 use std::marker::PhantomData;
 
+use super::PackB;
+
 pub trait MatMul<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + objekt::Clone {
     fn packed_a_len(&self) -> usize;
     fn packed_a_alignment(&self) -> usize;
     fn pack_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize);
-    fn packed_b_len(&self) -> usize;
-    fn packed_b_alignment(&self) -> usize;
-    fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize);
-    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T>;
+    fn b_pack(&self) -> PackB<T>;
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize);
+
+    fn m(&self) -> usize;
+    fn n(&self) -> usize;
+    fn k(&self) -> usize;
 }
 
 clone_trait_object!(<T> MatMul<T> where T: Copy + Add + Mul + Zero);
@@ -70,12 +73,7 @@ where
     T: Copy + Add + Mul + Zero + Debug + Send + Sync,
 {
     pub fn new(m: usize, k: usize, n: usize) -> PackedMatMul<K, T> {
-        PackedMatMul {
-            m,
-            k,
-            n,
-            _kernel: PhantomData,
-        }
+        PackedMatMul { m, k, n, _kernel: PhantomData }
     }
 
     fn pack_panel_a(&self, pa: *mut T, a: *const T, rsa: isize, csa: isize, rows: usize) {
@@ -89,18 +87,6 @@ where
             }
         }
     }
-
-    fn pack_panel_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize, cols: usize) {
-        let nr = K::nr();
-        for i in 0..self.k {
-            for j in 0..cols {
-                unsafe {
-                    *pb.offset((i * nr + j) as isize) =
-                        *b.offset(j as isize * csb + i as isize * rsb)
-                }
-            }
-        }
-    }
 }
 
 impl<K, T> MatMul<T> for PackedMatMul<K, T>
@@ -110,9 +96,6 @@ where
 {
     fn packed_a_alignment(&self) -> usize {
         K::alignment_bytes_a()
-    }
-    fn packed_b_alignment(&self) -> usize {
-        K::alignment_bytes_b()
     }
     fn packed_a_len(&self) -> usize {
         let mr = K::mr();
@@ -145,37 +128,8 @@ where
         }
     }
 
-    fn packed_b_len(&self) -> usize {
-        (self.n + K::nr() - 1) / K::nr() * K::nr() * self.k
-    }
-
-    fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
-        let nr = K::nr();
-        assert!(pb as usize % K::alignment_bytes_b() == 0);
-        unsafe {
-            for p in 0..(self.n / nr) {
-                self.pack_panel_b(
-                    pb.offset((p * nr * self.k) as isize),
-                    b.offset((p * nr) as isize * csb),
-                    rsb,
-                    csb,
-                    K::nr(),
-                )
-            }
-            if self.n % nr != 0 {
-                self.pack_panel_b(
-                    pb.offset((self.n / nr * nr * self.k) as isize),
-                    b.offset((self.n / nr * nr) as isize * csb),
-                    rsb,
-                    csb,
-                    self.n % nr,
-                )
-            }
-        }
-    }
-
-    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
-        PackedWriter::new(pb, K::nr(), self.n, self.k)
+    fn b_pack(&self) -> PackB<T> {
+        PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_b())
     }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, c: *mut T, rsc: isize, csc: isize) {
@@ -255,6 +209,18 @@ where
             }
         }
     }
+
+    fn m(&self) -> usize {
+        self.m
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn n(&self) -> usize {
+        self.n
+    }
 }
 
 #[derive(Debug)]
@@ -285,11 +251,7 @@ where
             panels,
             panel_width,
             last_panel_width,
-            remain: if panels > 1 {
-                panel_width
-            } else {
-                last_panel_width
-            },
+            remain: if panels > 1 { panel_width } else { last_panel_width },
             current_panel: 0,
             next_panel: ((k - 1) * panel_width) as isize,
             next_lane: panel_width as isize
@@ -339,6 +301,13 @@ pub mod test {
                     proptest::collection::vec((-10..10).prop_map(|a| a as f32), MM::nr() * k),
                 )
             })
+            .prop_map(|(k, a, b)| {
+                (
+                    k,
+                    align::realign_vec(a, MM::alignment_bytes_a()),
+                    align::realign_vec(b, MM::alignment_bytes_b()),
+                )
+            })
             .boxed()
     }
 
@@ -353,9 +322,8 @@ pub mod test {
         let mut expect = vec![0.0f32; MM::mr() * MM::nr()];
         for x in 0..MM::nr() {
             for y in 0..MM::mr() {
-                expect[x + y * MM::nr()] = (0..k)
-                    .map(|k| pa[k * MM::mr() + y] * pb[k * MM::nr() + x])
-                    .sum::<f32>();
+                expect[x + y * MM::nr()] =
+                    (0..k).map(|k| pa[k * MM::mr() + y] * pb[k * MM::nr() + x]).sum::<f32>();
             }
         }
         let mut found = vec![9999.0f32; expect.len()];
@@ -392,8 +360,8 @@ pub mod test {
             mm.pack_a(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
 
             let mut packed_b: Vec<f32> =
-                align::uninitialized(mm.packed_b_len(), mm.packed_b_alignment());
-            mm.pack_b(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+                align::uninitialized(mm.b_pack().len(), mm.b_pack().alignment());
+            mm.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
 
             let mut found = vec![9999.0f32; m * n];
 

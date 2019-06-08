@@ -5,7 +5,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use num_traits::ToPrimitive;
 use num_traits::Zero;
 
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 use self::super::path::Path;
 use self::super::proxies::*;
@@ -27,7 +27,7 @@ pub trait Output: fmt::Debug + Clone + PartialEq {
 }
 
 macro_rules! impl_output {
-    ($type:ty, $constr:ident) => {
+    ($type:ty, $constr:ident, $name:expr) => {
         impl Output for $type {
             fn into_wrapped(source: Self) -> Wrapped {
                 Wrapped::$constr(source)
@@ -37,18 +37,18 @@ macro_rules! impl_output {
                 if let Wrapped::$constr(v) = wrapped {
                     Ok(v)
                 } else {
-                    bail!("Tried to get a {} from {:?}.", stringify!($ty), wrapped);
+                    bail!("Tried to get a {} from {:?}.", $name, wrapped);
                 }
             }
         }
     };
 }
 
-impl_output!(IntFact, Int);
-impl_output!(TypeFact, Type);
-impl_output!(ShapeFact, Shape);
-impl_output!(ValueFact, SharedTensor);
-impl_output!(DimFact, Dim);
+impl_output!(IntFact, Int, "Int");
+impl_output!(TypeFact, Type, "DatumType");
+impl_output!(ShapeFact, Shape, "Shape");
+impl_output!(ValueFact, Tensor, "Tensor");
+impl_output!(DimFact, Dim, "TDim");
 
 // Converts back and forth between Wrapped and usize.
 impl Output for usize {
@@ -75,24 +75,20 @@ impl Output for i32 {
     fn from_wrapped(wrapped: Wrapped) -> TractResult<i32> {
         let message = format!("Tried to convert {:?} to a i32.", wrapped);
 
-        IntFact::from_wrapped(wrapped)?
-            .concretize()
-            .ok_or(message.into())
+        IntFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
 }
 
 // Converts back and forth between Wrapped and Tensor.
-impl Output for SharedTensor {
-    fn into_wrapped(source: SharedTensor) -> Wrapped {
+impl Output for Arc<Tensor> {
+    fn into_wrapped(source: Arc<Tensor>) -> Wrapped {
         ValueFact::into_wrapped(source.into())
     }
 
-    fn from_wrapped(wrapped: Wrapped) -> TractResult<SharedTensor> {
+    fn from_wrapped(wrapped: Wrapped) -> TractResult<Arc<Tensor>> {
         let message = format!("Tried to convert {:?} to a tensor.", wrapped);
 
-        ValueFact::from_wrapped(wrapped)?
-            .concretize()
-            .ok_or(message.into())
+        ValueFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
 }
 
@@ -105,9 +101,7 @@ impl Output for TDim {
     fn from_wrapped(wrapped: Wrapped) -> TractResult<TDim> {
         let message = format!("Tried to convert {:?} to a usize.", wrapped);
 
-        DimFact::from_wrapped(wrapped)?
-            .concretize()
-            .ok_or(message.into())
+        DimFact::from_wrapped(wrapped)?.concretize().ok_or(message.into())
     }
 }
 
@@ -117,7 +111,7 @@ pub enum Wrapped {
     Int(IntFact),
     Type(TypeFact),
     Shape(ShapeFact),
-    SharedTensor(ValueFact),
+    Tensor(ValueFact),
     Dim(DimFact),
 }
 
@@ -168,17 +162,15 @@ pub trait IntoExp<T> {
 #[derive(new)]
 pub struct SumExp<T>(Vec<Exp<T>>)
 where
-    T: Fact + Output + Clone + ::std::fmt::Debug;
+    T: Fact + Output + Clone + ::std::fmt::Debug + 'static;
 
 impl<T> TExp<T> for SumExp<T>
 where
-    T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug,
+    T: Fact + Output + Zero + Add<T> + Neg<Output = T> + Clone + ::std::fmt::Debug + 'static,
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
-        self.0
-            .iter()
-            .try_fold(T::zero(), |acc, it| Ok(acc + it.0.get(context)?))
+        self.0.iter().try_fold(T::zero(), |acc, it| Ok(acc + it.0.get(context)?))
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -278,9 +270,7 @@ where
 {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {
-        context
-            .get(&self.0)
-            .map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
+        context.get(&self.0).map_err(|e| format!("while getting {:?}, {}", self.0, e).into())
     }
 
     /// Tries to set the value of the expression in the given context.
@@ -288,9 +278,7 @@ where
         let old = self.get(context)?;
         let new = old.unify(&value)?;
         let diff = old != new;
-        context
-            .set(&self.0, new)
-            .map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
+        context.set(&self.0, new).map_err(|e| format!("while setting {:?}, {}", self.0, e))?;
         Ok(diff)
     }
 
@@ -373,7 +361,6 @@ pub struct IntoDimExp(Exp<IntFact>);
 impl TExp<DimFact> for IntoDimExp {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<DimFact> {
-        use crate::dim::ToDim;
         let v: IntFact = self.0.get(context)?;
         match v {
             GenericFact::Only(i) => Ok(GenericFact::Only(i.to_dim())),
@@ -492,6 +479,12 @@ impl IntoExp<DimFact> for TDim {
     }
 }
 
+impl IntoExp<DimFact> for &TDim {
+    fn bex(self) -> Exp<DimFact> {
+        ConstantExp(self.clone().into()).bex()
+    }
+}
+
 impl<IE: IntoExp<DimFact>> Add<IE> for Exp<DimFact> {
     type Output = Exp<DimFact>;
     fn add(self, other: IE) -> Exp<DimFact> {
@@ -551,7 +544,7 @@ impl IntoExp<ShapeFact> for TVec<TDim> {
     }
 }
 
-// SharedTensor
+// Arc<Tensor>
 
 impl IntoExp<ValueFact> for ValueProxy {
     fn bex(self) -> Exp<ValueFact> {
@@ -565,7 +558,7 @@ impl<'a> IntoExp<ValueFact> for &'a ValueProxy {
     }
 }
 
-impl IntoExp<ValueFact> for SharedTensor {
+impl IntoExp<ValueFact> for Arc<Tensor> {
     fn bex(self) -> Exp<ValueFact> {
         ConstantExp(self.into()).bex()
     }

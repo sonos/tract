@@ -1,0 +1,13 @@
+[package]
+name = "onnx-test-suite"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+edition = "2018"
+
+[dependencies]
+fs2 = "0.4"
+tract-core = { path = "../../core" }
+tract-onnx = { path = "../../onnx" }
+env_logger = "0.6.1"
+log = "0.4.6"
+protobuf = "2.4.2"

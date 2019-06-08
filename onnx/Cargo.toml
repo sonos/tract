@@ -1,39 +1,26 @@
 [package]
 name = "tract-onnx"
-version = "0.2.9-pre"
+version = "0.3.4-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/kali/tract"
+repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "kali/tract" }
+travis-ci = { repository = "snipsco/tract" }
 
 [dependencies]
 derive-new = "0.5"
-error-chain =  { version = "0.12", default-features=false }
+error-chain = "0.12"
 log = "0.4"
 ndarray = { version = "0.12" }
 num-integer = "0.1"
 num-traits = "0.2"
 protobuf = "2.0"
 smallvec = "0.6"
-tract-linalg = { path = "../linalg" }
 tract-core = { path = "../core" }
-
-[build-dependencies]
-git2 = "0.7"
-
-[dev-dependencies]
-flate2 = "1"
-fs2 = "0.4"
-mio_httpc = { version = "0.6", features = ["rtls"] }
-serde = "1"
-serde_json = "1"
-serde_derive = "1"
-simplelog = "0.5"
-tar = "0.4"
+tract-linalg = { path = "../linalg" }

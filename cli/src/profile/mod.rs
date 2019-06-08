@@ -1,84 +1,70 @@
-use crate::rusage::Duration;
-use ansi_term::Color::*;
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 
-use crate::errors::*;
-use crate::format::*;
+use ansi_term::Color::*;
 use itertools::Itertools;
-use tract_core::{Model, Node};
+
+use tract_core::internal::*;
 
 use crate::display_graph::DisplayOptions;
-use crate::{Parameters, ProfilingMode, SomeGraphDef};
+use crate::errors::*;
+use crate::format::*;
+use crate::rusage::Duration;
+use crate::{Parameters, ProfilingMode};
 
 mod regular;
 //mod streaming;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ProfileData {
     pub nodes: HashMap<usize, Duration>,
 }
 
 impl ProfileData {
-    pub fn new(model: &Model) -> ProfileData {
-        ProfileData {
-            nodes: HashMap::with_capacity(model.nodes().len()),
-        }
-    }
-
-    pub fn add(&mut self, node: &Node, dur: Duration) -> ::tract_core::TractResult<()> {
+    pub fn add<TI: TensorInfo, O>(
+        &mut self,
+        node: &BaseNode<TI, O>,
+        dur: Duration,
+    ) -> ::tract_core::TractResult<()> {
         *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
         Ok(())
     }
 
-    pub fn print_most_consuming_nodes(
-        &mut self,
-        model: &Model,
-        graph: &SomeGraphDef,
-        display_options: DisplayOptions,
-    ) -> CliResult<()> {
-        let sum = self.summed();
-        let mut display_graph =
-            crate::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
-                .with_graph_def(&graph)?;
-        for (ix, measure) in self.nodes.iter() {
-            display_graph.add_node_label(*ix, dur_avg_oneline_ratio(*measure, sum))?;
-        }
-        let top5: Vec<usize> = self
+    pub fn most_consuming_nodes(&self) -> CliResult<Vec<usize>> {
+        let top = self
             .nodes
             .iter()
             .sorted_by(|(_, a), (_, b)| {
-                a.avg_real()
-                    .partial_cmp(&b.avg_real())
-                    .unwrap_or(::std::cmp::Ordering::Greater)
+                a.avg_real().partial_cmp(&b.avg_real()).unwrap_or(::std::cmp::Ordering::Greater)
             })
-            .iter()
+            .into_iter()
             .rev()
             .take(5)
             .map(|a| *a.0)
             .collect();
-        display_graph.options.node_ids = Some(top5);
-        println!("Most time consuming nodes:");
-        display_graph.render()?;
-        Ok(())
+        Ok(top)
     }
 
-    pub fn print_most_consuming_ops(&self, model: &Model) -> CliResult<()> {
+    pub fn print_most_consuming_ops<TI, O>(&self, model: &Model<TI, O>) -> CliResult<()>
+    where
+        TI: TensorInfo,
+        O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    {
         let sum = self.summed();
         println!("Most time consuming operations:");
         let mut operations = HashMap::new();
         let mut counters = HashMap::new();
         for (node, dur) in &self.nodes {
             let node = &model.nodes()[*node];
-            let mut cell = operations
-                .entry(node.op.name().to_string())
-                .or_insert(Duration::default());
+            let mut cell =
+                operations.entry(node.op.as_ref().name().to_string()).or_insert(Duration::default());
             // do not use duration addition here, as we are summing for real
             // instead of averaging
             cell.total_real += dur.avg_real();
             cell.total_sys += dur.avg_sys();
             cell.total_user += dur.avg_user();
             cell.counter = 1;
-            *counters.entry(node.op.name().to_string()).or_insert(0) += 1;
+            *counters.entry(node.op.as_ref().name().to_string()).or_insert(0) += 1;
         }
         let mut operations: Vec<(&str, Duration)> =
             operations.iter().map(|(s, d)| (&**s, *d)).collect();
@@ -103,12 +89,7 @@ impl ProfileData {
         let total_real = self.nodes.values().map(|n| n.avg_real()).sum();
         let total_sys = self.nodes.values().map(|n| n.avg_sys()).sum();
         let total_user = self.nodes.values().map(|n| n.avg_user()).sum();
-        Duration {
-            total_real,
-            total_sys,
-            total_user,
-            counter: 1,
-        }
+        Duration { total_real, total_sys, total_user, counter: 1 }
     }
 }
 

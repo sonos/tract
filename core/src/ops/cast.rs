@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Cast {
@@ -7,8 +7,8 @@ pub struct Cast {
 
 impl Cast {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(input: SharedTensor) -> TractResult<SharedTensor> {
-        Ok(input.cast_to::<T>()?.into_owned().into_tensor())
+    fn eval_t<T: Datum>(input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
+        Ok(input.cast_to::<T>()?.into_owned().into_arc_tensor())
     }
 }
 
@@ -20,7 +20,7 @@ impl Op for Cast {
 
 impl StatelessOp for Cast {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let output = dispatch_datum!(Self::eval_t(self.to)(input))?;
         Ok(tvec!(output))
@@ -40,4 +40,6 @@ impl InferenceRulesOp for Cast {
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

@@ -1,28 +1,32 @@
 #![cfg(feature = "conform")]
 #![allow(non_snake_case)]
+extern crate env_logger;
 #[macro_use]
 extern crate log;
 extern crate ndarray;
-extern crate pretty_env_logger;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
-#[macro_use]
 extern crate tract_core;
 extern crate tract_tensorflow;
 
 mod utils;
 
+use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::Tensor;
+use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_FLOAT;
-use crate::utils::*;
 
-fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u8>> {
+fn convolution_pb(
+    v_stride: usize,
+    h_stride: usize,
+    valid: bool,
+    kernel: &Tensor,
+) -> Result<Vec<u8>> {
     let conv = tfpb::node()
         .name("conv")
         .op("Conv2D")
@@ -32,17 +36,15 @@ fn convolution_pb(v_stride: usize, h_stride: usize, valid: bool) -> Result<Vec<u
         .attr("padding", if valid { "VALID" } else { "SAME" })
         .attr("T", DT_FLOAT);
 
-    let graph = tfpb::graph()
-        .node(placeholder_f32("data"))
-        .node(placeholder_f32("kernel"))
-        .node(conv);
+    let graph =
+        tfpb::graph().node(placeholder_f32("data")).node(const_f32("kernel", kernel)).node(conv);
 
     Ok(graph.write_to_bytes()?)
 }
 
 fn img_and_ker() -> BoxedStrategy<(Tensor, Tensor, (usize, usize))> {
-    (1usize..8, 1usize..8, 1usize..8, 1usize..8)
-        .prop_flat_map(|(ic, kh, kw, kc)| (1usize..10, kh..33, kw..33, Just((ic, kh, kw, kc))))
+    (1usize..4, 1usize..3, 1usize..3, 1usize..4)
+        .prop_flat_map(|(ic, kh, kw, kc)| (1usize..2, kh..10, kw..10, Just((ic, kh, kw, kc))))
         .prop_flat_map(|(ib, ih, iw, (ic, kh, kw, kc))| {
             let i_size = ib * iw * ih * ic;
             let k_size = kw * kh * kc * ic;
@@ -74,55 +76,90 @@ proptest! {
     #[test]
     fn conv_compare((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
-//        ::conform::setup_test_logger();
-        if valid {
-            prop_assume!(i.shape()[1] >= k.shape()[0]);
-            prop_assume!(i.shape()[2] >= k.shape()[1]);
-        }
-        let model = convolution_pb(strides.0, strides.1, valid).unwrap();
-        compare(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
+        let model = convolution_pb(strides.0, strides.1, valid,& k).unwrap();
+        compare(&model, vec!(("data", i.clone())), "conv")?;
     }
-}
 
-proptest! {
     #[test]
     fn conv_infer_facts((ref i, ref k, ref strides) in img_and_ker(),
                        valid in ::proptest::bool::ANY) {
-//        ::conform::setup_test_logger();
         if valid {
             prop_assume!(i.shape()[1] >= k.shape()[0]);
             prop_assume!(i.shape()[2] >= k.shape()[1]);
         }
-        let model = convolution_pb(strides.0, strides.1, valid).unwrap();
-        infer(&model, vec!(("data", i.clone()), ("kernel", k.clone())), "conv")?;
+        let model = convolution_pb(strides.0, strides.1, valid, &k).unwrap();
+        infer(&model, vec!(("data", i.clone())),  "conv")?;
     }
 }
 
 #[test]
 fn conv_infer_facts_1() {
-    //   ::conform::setup_test_logger();
     let i: Tensor = ArrayD::<f32>::zeros(vec![1, 2, 2, 2]).into();
     let k: Tensor = ArrayD::<f32>::zeros(vec![2, 2, 2, 1]).into();
-    let model = convolution_pb(1, 1, false).unwrap();
-    infer(
-        &model,
-        vec![("data", i.into()), ("kernel", k.into())],
-        "conv",
-    )
-    .unwrap();
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    infer(&model, vec![("data", i.into())], "conv").unwrap();
 }
 
 #[test]
 fn conv_eval_1() {
-    use tract_core::tensor::arr4;
-    //   ::conform::setup_test_logger();
     let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
     let k: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]));
-    let model = convolution_pb(1, 1, false).unwrap();
-    compare(
-        &model,
-        vec![("data", i.into()), ("kernel", k.into())],
-        "conv",
-    )
-    .unwrap();
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_2() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_3() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_4() {
+    let i: Tensor = Tensor::from(arr4(&[[[[1.0f32], [1.0], [0.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0f32, 0.0]], [[0.0, -1.0]]]]));
+    let model = convolution_pb(1, 1, true, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_5() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0]], [[0.0, 1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0f32, 0.0], [0.0, 0.0]]], [[[0.0, 0.0], [0.0, 1.0]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_6() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32], [0.0]], [[0.0], [1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0f32]], [[1.0]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_7() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32]], [[0.0]], [[0.0]], [[1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32]]], [[[1.0]]]]));
+    let model = convolution_pb(2, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
+}
+
+#[test]
+fn conv_eval_mobilenet_v2() {
+    let i: Tensor = Tensor::from(arr4(&[[[[0.0f32, -1.0]]]]));
+    let k: Tensor = Tensor::from(arr4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]));
+    let model = convolution_pb(1, 1, false, &k).unwrap();
+    compare(&model, vec![("data", i.into())], "conv").unwrap();
 }

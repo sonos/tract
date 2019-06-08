@@ -5,3 +5,7 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 xs 4157211250 2256075456 81453571 64911648 # shrinks to (ref i, k, ref padding, stride) = (F32([[[[0.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1)), (1, 1), "VALID", 1)
+cc 77a89c09806f55ec2f67377514f77ccad551c7eb9f91cff206b7b1e831606506 # shrinks to (ref i, k, ref padding, stride) = ([[[[0.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1), const ndim=4, (1, 2), "VALID", 1)
+cc e80892b5e8e6eb45cb799e7844c5af46775f03de51133d55b5db1a9c1d58083d # shrinks to (ref i, k, ref padding, stride) = ([[[[0.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1), const ndim=4, (2, 1), "VALID", 1)
+cc 70eccb53ff68aaab2bb835e6e83a20a90cdff149101dbab926eefe1222e706ef # shrinks to (ref i, k, ref padding, stride) = ([[[[1.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1), const ndim=4, (1, 2), "SAME", 1)
+cc 9cecfd4a142ead272fa863e0999eb1a092224fee791a8fe5ff2652dd72ff6603 # shrinks to (ref i, k, ref padding, stride) = ([[[[-1.0]]]] shape=[1, 1, 1, 1], strides=[1, 1, 1, 1], layout=C (0x1), const ndim=4, (1, 2), "SAME", 1)

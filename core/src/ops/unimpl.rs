@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone)]
 pub struct UnimplementedOp {
@@ -8,10 +8,7 @@ pub struct UnimplementedOp {
 
 impl UnimplementedOp {
     pub fn new(name: impl AsRef<str>, message: impl AsRef<str>) -> UnimplementedOp {
-        UnimplementedOp {
-            name: name.as_ref().to_string(),
-            message: message.as_ref().to_string(),
-        }
+        UnimplementedOp { name: name.as_ref().to_string(), message: message.as_ref().to_string() }
     }
 }
 
@@ -22,7 +19,7 @@ impl Op for UnimplementedOp {
 }
 
 impl StatelessOp for UnimplementedOp {
-    fn eval(&self, _inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         bail!("unimplemented operation: {}", self.name)
     }
 }
@@ -36,4 +33,6 @@ impl InferenceRulesOp for UnimplementedOp {
     ) -> InferenceResult {
         Ok(())
     }
+
+    inference_op_as_op!();
 }

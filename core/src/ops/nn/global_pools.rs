@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
@@ -9,8 +9,8 @@ pub struct GlobalAvgPool {
 impl GlobalAvgPool {
     fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -36,7 +36,7 @@ impl Op for GlobalAvgPool {
 }
 
 impl StatelessOp for GlobalAvgPool {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -51,6 +51,8 @@ impl InferenceRulesOp for GlobalAvgPool {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -61,8 +63,8 @@ pub struct GlobalLpPool {
 impl GlobalLpPool {
     fn eval_t<D: Datum + ::num_traits::Float>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -74,19 +76,15 @@ impl GlobalLpPool {
         let input = array.into_shape(((n * c), divisor))?;
         let divisor = D::from(divisor).unwrap();
         let result = if self.p == 1 {
-            input
-                .fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs())
-                .map(|a| *a / divisor)
+            input.fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs()).map(|a| *a / divisor)
         } else if self.p == 2 {
-            input
-                .fold_axis(Axis(1), D::zero(), |&a, &b| a + b * b)
-                .map(|a| a.sqrt() / divisor)
+            input.fold_axis(Axis(1), D::zero(), |&a, &b| a + b * b).map(|a| a.sqrt() / divisor)
         } else {
             input
                 .fold_axis(Axis(1), D::zero(), |&a, &b| a + b.abs().powi(self.p as i32))
                 .map(|a| a.powf(D::from(self.p).unwrap().recip()) / divisor)
         };
-        Ok(tvec!(result.into_shape(final_shape)?.into()))
+        Ok(tvec!(result.into_shape(final_shape)?.into_arc_tensor()))
     }
 }
 
@@ -97,7 +95,7 @@ impl Op for GlobalLpPool {
 }
 
 impl StatelessOp for GlobalLpPool {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -112,6 +110,8 @@ impl InferenceRulesOp for GlobalLpPool {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -122,8 +122,8 @@ pub struct GlobalMaxPool {
 impl GlobalMaxPool {
     fn eval_t<D: Datum + ::num_traits::Float>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let array = input.to_array_view::<D>()?;
         let n = array.shape()[0];
         let c = array.shape()[1];
@@ -148,7 +148,7 @@ impl Op for GlobalMaxPool {
 }
 
 impl StatelessOp for GlobalMaxPool {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -163,6 +163,8 @@ impl InferenceRulesOp for GlobalMaxPool {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(

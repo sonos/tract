@@ -1,71 +1,131 @@
-use std::sync::Arc;
-use std::{fs, path};
-
 use crate::tfpb::graph::GraphDef;
-use tract_core::model::{InletId, Model, OutletId};
-use tract_core::{ToTract, TractResult, Tractify};
+use crate::tfpb::node_def::NodeDef;
+use tract_core::internal::*;
 
-/// Load a SharedTensor protobul model from a file.
-pub fn for_path<P: AsRef<path::Path>>(p: P) -> TractResult<Model> {
-    for_reader(fs::File::open(p)?)
+pub struct ParsingContext;
+
+#[derive(Clone, Default)]
+pub struct TfOpRegister(pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>>>);
+
+impl TfOpRegister {
+    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>>) {
+        self.0.insert(s.into(), builder);
+    }
 }
 
-/// Load a Tract model from a reader.
-pub fn for_reader<R: ::std::io::Read>(r: R) -> TractResult<Model> {
-    graphdef_for_reader(r)?.tractify()
+pub struct Tensorflow {
+    pub op_register: TfOpRegister,
 }
 
-/// Load a SharedTensor protobuf graph def from a reader.
-pub fn graphdef_for_reader<R: ::std::io::Read>(mut r: R) -> TractResult<GraphDef> {
-    Ok(::protobuf::parse_from_reader::<GraphDef>(&mut r).map_err(|e| format!("{:?}", e))?)
+impl Tensorflow {
+    // From the node_def.proto documentation:
+    // Each input is "node:src_output" with "node" being a string name and
+    // "src_output" indicating which output tensor to use from "node". If
+    // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
+    // optionally be followed by control inputs that have the format "^node".
+    fn parse_input(i: &str) -> TractResult<(&str, usize)> {
+        let pair = if i.starts_with("^") {
+            (&i[1..], 0)
+        } else {
+            let splits: Vec<_> = i.splitn(2, ':').collect();
+            (splits[0], if splits.len() > 1 { splits[1].parse::<usize>()? } else { 0 })
+        };
+        Ok(pair)
+    }
+
+    pub fn determinize(model: &mut GraphDef) -> TractResult<()> {
+        for pbnode in model.mut_node().iter_mut() {
+            if pbnode.get_op() == "RandomUniform" {
+                if pbnode.get_attr_int::<i64>("seed")? == 0 && pbnode.get_attr_int::<i64>("seed2")? == 0 {
+                    pbnode.mut_attr().insert("seed".to_string(), 1.into());
+                    pbnode.mut_attr().insert("seed2".to_string(), 1.into());
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Load a SharedTensor protobuf graph def from a path
-pub fn graphdef_for_path<P: AsRef<path::Path>>(p: P) -> TractResult<GraphDef> {
-    graphdef_for_reader(fs::File::open(p)?)
-}
+impl Framework<GraphDef> for Tensorflow {
+    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<GraphDef> {
+        Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
+    }
 
-pub fn optimize(model: Model) -> TractResult<Model> {
-    let model = model.into_optimized()?;
-    model.into_optimized()
-}
+    fn model_for_proto_model(&self, graph: &GraphDef) -> TractResult<InferenceModel> {
+        let mut model = InferenceModel::default();
+        // compute min output arity for all nodes
+        let mut arities = HashMap::new();
+        for pbnode in graph.get_node().iter() {
+            for i in pbnode.get_input().iter() {
+                let (node, slot) = Self::parse_input(i)?;
+                let arity = arities.entry(node).or_insert(1);
+                *arity = (*arity).max(slot + 1);
+            }
+        }
 
-impl Tractify<GraphDef> for Model {
-    fn tractify(graph: &GraphDef) -> TractResult<Model> {
-        let mut model = Model::default().with_context(Arc::new(crate::optim::TensorflowContext));
-        let op_builder = crate::ops::OpBuilder::new();
         for pbnode in graph.get_node().iter() {
             let name = pbnode.get_name().to_string();
-            let node_id = model.add_node(
-                name.clone(),
-                op_builder
-                    .build(pbnode)
-                    .map_err(|e| format!("While building node {}, {}", name, e.description()))?,
-            )?;
+            let output_arity = arities.get(&*name).cloned().unwrap_or(1);
+            let facts = tvec!(TensorFact::default(); output_arity);
 
-            // From the node_def.proto documentation:
-            // Each input is "node:src_output" with "node" being a string name and
-            // "src_output" indicating which output tensor to use from "node". If
-            // "src_output" is 0 the ":0" suffix can be omitted. Regular inputs may
-            // optionally be followed by control inputs that have the format "^node".
+            let op = match self.op_register.0.get(pbnode.get_op()) {
+                Some(builder) => (builder)(&ParsingContext, pbnode)?,
+                None => tract_core::ops::unimpl::UnimplementedOp::new(pbnode.get_op(),
+                            format!("{:?}", pbnode)).into(),
+            };
+
+            let node_id = model.add_node(name.clone(), op, facts)?;
+            if pbnode.get_op() == "PlaceHolder" {
+                let dt = pbnode.get_attr_datum_type("dtype")?;
+                let mut fact = TensorFact::dt(dt);
+                if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
+                    fact = fact.with_shape(shape)
+                }
+                model.set_outlet_fact(OutletId::new(node_id, 0), fact)?;
+            }
+        }
+
+        for (node_id, pbnode) in graph.get_node().iter().enumerate() {
+            if pbnode.get_op() == "NextIteration" {
+                continue;
+            }
             for (ix, i) in pbnode.get_input().iter().enumerate() {
-                let input: (&str, usize) = if i.starts_with("^") {
-                    (&i[1..], 0)
-                } else {
-                    let splits: Vec<_> = i.splitn(2, ':').collect();
-                    (
-                        splits[0],
-                        if splits.len() > 1 {
-                            splits[1].parse::<usize>()?
-                        } else {
-                            0
-                        },
-                    )
-                };
+                let input = Self::parse_input(i)?;
                 let prec = model.node_by_name(input.0)?.id;
-                model.add_edge(OutletId::new(prec, input.1), InletId::new(node_id, ix))?;
+                if i.starts_with("^") {
+                    model.node_mut(node_id).control_inputs.push(prec);
+                } else {
+                    let outlet = OutletId::new(prec, input.1);
+                    let inlet = InletId::new(node_id, ix);
+                    model.add_edge(outlet, inlet)?;
+                }
+            }
+        }
+
+        // variable -> assign rewire
+        //  * Assign consumes this by_ref tensor on #0 and somehow performs
+        //      updates on it (it has a second input on #1 for the value to
+        //      assign)
+        //
+        // in tract:
+        //  * VariableV2 outputs a regular tensor stored in the session state
+        //  * Assign has the same inputs, but do not uses the #0, udating the
+        //      state session instead
+        for id in 0..model.nodes().len() {
+            use crate::ops::vars::*;
+            if model.node(id).op_is::<Assign>() {
+                let prec = model.node(id).inputs[0];
+                let var_id = model.node(prec.node).op_as::<VariableV2>().map(|v| v.id.clone());
+                if let (Some(var_id), Some(assign)) =
+                    (var_id, model.node_mut(id).op_as_mut::<Assign>())
+                {
+                    assign.var_id = Some(var_id);
+                } else {
+                    bail!("Model contains unlinked Assign/Variable2");
+                }
             }
         }
         Ok(model)
     }
 }
+

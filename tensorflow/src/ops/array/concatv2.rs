@@ -1,7 +1,9 @@
 use ndarray::prelude::*;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
-pub fn build(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let n = pb.get_attr_int("N")?;
     let t = pb.get_attr_datum_type("T")?;
     let tidx = pb.get_attr_datum_type("Tidx")?;
@@ -16,18 +18,18 @@ pub struct ConcatV2<T: Copy + Datum> {
 }
 
 impl<T: Copy + Datum> StatelessOp for ConcatV2<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let axis: i32 = *inputs.pop().unwrap().to_scalar::<i32>()?;
         let mats: TractResult<Vec<ArrayViewD<T>>> =
             inputs.iter().map(|mat| mat.to_array_view()).collect();
         let result = ::ndarray::stack(Axis(axis as usize), &*mats?)?;
-        Ok(tvec![result.into()])
+        Ok(tvec![result.into_arc_tensor()])
     }
 }
 
 impl<T: Copy + Datum> Op for ConcatV2<T> {
     fn name(&self) -> Cow<str> {
-        "tf.ConvatV2".into()
+        "tf.ConcatV2".into()
     }
 }
 
@@ -48,7 +50,7 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         s.given(&inputs[self.n].value, move |s, axis| {
             let axis = *axis.to_scalar::<i32>()? as usize;
-            trace!("axis for Concatv2: {}", axis);
+            trace!("axis for ConcatV2: {}", axis);
             for d in 0..axis {
                 s.equals_all((0..self.n).map(|i| (&inputs[i].shape[d]).bex()).collect())?;
             }
@@ -73,4 +75,6 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
             s.equals_zero(concat_dim)
         })
     }
+
+    inference_op_as_op!();
 }

@@ -1,11 +1,13 @@
 use crate::pb::*;
-use tract_core::*;
+use tract_core::internal::*;
 
 use num_traits::{AsPrimitive, Bounded};
 
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Display};
 use std::str;
+
+use std::convert::TryInto;
 
 pub trait TryCollect<T, E>: Iterator<Item = Result<T, E>> + Sized {
     #[must_use]
@@ -97,7 +99,7 @@ pub trait AttrScalarType<'a>: 'a + Sized {
 impl<'a> AttrScalarType<'a> for Tensor {
     fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
         node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSOR)?
-            .and_try(|attr| attr.get_t().tractify())
+            .and_try(|attr| attr.get_t().try_into())
     }
 }
 
@@ -149,6 +151,13 @@ impl<'a> AttrScalarType<'a> for usize {
     }
 }
 
+impl<'a> AttrScalarType<'a> for &'a GraphProto {
+    fn get_attr_opt_scalar(node: &'a NodeProto, name: &str) -> TractResult<Option<Self>> {
+        node.get_attr_opt_with_type(name, AttributeProto_AttributeType::GRAPH)?
+            .and_ok(AttributeProto::get_g)
+    }
+}
+
 fn check_int<T>(node: &NodeProto, attr: &str, int: i64, is_list: bool) -> TractResult<T>
 where
     T: AsPrimitive<i64> + Bounded + Display,
@@ -175,7 +184,8 @@ macro_rules! impl_attr_scalar_type_int {
 
         impl<'a> AttrTVecType<'a> for $ty {
             fn get_attr_opt_tvec(
-                node: &'a NodeProto, name: &str,
+                node: &'a NodeProto,
+                name: &str,
             ) -> TractResult<Option<TVec<Self>>> {
                 AttrTVecType::get_attr_opt_tvec(node, name)?.and_try(|ints| {
                     ints.into_iter().map(|int| check_int(node, name, int, true)).try_collect()
@@ -238,7 +248,7 @@ where
 impl<'a> AttrTVecType<'a> for Tensor {
     fn get_attr_opt_tvec(node: &'a NodeProto, name: &str) -> TractResult<Option<TVec<Self>>> {
         node.get_attr_opt_with_type(name, AttributeProto_AttributeType::TENSORS)?
-            .and_try(|attr| attr.get_tensors().iter().map(|t| t.tractify()).try_collect())
+            .and_try(|attr| attr.get_tensors().iter().map(|t| t.try_into()).try_collect())
     }
 }
 
@@ -314,7 +324,9 @@ impl NodeProto {
     }
 
     fn get_attr_opt_with_type(
-        &self, name: &str, ty: AttributeProto_AttributeType,
+        &self,
+        name: &str,
+        ty: AttributeProto_AttributeType,
     ) -> TractResult<Option<&AttributeProto>> {
         let attr = match self.get_attribute().iter().find(|a| a.get_name() == name) {
             Some(attr) => attr,

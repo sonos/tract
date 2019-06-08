@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 use super::RmDims;
 
@@ -18,14 +18,14 @@ impl Squeeze {
             }
             Ok(shape)
         } else {
-            Ok(input.iter().cloned().filter(|&d| d != D::one()).collect())
+            Ok(input.into_iter().filter(|&d| d != &D::one()).cloned().collect())
         }
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(&self, input: SharedTensor) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
         let shape = self.compute_shape(input.shape())?;
-        Ok(tvec![input.to_array::<T>()?.into_shape(&*shape)?.into()])
+        Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(&*shape)?.into_arc_tensor()])
     }
 }
 
@@ -34,16 +34,17 @@ impl Op for Squeeze {
         "Squeeze".into()
     }
 
-    fn reduce(
+    fn declutter(
         &self,
-        _inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            if let Some(dims) = &self.axes {
-                return Ok(Some(ReducedOpRewire::unary(RmDims::new(dims.clone()))));
-            }
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(dims) = &self.axes {
+            return Ok(Some(TypedModelPatch::single_unary_op(
+                model,
+                node,
+                RmDims::new(dims.clone()),
+            )?));
         }
         Ok(None)
     }
@@ -51,7 +52,7 @@ impl Op for Squeeze {
 
 impl StatelessOp for Squeeze {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -67,14 +68,13 @@ impl InferenceRulesOp for Squeeze {
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         if let Some(ref axes) = self.axes {
-            s.equals(
-                &outputs[0].rank,
-                (&inputs[0].rank).bex() - axes.len() as i32,
-            )?;
+            s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - axes.len() as i32)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape)?;
             s.equals(&outputs[0].shape, output_shape)
         })
     }
+
+    inference_op_as_op!();
 }

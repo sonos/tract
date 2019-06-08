@@ -1,38 +1,37 @@
 #![cfg(feature = "conform")]
 #![allow(non_snake_case)]
+extern crate env_logger;
 #[macro_use]
 extern crate log;
 extern crate ndarray;
-extern crate pretty_env_logger;
 #[macro_use]
 extern crate proptest;
 extern crate protobuf;
-#[macro_use]
 extern crate tract_core;
 extern crate tract_tensorflow;
 
 mod utils;
 
+use crate::utils::*;
 use ndarray::prelude::*;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use protobuf::Message;
-use tract_core::Tensor as TractSharedTensor;
+use tract_core::prelude::*;
 use tract_tensorflow::conform::*;
 use tract_tensorflow::tfpb;
 use tract_tensorflow::tfpb::types::DataType::DT_INT32;
-use crate::utils::*;
 
-fn strat() -> BoxedStrategy<(usize, Vec<TractSharedTensor>)> {
+fn strat() -> BoxedStrategy<(usize, Vec<Tensor>)> {
     // input rank
     (1usize..8)
         // rank, dimensions, number of inputs
         .prop_flat_map(|r| (0usize..r, vec(1usize..5, r..r + 1), 1..5))
         .prop_map(|(ax, dims, n)| {
             let size = dims.iter().map(|a| *a).product::<usize>();
-            let mats: Vec<TractSharedTensor> = (0..n)
+            let mats: Vec<Tensor> = (0..n)
                 .map(|ix| {
-                    TractSharedTensor::from(
+                    Tensor::from(
                         Array::from_shape_vec(dims.clone(), ((ix * 1000)..).take(size).collect())
                             .unwrap(),
                     )

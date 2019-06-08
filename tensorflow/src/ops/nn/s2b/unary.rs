@@ -1,5 +1,6 @@
 use ndarray::*;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
+use tract_core::ops::cnn::ConvUnary;
 
 #[derive(Debug, Copy, Clone)]
 pub enum PaddingStrat {
@@ -21,15 +22,52 @@ impl Op for SpaceToBatchUnary {
     fn name(&self) -> Cow<str> {
         "SpaceToBatchUnary".into()
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(conv_node) = model.single_succ(node.id)? {
+            if let Some(b2s_node) = model.single_succ(conv_node.id)? {
+                if let (Some(conv_op), Some(_)) =
+                    (conv_node.op_as::<ConvUnary>(), b2s_node.op_as::<BatchToSpaceUnary>())
+                {
+                    let op = ConvUnary {
+                        data_format: conv_op.data_format,
+                        kernel_fmt: conv_op.kernel_fmt,
+                        padding: conv_op.padding.clone(), // FIXME
+                        dilations: self.block_shape.iter().map(|&i| i as usize).collect(),
+                        strides: conv_op.strides.clone(),
+                        kernel: conv_op.kernel.clone(),
+                        bias: conv_op.bias.clone(),
+                        full_input_shape: model.outlet_fact(node.inputs[0])?.shape.iter().collect(),
+                        full_output_shape: b2s_node.outputs[0].fact.shape.iter().collect(),
+                        group: conv_op.group,
+                    };
+                    let mut patch = TypedModelPatch::default();
+                    patch.tap_model(&model, node.inputs[0])?;
+                    let out = patch.model.chain(
+                        &*conv_node.name,
+                        op,
+                        tvec!(b2s_node.outputs[0].fact.clone()),
+                    )?;
+                    patch.shunt_outside(OutletId::new(b2s_node.id, 0), OutletId::new(out, 0))?;
+                    return Ok(Some(patch));
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl StatelessOp for SpaceToBatchUnary {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
-            let spread = (self.batch_shape[2 + ax] * self.block_shape[ax]
-                - self.space_shape[2 + ax])
+            let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
+                - &self.space_shape[2 + ax])
                 .to_integer()? as usize;
             let (bef, aft) = match strat {
                 PaddingStrat::FlexFixed(f) => (spread - f, f),
@@ -48,24 +86,6 @@ impl StatelessOp for SpaceToBatchUnary {
     }
 }
 
-impl InferenceRulesOp for SpaceToBatchUnary {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, self.datum_type)?;
-        s.equals(&outputs[0].datum_type, self.datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        s.equals(&outputs[0].shape, self.batch_shape.clone())?;
-        s.equals(&inputs[0].shape, self.space_shape.clone())?;
-        Ok(())
-    }
-}
 
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpaceUnary {
@@ -83,12 +103,12 @@ impl Op for BatchToSpaceUnary {
 }
 
 impl StatelessOp for BatchToSpaceUnary {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let mut paddings = unsafe { Array2::uninitialized((self.block_shape.len(), 2)) };
         for (ax, &strat) in self.pad.iter().enumerate() {
-            let spread = (self.batch_shape[2 + ax] * self.block_shape[ax]
-                - self.space_shape[2 + ax])
+            let spread = (self.batch_shape[2 + ax].clone() * self.block_shape[ax]
+                - &self.space_shape[2 + ax])
                 .to_integer()? as usize;
             let (bef, aft) = match strat {
                 PaddingStrat::FlexFixed(f) => (spread - f, f),
@@ -107,21 +127,3 @@ impl StatelessOp for BatchToSpaceUnary {
     }
 }
 
-impl InferenceRulesOp for BatchToSpaceUnary {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, self.datum_type)?;
-        s.equals(&outputs[0].datum_type, self.datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        s.equals(&inputs[0].shape, self.batch_shape.clone())?;
-        s.equals(&outputs[0].shape, self.space_shape.clone())?;
-        Ok(())
-    }
-}

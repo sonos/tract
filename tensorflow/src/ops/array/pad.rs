@@ -1,17 +1,17 @@
-use std::marker::PhantomData;
-
 use ndarray::{Array, ArrayD, ArrayView2, ArrayViewD};
 use num_traits::Zero;
 
-use tract_core::ops::prelude::*;
-use tract_core::TractResult;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
+use tract_core::internal::*;
 
 #[derive(Debug, Clone, Default, new)]
 pub struct Pad<T: Copy + Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn pad(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }
@@ -61,11 +61,11 @@ where
 }
 
 impl<T: Copy + Datum + Zero> StatelessOp for Pad<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, paddings) = args_2!(inputs);
         let input = input.to_array_view::<T>()?;
         let paddings = paddings.to_array_view::<i32>()?.into_dimensionality()?;
-        Ok(tvec![Self::compute(&input, paddings, None)?.into()])
+        Ok(tvec![Self::compute(&input, paddings, None)?.into_arc_tensor()])
     }
 }
 
@@ -99,28 +99,24 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::arr2;
-    use tract_core::Tensor;
 
     #[test]
     fn pad_0() {
-        let inputs = tvec![
-            Tensor::from(arr2(&[[1, 2, 3], [4, 5, 6]])).into(),
-            Tensor::from(arr2(&[[1, 1], [2, 2]])).into(),
-        ];
+        let inputs = tvec![rctensor2(&[[1, 2, 3], [4, 5, 6]]), rctensor2(&[[1, 1], [2, 2]]),];
 
-        let expected: TVec<_> = tvec!(Tensor::from(arr2(&[
+        let expected: TVec<_> = tvec!(rctensor2(&[
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 1, 2, 3, 0, 0],
             [0, 0, 4, 5, 6, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],
-        ]))
-        .into());
+        ]));
 
         assert_eq!(Pad::<i32>::new().eval(inputs).unwrap(), expected);
     }

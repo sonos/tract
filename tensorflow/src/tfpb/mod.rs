@@ -1,8 +1,7 @@
-//! Generated protobuf codec for SharedTensor models, plus a handful of helper for
+//! Generated protobuf codec for TensorFlow models, plus a handful of helper for
 //! writting tests.
 
 #![allow(unknown_lints)]
-#![allow(clippy)]
 
 #![cfg_attr(rustfmt, rustfmt_skip)]
 
@@ -31,7 +30,9 @@ pub mod versions;
 use self::node_def::NodeDef;
 use self::attr_value::AttrValue;
 
-use tract_core::{ TractResult, ToTract };
+use std::convert::TryInto;
+
+use tract_core::internal::*;
 
 pub fn graph() -> graph::GraphDef {
     graph::GraphDef::new()
@@ -52,6 +53,20 @@ pub fn tensor_f32(dim:Vec<usize>, values:Vec<f32>) -> tensor::TensorProto {
     }).collect());
     tensor.set_tensor_shape(shape);
     tensor.set_float_val(values);
+    tensor
+}
+
+pub fn tensor_i32(dim:Vec<usize>, values:Vec<i32>) -> tensor::TensorProto {
+    let mut tensor = tensor::TensorProto::new();
+    tensor.set_dtype(types::DataType::DT_INT32);
+    let mut shape = tensor_shape::TensorShapeProto::new();
+    shape.set_dim(dim.into_iter().map(|i| {
+        let mut d = tensor_shape::TensorShapeProto_Dim::new();
+        d.set_size(i as _);
+        d
+    }).collect());
+    tensor.set_tensor_shape(shape);
+    tensor.set_int_val(values);
     tensor
 }
 
@@ -124,27 +139,40 @@ impl node_def::NodeDef {
         }
     }
 
-    pub fn get_attr_datum_type(&self, name: &str) -> TractResult<tract_core::DatumType> {
+    pub fn get_attr_datum_type(&self, name: &str) -> TractResult<DatumType> {
         Ok(self.get_attr_opt_datum_type(name)?
             .ok_or_else(|| format!("Node {} ({}) expected datum_type attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<tract_core::DatumType>> {
+    pub fn get_attr_opt_datum_type(&self, name: &str) -> TractResult<Option<DatumType>> {
         if let Some(t) = self.get_attr().get(name) {
-            Ok(Some(t.get_field_type().tractify()?))
+            Ok(Some(t.get_field_type().try_into()?))
         } else {
             Ok(None)
         }
     }
 
-    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::Tensor> {
+    pub fn get_attr_shape(&self, name: &str) -> TractResult<TVec<usize>> {
+        Ok(self.get_attr_opt_shape(name)?
+            .ok_or_else(|| format!("Node {} ({}) expected shape attribute '{}'", self.get_name(), self.get_op(), name))?)
+    }
+
+    pub fn get_attr_opt_shape(&self, name: &str) -> TractResult<Option<TVec<usize>>> {
+        if let Some(t) = self.get_attr().get(name).map(|v| v.get_shape()) {
+            Ok(Some(t.try_into()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn get_attr_tensor(&self, name: &str) -> TractResult<tract_core::internal::Tensor> {
         Ok(self.get_attr_opt_tensor(name)?
             .ok_or_else(|| format!("Node {} ({}) expected tensor attribute '{}'", self.get_name(), self.get_op(), name))?)
     }
 
-    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::Tensor>> {
+    pub fn get_attr_opt_tensor(&self, name: &str) -> TractResult<Option<tract_core::internal::Tensor>> {
         if let Some(t) = self.get_attr().get(name).map(|v| v.get_tensor()) {
-            Ok(Some(t.tractify()?))
+            Ok(Some(t.try_into()?))
         } else {
             Ok(None)
         }
@@ -207,6 +235,12 @@ impl<'a> From<&'a str> for AttrValue {
         let mut value = attr_value::AttrValue::new();
         value.set_s(t.to_string().into_bytes());
         value
+    }
+}
+
+impl From<i32> for AttrValue {
+    fn from(t: i32) -> AttrValue {
+        AttrValue::from(t as i64)
     }
 }
 

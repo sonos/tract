@@ -6,15 +6,6 @@ set -ex
 exec 200>$LOCKFILE || exit 1
 flock -n 200 || { echo "WARN: flock() failed." >&2; exit 0; }
 
-if nc --version
-then
-    # GNU
-    NC="nc -c -w 5"
-else
-    # BSD
-    NC="nc -q 5"
-fi
-
 mkdir -p $WORKDIR/taskdone/
 for task in `aws s3 ls $S3PATH_TASKS/$PLATFORM/ | awk '{ print $4; }'`
 do
@@ -41,7 +32,21 @@ do
     aws s3 cp stdout.log.gz s3://$S3PATH_RESULTS/$MINION_ID/$task_name/stdout.log.gz
     touch $WORKDIR/taskdone/$task_name
     cat metrics | sed "s/^/$GRAPHITE_PREFIX.$PLATFORM.$MINION_ID.$TRAVIS_BRANCH_SANE./;s/$/ $TIMESTAMP/" \
-        | tr '-' '_' | $NC $GRAPHITE_HOST $GRAPHITE_PORT
+        | tr '-' '_' > graphite
+    if nc --version
+    then
+	# GNU
+	export GRAPHITE_HOST
+	export GRAPHITE_PORT
+	cat graphite | while read line
+	do
+		echo $line | nc -c -w 1 $GRAPHITE_HOST $GRAPHITE_PORT
+	done
+    else
+        # BSD
+	nc -q 5 $GRAPHITE_HOST $GRAPHITE_PORT < graphite
+    fi
+
 done
 
 sleep 1

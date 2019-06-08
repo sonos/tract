@@ -1,41 +1,47 @@
-use std::marker::PhantomData;
+use tract_core::internal::*;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
 
-use tract_core::ops::prelude::*;
-
-#[derive(Debug, Clone, Default, new)]
-pub struct Fill<T: Copy + Datum> {
-    _phantom: PhantomData<T>,
+#[derive(Debug, Clone, new)]
+pub struct Fill {
+    dt: DatumType,
 }
 
-pub fn fill(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+pub fn fill(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
-    Ok(boxed_new!(Fill(dtype)()))
+    Ok(Box::new(Fill::new(dtype)))
 }
 
-impl<T> Op for Fill<T>
-where
-    T: Copy + Datum,
-{
+impl Fill {
+    fn eval_t<T: Datum>(
+        &self,
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let (shape, value) = args_2!(inputs);
+        let value = value.to_scalar::<T>()?;
+        let shape = shape.cast_to::<i32>()?;
+        let shape = shape.to_array_view::<i32>()?;
+        let array = ::ndarray::Array::from_shape_fn(
+            shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
+            |_| value.clone(),
+        );
+        Ok(tvec![array.into_arc_tensor()])
+    }
+}
+
+impl Op for Fill {
     fn name(&self) -> Cow<str> {
         "tf.Fill".into()
     }
 }
 
-impl<T: Copy + Datum> StatelessOp for Fill<T> {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let (shape, value) = args_2!(inputs);
-        let value = value.to_array_view()?;
-        let value: T = value[[]];
-        let shape = shape.to_array_view::<i32>()?;
-        let array = ::ndarray::Array::from_elem(
-            shape.iter().map(|i| *i as usize).collect::<Vec<usize>>(),
-            value,
-        );
-        Ok(tvec![array.into()])
+impl StatelessOp for Fill {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        dispatch_datum!(Self::eval_t(self.dt)(self, inputs))
     }
 }
 
-impl<T: Copy + Datum> InferenceRulesOp for Fill<T> {
+impl InferenceRulesOp for Fill {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -44,7 +50,8 @@ impl<T: Copy + Datum> InferenceRulesOp for Fill<T> {
     ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, T::datum_type())?;
+        s.equals(&outputs[0].datum_type, self.dt)?;
+        s.equals(&inputs[1].datum_type, self.dt)?;
         s.equals(&inputs[0].rank, 1)?;
         s.equals(&inputs[1].rank, 0)?;
         s.equals(outputs[0].rank.bex().to_dim(), &inputs[0].shape[0])?;
@@ -55,4 +62,6 @@ impl<T: Copy + Datum> InferenceRulesOp for Fill<T> {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }

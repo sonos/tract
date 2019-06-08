@@ -1,45 +1,61 @@
-use crate::model::Node;
-use crate::TractResult;
+//! Evaluation order for nodes.
+use crate::internal::*;
 use bit_set;
+use std::fmt::{Debug, Display};
 
-pub fn eval_order(model: &super::Model) -> TractResult<Vec<usize>> {
-    let inputs = model
-        .inputs()?
-        .iter()
-        .map(|n| n.node)
-        .collect::<Vec<usize>>();
-    let targets = model
-        .outputs()?
-        .iter()
-        .map(|n| n.node)
-        .collect::<Vec<usize>>();
+/// Find an evaluation order for a model, using its default inputs and outputs
+/// as boundaries.
+pub fn eval_order<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsMut<Op>>(
+    model: &super::Model<TI, O>,
+) -> TractResult<Vec<usize>> {
+    let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
+    let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     eval_order_for_nodes(model.nodes(), &inputs, &targets)
 }
 
-pub fn eval_order_for_nodes(
-    nodes: &[Node],
+/// Find a working evaluation order for a list of nodes.
+pub fn eval_order_for_nodes<TI: TensorInfo, O: Debug + Display + AsRef<Op> + AsMut<Op>>(
+    nodes: &[BaseNode<TI, O>],
     inputs: &[usize],
     targets: &[usize],
 ) -> TractResult<Vec<usize>> {
     let mut done = bit_set::BitSet::with_capacity(nodes.len());
-    let mut needed: Vec<usize> = vec![];
     let mut order: Vec<usize> = vec![];
-    for &t in targets {
-        needed.push(t);
-    }
-    while let Some(&node) = needed.last() {
-        if done.contains(node) {
-            needed.pop();
+    for &target in targets {
+        if done.contains(target) {
             continue;
         }
-        if inputs.contains(&node) || nodes[node].inputs.iter().all(|i| done.contains(i.node)) {
-            order.push(node);
-            needed.pop();
-            done.insert(node);
-        } else {
-            for input in nodes[node].inputs.iter().rev() {
-                if !done.contains(input.node) {
-                    needed.push(input.node);
+        let mut current_stack: Vec<(usize, usize)> = vec![(target, 0)];
+        let mut pending = bit_set::BitSet::with_capacity(nodes.len());
+        while let Some((current_node, current_input)) = current_stack.pop() {
+            if inputs.contains(&current_node)
+                || current_input
+                    == nodes[current_node].inputs.len() + nodes[current_node].control_inputs.len()
+            {
+                order.push(current_node);
+                done.insert(current_node);
+                pending.remove(current_node);
+            } else {
+                let precursor = if current_input < nodes[current_node].inputs.len() {
+                    nodes[current_node].inputs[current_input].node
+                } else {
+                    nodes[current_node].control_inputs[current_input- nodes[current_node].inputs.len()]
+                };
+                if done.contains(precursor) {
+                    current_stack.push((current_node, current_input + 1));
+                } else if pending.contains(precursor) {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!("Loop detected:");
+                        current_stack
+                            .iter()
+                            .skip_while(|s| s.0 != precursor)
+                            .for_each(|n| debug!("  {}", nodes[n.0]));
+                    }
+                    bail!("Loop detected")
+                } else {
+                    pending.insert(precursor);
+                    current_stack.push((current_node, current_input));
+                    current_stack.push((precursor, 0));
                 }
             }
         }
@@ -49,31 +65,40 @@ pub fn eval_order_for_nodes(
 
 #[cfg(test)]
 mod tests {
-    use crate::model::dsl::ModelDsl;
-    use crate::model::*;
+    use crate::internal::*;
     use crate::ops::math::Add;
-    use crate::*;
 
     #[test]
-    fn test_simple() {
+    fn simple() {
         let mut model = Model::default();
-        model.add_source("a").unwrap();
-        model.chain("add", Box::new(Add::default())).unwrap();
-        model.add_const("b", Tensor::from(12.0f32).into()).unwrap();
-        model
-            .add_edge(OutletId::new(2, 0), InletId::new(1, 1))
-            .unwrap();
+        model.add_source_default("a").unwrap();
+        model.chain_default("add", Add::default()).unwrap();
+        model.add_const("b", Tensor::from(12.0f32)).unwrap();
+        model.add_edge(OutletId::new(2, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 2, 1));
     }
 
     #[test]
-    fn test_diamond() {
+    fn diamond() {
         let mut model = Model::default();
-        model.add_source("a").unwrap();
-        model.chain("add", Box::new(Add::default())).unwrap();
-        model
-            .add_edge(OutletId::new(0, 0), InletId::new(1, 1))
-            .unwrap();
+        model.add_source_default("a").unwrap();
+        model.chain_default("add", Add::default()).unwrap();
+        model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 1));
+    }
+
+    #[test]
+    fn dodge_loop() {
+        let mut model = Model::default();
+        model.add_source_default("a").unwrap();
+        let add = model.chain_default("add", Add::default()).unwrap();
+        let neg = model.chain_default("neg", Add::default()).unwrap();
+        model.add_edge(OutletId::new(neg, 0), InletId::new(add, 1)).unwrap();
+        model.set_output_outlets(&tvec!(OutletId::new(neg, 0))).unwrap();
+        let (rx, tx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            rx.send(model.eval_order()).unwrap();
+        });
+        assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
     }
 }

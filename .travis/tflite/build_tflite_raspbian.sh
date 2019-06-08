@@ -26,5 +26,3 @@ docker run --rm \
         make -j 3 -f tensorflow/lite/tools/make/Makefile TARGET=rpi TARGET_ARCH=armv6;
         cp /tensorflow/tensorflow/lite/tools/make/gen/rpi_armv6/bin/benchmark_model /result/tflite_benchmark_model_rpitools
     "
-
-aws s3 sync result/ s3://tract-ci-builds/model/

@@ -1,8 +1,10 @@
-use crate::tfpb::node_def::NodeDef;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
-pub fn fused_batch_norm(node: &NodeDef) -> TractResult<Box<Op>> {
-    let epsilon = node.get_attr_float::<f32>("epsilon")?;
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
+pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+    let epsilon = pb.get_attr_float::<f32>("epsilon")?;
     Ok(Box::new(FusedBatchNorm::new(epsilon)))
 }
 
@@ -16,30 +18,26 @@ impl Op for FusedBatchNorm {
         "tf.FusedBatchNorm".into()
     }
 
-    fn rounding_errors(&self) -> bool {
-        true
-    }
-
-    fn noutputs(&self) -> usize {
-        1
+    fn validation(&self) -> Validation {
+        Validation::Rounding
     }
 }
 
 impl StatelessOp for FusedBatchNorm {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, scale, offset, mean, variance) = args_5!(inputs);
-        let mut data = data.to_array::<f32>()?;
-        let scale = scale.to_array::<f32>()?;
-        let offset = offset.to_array::<f32>()?;
-        let mean = mean.to_array::<f32>()?;
-        let variance = variance.to_array::<f32>()?;
+        let mut data = data.into_tensor().into_array::<f32>()?;
+        let scale = scale.to_array_view::<f32>()?;
+        let offset = offset.to_array_view::<f32>()?;
+        let mean = mean.to_array_view::<f32>()?;
+        let variance = variance.to_array_view::<f32>()?;
         let rsqrt_var = variance.mapv(|x| (x + self.epsilon).sqrt().recip());
         data -= &mean;
         data *= &rsqrt_var;
         data *= &scale;
         data += &offset;
-        Ok(tvec!(data.into()))
+        Ok(tvec!(data.into_arc_tensor()))
     }
 }
 
@@ -70,4 +68,6 @@ impl InferenceRulesOp for FusedBatchNorm {
         s.equals(&inputs[4].shape[0], &inputs[0].shape[3])?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

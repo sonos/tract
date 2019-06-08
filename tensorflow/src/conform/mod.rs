@@ -1,4 +1,5 @@
 #![allow(unused)]
+#![allow(deprecated)]
 #![allow(non_snake_case)]
 
 error_chain! {
@@ -15,7 +16,7 @@ error_chain! {
 
 impl ::std::convert::From<::tensorflow::Status> for Error {
     fn from(tfs: ::tensorflow::Status) -> Error {
-        format!("SharedTensor error: {:?}", tfs).into()
+        format!("Tensorflow error: {:?}", tfs).into()
     }
 }
 
@@ -24,9 +25,9 @@ pub mod tf;
 pub use protobuf::Message;
 
 use crate::tfpb;
-use crate::tfpb::tensor_shape::{ TensorShapeProto, TensorShapeProto_Dim };
+use crate::tfpb::tensor_shape::{TensorShapeProto, TensorShapeProto_Dim};
 use crate::tfpb::types::DataType;
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 pub fn placeholder<Shape: Into<Option<TensorShapeProto>>>(
     name: &str,
@@ -54,8 +55,24 @@ pub fn tensor_shape(dims: &[usize]) -> TensorShapeProto {
     shape
 }
 
+pub fn const_f32(name: &str, t: &Tensor) -> tfpb::node_def::NodeDef {
+    let mut tf = crate::tfpb::tensor_f32(
+        t.shape().iter().cloned().collect(),
+        t.to_array_view::<f32>().unwrap().iter().cloned().collect(),
+    );
+    tfpb::node().name(name).op("Const").attr("dtype", DataType::DT_FLOAT).attr("value", tf)
+}
+
 pub fn placeholder_f32(name: &str) -> tfpb::node_def::NodeDef {
     placeholder(name, DataType::DT_FLOAT, None)
+}
+
+pub fn const_i32(name: &str, t: &Tensor) -> tfpb::node_def::NodeDef {
+    let mut tf = crate::tfpb::tensor_i32(
+        t.shape().iter().cloned().collect(),
+        t.to_array_view::<i32>().unwrap().iter().cloned().collect(),
+    );
+    tfpb::node().name(name).op("Const").attr("dtype", DataType::DT_INT32).attr("value", tf)
 }
 
 pub fn placeholder_i32(name: &str) -> tfpb::node_def::NodeDef {

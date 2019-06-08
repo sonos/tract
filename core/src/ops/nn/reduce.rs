@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::prelude::*;
 use num_traits::cast::AsPrimitive;
 
@@ -43,7 +43,7 @@ pub enum Reducer {
 }
 
 impl Reducer {
-    fn reduce(&self, reduce: &Reduce, input: SharedTensor) -> TractResult<SharedTensor> {
+    fn reduce(&self, reduce: &Reduce, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let dt = input.datum_type();
         match self {
             Reducer::L1 => match dt {
@@ -75,36 +75,26 @@ impl Reducer {
         }
     }
 
-    fn reduce_t<T, F>(
-        &self,
-        reduce: &Reduce,
-        input: SharedTensor,
-        f: F,
-    ) -> TractResult<SharedTensor>
+    fn reduce_t<T, F>(&self, reduce: &Reduce, input: Arc<Tensor>, f: F) -> TractResult<Arc<Tensor>>
     where
         F: for<'a> Fn(ArrayViewD<'a, T>) -> T,
         T: Copy + Datum,
     {
         use ndarray::*;
-        let input = input.to_array::<T>()?;
+        let rank = input.shape().len();
+        let input = input.to_array_view::<T>()?;
         let full_output_shape: Vec<usize> = input
             .shape()
             .iter()
             .enumerate()
-            .map(|(ax, &d)| if reduce.must_reduce(ax) { 1 } else { d })
+            .map(|(ax, &d)| if reduce.must_reduce(ax, rank) { 1 } else { d })
             .collect();
         let mut result = Array::from_shape_fn(&*full_output_shape, |coords| {
             let slice_spec: Vec<SliceOrIndex> = coords
                 .slice()
                 .iter()
                 .enumerate()
-                .map(|(ax, &d)| {
-                    if reduce.must_reduce(ax) {
-                        (..).into()
-                    } else {
-                        d.into()
-                    }
-                })
+                .map(|(ax, &d)| if reduce.must_reduce(ax, rank) { (..).into() } else { d.into() })
                 .collect();
             let slice_info = SliceInfo::new(&slice_spec).unwrap();
             let slice = input.slice(slice_info.as_ref());
@@ -112,12 +102,12 @@ impl Reducer {
         });
         if !reduce.keep_dims {
             for ax in (0..full_output_shape.len()).rev() {
-                if reduce.must_reduce(ax) {
+                if reduce.must_reduce(ax, rank) {
                     result = result.index_axis_move(Axis(ax), 0);
                 }
             }
         }
-        Ok(result.into())
+        Ok(result.into_arc_tensor())
     }
 }
 
@@ -140,9 +130,7 @@ where
     T: Copy + Datum + AsPrimitive<f64>,
     f64: AsPrimitive<T>,
 {
-    v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2))
-        .sqrt()
-        .as_()
+    v.fold(0.0f64, |acc, &v| acc + (v.as_()).powi(2)).sqrt().as_()
 }
 
 fn log_sum_t<'a, T>(v: ArrayViewD<'a, T>) -> T
@@ -206,17 +194,35 @@ where
 
 #[derive(Clone, Debug, new)]
 pub struct Reduce {
-    axes: Option<Vec<usize>>,
+    axes: Option<Vec<i64>>,
     keep_dims: bool,
     reducer: Reducer,
 }
 
 impl Reduce {
-    pub fn must_reduce(&self, ax: usize) -> bool {
-        self.axes
-            .as_ref()
-            .map(|axes| axes.contains(&ax))
-            .unwrap_or(true)
+    pub fn must_reduce(&self, ax: usize, rank: usize) -> bool {
+        let resolved_axes: Option<Vec<usize>> = match &self.axes {
+            None => None,
+            Some(original_axes) => {
+                let mut ans: Vec<usize> = vec![];
+                for or_ax in original_axes.iter() {
+                    ans.push(Self::resolve_axis(*or_ax, rank as i64).unwrap());
+                }
+                Some(ans)
+            }
+        };
+
+        resolved_axes.as_ref().map(|axes| axes.contains(&ax)).unwrap_or(true)
+    }
+
+    fn resolve_axis(axis: i64, rank: i64) -> TractResult<usize> {
+        if 0 <= axis && axis <= rank - 1 {
+            Ok(axis as usize)
+        } else if -rank <= axis && axis < 0 {
+            Ok((axis + rank) as usize)
+        } else {
+            bail!("Illegal combination of values for rank and axis: {} and {}", rank, axis)
+        }
     }
 }
 
@@ -224,10 +230,23 @@ impl Op for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?.clone();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
 }
 
 impl StatelessOp for Reduce {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Ok(tvec!(self.reducer.reduce(&self, args_1!(inputs))?))
     }
 }
@@ -244,10 +263,7 @@ impl InferenceRulesOp for Reduce {
         if self.keep_dims {
             s.equals(&inputs[0].rank, &outputs[0].rank)?;
         } else if let Some(axes) = self.axes.as_ref() {
-            s.equals(
-                (&inputs[0].rank).bex() - axes.len() as i32,
-                &outputs[0].rank,
-            )?;
+            s.equals((&inputs[0].rank).bex() - axes.len() as i32, &outputs[0].rank)?;
         } else {
             s.equals(&outputs[0].rank, 0)?;
         }
@@ -255,19 +271,21 @@ impl InferenceRulesOp for Reduce {
             let out_shape: TVec<TDim> = shape
                 .iter()
                 .enumerate()
-                .filter_map(|(ix, &d)| {
-                    if self.must_reduce(ix) {
+                .filter_map(|(ix, d)| {
+                    if self.must_reduce(ix, shape.len()) {
                         if self.keep_dims {
                             Some(1.to_dim())
                         } else {
                             None
                         }
                     } else {
-                        Some(d)
+                        Some(d.clone())
                     }
                 })
                 .collect();
             s.equals(&outputs[0].shape, out_shape)
         })
     }
+
+    inference_op_as_op!();
 }

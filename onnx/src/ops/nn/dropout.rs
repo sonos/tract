@@ -1,0 +1,68 @@
+use ndarray::*;
+use tract_core::internal::*;
+use tract_core::ops::identity::Identity;
+use crate::model::ParsingContext;
+use crate::pb::*;
+
+pub fn dropout(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
+    Ok(Box::new(Dropout::new(node.get_output().len() == 2)))
+}
+
+#[derive(Debug, Clone, new, Default)]
+pub struct Dropout {
+    output_mask: bool,
+}
+
+impl Op for Dropout {
+    fn name(&self) -> Cow<str> {
+        "onnx.Dropout".into()
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if node.outputs.len() == 1 || node.outputs[1].successors.len() == 0 {
+            Ok(Some(TypedModelPatch::single_unary_op(model, node, Identity)?))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl StatelessOp for Dropout {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        if self.output_mask {
+            let input = args_1!(inputs);
+            let mask = ArrayD::from_elem(input.shape(), true);
+            Ok(tvec!(input, mask.into_arc_tensor()))
+        } else {
+            Ok(inputs)
+        }
+    }
+}
+
+impl InferenceRulesOp for Dropout {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
+        if outputs.len() > 2 || outputs.len() == 0 {
+            bail!("Dropout shoud have 1 or 2 outputs, found {}", outputs.len());
+        }
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].shape, &outputs[0].shape)?;
+        if outputs.len() == 2 {
+            s.equals(&outputs[1].datum_type, bool::datum_type())?;
+            s.equals(&inputs[0].shape, &outputs[1].shape)?;
+        }
+        Ok(())
+    }
+
+    inference_op_as_op!();
+}

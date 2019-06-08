@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::*;
 
 #[derive(Debug, Clone, new, Default)]
@@ -16,18 +16,22 @@ impl Split {
             Ok(tvec!(input/self.outputs;self. outputs))
         }
     }
-    fn eval_t<T: Datum>(&self, input: SharedTensor) -> TractResult<TVec<SharedTensor>> {
+    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
         let mut current = 0;
         let input = input.to_array_view::<T>()?;
         Ok(self
             .split_dims(input.shape()[self.axis])?
             .iter()
-            .map(|d| {
-                let slice = input
-                    .slice_axis(Axis(self.axis), (current..current + d).into())
-                    .to_owned();
+            .map(|&d| {
+                let slice = if d > 0 {
+                    input.slice_axis(Axis(self.axis), (current..current + d).into()).to_owned()
+                } else {
+                    let mut shape: TVec<usize> = input.shape().into();
+                    shape[self.axis] = 0;
+                    ArrayD::<T>::default(&*shape)
+                };
                 current += d;
-                slice.into()
+                slice.into_arc_tensor()
             })
             .collect())
     }
@@ -41,7 +45,7 @@ impl Op for Split {
 
 impl StatelessOp for Split {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_datum!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -61,14 +65,16 @@ impl InferenceRulesOp for Split {
             s.equals(&inputs[0].rank, &outputs[i].rank)
         })?;
         s.given(&inputs[0].shape, move |s, shape| {
-            let dims = self.split_dims(shape[self.axis])?;
+            let dims = self.split_dims(shape[self.axis].clone())?;
             for i in 0..self.outputs {
                 let mut shape = shape.clone();
-                shape[self.axis] = dims[i];
+                shape[self.axis] = dims[i].clone();
                 s.equals(&outputs[i].shape, shape)?;
             }
             Ok(())
         })?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

@@ -1,17 +1,19 @@
-//! `Tensor` is the equivalent of SharedTensor Tensor.
+//! `Tensor` is the main data container for tract
 use crate::dim::TDim;
+use crate::tensor::litteral::*;
 use crate::tensor::Tensor;
 use crate::TractResult;
-use ndarray::prelude::*;
 use std::fmt;
 
-use crate::ndarray_dummy_packed_mm::*;
 use tract_linalg::f16::f16;
+
+mod arrays;
+pub use arrays::ArrayDatum;
 
 #[cfg(feature = "serialize")]
 use serde::ser::{Serialize, Serializer};
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub enum DatumType {
     Bool,
@@ -32,32 +34,14 @@ impl DatumType {
     pub fn super_types(&self) -> &'static [DatumType] {
         match self {
             DatumType::Bool => &[DatumType::Bool],
-            DatumType::U8 => &[
-                DatumType::U8,
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
-            DatumType::U16 => &[
-                DatumType::U16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
-            DatumType::I8 => &[
-                DatumType::I8,
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
-            DatumType::I16 => &[
-                DatumType::I16,
-                DatumType::I32,
-                DatumType::I64,
-                DatumType::TDim,
-            ],
+            DatumType::U8 => {
+                &[DatumType::U8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim]
+            }
+            DatumType::U16 => &[DatumType::U16, DatumType::I32, DatumType::I64, DatumType::TDim],
+            DatumType::I8 => {
+                &[DatumType::I8, DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim]
+            }
+            DatumType::I16 => &[DatumType::I16, DatumType::I32, DatumType::I64, DatumType::TDim],
             DatumType::I32 => &[DatumType::I32, DatumType::I64, DatumType::TDim],
             DatumType::I64 => &[DatumType::I64, DatumType::TDim],
             DatumType::F16 => &[DatumType::F16, DatumType::F32, DatumType::F64],
@@ -121,26 +105,21 @@ impl DatumType {
 }
 
 pub trait Datum:
-    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq
+    Clone + Send + Sync + fmt::Debug + fmt::Display + Default + 'static + PartialEq + ArrayDatum
 {
     fn name() -> &'static str;
     fn datum_type() -> DatumType;
-
-    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Option<Box<tract_linalg::MatMul<Self>>>;
 }
 
-pub(crate) trait TryInto<D: Datum> {
+pub(crate) trait TryInto<D> {
     fn try_into(&self) -> TractResult<D>;
 }
 
 macro_rules! datum {
     ($t:ident, $v:ident) => {
-        datum!($t, $v, |_, _, _| None);
-    };
-    ($t:ident, $v:ident, $matmul:expr) => {
         impl From<$t> for Tensor {
             fn from(it: $t) -> Tensor {
-                arr0(it).into()
+                tensor0(it)
             }
         }
 
@@ -151,14 +130,6 @@ macro_rules! datum {
 
             fn datum_type() -> DatumType {
                 DatumType::$v
-            }
-
-            fn packed_mat_mul(
-                m: usize,
-                k: usize,
-                n: usize,
-            ) -> Option<Box<tract_linalg::MatMul<Self>>> {
-                $matmul(m, k, n)
             }
         }
     };
@@ -196,7 +167,28 @@ try_into!(i16, f32);
 try_into!(i32, f32);
 try_into!(i64, f32);
 
+try_into!(i8, f64);
+try_into!(i16, f64);
+try_into!(i32, f64);
+try_into!(i64, f64);
+
+try_into!(f32, i8);
+try_into!(f32, i16);
+try_into!(f32, i32);
+try_into!(f32, i64);
+
+try_into!(f64, i8);
+try_into!(f64, i16);
+try_into!(f64, i32);
+try_into!(f64, i64);
+
 impl TryInto<TDim> for i32 {
+    fn try_into(&self) -> TractResult<TDim> {
+        Ok((*self).into())
+    }
+}
+
+impl TryInto<TDim> for i64 {
     fn try_into(&self) -> TractResult<TDim> {
         Ok((*self).into())
     }
@@ -216,6 +208,16 @@ impl TryInto<i64> for TDim {
 
 impl TryInto<f32> for bool {
     fn try_into(&self) -> TractResult<f32> {
+        if *self {
+            Ok(1.0)
+        } else {
+            Ok(0.0)
+        }
+    }
+}
+
+impl TryInto<f64> for bool {
+    fn try_into(&self) -> TractResult<f64> {
         if *self {
             Ok(1.0)
         } else {
@@ -268,15 +270,9 @@ impl TryInto<f32> for String {
 }
 
 datum!(bool, Bool);
-datum!(f16, F16, |m, k, n| Some(
-    Box::new(NdArrayDummyPackedMatMul::new(m, k, n)) as _
-));
-datum!(f32, F32, |m, k, n| if m != 1 {
-    Some((tract_linalg::ops().smm)(m, k, n))
-} else {
-    Some(Box::new(NdArrayDummyPackedMatMul1xKxN::new(k, n)) as _)
-});
-datum!(f64, F64, |m, k, n| Some((tract_linalg::ops().dmm)(m, k, n)));
+datum!(f16, F16);
+datum!(f32, F32);
+datum!(f64, F64);
 datum!(i8, I8);
 datum!(i16, I16);
 datum!(i32, I32);
@@ -286,22 +282,80 @@ datum!(u16, U16);
 datum!(TDim, TDim);
 datum!(String, String);
 
+pub trait FloatLike: Datum {
+    fn packed_direct_conv(
+        m: usize,
+        kernel_offsets: Vec<isize>,
+        data_offsets: Vec<isize>,
+    ) -> Box<tract_linalg::Conv<Self>>;
+    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<tract_linalg::MatMul<Self>>;
+    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<tract_linalg::VecMatMul<Self>>;
+}
+
+impl FloatLike for f16 {
+    fn packed_direct_conv(
+        _m: usize,
+        _kernel_offsets: Vec<isize>,
+        _data_offsets: Vec<isize>,
+    ) -> Box<tract_linalg::Conv<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn packed_mat_mul(_m: usize, _k: usize, _n: usize) -> Box<tract_linalg::MatMul<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<tract_linalg::VecMatMul<Self>> {
+        unimplemented!("f16 ops");
+    }
+}
+
+impl FloatLike for f32 {
+    fn packed_direct_conv(
+        m: usize,
+        kernel_offsets: Vec<isize>,
+        data_offsets: Vec<isize>,
+    ) -> Box<tract_linalg::Conv<Self>> {
+        (tract_linalg::ops().sconv)(m, kernel_offsets, data_offsets)
+    }
+    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<tract_linalg::MatMul<Self>> {
+        (tract_linalg::ops().smm)(m, k, n)
+    }
+    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<tract_linalg::VecMatMul<Self>> {
+        (tract_linalg::ops().svmm)(k, n)
+    }
+}
+
+impl FloatLike for f64 {
+    fn packed_direct_conv(
+        _m: usize,
+        _kernel_offsets: Vec<isize>,
+        _data_offsets: Vec<isize>,
+    ) -> Box<tract_linalg::Conv<Self>> {
+        unimplemented!("f64 ops");
+    }
+    fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<tract_linalg::MatMul<Self>> {
+        (tract_linalg::ops().dmm)(m, k, n)
+    }
+    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<tract_linalg::VecMatMul<Self>> {
+        unimplemented!("f64 ops");
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::datum::*;
-    use crate::dim::ToDim;
+    use crate::internal::*;
+    use ndarray::arr1;
 
     #[test]
     fn test_array_to_tensor_to_array() {
         let array = arr1(&[12i32, 42]);
-        let dt_array = Tensor::from(array.clone());
-        let view = dt_array.to_array_view::<i32>().unwrap();
+        let tensor = Tensor::from(array.clone());
+        let view = tensor.to_array_view::<i32>().unwrap();
         assert_eq!(array, view.into_dimensionality().unwrap());
     }
 
     #[test]
     fn test_cast_dim_to_dim() {
-        let t_dim: Tensor = arr1(&[12isize.to_dim(), 42isize.to_dim()]).into();
+        let t_dim: Tensor = tensor1(&[12isize.to_dim(), 42isize.to_dim()]);
         let t_i32 = t_dim.cast_to::<i32>().unwrap();
         let t_dim_2 = t_i32.cast_to::<TDim>().unwrap().into_owned();
         assert_eq!(t_dim, t_dim_2);
@@ -309,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_cast_i32_to_dim() {
-        let t_i32: Tensor = arr1(&[0i32, 0]).into();
+        let t_i32: Tensor = tensor1(&[0i32, 0]);
         t_i32.cast_to::<TDim>().unwrap();
     }
 }

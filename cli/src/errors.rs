@@ -3,7 +3,6 @@
 use ndarray;
 use tract_core;
 
-/// Configures error handling for this crate.
 error_chain! {
     types {
         CliError, CliErrorKind, CliResultExt, CliResult;
@@ -17,5 +16,6 @@ error_chain! {
         Io(::std::io::Error);
         NumParseInt(::std::num::ParseIntError);
         NdarrayShape(ndarray::ShapeError);
+        NdarrayNpyReadNpz(ndarray_npy::ReadNpzError);
     }
 }

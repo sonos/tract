@@ -1,190 +1,127 @@
-use colored::Colorize;
-use errors::*;
+use itertools::Itertools;
+use ndarray::ArrayD;
 use ndarray::Axis;
-use simplelog::Level::Info;
-use tract_core::analyser::TensorFact;
-use tract_core::streaming::prelude::*;
-use tract_core::{SimplePlan, Tensor};
-use tract_core::plan::SimpleState;
-use {OutputParameters, Parameters};
 
-pub fn handle(params: Parameters, output_params: OutputParameters) -> CliResult<()> {
-    let model = params.tract_model;
-    let input = model.input_fact()?;
+use tract_core::model::{OutletId, TensorInfo};
+use tract_core::plan::{SimplePlan, SimpleState};
+
+use crate::display_graph;
+use crate::{CliResult, Parameters, SomeModel};
+
+pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
+    let (fixed, pulsed) = if let SomeModel::Pulsed(n, p) = params.tract_model {
+        (n, p)
+    } else {
+        unreachable!();
+    };
+
+    let fixed_input_fact = fixed.input_fact(0)?;
+    let pulsed_input_fact = pulsed.input_fact(0)?;
+    let pulse = pulsed_input_fact.pulse();
 
     // First generate random values for the inputs.
-    let fixed_input = ::tensor::make_inputs_stream(&[input.clone()], 500)?.remove(0);
-    let wanted_matches = 20;
+    let display_graph =
+        display_graph::DisplayGraph::from_model_and_options(pulsed.clone(), options)?
+            .with_graph_def(&params.graph)?;
 
-    let regular_input_fact = TensorFact::default()
-        .with_shape(fixed_input.shape())
-        .with_datum_type(fixed_input.datum_type());
+    let eval_order = ::tract_core::model::eval_order(&fixed)?;
 
-    // streaming model
-    let mut stream_model = model.clone();
-    stream_model.set_fact(model.inputs()?[0], input.clone())?;
-    stream_model.analyse()?;
-    /*
-    let stream_model = model.analyser()?
-        .with_input_hint(input)?
-        .to_optimized_model()?;
-        */
+    for &fixed_node in eval_order.iter() {
+        let pulsed_node = match pulsed.node_by_name(&*fixed.node(fixed_node).name) {
+            Ok(node) => node.id,
+            _ => continue,
+        };
+        for output in 0..fixed.node(fixed_node).outputs.len() {
+            debug!("checking node: {} output: {}", fixed.node(fixed_node).name, output);
+            let fixed_outlet = OutletId::new(fixed_node, output);
+            let pulsed_outlet = OutletId::new(pulsed_node, output);
 
-    // batch model
-    /*
-    let batch_model = model.analyser()?
-        .with_input_hint(&regular_input_fact)?
-        .to_optimized_model()?;
-    */
-    let mut batch_model = model.clone();
-    batch_model.set_fact(model.inputs()?[0], regular_input_fact.clone())?;
-    batch_model.analyse()?;
+            let mut pulsed = pulsed.clone();
+            pulsed.set_output_outlets(&[pulsed_outlet])?;
 
-    /*
-    let mut analyser = stream_model.analyser()?
-        .with_input_hint(input)?;
-    analyser.analyse()?;
-    */
+            let pulsed_output_fact = pulsed.output_fact(0)?;
+            let output_pulse = pulsed_output_fact.pulse();
+            let output_axis = pulsed_output_fact.axis;
+            let delay = pulsed_output_fact.delay;
 
-    let mut display_graph = ::display_graph::DisplayGraph::from_model(&stream_model)?
-        .with_graph_def(&params.graph)?;
+            let stream_dim = delay + 3 * output_pulse + output_pulse / 2;
 
-    let eval_order = ::tract_core::model::eval_order(&stream_model)?;
+            let fixed_input = crate::tensor::tensor_for_fact(
+                &fixed_input_fact.to_tensor_fact(),
+                Some(stream_dim),
+            )?;
 
-    /*
-    for mut dn in &mut display_graph.nodes {
-        dn.hidden = true;
-    }
-    */
+            let mut fixed = fixed.clone();
+            fixed.set_output_outlets(&[fixed_outlet])?;
+            let fixed_result = SimplePlan::new(&fixed)?.run(tvec!(fixed_input.clone()))?.remove(0);
+            let fixed_result = fixed_result.to_array_view::<f32>()?;
+            let fixed_output_len = fixed_result.shape()[output_axis];
 
-    // plan and state for reference batch mode
-    let batch_plan = SimplePlan::new(&batch_model)?;
-    let mut batch_state = SimpleState::new(&batch_plan)?;
-    batch_state.set_input(0, fixed_input.clone())?;
+            let plan = SimplePlan::new(&pulsed)?;
+            let mut state = SimpleState::new(&plan)?;
 
-    let mut failure = false;
-
-    for node in eval_order.iter() {
-        let node = &stream_model.nodes()[*node];
-        //        println!("node: {:?}", node);
-
-        if node.op.name() == "Source" || node.op.name() == "Const" {
-            continue;
-        }
-
-        let batch_node = &batch_model.node_by_name(&node.name)?;
-        batch_state.compute_recursively(batch_node.id)?;
-        let batch_expected = &batch_state.values[batch_node.id].as_ref().unwrap()[0];
-        let out_edge = &node.outputs[0];
-        let out_edge_fact = &out_edge.fact;
-        let out_stream_axis = out_edge_fact.stream_info()?.unwrap().axis;
-
-        //         println!("expected: {:?}", batch_expected.shape());
-        //         for line in batch_expected.as_f32s().unwrap().axis_chunks_iter(Axis(out_stream_axis), 1).take(10) {
-        //             println!("  expected: {:?}", line.iter().take(5).cloned().collect::<Vec<f32>>());
-        //         }
-        //
-        let mut batch_expected = batch_expected
-            .as_f32s()
-            .unwrap()
-            .axis_chunks_iter(Axis(out_stream_axis), 1);
-
-        // Run streaming node
-        /*
-        let facts = analyser.facts(node.id)?;
-        let new_op = node.op.final_prep(facts.0, facts.1)?;
-
-        let op = new_op.as_ref().unwrap_or(&node.op);
-        */
-        let mut buffers = node.op.new_buffer();
-
-        /*
-        let edges: Vec<_> = analyser.prev_edges[node.id]
-            .iter()
-            .map(|id| &analyser.edges[*id])
-            .collect();
-        */
-
-        let mut input_offset = 0;
-        let mut lines = vec![];
-        let mut matched = 0;
-
-        'stream: loop {
-            let mut inputs = tvec!();
-            for &edge in &node.inputs {
-                if let Some(info) = stream_model.fact(edge)?.stream_info()? {
-                    let prec_name = &stream_model.nodes()[edge.node].name;
-                    let batch_prec_node = batch_state.model().node_by_name(&prec_name)?;
-                    let data = &batch_state.values[batch_prec_node.id].as_ref().unwrap()[edge.slot];
-                    let data = data.as_f32s().unwrap();
-                    let chunk = data
-                        .axis_chunks_iter(Axis(info.axis), 1)
-                        .skip(input_offset)
-                        .next()
-                        .unwrap();
-                    let stream = Stream {
-                        info,
-                        offset: input_offset as _,
-                        chunk: Some(chunk.to_owned().into()),
-                    };
-                    inputs.push(StepValue::Stream(stream));
+            for i in 0.. {
+                let mut pulsed_input = ArrayD::from_elem(&*pulsed_input_fact.shape, std::f32::NAN);
+                let offset = i * pulse;
+                if offset < stream_dim {
+                    let count = pulse.min(stream_dim - offset);
+                    pulsed_input
+                        .slice_axis_mut(Axis(pulsed_input_fact.axis), (0..count).into())
+                        .assign(&fixed_input.to_array_view::<f32>()?.slice_axis(
+                            Axis(pulsed_input_fact.axis),
+                            (offset..offset + count).into(),
+                        ));
+                };
+                if offset + pulse > stream_dim {
+                    debug!("Set known_stream_len: {}", stream_dim);
+                    state.session_state.known_stream_len = Some(stream_dim)
+                };
+                let output = state.run(tvec!(pulsed_input.into()))?.remove(0);
+                let output = output.to_array_view::<f32>()?;
+                let output_offset = i * output_pulse;
+                let (f_o, p_o, count) = if output_offset + output_pulse < delay {
+                    // entire pulse before signal, wait
+                    continue;
+                } else if output_offset >= delay + fixed_output_len {
+                    // entire pulse after signal, we stop
+                    break;
+                } else if output_offset < delay {
+                    // beginning of signal
+                    let count = pulse + output_offset - delay;
+                    (0, output_pulse - count, count)
+                } else if output_offset + output_pulse > delay + fixed_output_len {
+                    // end of signal
+                    let count = fixed_output_len + delay - output_offset;
+                    (output_offset - delay, 0, count)
                 } else {
-                    let value = stream_model.nodes()[edge.node]
-                        .op()
-                        .const_value()
-                        .ok_or("Not a const")?;
-                    inputs.push(StepValue::Const(value.into()))
-                }
-                //                println!("input {:?}", inputs.last().unwrap());
-            }
-            let output = node.op.step(inputs, &mut buffers)?;
-            input_offset += 1;
-            let output = if let Some(output) = output {
-                output
-            } else {
-                continue;
-            };
-            let found: &Tensor = &output[0];
-            let found = found.as_f32s().unwrap();
-            for found in found.axis_chunks_iter(Axis(out_stream_axis), 1) {
-                let found: Tensor = found.to_owned().into();
-                lines.push(format!("found: {:?}", found));
-                if let Some(expected) = batch_expected.next() {
-                    lines.push(format!("expected: {:?}", Tensor::from(expected.to_owned())));
-                    lines.push("".into());
-                    let expected = expected.to_owned().into();
-                    if found.close_enough(&expected, node.op.rounding_errors()) {
-                        matched += 1;
-                        if matched == wanted_matches {
-                            break 'stream;
-                        }
-                    } else {
-                        //   println!("found: {:?}", found.as_f32s().unwrap().iter().take(5).join(" "));
-                        //    break 'stream;
-                    }
-                } else {
-                    break 'stream;
+                    (output_offset - delay, 0, output_pulse)
+                };
+                let valid_pulse_result =
+                    output.slice_axis(Axis(output_axis), (p_o..p_o + count).into());
+                let valid_fixed_result =
+                    fixed_result.slice_axis(Axis(output_axis), (f_o..f_o + count).into());
+                if valid_pulse_result != valid_fixed_result {
+                    display_graph.render_node(pulsed.node(pulsed_node))?;
+                    println!("pulse: {} ({}..{})", i, i * output_pulse, (i + 1) * output_pulse);
+                    println!(
+                        "expected: {}",
+                        valid_fixed_result
+                            .axis_iter(Axis(output_axis))
+                            .map(|s| *s.iter().next().unwrap())
+                            .join(" ")
+                    );
+                    println!(
+                        "got: {}",
+                        valid_pulse_result
+                            .axis_iter(Axis(output_axis))
+                            .map(|s| *s.iter().next().unwrap())
+                            .join(" ")
+                    );
+                    bail!("Error checking pulse mode")
                 }
             }
         }
-        println!("matched : {}", matched);
-        if matched == wanted_matches {
-            display_graph.add_node_label(node.id, "OK".green().to_string())?;
-        } else {
-            display_graph.add_node_label(node.id, "MISMATCH".red().to_string())?;
-            // dn.hidden = false;
-            //            dn.more_lines.push(format!("matched {} records streaming dim {:?}", matched, out_edge_fact.stream_dim()?));
-            //            dn.more_lines.extend(lines.into_iter());
-            failure = true;
-        }
     }
 
-    if failure {
-        display_graph.render(&output_params)?;
-    } else if log_enabled!(Info) {
-        display_graph.render(&output_params)?;
-    } else {
-        println!("{}", "Each node passed the comparison.".bold().green());
-    }
     Ok(())
 }

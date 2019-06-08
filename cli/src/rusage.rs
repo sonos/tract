@@ -44,9 +44,7 @@ pub struct Duration {
 impl Duration {
     /// Returns an empty measure.
     pub fn new() -> Duration {
-        Duration {
-            ..Default::default()
-        }
+        Duration { ..Default::default() }
     }
 
     /// Returns a measure from a given instant and iterations.
@@ -55,12 +53,7 @@ impl Duration {
         let total_user = start.elapsed_user();
         let total_sys = start.elapsed_sys();
 
-        Duration {
-            total_real,
-            total_user,
-            total_sys,
-            counter: iters,
-        }
+        Duration { total_real, total_user, total_sys, counter: iters }
     }
 
     pub fn avg_real(&self) -> f64 {
@@ -120,14 +113,8 @@ mod darwin {
                 virtual_size: 0,
                 resident_size: 0,
                 resident_size_max: 0,
-                user_time: timeval {
-                    tv_sec: 0,
-                    tv_usec: 0,
-                },
-                system_time: timeval {
-                    tv_sec: 0,
-                    tv_usec: 0,
-                },
+                user_time: timeval { tv_sec: 0, tv_usec: 0 },
+                system_time: timeval { tv_sec: 0, tv_usec: 0 },
                 policy: 0,
                 suspend_count: 0,
             }
@@ -203,19 +190,13 @@ pub fn get_rusage() -> rusage {
         ru_minflt: 0,
         ru_oublock: 0,
         ru_nivcsw: 0,
-        ru_stime: timeval {
-            tv_sec: 0,
-            tv_usec: 0,
-        },
+        ru_stime: timeval { tv_sec: 0, tv_usec: 0 },
         ru_nswap: 0,
         ru_maxrss: 0,
         ru_majflt: 0,
         ru_msgrcv: 0,
         ru_msgsnd: 0,
-        ru_utime: timeval {
-            tv_sec: 0,
-            tv_usec: 0,
-        },
+        ru_utime: timeval { tv_sec: 0, tv_usec: 0 },
         ru_nsignals: 0,
     };
     unsafe {

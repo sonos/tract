@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use tract_linalg::MatMul;
 use tract_linalg::frame::matmul::PackedWriter;
+use tract_linalg::MatMul;
 
 #[derive(Copy, Clone, Debug, new)]
 pub struct NdArrayDummyPackedMatMul<T: ndarray::LinalgScalar + Copy> {
@@ -29,24 +29,6 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
             }
         }
     }
-    fn packed_b_len(&self) -> usize {
-        self.k * self.n
-    }
-    fn packed_b_alignment(&self) -> usize {
-        std::mem::size_of::<T>()
-    }
-    fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
-        unsafe {
-            for x in 0..self.n as isize {
-                for y in 0..self.k as isize {
-                    *pb.offset(x + y * self.n as isize) = *b.offset(x * csb + y * rsb)
-                }
-            }
-        }
-    }
-    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
-        PackedWriter::new(pb, self.n, self.n, self.k)
-    }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, rsc: isize, csc: isize) {
         unsafe {
@@ -57,6 +39,18 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
             let mut c = ndarray::ArrayViewMut::from_shape_ptr((self.m, self.n), pc);
             ndarray::linalg::general_mat_mul(T::one(), &a, &b, T::zero(), &mut c);
         }
+    }
+
+    fn m(&self) -> usize {
+        self.m
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn n(&self) -> usize {
+        self.n
     }
 }
 
@@ -83,24 +77,6 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
             }
         }
     }
-    fn packed_b_len(&self) -> usize {
-        self.k * self.n
-    }
-    fn packed_b_alignment(&self) -> usize {
-        std::mem::size_of::<T>()
-    }
-    fn pack_b(&self, pb: *mut T, b: *const T, rsb: isize, csb: isize) {
-        unsafe {
-            for x in 0..self.n as isize {
-                for y in 0..self.k as isize {
-                    *pb.offset(x + y * self.n as isize) = *b.offset(x * csb + y * rsb)
-                }
-            }
-        }
-    }
-    fn write_b_packed_by_rows<'p>(&self, pb: &'p mut [T]) -> PackedWriter<'p, T> {
-        PackedWriter::new(pb, self.n, self.n, self.k)
-    }
 
     fn mat_mul_prepacked(&self, pa: *const T, pb: *const T, pc: *mut T, _rsc: isize, _csc: isize) {
         unsafe {
@@ -109,5 +85,17 @@ impl<T: ndarray::LinalgScalar + Copy + Send + Sync + Debug> MatMul<T>
             let mut c = ndarray::ArrayViewMut::from_shape_ptr(self.n, pc);
             ndarray::linalg::general_mat_vec_mul(T::one(), &b.t(), &a, T::zero(), &mut c);
         }
+    }
+
+    fn m(&self) -> usize {
+        1
+    }
+
+    fn k(&self) -> usize {
+        self.k
+    }
+
+    fn n(&self) -> usize {
+        self.n
     }
 }

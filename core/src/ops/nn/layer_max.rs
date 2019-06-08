@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct LayerHardmax {
@@ -8,15 +8,12 @@ pub struct LayerHardmax {
 impl LayerHardmax {
     fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
-        let array = input.to_array::<D>()?;
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let array = input.into_tensor().into_array::<D>()?;
         let shape = array.shape().to_vec();
-        let axis = if self.axis < 0 {
-            shape.len() as isize + self.axis
-        } else {
-            self.axis
-        } as usize;
+        let axis =
+            if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
         let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
@@ -33,7 +30,7 @@ impl LayerHardmax {
                 .enumerate()
                 .for_each(|(ix, r)| *r = D::from_usize((ix == max) as usize).unwrap());
         });
-        Ok(tvec!(array.into_shape(shape)?.into()))
+        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
     }
 }
 
@@ -44,7 +41,7 @@ impl Op for LayerHardmax {
 }
 
 impl StatelessOp for LayerHardmax {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -59,6 +56,8 @@ impl InferenceRulesOp for LayerHardmax {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -69,15 +68,12 @@ pub struct LayerLogSoftmax {
 impl LayerLogSoftmax {
     fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::std::iter::Sum>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
-        let array = input.to_array::<D>()?;
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let array = input.into_tensor().into_array::<D>()?;
         let shape = array.shape().to_vec();
-        let axis = if self.axis < 0 {
-            shape.len() as isize + self.axis
-        } else {
-            self.axis
-        } as usize;
+        let axis =
+            if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
         let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
@@ -91,7 +87,7 @@ impl LayerLogSoftmax {
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| (x / divisor).ln());
         });
-        Ok(tvec!(array.into_shape(shape)?.into()))
+        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
     }
 }
 
@@ -102,7 +98,7 @@ impl Op for LayerLogSoftmax {
 }
 
 impl StatelessOp for LayerLogSoftmax {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -117,6 +113,8 @@ impl InferenceRulesOp for LayerLogSoftmax {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -127,15 +125,12 @@ pub struct LayerSoftmax {
 impl LayerSoftmax {
     fn eval_t<D: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::std::iter::Sum>(
         &self,
-        input: SharedTensor,
-    ) -> TractResult<TVec<SharedTensor>> {
-        let array = input.to_array::<D>()?;
+        input: Arc<Tensor>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let array = input.into_tensor().into_array::<D>()?;
         let shape = array.shape().to_vec();
-        let axis = if self.axis < 0 {
-            shape.len() as isize + self.axis
-        } else {
-            self.axis
-        } as usize;
+        let axis =
+            if self.axis < 0 { shape.len() as isize + self.axis } else { self.axis } as usize;
         let first_dim: usize = array.shape()[0..axis].iter().product();
         let second_dim: usize = array.len() / first_dim;
         let mut array = array.into_shape((first_dim, second_dim))?;
@@ -149,7 +144,7 @@ impl LayerSoftmax {
             let divisor = layer.iter().cloned().sum();
             layer.mapv_inplace(|x| x / divisor);
         });
-        Ok(tvec!(array.into_shape(shape)?.into()))
+        Ok(tvec!(array.into_shape(shape)?.into_arc_tensor()))
     }
 }
 
@@ -160,7 +155,7 @@ impl Op for LayerSoftmax {
 }
 
 impl StatelessOp for LayerSoftmax {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }
@@ -175,6 +170,8 @@ impl InferenceRulesOp for LayerSoftmax {
     ) -> InferenceResult {
         rules(solver, inputs, outputs)
     }
+
+    inference_op_as_op!();
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(

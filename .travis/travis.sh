@@ -4,7 +4,7 @@ set -ex
 
 if [ -z "$PLATFORM" ]
 then
-    .travis/native.sh
+  .travis/native.sh
 else
-    .travis/cross.sh
+  .travis/cross.sh
 fi

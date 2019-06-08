@@ -1,13 +1,19 @@
+use tract_core::internal::*;
 use tract_core::ops as tractops;
-use tract_core::ops::prelude::*;
-
-use crate::ops::OpRegister;
 use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+use crate::model::TfOpRegister;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut TfOpRegister) {
+    reg.insert("Equal", with_T!(tractops::logic::Equals::Bin));
+    reg.insert("Greater", with_T!(tractops::logic::Greater::Bin));
+    reg.insert("GreaterEqual", with_T!(tractops::logic::GreaterEqual::Bin));
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
+    reg.insert("LessEqual", with_T!(tractops::logic::LesserEqual::Bin));
+    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::And::default())));
+    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::Or::default())));
     reg.insert("Merge", merge);
-    reg.insert("Switch", |_| Ok(Box::new(Switch)));
+    reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }
 
 #[derive(Debug, Clone)]
@@ -17,14 +23,10 @@ impl Op for Switch {
     fn name(&self) -> Cow<str> {
         "tf.Switch".into()
     }
-
-    fn noutputs(&self) -> usize {
-        2
-    }
 }
 
 impl StatelessOp for Switch {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, pred) = args_2!(inputs);
         let null = unsafe { Tensor::null_dt(input.datum_type(), input.shape())? };
         if *pred.to_scalar::<bool>()? {
@@ -51,9 +53,11 @@ impl InferenceRulesOp for Switch {
         }
         Ok(())
     }
+
+    inference_op_as_op!();
 }
 
-fn merge(pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let inputs = pb.get_attr_int::<i32>("N")?;
     Ok(Box::new(Merge::new(inputs as usize)))
 }
@@ -67,22 +71,13 @@ impl Op for Merge {
     fn name(&self) -> Cow<str> {
         "tf.Merge".into()
     }
-
-    fn noutputs(&self) -> usize {
-        2
-    }
 }
 
 impl StatelessOp for Merge {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let index = inputs
-            .iter()
-            .position(|t| !t.is_null())
-            .ok_or("No tensor received in merge")?;
-        Ok(tvec!(
-            inputs.remove(index),
-            Tensor::from(index as i32).into()
-        ))
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let index =
+            inputs.iter().position(|t| !t.is_null()).ok_or("No tensor received in merge")?;
+        Ok(tvec!(inputs.remove(index), Tensor::from(index as i32).into()))
     }
 }
 
@@ -103,4 +98,6 @@ impl InferenceRulesOp for Merge {
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
         Ok(())
     }
+
+    inference_op_as_op!();
 }

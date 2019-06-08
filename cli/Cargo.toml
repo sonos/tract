@@ -1,52 +1,42 @@
 [package]
 name = "tract"
-version = "0.2.9-pre"
+version = "0.3.4-pre"
 authors = [ "Romain Liautaud <romain.liautaud@snips.ai>", "Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT/Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/kali/tract"
+repository = "https://github.com/snipsco/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2018"
 
 [badges]
-travis-ci = { repository = "kali/tract" }
+travis-ci = { repository = "snipsco/tract" }
 
 [dependencies]
+ansi_term = "0.11.0"
+atty = "0.2"
 box_drawing = "0.1"
 clap = "2.31"
-ansi_term = "0.11.0"
+env_logger = "0.6"
 error-chain = "0.12"
-insideout = "0.2"
+itertools = "0.8"
 lazy_static = "1.0"
+libc = "0.2"
 log = "0.4"
 ndarray = "0.12"
-prettytable-rs = "0.8"
-rand = "0.5"
-env_logger = "0.5"
-terminal_size = "0.1.7"
-textwrap = "0.10"
-tract-core = { path = "../core" }
-tract-tensorflow = { path = "../tensorflow" }
-tract-onnx = { path = "../onnx" }
+ndarray-npy = { version = "0.4", features = [ "compressed_npz" ] }
 pbr = "1.0"
-atty = "0.2"
-itertools = "0.7"
-libc = "0.2"
+rand = "0.6.5"
+tract-core = { path = "../core" }
+tract-onnx = { optional = true, path = "../onnx" }
+tract-tensorflow = { optional = true, path = "../tensorflow" }
 
 [features]
-default = []
+default = ["tf", "onnx"]
+tf = [ "tract-tensorflow" ]
+onnx = [ "tract-onnx" ]
 conform = [ "tract-tensorflow/conform"  ]
-blis = ["tract-core/blis"]
 
 [dev-dependencies]
 criterion = "0.2"
-
-# [[bench]]
-# name = "streaming_conv2d"
-# harness = false
-
-# [[bench]]
-# name = "streaming_diamond"
-# harness = false

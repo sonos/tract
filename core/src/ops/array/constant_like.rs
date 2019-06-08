@@ -1,4 +1,4 @@
-use crate::ops::prelude::*;
+use crate::internal::*;
 use ndarray::*;
 use num_traits::AsPrimitive;
 
@@ -8,12 +8,12 @@ pub struct ConstantLike {
 }
 
 impl ConstantLike {
-    pub fn make<T>(&self, shape: &[usize]) -> TractResult<SharedTensor>
+    pub fn make<T>(&self, shape: &[usize]) -> TractResult<Arc<Tensor>>
     where
         T: Datum + Copy,
         f32: AsPrimitive<T>,
     {
-        Ok(Array::<T, _>::from_elem(shape, self.value.as_()).into())
+        Ok(Array::<T, _>::from_elem(shape, self.value.as_()).into_arc_tensor())
     }
 }
 
@@ -25,12 +25,9 @@ impl Op for ConstantLike {
 
 impl StatelessOp for ConstantLike {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(
-            self,
-            input.shape()
-        ))?))
+        Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(self, input.shape()))?))
     }
 }
 
@@ -46,22 +43,18 @@ impl InferenceRulesOp for ConstantLike {
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
-        s.given_2(
-            &inputs[0].shape,
-            &inputs[0].datum_type,
-            move |s, shape, dt| {
-                if shape.iter().all(|d| d.to_integer().is_ok()) {
-                    let shape: Vec<usize> = shape
-                        .iter()
-                        .map(|d| d.to_integer().unwrap() as usize)
-                        .collect();
-                    let value = dispatch_numbers!(Self::make(dt)(self, &shape))?;
-                    s.equals(&outputs[0].value, value)?;
-                }
-                Ok(())
-            },
-        )
+        s.given_2(&inputs[0].shape, &inputs[0].datum_type, move |s, shape, dt| {
+            if shape.iter().all(|d| d.to_integer().is_ok()) {
+                let shape: Vec<usize> =
+                    shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+                let value = dispatch_numbers!(Self::make(dt)(self, &shape))?;
+                s.equals(&outputs[0].value, value)?;
+            }
+            Ok(())
+        })
     }
+
+    inference_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -71,7 +64,7 @@ pub struct EyeLike {
 }
 
 impl EyeLike {
-    pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<SharedTensor>
+    pub fn make<T>(&self, (r, c): (usize, usize)) -> TractResult<Arc<Tensor>>
     where
         T: Copy + Datum + num_traits::One + num_traits::Zero,
         f32: AsPrimitive<T>,
@@ -83,7 +76,7 @@ impl EyeLike {
                 array[(y, x as usize)] = T::one()
             }
         }
-        Ok(array.into_dyn().into())
+        Ok(array.into_dyn().into_arc_tensor())
     }
 }
 
@@ -95,9 +88,10 @@ impl Op for EyeLike {
 
 impl StatelessOp for EyeLike {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::make(input.datum_type())(
+        let dt = self.dt.unwrap_or(input.datum_type());
+        Ok(tvec!(dispatch_numbers!(Self::make(dt)(
             self,
             (input.shape()[0], input.shape()[1])
         ))?))
@@ -136,4 +130,6 @@ impl InferenceRulesOp for EyeLike {
             Ok(())
         })
     }
+
+    inference_op_as_op!();
 }

@@ -1,74 +1,54 @@
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
+use tract_core::ops::cnn::PaddingSpec;
+use tract_core::ops::nn::{DataFormat, LayerSoftmax};
 
-use crate::ops::OpRegister;
+use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
 
 pub mod conv2d;
+pub mod dw_conv2d;
 pub mod fused_batch_norm;
-pub mod local_patch;
 pub mod pools;
 pub mod s2b;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
-    reg.insert("AvgPool", pools::pool::<pools::AvgPooler>);
+pub fn register_all_ops(reg: &mut TfOpRegister) {
+    reg.insert("AvgPool", pools::avgpool);
     reg.insert("Conv2D", conv2d::conv2d);
+    reg.insert("DepthwiseConv2dNative", dw_conv2d::depthwise_conv2d);
     reg.insert("FusedBatchNorm", fused_batch_norm::fused_batch_norm);
-    reg.insert("MaxPool", pools::pool::<pools::MaxPooler>);
+    reg.insert("MaxPool", pools::maxpool);
     reg.insert("Relu", with_T!(::tract_core::ops::nn::Relu));
+    reg.insert("Relu6", |_, _| Ok(Box::new(Relu6::default())));
     reg.insert("Sigmoid", with_T!(::tract_core::ops::nn::Sigmoid));
-    reg.insert("Softmax", Softmax::build);
+    reg.insert("Softmax", |_, _| Ok(Box::new(LayerSoftmax::new(1))));
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);
     reg.insert("BatchToSpaceND", s2b::batch_to_space_nd);
 }
 
-#[derive(Debug, Clone)]
-pub struct Softmax {}
+element_map!(Relu6, [f32, i32], |x| x.max(0 as _).min(6 as _));
 
-impl Softmax {
-    pub fn build(_pb: &NodeDef) -> TractResult<Box<Op>> {
-        Ok(Box::new(Softmax {}))
-    }
+pub fn strides(pb: &NodeDef) -> TractResult<Vec<usize>> {
+    let strides: Vec<usize> = pb.get_attr_list_int("strides")?;
+    if strides.len() != 4 || strides[0] != 1 && strides[3] != 1 {
+        Err(format!("strides must be of the form [1, h, v, 1], found {:?}", strides))?
+    };
+    Ok(strides)
 }
 
-impl Op for Softmax {
-    fn name(&self) -> Cow<str> {
-        "Softmax".into()
-    }
-
-    fn rounding_errors(&self) -> bool {
-        true
-    }
+pub fn data_format(pb: &NodeDef) -> TractResult<DataFormat> {
+    let df = if pb.get_attr_opt_raw_str("data_format")?.unwrap_or(b"NHWC") == b"NHWC" {
+        DataFormat::NHWC
+    } else {
+        DataFormat::NCHW
+    };
+    Ok(df)
 }
 
-impl StatelessOp for Softmax {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
-        let input = args_1!(inputs);
-        let mut input = input.to_array::<f32>()?;
-        let max: f32 = input
-            .iter()
-            .cloned()
-            .max_by(|a, b| a.partial_cmp(&b).unwrap_or(::std::cmp::Ordering::Equal))
-            .unwrap_or(0.0);
-        input.map_inplace(|a| *a = (*a - max).exp());
-        let norm: f32 = input.iter().sum();
-        input.map_inplace(|a| *a = *a / norm);
-        let result = Tensor::from(input);
-        Ok(tvec![result.into()])
-    }
-}
-
-impl InferenceRulesOp for Softmax {
-    /// Registers the inference rules of the operator.
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].shape, &outputs[0].shape)
+pub fn padding(pb: &NodeDef) -> TractResult<PaddingSpec> {
+    let padding = pb.get_attr_raw_str("padding")?;
+    match padding {
+        b"VALID" => Ok(PaddingSpec::Valid),
+        b"SAME" => Ok(PaddingSpec::SameUpper),
+        s => Err(format!("unsupported Padding {}", String::from_utf8_lossy(s)))?,
     }
 }

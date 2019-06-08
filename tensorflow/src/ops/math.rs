@@ -1,10 +1,14 @@
+use tract_core::internal::*;
 use tract_core::ops as tractops;
 
-use crate::ops::OpRegister;
+use crate::model::TfOpRegister;
 use crate::tfpb::node_def::NodeDef;
-use tract_core::TractResult;
+use crate::model::ParsingContext;
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+
+mod max;
+
+pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Abs", with_T!(tractops::math::Abs));
     reg.insert("Add", with_T!(tractops::math::Add::Bin));
     reg.insert("AddN", add_n);
@@ -13,6 +17,7 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Div", with_T!(tractops::math::Div::Bin));
     reg.insert("FloorMod", with_T!(tractops::math::Rem::Bin));
     reg.insert("MatMul", mat_mul);
+    reg.insert("Max", max::max);
     reg.insert("Maximum", with_T!(tractops::math::Max::Bin));
     reg.insert("Minimum", with_T!(tractops::math::Min::Bin));
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
@@ -26,16 +31,14 @@ pub fn register_all_ops(reg: &mut OpRegister) {
     reg.insert("Tanh", with_T!(tractops::math::Tanh));
 }
 
-pub fn add_n(pb: &NodeDef) -> TractResult<Box<tractops::Op>> {
+pub fn add_n(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_attr_int("N")?;
     Ok(Box::new(tractops::math::AddN::new(dtype.into(), Some(n))))
 }
 
-pub fn mat_mul(pb: &NodeDef) -> TractResult<Box<tractops::Op>> {
+pub fn mat_mul(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let trans_a = pb.get_attr_bool("transpose_a")?;
     let trans_b = pb.get_attr_bool("transpose_b")?;
-    Ok(Box::new(tract_core::ops::math::Gemm::new(
-        1.0, 0.0, trans_a, trans_b, false,
-    )))
+    Ok(Box::new(tract_core::ops::math::Gemm::new(1.0, 0.0, trans_a, trans_b, false)))
 }

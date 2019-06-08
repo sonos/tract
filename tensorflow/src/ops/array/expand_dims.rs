@@ -1,54 +1,59 @@
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
-pub fn build(_pb: &crate::tfpb::node_def::NodeDef) -> TractResult<Box<Op>> {
+use crate::tfpb::node_def::NodeDef;
+use crate::model::ParsingContext;
+
+pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     Ok(Box::new(ExpandDims))
 }
 
 #[derive(Debug, Clone)]
 pub struct ExpandDims;
 
+impl ExpandDims {
+    fn eval_t<T: Datum>(
+        &self,
+        data: Arc<Tensor>,
+        shape: &[usize],
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let data = data.into_tensor().into_array::<T>()?;
+        Ok(tvec![Tensor::from(data.into_shape(&*shape)?).into()])
+    }
+}
+
 impl Op for ExpandDims {
     fn name(&self) -> Cow<str> {
         "tf.ExpandDims".into()
     }
 
-    fn reduce(
+    fn declutter(
         &self,
-        mut inputs: TVec<&TensorFact>,
-        _outputs: TVec<&TensorFact>,
-        phase: ReductionPhase,
-    ) -> TractResult<Option<ReducedOpRewire>> {
-        if phase == ReductionPhase::Normalize {
-            let (_, dims) = args_2!(inputs);
-            if let Some(dims) = dims.concretize() {
-                let dims = dims.cast_to::<i64>()?;
-                let op = ::tract_core::ops::array::AddDims::new(
-                    dims.to_array_view::<i64>()?
-                        .iter()
-                        .map(|&i| i as usize)
-                        .collect(),
-                );
-                return Ok(Some(ReducedOpRewire::unary(op)));
-            }
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut inputs = model.node_input_facts(node.id)?;
+        let (_, dims) = args_2!(inputs);
+        if let Some(ref dims) = dims.konst {
+            let dims = dims.cast_to::<i64>()?;
+            let op = ::tract_core::ops::array::AddDims::new(
+                dims.to_array_view::<i64>()?.iter().map(|&i| i as usize).collect(),
+            );
+            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
     }
 }
 
 impl StatelessOp for ExpandDims {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (data, dims) = args_2!(inputs);
-        let data = data.to_array::<f32>()?;
         let dims = dims.to_array_view::<i32>()?;
-        let mut shape = data.shape().to_vec();
+        let mut shape: TVec<usize> = data.shape().into();
         for d in dims.iter() {
-            if *d >= 0 {
-                shape.insert(*d as usize, 1);
-            } else {
-                Err(format!("unimplemented ExpandDims with negative parameter"))?
-            }
+            let d = if *d >= 0 { *d } else { *d + 1 + data.shape().len() as i32 } as usize;
+            shape.insert(d, 1);
         }
-        Ok(tvec![Tensor::from(data.into_shape(shape)?).into()])
+        dispatch_datum!(Self::eval_t(data.datum_type())(self, data, &*shape))
     }
 }
 
@@ -66,11 +71,14 @@ impl InferenceRulesOp for ExpandDims {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&dims.datum_type, DatumType::I32)?;
-        s.equals(&dims.rank, 0)?;
         s.equals(&data.datum_type, &output.datum_type)?;
-        s.equals_zero(data.rank.bex() + 1 - &output.rank)?;
-        s.given(&dims.value, move |s, index| {
-            let index = *(index.to_scalar::<i32>()?) as usize;
+        s.equals(data.rank.bex() + 1, &output.rank)?;
+        s.given_2(&dims.value, &data.rank, move |s, index, rank| {
+            let mut index = *(index.to_scalar::<i32>()?);
+            if index < 0 {
+                index += rank
+            }
+            let index = index as usize;
 
             for i in 0..index {
                 s.equals(&output.shape[i], &data.shape[i])?;
@@ -86,4 +94,6 @@ impl InferenceRulesOp for ExpandDims {
             })
         })
     }
+
+    inference_op_as_op!();
 }
