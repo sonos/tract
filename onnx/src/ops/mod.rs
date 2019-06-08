@@ -17,6 +17,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Identity", |_, _| Ok(Box::new(::tract_core::ops::identity::Identity::default())));
     logic::register_all_ops(reg);
     math::register_all_ops(reg);
+    ml::register_all_ops(reg);
     nn::register_all_ops(reg);
     array::register_all_ops(reg);
     rec::register_all_ops(reg);

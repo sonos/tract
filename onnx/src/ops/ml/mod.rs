@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::iter;
 
-use crate::ops::OpRegister;
+use crate::model::{ OnnxOpRegister, ParsingContext };
 use crate::pb::NodeProto;
 use crate::pb_helpers::{AttrTVecType, OptionExt, TryCollect};
 
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 mod tree;
 
@@ -239,7 +239,7 @@ fn parse_tree_ensemble(node: &NodeProto, is_classifier: bool) -> TractResult<Tre
     Ok(ensemble)
 }
 
-pub fn register_all_ops(reg: &mut OpRegister) {
+pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("TreeEnsembleClassifier", TreeEnsembleClassifier::parse);
 }
 
@@ -256,7 +256,7 @@ pub struct TreeEnsembleClassifier {
 }
 
 impl TreeEnsembleClassifier {
-    fn parse(node: &NodeProto) -> TractResult<Box<Op>> {
+    fn parse(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<Box<InferenceOp>> {
         let ensemble = parse_tree_ensemble(node, true)?;
         let class_labels = match node.get_attr_opt_slice::<i64>("classlabels_int64s")? {
             Some(int_labels) => ClassLabels::Ints(int_labels.into()),
@@ -271,16 +271,12 @@ impl TreeEnsembleClassifier {
 
 impl Op for TreeEnsembleClassifier {
     fn name(&self) -> Cow<str> {
-        "TreeEnsembleClassifier".into()
-    }
-
-    fn noutputs(&self) -> usize {
-        2
+        "onnx-ml.TreeEnsembleClassifier".into()
     }
 }
 
 impl StatelessOp for TreeEnsembleClassifier {
-    fn eval(&self, mut inputs: TVec<SharedTensor>) -> TractResult<TVec<SharedTensor>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         Err("WIP".into())
     }
 }
@@ -301,8 +297,8 @@ impl InferenceRulesOp for TreeEnsembleClassifier {
             &outputs[0].shape,
             &outputs[1].shape,
             move |s, s_in0, s_out0, s_out1| {
-                s.equals(s_in0[0], s_out0[0])?;
-                s.equals(s_out0[0], s_out1[0])?;
+                s.equals(&s_in0[0], &s_out0[0])?;
+                s.equals(&s_out0[0], &s_out1[0])?;
                 if let Ok(k) = s_in0[1].to_integer() {
                     self.ensemble.check_n_features(k as _)?;
                 }
@@ -327,4 +323,6 @@ impl InferenceRulesOp for TreeEnsembleClassifier {
 
         Ok(())
     }
+
+    inference_op_as_op!();
 }

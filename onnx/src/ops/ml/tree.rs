@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
 use std::iter;
 
-use tract_core::ops::prelude::*;
+use tract_core::internal::*;
 
 use ndarray::{
     Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, ArrayViewMut1, Axis, Ix1, Ix2,
