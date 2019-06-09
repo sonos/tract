@@ -345,6 +345,7 @@ test_transpose_all_permutations_4
 test_transpose_all_permutations_5
 test_transpose_default
 test_unsqueeze
+test_where_example
 test_xor2d
 test_xor3d
 test_xor4d
