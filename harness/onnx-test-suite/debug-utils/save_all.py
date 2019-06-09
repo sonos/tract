@@ -1,3 +1,4 @@
+import os
 import sys
 import numpy
 import onnx
@@ -27,10 +28,16 @@ for i in range(3, len(sys.argv)):
     inputs[name] = input_data
 
 outputs = inputs.copy()
+print(outputs.keys())
 pred_onnx = sess.run(None, inputs)
 
 for ix, output in enumerate(sess.get_outputs()):
-    print(output.name)
     outputs[output.name] = pred_onnx[ix]
 
-numpy.savez(output_name, **outputs)
+print(outputs.keys())
+os.mkdir(output_name)
+
+for name in outputs:
+    value = numpy_helper.from_array(outputs[name], name=name)
+    with open(output_name + "/" + name + ".pb", 'wb') as f:
+        f.write(value.SerializeToString())

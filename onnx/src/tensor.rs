@@ -160,7 +160,10 @@ impl TryFrom<TensorProto> for Tensor {
     }
 }
 
-pub fn from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<Tensor> {
-    let tensor: TensorProto = ::protobuf::parse_from_reader(&mut r).unwrap();
-    tensor.try_into()
+pub fn proto_from_reader<R: ::std::io::Read>(mut r: R) -> TractResult<TensorProto> {
+    protobuf::parse_from_reader(&mut r).map_err(|e| format!("Can not parse protobuf input: {:?}", e).into())
+}
+
+pub fn from_reader<R: ::std::io::Read>(r: R) -> TractResult<Tensor> {
+    proto_from_reader(r)?.try_into()
 }

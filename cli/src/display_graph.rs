@@ -104,7 +104,7 @@ where
         for (ix, i) in node.inputs.iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
             println!(
-                "  {} input  #{}: {:?} {:?}",
+                "  {} input fact  #{}: {:?} {:?}",
                 star,
                 ix,
                 i,
@@ -132,7 +132,7 @@ where
             } else {
                 "".to_string()
             };
-            println!("  {} output #{}: {:?} {}", star, format!("{:?}", ix), o.fact, io);
+            println!("  {} output fact #{}: {:?} {}", star, format!("{:?}", ix), o.fact, io);
         }
         if let Some(info) = node.op().info()? {
             println!("  * {}", info);
@@ -174,7 +174,7 @@ where
             #[cfg(feature = "tf")]
             SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
             #[cfg(feature = "onnx")]
-            SomeGraphDef::Onnx(onnx) => self.with_onnx_model(onnx),
+            SomeGraphDef::Onnx(onnx, _) => self.with_onnx_model(onnx),
         }
     }
 
@@ -205,7 +205,7 @@ where
                     } else {
                         format!("{:?}", a.1)
                     };
-                    v.push(format!("Attr {}: {}", bold.paint(a.0), value));
+                    v.push(format!("Attr {}: {:.240}", bold.paint(a.0), value));
                 }
                 self.add_node_section(node_id, v)?;
             }
@@ -232,7 +232,7 @@ where
                     } else {
                         format!("{:?}", a)
                     };
-                    v.push(format!("Attr {}: {}", bold.paint(a.get_name()), value));
+                    v.push(format!("Attr {}: {:.240}", bold.paint(a.get_name()), value));
                 }
                 self.add_node_section(id, v)?;
             }

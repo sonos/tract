@@ -1,3 +1,4 @@
+use std::fs;
 use std::fmt::{Debug, Display};
 
 use ansi_term::Color::*;
@@ -137,6 +138,58 @@ where
     compare(cumulative, tract, &values, params, output_params)
 }
 
+#[cfg(feature = "onnx")]
+pub fn handle_pbdir(
+    cumulative: bool,
+    npz: &str,
+    params: Parameters,
+    output_params: DisplayOptions,
+) -> CliResult<()> {
+    {
+        return match &params.tract_model {
+            SomeModel::Inference(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
+            SomeModel::Typed(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
+            SomeModel::Normalized(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
+            SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
+        };
+    }
+}
+
+#[cfg(feature = "onnx")]
+pub fn handle_pbdir_t<TI, O>(
+    cumulative: bool,
+    tract: &Model<TI, O>,
+    pbdir: &str,
+    params: &Parameters,
+    output_params: DisplayOptions,
+) -> CliResult<()>
+where
+    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
+    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
+{
+    let mut values:HashMap<&str, TVec<Option<Tensor>>> = HashMap::new();
+    let parsed_model = if let SomeGraphDef::Onnx(_, ref parsed) = params.graph {
+        parsed
+    } else {
+        unreachable!("main must forcesGraphDef survival for pbdir to work")
+    };
+    for entry in fs::read_dir(pbdir)? {
+        use std::convert::TryInto;
+        let entry = entry?;
+        let file = fs::File::open(entry.path())?;
+        let tensor = tract_onnx::tensor::proto_from_reader(file)?;
+        let outlet = parsed_model.outlets_by_name[tensor.get_name()];
+        let node_name = &*parsed_model.model.nodes()[outlet.node].name;
+        let output_tuple = values.entry(node_name).or_insert(tvec!());
+        while output_tuple.len() <= outlet.slot {
+            output_tuple.push(None)
+        }
+        output_tuple[outlet.slot] = Some(tensor.try_into()?);
+    }
+    let values = values.into_iter().filter(|(_,t)| t.iter().all(|t| t.is_some())).map(|(k,t)| (k.to_string(), Ok(t.into_iter().map(Option::unwrap).collect::<TVec<Tensor>>()))).collect();
+    compare(cumulative, tract, &values, params, output_params)
+}
+
 pub fn compare<TI, O>(
     cumulative: bool,
     tract: &Model<TI, O>,
@@ -195,41 +248,38 @@ where
             failing.push(n);
         } else {
             debug!("Computing {} in tract", node);
-            match state.compute_recursively(n) {
-                Err(e) => {
+            let error = state.compute_recursively(n).err();
+            let inputs = tract.nodes()[n]
+                .inputs
+                .iter()
+                .enumerate()
+                .map(|(ix, o)| {
+                    let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
+                    format!("input value #{}: {:?}", ix, tensor)
+                })
+                .collect::<Vec<_>>();
+            let expected: Vec<TensorFact> = tf_output.iter().map(|m| m.clone().into()).collect();
+            let expected_outputs_section = expected.iter()
+                .enumerate()
+                .map(|(ix, o)| {
+                    format!("expected output #{}: {:?}", ix, o)
+                })
+                .collect::<Vec<_>>();
+            match error {
+                Some(e) => {
                     failing.push(n);
-                    display_graph.add_node_label(n, format!("{}: {}", Red.paint("ERROR"), e))?;
+                    display_graph.set_node_color(n, Red.bold())?;
+                    display_graph.add_node_label(n, format!("{}: {}", Red.bold().paint("ERROR"), e))?;
+                    display_graph.add_node_section(n, inputs)?;
+                    display_graph.add_node_section(n, expected_outputs_section)?;
                 }
                 _ => {
-                    // how many outputs are actually required ? ignore ancilliary
-                    // training wires from tensorflow op (fused batch norm)
-                    let wanted = node
-                        .outputs
-                        .iter()
-                        .enumerate()
-                        .position(|(ix, o)| {
-                            o.successors.len() == 0
-                                && !tract
-                                    .output_outlets()
-                                    .unwrap()
-                                    .contains(&OutletId::new(node.id, ix))
-                        })
-                        .unwrap_or(node.outputs.len());
-                    let expected: Vec<TensorFact> =
-                        tf_output.iter().take(wanted).map(|m| m.clone().into()).collect();
                     let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
                     match check_outputs(&tract_output, &expected) {
                         Err(e) => {
                             failing.push(n);
-                            let inputs = tract.nodes()[n]
-                                .inputs
-                                .iter()
-                                .enumerate()
-                                .map(|(ix, o)| {
-                                    let tensor = &state.values[o.node].as_ref().unwrap()[o.slot];
-                                    format!("input value #{}: {:?}", ix, tensor)
-                                })
-                                .collect::<Vec<_>>();
+                            display_graph.add_node_section(n, inputs)?;
+                            display_graph.add_node_section(n, expected_outputs_section)?;
                             tract_output
                                 .iter()
                                 .enumerate()
@@ -246,8 +296,6 @@ where
                                     ) {
                                         display_graph.set_node_color(n, Red.bold())?;
                                         let mut msg = vec!(Red.bold().paint(format!("Wrong value for output {}", ix)).to_string());
-                                        msg.extend(inputs.iter().cloned());
-                                        msg.push(format!("expected: {:?}", tf_output[ix]));
                                         msg.push(format!("got     : {:?}", data));
                                         display_graph.add_node_section(n, msg)?;
                                     } else {
