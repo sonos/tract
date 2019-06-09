@@ -13,8 +13,16 @@ pub struct ParsingContext<'a> {
     pub parent_graphs: Vec<&'a pb::GraphProto>
 }
 
+#[derive(Clone, Debug)]
+pub struct ParseResult {
+    pub model: InferenceModel,
+    pub unresolved_inputs: Vec<String>,
+    pub outlets_by_name: HashMap<String, OutletId>,
+}
+
 impl<'a> ParsingContext<'a> {
-    pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<(InferenceModel, Vec<String>)> {
+
+    pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
         let mut model = Model::default();
@@ -99,7 +107,8 @@ impl<'a> ParsingContext<'a> {
             model.set_outlet_fact(outlets_by_name[output.get_name()], fact)?;
         }
         model.set_output_outlets(&outputs)?;
-        Ok((model, unresolved_inputs))
+        let result = ParseResult { model, unresolved_inputs, outlets_by_name };
+        Ok(result)
     }
 }
 
@@ -117,17 +126,24 @@ pub struct Onnx {
     pub op_register: OnnxOpRegister,
 }
 
+impl Onnx {
+    pub fn parse(&self, proto: &pb::ModelProto) -> TractResult<ParseResult> {
+        let graph = proto.get_graph();
+        let ctx = ParsingContext { framework: self, model: proto, parent_graphs: vec!() };
+        ctx.parse_graph(&graph)
+    }
+}
+
+
 impl Framework<pb::ModelProto> for Onnx {
     fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<pb::ModelProto> {
         Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
     }
 
     fn model_for_proto_model(&self, proto: &pb::ModelProto) -> TractResult<InferenceModel> {
-        let graph = proto.get_graph();
-        let ctx = ParsingContext { framework: self, model: proto, parent_graphs: vec!() };
-        let (model, closure) = ctx.parse_graph(&graph)?;
-        if closure.len() > 0 {
-            bail!("Could not resolve inputs at top-level: {:?}", closure)
+        let ParseResult { model, unresolved_inputs, .. } = self.parse(proto)?;
+        if unresolved_inputs.len() > 0 {
+            bail!("Could not resolve inputs at top-level: {:?}", unresolved_inputs)
         }
         Ok(model)
     }

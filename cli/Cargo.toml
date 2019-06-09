@@ -27,6 +27,7 @@ log = "0.4"
 ndarray = "0.12"
 ndarray-npy = { version = "0.4", features = [ "compressed_npz" ] }
 pbr = "1.0"
+py_literal = "0.2"
 rand = "0.6.5"
 tract-core = { path = "../core" }
 tract-onnx = { optional = true, path = "../onnx" }

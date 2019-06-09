@@ -110,6 +110,12 @@ fn main() {
         .arg(Arg::with_name("npz").takes_value(true).required(true).help("Npz filename"));
     app = app.subcommand(output_options(compare_npz));
 
+    let compare_pbdir = clap::SubCommand::with_name("compare-pbdir")
+        .help("Compares the output of tract to a refrence directory of onnx protobufs tensors files.")
+        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"))
+        .arg(Arg::with_name("pbdir").takes_value(true).required(true).help("protobuf dir"));
+    app = app.subcommand(output_options(compare_pbdir));
+
     let dump = clap::SubCommand::with_name("dump")
         .help("Dumps the Tensorflow graph in human readable form.")
         .arg(
@@ -242,7 +248,7 @@ pub enum SomeGraphDef {
     #[cfg(feature = "tf")]
     Tf(GraphDef),
     #[cfg(feature = "onnx")]
-    Onnx(tract_onnx::pb::ModelProto),
+    Onnx(tract_onnx::pb::ModelProto, tract_onnx::model::ParseResult),
 }
 
 #[derive(Debug)]
@@ -256,7 +262,7 @@ pub enum SomeModel {
 /// Structure holding the parsed parameters.
 pub struct Parameters {
     graph: SomeGraphDef,
-    unoptimized_model: Option<TypedModel>,
+    typed_model: Option<TypedModel>,
     tract_model: SomeModel,
 
     #[cfg(feature = "conform")]
@@ -291,8 +297,9 @@ impl Parameters {
             {
                 let onnx = tract_onnx::onnx();
                 let graph = onnx.proto_model_for_path(&name)?;
-                let tract = onnx.model_for_proto_model(&graph)?;
-                (SomeGraphDef::Onnx(graph), tract)
+                let parsed = onnx.parse(&graph)?;
+                let tract = parsed.model.clone();
+                (SomeGraphDef::Onnx(graph, parsed), tract)
             }
         } else {
             #[cfg(not(feature = "tf"))]
@@ -331,7 +338,7 @@ impl Parameters {
             None
         };
 
-        if !matches.is_present("proto") {
+        if !matches.is_present("proto") && matches.subcommand_name() != Some("compare-pbdir") {
             graph = SomeGraphDef::NoGraphDef;
         }
 
@@ -366,7 +373,7 @@ impl Parameters {
 
         //        println!("{:?}", raw_model);
 
-        let mut unoptimized_model = None;
+        let mut typed_model = None;
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
             if matches.is_present("partial") {
@@ -380,7 +387,7 @@ impl Parameters {
                 SomeModel::Inference(raw_model)
             } else {
                 let typed = raw_model.into_typed()?;
-                unoptimized_model = Some(typed.clone());
+                typed_model = Some(typed.clone());
                 SomeModel::Typed(typed)
             }
         } else {
@@ -421,7 +428,7 @@ impl Parameters {
 
         Ok(Parameters {
             graph,
-            unoptimized_model,
+            typed_model,
             tract_model,
             tf_model,
             inputs,
@@ -525,6 +532,14 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("compare-npz", Some(m)) => compare::handle_npz(
             m.is_present("cumulative"),
             m.value_of("npz").unwrap(),
+            params,
+            display_options_from_clap(m)?,
+        ),
+
+        #[cfg(feature = "onnx")]
+        ("compare-pbdir", Some(m)) => compare::handle_pbdir(
+            m.is_present("cumulative"),
+            m.value_of("pbdir").unwrap(),
             params,
             display_options_from_clap(m)?,
         ),
