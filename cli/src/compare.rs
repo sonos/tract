@@ -236,6 +236,14 @@ where
                 continue;
             }
         };
+        let expected: Vec<TensorFact> = tf_output.iter().map(|m| m.clone().into()).collect();
+        let expected_outputs_section = expected.iter()
+            .enumerate()
+            .map(|(ix, o)| {
+                format!("expected output #{}: {:?}", ix, o)
+            })
+            .collect::<Vec<_>>();
+        display_graph.add_node_section(n, expected_outputs_section)?;
 
         if node.op_is::<tract_core::ops::Source>() {
             display_graph.set_node_color(n, Blue)?;
@@ -258,20 +266,19 @@ where
                     format!("input value #{}: {:?}", ix, tensor)
                 })
                 .collect::<Vec<_>>();
-            let expected: Vec<TensorFact> = tf_output.iter().map(|m| m.clone().into()).collect();
-            let expected_outputs_section = expected.iter()
-                .enumerate()
-                .map(|(ix, o)| {
-                    format!("expected output #{}: {:?}", ix, o)
-                })
-                .collect::<Vec<_>>();
+            for (ix, f) in node.outputs.iter().enumerate() {
+                if f.fact.to_tensor_fact().unify(&expected[ix]).is_err() {
+                    failing.push(n);
+                    display_graph.set_node_color(n, Red.bold())?;
+                    display_graph.add_node_label(n, format!("{}: Could not reconcile infered fact for output #{} ({:?}) with reference.", Red.bold().paint("ERROR"), ix, f.fact))?;
+                }
+            }
             match error {
                 Some(e) => {
                     failing.push(n);
                     display_graph.set_node_color(n, Red.bold())?;
                     display_graph.add_node_label(n, format!("{}: {}", Red.bold().paint("ERROR"), e))?;
                     display_graph.add_node_section(n, inputs)?;
-                    display_graph.add_node_section(n, expected_outputs_section)?;
                 }
                 _ => {
                     let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
@@ -279,7 +286,6 @@ where
                         Err(e) => {
                             failing.push(n);
                             display_graph.add_node_section(n, inputs)?;
-                            display_graph.add_node_section(n, expected_outputs_section)?;
                             tract_output
                                 .iter()
                                 .enumerate()
