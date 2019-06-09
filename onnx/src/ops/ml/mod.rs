@@ -288,26 +288,24 @@ impl InferenceRulesOp for TreeEnsembleClassifier {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 2)?;
 
-        s.equals(&inputs[0].rank, 2)?;
         s.equals(&outputs[0].rank, 1)?;
-        s.equals(&outputs[0].rank, 1)?;
+        s.equals(&outputs[0].rank, inputs[1].rank.bex() - 1)?;
+        s.equals(&outputs[1].rank, &inputs[1].rank)?;
 
-        s.given_3(
-            &inputs[0].shape,
-            &outputs[0].shape,
-            &outputs[1].shape,
-            move |s, s_in0, s_out0, s_out1| {
-                s.equals(&s_in0[0], &s_out0[0])?;
-                s.equals(&s_out0[0], &s_out1[0])?;
-                if let Ok(k) = s_in0[1].to_integer() {
-                    self.ensemble.check_n_features(k as _)?;
-                }
-                if let Ok(k) = s_out1[1].to_integer() {
-                    s.equals(k, self.ensemble.n_classes() as i32)?;
-                }
-                Ok(())
-            },
-        )?;
+        s.given(&inputs[0].rank, move |s, rank| {
+            if rank == 1 && rank != 2 {
+                bail!("First input rank must be 1 or 2");
+            }
+            if rank == 2 {
+                s.equals(&inputs[0].shape[0], &outputs[0].shape[0])?;
+                s.equals(&inputs[0].shape[0], &outputs[1].shape[0])?;
+            }
+            // FIXME: do we somehow know Nfeatures ?
+            // s.equals(&inputs[0].shape[rank-1], );
+            s.equals(&outputs[1].shape[rank as usize - 1], self.ensemble.n_classes().to_dim())?;
+            Ok(())
+        })?;
+
 
         s.given(&inputs[0].datum_type, move |_, dt| {
             Ok(match dt {
