@@ -206,6 +206,12 @@ impl TryInto<i64> for TDim {
     }
 }
 
+impl TryInto<bool> for f32 {
+    fn try_into(&self) -> TractResult<bool> {
+        Ok(*self != 0.0)
+    }
+}
+
 impl TryInto<f32> for bool {
     fn try_into(&self) -> TractResult<f32> {
         if *self {
@@ -213,6 +219,12 @@ impl TryInto<f32> for bool {
         } else {
             Ok(0.0)
         }
+    }
+}
+
+impl TryInto<bool> for f64 {
+    fn try_into(&self) -> TractResult<bool> {
+        Ok(*self != 0.0)
     }
 }
 
