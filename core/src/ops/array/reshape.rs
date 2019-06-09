@@ -10,7 +10,7 @@ impl Reshape {
         }
         let mut result: Vec<D> = shape
             .iter()
-            .zip(input.iter())
+            .zip(input.iter().chain(std::iter::repeat(&D::from(1))))
             .map(|(&shape, input)| if shape > 0 { D::from(shape as usize) } else { input.clone() })
             .collect();
         if let Some(minus_one) = shape.iter().position(|d| *d == -1) {
