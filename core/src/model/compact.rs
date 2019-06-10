@@ -22,6 +22,8 @@ where
             .map_err(|e| format!("While translating {}: {:?}", old_node, e))?;
         let new_op = O2::try_from(old_node.op.clone())?;
         model.add_node(old_node.name.clone(), new_op, facts)?;
+        model.node_mut(old_node.id).outputs.iter_mut().zip(old_node.outputs.iter())
+            .for_each(|(new, old)| new.successors = old.successors.clone());
         model.node_mut(old_node.id).inputs = old_node.inputs.clone();
         model.node_mut(old_node.id).control_inputs = old_node.control_inputs.clone();
     }

@@ -116,6 +116,13 @@ impl InferenceModel {
             .collect())
     }
 
+    /// Eliminate seemingly dead branches of the graph.
+    ///
+    /// This may break stateful networks.
+    pub fn eliminate_dead_branches(mut self) -> TractResult<InferenceModel> {
+        compact::compact(&mut self)
+    }
+
     /// Attempt full analyse and conversion to TypedModel.
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
         self.analyse(false)?;

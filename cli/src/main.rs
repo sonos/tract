@@ -83,6 +83,7 @@ fn main() {
         (@arg proto: --("proto") "Keep proto model around after parse")
         (@arg determinize: --determinize "Enforce a seed in random operator")
 
+        (@arg partial: --partial "Before analyse, eliminate dead branches")
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
         (@arg skip_type: --("skip-type") "Analyse as much as possible, but do not enforce full typing")
 
@@ -353,6 +354,7 @@ impl Parameters {
                 let t = tensor::for_string(v)?;
                 let outlet = raw_model.input_outlets()?[ix];
                 vs.push(t.value.concretize());
+                raw_model.node_mut(outlet.node).op = Box::new(tract_core::ops::Source::new());
                 raw_model.set_outlet_fact(outlet, t)?;
             }
             Some(vs)
@@ -367,6 +369,9 @@ impl Parameters {
         let mut unoptimized_model = None;
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
+            if matches.is_present("partial") {
+                raw_model = raw_model.eliminate_dead_branches()?;
+            }
             if let Err(e) = raw_model.analyse(true) {
                 // do not stop on mere analyse error
                 error!("Analyse failed: {}", e);
