@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn inference_1() {
-        let op = make_conv(1, 3, PaddingSpec::Valid);
+        let mut op = make_conv(1, 3, PaddingSpec::Valid);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 7, 1]).into_tensor());
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]).into_tensor());
         let any = TensorFact::default();
@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn inference_2() {
-        let op = make_conv(1, 1, PaddingSpec::SameUpper);
+        let mut op = make_conv(1, 1, PaddingSpec::SameUpper);
         let img = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
         let any = TensorFact::default();

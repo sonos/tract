@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn inference_1() {
-        let pack = Pack::new(DatumType::I32, 2, 0);
+        let mut pack = Pack::new(DatumType::I32, 2, 0);
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
         let any = TensorFact::default();
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn inference_2() {
-        let pack = Pack::new(DatumType::I32, 2, 0);
+        let mut pack = Pack::new(DatumType::I32, 2, 0);
         let a = TensorFact::from(rctensor0(0i32));
         let b = TensorFact::from(rctensor0(TDim::zero()));
         let any = TensorFact::default();

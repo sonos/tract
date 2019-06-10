@@ -82,10 +82,12 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
     pub fn analyse_one(&mut self, node: usize) -> TractResult<Vec<(OutletId, TensorFact)>> {
         let mut changed_edges = vec![];
         {
-            let node:&InferenceNode = &self.model.borrow().nodes()[node];
-            debug!("Starting step for #{} {} ({})", node.id, node.name, node.op.name(),);
+            debug!("Starting step for {}", self.model.borrow().node(node));
 
-            let (inputs, outputs) = self.model.borrow().node_facts(node.id)?;
+            let inferred = {
+            let (inputs, outputs) = self.model.borrow().node_facts(node)?;
+            let inputs:TVec<TensorFact> = inputs.into_iter().cloned().collect();
+            let outputs:TVec<TensorFact> = outputs.into_iter().cloned().collect();
             if log_enabled!(log::Level::Trace) {
                 for (ix, i) in inputs.iter().enumerate() {
                     trace!("  Input  #{}: {:?}", ix, i);
@@ -95,11 +97,16 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 }
             }
 
-            let inferred = node
+            let inputs:TVec<&TensorFact> = inputs.iter().collect();
+            let outputs:TVec<&TensorFact> = outputs.iter().collect();
+
+            self.model.borrow_mut().node_mut(node)
                 .op
                 .infer(inputs, outputs)
-                .map_err(|e| format!("while running inference on {} : {}", node, e))?;
+                .map_err(|e| format!("while running inference on {} : {}", node, e))?
+            };
 
+            let node = self.model.borrow().node(node);
             for (ix, &outlet) in node.inputs.iter().enumerate() {
                 let inferred_fact = &inferred.0[ix];
                 let old_fact = self.model.borrow().outlet_fact(outlet)?;

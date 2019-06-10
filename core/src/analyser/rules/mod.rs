@@ -50,7 +50,7 @@ pub trait InferenceRulesOp {
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
     fn infer_facts(
-        &self,
+        &mut self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
