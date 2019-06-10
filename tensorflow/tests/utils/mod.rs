@@ -60,12 +60,12 @@ pub fn compare_optim<S: AsRef<str>>(
 pub fn infer<S: AsRef<str>>(
     graph: &[u8],
     inputs: Vec<(S, Tensor)>,
-    output: &str,
+    output_str: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
     setup_test_logger();
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
-    model.set_output_names(&[output])?;
+    model.set_output_names(&[output_str])?;
     for (ix, (_, tf)) in inputs.iter().enumerate() {
         model.set_input_fact(ix, TensorFact::dt_shape(tf.datum_type(), tf.shape()))?;
     }
@@ -74,7 +74,7 @@ pub fn infer<S: AsRef<str>>(
     for (ix, (_, t)) in inputs.iter().enumerate() {
         state.set_input(ix, t.clone()).unwrap();
     }
-    let output = model.node_by_name(output)?;
+    let output = model.node_by_name(output_str)?;
     info!("Checking {} behaviour against tensorflow", output.name);
     state.compute_recursively(output.id)?;
     let _found = &state.values[output.id].as_ref().unwrap();
@@ -93,6 +93,7 @@ pub fn infer<S: AsRef<str>>(
     let input_facts = input_vectors.iter().collect();
     let output_facts = output_vectors.iter().collect();
 
+    let output = model.node_by_name_mut(output_str)?;
     let e = output.op.infer_facts(input_facts, output_facts);
     prop_assert!(e.is_ok(), "{:?}", e);
 

@@ -208,7 +208,7 @@ mod test {
 
     #[test]
     fn test_infer_channels() {
-        let op = Conv::default(); // NCHW - OIHW
+        let mut op = Conv::default(); // NCHW - OIHW
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(3, 2, 1, 1));
         let ofact = TensorFact::default();
@@ -229,7 +229,7 @@ mod test {
 
     #[test]
     fn test_infer_nhwc_1() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 2, 1));
         let ofact = TensorFact::default();
@@ -251,7 +251,7 @@ mod test {
 
     #[test]
     fn test_infer_nhwc_2() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 2, 1));
         let ofact = TensorFact::default();
@@ -290,7 +290,7 @@ mod test {
 
     #[test]
     fn test_infer_ntc_simple() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
         let ofact = TensorFact::default();
@@ -308,7 +308,7 @@ mod test {
 
     #[test]
     fn test_infer_ntc_batch() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
         let ofact = TensorFact::default();
@@ -326,7 +326,7 @@ mod test {
 
     #[test]
     fn test_infer_ntc_channel() {
-        let op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
+        let mut op = Conv::new(NHWC, HWIO, None, None, PaddingSpec::SameUpper, None, 1);
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
         let ofact = TensorFact::default();

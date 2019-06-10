@@ -45,6 +45,13 @@ impl Gather {
     ) -> TractResult<Arc<Tensor>> {
         let data_view = data.to_array_view::<T>()?;
         let axis = self.resolved_axis(data.shape().len())?;
+        if indices.shape().len() == 0 {
+            return Ok(data_view
+                .index_axis(Axis(axis), *indices.to_scalar::<i64>()? as usize)
+                .to_owned()
+                .into_arc_tensor());
+        }
+
 
         let mut output: Array<T, _> = unsafe { T::uninitialized_array(&*self.compute_output_shape(data.shape(), indices.shape())?) };
         for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {

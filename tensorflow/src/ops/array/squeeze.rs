@@ -53,7 +53,7 @@ mod tests {
         ]);
         let any = TensorFact::default();
 
-        let op = Squeeze::new(Some(vec![1]));
+        let mut op = Squeeze::new(Some(vec![1]));
         let inferred = op.infer_facts(tvec!(&input), tvec!(&any)).unwrap();
 
         let expect: TVec<_> = tvec!(TensorFact::default()

@@ -193,6 +193,13 @@ where
         Ok(&self.nodes[*id])
     }
 
+    /// Borrow mutably a node by its name.
+    pub fn node_by_name_mut(&mut self, name: &str) -> TractResult<&mut BaseNode<TI, O>> {
+        let id: &usize =
+            self.nodes_by_name.get(name).ok_or_else(|| format!("Node named {} not found", name))?;
+        Ok(&mut self.nodes[*id])
+    }
+
     /// Find a node by its id.
     pub fn node(&self, id: usize) -> &BaseNode<TI, O> {
         &self.nodes[id]

@@ -147,7 +147,7 @@ pub trait InferenceOp:
     /// Returns Err in case of an unrecoverable error during the inference,
     /// and the refined properties about the inputs and outputs otherwise.
     fn infer(
-        &self,
+        &mut self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
@@ -176,7 +176,7 @@ pub trait InferenceOp:
     }
 
     fn infer_facts(
-        &self,
+        &mut self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)>;

@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn space_to_batch_nd_infer_1() {
-        let op = SpaceToBatch::new(f32::datum_type());
+        let mut op = SpaceToBatch::new(f32::datum_type());
         let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 4, 16));
         let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn space_to_batch_nd_infer_2() {
-        let op = SpaceToBatch::new(f32::datum_type());
+        let mut op = SpaceToBatch::new(f32::datum_type());
         let data = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::s() - 4), 16));
         let block_shape = TensorFact::from(Tensor::from(arr1(&[2])));
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));

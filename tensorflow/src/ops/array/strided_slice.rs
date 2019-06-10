@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn inference_1() {
-        let op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
+        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
         let input = TensorFact::default().with_datum_type(DatumType::F32);
         let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn inference_2() {
-        let op = StridedSlice::<f32>::new(BaseStridedSlice::new(1, 1, 2));
+        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(1, 1, 2));
         let input = TensorFact::default().with_datum_type(DatumType::F32);
         let begin = TensorFact::from(tensor1(&[0i32, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 1]));
@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn inference_3() {
-        let op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
+        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
         let input = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
         let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn inference_4() {
-        let op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
+        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
         let input = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
         let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
