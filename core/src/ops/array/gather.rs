@@ -13,44 +13,40 @@ impl Op for Gather {
 }
 
 impl Gather {
+    fn resolved_axis(&self, rank: usize) -> TractResult<usize> {
+        if 0 <= self.axis && self.axis <= rank as i64 - 1 {
+            Ok(self.axis as usize)
+        } else if -(rank as i64) <= self.axis && self.axis < 0 {
+            Ok((self.axis + rank as i64) as usize)
+        } else {
+            bail!("Illegal combination of values for rank and axis")
+        }
+    }
+
+    fn compute_output_shape<D:DimLike>(&self, input_shape: &[D], indices_shape: &[D]) -> TractResult<TVec<D>> {
+        let axis = self.resolved_axis(input_shape.len())?;
+        let mut output_shape = tvec![];
+        for (idx, dim) in input_shape.iter().enumerate() {
+            if idx != axis {
+                output_shape.push(dim.clone());
+            } else {
+                for idx2 in indices_shape {
+                    output_shape.push(idx2.clone());
+                }
+            }
+        }
+        Ok(output_shape)
+    }
+
     fn eval_t<T: Datum>(
         &self,
         data: Arc<Tensor>,
         indices: &Arc<Tensor>,
     ) -> TractResult<Arc<Tensor>> {
         let data_view = data.to_array_view::<T>()?;
-        let rank = data.shape().len() as i64;
-        let axis = {
-            let axis_res: TractResult<i64> = {
-                if 0 <= self.axis && self.axis <= rank - 1 {
-                    Ok(self.axis)
-                } else if -rank <= self.axis && self.axis < 0 {
-                    Ok(self.axis + rank)
-                } else {
-                    bail!("Illegal combination of values for rank and axis")
-                }
-            };
-            axis_res? as usize
-        };
+        let axis = self.resolved_axis(data.shape().len())?;
 
-        if indices.shape().len() == 0 {
-            return Ok(data_view
-                .index_axis(Axis(axis), *indices.to_scalar::<i64>()? as usize)
-                .to_owned()
-                .into_arc_tensor());
-        }
-
-        let mut output_shape: Vec<usize> = vec![];
-        for (idx, dim) in data_view.shape().to_vec().iter().enumerate() {
-            if idx != axis {
-                output_shape.push(*dim);
-            } else {
-                for idx2 in indices.shape() {
-                    output_shape.push(*idx2);
-                }
-            }
-        }
-        let mut output: Array<T, _> = unsafe { T::uninitialized_array(output_shape) };
+        let mut output: Array<T, _> = unsafe { T::uninitialized_array(&*self.compute_output_shape(data.shape(), indices.shape())?) };
         for (pattern, index) in indices.to_array_view::<i64>()?.indexed_iter() {
             {
                 let mut to_update = output.index_axis_mut(Axis(axis), pattern[0]);
@@ -82,8 +78,14 @@ impl InferenceRulesOp for Gather {
     ) -> InferenceResult {
         check_input_arity(&inputs, 2)?;
         check_output_arity(&outputs, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[1].datum_type, i64::datum_type())?;
         s.equals(inputs[0].rank.bex() - 1 + inputs[1].rank.bex(), outputs[0].rank.bex())?;
+        s.given_2(&inputs[0].shape, &inputs[1].shape, move |s, input_shape, indices_shape| {
+            let output_shape = self.compute_output_shape(&*input_shape, &*indices_shape)?;
+            s.equals(&outputs[0].shape, output_shape)?;
+            Ok(())
+        })?;
         Ok(())
     }
 
