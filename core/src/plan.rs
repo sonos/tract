@@ -237,7 +237,7 @@ where
                     Some(ref mut state) => state.eval(session_state, node.op(), inputs),
                     None => node.op().as_stateless().unwrap().eval(inputs),
                 }
-                .map_err(|e| format!("Evaluating {}: {}", node, e))?;
+                .chain_err(|| format!("Evaluating {}", node))?;
 
                 if cfg!(debug_assertions) {
                     let facts = model.node_output_facts(node.id)?;
