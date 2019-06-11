@@ -58,7 +58,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     }
                 }
                 Err(e) => {
-                    let e = format!("Analysing node {:?}, {:?}", node, e);
+                    let e = format!("Analysing node {:?}, {}", node, e);
                     if !obstinate {
                         return Err(e.into());
                     }
