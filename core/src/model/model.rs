@@ -142,6 +142,12 @@ where
         self.outlet_fact(input)
     }
 
+    /// Get the `ix`-th input tensor type information, mutably.
+    pub fn input_fact_mut(&mut self, ix: usize) -> TractResult<&mut TI> {
+        let input = self.input_outlets()?[ix];
+        self.outlet_fact_mut(input)
+    }
+
     /// Set the `ix`-th input tensor type information.
     pub fn set_input_fact(&mut self, input: usize, fact: TI) -> TractResult<()> {
         let outlet = self.inputs[input];
@@ -177,6 +183,18 @@ where
     pub fn output_fact(&self, ix: usize) -> TractResult<&TI> {
         let output = self.output_outlets()?[ix];
         self.outlet_fact(output)
+    }
+
+    /// Get the `ix`-th input tensor type information, mutably.
+    pub fn output_fact_mut(&mut self, ix: usize) -> TractResult<&mut TI> {
+        let output = self.output_outlets()?[ix];
+        self.outlet_fact_mut(output)
+    }
+
+    /// Set the `ix`-th output tensor type information.
+    pub fn set_output_fact(&mut self, output: usize, fact: TI) -> TractResult<()> {
+        let outlet = self.outputs[output];
+        self.set_outlet_fact(outlet, fact)
     }
 
     // nodes and their facts
@@ -241,6 +259,13 @@ where
     pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&TI> {
         let outlets = &self.nodes[outlet.node].outputs;
         outlets.get(outlet.slot).map(|o| &o.fact)
+            .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
+    }
+
+    /// Get tensor information for a single outlet.
+    pub fn outlet_fact_mut(&mut self, outlet: OutletId) -> TractResult<&mut TI> {
+        let outlets = &mut self.nodes[outlet.node].outputs;
+        outlets.get_mut(outlet.slot).map(|o| &mut o.fact)
             .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
     }
 

@@ -21,6 +21,46 @@ pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
 
     /// Tries to unify the fact with another fact of the same type.
     fn unify(&self, other: &Self) -> TractResult<Self>;
+
+    /// Tries to unify the fact with another fact of the same type and update
+    /// them.
+    ///
+    /// Returns true if it actually changed something.
+    fn unify_with(&mut self, other: &mut Self) -> TractResult<bool> {
+        let new = self.unify(&other)?;
+        let mut changed = false;
+        if &new != self {
+            changed = true;
+            *self = new.clone();
+        }
+        if &new != other {
+            changed = true;
+            *other = new;
+        }
+        Ok(changed)
+    }
+
+    /// Tries to unify all facts in the list.
+    ///
+    ///
+    /// Returns true if it actually changed something.
+    fn unify_all(facts: &mut [&mut Self]) -> TractResult<bool> {
+        let mut overall_changed = false;
+        loop {
+            let mut changed = false;
+            for i in 0..facts.len() - 1 {
+                for j in i+1..facts.len() {
+                    let (left, right) = facts.split_at_mut(j);
+                    let c = left[i].unify_with(right[0])?;
+                    changed = changed || c;
+                    overall_changed = changed || c;
+                }
+            }
+            if !changed {
+                return Ok(overall_changed)
+            }
+        }
+    }
 }
 
 /// Partial information about a tensor.

@@ -103,27 +103,96 @@ impl StatelessOp for Scan {
     }
 }
 
-impl InferenceRulesOp for Scan {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
+impl Scan {
+    fn unify_facts(&mut self, inputs: &mut [TensorFact], outputs: &mut [TensorFact]) -> TractResult<()> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
-        let hidden_state_len = body_inputs - self.num_scan_inputs;
-        if body_inputs != inputs.len() {
-            bail!("Unexpected inputs count: body expects {} inputs, interface have {}", body_inputs, inputs.len())
-        };
-        if body_outputs != outputs.len() {
-            bail!("Unexpected outputs count: body expects {} outputs, interface have {}", body_outputs, outputs.len())
-        };
+        let hidden_state_len = body_inputs - self.num_scan_inputs - self.closure_inputs;
+        let num_scan_outputs = body_outputs - hidden_state_len;
         for i in 0..hidden_state_len {
-            s.equals(&inputs[i].shape, &outputs[i].shape)?;
-            s.equals(&inputs[i].datum_type, &outputs[i].datum_type)?;
+            trace!("Unify hidden state #{}", i);
+            let mut merged = self.body.input_fact(i)?.datum_type.unify(&self.body.output_fact(i)?.datum_type)?;
+            Fact::unify_all(&mut [&mut merged, &mut inputs[i].datum_type, &mut outputs[i].datum_type])
+                .map_err(|e| format!("while unifying hidden state datum_types #{}: {}", i, e))?;
+            self.body.input_fact_mut(i)?.datum_type.unify_with(&mut merged)?;
+            self.body.output_fact_mut(i)?.datum_type.unify_with(&mut merged)?;
+
+            let mut merged = self.body.input_fact(i)?.shape.unify(&self.body.output_fact(i)?.shape)?;
+            Fact::unify_all(&mut [&mut merged, &mut inputs[i].shape, &mut outputs[i].shape])
+                .map_err(|e| format!("while unifying hidden state shapes #{}: {}", i, e))?;
+            self.body.input_fact_mut(i)?.shape.unify_with(&mut merged)?;
+            self.body.output_fact_mut(i)?.shape.unify_with(&mut merged)?;
+        }
+        let mut iters:Option<TDim> = None;
+        for i in 0..self.num_scan_inputs {
+            let axis = self.scan_input_axes.get(i).cloned().unwrap_or(0);
+            iters = iters.or_else(|| inputs[hidden_state_len+i].shape.dims().nth(axis).unwrap().concretize());
+        }
+        for i in 0..num_scan_outputs {
+            let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
+            iters = iters.or_else(|| outputs[hidden_state_len+i].shape.dims().nth(axis).unwrap().concretize());
+        }
+        trace!("Iterations: {:?}", iters);
+        for i in 0..self.num_scan_inputs {
+            trace!("Unifying scan input #{}", hidden_state_len + i);
+            let incoming = &mut inputs[hidden_state_len + i];
+            let inner = self.body.input_fact_mut(hidden_state_len + i)?;
+            incoming.datum_type.unify_with(&mut inner.datum_type)?;
+            if let Some(shape) = incoming.shape.concretize() {
+                let mut shape:Vec<TDim> = shape.to_vec();
+                let axis = self.scan_input_axes.get(i).cloned().unwrap_or(0);
+                shape.remove(axis);
+                inner.shape.unify_with(&mut ShapeFact::from(shape))?;
+            }
+        }
+        for i in 0..self.closure_inputs {
+            let id = hidden_state_len + self.num_scan_inputs + i;
+            trace!("Unifying closure input #{}", id);
+            inputs[id].unify_with(self.body.input_fact_mut(id)?)?;
+        }
+        for i in 0..num_scan_outputs {
+            let inner = self.body.output_fact_mut(hidden_state_len + i)?;
+            let outgoing = &mut outputs[hidden_state_len + i];
+            outgoing.datum_type.unify_with(&mut inner.datum_type)?;
+            if let (Some(shape), Some(iters)) = (inner.shape.concretize(), iters.clone()) {
+                let mut shape:Vec<TDim> = shape.to_vec();
+                let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
+                shape.insert(axis, iters);
+                outgoing.shape.unify_with(&mut ShapeFact::from(shape))?;
+            }
         }
         Ok(())
+    }
+}
+
+impl InferenceOp for Scan {
+    fn infer_facts(
+        &mut self,
+        inputs: TVec<&TensorFact>,
+        outputs: TVec<&TensorFact>,
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+        let body_inputs = self.body.input_outlets()?.len();
+        let body_outputs = self.body.output_outlets()?.len();
+        if inputs.len() != body_inputs {
+            bail!("Scan receives {} inputs, inner model expects {}", inputs.len(), body_inputs)
+        }
+        if outputs.len() != body_outputs {
+            bail!("Scan has {} outputs, inner model expects {}", outputs.len(), body_outputs)
+        }
+        let mut inputs:TVec<TensorFact> = inputs.into_iter().cloned().collect();
+        let mut outputs:TVec<TensorFact> = outputs.into_iter().cloned().collect();
+        self.unify_facts(&mut inputs, &mut outputs)?;
+        trace!("Starting inner model analyse");
+        for (ix, input) in self.body.input_outlets()?.iter().enumerate() {
+            trace!("  Input inner model: {} {:?} {:?}", ix, input, self.body.input_fact(ix));
+        }
+        for (ix, output) in self.body.output_outlets()?.iter().enumerate() {
+            trace!("  Output inner model: {} {:?} {:?}", ix, output, self.body.output_fact(ix));
+        }
+        self.body.analyse(false).map_err(|e| format!("analysing inner model: {}\n{:#?}", e, self.body))?;
+        trace!("Finished inner model analyse");
+        self.unify_facts(&mut inputs, &mut outputs)?;
+        Ok((inputs, outputs))
     }
 
     inference_op_as_op!();
