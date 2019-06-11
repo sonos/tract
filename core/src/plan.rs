@@ -250,6 +250,9 @@ where
                         );
                     }
                     for (ix, (v, f)) in vs.iter().zip(facts.iter()).enumerate() {
+                        if node.outputs[ix].successors.len() == 0 {
+                            continue;
+                        }
                         if f.to_tensor_fact().is_concrete()
                             && f.to_tensor_fact().stream_info()?.is_some()
                         {

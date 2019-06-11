@@ -1,15 +1,15 @@
-use crate::pb::*;
 use crate::model::ParsingContext;
+use crate::pb::*;
 use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
 
-pub fn lstm(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
+pub fn lstm(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<InferenceOp>, Vec<String>)> {
     let mut lstm = LSTM::default();
     lstm.want_output_0_y = pb.get_output().get(0).map(|s| !s.is_empty()).unwrap_or(false);
     lstm.want_output_1_y_h = pb.get_output().get(1).map(|s| !s.is_empty()).unwrap_or(false);
     lstm.want_output_2_y_c = pb.get_output().get(2).map(|s| !s.is_empty()).unwrap_or(false);
-    Ok((Box::new(LSTM::default()), vec!()))
+    Ok((Box::new(lstm), vec![]))
 }
 
 #[derive(Debug, Clone, new)]
@@ -46,12 +46,6 @@ impl Op for LSTM {
 
     fn validation(&self) -> Validation {
         Validation::Rounding
-    }
-}
-
-impl StatefullOp for LSTM {
-    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
-        Ok(Some(Box::new(LSTMState { h_c: None })))
     }
 }
 
@@ -105,19 +99,8 @@ impl InferenceRulesOp for LSTM {
     inference_op_as_op!();
 }
 
-#[derive(Debug, Clone, new)]
-pub struct LSTMState {
-    h_c: Option<(Tensor, Tensor)>,
-}
-
-impl OpState for LSTMState {
-    fn eval(
-        &mut self,
-        _session: &mut SessionState,
-        op: &Op,
-        inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        let op: &LSTM = op.downcast_ref::<LSTM>().ok_or("LSTM state passed wrong op")?;
+impl StatelessOp for LSTM {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let x: ArrayView3<f32> = inputs[0].to_array_view::<f32>()?.into_dimensionality()?; // [seq_length, batch_size, input_size]
         let w: ArrayView3<f32> = inputs[1].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 4*hidden_size, input_size]
         let r: ArrayView3<f32> = inputs[2].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 4*hidden_size, hidden_size]
@@ -133,109 +116,134 @@ impl OpState for LSTMState {
         let num_directions = w.shape()[0];
         let hidden_size = r.shape()[2];
 
-        if num_directions != 1 {
-            bail!("Only forward LSTM implemented");
-        }
-        let w = w.index_axis_move(Axis(0), 0);
-        let r = r.index_axis_move(Axis(0), 0);
+        let mut output_0_y = if self.want_output_0_y {
+            Some(Array4::<f32>::zeros((seq_length, num_directions, batch_size, hidden_size)))
+        } else {
+            None
+        };
 
-        if self.h_c.is_none() {
-            let h = op
-                .initial_h
-                .clone()
-                .unwrap_or_else(|| Array2::<f32>::zeros((batch_size, hidden_size)).into());
-            let c = op
-                .initial_c
-                .clone()
-                .unwrap_or_else(|| Array2::<f32>::zeros((batch_size, hidden_size)).into());
-            self.h_c = Some((h, c))
-        }
-        let (ht, ct) = self.h_c.as_mut().unwrap();
-        let mut ht: ArrayViewMut2<f32> = ht.to_array_view_mut::<f32>()?.into_dimensionality()?;
-        let mut ct: ArrayViewMut2<f32> = ct.to_array_view_mut::<f32>()?.into_dimensionality()?;
+        let mut output_1_y_h = if self.want_output_1_y_h {
+            Some(Array3::<f32>::zeros((num_directions, batch_size, hidden_size)))
+        } else {
+            None
+        };
 
-        // dbg!(&ct);
-        let mut ht_list: Array3<f32> = Array3::zeros((seq_length, batch_size, hidden_size));
+        let mut output_2_y_c = if self.want_output_2_y_c {
+            Some(Array3::<f32>::zeros((num_directions, batch_size, hidden_size)))
+        } else {
+            None
+        };
 
-        for (ix, x) in x.outer_iter().enumerate() {
-            // x -> batch_size x input_size
-            // Wt -> k=input_size x n=4*hidden_size
-            // iofc -> batch_size x 4 * hidden_size
-            //dbg!(&x);
-            //dbg!(&ht);
-            let mut iofc = x.dot(&w.t()) + ht.dot(&r.t()); // batch_size x 4*hidden_size
-            if let Some(bias) = bias {
-                iofc += &bias.slice(s!(0, 0..4 * hidden_size));
-                iofc += &bias.slice(s!(0, 4 * hidden_size..8 * hidden_size));
+        for dir in 0..num_directions {
+            let w = w.index_axis_move(Axis(0), dir);
+            let r = r.index_axis_move(Axis(0), dir);
+
+            let mut ht = if let Some(ref init) = self.initial_h {
+                init.to_array_view::<f32>()?
+                    .index_axis_move(Axis(0), dir)
+                    .to_owned()
+                    .into_dimensionality()?
+            } else {
+                Array2::<f32>::zeros((batch_size, hidden_size)).into()
+            };
+
+            let mut ct = if let Some(ref init) = self.initial_c {
+                init.to_array_view::<f32>()?
+                    .index_axis_move(Axis(0), dir)
+                    .to_owned()
+                    .into_dimensionality()?
+            } else {
+                Array2::<f32>::zeros((batch_size, hidden_size)).into()
+            };
+
+            for ix in 0..seq_length {
+                let ix = if dir == 0 { ix } else { seq_length - 1 - ix };
+                let x = x.index_axis_move(Axis(0), ix);
+                // x -> batch_size x input_size
+                // Wt -> k=input_size x n=4*hidden_size
+                // iofc -> batch_size x 4 * hidden_size
+
+                let mut iofc = x.dot(&w.t()) + ht.dot(&r.t()); // batch_size x 4*hidden_size
+                if let Some(bias) = bias {
+                    iofc += &bias.slice(s!(dir, 0..4 * hidden_size));
+                    iofc += &bias.slice(s!(dir, 4 * hidden_size..8 * hidden_size));
+                }
+
+                let iofc = iofc.into_shape((batch_size, 4, hidden_size))?;
+
+                let i = self.f.eval(tvec!(iofc
+                    .slice_axis(Axis(1), (0..=0).into())
+                    .to_owned()
+                    .into_arc_tensor()))?;
+
+                let o = self.f.eval(tvec!(iofc
+                    .slice_axis(Axis(1), (1..=1).into())
+                    .to_owned()
+                    .into_arc_tensor()))?;
+                let f = self.f.eval(tvec!(iofc
+                    .slice_axis(Axis(1), (2..=2).into())
+                    .to_owned()
+                    .into_arc_tensor()))?;
+
+                let c = self.g.eval(tvec!(iofc
+                    .slice_axis(Axis(1), (3..=3).into())
+                    .to_owned()
+                    .into_arc_tensor()))?;
+
+                let i = i[0]
+                    .to_array_view::<f32>()?
+                    .to_owned()
+                    .into_dimensionality::<Ix3>()?
+                    .into_shape((batch_size, hidden_size))?;
+                let o = o[0]
+                    .to_array_view::<f32>()?
+                    .to_owned()
+                    .into_dimensionality::<Ix3>()?
+                    .into_shape((batch_size, hidden_size))?;
+
+                let f = f[0]
+                    .to_array_view::<f32>()?
+                    .to_owned()
+                    .into_dimensionality::<Ix3>()?
+                    .into_shape((batch_size, hidden_size))?;
+
+                let c = c[0]
+                    .to_array_view::<f32>()?
+                    .to_owned()
+                    .into_dimensionality::<Ix3>()?
+                    .into_shape((batch_size, hidden_size))?;
+
+                let big_c = f * &ct + i * c;
+
+                let big_h = o * self.h.eval(tvec!(big_c.clone().into_arc_tensor()))?[0]
+                    .to_array_view::<f32>()?
+                    .to_owned()
+                    .into_dimensionality::<Ix2>()?;
+                ht.assign(&big_h);
+
+                if let Some(ref mut o) = output_0_y {
+                    o.index_axis_mut(Axis(0), ix).index_axis_move(Axis(0), dir).assign(&ht);
+                }
+                ct.assign(&big_c);
             }
-            //  dbg!(&iofc);
-            let iofc = iofc.into_shape((batch_size, 4, hidden_size))?;
-            // dbg!(&iofc);
-            let i = op.f.eval(tvec!(iofc
-                .slice_axis(Axis(1), (0..=0).into())
-                .to_owned()
-                .into_arc_tensor()))?;
-            // dbg!(&i);
-            let o = op.f.eval(tvec!(iofc
-                .slice_axis(Axis(1), (1..=1).into())
-                .to_owned()
-                .into_arc_tensor()))?;
-            let f = op.f.eval(tvec!(iofc
-                .slice_axis(Axis(1), (2..=2).into())
-                .to_owned()
-                .into_arc_tensor()))?;
-            // dbg!(&iofc.slice_axis(Axis(1), (3..=3).into()));
-
-            let c = op.g.eval(tvec!(iofc
-                .slice_axis(Axis(1), (3..=3).into())
-                .to_owned()
-                .into_arc_tensor()))?;
-            // dbg!(&c);
-            let i = i[0]
-                .to_array_view::<f32>()?
-                .to_owned()
-                .into_dimensionality::<Ix3>()?
-                .into_shape((batch_size, hidden_size))?;
-            let o = o[0]
-                .to_array_view::<f32>()?
-                .to_owned()
-                .into_dimensionality::<Ix3>()?
-                .into_shape((batch_size, hidden_size))?;
-            // dbg!(&o);
-
-            let f = f[0]
-                .to_array_view::<f32>()?
-                .to_owned()
-                .into_dimensionality::<Ix3>()?
-                .into_shape((batch_size, hidden_size))?;
-
-            // dbg!(&c);
-            let c = c[0]
-                .to_array_view::<f32>()?
-                .to_owned()
-                .into_dimensionality::<Ix3>()?
-                .into_shape((batch_size, hidden_size))?;
-            /*
-                        dbg!(&f);
-                        dbg!(&ct);
-                        dbg!(&i);
-                        dbg!(&c);
-            */
-            let big_c = f * &ct + i * c;
-            // dbg!(&big_c);
-            let big_h = o * op.h.eval(tvec!(big_c.clone().into_arc_tensor()))?[0]
-                .to_array_view::<f32>()?
-                .to_owned()
-                .into_dimensionality::<Ix2>()?;
-            ht.assign(&big_h);
-            // dbg!(&big_h);
-            ht_list.slice_axis_mut(Axis(0), (ix..=ix).into()).assign(&ht);
-            // dbg!(&ht_list);
-            ct.assign(&big_c);
+            if let Some(ref mut o) = output_1_y_h {
+                o.index_axis_mut(Axis(0), dir).assign(&ht);
+            }
+            if let Some(ref mut o) = output_2_y_c {
+                o.index_axis_mut(Axis(0), dir).assign(&ct);
+            }
         }
-        let ht_list = ht_list.into_shape((seq_length, 1, batch_size, hidden_size))?;
-        let hto = ht.to_owned().into_shape((1, batch_size, hidden_size))?;
 
-        Ok(tvec!(ht_list.into_arc_tensor(), hto.into_arc_tensor()))
+        let mut outputs = tvec!(
+            output_0_y.map(|o| o.into_arc_tensor()),
+            output_1_y_h.map(|o| o.into_arc_tensor()),
+            output_2_y_c.map(|o| o.into_arc_tensor())
+        );
+        while outputs.len() > 0 && outputs.last().unwrap().is_none() {
+            outputs.pop();
+        }
+        Ok(outputs.into_iter()
+            .map(|t| t.unwrap_or(Tensor::from(0.0f32).into_arc_tensor()))
+            .collect())
     }
 }
