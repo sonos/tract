@@ -126,11 +126,15 @@ impl Scan {
         let mut iters:Option<TDim> = None;
         for i in 0..self.num_scan_inputs {
             let axis = self.scan_input_axes.get(i).cloned().unwrap_or(0);
-            iters = iters.or_else(|| inputs[hidden_state_len+i].shape.dims().nth(axis).unwrap().concretize());
+            let input = &mut inputs[hidden_state_len+i];
+            input.shape.ensure_rank_at_least(axis);
+            iters = iters.or_else(|| input.shape.dims().nth(axis).unwrap().concretize());
         }
         for i in 0..num_scan_outputs {
             let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
-            iters = iters.or_else(|| outputs[hidden_state_len+i].shape.dims().nth(axis).unwrap().concretize());
+            let output = &mut outputs[hidden_state_len+i];
+            output.shape.ensure_rank_at_least(axis);
+            iters = iters.or_else(|| output.shape.dims().nth(axis).unwrap().concretize());
         }
         trace!("Iterations: {:?}", iters);
         for i in 0..self.num_scan_inputs {

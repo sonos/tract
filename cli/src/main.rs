@@ -345,6 +345,14 @@ impl Parameters {
         #[cfg(not(feature = "conform"))]
         let tf_model = ();
 
+        if let Some(inputs) = matches.values_of("input") {
+            let names = inputs.map(|t| Ok(tensor::for_string(t)?.0)).collect::<CliResult<Vec<Option<String>>>>()?;
+            if names.iter().all(|s| s.is_some()) {
+                let names:Vec<String> = names.into_iter().map(|s| s.unwrap()).collect();
+                raw_model.set_input_names(names)?;
+            }
+        }
+
         if let Some(inputs) = matches.values_of("input_node") {
             raw_model.set_input_names(inputs)?;
         };
@@ -358,8 +366,13 @@ impl Parameters {
         let inputs = if let Some(inputs) = matches.values_of("input") {
             let mut vs = vec![];
             for (ix, v) in inputs.enumerate() {
-                let t = tensor::for_string(v)?;
-                let outlet = raw_model.input_outlets()?[ix];
+                let (name, t) = tensor::for_string(v)?;
+                let outlet = if let Some(name) = name {
+                    let node = raw_model.node_by_name(&*name)?;
+                    OutletId::new(node.id, 0)
+                } else {
+                    raw_model.input_outlets()?[ix]
+                };
                 vs.push(t.value.concretize());
                 raw_model.node_mut(outlet.node).op = Box::new(tract_core::ops::Source::new());
                 raw_model.set_outlet_fact(outlet, t)?;
@@ -486,10 +499,10 @@ impl Assertions {
     fn from_clap(sub_matches: &clap::ArgMatches) -> CliResult<Assertions> {
         let assert_outputs: Option<Vec<TensorFact>> = sub_matches
             .values_of("assert-output")
-            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
+            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
         let assert_output_facts: Option<Vec<TensorFact>> = sub_matches
             .values_of("assert-output-fact")
-            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap()).collect());
+            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
         Ok(Assertions { assert_outputs, assert_output_facts })
     }
 }
