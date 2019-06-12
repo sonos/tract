@@ -70,25 +70,26 @@ fn tensor_for_text_data(filename: &str) -> CliResult<Tensor> {
 }
 
 /// Parses the `data` command-line argument.
-fn for_data(filename: &str) -> CliResult<TensorFact> {
-    let tensor = if filename.ends_with(".pb") {
+fn for_data(filename: &str) -> CliResult<(Option<String>, TensorFact)> {
+    use std::convert::TryFrom;
+    if filename.ends_with(".pb") {
         #[cfg(feature = "onnx")]
         {
-            let file = fs::File::open(filename)?;
-            ::tract_onnx::tensor::from_reader(file)?
+            let file = fs::File::open(filename).chain_err(|| format!("Can't open {:?}", filename))?;
+            let proto = ::tract_onnx::tensor::proto_from_reader(file)?;
+            Ok((Some(proto.get_name().to_string()), Tensor::try_from(proto)?.into()))
         }
         #[cfg(not(feature = "onnx"))]
         {
             panic!("Loading tensor from protobuf requires onnx features");
         }
     } else {
-        tensor_for_text_data(filename)?
-    };
+        Ok((None, tensor_for_text_data(filename)?.into()))
+    }
 
-    Ok(tensor.into())
 }
 
-pub fn for_string(value: &str) -> CliResult<TensorFact> {
+pub fn for_string(value: &str) -> CliResult<(Option<String>, TensorFact)> {
     if value.starts_with("@") {
         for_data(&value[1..])
     } else {
@@ -103,9 +104,9 @@ pub fn for_string(value: &str) -> CliResult<TensorFact> {
                 .as_concrete_finite()?
                 .ok_or("Must specify concrete shape when giving tensor value")?;
             let tensor = dispatch_datum!(parse_values(dt)(&*shape, value.collect()))?;
-            Ok(tensor.into())
+            Ok((None, tensor.into()))
         } else {
-            parse_spec(value)
+            Ok((None, parse_spec(value)?))
         }
     }
 }

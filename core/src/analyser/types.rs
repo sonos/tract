@@ -318,6 +318,12 @@ impl ShapeFact {
         if self.open { GenericFact::Any } else { GenericFact::Only(self.dims.len() as i32) }.into()
     }
 
+    pub fn ensure_rank_at_least(&mut self, n: usize) {
+        while self.dims.len() <= n {
+            self.dims.push(GenericFact::Any)
+        }
+    }
+
     pub fn dims(&self) -> impl Iterator<Item = DimFact> {
         let stream = self.stream.clone();
         self.dims.clone().into_iter().map(move |d| match d {
