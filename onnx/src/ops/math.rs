@@ -1,6 +1,6 @@
 use tract_core::ops as tractops;
 
-use crate::model::{ OnnxOpRegister, ParsingContext };
+use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
 use tract_core::internal::*;
 
@@ -34,6 +34,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Asinh", |_, _| Ok((Box::new(tractops::math::Asinh::default()),vec!())));
     reg.insert("Atanh", |_, _| Ok((Box::new(tractops::math::Atanh::default()),vec!())));
 
+    reg.insert("Erf", |_, _| Ok((Box::new(Erf::default()), vec!())));
     reg.insert("Exp", |_, _| Ok((Box::new(tractops::math::Exp::default()),vec!())));
     reg.insert("Log", |_, _| Ok((Box::new(tractops::math::Ln::default()),vec!())));
     reg.insert("Sqrt", |_, _| Ok((Box::new(tractops::math::Sqrt::default()),vec!())));
@@ -62,4 +63,28 @@ pub fn gemm(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<Inferen
     let trans_a = node.get_attr_opt("transA")?.unwrap_or(false);
     let trans_b = node.get_attr_opt("transB")?.unwrap_or(false);
     Ok((Box::new(tractops::math::Gemm::new(alpha, beta, trans_a, trans_b, true)),vec!()))
+}
+
+element_map!(Erf, [f32], erf_f32);
+
+#[allow(non_upper_case_globals)]
+fn erf_f32(x: f32) -> f32 {
+    const a1: f32 = 0.0705230784;
+    const a2: f32 = 0.0422820123;
+    const a3: f32 = 0.0092705272;
+    const a4: f32 = 0.0001520143;
+    const a5: f32 = 0.0002765672;
+    const a6: f32 = 0.0000430638;
+
+    let signum = x.signum();
+    let x = x.abs();
+    let y = a6 * x;
+    let y = (a5 + y) * x;
+    let y = (a4 + y) * x;
+    let y = (a3 + y) * x;
+    let y = (a2 + y) * x;
+    let y = (a1 + y) * x;
+    let y = 1.0 - (y + 1.0).powi(16).recip();
+
+    y.copysign(signum)
 }

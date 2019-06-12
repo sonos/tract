@@ -108,6 +108,7 @@ test_elu_default
 test_elu_example
 test_equal
 test_equal_bcast
+test_erf
 test_exp
 test_exp_example
 test_expand_dim_changed
