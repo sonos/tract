@@ -1,8 +1,8 @@
 language: rust
 cache:
 - cargo
-- directories:
-  - $HOME/cached
+  #- directories:
+  #- $HOME/cached
 addons:
   apt:
     packages:
