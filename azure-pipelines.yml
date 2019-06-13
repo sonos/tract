@@ -1,5 +1,5 @@
 jobs:
-  - job: native-linux
+  - job: native_linux
     pool:
       vmImage: 'ubuntu-latest'
 
