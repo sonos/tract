@@ -12,6 +12,8 @@ fi
 mkdir -p $CACHEDIR
 cd $CACHEDIR
 
+find .
+
 if [ ! -e onnx ]
 then
     (
