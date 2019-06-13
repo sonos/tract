@@ -19,6 +19,3 @@ jobs:
 
     - script: cargo build --release --benches --color=always
       displayName: 'Build all benches'
-
-  - job: ondemand
-    trigger: none
