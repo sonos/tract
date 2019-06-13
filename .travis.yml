@@ -1,4 +1,5 @@
 language: rust
+dist: trusty
 cache:
 - cargo
   #- directories:
