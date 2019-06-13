@@ -1,14 +1,25 @@
-pool:
-  vmImage: 'ubuntu-latest'
+jobs:
+  - job: native-linux
+    pool:
+      vmImage: 'ubuntu-latest'
 
-container: rust:1.35.0
+    strategy:
+      matrix:
+        rust1.35:
+          container: rust:1.35.0
+        rust1.32:
+          container: rust:1.32.0
+          trigger: none
 
-steps:
-- script: cargo build --release
-  displayName: 'Build'
+    steps:
+    - script: cargo build --release --color=always
+      displayName: 'Build'
 
-- script: cargo test --release --all
-  displayName: 'Release tests'
+    - script: cargo test --release --all --color=always
+      displayName: 'Release tests'
 
-- script: cargo build --release --benches
-  displayName: 'Build all benches'
+    - script: cargo build --release --benches --color=always
+      displayName: 'Build all benches'
+
+  - job: ondemand
+    trigger: none
