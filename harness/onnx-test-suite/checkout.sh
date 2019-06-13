@@ -12,9 +12,12 @@ fi
 mkdir -p $CACHEDIR
 cd $CACHEDIR
 
-if [ ! -e onnx ]
+find .
+
+if [ ! -e onnx/onnx/backend/test/data ]
 then
     (
+        rm -rf onnx
         git clone https://github.com/onnx/onnx ;
         cd onnx
         git checkout v1.4.1
