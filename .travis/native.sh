@@ -4,7 +4,7 @@ export CI=true
 
 set -ex
 
-if [ `uname` = "Linux" -a -n "$TRAVIS" ]
+if [ `uname` = "Linux" -a -z "$TRAVIS" ]
 then
     apt-get update
     apt-get -y upgrade
