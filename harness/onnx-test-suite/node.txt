@@ -277,6 +277,7 @@ test_reshape_negative_dim
 test_reshape_one_dim
 test_reshape_reduced_dims
 test_reshape_reordered_dims
+test_rnn_seq_length
 test_scan9_sum
 test_selu
 test_selu_default
@@ -289,6 +290,8 @@ test_sigmoid
 test_sigmoid_example
 test_sign
 test_sign
+test_simple_rnn_defaults
+test_simple_rnn_with_initial_bias
 test_sin
 test_sin_example
 test_sinh
