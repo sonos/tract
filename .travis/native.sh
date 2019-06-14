@@ -4,13 +4,13 @@ export CI=true
 
 set -ex
 
-if [ `uname` = "Linux" -a -z "$TRAVIS" ]
-then
-    apt-get update
-    apt-get -y upgrade
-    apt-get install -y unzip wget curl python awscli build-essential git pkg-config libssl-dev
-    cargo --version || ( curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y )
-fi
+# if [ `uname` = "Linux" -a -z "$TRAVIS" ]
+# then
+#     apt-get update
+#     apt-get -y upgrade
+#     apt-get install -y unzip wget curl python awscli build-essential git pkg-config libssl-dev
+#     cargo --version || ( curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y )
+# fi
 
 . $HOME/.cargo/env
 
