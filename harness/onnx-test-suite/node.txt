@@ -133,6 +133,9 @@ test_globalmaxpool
 test_globalmaxpool_precomputed
 test_greater
 test_greater_bcast
+test_gru_defaults
+test_gru_seq_length
+test_gru_with_initial_bias
 test_hardmax_axis_0
 test_hardmax_axis_1
 test_hardmax_axis_2
