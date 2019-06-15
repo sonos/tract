@@ -12,7 +12,9 @@ pub fn ensure_onnx_git_checkout() {
     static START: Once = Once::new();
     START.call_once(|| {
         use fs2::FileExt;
-        let _lock = fs::File::open("checkout.sh").unwrap().lock_exclusive();
+        fs::create_dir_all(dir()).unwrap();
+        let lockfile = dir().join(".lock");
+        let _lock = fs::File::create(lockfile).unwrap().lock_exclusive();
         let run = std::process::Command::new("./checkout.sh").status().unwrap();
         if !run.success() {
             panic!("Failed to checkout onnx")
