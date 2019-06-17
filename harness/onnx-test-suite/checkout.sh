@@ -2,8 +2,6 @@
 
 set -ex
 
-MY_DIR=`dirname $0`
-
 if [ -z "$CACHEDIR" ]
 then
     CACHEDIR=`dirname $0`/../../.cached
@@ -18,8 +16,9 @@ if [ ! -e onnx/onnx/backend/test/data ]
 then
     (
         rm -rf onnx
-        git clone https://github.com/onnx/onnx ;
-        cd onnx
-        git checkout v1.4.1
+        uuid=$(uuidgen)
+        git clone https://github.com/onnx/onnx onnx-$uuid
+        (cd onnx-$uuid ; git checkout v1.4.1)
+        mv onnx-$uuid onnx
     )
 fi
