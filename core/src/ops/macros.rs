@@ -157,10 +157,10 @@ macro_rules! element_bin {
 
             fn eval_bin(a: Arc<Tensor>, b: &Arc<Tensor>) -> TractResult<Arc<Tensor>> {
                 let shape:TVec<usize> = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])
-                    .ok_or_else(|| format!("Incompatible shapes {:?} and{:?}",
+                    .ok_or_else(|| format!("Incompatible shapes {:?} and {:?}",
                                            a.shape(), b.shape()))?;
                 let dt = a.datum_type().common_super_type(b.datum_type())
-                    .ok_or_else(|| format!("Incompatible types {:?} and{:?}",
+                    .ok_or_else(|| format!("Incompatible types {:?} and {:?}",
                                            a.datum_type(), b.datum_type()))?;
                 $(if dt == <$type>::datum_type() {
                     let a = a.cast_to::<$type>()?.into_owned().into_array::<$type>()?;

@@ -289,7 +289,6 @@ pub mod test {
     use super::*;
     use crate::align;
     use proptest::prelude::*;
-    use proptest::*;
 
     pub fn strat_ker_mat_mul<MM: PackedMatMulKer<f32>>(
     ) -> BoxedStrategy<(usize, Vec<f32>, Vec<f32>)> {

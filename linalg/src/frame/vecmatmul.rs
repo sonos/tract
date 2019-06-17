@@ -129,7 +129,6 @@ pub mod test {
     use super::*;
     use crate::align;
     use proptest::prelude::*;
-    use proptest::*;
 
     pub fn strat_vec_mat_mul() -> BoxedStrategy<(usize, usize, Vec<f32>, Vec<f32>)> {
         (1usize..35, 1usize..35)
