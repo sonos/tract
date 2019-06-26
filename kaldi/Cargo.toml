@@ -1,0 +1,11 @@
+[package]
+name = "kaldi"
+version = "0.1.0"
+authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+edition = "2018"
+
+[dependencies]
+derive-new = "0.5"
+error-chain = "0.12"
+nom = "5.0.0-beta3"
+tract-core = { path = "../core" }
