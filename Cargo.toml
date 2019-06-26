@@ -4,6 +4,7 @@ members = [
     "core",
     "tensorflow",
     "onnx",
+    "kaldi",
     "cli",
     "examples/tensorflow-mobilenet-v2",
     "harness/lstm-proptest-onnx-vs-tf",
