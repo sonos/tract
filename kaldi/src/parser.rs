@@ -6,22 +6,22 @@ use nom::{
 };
 use std::collections::HashMap;
 
+use crate::model::{KaldiProtoModel, ProtoComponent};
+
 mod config_lines;
 
-pub struct NNet;
-
-pub fn nnet3(slice: &[u8]) -> TractResult<NNet> {
+pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) =
         parse_top_level(slice).map_err(|e| format!("Parsing kaldi enveloppe: {:?}", e))?;
-    let config = config_lines::parse_config(config)?;
-    Ok(NNet)
+    let config_lines = config_lines::parse_config(config)?;
+    Ok(KaldiProtoModel { config_lines, components })
 }
 
-fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, Box<InferenceOp>>)> {
+fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, ProtoComponent>)> {
     let (i, _) = open(i, "Nnet3")?;
     let (i, config_lines) = map_res(take_until("<NumComponents>"), std::str::from_utf8)(i)?;
     let (i, num_components) = num_components(i)?;
-    let mut components: HashMap<String, Box<InferenceOp>> = HashMap::new();
+    let mut components = HashMap::new();
     let mut i = i;
     for _ in 0..num_components {
         let (new_i, (name, op)) = pair(component_name, component)(i)?;
@@ -41,14 +41,11 @@ fn num_components(i: &[u8]) -> IResult<&[u8], usize> {
     Ok((i, n))
 }
 
-fn component(i: &[u8]) -> IResult<&[u8], Box<InferenceOp>> {
+fn component(i: &[u8]) -> IResult<&[u8], ProtoComponent> {
     let (i, klass) = open_any(i)?;
-    let (i, op) = match klass {
-        "FixedAffineComponent" => crate::ops::affine::fixed_affine_component(i)?,
-        e => panic!(),
-    };
+    let attributes = iterator(i, pair(open_any, tensor)).map(|(k, v)| (k.to_string(), v)).collect();
     let (i, _) = close(i, klass)?;
-    Ok((i, op))
+    Ok((i, ProtoComponent { klass: klass.to_string(), attributes }))
 }
 
 fn component_name(i: &[u8]) -> IResult<&[u8], &str> {
@@ -71,6 +68,10 @@ pub fn name(i: &[u8]) -> IResult<&[u8], &str> {
     map_res(take_while(nom::character::is_alphanumeric), std::str::from_utf8)(i)
 }
 
+pub fn tensor(i: &[u8]) -> IResult<&[u8], Tensor> {
+    nom::branch::alt((vector, matrix))(i)
+}
+
 pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
     let (i, v) = delimited(
         multispaced(tag("[")),
@@ -87,7 +88,7 @@ pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
 
 pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
     map(
-        delimited(multispaced(tag("[")), separated_list(space1, float), multispaced(tag("]"))),
+        delimited(spaced(tag("[")), separated_list(space1, float), spaced(tag("]"))),
         |t| tensor1(&*t),
     )(i)
 }
