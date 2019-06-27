@@ -5,13 +5,7 @@ use nom::{
     number::complete::float, sequence::*, IResult,
 };
 
-pub struct ConfigLines {
-    input_name: String,
-    input_dim: usize,
-    component_nodes: HashMap<String, (String, String)>,
-    output_name: String,
-    output_input: String,
-}
+use crate::model::ConfigLines;
 
 pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     let mut input_node: Option<(String, usize)> = None;
