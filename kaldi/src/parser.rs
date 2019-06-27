@@ -6,13 +6,20 @@ use nom::{
 };
 use std::collections::HashMap;
 
-use error_chain::bail;
+mod config_lines;
 
 pub struct NNet;
 
-pub fn nnet3(i: &[u8]) -> IResult<&[u8], NNet> {
+pub fn nnet3(slice: &[u8]) -> TractResult<NNet> {
+    let (_, (config, components)) =
+        parse_top_level(slice).map_err(|e| format!("Parsing kaldi enveloppe: {:?}", e))?;
+    let config = config_lines::parse_config(config)?;
+    Ok(NNet)
+}
+
+fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, Box<InferenceOp>>)> {
     let (i, _) = open(i, "Nnet3")?;
-    let (i, _config_lines) = config_lines(i)?;
+    let (i, config_lines) = map_res(take_until("<NumComponents>"), std::str::from_utf8)(i)?;
     let (i, num_components) = num_components(i)?;
     let mut components: HashMap<String, Box<InferenceOp>> = HashMap::new();
     let mut i = i;
@@ -22,21 +29,15 @@ pub fn nnet3(i: &[u8]) -> IResult<&[u8], NNet> {
         components.insert(name.to_owned(), op);
     }
     let (i, _) = close(i, "Nnet3")?;
-    Ok((i, NNet))
-}
-
-fn config_lines(i: &[u8]) -> IResult<&[u8], NNet> {
-    let (i, lines) = take_until("\n\n")(i)?;
-    println!("{:?}", lines);
-    Ok((i, NNet))
+    Ok((i, (config_lines, components)))
 }
 
 fn num_components(i: &[u8]) -> IResult<&[u8], usize> {
     let (i, _) = open(i, "NumComponents")?;
-    let (i, n) =
-        map_res(map_res(multispaced(take_while(nom::character::is_digit)), std::str::from_utf8), |s| {
-            s.parse::<usize>()
-        })(i)?;
+    let (i, n) = map_res(
+        map_res(multispaced(take_while(nom::character::is_digit)), std::str::from_utf8),
+        |s| s.parse::<usize>(),
+    )(i)?;
     Ok((i, n))
 }
 
@@ -114,22 +115,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_config_lines() {
-        let slice = b"foo = bar\nbar=baz\n\n";
-        config_lines(slice).unwrap();
-    }
-
-    #[test]
-    fn test_nnet3_0() {
-        let slice = b"<Nnet3>\n\nfoo=bar\n\n<NumComponents> 0\n</Nnet3>";
-        nnet3(slice).unwrap();
-    }
-
-    #[test]
     fn test_nnet3_1() {
         let slice = r#"<Nnet3>
 
-foo=bar
+input-node name=input dim=3
+component-node name=fixed1 input=input component=fixed1
+output-node name=output input=fixed1
 
 <NumComponents> 1
 <ComponentName> foo <FixedAffineComponent> <LinearParams> [
