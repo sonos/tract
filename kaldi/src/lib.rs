@@ -4,5 +4,5 @@ extern crate derive_new;
 extern crate tract_core;
 
 mod ops;
-mod parser;
+pub mod parser;
 
