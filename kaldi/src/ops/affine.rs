@@ -5,9 +5,9 @@ use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*
 
 pub fn fixed_affine_component(i: &[u8]) -> IResult<&[u8], Box<InferenceOp>> {
     let (i, _) = open(i, "LinearParams")?;
-    let (i, linear) = tensor(i)?;
+    let (i, linear) = matrix(i)?;
     let (i, _) = open(i, "BiasParams")?;
-    let (i, bias) = tensor(i)?;
+    let (i, bias) = vector(i)?;
     Ok((i, Box::new(Affine::new(linear.into_arc_tensor(), bias.into_arc_tensor()))))
 }
 
