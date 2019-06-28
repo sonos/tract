@@ -2,7 +2,7 @@ use tract_core::internal::*;
 
 use nom::{
     bytes::complete::*, character::complete::*, combinator::*, multi::separated_list,
-    number::complete::double, sequence::*, IResult,
+    number::complete::float, sequence::*, IResult,
 };
 use std::collections::HashMap;
 
@@ -82,11 +82,11 @@ pub fn tensor(i: &[u8]) -> IResult<&[u8], Tensor> {
 pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
     let (i, v) = delimited(
         multispaced(tag("[")),
-        separated_list(spaced(tag("\n")), separated_list(space1, double)),
+        separated_list(spaced(tag("\n")), separated_list(space1, float)),
         multispaced(tag("]")),
     )(i)?;
     let lines = v.len();
-    let data: Vec<f64> = v.into_iter().flat_map(|v| v.into_iter()).collect();
+    let data: Vec<_> = v.into_iter().flat_map(|v| v.into_iter()).collect();
     let cols = data.len() / lines;
     let t = tract_core::ndarray::Array1::from_vec(data);
     let t = t.into_shape((lines, cols)).unwrap();
@@ -94,7 +94,7 @@ pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
 }
 
 pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
-    map(delimited(spaced(tag("[")), separated_list(space1, double), spaced(tag("]"))), |t| {
+    map(delimited(spaced(tag("[")), separated_list(space1, float), spaced(tag("]"))), |t| {
         tensor1(&*t)
     })(i)
 }
