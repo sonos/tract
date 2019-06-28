@@ -60,7 +60,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
             proto_model.config_lines.input_name.clone(),
             TensorFact::dt_shape(
                 f32::datum_type(),
-                shapefact!((proto_model.config_lines.input_dim), _),
+                shapefact!(_, (proto_model.config_lines.input_dim)),
             ),
         )?;
         for (name, node) in &proto_model.config_lines.component_nodes {
