@@ -1,14 +1,13 @@
 use tract_core::internal::*;
 
-use crate::parser::*;
-use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*, IResult};
+use crate::model::ParsingContext;
 
-pub fn fixed_affine_component(i: &[u8]) -> IResult<&[u8], Box<InferenceOp>> {
-    let (i, _) = open(i, "LinearParams")?;
-    let (i, linear) = matrix(i)?;
-    let (i, _) = open(i, "BiasParams")?;
-    let (i, bias) = vector(i)?;
-    Ok((i, Box::new(Affine::new(linear.into_arc_tensor(), bias.into_arc_tensor()))))
+pub fn fixed_affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
+    let component = &ctx.proto_model.components[name];
+    Ok(Box::new(Affine {
+        linear_params: Arc::clone(component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?),
+        bias_params: Arc::clone(component.attributes.get("BiasParams").ok_or("missing attribute ViasParams")?),
+    }))
 }
 
 #[derive(Clone, Debug, new)]
@@ -18,7 +17,7 @@ struct Affine {
 }
 
 impl Op for Affine {
-fn name(&self) -> std::borrow::Cow<str> {
+    fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.Affine".into()
     }
 }

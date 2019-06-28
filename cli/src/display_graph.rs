@@ -171,10 +171,12 @@ where
     pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<TI, O, M>> {
         match graph_def {
             SomeGraphDef::NoGraphDef => Ok(self),
-            #[cfg(feature = "tf")]
-            SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
+            #[cfg(feature = "kaldi")]
+            SomeGraphDef::Kaldi(kaldi) => self.with_kaldi(kaldi),
             #[cfg(feature = "onnx")]
             SomeGraphDef::Onnx(onnx, _) => self.with_onnx_model(onnx),
+            #[cfg(feature = "tf")]
+            SomeGraphDef::Tf(tf) => self.with_tf_graph_def(tf),
         }
     }
 
@@ -191,6 +193,26 @@ where
     pub fn add_node_section(&mut self, id: usize, section: Vec<String>) -> CliResult<()> {
         self.node_sections.entry(id).or_insert(vec![]).push(section);
         Ok(())
+    }
+
+    #[cfg(feature = "kaldi")]
+    pub fn with_kaldi(
+        mut self,
+        proto_model: &tract_kaldi::KaldiProtoModel,
+    ) -> CliResult<DisplayGraph<TI, O, M>> {
+        let bold = Style::new().bold();
+        for (name, proto_node) in &proto_model.config_lines.component_nodes {
+            if let Ok(node_id) = self.model.borrow().node_by_name(&*name).map(|n| n.id) {
+                let mut vs = vec![];
+                let comp = &proto_model.components[&proto_node.component];
+                for (k, v) in &comp.attributes {
+                    let value = format!("{:?}", v);
+                    vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
+                }
+                self.add_node_section(node_id, vs)?;
+            }
+        }
+        Ok(self)
     }
 
     #[cfg(feature = "tf")]

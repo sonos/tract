@@ -9,4 +9,11 @@ pub mod model;
 mod ops;
 pub mod parser;
 
+pub use model::Kaldi;
+pub use model::KaldiProtoModel;
 
+pub fn kaldi() -> Kaldi {
+    let mut kaldi = Kaldi::default();
+    ops::register_all_ops(&mut kaldi.op_register);
+    kaldi
+}
