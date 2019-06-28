@@ -6,18 +6,22 @@ use nom::{
 };
 use std::collections::HashMap;
 
-use crate::model::{KaldiProtoModel, ProtoComponent};
+use crate::model::{Component, KaldiProtoModel};
 
 mod config_lines;
 
 pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
-    let (_, (config, components)) =
-        parse_top_level(slice).map_err(|e| format!("Parsing kaldi enveloppe: {:?}", e))?;
+    let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
+        nom::Err::Error(err) => {
+            format!("Parsing kaldi enveloppe at: {:?}", String::from_utf8_lossy(err.0))
+        }
+        e => format!("{:?}", e),
+    })?;
     let config_lines = config_lines::parse_config(config)?;
     Ok(KaldiProtoModel { config_lines, components })
 }
 
-fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, ProtoComponent>)> {
+fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, Component>)> {
     let (i, _) = open(i, "Nnet3")?;
     let (i, config_lines) = map_res(take_until("<NumComponents>"), std::str::from_utf8)(i)?;
     let (i, num_components) = num_components(i)?;
@@ -41,11 +45,14 @@ fn num_components(i: &[u8]) -> IResult<&[u8], usize> {
     Ok((i, n))
 }
 
-fn component(i: &[u8]) -> IResult<&[u8], ProtoComponent> {
+fn component(i: &[u8]) -> IResult<&[u8], Component> {
     let (i, klass) = open_any(i)?;
-    let attributes = iterator(i, pair(open_any, tensor)).map(|(k, v)| (k.to_string(), v)).collect();
+    let (i, attributes) = nom::multi::many0(map(pair(open_any, tensor), |(k, v)| {
+        (k.to_string(), v.into_arc_tensor())
+    }))(i)?;
+    let attributes = attributes.into_iter().collect();
     let (i, _) = close(i, klass)?;
-    Ok((i, ProtoComponent { klass: klass.to_string(), attributes }))
+    Ok((i, Component { klass: klass.to_string(), attributes }))
 }
 
 fn component_name(i: &[u8]) -> IResult<&[u8], &str> {
@@ -87,10 +94,9 @@ pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
 }
 
 pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
-    map(
-        delimited(spaced(tag("[")), separated_list(space1, float), spaced(tag("]"))),
-        |t| tensor1(&*t),
-    )(i)
+    map(delimited(spaced(tag("[")), separated_list(space1, float), spaced(tag("]"))), |t| {
+        tensor1(&*t)
+    })(i)
 }
 
 pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> IResult<I, O, E>
@@ -131,6 +137,26 @@ output-node name=output input=fixed1
 </FixedAffineComponent>
 </Nnet3>"#;
         nnet3(slice.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn test_vector() {
+        let slice = r#"[ 7.0 8.0 ]"#;
+        assert_eq!(
+            tensor(slice.as_bytes()).unwrap().1,
+            tract_core::internal::tensor1(&[7.0f32, 8.0])
+        );
+    }
+
+    #[test]
+    fn test_matrix() {
+        let slice = r#"[
+            1.0 2.0 3.0
+            4.0 5.0 6.0 ]"#;
+        assert_eq!(
+            tensor(slice.as_bytes()).unwrap().1,
+            tract_core::internal::tensor2(&[[1.0f32, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        );
     }
 
     #[test]

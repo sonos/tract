@@ -12,7 +12,8 @@ pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
         bail!("The <size> argument should be formatted as {size}x{...}x{type}.");
     }
 
-    let (datum_type, shape) = if splits.last().unwrap().parse::<i32>().is_ok() {
+    let last = splits.last().unwrap();
+    let (datum_type, shape) = if last == &"S" || last.parse::<i32>().is_ok() {
         (None, &*splits)
     } else {
         let datum_type = match splits.last().unwrap().to_lowercase().as_str() {
@@ -26,11 +27,10 @@ pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
 
-    let shape = shape.iter().map(|s| Ok(s.parse()?)).collect::<TractResult<Vec<TDim>>>()?;
-
-    if shape.iter().filter(|o| o.is_stream()).count() > 1 {
-        bail!("The <size> argument doesn't support more than one streaming dimension.");
-    }
+    let shape = ShapeFact::closed(shape
+        .iter()
+        .map(|&s| Ok(if s == "_" { GenericFact::Any } else { GenericFact::Only(s.parse()?) }))
+        .collect::<TractResult<TVec<DimFact>>>()?);
 
     if let Some(dt) = datum_type {
         Ok(TensorFact::dt_shape(dt, shape))
@@ -75,7 +75,8 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, TensorFact)> {
     if filename.ends_with(".pb") {
         #[cfg(feature = "onnx")]
         {
-            let file = fs::File::open(filename).chain_err(|| format!("Can't open {:?}", filename))?;
+            let file =
+                fs::File::open(filename).chain_err(|| format!("Can't open {:?}", filename))?;
             let proto = ::tract_onnx::tensor::proto_from_reader(file)?;
             Ok((Some(proto.get_name().to_string()), Tensor::try_from(proto)?.into()))
         }
@@ -86,7 +87,6 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, TensorFact)> {
     } else {
         Ok((None, tensor_for_text_data(filename)?.into()))
     }
-
 }
 
 pub fn for_string(value: &str) -> CliResult<(Option<String>, TensorFact)> {
@@ -129,7 +129,9 @@ pub fn tensor_for_fact(fact: &TensorFact, streaming_dim: Option<usize>) -> CliRe
                 .iter()
                 .map(|d| d.to_integer().ok().map(|d| d as usize).or(streaming_dim).unwrap())
                 .collect(),
-            fact.datum_type.concretize().ok_or_else(|| format!("Can not generate random tensor: unknown datum_type: {:?}", fact))?
+            fact.datum_type.concretize().ok_or_else(|| {
+                format!("Can not generate random tensor: unknown datum_type: {:?}", fact)
+            })?,
         ))
     }
 }

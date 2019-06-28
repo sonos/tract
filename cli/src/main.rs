@@ -6,10 +6,10 @@ extern crate error_chain;
 extern crate itertools;
 #[macro_use]
 extern crate log;
-extern crate ndarray;
 extern crate atty;
 extern crate env_logger;
 extern crate libc;
+extern crate ndarray;
 extern crate pbr;
 #[macro_use]
 extern crate tract_core;
@@ -65,8 +65,8 @@ fn main() {
 
         (@arg model: +takes_value "Sets the model to use")
 
-        (@arg format: +takes_value
-            "Hint the model format ('onnx' or 'tf') instead of guess from extension.")
+        (@arg format: -f +takes_value
+            "Hint the model format ('kaldi', 'onnx' or 'tf') instead of guess from extension.")
 
         (@arg input: -i --input +takes_value +multiple number_of_values(1)
             "Set input value (@file or 3x4xi32)")
@@ -100,19 +100,41 @@ fn main() {
 
     let compare = clap::SubCommand::with_name("compare")
         .help("Compares the output of tract and tensorflow on randomly generated input.")
-        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"))
-        .arg(Arg::with_name("resilient").long("resilient").takes_value(false).help("Try nodes one per one to mitigate crashes"));
+        .arg(
+            Arg::with_name("cumulative")
+                .long("cumulative")
+                .takes_value(false)
+                .help("Do not reset with reference values at each node"),
+        )
+        .arg(
+            Arg::with_name("resilient")
+                .long("resilient")
+                .takes_value(false)
+                .help("Try nodes one per one to mitigate crashes"),
+        );
     app = app.subcommand(output_options(compare));
 
     let compare_npz = clap::SubCommand::with_name("compare-npz")
         .help("Compares the output of tract to a refrence npz file.")
-        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"))
+        .arg(
+            Arg::with_name("cumulative")
+                .long("cumulative")
+                .takes_value(false)
+                .help("Do not reset with reference values at each node"),
+        )
         .arg(Arg::with_name("npz").takes_value(true).required(true).help("Npz filename"));
     app = app.subcommand(output_options(compare_npz));
 
     let compare_pbdir = clap::SubCommand::with_name("compare-pbdir")
-        .help("Compares the output of tract to a refrence directory of onnx protobufs tensors files.")
-        .arg(Arg::with_name("cumulative").long("cumulative").takes_value(false).help("Do not reset with reference values at each node"))
+        .help(
+            "Compares the output of tract to a refrence directory of onnx protobufs tensors files.",
+        )
+        .arg(
+            Arg::with_name("cumulative")
+                .long("cumulative")
+                .takes_value(false)
+                .help("Do not reset with reference values at each node"),
+        )
         .arg(Arg::with_name("pbdir").takes_value(true).required(true).help("protobuf dir"));
     app = app.subcommand(output_options(compare_pbdir));
 
@@ -212,7 +234,11 @@ fn main() {
 fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
     use clap::*;
     command
-        .arg(Arg::with_name("natural-order").long("natural-order").help("dump nodes in id order instead of evaluation order"))
+        .arg(
+            Arg::with_name("natural-order")
+                .long("natural-order")
+                .help("dump nodes in id order instead of evaluation order"),
+        )
         .arg(Arg::with_name("quiet").short("q").long("quiet").help("don't dump"))
         .arg(Arg::with_name("debug-op").long("debug-op").help("show debug dump for each op"))
         .arg(
@@ -245,6 +271,8 @@ fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
 #[derive(Debug)]
 pub enum SomeGraphDef {
     NoGraphDef,
+    #[cfg(feature = "kaldi")]
+    Kaldi(tract_kaldi::KaldiProtoModel),
     #[cfg(feature = "tf")]
     Tf(GraphDef),
     #[cfg(feature = "onnx")]
@@ -288,26 +316,24 @@ impl Parameters {
         } else {
             "tf"
         });
-        let (mut graph, mut raw_model) = if format == "onnx" {
-            #[cfg(not(feature = "onnx"))]
-            {
-                panic!("Tract compiled without onnx feature");
+        let (mut graph, mut raw_model) = match format {
+            #[cfg(feature = "kaldi")]
+            "kaldi" => {
+                let kaldi = tract_kaldi::kaldi();
+                let graph = kaldi.proto_model_for_path(&name)?;
+                let parsed = kaldi.model_for_proto_model(&graph)?;
+                (SomeGraphDef::Kaldi(graph), parsed)
             }
             #[cfg(feature = "onnx")]
-            {
+            "onnx" => {
                 let onnx = tract_onnx::onnx();
                 let graph = onnx.proto_model_for_path(&name)?;
                 let parsed = onnx.parse(&graph)?;
                 let tract = parsed.model.clone();
                 (SomeGraphDef::Onnx(graph, parsed), tract)
             }
-        } else {
-            #[cfg(not(feature = "tf"))]
-            {
-                panic!("Tract compiled without tensorflow feature");
-            }
             #[cfg(feature = "tf")]
-            {
+            "tf" => {
                 let tf = tract_tensorflow::tensorflow();
                 let mut graph = tf.proto_model_for_path(&name)?;
                 if matches.is_present("determinize") {
@@ -316,6 +342,7 @@ impl Parameters {
                 let tract = tf.model_for_proto_model(&graph)?;
                 (SomeGraphDef::Tf(graph), tract)
             }
+            _ => bail!("Format {} not supported. You may need to recompile tract with the right features.", format)
         };
 
         info!("Model {:?} loaded", name);
@@ -346,9 +373,11 @@ impl Parameters {
         let tf_model = ();
 
         if let Some(inputs) = matches.values_of("input") {
-            let names = inputs.map(|t| Ok(tensor::for_string(t)?.0)).collect::<CliResult<Vec<Option<String>>>>()?;
+            let names = inputs
+                .map(|t| Ok(tensor::for_string(t)?.0))
+                .collect::<CliResult<Vec<Option<String>>>>()?;
             if names.iter().all(|s| s.is_some()) {
-                let names:Vec<String> = names.into_iter().map(|s| s.unwrap()).collect();
+                let names: Vec<String> = names.into_iter().map(|s| s.unwrap()).collect();
                 raw_model.set_input_names(names)?;
             }
         }
