@@ -5,11 +5,18 @@ use crate::{Parameters, SomeModel};
 use tract_core::internal::*;
 
 pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
-    let outputs = match &params.tract_model {
-        SomeModel::Inference(ref m) => run_regular_t(m, &params)?,
-        SomeModel::Typed(ref m) => run_regular_t(m, &params)?,
-        SomeModel::Normalized(ref m) => run_regular_t(m, &params)?,
-        SomeModel::Pulsed(_, m) => run_pulse_t(m, &params)?,
+    let (output_outlets, outputs) = match &params.tract_model {
+        SomeModel::Inference(ref m) => (m.output_outlets()?.to_vec(), run_regular_t(m, &params)?),
+        SomeModel::Typed(ref m) => (m.output_outlets()?.to_vec(), run_regular_t(m, &params)?),
+        SomeModel::Normalized(ref m) => (m.output_outlets()?.to_vec(), run_regular_t(m, &params)?),
+        SomeModel::Pulsed(_, m) => (m.output_outlets()?.to_vec(), run_pulse_t(m, &params)?),
+    };
+
+    let output_names:Vec<String> = match &params.tract_model {
+        SomeModel::Inference(ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
+        SomeModel::Typed(ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
+        SomeModel::Normalized(ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
+        SomeModel::Pulsed(_, ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
     };
 
     if dump {
@@ -27,15 +34,23 @@ pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
                 outputs.iter().map(|t| TensorFact::dt_shape(t.datum_type(), t.shape())).collect();
             crate::utils::check_inferred(&*outputs, &*facts)?;
         }
+        for output_bundle in &asserts.assert_output_bundles {
+            let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(output_bundle)?)?;
+            for (ix, name) in output_names.iter().enumerate() {
+                let npy_name = format!("{}.npy", name);
+                if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(&*npy_name) {
+                    if !npy.into_tensor().close_enough(&outputs[ix], true) {
+                        bail!("Values are not close for tensor {}", name)
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
 }
 
-fn run_regular_t<TI, O>(
-    tract: &Model<TI, O>,
-    params: &Parameters,
-) -> CliResult<TVec<Arc<Tensor>>>
+fn run_regular_t<TI, O>(tract: &Model<TI, O>, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>>
 where
     TI: TensorInfo,
     O: AsRef<Op> + AsMut<Op> + Display + Debug,

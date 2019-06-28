@@ -69,7 +69,10 @@ fn main() {
             "Hint the model format ('kaldi', 'onnx' or 'tf') instead of guess from extension.")
 
         (@arg input: -i --input +takes_value +multiple number_of_values(1)
-            "Set input value (@file or 3x4xi32)")
+            "Set input value (@file.pb or @file.npz:thing.npy or 3x4xi32)")
+
+        (@arg input_bundle: --("input-bundle") +takes_value +multiple number_of_values(1)
+            "Path to an input container (.npz)")
 
         (@arg stream_axis: -s --("stream-axis") +takes_value
             "Set Axis number to stream upon (first is 0)")
@@ -182,6 +185,12 @@ fn main() {
     let run = clap::SubCommand::with_name("run")
         .help("Run the graph")
         .arg(Arg::with_name("dump").long("dump").help("Show output"))
+        .arg(
+            Arg::with_name("assert-output-bundle")
+                .takes_value(true)
+                .long("assert-output-bundle")
+                .help("Checks values against these tensor (.npz)")
+        )
         .arg(
             Arg::with_name("assert-output")
                 .takes_value(true)
@@ -412,6 +421,19 @@ impl Parameters {
             None
         };
 
+        if let Some(bundle) = matches.values_of("input_bundle") {
+            for input in bundle {
+                let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(input)?)?;
+                let input_outlets = raw_model.input_outlets()?.to_vec();
+                for (ix, input) in input_outlets.iter().enumerate() {
+                    let name = format!("{}.npy", raw_model.node(input.node).name);
+                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(&*name) {
+                        raw_model.set_input_fact(ix, npy.into_tensor().cast_to::<f32>()?.into_owned().into())?
+                    }
+                }
+            }
+        }
+
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
 
         //        println!("{:?}", raw_model);
@@ -523,6 +545,7 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
 pub struct Assertions {
     assert_outputs: Option<Vec<TensorFact>>,
     assert_output_facts: Option<Vec<TensorFact>>,
+    assert_output_bundles: Vec<String>,
 }
 
 impl Assertions {
@@ -533,7 +556,11 @@ impl Assertions {
         let assert_output_facts: Option<Vec<TensorFact>> = sub_matches
             .values_of("assert-output-fact")
             .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
-        Ok(Assertions { assert_outputs, assert_output_facts })
+        let assert_output_bundles: Vec<String> = sub_matches
+            .values_of("assert-output-bundle")
+            .map(|vs| vs.map(|s| s.to_string()).collect())
+            .unwrap_or(vec!());
+        Ok(Assertions { assert_outputs, assert_output_facts, assert_output_bundles })
     }
 }
 

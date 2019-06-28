@@ -32,17 +32,23 @@ pub struct ParsingContext<'a> {
 }
 
 #[derive(Clone, Default)]
-pub struct KaldiOpRegister(pub HashMap<String, fn(&ParsingContext, node: &str) -> TractResult<Box<InferenceOp>>>);
+pub struct KaldiOpRegister(
+    pub HashMap<String, fn(&ParsingContext, node: &str) -> TractResult<Box<InferenceOp>>>,
+);
 
 impl KaldiOpRegister {
-    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &str) -> TractResult<Box<InferenceOp>>) {
+    pub fn insert(
+        &mut self,
+        s: &'static str,
+        builder: fn(&ParsingContext, node: &str) -> TractResult<Box<InferenceOp>>,
+    ) {
         self.0.insert(s.into(), builder);
     }
 }
 
 #[derive(Clone, Default)]
 pub struct Kaldi {
-    pub op_register: KaldiOpRegister
+    pub op_register: KaldiOpRegister,
 }
 
 impl Framework<KaldiProtoModel> for Kaldi {
@@ -80,7 +86,14 @@ impl Framework<KaldiProtoModel> for Kaldi {
             let dst = InletId::new(model.node_by_name(name)?.id, 0);
             model.add_edge(src, dst)?;
         }
-        model.set_output_names(&[&*proto_model.config_lines.output_input])?;
+        let output = model.add_node_default(
+            proto_model.config_lines.output_name.to_string(),
+            tract_core::ops::identity::Identity::default(),
+        )?;
+        let src = OutletId::new(model.node_by_name(&*proto_model.config_lines.output_input)?.id, 0);
+        let dst = InletId::new(output, 0);
+        model.add_edge(src, dst)?;
+        model.set_output_outlets(&[OutletId::new(output, 0)])?;
         Ok(model)
     }
 }
