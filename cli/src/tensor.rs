@@ -27,10 +27,12 @@ pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
         (Some(datum_type), &splits[0..splits.len() - 1])
     };
 
-    let shape = ShapeFact::closed(shape
-        .iter()
-        .map(|&s| Ok(if s == "_" { GenericFact::Any } else { GenericFact::Only(s.parse()?) }))
-        .collect::<TractResult<TVec<DimFact>>>()?);
+    let shape = ShapeFact::closed(
+        shape
+            .iter()
+            .map(|&s| Ok(if s == "_" { GenericFact::Any } else { GenericFact::Only(s.parse()?) }))
+            .collect::<TractResult<TVec<DimFact>>>()?,
+    );
 
     if let Some(dt) = datum_type {
         Ok(TensorFact::dt_shape(dt, shape))
@@ -84,6 +86,14 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, TensorFact)> {
         {
             panic!("Loading tensor from protobuf requires onnx features");
         }
+    } else if filename.contains(".npz:") {
+        let mut tokens = filename.split(":");
+        let (filename, inner) = (tokens.next().unwrap(), tokens.next().unwrap());
+        let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(filename)?)?;
+        let npy = npz
+            .by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(inner).map(|t| t.into_tensor())
+            .or_else(|_| npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(inner).map(|t| t.into_tensor()))?;
+        Ok((None, npy.into()))
     } else {
         Ok((None, tensor_for_text_data(filename)?.into()))
     }

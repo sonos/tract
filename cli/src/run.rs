@@ -4,7 +4,7 @@ use crate::errors::*;
 use crate::{Parameters, SomeModel};
 use tract_core::internal::*;
 
-pub fn handle(params: Parameters) -> CliResult<()> {
+pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
     let outputs = match &params.tract_model {
         SomeModel::Inference(ref m) => run_regular_t(m, &params)?,
         SomeModel::Typed(ref m) => run_regular_t(m, &params)?,
@@ -12,8 +12,10 @@ pub fn handle(params: Parameters) -> CliResult<()> {
         SomeModel::Pulsed(_, m) => run_pulse_t(m, &params)?,
     };
 
-    for (ix, output) in outputs.iter().enumerate() {
-        println!("output #{}\n{}\n", ix, output.dump(true)?);
+    if dump {
+        for (ix, output) in outputs.iter().enumerate() {
+            println!("output #{}\n{}\n", ix, output.dump(true)?);
+        }
     }
 
     if let Some(asserts) = &params.assertions {

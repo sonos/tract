@@ -181,6 +181,7 @@ fn main() {
 
     let run = clap::SubCommand::with_name("run")
         .help("Run the graph")
+        .arg(Arg::with_name("dump").long("dump").help("Show output"))
         .arg(
             Arg::with_name("assert-output")
                 .takes_value(true)
@@ -588,7 +589,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("run", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);
-            run::handle(params)
+            run::handle(params, m.is_present("dump"))
         }
 
         ("optimize-check", Some(m)) => {
