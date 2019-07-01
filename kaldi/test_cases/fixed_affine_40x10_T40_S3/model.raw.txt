@@ -1,8 +1,8 @@
 <Nnet3>
 
-input-node name=inputs dim=40
+input-node name=input dim=40
 component-node name=fixed1 input=input component=fixed1
-output-node name=outputs input=fixed1
+output-node name=output input=fixed1
 
 <NumComponents> 1
 <ComponentName> fixed1 <FixedAffineComponent> <LinearParams>  [
