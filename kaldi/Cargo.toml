@@ -1,7 +1,10 @@
 [package]
 name = "tract-kaldi"
 version = "0.1.0"
-authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
+authors = [
+    "Mathieu Poumeyrol <kali@zoy.org>",
+    "Theodore Bluche <theodore.bluche@snips.ai>"
+]
 edition = "2018"
 
 [dependencies]
