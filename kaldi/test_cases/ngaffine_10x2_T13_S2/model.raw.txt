@@ -1,0 +1,13 @@
+<Nnet3>
+
+input-node name=input dim=10
+component-node name=affine1 input=input component=affine1
+output-node name=output input=affine1
+
+<NumComponents> 1
+<ComponentName> affine1 <NaturalGradientAffineComponent> <LearningRateFactor> 1.0 <MaxChange> 1.0 <LearningRate> 0.0005 <LinearParams>  [
+  0.4967141530112327 -0.13826430117118466 0.6476885381006925 1.5230298564080254 -0.23415337472333597 -0.23413695694918055 1.5792128155073915 0.7674347291529088 -0.4694743859349521 0.5425600435859647
+  -0.46341769281246226 -0.46572975357025687 0.24196227156603412 -1.913280244657798 -1.7249178325130328 -0.5622875292409727 -1.0128311203344238 0.3142473325952739 -0.9080240755212109 -1.4123037013352915 ]
+<BiasParams> [ 1.465648768921554 -0.22577630048653566 ]
+<RankIn> 20 <RankOut> 80 <UpdatePeriod> 4 <NumSamplesHistory> 2000 <Alpha> 4 <IsGradient> F </NaturalGradientAffineComponent> 
+</Nnet3> 

@@ -1,0 +1,9 @@
+<Nnet3>
+
+input-node name=input dim=7
+component-node name=renorm1 input=input component=renorm1
+output-node name=output input=renorm1
+
+<NumComponents> 1
+<ComponentName> renorm1 <NormalizeComponent> <InputDim> 7 <TargetRms> 1.5 <AddLogStddev> F </NormalizeComponent> 
+</Nnet3> 
