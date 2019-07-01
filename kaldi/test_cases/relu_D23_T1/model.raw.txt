@@ -1,0 +1,11 @@
+<Nnet3>
+
+input-node name=input dim=23
+component-node name=relu1 input=input component=relu1
+output-node name=output input=relu1
+
+<NumComponents> 1
+<ComponentName> relu1 <RectifiedLinearComponent> <Dim> 23 <ValueAvg> [  ]
+<DerivAvg> [  ]
+<Count> 1 <NumDimsSelfRepaired> 1 <NumDimsProcessed> 1 <SelfRepairScale> 1e-06 </RectifiedLinearComponent> 
+</Nnet3> 
