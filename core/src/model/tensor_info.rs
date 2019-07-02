@@ -129,6 +129,28 @@ impl ShapeInfo {
     pub fn to_shape_fact(&self) -> ShapeFact {
         ShapeFact::from(self.iter())
     }
+
+    pub fn from_dims<T: AsRef<[TDim]> + std::fmt::Debug>(it: T) -> TractResult<ShapeInfo> {
+        let count = it.as_ref().iter().filter(|t| t.is_stream()).count();
+        if count > 1 {
+            bail!("Shape with two streaming dims are invalid: {:?}", it)
+        } else {
+            let stream_info = it
+                .as_ref()
+                .iter()
+                .enumerate()
+                .find(|(_ix, d)| d.is_stream())
+                .map(|(ix, d)| StreamInfo { axis: ix, len: d.clone() });
+            Ok(ShapeInfo {
+                shape: it
+                    .as_ref()
+                    .iter()
+                    .map(|t| t.to_integer().map(|i| i as usize).unwrap_or(0))
+                    .collect(),
+                stream_info,
+            })
+        }
+    }
 }
 
 impl<T: AsRef<[usize]>> From<T> for ShapeInfo {
@@ -156,19 +178,11 @@ pub struct TypedTensorInfo {
 }
 
 impl TypedTensorInfo {
-    pub fn shape<T:Datum>(shape: &[usize]) -> TypedTensorInfo {
-        TypedTensorInfo {
-            datum_type: T::datum_type(),
-            shape: ShapeInfo::from(shape),
-            konst: None
-        }
+    pub fn shape<T: Datum>(shape: &[usize]) -> TypedTensorInfo {
+        TypedTensorInfo { datum_type: T::datum_type(), shape: ShapeInfo::from(shape), konst: None }
     }
     pub fn dt_shape(datum_type: DatumType, shape: &[usize]) -> TypedTensorInfo {
-        TypedTensorInfo {
-            datum_type,
-            shape: ShapeInfo::from(shape),
-            konst: None
-        }
+        TypedTensorInfo { datum_type, shape: ShapeInfo::from(shape), konst: None }
     }
 }
 

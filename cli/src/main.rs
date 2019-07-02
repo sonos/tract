@@ -424,11 +424,16 @@ impl Parameters {
         if let Some(bundle) = matches.values_of("input_bundle") {
             for input in bundle {
                 let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(input)?)?;
+                for name in npz.names()? {
+                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
+                        debug!("{} contains {}: {:?}", input, name, npy.into_tensor());
+                    }
+                }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
                 for (ix, input) in input_outlets.iter().enumerate() {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
-                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(&*name) {
-                        raw_model.set_input_fact(ix, npy.into_tensor().cast_to::<f32>()?.into_owned().into())?
+                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
+                        raw_model.set_input_fact(ix, npy.into_tensor().into())?
                     }
                 }
             }

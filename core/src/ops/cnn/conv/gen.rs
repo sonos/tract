@@ -33,9 +33,11 @@ impl ::std::default::Default for Conv {
 }
 
 impl Conv {
-    fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TVec<D> {
+    pub fn output_shape<D: DimLike>(&self, ishape: &[D], kshape: &[usize]) -> TVec<D> {
+        debug_assert_eq!(ishape.len(), kshape.len(), "Input and kernel should have the same rank");
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_format.shape(ishape);
+        trace!("ishape: {:?}", ishape);
         let spatial_rank = ishape.hw_rank();
         let ones = tvec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[self.kernel_fmt.h_axis()..][..spatial_rank];

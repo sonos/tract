@@ -3,27 +3,69 @@ use tract_core::ndarray;
 
 use crate::model::ParsingContext;
 
-pub fn fixed_affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
+pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
     let component = &ctx.proto_model.components[name];
-    Ok(Box::new(Affine {
-        linear_params: Arc::clone(component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?),
-        bias_params: Arc::clone(component.attributes.get("BiasParams").ok_or("missing attribute ViasParams")?),
-    }))
+    let node = &ctx.proto_model.config_lines.component_nodes[name];
+    if let Some((kernel_len, dilation)) = node.input.as_conv_shape_dilation() {
+        let kernel: &Tensor =
+            component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?;
+        let mut kernel_shape: TVec<usize> = kernel.shape().into();
+        kernel_shape[1] /= kernel_len;
+        kernel_shape.push(kernel_len);
+        Ok(Box::new(Affine {
+            kernel_len,
+            dilation,
+            linear_params: Arc::new(unsafe { kernel.clone().into_shape(&*kernel_shape)? }),
+            bias_params: Arc::clone(
+                component.attributes.get("BiasParams").ok_or("missing attribute ViasParams")?,
+            ),
+        }))
+    } else {
+        bail!("Unknown affine component")
+    }
 }
 
 #[derive(Clone, Debug, new)]
 struct Affine {
-    linear_params: Arc<Tensor>,
+    kernel_len: usize,
+    dilation: usize,
+    linear_params: Arc<Tensor>, // OIT
     bias_params: Arc<Tensor>,
 }
 
 impl Affine {
-    fn eval_t<T: Datum + num_traits::One + ndarray::LinalgScalar>(&self, input: &Tensor) -> TractResult<Tensor> {
-        let array = input.to_array_view::<T>()?.into_dimensionality::<ndarray::Ix2>()?;
-        let linear = self.linear_params.to_array_view::<T>()?.into_dimensionality::<ndarray::Ix2>()?;
-        let bias = self.bias_params.to_array_view::<T>()?;
-        let mut res = ndarray::Array2::from_shape_fn((array.shape()[0], bias.len()), |(_,x)| bias[x]);
-        ndarray::linalg::general_mat_mul(T::one(), &linear, &array.t(), T::one(), &mut res.view_mut().reversed_axes());
+    fn as_conv(&self) -> tract_core::ops::cnn::Conv {
+        use tract_core::ops::cnn::*;
+        use tract_core::ops::nn::*;
+        let conv = Conv::new(
+            DataFormat::NHWC,
+            KernelFormat::OIHW,
+            Some(tvec!(self.dilation)),
+            Some(tvec!(self.kernel_len)),
+            PaddingSpec::Valid,
+            None,
+            1,
+        );
+        trace!("{:?} -> {:?}", self, conv);
+        conv
+    }
+
+    fn eval_t<T: Datum + num_traits::One + ndarray::LinalgScalar>(
+        &self,
+        input: Tensor,
+    ) -> TractResult<Tensor> {
+        let array = input.into_array::<T>()?;
+        let array = array.insert_axis(ndarray::Axis(0));
+        let res = self
+            .as_conv()
+            .eval(tvec!(
+                array.into_arc_tensor(),
+                Arc::clone(&self.linear_params),
+                Arc::clone(&self.bias_params)
+            ))?
+            .remove(0);
+        let res = res.into_tensor().into_array::<T>()?;
+        let res = res.index_axis_move(ndarray::Axis(0), 0);
         Ok(res.into_tensor())
     }
 }
@@ -32,12 +74,63 @@ impl Op for Affine {
     fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.Affine".into()
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let mut patch = TypedModelPatch::default();
+        let input = patch.tap_model(model, node.inputs[0])?;
+
+        let mut input_fact = patch.outlet_fact(input)?.clone();
+        let mut shape = input_fact.shape.to_tvec();
+        shape.insert(0,1.to_dim());
+        input_fact.shape = ShapeInfo::from_dims(shape)?;
+
+        patch.chain(
+            format!("{}-AddBatchDim", node.name),
+            tract_core::ops::array::AddDims::new(vec![0]),
+            tvec!(input_fact),
+        )?;
+
+        let mut output_fact = node.outputs[0].fact.clone();
+        let mut shape = output_fact.shape.to_tvec();
+        shape.insert(0,1.to_dim());
+        output_fact.shape = ShapeInfo::from_dims(shape)?;
+
+        let conv = patch.chain(
+            format!("{}-Conv", node.name),
+            self.as_conv(),
+            tvec!(output_fact),
+        )?;
+
+        let output = patch.chain(
+            &*node.name,
+            tract_core::ops::array::RmDims::new(vec![0]),
+            tvec!(node.outputs[0].fact.clone())
+        )?;
+
+        patch.plug_const(
+            InletId::new(conv, 1), 
+            format!("{}-Linear", node.name),
+            self.linear_params.clone())?;
+
+        patch.plug_const(
+            InletId::new(conv, 2), 
+            format!("{}-Bias", node.name),
+            self.bias_params.clone())?;
+
+        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(output, 0))?;
+        Ok(Some(patch))
+    }
 }
 
 impl StatelessOp for Affine {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let output = dispatch_numbers!(Self::eval_t(input.datum_type())(self, &input))?;
+        let output =
+            dispatch_numbers!(Self::eval_t(input.datum_type())(self, input.into_tensor()))?;
         Ok(tvec!(output.into_arc_tensor()))
     }
 }
@@ -55,9 +148,14 @@ impl InferenceRulesOp for Affine {
         s.equals(&outputs[0].datum_type, self.linear_params.datum_type())?;
         s.equals(&inputs[0].rank, 2)?;
         s.equals(&outputs[0].rank, 2)?;
-        s.equals(&outputs[0].shape[0], &inputs[0].shape[0])?;
         s.equals(&outputs[0].shape[1], &self.linear_params.shape()[0].to_dim())?;
         s.equals(&inputs[0].shape[1], &self.linear_params.shape()[1].to_dim())?;
+        s.given(&inputs[0].shape, move |s, ishape| {
+            let mut ishape = ishape.to_vec();
+            ishape.insert(0, 1.to_dim());
+            let oshape = self.as_conv().output_shape(&*ishape, self.linear_params.shape());
+            s.equals(&outputs[0].shape[0], &oshape[1])
+        })?;
         Ok(())
     }
 

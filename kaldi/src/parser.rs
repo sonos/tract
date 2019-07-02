@@ -2,18 +2,21 @@ use tract_core::internal::*;
 
 use nom::{
     bytes::complete::*, character::complete::*, combinator::*, multi::separated_list,
-    number::complete::float, sequence::*, IResult,
+    number::complete::float, sequence::*,
 };
+use nom::IResult;
+
 use std::collections::HashMap;
 
 use crate::model::{Component, KaldiProtoModel};
 
 mod config_lines;
+mod descriptor;
 
 pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
         nom::Err::Error(err) => {
-            format!("Parsing kaldi enveloppe at: {:?}", String::from_utf8_lossy(err.0))
+            format!("Parsing kaldi enveloppe at: {:?}", err)
         }
         e => format!("{:?}", e),
     })?;
@@ -38,11 +41,8 @@ fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, Component>
 
 fn num_components(i: &[u8]) -> IResult<&[u8], usize> {
     let (i, _) = open(i, "NumComponents")?;
-    let (i, n) = map_res(
-        map_res(multispaced(take_while(nom::character::is_digit)), std::str::from_utf8),
-        |s| s.parse::<usize>(),
-    )(i)?;
-    Ok((i, n))
+    let (i, n) = multispaced(integer)(i)?;
+    Ok((i, n as usize))
 }
 
 fn component(i: &[u8]) -> IResult<&[u8], Component> {
@@ -76,7 +76,7 @@ pub fn name(i: &[u8]) -> IResult<&[u8], &str> {
 }
 
 pub fn tensor(i: &[u8]) -> IResult<&[u8], Tensor> {
-    nom::branch::alt((vector, matrix))(i)
+    nom::branch::alt((scalar, vector, matrix))(i)
 }
 
 pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
@@ -99,20 +99,39 @@ pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
     })(i)
 }
 
-pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> IResult<I, O, E>
+pub fn scalar(i: &[u8]) -> IResult<&[u8], Tensor> {
+    nom::branch::alt((
+        map(float, Tensor::from),
+        map(integer, Tensor::from),
+        map(tag("F"), |_| Tensor::from(false)),
+        map(tag("T"), |_| Tensor::from(true)),
+    ))(i)
+}
+
+pub fn integer(i: &[u8]) -> IResult<&[u8], i32> {
+    map_res(
+        map_res(
+            recognize(pair(opt(tag("-")), take_while(nom::character::is_digit))),
+            std::str::from_utf8,
+        ),
+        |s| s.parse::<i32>(),
+    )(i)
+}
+
+pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> nom::IResult<I, O, E>
 where
     I: nom::InputTakeAtPosition,
     <I as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,
-    F: Fn(I) -> IResult<I, O, E>,
+    F: Fn(I) -> nom::IResult<I, O, E>,
 {
     delimited(space0, it, space0)
 }
 
-pub fn multispaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> IResult<I, O, E>
+pub fn multispaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> nom::IResult<I, O, E>
 where
     I: nom::InputTakeAtPosition,
     <I as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,
-    F: Fn(I) -> IResult<I, O, E>,
+    F: Fn(I) -> nom::IResult<I, O, E>,
 {
     delimited(multispace0, it, multispace0)
 }
