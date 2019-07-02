@@ -106,6 +106,7 @@ where TI: TensorInfo,
     /// Apply all changes in the patch to the target model.
     pub fn apply(self, target: &mut Model<TI, O>) -> TractResult<()> {
         let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by } = self;
+        let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {
             if node.op_is::<crate::ops::source::Source>() {
                 continue;
@@ -114,14 +115,17 @@ where TI: TensorInfo,
             let n_outputs = outputs.len();
             let facts = outputs.into_iter().map(|of| of.fact).collect();
             let added_node_id = target.add_node_disable_output_guess(name, op, facts, true)?;
-            for (ix, input) in inputs.into_iter().enumerate() {
-                target.add_edge(mapping[&input], InletId::new(added_node_id, ix))?;
-            }
             for &prec in control_inputs.iter() {
                 target.nodes[added_node_id].control_inputs.push(mapping[&OutletId::new(prec, 0)].node)
             }
             for ix in 0..n_outputs {
                 mapping.insert(OutletId::new(id, ix), OutletId::new(added_node_id, ix));
+            }
+            all_inputs.insert(added_node_id, inputs);
+        }
+        for (node, inputs) in all_inputs {
+            for (ix, input) in inputs.into_iter().enumerate() {
+                target.add_edge(mapping[&input], InletId::new(node, ix))?;
             }
         }
         for (outlet, by) in shunt_outlet_by {

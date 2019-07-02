@@ -1,8 +1,10 @@
 use tract_core::internal::*;
 
-use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*, IResult};
+use nom::error::{make_error, VerboseError, VerboseErrorKind};
+use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*};
+use nom::IResult;
 
-use crate::model::{ComponentNode, ConfigLines};
+use crate::model::{ComponentNode, ConfigLines, GeneralDescriptor};
 
 pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     let mut input_node: Option<(String, usize)> = None;
@@ -67,12 +69,15 @@ fn parse_input_node_line(i: &str) -> IResult<&str, (String, usize)> {
 }
 
 fn parse_component_node_line(i: &str) -> IResult<&str, (String, ComponentNode)> {
-    let mut name: Option<String> = None;
-    let mut component: Option<String> = None;
-    let mut input: Option<String> = None;
+    let mut name: Option<GeneralDescriptor> = None;
+    let mut component: Option<GeneralDescriptor> = None;
+    let mut input: Option<GeneralDescriptor> = None;
     let (i, _) = tag("component-node")(i)?;
-    for (k, v) in
-        iterator(i, preceded(space0, separated_pair(identifier, tag("="), identifier))).into_iter()
+    for (k, v) in iterator(
+        i,
+        preceded(space0, separated_pair(identifier, tag("="), super::descriptor::parse_general)),
+    )
+    .into_iter()
     {
         match k {
             "name" => name = Some(v.to_owned()),
@@ -81,14 +86,22 @@ fn parse_component_node_line(i: &str) -> IResult<&str, (String, ComponentNode)> 
             e => panic!("un-handled key {} in component-node line", e),
         }
     }
-    match (name, component, input) {
-        (Some(name), Some(component), Some(input)) => {
-            Ok((i, (name.to_string(), ComponentNode { component, input })))
-        }
-        (None, _, _) => panic!("expect name"),
-        (_, None, _) => panic!("expect component"),
-        (_, _, None) => panic!("expect input"),
-    }
+    let name = if let Some(GeneralDescriptor::Name(it)) = name {
+        it
+    } else {
+        panic!("Expect name to be an identifier, got {:?}", name)
+    };
+    let input = if let Some(it) = input {
+        it
+    } else {
+        panic!("Expect input to be a general descriptor, got {:?}", input)
+    };
+    let component = if let Some(GeneralDescriptor::Name(it)) = component {
+        it
+    } else {
+        panic!("Expect component to be an identifier got {:?}", component)
+    };
+    Ok((i, (name.to_string(), ComponentNode { component, input })))
 }
 
 fn parse_output_node_line(i: &str) -> IResult<&str, (String, String)> {
@@ -111,6 +124,6 @@ fn parse_output_node_line(i: &str) -> IResult<&str, (String, String)> {
     }
 }
 
-fn identifier(i: &str) -> IResult<&str, &str> {
+pub fn identifier(i: &str) -> IResult<&str, &str> {
     alphanumeric1(i)
 }
