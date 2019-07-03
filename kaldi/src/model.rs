@@ -42,23 +42,23 @@ impl GeneralDescriptor {
 
     pub fn as_conv_shape_dilation(&self) -> Option<(usize, usize)> {
         if let GeneralDescriptor::Name(_) = self {
-            return Some((1, 1))
+            return Some((1, 1));
         }
         if let GeneralDescriptor::Append(ref appendees) = self {
-            let mut offsets = vec!();
+            let mut offsets = vec![];
             for app in appendees {
                 match app {
                     GeneralDescriptor::Name(_) => offsets.push(0),
                     GeneralDescriptor::Offset(_, offset) => offsets.push(*offset),
-                    _ => return None
+                    _ => return None,
                 }
             }
             let dilation = offsets[1] - offsets[0];
             if offsets.windows(2).all(|pair| pair[1] - pair[0] == dilation) {
-                return Some((offsets.len(), dilation as usize))
+                return Some((offsets.len(), dilation as usize));
             }
         }
-        return None
+        return None;
     }
 }
 
@@ -113,7 +113,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
             proto_model.config_lines.input_name.clone(),
             TensorFact::dt_shape(
                 f32::datum_type(),
-                shapefact!(_, (proto_model.config_lines.input_dim)),
+                shapefact!(S, (proto_model.config_lines.input_dim)),
             ),
         )?;
         for (name, node) in &proto_model.config_lines.component_nodes {
