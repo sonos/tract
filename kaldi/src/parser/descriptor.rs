@@ -58,4 +58,12 @@ mod test {
             ))
         )
     }
+
+    #[test]
+    fn test_lstm() {
+        assert_eq!(
+            parse_general("Append(input, IfDefined(Offset(lstm1, -1)))").unwrap().1,
+            Append(vec!(name("input"), IfDefined(Offset(name("lstm1.c").into(), -1).into())))
+        )
+    }
 }
