@@ -79,18 +79,15 @@ fn parse_output_node_line(i: &str) -> IResult<&str, (String, String)> {
 }
 
 pub fn identifier(i: &str) -> IResult<&str, &str> {
-    let a = recognize(pair(
+    recognize(pair(
         alpha1,
         nom::multi::many0(nom::branch::alt((alphanumeric1, tag("."), tag("_"), tag("-")))),
-    ))(i);
-    println!("{:?}", a);
-    a
+    ))(i)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use GeneralDescriptor::*;
 
     #[test]
     fn identifiet_with_dot() {
