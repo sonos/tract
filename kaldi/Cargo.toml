@@ -8,6 +8,7 @@ authors = [
 edition = "2018"
 
 [dependencies]
+bit-set="0.5"
 derive-new = "0.5"
 error-chain = "0.12"
 log = "0.4"

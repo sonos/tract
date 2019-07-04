@@ -250,13 +250,13 @@ mod tests {
     proptest! {
         #[test]
         fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-            use crate::ops::array::Slice;
+            use crate::ops::array::Crop;
             let input_len = input_len + begin + end;
             let mut model = Model::default();
             let _ = model
                 .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
                 .unwrap();
-            model.chain_default("slice", Slice::new(vec![(begin as usize, end as usize)])).unwrap();
+            model.chain_default("slice", Crop::new(vec![(begin as usize, end as usize)])).unwrap();
 
             let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
             proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
