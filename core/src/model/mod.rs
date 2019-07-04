@@ -1,3 +1,4 @@
+//! B
 //! ## Models and their lifecycle
 //!
 //! In order to reason on the model and performs optimisations, a model needs
@@ -66,6 +67,8 @@ use crate::TractResult;
 pub type InferenceModel = Model<TensorFact, Box<InferenceOp>>;
 /// Node for InferenceModel graph
 pub type InferenceNode = BaseNode<TensorFact, Box<InferenceOp>>;
+/// A ModelPatch for InferenceModel.
+pub type InferenceModelPatch = ModelPatch<TensorFact, Box<InferenceOp>>;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = Model<TypedTensorInfo, Box<Op>>;
