@@ -1,5 +1,4 @@
 mod compress;
-mod slice;
 
 use std::convert::TryInto;
 
@@ -123,7 +122,7 @@ pub fn slice(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<Infere
     let axes = node.get_attr_opt_vec("axes")?;
     let begin = node.get_attr_vec("starts")?;
     let end = node.get_attr_vec("ends")?;
-    Ok((Box::new(slice::Slice::new(axes, begin, end)), vec!()))
+    Ok((Box::new(tractops::array::Slice::new(axes, begin, end)), vec!()))
 }
 
 pub fn split(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {

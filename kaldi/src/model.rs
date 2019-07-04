@@ -11,6 +11,7 @@ pub struct ConfigLines {
     pub input_name: String,
     pub input_dim: usize,
     pub component_nodes: HashMap<String, ComponentNode>,
+    pub dim_range_nodes: HashMap<String, DimRangeNode>,
     pub output_name: String,
     pub output_input: String,
 }
@@ -60,6 +61,58 @@ impl GeneralDescriptor {
         }
         return None;
     }
+
+    fn wire<'a>(
+        &'a self,
+        inlet: InletId,
+        name: &str,
+        model: &mut InferenceModel,
+        deferred: &mut HashMap<InletId, &'a str>,
+    ) -> TractResult<()> {
+        use GeneralDescriptor::*;
+        match &self {
+            &Name(n) => {
+                if let Ok(id) = model.node_by_name(&n).map(|n| n.id) {
+                    model.add_edge(OutletId::new(id, 0), inlet)?;
+                } else {
+                    deferred.insert(inlet, &n);
+                }
+                return Ok(());
+            }
+            &Append(appendees) => {
+                let name = format!("{}-Append", name);
+                let id = model.add_node_default(&*name, tract_core::ops::array::Concat::new(1))?;
+                model.add_edge(OutletId::new(id, 0), inlet)?;
+                for (ix, appendee) in appendees.iter().enumerate() {
+                    let name = format!("{}-{}", name, ix);
+                    appendee.wire(InletId::new(id, ix), &*name, model, deferred)?;
+                }
+                return Ok(());
+            }
+            &IfDefined(ref o) => {
+                if let &Offset(ref n, ref o) = &**o {
+                    if let Name(n) = &**n {
+                        let name = format!("{}-Memory", name);
+                        let id = model.add_node_default(
+                            &*name,
+                            crate::ops::memory::Memory::new(n.to_string(), *o),
+                        )?;
+                        model.add_edge(OutletId::new(id, 0), inlet)?;
+                        return Ok(());
+                    }
+                }
+            }
+            _ => (),
+        }
+        bail!("Unhandled input descriptor: {:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DimRangeNode {
+    pub input: GeneralDescriptor,
+    pub offset: usize,
+    pub dim: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -116,25 +169,41 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 shapefact!(S, (proto_model.config_lines.input_dim)),
             ),
         )?;
+        let mut inputs_to_wire: HashMap<InletId, &str> = HashMap::new();
         for (name, node) in &proto_model.config_lines.component_nodes {
             let component = &proto_model.components[&node.component];
-            let op = match self.op_register.0.get(&*component.klass) {
-                Some(builder) => (builder)(&ctx, name)?,
-                None => {
-                    (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
-                        component.klass.to_string(),
-                        format!("{:?}", proto_model.config_lines.component_nodes.get(name)),
-                    )))
-                }
-            };
-            model.add_node_default(name.to_string(), op)?;
-        }
-        for (name, node) in &proto_model.config_lines.component_nodes {
-            for (ix, input) in node.input.inputs().iter().enumerate() {
-                let src = OutletId::new(model.node_by_name(input)?.id, 0);
-                let dst = InletId::new(model.node_by_name(name)?.id, ix);
-                model.add_edge(src, dst)?;
+            if crate::ops::AFFINE.contains(&&*component.klass)
+                && node.input.as_conv_shape_dilation().is_some()
+            {
+                let op = crate::ops::affine::affine_component(&ctx, name)?;
+                let id = model.add_node_default(name.to_string(), op)?;
+                inputs_to_wire.insert(InletId::new(id, 0), node.input.inputs()[0]);
+            } else {
+                let op = match self.op_register.0.get(&*component.klass) {
+                    Some(builder) => (builder)(&ctx, name)?,
+                    None => {
+                        (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
+                            component.klass.to_string(),
+                            format!("{:?}", proto_model.config_lines.component_nodes.get(name)),
+                        )))
+                    }
+                };
+                let id = model.add_node_default(name.to_string(), op)?;
+                node.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
             }
+        }
+        for (name, node) in &proto_model.config_lines.dim_range_nodes {
+            let op = tract_core::ops::array::Slice::new(
+                Some(vec![1]),
+                vec![node.offset as isize],
+                vec![(node.offset + node.dim) as isize],
+            );
+            let id = model.add_node_default(name.to_string(), op)?;
+            node.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
+        }
+        for (inlet, name) in inputs_to_wire {
+            let src = OutletId::new(model.node_by_name(name)?.id, 0);
+            model.add_edge(src, inlet)?;
         }
         let output = model.add_node_default(
             proto_model.config_lines.output_name.to_string(),
