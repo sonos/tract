@@ -256,7 +256,7 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
                     (input.shape.dim(ix) - dim.end).to_integer()? as usize,
                 ));
             }
-            let op = ::tract_core::ops::array::Slice::new(prunes);
+            let op = ::tract_core::ops::array::Crop::new(prunes);
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
