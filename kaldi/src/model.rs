@@ -1,5 +1,8 @@
 use tract_core::internal::*;
 
+use crate::ops::memory::Memory;
+use bit_set::BitSet;
+
 #[derive(Clone, Debug)]
 pub struct KaldiProtoModel {
     pub config_lines: ConfigLines,
@@ -11,6 +14,7 @@ pub struct ConfigLines {
     pub input_name: String,
     pub input_dim: usize,
     pub component_nodes: HashMap<String, ComponentNode>,
+    pub dim_range_nodes: HashMap<String, DimRangeNode>,
     pub output_name: String,
     pub output_input: String,
 }
@@ -60,6 +64,58 @@ impl GeneralDescriptor {
         }
         return None;
     }
+
+    fn wire<'a>(
+        &'a self,
+        inlet: InletId,
+        name: &str,
+        model: &mut InferenceModel,
+        deferred: &mut HashMap<InletId, &'a str>,
+    ) -> TractResult<()> {
+        use GeneralDescriptor::*;
+        match &self {
+            &Name(n) => {
+                if let Ok(id) = model.node_by_name(&n).map(|n| n.id) {
+                    model.add_edge(OutletId::new(id, 0), inlet)?;
+                } else {
+                    deferred.insert(inlet, &n);
+                }
+                return Ok(());
+            }
+            &Append(appendees) => {
+                let name = format!("{}-Append", name);
+                let id = model.add_node_default(&*name, tract_core::ops::array::Concat::new(1))?;
+                model.add_edge(OutletId::new(id, 0), inlet)?;
+                for (ix, appendee) in appendees.iter().enumerate() {
+                    let name = format!("{}-{}", name, ix);
+                    appendee.wire(InletId::new(id, ix), &*name, model, deferred)?;
+                }
+                return Ok(());
+            }
+            &IfDefined(ref o) => {
+                if let &Offset(ref n, ref o) = &**o {
+                    if let Name(n) = &**n {
+                        let name = format!("{}-Memory", name);
+                        let id = model.add_node_default(
+                            &*name,
+                            crate::ops::memory::Memory::new(n.to_string(), *o),
+                        )?;
+                        model.add_edge(OutletId::new(id, 0), inlet)?;
+                        return Ok(());
+                    }
+                }
+            }
+            _ => (),
+        }
+        bail!("Unhandled input descriptor: {:?}", self)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DimRangeNode {
+    pub input: GeneralDescriptor,
+    pub offset: usize,
+    pub dim: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -116,25 +172,41 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 shapefact!(S, (proto_model.config_lines.input_dim)),
             ),
         )?;
+        let mut inputs_to_wire: HashMap<InletId, &str> = HashMap::new();
         for (name, node) in &proto_model.config_lines.component_nodes {
             let component = &proto_model.components[&node.component];
-            let op = match self.op_register.0.get(&*component.klass) {
-                Some(builder) => (builder)(&ctx, name)?,
-                None => {
-                    (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
-                        component.klass.to_string(),
-                        format!("{:?}", proto_model.config_lines.component_nodes.get(name)),
-                    )))
-                }
-            };
-            model.add_node_default(name.to_string(), op)?;
-        }
-        for (name, node) in &proto_model.config_lines.component_nodes {
-            for (ix, input) in node.input.inputs().iter().enumerate() {
-                let src = OutletId::new(model.node_by_name(input)?.id, 0);
-                let dst = InletId::new(model.node_by_name(name)?.id, ix);
-                model.add_edge(src, dst)?;
+            if crate::ops::AFFINE.contains(&&*component.klass)
+                && node.input.as_conv_shape_dilation().is_some()
+            {
+                let op = crate::ops::affine::affine_component(&ctx, name)?;
+                let id = model.add_node_default(name.to_string(), op)?;
+                inputs_to_wire.insert(InletId::new(id, 0), node.input.inputs()[0]);
+            } else {
+                let op = match self.op_register.0.get(&*component.klass) {
+                    Some(builder) => (builder)(&ctx, name)?,
+                    None => {
+                        (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
+                            component.klass.to_string(),
+                            format!("{:?}", proto_model.config_lines.component_nodes.get(name)),
+                        )))
+                    }
+                };
+                let id = model.add_node_default(name.to_string(), op)?;
+                node.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
             }
+        }
+        for (name, node) in &proto_model.config_lines.dim_range_nodes {
+            let op = tract_core::ops::array::Slice::new(
+                Some(vec![1]),
+                vec![node.offset as isize],
+                vec![(node.offset + node.dim) as isize],
+            );
+            let id = model.add_node_default(name.to_string(), op)?;
+            node.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
+        }
+        for (inlet, name) in inputs_to_wire {
+            let src = OutletId::new(model.node_by_name(name)?.id, 0);
+            model.add_edge(src, inlet)?;
         }
         let output = model.add_node_default(
             proto_model.config_lines.output_name.to_string(),
@@ -144,6 +216,130 @@ impl Framework<KaldiProtoModel> for Kaldi {
         let dst = InletId::new(output, 0);
         model.add_edge(src, dst)?;
         model.set_output_outlets(&[OutletId::new(output, 0)])?;
+        reinterpret_memory_ops_as_scans(&mut model)?;
         Ok(model)
     }
+}
+
+pub fn reinterpret_memory_ops_as_scans(model: &mut InferenceModel) -> TractResult<()> {
+    // println!("{:#?}", model);
+    for mem_node in model.nodes() {
+        if mem_node.op_is::<Memory>() {
+            let observed_node_id = model.node_by_name(&mem_node.name)?.id;
+            let time_loop = time_loop_nodes_for_memory(model, mem_node.id)?;
+            let loop_inputs: Vec<OutletId> = time_loop
+                .iter()
+                .flat_map(|node_id| model.node(node_id).inputs.iter())
+                .filter(|outlet| !time_loop.contains(outlet.node))
+                .cloned()
+                .collect();
+            let loop_outputs: Vec<InletId> = time_loop
+                .iter()
+                .flat_map(|node_id| model.node(node_id).outputs.iter())
+                .flat_map(|outputs| outputs.successors.iter())
+                .filter(|outlet| !time_loop.contains(outlet.node))
+                .cloned()
+                .collect();
+            let mut inner_model = InferenceModel::default();
+            let mut node_id_old_to_new: HashMap<usize, usize> = HashMap::new();
+            let id = inner_model.add_source_default(&*mem_node.name)?;
+            node_id_old_to_new.insert(mem_node.id, id);
+            for loop_input in loop_inputs.iter() {
+                let new_id = inner_model
+                    .add_source_default(format!("{}-scan", model.node(loop_input.node).name))?;
+                node_id_old_to_new.insert(loop_input.node, new_id);
+            }
+            for node in time_loop.iter() {
+                if node == mem_node.id {
+                    continue;
+                }
+                let node = model.node(node);
+                let new_id = inner_model.add_node(
+                    &*node.name,
+                    node.op.clone(),
+                    node.outputs.iter().map(|of| of.fact.clone()).collect(),
+                )?;
+                node_id_old_to_new.insert(node.id, new_id);
+            }
+            for node in time_loop.iter() {
+                let node = model.node(node);
+                for (ix, input) in node.inputs.iter().enumerate() {
+                    inner_model.add_edge(
+                        OutletId::new(node_id_old_to_new[&input.node], input.slot),
+                        InletId::new(node_id_old_to_new[&node.id], ix),
+                    )?;
+                }
+            }
+            let mut inner_outputs = vec![OutletId::new(observed_node_id, 0)];
+            for output in &loop_outputs {
+                let old_outlet = model.node(output.node).inputs[output.slot];
+                inner_outputs
+                    .push(OutletId::new(node_id_old_to_new[&old_outlet.node], old_outlet.slot));
+            }
+            inner_model.set_output_outlets(&inner_outputs)?;
+
+            let scan = tract_core::ops::rec::scan::Scan::new(
+                inner_model,
+                loop_inputs.len(),
+                0,
+                vec![1; loop_inputs.len()],
+                vec![1; loop_outputs.len()],
+            );
+
+            let mut patch = InferenceModelPatch::default();
+            patch.add_node_default("scan", scan)?;
+            unimplemented!();
+        }
+    }
+    Ok(())
+}
+
+pub fn time_loop_nodes_for_memory(
+    model: &InferenceModel,
+    memory_node_id: usize,
+) -> TractResult<BitSet> {
+    let memory_name = if let Some(mem) = &model.node(memory_node_id).op_as::<Memory>() {
+        &*mem.name
+    } else {
+        bail!("Should only be called for a memory name")
+    };
+    let observed_node_id = model.node_by_name(&memory_name)?.id;
+    let mut time_loop = all_successors(model, memory_node_id)?;
+    let precursors = all_precursors(model, observed_node_id)?;
+    time_loop.intersect_with(&precursors);
+    Ok(time_loop)
+}
+
+pub fn all_successors(model: &InferenceModel, id: usize) -> TractResult<BitSet> {
+    let mut queue = vec![id];
+    let mut visited = BitSet::with_capacity(model.nodes().len());
+    visited.insert(id);
+    while let Some(next) = queue.pop() {
+        let node = model.node(next);
+        for out in &node.outputs {
+            for suc in &out.successors {
+                if !visited.contains(suc.node) {
+                    queue.push(suc.node);
+                    visited.insert(suc.node);
+                }
+            }
+        }
+    }
+    Ok(visited)
+}
+
+pub fn all_precursors(model: &InferenceModel, id: usize) -> TractResult<BitSet> {
+    let mut queue = vec![id];
+    let mut visited = BitSet::with_capacity(model.nodes().len());
+    visited.insert(id);
+    while let Some(next) = queue.pop() {
+        let node = model.node(next);
+        for prec in &node.inputs {
+            if !visited.contains(prec.node) {
+                queue.push(prec.node);
+                visited.insert(prec.node);
+            }
+        }
+    }
+    Ok(visited)
 }

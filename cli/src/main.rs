@@ -60,7 +60,6 @@ fn main() {
         (author: "Mathieu Poumeyrol <mathieu.poumeyrol@snips.ai>")
         (about: "Tract command line interface")
 
-        (@setting UnifiedHelpMessage)
         (@setting DeriveDisplayOrder)
 
         (@arg model: +takes_value "Sets the model to use")

@@ -16,6 +16,7 @@ pub mod konst;
 pub mod logic;
 pub mod math;
 pub mod nn;
+pub mod rec;
 pub mod source;
 pub mod unimpl;
 
