@@ -1,5 +1,4 @@
 //! Partial and complete tensor types representations.
-use crate::dim::ToDim;
 use crate::internal::*;
 use crate::prelude::*;
 use crate::tensor::Tensor;

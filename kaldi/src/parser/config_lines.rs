@@ -1,10 +1,7 @@
 use tract_core::internal::*;
 
 use nom::IResult;
-use nom::{
-    branch::alt, bytes::complete::*, character::complete::*, combinator::*, multi::many1,
-    sequence::*,
-};
+use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*};
 
 use crate::model::{ComponentNode, ConfigLines, DimRangeNode};
 use crate::parser::spaced;
@@ -55,7 +52,14 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     }
     let (input_name, input_dim) = input_node.unwrap();
     let (output_name, output_input) = output_node.unwrap();
-    Ok(ConfigLines { input_dim, input_name, component_nodes, output_name, output_input, dim_range_nodes })
+    Ok(ConfigLines {
+        input_dim,
+        input_name,
+        component_nodes,
+        output_name,
+        output_input,
+        dim_range_nodes,
+    })
 }
 
 fn parse_input_node_line(i: &str) -> IResult<&str, (String, usize)> {
@@ -84,7 +88,7 @@ fn parse_dim_range_node_line(i: &str) -> IResult<&str, (String, DimRangeNode)> {
         spaced(preceded(tag("dim="), uinteger)),
         spaced(preceded(tag("dim-offset="), uinteger)),
     ))(i)?;
-    Ok((i, (name,DimRangeNode { input, dim, offset })))
+    Ok((i, (name, DimRangeNode { input, dim, offset })))
 }
 
 fn parse_output_node_line(i: &str) -> IResult<&str, (String, String)> {
@@ -103,7 +107,7 @@ pub fn identifier(i: &str) -> IResult<&str, &str> {
 }
 
 pub fn uinteger(i: &str) -> IResult<&str, usize> {
-    map(digit1, |s:&str| s.parse().unwrap())(i)
+    map(digit1, |s: &str| s.parse().unwrap())(i)
 }
 
 #[cfg(test)]

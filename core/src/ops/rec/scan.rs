@@ -163,7 +163,8 @@ impl InferenceOp for Scan {
         &mut self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+        _observed: TVec<&TensorFact>,
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
         if inputs.len() != body_inputs {
@@ -185,7 +186,7 @@ impl InferenceOp for Scan {
         self.body.analyse(false).map_err(|e| format!("analysing inner model: {}\n{:#?}", e, self.body))?;
         trace!("Finished inner model analyse");
         self.unify_facts(&mut inputs, &mut outputs)?;
-        Ok((inputs, outputs))
+        Ok((inputs, outputs, tvec!()))
     }
 
     inference_op_as_op!();

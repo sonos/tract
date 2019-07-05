@@ -4,25 +4,22 @@ use tract_core::ndarray;
 use crate::model::ParsingContext;
 
 pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
-    let component = &ctx.proto_model.components[name];
     let node = &ctx.proto_model.config_lines.component_nodes[name];
-    if let Some((kernel_len, dilation)) = node.input.as_conv_shape_dilation() {
-        let kernel: &Tensor =
-            component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?;
-        let mut kernel_shape: TVec<usize> = kernel.shape().into();
-        kernel_shape[1] /= kernel_len;
-        kernel_shape.push(kernel_len);
-        Ok(Box::new(Affine {
-            kernel_len,
-            dilation,
-            linear_params: Arc::new(unsafe { kernel.clone().into_shape(&*kernel_shape)? }),
-            bias_params: Arc::clone(
-                component.attributes.get("BiasParams").ok_or("missing attribute ViasParams")?,
-            ),
-        }))
-    } else {
-        bail!("Unknown affine component")
-    }
+    let component = &ctx.proto_model.components[&node.component];
+    let (kernel_len, dilation) = node.input.as_conv_shape_dilation().unwrap_or((1,1));
+    let kernel: &Tensor =
+        component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?;
+    let mut kernel_shape: TVec<usize> = kernel.shape().into();
+    kernel_shape[1] /= kernel_len;
+    kernel_shape.push(kernel_len);
+    Ok(Box::new(Affine {
+        kernel_len,
+        dilation,
+        linear_params: Arc::new(unsafe { kernel.clone().into_shape(&*kernel_shape)? }),
+        bias_params: Arc::clone(
+            component.attributes.get("BiasParams").ok_or("missing attribute ViasParams")?,
+        ),
+    }))
 }
 
 #[derive(Clone, Debug, new)]

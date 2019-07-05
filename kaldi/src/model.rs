@@ -2,6 +2,7 @@ use tract_core::internal::*;
 
 use crate::ops::memory::Memory;
 use bit_set::BitSet;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct KaldiProtoModel {
@@ -70,16 +71,12 @@ impl GeneralDescriptor {
         inlet: InletId,
         name: &str,
         model: &mut InferenceModel,
-        deferred: &mut HashMap<InletId, &'a str>,
+        deferred: &mut BTreeMap<InletId, String>,
     ) -> TractResult<()> {
         use GeneralDescriptor::*;
         match &self {
             &Name(n) => {
-                if let Ok(id) = model.node_by_name(&n).map(|n| n.id) {
-                    model.add_edge(OutletId::new(id, 0), inlet)?;
-                } else {
-                    deferred.insert(inlet, &n);
-                }
+                deferred.insert(inlet, n.to_string());
                 return Ok(());
             }
             &Append(appendees) => {
@@ -96,11 +93,11 @@ impl GeneralDescriptor {
                 if let &Offset(ref n, ref o) = &**o {
                     if let Name(n) = &**n {
                         let name = format!("{}-Memory", name);
-                        let id = model.add_node_default(
+                        model.add_node_default(
                             &*name,
                             crate::ops::memory::Memory::new(n.to_string(), *o),
                         )?;
-                        model.add_edge(OutletId::new(id, 0), inlet)?;
+                        deferred.insert(inlet, name);
                         return Ok(());
                     }
                 }
@@ -172,7 +169,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 shapefact!(S, (proto_model.config_lines.input_dim)),
             ),
         )?;
-        let mut inputs_to_wire: HashMap<InletId, &str> = HashMap::new();
+        let mut inputs_to_wire: BTreeMap<InletId, String> = Default::default();
         for (name, node) in &proto_model.config_lines.component_nodes {
             let component = &proto_model.components[&node.component];
             if crate::ops::AFFINE.contains(&&*component.klass)
@@ -180,7 +177,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
             {
                 let op = crate::ops::affine::affine_component(&ctx, name)?;
                 let id = model.add_node_default(name.to_string(), op)?;
-                inputs_to_wire.insert(InletId::new(id, 0), node.input.inputs()[0]);
+                inputs_to_wire.insert(InletId::new(id, 0), node.input.inputs()[0].to_owned());
             } else {
                 let op = match self.op_register.0.get(&*component.klass) {
                     Some(builder) => (builder)(&ctx, name)?,
@@ -197,15 +194,15 @@ impl Framework<KaldiProtoModel> for Kaldi {
         }
         for (name, node) in &proto_model.config_lines.dim_range_nodes {
             let op = tract_core::ops::array::Slice::new(
-                Some(vec![1]),
-                vec![node.offset as isize],
-                vec![(node.offset + node.dim) as isize],
+                vec![1],
+                vec![node.offset as usize],
+                vec![(node.offset + node.dim) as usize],
             );
             let id = model.add_node_default(name.to_string(), op)?;
             node.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
         }
         for (inlet, name) in inputs_to_wire {
-            let src = OutletId::new(model.node_by_name(name)?.id, 0);
+            let src = OutletId::new(model.node_by_name(&*name)?.id, 0);
             model.add_edge(src, inlet)?;
         }
         let output = model.add_node_default(
@@ -216,7 +213,9 @@ impl Framework<KaldiProtoModel> for Kaldi {
         let dst = InletId::new(output, 0);
         model.add_edge(src, dst)?;
         model.set_output_outlets(&[OutletId::new(output, 0)])?;
+        /*
         reinterpret_memory_ops_as_scans(&mut model)?;
+        */
         Ok(model)
     }
 }

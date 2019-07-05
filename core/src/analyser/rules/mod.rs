@@ -53,7 +53,8 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
         &mut self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
+        observed: TVec<&TensorFact>,
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
         let inputs_proxy: TVec<TensorProxy> =
             (0..inputs.len()).map(|ix| TensorProxy::new(tvec!(0, ix as isize).into())).collect();
         let outputs_proxy: TVec<TensorProxy> =
@@ -61,7 +62,17 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
 
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;
-        solver.infer_facts((inputs, outputs))
+        let (input, output) = solver.infer_facts((inputs, outputs))?;
+        Ok((input, output, observed.into_iter().cloned().collect()))
+    }
+
+
+    fn observe_outlets(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Vec<OutletId>> {
+        Ok(vec!())
     }
 
     fn as_op(&self) -> &Op {
