@@ -1,0 +1,5 @@
+nnet3-compute --frames-per-chunk=11 --frame-subsampling-factor=1 model.raw.txt ark:input.ark ark,t:predicted.ark 
+LOG (nnet3-compute[5.2.0-4058]:RemoveOrphanComponents():nnet-nnet.cc:841) Removing 0 orphan components.
+LOG (nnet3-compute[5.2.0-4058]:main():nnet3-compute.cc:166) Time taken 0.00793314s: real-time factor assuming 100 frames/sec is 0.0793314
+LOG (nnet3-compute[5.2.0-4058]:main():nnet3-compute.cc:169) Done 1 utterances, failed for 0
+LOG (nnet3-compute[5.2.0-4058]:~CachingOptimizingCompiler():nnet-optimize.cc:670) 0.0034 seconds taken in nnet3 compilation total (breakdown: 0.000712 compilation, 0.00203 optimization, 0 shortcut expansion, 0.000429 checking, 9.54e-07 computing indexes, 0.000232 misc.)
