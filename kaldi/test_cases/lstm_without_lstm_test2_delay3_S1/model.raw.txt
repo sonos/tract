@@ -1,0 +1,44 @@
+<Nnet3>
+
+input-node name=input dim=4
+component-node name=lstm1.four_parts input=Append(input, IfDefined(Offset(lstm1.r_trunc,-3))) component=lstm1.W_all
+component-node name=lstm1.lstm_nonlin input=Append(lstm1.four_parts, IfDefined(Offset(lstm1.c_trunc,-3))) component=lstm1.lstm_nonlin
+dim-range-node name=lstm1.c input-node=lstm1.lstm_nonlin dim-offset=0 dim=4
+dim-range-node name=lstm1.m input-node=lstm1.lstm_nonlin dim-offset=4 dim=4
+component-node name=lstm1 input=lstm1.m component=lstm1.W_rp
+dim-range-node name=lstm1.r input-node=lstm1 dim-offset=0 dim=2
+component-node name=lstm1.cr_trunc input=Append(lstm1.c, lstm1.r) component=lstm1.cr_trunc
+dim-range-node name=lstm1.c_trunc input-node=lstm1.cr_trunc dim-offset=0 dim=4
+dim-range-node name=lstm1.r_trunc input-node=lstm1.cr_trunc dim-offset=4 dim=2
+output-node name=output input=lstm1
+
+<NumComponents> 4
+<ComponentName> lstm1.W_all <NaturalGradientAffineComponent> <LearningRateFactor> 1.0 <MaxChange> 1.0 <LearningRate> 0.0005 <LinearParams>  [
+  1.0 0.0 0.0 0.0 0.0 0.0
+  0.0 1.0 0.0 0.0 0.0 0.0
+  0.0 0.0 1.0 0.0 0.0 0.0
+  0.0 0.0 0.0 1.0 0.0 0.0
+  0.0 0.0 0.0 0.0 1.0 0.0
+  0.0 0.0 0.0 0.0 0.0 1.0 ]
+<BiasParams> [ 0.0 0.0 0.0 0.0 0.0 0.0 ]
+<RankIn> 20 <RankOut> 80 <UpdatePeriod> 4 <NumSamplesHistory> 2000 <Alpha> 4 <IsGradient> F </NaturalGradientAffineComponent> 
+<ComponentName> lstm1.lstm_nonlin <NaturalGradientAffineComponent> <LearningRateFactor> 1.0 <MaxChange> 1.0 <LearningRate> 0.0005 <LinearParams>  [
+  1.0 0.0 0.0 0.0 1.0 0.0 1.0 0.0 0.0 0.0
+  0.0 1.0 0.0 0.0 0.0 1.0 0.0 1.0 0.0 0.0
+  0.0 0.0 1.0 0.0 1.0 0.0 0.0 0.0 1.0 0.0
+  0.0 0.0 0.0 1.0 0.0 1.0 0.0 0.0 0.0 1.0
+  1.0 0.0 0.0 0.0 1.0 0.0 1.0 0.0 0.0 0.0
+  0.0 1.0 0.0 0.0 0.0 1.0 0.0 1.0 0.0 0.0
+  0.0 0.0 1.0 0.0 1.0 0.0 0.0 0.0 1.0 0.0
+  0.0 0.0 0.0 1.0 0.0 1.0 0.0 0.0 0.0 1.0 ]
+<BiasParams> [ 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 ]
+<RankIn> 20 <RankOut> 80 <UpdatePeriod> 4 <NumSamplesHistory> 2000 <Alpha> 4 <IsGradient> F </NaturalGradientAffineComponent> 
+<ComponentName> lstm1.W_rp <NaturalGradientAffineComponent> <LearningRateFactor> 1.0 <MaxChange> 1.0 <LearningRate> 0.0005 <LinearParams>  [
+  1.0 0.0 0.0 0.0
+  0.0 1.0 0.0 0.0
+  0.0 0.0 1.0 0.0
+  0.0 0.0 0.0 1.0 ]
+<BiasParams> [ 0.0 0.0 0.0 0.0 ]
+<RankIn> 20 <RankOut> 80 <UpdatePeriod> 4 <NumSamplesHistory> 2000 <Alpha> 4 <IsGradient> F </NaturalGradientAffineComponent> 
+<ComponentName> lstm1.cr_trunc <BackpropTruncationComponent> <Dim> 6 <Scale> 1.0 <ClippingThreshold> 30 <ZeroingThreshold> 15 <ZeroingInterval> 20 <RecurrenceInterval> 3 <NumElementsClipped> 0 <NumElementsZeroed> 0 <NumElementsProcessed> 0 <NumZeroingBoundaries> 0 </BackpropTruncationComponent> 
+</Nnet3> 
