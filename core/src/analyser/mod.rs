@@ -26,11 +26,20 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
     pub fn analyse_obstinate(&mut self, obstinate: bool) -> TractResult<()> {
         let mut nodes_to_visit: BTreeSet<usize> =
             self.model.borrow().eval_order()?.iter().cloned().collect();
+        let mut observed_outlets: HashMap<usize, Vec<OutletId>> = HashMap::new();
+        let mut observers: HashMap<OutletId, TVec<usize>> = HashMap::new();
+        trace!("Foo 1");
         for node in self.model.borrow().nodes() {
             if !nodes_to_visit.contains(&node.id) {
                 nodes_to_visit.insert(node.id);
             }
+            let observed = node.op.observe_outlets(self.model.borrow(), node)?;
+            for outlet in &observed {
+                observers.entry(*outlet).or_insert(tvec!()).push(node.id);
+            }
+            observed_outlets.insert(node.id, observed);
         }
+        trace!("Foo");
         let mut first_error = None;
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
@@ -54,6 +63,11 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                         if edge.node != node {
                             trace!("Inserting node up {}", edge.node);
                             nodes_to_visit.insert(edge.node);
+                        }
+                        if let Some(observers) = observers.get(&edge) {
+                            for observer in observers {
+                                nodes_to_visit.insert(*observer);
+                            }
                         }
                     }
                 }
@@ -83,27 +97,44 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
         let mut changed_edges = vec![];
         {
             debug!("Starting step for {}", self.model.borrow().node(node));
+            let observed_outlets: Vec<OutletId> = {
+                let model = self.model.borrow();
+                let node = model.node(node);
+                node.op.observe_outlets(&model, &node)?
+            };
 
             let inferred = {
-            let (inputs, outputs) = self.model.borrow().node_facts(node)?;
-            let inputs:TVec<TensorFact> = inputs.into_iter().cloned().collect();
-            let outputs:TVec<TensorFact> = outputs.into_iter().cloned().collect();
-            if log_enabled!(log::Level::Trace) {
-                for (ix, i) in inputs.iter().enumerate() {
-                    trace!("  Input  #{}: {:?}", ix, i);
+                let (inputs, outputs) = self.model.borrow().node_facts(node)?;
+                let inputs: TVec<TensorFact> = inputs.into_iter().cloned().collect();
+                let outputs: TVec<TensorFact> = outputs.into_iter().cloned().collect();
+                let observed: TVec<(OutletId, TensorFact)> = {
+                    let model = self.model.borrow();
+                    let node = model.node(node);
+                    node.op
+                        .observe_outlets(&model, &node)?
+                        .iter()
+                        .map(|o| model.outlet_fact(*o).map(|f| (*o, f.clone())))
+                        .collect::<TractResult<_>>()?
+                };
+                if log_enabled!(log::Level::Trace) {
+                    for (ix, i) in inputs.iter().enumerate() {
+                        trace!("  Input  #{}: {:?}", ix, i);
+                    }
+                    for (ix, o) in outputs.iter().enumerate() {
+                        trace!("  Output #{}: {:?}", ix, o);
+                    }
                 }
-                for (ix, o) in outputs.iter().enumerate() {
-                    trace!("  Output #{}: {:?}", ix, o);
-                }
-            }
 
-            let inputs:TVec<&TensorFact> = inputs.iter().collect();
-            let outputs:TVec<&TensorFact> = outputs.iter().collect();
+                let inputs: TVec<&TensorFact> = inputs.iter().collect();
+                let outputs: TVec<&TensorFact> = outputs.iter().collect();
+                let observed: TVec<&TensorFact> = observed.iter().map(|p| &p.1).collect();
 
-            self.model.borrow_mut().node_mut(node)
-                .op
-                .infer(inputs, outputs)
-                .map_err(|e| format!("while running inference on {} : {}", node, e))?
+                self.model
+                    .borrow_mut()
+                    .node_mut(node)
+                    .op
+                    .infer(inputs, outputs, observed)
+                    .map_err(|e| format!("while running inference on {} : {}", node, e))?
             };
 
             let node = self.model.borrow().node(node);
@@ -127,6 +158,15 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 if &unified != old_fact {
                     let outlet = OutletId::new(node.id, ix);
                     debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);
+                    changed_edges.push((outlet, unified));
+                }
+            }
+
+            for (ix, &outlet) in observed_outlets.iter().enumerate() {
+                let old_fact = self.model.borrow().outlet_fact(outlet)?;
+                let new_fact = &inferred.2[ix];
+                let unified = old_fact.unify(new_fact)?;
+                if &unified != old_fact {
                     changed_edges.push((outlet, unified));
                 }
             }

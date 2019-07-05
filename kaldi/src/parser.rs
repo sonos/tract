@@ -1,10 +1,10 @@
 use tract_core::internal::*;
 
+use nom::IResult;
 use nom::{
     bytes::complete::*, character::complete::*, combinator::*, multi::separated_list,
     number::complete::float, sequence::*,
 };
-use nom::IResult;
 
 use std::collections::HashMap;
 
@@ -15,9 +15,7 @@ mod descriptor;
 
 pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
-        nom::Err::Error(err) => {
-            format!("Parsing kaldi enveloppe at: {:?}", err)
-        }
+        nom::Err::Error(err) => format!("Parsing kaldi enveloppe at: {:?}", err),
         e => format!("{:?}", e),
     })?;
     let config_lines = config_lines::parse_config(config)?;
@@ -72,7 +70,13 @@ pub fn open_any(i: &[u8]) -> IResult<&[u8], &str> {
 }
 
 pub fn name(i: &[u8]) -> IResult<&[u8], &str> {
-    map_res(take_while(nom::character::is_alphanumeric), std::str::from_utf8)(i)
+    map_res(
+        recognize(pair(
+            alpha1,
+            nom::multi::many0(nom::branch::alt((alphanumeric1, tag("."), tag("_"), tag("-")))),
+        )),
+        std::str::from_utf8,
+    )(i)
 }
 
 pub fn tensor(i: &[u8]) -> IResult<&[u8], Tensor> {
@@ -127,7 +131,9 @@ where
     delimited(space0, it, space0)
 }
 
-pub fn multispaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> nom::IResult<I, O, E>
+pub fn multispaced<I, O, E: nom::error::ParseError<I>, F>(
+    it: F,
+) -> impl Fn(I) -> nom::IResult<I, O, E>
 where
     I: nom::InputTakeAtPosition,
     <I as nom::InputTakeAtPosition>::Item: nom::AsChar + Clone,

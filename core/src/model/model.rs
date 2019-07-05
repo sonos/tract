@@ -205,9 +205,9 @@ where
     }
 
     /// Find a node by its name.
-    pub fn node_by_name(&self, name: &str) -> TractResult<&BaseNode<TI, O>> {
+    pub fn node_by_name<S:AsRef<str>>(&self, name: S) -> TractResult<&BaseNode<TI, O>> {
         let id: &usize =
-            self.nodes_by_name.get(name).ok_or_else(|| format!("Node named {} not found", name))?;
+            self.nodes_by_name.get(name.as_ref()).ok_or_else(|| format!("Node named {} not found", name.as_ref()))?;
         Ok(&self.nodes[*id])
     }
 

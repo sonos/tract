@@ -145,17 +145,23 @@ pub trait InferenceOp:
     /// The `inputs` and `outputs` arguments correspond to properties about
     /// the input and output tensors that are already known.
     ///
+    /// The default implementation will call the private infer_facts method,
+    /// which is usually implemented using the InferenceRulesOp trait. It will
+    /// also try to eval() the op if its a StatelessOp and if the inputs are 
+    /// fully determined.
+    ///
     /// Returns Err in case of an unrecoverable error during the inference,
     /// and the refined properties about the inputs and outputs otherwise.
     fn infer(
         &mut self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)> {
-        let (infered_inputs, infered_outputs) = self.infer_facts(inputs, outputs)?;
+        observed: TVec<&TensorFact>,
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
+        let (infered_inputs, infered_outputs, observed) = self.infer_facts(inputs, outputs, observed)?;
 
         if self.as_op().downcast_ref::<crate::ops::source::Source>().is_some() {
-            return Ok((infered_inputs, infered_outputs))
+            return Ok((infered_inputs, infered_outputs, observed))
         }
 
         if let Some(stateless) = self.as_stateless() {
@@ -169,20 +175,39 @@ pub trait InferenceOp:
                     .into_iter()
                     .map(|t| t.into())
                     .collect::<TVec<_>>();
-                return Ok((infered_inputs, output_values));
+                return Ok((infered_inputs, output_values, observed));
             }
         }
 
-        return Ok((infered_inputs, infered_outputs))
+        return Ok((infered_inputs, infered_outputs, observed))
     }
 
+    /// Allow an op to specify a supplementary list of outlets facts that
+    /// will trigger inference again.
+    fn observe_outlets(
+        &self,
+        _model: &InferenceModel,
+        _node: &InferenceNode,
+    ) -> TractResult<Vec<OutletId>> {
+        Ok(vec!())
+    }
+
+    /// Infer properties about inputs and output tensors. This method does not
+    /// need to deal with the "trivial" stateless op with fully determined
+    /// inputs cases.
+    ///
+    /// Most of the time, it is implemented using InferenceRulesOp.
     fn infer_facts(
         &mut self,
         inputs: TVec<&TensorFact>,
         outputs: TVec<&TensorFact>,
-    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>)>;
+        observed: TVec<&TensorFact>,
+    ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)>;
 
+    /// Reinterpret the InferenceOp as an Op.
     fn as_op(&self) -> &Op;
+
+    /// Reinterpret the InferenceOp as an Op, mutably.
     fn as_op_mut(&mut self) -> &mut Op;
 }
 

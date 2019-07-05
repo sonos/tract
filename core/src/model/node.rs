@@ -116,7 +116,7 @@ impl fmt::Debug for OutletId {
 }
 
 /// Identifier for a node input in the graph.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, new)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, new, Ord, PartialOrd)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
 pub struct InletId {
     /// node identifier in the graph
