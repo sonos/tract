@@ -66,6 +66,40 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         let mut packed = unsafe {
             Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
         };
+        for i in 0..*self.input_shape.n() {
+            unsafe {
+                let iptr = input.as_ptr().offset((self.input_shape.n_stride() * i) as isize);
+                for g in 0..self.group {
+                    let mut packed = packed.to_array_view_mut::<T>()?;
+                    packed.slice_axis_inplace(Axis(0), (i..=i).into());
+                    packed.slice_axis_inplace(Axis(1), (g..=g).into());
+                    let mut writer =
+                        self.b_pack.write_packed_by_rows(packed.as_slice_mut().unwrap());
+                    for ci in 0..self.ci_per_group {
+                        let iptr = iptr.offset(
+                            (self.input_shape.c_stride() * (ci + g * self.ci_per_group)) as isize,
+                        );
+                        for kgeo in 0..self.patch.standard_layout_data_field.len() {
+                            self.patch.visit_output_in_order(|v| {
+                                if let Some(of) = v.nth_offset_if_valid(kgeo) {
+                                    writer.write(*iptr.offset(of))
+                                } else {
+                                    writer.write(T::zero())
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Ok(packed)
+    }
+
+    /*
+    pub(super) fn im2col<'i>(&'i self, input: &'i ArrayViewD<'i, T>) -> TractResult<Tensor> {
+        let mut packed = unsafe {
+            Tensor::uninitialized_aligned::<T>(&*self.output_shape.shape, self.b_pack.alignment())?
+        };
         for i in 0..*self.input_shape.n_dim() {
             for g in 0..self.group {
                 let mut packed = packed.to_array_view_mut::<T>()?;
@@ -76,6 +110,7 @@ impl<T: Copy + Datum + Mul + Zero> Im2Col<T> {
         }
         Ok(packed)
     }
+    */
 }
 
 impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
