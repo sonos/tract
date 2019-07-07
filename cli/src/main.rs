@@ -82,6 +82,8 @@ fn main() {
         (@arg output_node: --("output-node") +takes_value
             "Override output nodes name (auto-detects otherwise).")
 
+        (@arg prune: --("prune") "Prune model dead branches before analyse")
+
         (@arg proto: --("proto") "Keep proto model around after parse")
         (@arg determinize: --determinize "Enforce a seed in random operator")
 
@@ -398,6 +400,10 @@ impl Parameters {
         if let Some(outputs) = matches.values_of("output_node") {
             raw_model.set_output_names(outputs)?;
         };
+
+        if matches.is_present("prune") {
+            raw_model = raw_model.eliminate_dead_branches()?;
+        }
 
         let machine_friendly = matches.is_present("machine_friendly");
 
