@@ -392,7 +392,7 @@ impl<'p> InvalidScanner<'p> {
 
     #[inline]
     #[cfg_attr(not(debug_assertions), no_panic::no_panic)]
-    pub unsafe fn point_offsets(&self) -> (isize,isize) {
+    pub unsafe fn point_offsets(&self) -> (isize, isize) {
         *self.zone.invalid_point_offset_pairs.as_ref().unsafe_unwrap().get_unchecked(self.point_id)
     }
 
@@ -413,11 +413,13 @@ impl<'p> InvalidScanner<'p> {
         unsafe {
             self.point_id += 1;
             if self.point_id < self.zone.invalid_point_offset_pairs.as_ref().unsafe_unwrap().len() {
-                return
+                return;
             }
             self.point_id = 0;
             self.zone_id += 1;
-            while self.zone_id < self.patch.zones.len() && self.patch.zones.get_unchecked(self.zone_id).valid {
+            while self.zone_id < self.patch.zones.len()
+                && self.patch.zones.get_unchecked(self.zone_id).valid
+            {
                 self.zone_id += 1
             }
             if self.zone_id < self.patch.zones.len() {
@@ -623,6 +625,7 @@ impl<'p> ByZoneScanner<'p> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct InOrderScanner<'p> {
     patch: &'p Patch,
+    rank: usize,
     zone_id: usize,
     zone_coords: TVec<usize>,
     zone: &'p Zone,
@@ -631,7 +634,15 @@ pub struct InOrderScanner<'p> {
     input_coords: TVec<usize>,
     input_center_offset: isize,
     done: bool,
+    inner_output_coord: usize,
+    inner_input_coord: usize,
+    inner_input_stride: isize,
+    inner_output_stride: isize,
+    inner_current_zone_limit: usize,
+    input_center_offset_stride: isize,
 }
+
+macro_rules! inc { ($a:expr, $b:expr) => { $a = $a.wrapping_add($b) } }
 
 impl<'p> InOrderScanner<'p> {
     fn new(patch: &'p Patch) -> InOrderScanner<'p> {
@@ -639,6 +650,7 @@ impl<'p> InOrderScanner<'p> {
         let zone = &patch.zones[0];
         InOrderScanner {
             patch,
+            rank,
             zone_coords: tvec!(0; rank),
             zone,
             zone_id: 0,
@@ -647,6 +659,12 @@ impl<'p> InOrderScanner<'p> {
             input_coords: tvec!(0; rank),
             output_coords: tvec!(0; rank),
             done: false,
+            inner_output_coord: 0,
+            inner_input_coord: 0,
+            inner_output_stride: patch.spec.output_inner_stride as isize,
+            inner_input_stride: patch.spec.strides[rank - 1] as isize,
+            inner_current_zone_limit: zone.output_ranges[rank - 1].end,
+            input_center_offset_stride: patch.op_strides_times_input_storage_strides[rank-1],
         }
     }
 
@@ -684,40 +702,49 @@ impl<'p> InOrderScanner<'p> {
         self.zone.values_offsets.iter().map(move |pair| (pair.0, pair.1 + self.input_center_offset))
     }
 
+
     #[inline]
     pub fn next(&mut self) {
-        let rank = self.patch.rank();
-        let inner_dim = rank - 1;
         unsafe {
-            *self.output_coords.get_unchecked_mut(inner_dim) += 1;
-            *self.input_coords.get_unchecked_mut(inner_dim) +=
-                *self.patch.spec.strides.get_unchecked(inner_dim);
-            self.output_offset += self.patch.spec.output_inner_stride as isize;
-            self.input_center_offset +=
-                self.patch.op_strides_times_input_storage_strides.get_unchecked(inner_dim);
-            if *self.output_coords.get_unchecked(inner_dim)
-                < self.zone.output_ranges.get_unchecked(inner_dim).end
-            {
-                return;
+            inc!(self.inner_output_coord, 1);
+            inc!(self.inner_input_coord, self.inner_input_stride as usize);
+            inc!(self.output_offset, self.inner_output_stride);
+            inc!(self.input_center_offset, self.input_center_offset_stride);
+            if self.inner_output_coord >= self.inner_current_zone_limit {
+                let inner_dim = self.rank.wrapping_sub(1);
+                *self.output_coords.get_unchecked_mut(inner_dim) = self.inner_output_coord;
+                *self.input_coords.get_unchecked_mut(inner_dim) = self.inner_input_coord;
+                self.next_zone();
+                self.inner_output_coord = *self.output_coords.get_unchecked(inner_dim);
+                self.inner_input_coord = *self.input_coords.get_unchecked(inner_dim);
+                self.inner_current_zone_limit = self.zone.output_ranges.get_unchecked(inner_dim).end;
             }
+        }
+    }
+
+    fn next_zone(&mut self) {
+        let rank = self.rank;
+        let inner_dim = rank.wrapping_sub(1);
+        unsafe {
             if self.output_coords.get_unchecked(inner_dim)
                 < self.patch.output_shape.get_unchecked(inner_dim)
             {
-                self.zone_id += 1;
-                *self.zone_coords.get_unchecked_mut(inner_dim) += 1;
+                inc!(self.zone_id, 1);
+                inc!(*self.zone_coords.get_unchecked_mut(inner_dim), 1);
                 self.zone = self.patch.zones.get_unchecked(self.zone_id);
             } else {
-                for axis in (0..rank - 1).rev() {
-                    *self.output_coords.get_unchecked_mut(axis + 1) = 0;
-                    *self.input_coords.get_unchecked_mut(axis + 1) = 0;
-                    *self.output_coords.get_unchecked_mut(axis) += 1;
-                    *self.input_coords.get_unchecked_mut(axis) +=
-                        self.patch.spec.strides.get_unchecked(axis);
-                    *self.zone_coords.get_unchecked_mut(axis + 1) = 0;
+                for ix in 0..(inner_dim as usize) {
+                    let axis_p_1 = inner_dim.wrapping_sub(ix);
+                    let axis = axis_p_1.wrapping_sub(1);
+                    *self.output_coords.get_unchecked_mut(axis_p_1) = 0;
+                    *self.input_coords.get_unchecked_mut(axis_p_1) = 0;
+                    inc!(*self.output_coords.get_unchecked_mut(axis), 1);
+                    inc!(*self.input_coords.get_unchecked_mut(axis), *self.patch.spec.strides.get_unchecked(axis));
+                    *self.zone_coords.get_unchecked_mut(axis_p_1) = 0;
                     if *self.output_coords.get_unchecked(axis)
                         == self.zone.output_ranges.get_unchecked(axis).end
                     {
-                        *self.zone_coords.get_unchecked_mut(axis) += 1;
+                        inc!(*self.zone_coords.get_unchecked_mut(axis), 1);
                     }
                     if *self.output_coords.get_unchecked(axis)
                         < *self.patch.output_shape.get_unchecked(axis)
@@ -732,10 +759,10 @@ impl<'p> InOrderScanner<'p> {
                 self.zone_id = 0;
                 self.input_center_offset = 0;
                 for i in 0..rank {
-                    self.zone_id += *self.zone_coords.get_unchecked(i) as usize
-                        * *self.patch.zone_strides.get_unchecked(i) as usize;
-                    self.input_center_offset += *self.input_coords.get_unchecked(i) as isize
-                        * *self.patch.input_layout_strides.get_unchecked(i) as isize;
+                    inc!(self.zone_id, self.zone_coords.get_unchecked(i)
+                        .wrapping_mul(*self.patch.zone_strides.get_unchecked(i) as usize));
+                    inc!(self.input_center_offset, self.input_coords.get_unchecked(i)
+                        .wrapping_mul(*self.patch.input_layout_strides.get_unchecked(i) as usize) as isize);
                 }
                 self.zone = &self.patch.zones.get_unchecked(self.zone_id);
             }
@@ -857,7 +884,9 @@ pub mod test {
         let mut count = 0;
         p.visit_output_in_order(|w| {
             output_offsets.as_slice_mut().unwrap()[w.output_offset as usize] = count;
-            output_coords[&*w.output_coords] = count;
+            let mut oc = w.output_coords.clone();
+            oc[p.rank() - 1] = w.inner_output_coord;
+            output_coords[&*oc] = count;
             count += 1;
         });
         prop_assert!(output_offsets.iter().enumerate().all(|(ix, x)| *x == ix as i32));
@@ -883,10 +912,8 @@ pub mod test {
     fn visit_invalid(_input_shape: DataShape, p: PatchSpec) -> TestCaseResult {
         let p = p.into_patch();
         let mut output = ndarray::ArrayD::<i32>::from_elem(&*p.output_shape, 0);
-        p.visit_invalid(|w| {
-            unsafe {
-                output.as_slice_mut().unwrap()[w.point_offsets().1 as usize] = 1;
-            }
+        p.visit_invalid(|w| unsafe {
+            output.as_slice_mut().unwrap()[w.point_offsets().1 as usize] = 1;
         });
         for coords in ndarray::indices(&*p.output_shape) {
             prop_assert!((output[&coords] == 0) == is_valid(&p, coords.slice()));
