@@ -54,7 +54,7 @@ mod tests {
         let any = TensorFact::default();
 
         let mut op = Squeeze::new(Some(vec![1]));
-        let inferred = op.infer_facts(tvec!(&input), tvec!(&any)).unwrap();
+        let inferred = op.infer_facts(tvec!(&input), tvec!(&any), tvec!()).unwrap();
 
         let expect: TVec<_> = tvec!(TensorFact::default()
             .with_datum_type(DatumType::TDim)

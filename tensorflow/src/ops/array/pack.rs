@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 
 pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
@@ -137,7 +137,7 @@ mod tests {
         let a = TensorFact::from(Tensor::from(0i32));
         let b = TensorFact::from(Tensor::from(TDim::zero()));
         let any = TensorFact::default();
-        let (_, output_facts) = pack.infer_facts(tvec![&a, &b], tvec![&any]).unwrap();
+        let (_, output_facts, _) = pack.infer_facts(tvec![&a, &b], tvec![&any], tvec!()).unwrap();
         let exp: TVec<TensorFact> = tvec!(TensorFact::dt_shape(DatumType::TDim, vec![2usize]));
         assert_eq!(output_facts, exp)
     }
@@ -148,7 +148,7 @@ mod tests {
         let a = TensorFact::from(rctensor0(0i32));
         let b = TensorFact::from(rctensor0(TDim::zero()));
         let any = TensorFact::default();
-        let (_, output_facts) = pack.infer(tvec![&a, &b], tvec![&any]).unwrap();
+        let (_, output_facts, _) = pack.infer(tvec![&a, &b], tvec![&any], tvec!()).unwrap();
         let exp: TVec<TensorFact> = tvec!(tensor1(&[TDim::zero(), TDim::zero()]).into());
         assert_eq!(output_facts, exp);
     }
