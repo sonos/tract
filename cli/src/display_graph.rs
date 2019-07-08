@@ -104,10 +104,10 @@ where
         for (ix, i) in node.inputs.iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
             println!(
-                "  {} input fact  #{}: {:?} {:?}",
+                "  {} input fact  #{}: {} {:?}",
                 star,
                 ix,
-                i,
+                White.bold().paint(format!("{:?}", i)),
                 self.model.borrow().outlet_fact(*i)?
             );
         }
@@ -132,7 +132,7 @@ where
             } else {
                 "".to_string()
             };
-            println!("  {} output fact #{}: {:?} {}", star, format!("{:?}", ix), o.fact, io);
+            println!("  {} output fact #{}: {:?} {} {}", star, format!("{:?}", ix), o.fact, White.bold().paint(o.successors.iter().map(|s| format!("{:?}", s)).join(" ")), io);
         }
         if let Some(info) = node.op().info()? {
             println!("  * {}", info);
@@ -200,14 +200,20 @@ where
         mut self,
         proto_model: &tract_kaldi::KaldiProtoModel,
     ) -> CliResult<DisplayGraph<TI, O, M>> {
+        use tract_kaldi::model::NodeLine;
         let bold = Style::new().bold();
-        for (name, proto_node) in &proto_model.config_lines.component_nodes {
+        for (name, proto_node) in &proto_model.config_lines.nodes {
             if let Ok(node_id) = self.model.borrow().node_by_name(&*name).map(|n| n.id) {
                 let mut vs = vec![];
-                let comp = &proto_model.components[&proto_node.component];
-                for (k, v) in &comp.attributes {
-                    let value = format!("{:?}", v);
-                    vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
+                match proto_node {
+                    NodeLine::Component(compo) => {
+                       let comp = &proto_model.components[&compo.component];
+                        for (k, v) in &comp.attributes {
+                            let value = format!("{:?}", v);
+                            vs.push(format!("Attr {}: {:.240}", bold.paint(k), value));
+                        }
+                    }
+                    _ => ()
                 }
                 self.add_node_section(node_id, vs)?;
             }

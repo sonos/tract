@@ -28,7 +28,6 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             self.model.borrow().eval_order()?.iter().cloned().collect();
         let mut observed_outlets: HashMap<usize, Vec<OutletId>> = HashMap::new();
         let mut observers: HashMap<OutletId, TVec<usize>> = HashMap::new();
-        trace!("Foo 1");
         for node in self.model.borrow().nodes() {
             if !nodes_to_visit.contains(&node.id) {
                 nodes_to_visit.insert(node.id);
@@ -39,7 +38,6 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
             }
             observed_outlets.insert(node.id, observed);
         }
-        trace!("Foo");
         let mut first_error = None;
         loop {
             trace!("Remaining nodes {}", nodes_to_visit.len());
