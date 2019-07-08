@@ -94,7 +94,7 @@ pub fn infer<S: AsRef<str>>(
     let output_facts = output_vectors.iter().collect();
 
     let output = model.node_by_name_mut(output_str)?;
-    let e = output.op.infer_facts(input_facts, output_facts);
+    let e = output.op.infer_facts(input_facts, output_facts, tvec!());
     prop_assert!(e.is_ok(), "{:?}", e);
 
     Ok(())

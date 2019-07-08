@@ -474,8 +474,8 @@ mod tests {
         let strides = TensorFact::from(tensor1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
-        let (input_facts, output_facts) =
-            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
+        let (input_facts, output_facts, _) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any], tvec!()).unwrap();
         assert_eq!(
             input_facts,
             tvec![
@@ -500,8 +500,8 @@ mod tests {
         let strides = TensorFact::from(tensor1(&[1i32, 1]));
         let any = TensorFact::default();
 
-        let (input_facts, output_facts) =
-            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
+        let (input_facts, output_facts, _) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any], tvec!()).unwrap();
         assert_eq!(
             input_facts,
             tvec![
@@ -526,8 +526,8 @@ mod tests {
         let strides = TensorFact::from(tensor1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
-        let (_, output_facts) =
-            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
+        let (_, output_facts, _) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any], tvec!()).unwrap();
 
         assert_eq!(
             output_facts,
@@ -544,8 +544,8 @@ mod tests {
         let strides = TensorFact::from(tensor1(&[1i32, 1, 1]));
         let any = TensorFact::default();
 
-        let (_, output_facts) =
-            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any]).unwrap();
+        let (_, output_facts, _) =
+            op.infer_facts(tvec![&input, &begin, &end, &strides], tvec![&any], tvec!()).unwrap();
 
         assert_eq!(
             output_facts,

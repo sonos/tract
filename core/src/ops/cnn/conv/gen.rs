@@ -204,7 +204,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2))));
     }
 
@@ -214,7 +214,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(3, 2, 1, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 3, 1, 1))));
     }
 
@@ -225,7 +225,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 7, 5));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 3));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 3, 2))));
     }
 
@@ -235,7 +235,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 2, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 2, 1))));
     }
 
@@ -257,7 +257,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 2, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2, 1))));
     }
 
@@ -296,7 +296,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1))));
     }
 
@@ -314,7 +314,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(2, 1, 1))));
     }
 
@@ -332,7 +332,7 @@ mod test {
         let ifact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 2));
         let kfact = TensorFact::dt_shape(DatumType::F32, shapefact!(1, 2, 1));
         let ofact = TensorFact::default();
-        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact)).unwrap();
+        let facts = op.infer_facts(tvec!(&ifact, &kfact), tvec!(&ofact), tvec!()).unwrap();
         assert_eq!(facts.1, tvec!(TensorFact::dt_shape(DatumType::F32, shapefact!(1, 1, 1))));
     }
 

@@ -176,7 +176,7 @@ mod tests {
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 3, 1, 1]).into_tensor());
         let any = TensorFact::default();
 
-        let (_, output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();
+        let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
 
         assert_eq!(
             output_facts,
@@ -191,7 +191,7 @@ mod tests {
         let ker = TensorFact::from(ArrayD::<f32>::zeros(vec![1, 1, 1, 1]).into_tensor());
         let any = TensorFact::default();
 
-        let (_, output_facts) = op.infer_facts(tvec![&img, &ker], tvec![&any]).unwrap();
+        let (_, output_facts, _) = op.infer_facts(tvec![&img, &ker], tvec![&any], tvec!()).unwrap();
 
         assert_eq!(
             output_facts,

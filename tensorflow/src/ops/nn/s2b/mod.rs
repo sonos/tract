@@ -203,8 +203,8 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), 0.to_dim()]])));
         let any = TensorFact::default();
 
-        let (_, outputs) =
-            op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any)).unwrap();
+        let (_, outputs, _) =
+            op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
 
         assert_eq!(outputs[0], TensorFact::dt_shape(DatumType::F32, shapefact!(2, 2, 16)));
     }
@@ -217,8 +217,8 @@ mod tests {
         let paddings = TensorFact::from(Tensor::from(arr2(&[[0.to_dim(), (TDim::s() % 2)]])));
         let any = TensorFact::default();
 
-        let (_, outputs) =
-            op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any)).unwrap();
+        let (_, outputs, _) =
+            op.infer_facts(tvec!(&data, &block_shape, &paddings), tvec!(&any), tvec!()).unwrap();
         assert_eq!(
             outputs[0],
             TensorFact::dt_shape(
