@@ -3,13 +3,12 @@ use tract_core::internal::*;
 use nom::IResult;
 use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*};
 
-use crate::model::{ComponentNode, ConfigLines, DimRangeNode};
+use crate::model::{ComponentNode, ConfigLines, DimRangeNode, NodeLine};
 use crate::parser::spaced;
 
 pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     let mut input_node: Option<(String, usize)> = None;
-    let mut component_nodes = HashMap::new();
-    let mut dim_range_nodes = HashMap::new();
+    let mut nodes = vec!();
     let mut output_node: Option<(String, String)> = None;
     for line in s.lines() {
         if line.trim().is_empty() {
@@ -32,13 +31,13 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
                 let (name, it) = parse_dim_range_node_line(line)
                     .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
                     .1;
-                dim_range_nodes.insert(name, it);
+                nodes.push((name, NodeLine::DimRange(it)));
             }
             "component-node" => {
                 let (name, it) = parse_component_node_line(line)
                     .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
                     .1;
-                component_nodes.insert(name, it);
+                nodes.push((name, NodeLine::Component(it)));
             }
             "output-node" => {
                 output_node = Some(
@@ -55,10 +54,9 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     Ok(ConfigLines {
         input_dim,
         input_name,
-        component_nodes,
+        nodes,
         output_name,
         output_input,
-        dim_range_nodes,
     })
 }
 

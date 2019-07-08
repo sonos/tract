@@ -14,10 +14,15 @@ pub struct KaldiProtoModel {
 pub struct ConfigLines {
     pub input_name: String,
     pub input_dim: usize,
-    pub component_nodes: HashMap<String, ComponentNode>,
-    pub dim_range_nodes: HashMap<String, DimRangeNode>,
+    pub nodes: Vec<(String, NodeLine)>,
     pub output_name: String,
     pub output_input: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum NodeLine {
+    Component(ComponentNode),
+    DimRange(DimRangeNode),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -170,36 +175,40 @@ impl Framework<KaldiProtoModel> for Kaldi {
             ),
         )?;
         let mut inputs_to_wire: BTreeMap<InletId, String> = Default::default();
-        for (name, node) in &proto_model.config_lines.component_nodes {
-            let component = &proto_model.components[&node.component];
-            if crate::ops::AFFINE.contains(&&*component.klass)
-                && node.input.as_conv_shape_dilation().is_some()
-            {
-                let op = crate::ops::affine::affine_component(&ctx, name)?;
-                let id = model.add_node_default(name.to_string(), op)?;
-                inputs_to_wire.insert(InletId::new(id, 0), node.input.inputs()[0].to_owned());
-            } else {
-                let op = match self.op_register.0.get(&*component.klass) {
-                    Some(builder) => (builder)(&ctx, name)?,
-                    None => {
-                        (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
-                            component.klass.to_string(),
-                            format!("{:?}", proto_model.config_lines.component_nodes.get(name)),
-                        )))
+        for (name, node) in &proto_model.config_lines.nodes {
+            match node {
+                NodeLine::Component(line)  => {
+                    let component = &proto_model.components[&line.component];
+                    if crate::ops::AFFINE.contains(&&*component.klass)
+                        && line.input.as_conv_shape_dilation().is_some()
+                    {
+                        let op = crate::ops::affine::affine_component(&ctx, name)?;
+                        let id = model.add_node_default(name.to_string(), op)?;
+                        inputs_to_wire.insert(InletId::new(id, 0), line.input.inputs()[0].to_owned());
+                    } else {
+                        let op = match self.op_register.0.get(&*component.klass) {
+                            Some(builder) => (builder)(&ctx, name)?,
+                            None => {
+                                (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
+                                    component.klass.to_string(),
+                                    format!("{:?}", line)
+                                )))
+                            }
+                        };
+                        let id = model.add_node_default(name.to_string(), op)?;
+                        line.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
                     }
-                };
-                let id = model.add_node_default(name.to_string(), op)?;
-                node.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
+                }
+                NodeLine::DimRange(line) => {
+                    let op = tract_core::ops::array::Slice::new(
+                        vec![1],
+                        vec![line.offset as usize],
+                        vec![(line.offset + line.dim) as usize],
+                    );
+                    let id = model.add_node_default(name.to_string(), op)?;
+                    line.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
+                }
             }
-        }
-        for (name, node) in &proto_model.config_lines.dim_range_nodes {
-            let op = tract_core::ops::array::Slice::new(
-                vec![1],
-                vec![node.offset as usize],
-                vec![(node.offset + node.dim) as usize],
-            );
-            let id = model.add_node_default(name.to_string(), op)?;
-            node.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
         }
         for (inlet, name) in inputs_to_wire {
             let src = OutletId::new(model.node_by_name(&*name)?.id, 0);

@@ -2,11 +2,15 @@ use tract_core::internal::*;
 use tract_core::ndarray;
 
 use crate::model::ParsingContext;
+use crate::model::NodeLine;
 
 pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
-    let node = &ctx.proto_model.config_lines.component_nodes[name];
-    let component = &ctx.proto_model.components[&node.component];
-    let (kernel_len, dilation) = node.input.as_conv_shape_dilation().unwrap_or((1,1));
+    let node = &ctx.proto_model.config_lines.nodes.iter().find(|l| l.0 == name);
+    let line = if let Some((_, NodeLine::Component(line))) = node { line } else {
+        bail!("Could not find component {}", name);
+    };
+    let component = &ctx.proto_model.components[&line.component];
+    let (kernel_len, dilation) = line.input.as_conv_shape_dilation().unwrap_or((1,1));
     let kernel: &Tensor =
         component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?;
     let mut kernel_shape: TVec<usize> = kernel.shape().into();
