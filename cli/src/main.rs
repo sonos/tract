@@ -155,7 +155,15 @@ fn main() {
                 .takes_value(true)
                 .long("assert-output-fact")
                 .help("Infered shape and datum type must match exactly this"),
-        );
+        )
+        .arg(
+            Arg::with_name("inner")
+                .takes_value(true)
+                .number_of_values(1)
+                .multiple(true)
+                .long("inner")
+                .help("Navigate to a sub-model")
+                );
     app = app.subcommand(output_options(dump));
 
     let draw = clap::SubCommand::with_name("draw");
@@ -643,7 +651,8 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
 
         ("dump", Some(m)) => {
             params.assertions = Some(Assertions::from_clap(m)?);
-            dump::handle(params, display_options_from_clap(m)?)
+            let inner = m.values_of("inner").map(|ss| ss.map(|s| s.to_string()).collect()).unwrap_or(vec!());
+            dump::handle(params, display_options_from_clap(m)?, inner)
         }
 
         ("profile", Some(m)) => {

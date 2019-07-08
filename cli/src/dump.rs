@@ -4,11 +4,12 @@ use crate::{Parameters, SomeModel};
 use std::fmt::{Debug, Display};
 use tract_core::internal::*;
 
-pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
+pub fn handle(params: Parameters, options: DisplayOptions, inner:Vec<String>) -> CliResult<()> {
     let tract = &params.tract_model;
     match tract {
         SomeModel::Inference(m) => handle_t(m, &params, options),
-        SomeModel::Typed(m) => handle_t(m, &params, options),
+        SomeModel::Typed(m) if inner.len() == 0 => handle_t(m, &params, options),
+        SomeModel::Typed(m)  => handle_inner(m, &params, options, inner),
         SomeModel::Normalized(m) => handle_t(m, &params, options),
         SomeModel::Pulsed(_, m) => handle_t(m, &params, options),
     }
@@ -43,5 +44,17 @@ where
         }
     }
 
+    Ok(())
+}
+
+fn handle_inner(tract: &TypedModel, params: &Parameters, options: DisplayOptions, inner: Vec<String>) -> CliResult<()> {
+    let model = tract;
+    if let Some(node) = inner.get(0) {
+        let node = tract.node(node.parse()?);
+        if let Some(scan) = node.op_as::<tract_core::ops::rec::scan::Scan<TypedTensorInfo, Box<Op>>>() {
+            let model = &scan.body;
+            handle_t(model, params, options)?
+        }
+    }
     Ok(())
 }

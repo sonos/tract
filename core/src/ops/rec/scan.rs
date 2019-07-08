@@ -13,7 +13,7 @@ where
     TI: TensorInfo,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>
 {
-    body: Model<TI, O>,
+    pub body: Model<TI, O>,
     num_scan_inputs: usize,
     closure_inputs: usize,
     scan_input_axes: Vec<usize>,
