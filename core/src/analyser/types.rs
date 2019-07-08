@@ -324,6 +324,10 @@ impl ShapeFact {
         }
     }
 
+    pub fn dim(&self, i: usize) -> Option<DimFact> {
+        self.dims().nth(i)
+    }
+
     pub fn dims(&self) -> impl Iterator<Item = DimFact> {
         let stream = self.stream.clone();
         self.dims.clone().into_iter().map(move |d| match d {

@@ -1,4 +1,4 @@
-use crate::model::TypedModel;
+use crate::model::*;
 use crate::TractResult;
 use std::fmt::Debug;
 
@@ -8,6 +8,10 @@ mod push_split_down;
 use self::prop_const::PropConst;
 use self::push_split_down::PushSplitDown;
 
+pub trait IncorporatePass: Debug + Send + Sync {
+    fn pass(&self, model: &mut InferenceModel) -> TractResult<bool>;
+}
+
 pub trait DeclutterPass: Debug + Send + Sync {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
 }
@@ -16,8 +20,12 @@ pub trait CodegenPass: Debug + Send + Sync {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
 }
 
+pub fn incorporate() -> Vec<Box<IncorporatePass>> {
+    vec![Box::new(IncorporateOps)]
+}
+
 pub fn declutter() -> Vec<Box<DeclutterPass>> {
-    vec![Box::new(IncorporateOps), Box::new(PropConst) as _, Box::new(NormalizeOps)]
+    vec![Box::new(PropConst) as _, Box::new(NormalizeOps)]
 }
 
 pub fn codegen() -> Vec<Box<CodegenPass>> {
@@ -27,8 +35,8 @@ pub fn codegen() -> Vec<Box<CodegenPass>> {
 #[derive(Debug)]
 pub struct IncorporateOps;
 
-impl DeclutterPass for IncorporateOps {
-    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
+impl IncorporatePass for IncorporateOps {
+    fn pass(&self, model: &mut InferenceModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
             let mut done_something_this_time = false;

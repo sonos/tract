@@ -48,7 +48,6 @@ where
 }
 
 fn handle_inner(tract: &TypedModel, params: &Parameters, options: DisplayOptions, inner: Vec<String>) -> CliResult<()> {
-    let model = tract;
     if let Some(node) = inner.get(0) {
         let node = tract.node(node.parse()?);
         if let Some(scan) = node.op_as::<tract_core::ops::rec::scan::Scan<TypedTensorInfo, Box<Op>>>() {

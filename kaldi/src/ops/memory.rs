@@ -17,9 +17,9 @@ impl Op for Memory {
 
     fn incorporate(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
         Ok(Some(incorporate_memory_ops_as_scans(model, node)?))
     }
 }
@@ -53,9 +53,9 @@ impl InferenceOp for Memory {
 }
 
 fn incorporate_memory_ops_as_scans(
-    model: &TypedModel,
-    _: &TypedNode,
-) -> TractResult<TypedModelPatch> {
+    model: &InferenceModel,
+    _: &InferenceNode,
+) -> TractResult<InferenceModelPatch> {
     let memory_node_ids: Vec<usize> =
         model.nodes().iter().filter(|n| n.op_is::<Memory>()).map(|n| n.id).collect();
     let mut loops: BTreeMap<usize, BitSet> = memory_node_ids
@@ -63,7 +63,7 @@ fn incorporate_memory_ops_as_scans(
         .map(|id| Ok((*id, time_loop_nodes_for_memory(model, *id)?)))
         .collect::<TractResult<_>>()?;
 
-    let mut patch = TypedModelPatch::default();
+    let mut patch = InferenceModelPatch::default();
     while loops.len() > 0 {
         let (_, time_loop) = loops.iter().next().unwrap();
         let coupled_mem_ops: Vec<usize> = loops
@@ -88,17 +88,19 @@ fn incorporate_memory_ops_as_scans(
             .filter(|outlet| !time_loop.contains(outlet.node))
             .cloned()
             .collect();
-        let mut inner_model = TypedModel::default();
+        let mut inner_model = InferenceModel::default();
         let mut node_id_old_to_new: HashMap<usize, usize> = HashMap::new();
         for &mem in &coupled_mem_ops {
             let mem_node = model.node(mem);
-            let id = inner_model.add_source(&*mem_node.name, mem_node.outputs[0].fact.clone())?;
+            let channel = mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()? as usize;
+            let id = inner_model.add_source(&*mem_node.name,  TensorFact::dt_shape(f32::datum_type(), ShapeFact::from(&[1, channel])))?;
             node_id_old_to_new.insert(mem, id);
         }
         for scan_input in scan_inputs.iter() {
             let old_node = model.node(scan_input.node);
+            let channel = old_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()? as usize;
             let new_id = inner_model
-                .add_source(format!("{}-scan", old_node.name), old_node.outputs[0].fact.clone())?;
+                .add_source(format!("{}-scan", old_node.name), TensorFact::dt_shape(f32::datum_type(), ShapeFact::from(&[1, channel])))?;
             node_id_old_to_new.insert(scan_input.node, new_id);
         }
         for old_node_id in time_loop.iter() {
@@ -109,7 +111,8 @@ fn incorporate_memory_ops_as_scans(
             let new_id = inner_model.add_node(
                 &*node.name,
                 node.op.clone(),
-                model.node_output_facts(old_node_id)?.into_iter().cloned().collect(),
+                (0..node.outputs.len()).map(|_| TensorFact::default()).collect()
+//                model.node_output_facts(old_node_id)?.into_iter().map(|ti| ti.to_tensor_fact()).collect(),
             )?;
             node_id_old_to_new.insert(node.id, new_id);
         }
@@ -142,16 +145,16 @@ fn incorporate_memory_ops_as_scans(
             inner_model,
             scan_inputs.len(),
             0,
-            vec![1; scan_inputs.len()],
-            vec![1; scan_outputs.len()],
+            vec![0; scan_inputs.len()],
+            vec![0; scan_outputs.len()],
         );
 
         let mut output_facts = tvec!();
-        for (ix, memory) in coupled_mem_ops.iter().enumerate() {
-            let channels = model.node(*memory).outputs[0].fact.shape.dim(1).to_integer()? as usize;
+        for memory in coupled_mem_ops.iter() {
+            let channels = model.node(*memory).outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()? as usize;
             let op = model.node(*memory).op_as::<Memory>().unwrap();
             let delay = (-op.offset) as usize;
-            output_facts.push(TypedTensorInfo::shape::<f32>(&[delay, channels]));
+            output_facts.push(TensorFact::dt_shape(f32::datum_type(), tvec![delay, channels]));
         }
 
         for output in &scan_outputs {
@@ -160,11 +163,11 @@ fn incorporate_memory_ops_as_scans(
         }
 
         let name = format!("scan-{}", scan_inputs.iter().map(|li| &model.node(li.node).name).join("-"));
-        let scan_id = patch.add_node(name, scan, output_facts.clone())?;
+        let scan_id = patch.add_node(name, scan, output_facts.iter().map(|ti| ti.to_tensor_fact()).collect())?;
 
         for (ix, memory) in coupled_mem_ops.iter().enumerate() {
             let op = model.node(*memory).op_as::<Memory>().unwrap();
-            let zeroes = Tensor::from(tract_core::ndarray::ArrayD::<f32>::zeros(output_facts[ix].shape.as_finite().unwrap()));
+            let zeroes = Tensor::from(tract_core::ndarray::ArrayD::<f32>::zeros(&*output_facts[ix].shape.as_concrete_finite().unwrap().unwrap()));
             patch.plug_const(InletId::new(scan_id, ix), format!("initial-zeros-for-{}", op.name), zeroes)?;
         }
 
@@ -182,7 +185,7 @@ fn incorporate_memory_ops_as_scans(
 }
 
 pub fn time_loop_nodes_for_memory(
-    model: &TypedModel,
+    model: &InferenceModel,
     memory_node_id: usize,
 ) -> TractResult<BitSet> {
     let memory_name = if let Some(mem) = &model.node(memory_node_id).op_as::<Memory>() {
@@ -197,7 +200,7 @@ pub fn time_loop_nodes_for_memory(
     Ok(time_loop)
 }
 
-pub fn all_successors(model: &TypedModel, id: usize) -> TractResult<BitSet> {
+pub fn all_successors(model: &InferenceModel, id: usize) -> TractResult<BitSet> {
     let mut queue = vec![id];
     let mut visited = BitSet::with_capacity(model.nodes().len());
     visited.insert(id);
@@ -215,7 +218,7 @@ pub fn all_successors(model: &TypedModel, id: usize) -> TractResult<BitSet> {
     Ok(visited)
 }
 
-pub fn all_precursors(model: &TypedModel, id: usize) -> TractResult<BitSet> {
+pub fn all_precursors(model: &InferenceModel, id: usize) -> TractResult<BitSet> {
     let mut queue = vec![id];
     let mut visited = BitSet::with_capacity(model.nodes().len());
     visited.insert(id);
