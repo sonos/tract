@@ -5,6 +5,8 @@ use downcast_rs::Downcast;
 
 use objekt;
 
+use std::convert::TryFrom;
+
 #[macro_use]
 pub mod macros;
 
@@ -47,7 +49,7 @@ pub enum Validation {
     /// Implementation may induce rounding errors
     Rounding,
     /// Implementation must be accurate
-    Accurate
+    Accurate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,14 +73,22 @@ pub trait StatelessOp: Op {
 }
 
 pub trait StatefullOp {
-    fn state(&self, _session: &mut SessionState, node_id: usize) -> TractResult<Option<Box<OpState>>>;
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<OpState>>>;
     fn as_stateless(&self) -> Option<&StatelessOp> {
         None
     }
 }
 
 impl<O: StatelessOp + Clone> StatefullOp for O {
-    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<OpState>>> {
         Ok(None)
     }
 
@@ -88,16 +98,18 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
 }
 
 /// A base operation
-pub trait Op:
-    fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
-{
+pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp {
     fn name(&self) -> Cow<str>;
 
     fn incorporate(
         &self,
-        _model: &TypedModel,
-        _node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
+        _model: &InferenceModel,
+        _node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        Ok(None)
+    }
+
+    fn to_typed(&self) -> TractResult<Option<Box<Op>>> {
         Ok(None)
     }
 
@@ -144,7 +156,6 @@ pub trait Op:
     }
 }
 
-
 /// An operation with tensor type inference
 pub trait InferenceOp:
     Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
@@ -156,7 +167,7 @@ pub trait InferenceOp:
     ///
     /// The default implementation will call the private infer_facts method,
     /// which is usually implemented using the InferenceRulesOp trait. It will
-    /// also try to eval() the op if its a StatelessOp and if the inputs are 
+    /// also try to eval() the op if its a StatelessOp and if the inputs are
     /// fully determined.
     ///
     /// Returns Err in case of an unrecoverable error during the inference,
@@ -167,10 +178,11 @@ pub trait InferenceOp:
         outputs: TVec<&TensorFact>,
         observed: TVec<&TensorFact>,
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)> {
-        let (infered_inputs, infered_outputs, observed) = self.infer_facts(inputs, outputs, observed)?;
+        let (infered_inputs, infered_outputs, observed) =
+            self.infer_facts(inputs, outputs, observed)?;
 
         if self.as_op().downcast_ref::<crate::ops::source::Source>().is_some() {
-            return Ok((infered_inputs, infered_outputs, observed))
+            return Ok((infered_inputs, infered_outputs, observed));
         }
 
         if let Some(stateless) = self.as_stateless() {
@@ -188,7 +200,7 @@ pub trait InferenceOp:
             }
         }
 
-        return Ok((infered_inputs, infered_outputs, observed))
+        return Ok((infered_inputs, infered_outputs, observed));
     }
 
     /// Allow an op to specify a supplementary list of outlets facts that
@@ -198,7 +210,7 @@ pub trait InferenceOp:
         _model: &InferenceModel,
         _node: &InferenceNode,
     ) -> TractResult<Vec<OutletId>> {
-        Ok(vec!())
+        Ok(vec![])
     }
 
     /// Infer properties about inputs and output tensors. This method does not
@@ -238,9 +250,11 @@ impl<O: InferenceOp> From<O> for Box<InferenceOp> {
     }
 }
 
-impl From<Box<InferenceOp>> for Box<Op> {
-    fn from(it: Box<InferenceOp>) -> Box<Op> {
-        objekt::clone_box(it.as_op())
+impl TryFrom<Box<InferenceOp>> for Box<Op> {
+    type Error = TractError;
+
+    fn try_from(it: Box<InferenceOp>) -> TractResult<Box<Op>> {
+        Ok(it.to_typed()?.unwrap_or_else(|| objekt::clone_box(it.as_op())))
     }
 }
 

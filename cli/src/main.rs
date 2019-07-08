@@ -91,6 +91,7 @@ fn main() {
         (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
         (@arg skip_type: --("skip-type") "Analyse as much as possible, but do not enforce full typing")
 
+        (@arg incorporate: --incorporate "Incorporate model after load")
         (@arg declutter: --declutter "Declutter model after load")
         (@arg optimize: -O --optimize "Optimize after model load")
         (@arg pulse: --pulse +takes_value "Translate to pulse network")

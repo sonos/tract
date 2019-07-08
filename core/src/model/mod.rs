@@ -99,6 +99,25 @@ impl InferenceModel {
         crate::analyser::Analyser::new(self).analyse_obstinate(obstinate)
     }
 
+    /// Perform early transformation before going typed.
+    pub fn incorporate(self) -> TractResult<InferenceModel> {
+        let mut model = self;
+        loop {
+            let mut done_something = false;
+            for p in crate::optim::incorporate() {
+                done_something = done_something || p.pass(&mut model)?;
+                if cfg!(debug_assertions) {
+                    model.check_edges()?;
+                }
+            }
+            if !done_something {
+                break;
+            }
+        }
+        model = compact::compact(&model)?;
+        Ok(model)
+    }
+
     /// List OutletId with incomplete type information.
     ///
     /// Will stop on first error unless `obstinate` is `true`.
@@ -129,7 +148,8 @@ impl InferenceModel {
     /// Attempt full analyse and conversion to TypedModel.
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
         self.analyse(false)?;
-        compact::translate(&mut self)
+        let m = self.incorporate()?;
+        compact::translate(&m)
     }
 
     /// Attempt full analyse, decluttering and conversion to NormalizedModel.
