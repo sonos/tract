@@ -1,3 +1,5 @@
+use std::fmt;
+
 use ndarray::prelude::*;
 use crate::internal::*;
 
@@ -6,15 +8,23 @@ use crate::internal::*;
 // outputs: [ hidden_state_len final values ][ aggregated outputs ]
 
 #[derive(Debug, Clone, new, Default)]
-pub struct Scan {
-    body: InferenceModel,
+pub struct Scan<TI, O>
+where
+    TI: TensorInfo,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>
+{
+    body: Model<TI, O>,
     num_scan_inputs: usize,
     closure_inputs: usize,
     scan_input_axes: Vec<usize>,
     scan_output_axes: Vec<usize>,
 }
 
-impl Scan {
+impl<TI, O> Scan<TI, O>
+where
+    TI: TensorInfo,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>
+{
     fn slice_input_t<T:Datum>(&self, scan_inputs: &[Arc<Tensor>], input: usize, i: usize) -> TractResult<Tensor> {
         let view = scan_inputs[input].to_array_view::<T>()?;
         let axis = self.scan_input_axes.get(input).cloned().unwrap_or(0);
@@ -39,13 +49,28 @@ impl Scan {
     }
 }
 
-impl Op for Scan {
+impl Op for Scan<TensorFact, Box<InferenceOp>>
+{
     fn name(&self) -> Cow<str> {
         "Scan".into()
     }
 }
 
-impl StatelessOp for Scan {
+impl StatelessOp for Scan<TensorFact, Box<InferenceOp>> {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        unimplemented!()
+    }
+}
+
+
+impl Op for Scan<TypedTensorInfo, Box<Op>>
+{
+    fn name(&self) -> Cow<str> {
+        "Scan".into()
+    }
+}
+
+impl StatelessOp for Scan<TypedTensorInfo, Box<Op>> {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let hidden_state_len = inputs.len() - self.num_scan_inputs - self.closure_inputs;
 
@@ -60,8 +85,8 @@ impl StatelessOp for Scan {
         let mut scan_outputs = tvec!();
         for i in 0..(self.body.output_outlets()?.len() - hidden_state_len) {
             let fact = self.body.output_fact(hidden_state_len + i)?;
-            let dt = fact.datum_type.concretize().unwrap();
-            let shape = fact.shape.as_concrete_finite().unwrap().unwrap();
+            let dt = fact.datum_type;
+            let shape = fact.shape.as_finite().unwrap();
             let t = dispatch_datum!(Self::alloc_output_t(dt)(self, &*shape, i, iters))?;
             scan_outputs.push(t);
         }
@@ -92,7 +117,7 @@ impl StatelessOp for Scan {
     }
 }
 
-impl Scan {
+impl Scan<TensorFact, Box<InferenceOp>> {
     fn unify_facts(&mut self, inputs: &mut [TensorFact], outputs: &mut [TensorFact]) -> TractResult<()> {
         let body_inputs = self.body.input_outlets()?.len();
         let body_outputs = self.body.output_outlets()?.len();
@@ -158,7 +183,7 @@ impl Scan {
     }
 }
 
-impl InferenceOp for Scan {
+impl InferenceOp for Scan<TensorFact, Box<InferenceOp>> {
     fn infer_facts(
         &mut self,
         inputs: TVec<&TensorFact>,
