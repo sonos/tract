@@ -11,6 +11,7 @@ pub mod macros;
 pub mod array;
 pub mod cast;
 pub mod cnn;
+pub mod dummy;
 pub mod identity;
 pub mod konst;
 pub mod logic;
@@ -91,6 +92,14 @@ pub trait Op:
     fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
 {
     fn name(&self) -> Cow<str>;
+
+    fn incorporate(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
 
     fn declutter(
         &self,
