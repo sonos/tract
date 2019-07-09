@@ -2,17 +2,25 @@ use crate::CliResult;
 use tract_core::internal::*;
 
 /// Compares the outputs of a node in tract and tensorflow.
-pub fn check_outputs(got: &[Arc<Tensor>], expected: &[TensorFact]) -> CliResult<()> {
+pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> CliResult<()> {
     if got.len() != expected.len() {
         bail!("Number of output differ: got:{}, expected:{}", got.len(), expected.len())
     }
 
-    for (got, exp) in got.iter().zip(expected.iter()) {
-        exp.datum_type.unify(&got.datum_type().into())?;
-        exp.shape.unify(&got.shape().into())?;
-        if let Some(t) = exp.value.concretize() {
-            if !t.close_enough(got, true) {
-                bail!("Values are not close enough")
+    for (ix, (got, exp)) in got.iter().zip(expected.iter()).enumerate() {
+        if let Some(exp) = exp {
+            if let Ok(exp) = exp.to_array_view::<f32>() {
+                debug!("Exp: {:?}", exp);
+            }
+            if let Ok(got) = got.to_array_view::<f32>() {
+                debug!("Got: {:?}", got);
+            }
+            if exp.shape() != got.shape() {
+                bail!("Chacking output {}, expected shape: {:?}, got {:?}", ix, exp.shape(), got.shape())
+            } else if !exp.close_enough(got, true) {
+                bail!("Chacking output {}, values differ too much.", ix);
+            } else {
+                info!("Checked output #{}, ok.", ix);
             }
         }
     }
