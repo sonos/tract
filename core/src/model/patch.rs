@@ -123,11 +123,6 @@ where TI: TensorInfo,
             }
             all_inputs.insert(added_node_id, inputs);
         }
-        for (node, inputs) in all_inputs {
-            for (ix, input) in inputs.into_iter().enumerate() {
-                target.add_edge(mapping[&input], InletId::new(node, ix))?;
-            }
-        }
         for (outlet, by) in shunt_outlet_by {
             let fixed_by = mapping[&by];
             let succs = target.nodes()[outlet.node].outputs[outlet.slot].successors.clone();
@@ -138,6 +133,11 @@ where TI: TensorInfo,
                 if *o == outlet {
                     *o = fixed_by;
                 }
+            }
+        }
+        for (node, inputs) in all_inputs {
+            for (ix, input) in inputs.into_iter().enumerate() {
+                target.add_edge(mapping[&input], InletId::new(node, ix))?;
             }
         }
         Ok(())
