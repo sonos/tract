@@ -1,7 +1,7 @@
 use crate::TractResult;
 use std::fmt;
 use std::iter::FromIterator;
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub, Rem};
 
 use num_traits::Zero;
 
@@ -553,6 +553,20 @@ where
     fn div(self, rhs: R) -> Self::Output {
         if let Some(a) = self.concretize() {
             GenericFact::Only(a / rhs)
+        } else {
+            GenericFact::Any
+        }
+    }
+}
+
+impl<T, R> Rem<R> for GenericFact<T>
+where
+    T: Rem<R, Output = T> + PartialEq + Clone + ::std::fmt::Debug,
+{
+    type Output = GenericFact<T>;
+    fn rem(self, rhs: R) -> Self::Output {
+        if let Some(a) = self.concretize() {
+            GenericFact::Only(a % rhs)
         } else {
             GenericFact::Any
         }

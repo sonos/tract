@@ -13,16 +13,16 @@ pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<Inf
     let (kernel_len, dilation) = line.input.as_conv_shape_dilation().unwrap_or((1,1));
     let kernel: &Tensor =
         component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?;
-    let mut kernel_shape: TVec<usize> = kernel.shape().into();
-    kernel_shape[1] /= kernel_len;
-    kernel_shape.push(kernel_len);
+    let bias = component.attributes.get("BiasParams").ok_or("missing attribute BiasParams")?;
+    // O•TI -> t -> TI•O -> T•I•O = HWIO
+    let o_ti = kernel.to_array_view::<f32>()?;
+    let t_i_o_shape = (kernel_len, kernel.len() / kernel_len / bias.len(), bias.len());
+    let t_i_o = ndarray::Array::from_shape_vec(t_i_o_shape, o_ti.t().iter().cloned().collect())?;
     Ok(Box::new(Affine {
         kernel_len,
         dilation,
-        linear_params: Arc::new(unsafe { kernel.clone().into_shape(&*kernel_shape)? }),
-        bias_params: Arc::clone(
-            component.attributes.get("BiasParams").ok_or("missing attribute ViasParams")?,
-        ),
+        linear_params: t_i_o.into_arc_tensor(),
+        bias_params: Arc::clone(bias),
     }))
 }
 
@@ -30,7 +30,7 @@ pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<Inf
 struct Affine {
     kernel_len: usize,
     dilation: usize,
-    linear_params: Arc<Tensor>, // OIT
+    linear_params: Arc<Tensor>, // TIO
     bias_params: Arc<Tensor>,
 }
 
@@ -40,7 +40,7 @@ impl Affine {
         use tract_core::ops::nn::*;
         let conv = Conv::new(
             DataFormat::NHWC,
-            KernelFormat::OIHW,
+            KernelFormat::HWIO,
             Some(tvec!(self.dilation)),
             Some(tvec!(self.kernel_len)),
             PaddingSpec::Valid,
@@ -149,7 +149,7 @@ impl InferenceRulesOp for Affine {
         s.equals(&outputs[0].datum_type, self.linear_params.datum_type())?;
         s.equals(&inputs[0].rank, 2)?;
         s.equals(&outputs[0].rank, 2)?;
-        s.equals(&outputs[0].shape[1], &self.linear_params.shape()[0].to_dim())?;
+        s.equals(&outputs[0].shape[1], &self.linear_params.shape()[2].to_dim())?;
         s.equals(&inputs[0].shape[1], &self.linear_params.shape()[1].to_dim())?;
         s.given(&inputs[0].shape, move |s, ishape| {
             let mut ishape = ishape.to_vec();
