@@ -10,10 +10,13 @@ cd $TEST_CASES
 for tc in */
 do
     echo -n "$tc "
+    . $tc/vars.sh
     cmd="cargo run -q -p tract -- \
         -f kaldi $tc/model.raw.txt \
         --input-bundle $tc/io.npz \
-        --kaldi-downsample $(cat $tc/subsampling) \
+        --kaldi-downsample $subsampling \
+        --kaldi-left-context $left_context \
+        --kaldi-right-context $right_context \
         run \
         --assert-output-bundle $tc/io.npz"
 

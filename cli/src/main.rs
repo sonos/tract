@@ -444,6 +444,19 @@ impl Parameters {
             }
         }
 
+        if matches.value_of("kaldi_left_context").is_some() || matches.value_of("kaldi_right_context").is_some() {
+            let left = matches.value_of("kaldi_left_context").unwrap_or("0").parse()?;
+            let right = matches.value_of("kaldi_right_context").unwrap_or("0").parse()?;
+            let op = tract_core::ops::array::Pad::new(vec!((left, right),(0,0)), tract_core::ops::array::PadMode::Edge);
+            let mut patch = InferenceModelPatch::default();
+            for input in raw_model.input_outlets()? {
+                let tap = patch.tap_model(&raw_model, *input);
+                let pad = patch.chain_default(format!("{}-pad", raw_model.node(input.node).name), op.clone())?;
+                patch.shunt_outside(*input, OutletId::new(pad, 0))?;
+            }
+            patch.apply(&mut raw_model)?;
+        }
+
         if matches.is_present("prune") {
             raw_model = raw_model.eliminate_dead_branches()?;
         }
