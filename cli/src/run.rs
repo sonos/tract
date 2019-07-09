@@ -38,9 +38,13 @@ pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
             let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(output_bundle)?)?;
             for (ix, name) in output_names.iter().enumerate() {
                 let npy_name = format!("{}.npy", name);
-                if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(&*npy_name) {
-                    if !npy.into_tensor().close_enough(&outputs[ix], true) {
-                        bail!("Values are not close for tensor {}", name)
+                if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*npy_name) {
+                    if npy.shape() != outputs[ix].shape() {
+                        bail!("Chacking output {} against {}, expected shape: {:?}, got {:?}", ix, npy_name, npy.shape(), outputs[ix].shape())
+                    } else if !npy.into_tensor().close_enough(&outputs[ix], true) {
+                        bail!("Chacking output {} against {}, values differ too much")
+                    } else {
+                        info!("Checked output #{} against {}, ok.", ix, npy_name);
                     }
                 }
             }
