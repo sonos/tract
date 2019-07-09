@@ -1,0 +1,16 @@
+<Nnet3>
+
+input-node name=input dim=12
+component-node name=affine1 input=Append(Offset(input, -1), input, Offset(input, 1)) component=affine1
+output-node name=output input=affine1
+
+<NumComponents> 1
+<ComponentName> affine1 <NaturalGradientAffineComponent> <LearningRateFactor> 1.0 <MaxChange> 1.0 <LearningRate> 0.0005 <LinearParams>  [
+  1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+  0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+  0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+  0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+  0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 ]
+<BiasParams> [ 0.0 0.0 0.0 0.0 0.0 ]
+<RankIn> 20 <RankOut> 80 <UpdatePeriod> 4 <NumSamplesHistory> 2000 <Alpha> 4 <IsGradient> F </NaturalGradientAffineComponent> 
+</Nnet3> 
