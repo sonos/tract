@@ -705,20 +705,12 @@ impl<'p> InOrderScanner<'p> {
 
     #[inline]
     pub fn next(&mut self) {
-        unsafe {
-            inc!(self.inner_output_coord, 1);
-            inc!(self.inner_input_coord, self.inner_input_stride as usize);
-            inc!(self.output_offset, self.inner_output_stride);
-            inc!(self.input_center_offset, self.input_center_offset_stride);
-            if self.inner_output_coord >= self.inner_current_zone_limit {
-                let inner_dim = self.rank.wrapping_sub(1);
-                *self.output_coords.get_unchecked_mut(inner_dim) = self.inner_output_coord;
-                *self.input_coords.get_unchecked_mut(inner_dim) = self.inner_input_coord;
-                self.next_zone();
-                self.inner_output_coord = *self.output_coords.get_unchecked(inner_dim);
-                self.inner_input_coord = *self.input_coords.get_unchecked(inner_dim);
-                self.inner_current_zone_limit = self.zone.output_ranges.get_unchecked(inner_dim).end;
-            }
+        inc!(self.inner_output_coord, 1);
+        inc!(self.inner_input_coord, self.inner_input_stride as usize);
+        inc!(self.output_offset, self.inner_output_stride);
+        inc!(self.input_center_offset, self.input_center_offset_stride);
+        if self.inner_output_coord >= self.inner_current_zone_limit {
+            self.next_zone();
         }
     }
 
@@ -726,6 +718,8 @@ impl<'p> InOrderScanner<'p> {
         let rank = self.rank;
         let inner_dim = rank.wrapping_sub(1);
         unsafe {
+            *self.output_coords.get_unchecked_mut(inner_dim) = self.inner_output_coord;
+            *self.input_coords.get_unchecked_mut(inner_dim) = self.inner_input_coord;
             if self.output_coords.get_unchecked(inner_dim)
                 < self.patch.output_shape.get_unchecked(inner_dim)
             {
@@ -766,6 +760,9 @@ impl<'p> InOrderScanner<'p> {
                 }
                 self.zone = &self.patch.zones.get_unchecked(self.zone_id);
             }
+            self.inner_output_coord = *self.output_coords.get_unchecked(inner_dim);
+            self.inner_input_coord = *self.input_coords.get_unchecked(inner_dim);
+            self.inner_current_zone_limit = self.zone.output_ranges.get_unchecked(inner_dim).end;
         }
     }
 
