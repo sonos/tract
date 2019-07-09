@@ -5,18 +5,11 @@ use crate::{Parameters, SomeModel};
 use tract_core::internal::*;
 
 pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
-    let (output_outlets, outputs) = match &params.tract_model {
-        SomeModel::Inference(ref m) => (m.output_outlets()?.to_vec(), run_regular_t(m, &params)?),
-        SomeModel::Typed(ref m) => (m.output_outlets()?.to_vec(), run_regular_t(m, &params)?),
-        SomeModel::Normalized(ref m) => (m.output_outlets()?.to_vec(), run_regular_t(m, &params)?),
-        SomeModel::Pulsed(_, m) => (m.output_outlets()?.to_vec(), run_pulse_t(m, &params)?),
-    };
-
-    let output_names:Vec<String> = match &params.tract_model {
-        SomeModel::Inference(ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
-        SomeModel::Typed(ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
-        SomeModel::Normalized(ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
-        SomeModel::Pulsed(_, ref m) => output_outlets.into_iter().map(|oo| m.node(oo.node).name.to_string()).collect(),
+    let outputs = match &params.tract_model {
+        SomeModel::Inference(ref m) => run_regular_t(m, &params)?,
+        SomeModel::Typed(ref m) => run_regular_t(m, &params)?,
+        SomeModel::Normalized(ref m) => run_regular_t(m, &params)?,
+        SomeModel::Pulsed(_, m) => run_pulse_t(m, &params)?,
     };
 
     if dump {
@@ -34,23 +27,6 @@ pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
                 outputs.iter().map(|t| TensorFact::dt_shape(t.datum_type(), t.shape())).collect();
             crate::utils::check_inferred(&*outputs, &*facts)?;
         }
-        for output_bundle in &asserts.assert_output_bundles {
-            let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(output_bundle)?)?;
-            for (ix, name) in output_names.iter().enumerate() {
-                let npy_name = format!("{}.npy", name);
-                if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*npy_name) {
-                    debug!("Expected: {:?}", npy);
-                    debug!("Got: {:?}", outputs[ix].to_array_view::<f32>()?);
-                    if npy.shape() != outputs[ix].shape() {
-                        bail!("Chacking output {} against {}, expected shape: {:?}, got {:?}", ix, npy_name, npy.shape(), outputs[ix].shape())
-                    } else if !npy.clone().into_tensor().close_enough(&outputs[ix], true) {
-                        bail!("Chacking output {} against {}, values differ too much.", ix, npy_name);
-                    } else {
-                        info!("Checked output #{} against {}, ok.", ix, npy_name);
-                    }
-                }
-            }
-        }
     }
 
     Ok(())
@@ -64,16 +40,17 @@ where
     let plan = SimplePlan::new(tract)?;
     let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
-        if let Some(input) = params.inputs.as_ref().and_then(|v| v.get(ix)).and_then(|t| t.as_ref())
-        {
-            inputs.push(Arc::clone(input).into_tensor());
+        if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
+            inputs.push(input.clone().into_tensor())
         } else {
             let fact = tract.outlet_fact(*input)?;
             inputs.push(crate::tensor::tensor_for_fact(&fact.to_tensor_fact(), None)?);
         }
     }
     info!("Running");
-    Ok(plan.run(inputs)?)
+    let outputs = plan.run(inputs)?;
+    debug!("Outputs: {:?}", outputs);
+    Ok(outputs)
 }
 
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
@@ -83,7 +60,7 @@ fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<T
     let output_pulse = output_fact.pulse();
     //    println!("output_fact: {:?}", output_fact);
     let axis = input_fact.axis;
-    let input: &Tensor = &params.inputs.as_ref().unwrap()[0].as_ref().unwrap();
+    let input: &Tensor = &params.input_values[0].as_ref().unwrap();
     //    println!("input_shape: {:?}", input.shape());
     let input_dim = input.shape()[axis];
     //    println!("output_fact: {:?}", output_fact);

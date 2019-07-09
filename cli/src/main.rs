@@ -79,6 +79,12 @@ fn main() {
         (@arg kaldi_downsample: --("kaldi-downsample") +takes_value
             "Add a subsampling to output on axis 0")
 
+        (@arg kaldi_left_context: --("kaldi-left-context") +takes_value
+            "Add lines of left context to input (dupping first time frame)")
+
+        (@arg kaldi_right_context: --("kaldi-right-context") +takes_value
+            "Add lines of right context to input (dupping last time frame)")
+
         (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
             "Override input nodes names (auto-detects otherwise).")
 
@@ -166,8 +172,8 @@ fn main() {
                 .number_of_values(1)
                 .multiple(true)
                 .long("inner")
-                .help("Navigate to a sub-model")
-                );
+                .help("Navigate to a sub-model"),
+        );
     app = app.subcommand(output_options(dump));
 
     let draw = clap::SubCommand::with_name("draw");
@@ -202,7 +208,7 @@ fn main() {
             Arg::with_name("assert-output-bundle")
                 .takes_value(true)
                 .long("assert-output-bundle")
-                .help("Checks values against these tensor (.npz)")
+                .help("Checks values against these tensor (.npz)"),
         )
         .arg(
             Arg::with_name("assert-output")
@@ -316,6 +322,8 @@ pub struct Parameters {
     typed_model: Option<TypedModel>,
     tract_model: SomeModel,
 
+    output_names: Vec<String>,
+
     #[cfg(feature = "conform")]
     tf_model: Option<tract_tensorflow::conform::tf::Tensorflow>,
 
@@ -323,7 +331,7 @@ pub struct Parameters {
     #[allow(dead_code)]
     tf_model: (),
 
-    inputs: Option<Vec<Option<Arc<Tensor>>>>,
+    input_values: Vec<Option<Arc<Tensor>>>,
 
     assertions: Option<Assertions>,
 
@@ -344,7 +352,7 @@ impl Parameters {
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
                 let graph = kaldi.proto_model_for_path(&name)?;
-                let mut parsed = kaldi.model_for_proto_model(&graph)?;
+                let parsed = kaldi.model_for_proto_model(&graph)?;
                 (SomeGraphDef::Kaldi(graph), parsed)
             }
             #[cfg(feature = "onnx")]
@@ -365,7 +373,10 @@ impl Parameters {
                 let tract = tf.model_for_proto_model(&graph)?;
                 (SomeGraphDef::Tf(graph), tract)
             }
-            _ => bail!("Format {} not supported. You may need to recompile tract with the right features.", format)
+            _ => bail!(
+                "Format {} not supported. You may need to recompile tract with the right features.",
+                format
+            ),
         };
 
         info!("Model {:?} loaded", name);
@@ -413,13 +424,22 @@ impl Parameters {
             raw_model.set_output_names(outputs)?;
         };
 
+        let output_names = raw_model
+            .output_outlets()?
+            .iter()
+            .map(|o| raw_model.node(o.node).name.to_string())
+            .collect();
+
         if let Some(sub) = matches.value_of("kaldi_downsample") {
             let period = sub.parse::<isize>()?;
             if period != 1 {
                 let output = raw_model.output_outlets()?[0];
                 let output_name = raw_model.node(output.node).name.clone();
                 raw_model.node_mut(output.node).name = format!("{}-old", output_name);
-                let id = raw_model.add_node_default(output_name, tract_core::ops::array::Downsample::new(0, period, 0))?;
+                let id = raw_model.add_node_default(
+                    output_name,
+                    tract_core::ops::array::Downsample::new(0, period, 0),
+                )?;
                 raw_model.add_edge(output, InletId::new(id, 0))?;
             }
         }
@@ -430,46 +450,56 @@ impl Parameters {
 
         let machine_friendly = matches.is_present("machine_friendly");
 
-        let inputs = if let Some(inputs) = matches.values_of("input") {
-            let mut vs = vec![];
+        let mut input_values = vec!();
+
+        if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
-                let (name, t) = tensor::for_string(v)?;
+                let (name, mut t) = tensor::for_string(v)?;
                 let outlet = if let Some(name) = name {
                     let node = raw_model.node_by_name(&*name)?;
                     OutletId::new(node.id, 0)
                 } else {
                     raw_model.input_outlets()?[ix]
                 };
-                vs.push(t.value.concretize());
+                while input_values.len() < ix {
+                    input_values.push(None);
+                }
+                if let Some(t) = t.value.concretize() {
+                    input_values.push(Some(t));
+                }
                 raw_model.node_mut(outlet.node).op = Box::new(tract_core::ops::Source::new());
+                t.value = GenericFact::Any;
                 raw_model.set_outlet_fact(outlet, t)?;
             }
-            Some(vs)
-        } else {
-            None
-        };
+        }
 
         if let Some(bundle) = matches.values_of("input_bundle") {
             for input in bundle {
                 let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(input)?)?;
                 for name in npz.names()? {
-                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
+                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name)
+                    {
                         debug!("{} contains {}: {:?}", input, name, npy.into_tensor());
                     }
                 }
                 let input_outlets = raw_model.input_outlets()?.to_vec();
                 for (ix, input) in input_outlets.iter().enumerate() {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
-                    if let Ok(npy) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
-                        raw_model.set_input_fact(ix, npy.into_tensor().into())?
+                    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name)
+                    {
+                        let shape = t.shape().to_vec();
+                        let fact = TensorFact::dt_shape(f32::datum_type(), shape);
+                        raw_model.set_input_fact(ix, fact)?;
+                        while input_values.len() <= ix {
+                            input_values.push(None);
+                        }
+                        input_values[ix] = Some(t.into_arc_tensor());
                     }
                 }
             }
         }
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
-
-        //        println!("{:?}", raw_model);
 
         let mut typed_model = None;
         let mut tract_model = if !matches.is_present("skip_analyse") {
@@ -529,7 +559,8 @@ impl Parameters {
             typed_model,
             tract_model,
             tf_model,
-            inputs,
+            input_values,
+            output_names,
             assertions: None,
             machine_friendly,
         })
@@ -576,24 +607,42 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
 }
 
 pub struct Assertions {
-    assert_outputs: Option<Vec<TensorFact>>,
+    assert_outputs: Option<Vec<Option<Arc<Tensor>>>>,
     assert_output_facts: Option<Vec<TensorFact>>,
-    assert_output_bundles: Vec<String>,
 }
 
 impl Assertions {
-    fn from_clap(sub_matches: &clap::ArgMatches) -> CliResult<Assertions> {
-        let assert_outputs: Option<Vec<TensorFact>> = sub_matches
+    fn from_clap(sub_matches: &clap::ArgMatches, output_names: &[String]) -> CliResult<Assertions> {
+        let mut assert_outputs: Option<Vec<Option<Arc<Tensor>>>> = sub_matches
             .values_of("assert-output")
-            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
+            .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1.value.concretize()).collect());
+
+        if assert_outputs.is_none() {
+            if sub_matches.values_of("assert-output-bundle").is_some() {
+                let values = output_names
+                    .iter()
+                    .map(move |name| {
+                        let npy_name = format!("{}.npy", name);
+                        for output_bundle in sub_matches.values_of("assert-output-bundle").unwrap() {
+                            let mut npz =
+                                ndarray_npy::NpzReader::new(std::fs::File::open(output_bundle)?)?;
+                            if let Ok(t) =
+                                npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*npy_name)
+                            {
+                                return Ok(Some(t.into_arc_tensor()));
+                            }
+                        }
+                        return Ok(None);
+                    })
+                    .collect::<CliResult<_>>()?;
+                assert_outputs = Some(values)
+            }
+        }
+
         let assert_output_facts: Option<Vec<TensorFact>> = sub_matches
             .values_of("assert-output-fact")
             .map(|vs| vs.map(|v| tensor::for_string(v).unwrap().1).collect());
-        let assert_output_bundles: Vec<String> = sub_matches
-            .values_of("assert-output-bundle")
-            .map(|vs| vs.map(|s| s.to_string()).collect())
-            .unwrap_or(vec!());
-        Ok(Assertions { assert_outputs, assert_output_facts, assert_output_bundles })
+        Ok(Assertions { assert_outputs, assert_output_facts })
     }
 }
 
@@ -648,7 +697,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ),
 
         ("run", Some(m)) => {
-            params.assertions = Some(Assertions::from_clap(m)?);
+            params.assertions = Some(Assertions::from_clap(m, &*params.output_names)?);
             run::handle(params, m.is_present("dump"))
         }
 
@@ -665,8 +714,11 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         }
 
         ("dump", Some(m)) => {
-            params.assertions = Some(Assertions::from_clap(m)?);
-            let inner = m.values_of("inner").map(|ss| ss.map(|s| s.to_string()).collect()).unwrap_or(vec!());
+            params.assertions = Some(Assertions::from_clap(m, &*params.output_names)?);
+            let inner = m
+                .values_of("inner")
+                .map(|ss| ss.map(|s| s.to_string()).collect())
+                .unwrap_or(vec![]);
             dump::handle(params, display_options_from_clap(m)?, inner)
         }
 
