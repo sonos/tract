@@ -1,0 +1,7 @@
+<Nnet3>
+
+input-node name=input dim=10
+output-node name=output input=Offset(input, 1)
+
+<NumComponents> 0
+</Nnet3> 
