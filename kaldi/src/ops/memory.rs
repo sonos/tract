@@ -1,6 +1,6 @@
-use std::collections::BTreeMap;
 use bit_set::BitSet;
 use itertools::Itertools;
+use std::collections::BTreeMap;
 
 use tract_core::internal::*;
 
@@ -92,15 +92,25 @@ fn incorporate_memory_ops_as_scans(
         let mut node_id_old_to_new: HashMap<usize, usize> = HashMap::new();
         for &mem in &coupled_mem_ops {
             let mem_node = model.node(mem);
-            let channel = mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()? as usize;
-            let id = inner_model.add_source(&*mem_node.name,  TensorFact::dt_shape(f32::datum_type(), ShapeFact::from(&[1, channel])))?;
+            let op = mem_node.op_as::<Memory>().unwrap();
+            let channel =
+                mem_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()?
+                    as usize;
+            let id = inner_model.add_source(
+                &*mem_node.name,
+                TensorFact::dt_shape(f32::datum_type(), ShapeFact::from(&[(-op.offset) as usize, channel])),
+            )?;
             node_id_old_to_new.insert(mem, id);
         }
         for scan_input in scan_inputs.iter() {
             let old_node = model.node(scan_input.node);
-            let channel = old_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()? as usize;
-            let new_id = inner_model
-                .add_source(format!("{}-scan", old_node.name), TensorFact::dt_shape(f32::datum_type(), ShapeFact::from(&[1, channel])))?;
+            let channel =
+                old_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()?
+                    as usize;
+            let new_id = inner_model.add_source(
+                format!("{}-scan", old_node.name),
+                TensorFact::dt_shape(f32::datum_type(), shapefact!(_, channel)),
+            )?;
             node_id_old_to_new.insert(scan_input.node, new_id);
         }
         for old_node_id in time_loop.iter() {
@@ -111,8 +121,7 @@ fn incorporate_memory_ops_as_scans(
             let new_id = inner_model.add_node(
                 &*node.name,
                 node.op.clone(),
-                (0..node.outputs.len()).map(|_| TensorFact::default()).collect()
-//                model.node_output_facts(old_node_id)?.into_iter().map(|ti| ti.to_tensor_fact()).collect(),
+                (0..node.outputs.len()).map(|_| TensorFact::default()).collect(),
             )?;
             node_id_old_to_new.insert(node.id, new_id);
         }
@@ -133,10 +142,13 @@ fn incorporate_memory_ops_as_scans(
                 Ok(OutletId::new(node_id_old_to_new[&observed_id], 0))
             })
             .collect::<TractResult<_>>()?;
+        let mut scan_output_len_hints = vec!();
         for output in &scan_outputs {
             let old_outlet = model.node(output.node).inputs[output.slot];
             inner_outputs
                 .push(OutletId::new(node_id_old_to_new[&old_outlet.node], old_outlet.slot));
+            let fact = model.outlet_fact(old_outlet)?;
+            scan_output_len_hints.push(fact.shape.dim(0).unwrap().concretize());
         }
         inner_model.set_output_outlets(&inner_outputs)?;
 
@@ -147,11 +159,20 @@ fn incorporate_memory_ops_as_scans(
             0,
             vec![0; scan_inputs.len()],
             vec![0; scan_outputs.len()],
+            scan_output_len_hints,
+            false,
         );
 
         let mut output_facts = tvec!();
         for memory in coupled_mem_ops.iter() {
-            let channels = model.node(*memory).outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()? as usize;
+            let channels = model.node(*memory).outputs[0]
+                .fact
+                .shape
+                .dim(1)
+                .unwrap()
+                .concretize()
+                .unwrap()
+                .to_integer()? as usize;
             let op = model.node(*memory).op_as::<Memory>().unwrap();
             let delay = (-op.offset) as usize;
             output_facts.push(TensorFact::dt_shape(f32::datum_type(), tvec![delay, channels]));
@@ -162,13 +183,24 @@ fn incorporate_memory_ops_as_scans(
             output_facts.push(model.outlet_fact(old_outlet)?.clone());
         }
 
-        let name = format!("scan-{}", scan_inputs.iter().map(|li| &model.node(li.node).name).join("-"));
-        let scan_id = patch.add_node(name, scan, output_facts.iter().map(|ti| ti.to_tensor_fact()).collect())?;
+        let name =
+            format!("scan-{}", scan_inputs.iter().map(|li| &model.node(li.node).name).join("-"));
+        let scan_id = patch.add_node(
+            name,
+            scan,
+            output_facts.iter().map(|ti| ti.to_tensor_fact()).collect(),
+        )?;
 
         for (ix, memory) in coupled_mem_ops.iter().enumerate() {
             let op = model.node(*memory).op_as::<Memory>().unwrap();
-            let zeroes = Tensor::from(tract_core::ndarray::ArrayD::<f32>::zeros(&*output_facts[ix].shape.as_concrete_finite().unwrap().unwrap()));
-            patch.plug_const(InletId::new(scan_id, ix), format!("initial-zeros-for-{}", op.name), zeroes)?;
+            let zeroes = Tensor::from(tract_core::ndarray::ArrayD::<f32>::zeros(
+                &*output_facts[ix].shape.as_concrete_finite().unwrap().unwrap(),
+            ));
+            patch.plug_const(
+                InletId::new(scan_id, ix),
+                format!("initial-zeros-for-{}", op.name),
+                zeroes,
+            )?;
         }
 
         for (ix, input) in scan_inputs.iter().enumerate() {

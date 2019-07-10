@@ -29,11 +29,6 @@ where
     display_graph.render()?;
 
     if let Some(asserts) = &params.assertions {
-        if let Some(asserts) = &asserts.assert_outputs {
-            for (ix, assert) in asserts.iter().enumerate() {
-                assert.unify(&tract.output_fact(ix).unwrap().to_tensor_fact())?;
-            }
-        }
         if let Some(asserts) = &asserts.assert_output_facts {
             let outputs_facts: Vec<TensorFact> = tract
                 .output_outlets()?

@@ -236,7 +236,7 @@ where
                 continue;
             }
         };
-        let expected: Vec<TensorFact> = tf_output.iter().map(|m| m.clone().into()).collect();
+        let expected: Vec<Option<Arc<Tensor>>> = tf_output.iter().map(|m| Some(m.clone().into_arc_tensor())).collect();
         let expected_outputs_section = expected.iter()
             .enumerate()
             .map(|(ix, o)| {
@@ -267,7 +267,7 @@ where
                 })
                 .collect::<Vec<_>>();
             for (ix, f) in node.outputs.iter().enumerate() {
-                if f.fact.to_tensor_fact().unify(&expected[ix]).is_err() {
+                if f.fact.to_tensor_fact().unify(&expected[ix].clone().unwrap().into()).is_err() {
                     failing.push(n);
                     display_graph.set_node_color(n, Red.bold())?;
                     display_graph.add_node_label(n, format!("{}: Could not reconcile infered fact for output #{} ({:?}) with reference.", Red.bold().paint("ERROR"), ix, f.fact))?;
@@ -282,7 +282,7 @@ where
                 }
                 _ => {
                     let tract_output: &[Arc<Tensor>] = &*state.values[n].as_ref().unwrap();
-                    match check_outputs(&tract_output, &expected) {
+                    match check_outputs(&tract_output, &*expected) {
                         Err(e) => {
                             failing.push(n);
                             display_graph.add_node_section(n, inputs)?;

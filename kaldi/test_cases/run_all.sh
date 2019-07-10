@@ -1,23 +1,31 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
 TEST_CASES=$(dirname $0)
 FAILURES=""
+FAILED=()
 
 cd $TEST_CASES
 for tc in */
 do
     echo -n "$tc "
-    if cargo run -q -p tract -- \
+    . $tc/vars.sh
+    cmd="cargo run -q -p tract -- \
         -f kaldi $tc/model.raw.txt \
         --input-bundle $tc/io.npz \
+        --kaldi-downsample $subsampling \
+        --kaldi-left-context $left_context \
+        --kaldi-right-context $right_context \
         run \
-        --assert-output-bundle $tc/io.npz 2>/dev/null > /dev/null
+        --assert-output-bundle $tc/io.npz"
+
+    if $($cmd 2> /dev/null > /dev/null)
     then
-        echo "\e[92mOK\e[39m"
+        echo -e "\e[92mOK\e[39m"
     else
-        echo "\e[91mFAIL\e[39m"
+        echo -e "\e[91mFAIL\e[39m"
+        FAILED+=("$cmd")
         FAILURES="$FAILURES $tc"
     fi
 done
@@ -25,17 +33,13 @@ done
 if [ -n "$FAILURES" ]
 then
     echo 
-    echo "    \e[91m$(echo $FAILURES | wc -w) FAILURES\e[39m"
+    echo -e "    \e[91m$(echo $FAILURES | wc -w) FAILURES\e[39m"
     echo
 fi
 
-for tc in $FAILURES
+for cmd in "${FAILED[@]}"
 do
-    echo cargo run -p tract -- \
-        -f kaldi $tc/model.raw.txt \
-        --input-bundle $tc/io.npz \
-        run \
-        --assert-output-bundle $tc/io.npz
+    echo $cmd
 done
 
-[ -n "$FAILURES" ] || exit 1
+[ -z "$FAILURES" ]
