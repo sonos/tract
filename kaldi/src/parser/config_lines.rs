@@ -3,13 +3,13 @@ use tract_core::internal::*;
 use nom::IResult;
 use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*};
 
-use crate::model::{ComponentNode, ConfigLines, DimRangeNode, NodeLine};
+use crate::model::{ComponentNode, ConfigLines, DimRangeNode, GeneralDescriptor, NodeLine};
 use crate::parser::spaced;
 
 pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     let mut input_node: Option<(String, usize)> = None;
     let mut nodes = vec!();
-    let mut output_node: Option<(String, String)> = None;
+    let mut output_node: Option<(String, GeneralDescriptor)> = None;
     for line in s.lines() {
         if line.trim().is_empty() {
             continue;
@@ -89,11 +89,11 @@ fn parse_dim_range_node_line(i: &str) -> IResult<&str, (String, DimRangeNode)> {
     Ok((i, (name, DimRangeNode { input, dim, offset })))
 }
 
-fn parse_output_node_line(i: &str) -> IResult<&str, (String, String)> {
+fn parse_output_node_line(i: &str) -> IResult<&str, (String, GeneralDescriptor)> {
     let (i, _) = tag("output-node")(i)?;
     nom::branch::permutation((
         spaced(map(preceded(tag("name="), identifier), |n: &str| n.to_string())),
-        spaced(map(preceded(tag("input="), identifier), |n: &str| n.to_string())),
+        spaced(preceded(tag("input="), super::descriptor::parse_general))
     ))(i)
 }
 
