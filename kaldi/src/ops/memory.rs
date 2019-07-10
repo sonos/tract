@@ -121,7 +121,7 @@ fn incorporate_memory_ops_as_scans(
             let new_id = inner_model.add_node(
                 &*node.name,
                 node.op.clone(),
-                (0..node.outputs.len()).map(|_| TensorFact::default()).collect(), //                model.node_output_facts(old_node_id)?.into_iter().map(|ti| ti.to_tensor_fact()).collect(),
+                (0..node.outputs.len()).map(|_| TensorFact::default()).collect(),
             )?;
             node_id_old_to_new.insert(node.id, new_id);
         }
@@ -142,10 +142,13 @@ fn incorporate_memory_ops_as_scans(
                 Ok(OutletId::new(node_id_old_to_new[&observed_id], 0))
             })
             .collect::<TractResult<_>>()?;
+        let mut scan_output_len_hints = vec!();
         for output in &scan_outputs {
             let old_outlet = model.node(output.node).inputs[output.slot];
             inner_outputs
                 .push(OutletId::new(node_id_old_to_new[&old_outlet.node], old_outlet.slot));
+            let fact = model.outlet_fact(old_outlet)?;
+            scan_output_len_hints.push(fact.shape.dim(0).unwrap().concretize());
         }
         inner_model.set_output_outlets(&inner_outputs)?;
 
@@ -156,6 +159,7 @@ fn incorporate_memory_ops_as_scans(
             0,
             vec![0; scan_inputs.len()],
             vec![0; scan_outputs.len()],
+            scan_output_len_hints,
             false,
         );
 
