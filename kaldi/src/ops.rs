@@ -1,6 +1,7 @@
 use crate::model::KaldiOpRegister;
 
 pub(crate) mod affine;
+pub(crate) mod lstm_nonlin;
 pub(crate) mod memory;
 mod renorm;
 
@@ -15,6 +16,7 @@ pub fn register_all_ops(reg: &mut KaldiOpRegister) {
         Ok(Box::new(tract_core::ops::identity::Identity::default()))
     });
     reg.insert("NormalizeComponent", renorm::renorm);
+    reg.insert("LstmNonlinearityComponent", lstm_nonlin::lstm_nonlin);
     reg.insert("RectifiedLinearComponent", |_, _| {
         Ok(Box::new(tract_core::ops::nn::Relu::default()))
     });

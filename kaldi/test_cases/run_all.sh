@@ -42,4 +42,4 @@ do
     echo $cmd
 done
 
-[ -n "$FAILURES" ] || exit 1
+[ -z "$FAILURES" ]
