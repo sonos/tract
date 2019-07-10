@@ -14,7 +14,7 @@ pub struct ConfigLines {
     pub input_dim: usize,
     pub nodes: Vec<(String, NodeLine)>,
     pub output_name: String,
-    pub output_input: String,
+    pub output_input: GeneralDescriptor,
 }
 
 #[derive(Clone, Debug)]
@@ -105,6 +105,16 @@ impl GeneralDescriptor {
                     }
                 }
             }
+            &Offset(ref n, o) if *o > 0 => {
+                let name = format!("{}-Delay", name);
+                let id = model.add_node_default(
+                    &*name,
+                    tract_core::ops::array::Crop::new(vec!((*o as usize, 0), (0,0)))
+                )?;
+                model.add_edge(OutletId::new(id, 0), inlet)?;
+                n.wire(InletId::new(id, 0), &*name, model, deferred)?;
+                return Ok(());
+            }
             _ => (),
         }
         bail!("Unhandled input descriptor: {:?}", self)
@@ -175,26 +185,32 @@ impl Framework<KaldiProtoModel> for Kaldi {
         let mut inputs_to_wire: BTreeMap<InletId, String> = Default::default();
         for (name, node) in &proto_model.config_lines.nodes {
             match node {
-                NodeLine::Component(line)  => {
+                NodeLine::Component(line) => {
                     let component = &proto_model.components[&line.component];
                     if crate::ops::AFFINE.contains(&&*component.klass)
                         && line.input.as_conv_shape_dilation().is_some()
                     {
                         let op = crate::ops::affine::affine_component(&ctx, name)?;
                         let id = model.add_node_default(name.to_string(), op)?;
-                        inputs_to_wire.insert(InletId::new(id, 0), line.input.inputs()[0].to_owned());
+                        inputs_to_wire
+                            .insert(InletId::new(id, 0), line.input.inputs()[0].to_owned());
                     } else {
                         let op = match self.op_register.0.get(&*component.klass) {
                             Some(builder) => (builder)(&ctx, name)?,
                             None => {
                                 (Box::new(tract_core::ops::unimpl::UnimplementedOp::new(
                                     component.klass.to_string(),
-                                    format!("{:?}", line)
+                                    format!("{:?}", line),
                                 )))
                             }
                         };
                         let id = model.add_node_default(name.to_string(), op)?;
-                        line.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
+                        line.input.wire(
+                            InletId::new(id, 0),
+                            name,
+                            &mut model,
+                            &mut inputs_to_wire,
+                        )?
                     }
                 }
                 NodeLine::DimRange(line) => {
@@ -208,22 +224,21 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 }
             }
         }
-        for (inlet, name) in inputs_to_wire {
-            let src = OutletId::new(model.node_by_name(&*name)?.id, 0);
-            model.add_edge(src, inlet)?;
-        }
         let output = model.add_node_default(
             proto_model.config_lines.output_name.to_string(),
             tract_core::ops::identity::Identity::default(),
         )?;
-        let src = OutletId::new(model.node_by_name(&*proto_model.config_lines.output_input)?.id, 0);
-        let dst = InletId::new(output, 0);
-        model.add_edge(src, dst)?;
+        proto_model.config_lines.output_input.wire(
+            InletId::new(output, 0),
+            "output",
+            &mut model,
+            &mut inputs_to_wire,
+        )?;
+        for (inlet, name) in inputs_to_wire {
+            let src = OutletId::new(model.node_by_name(&*name)?.id, 0);
+            model.add_edge(src, inlet)?;
+        }
         model.set_output_outlets(&[OutletId::new(output, 0)])?;
-        /*
-        reinterpret_memory_ops_as_scans(&mut model)?;
-        */
         Ok(model)
     }
 }
-
