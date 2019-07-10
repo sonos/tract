@@ -450,7 +450,7 @@ impl Parameters {
             let op = tract_core::ops::array::Pad::new(vec!((left, right),(0,0)), tract_core::ops::array::PadMode::Edge);
             let mut patch = InferenceModelPatch::default();
             for input in raw_model.input_outlets()? {
-                let tap = patch.tap_model(&raw_model, *input);
+                patch.tap_model(&raw_model, *input)?;
                 let pad = patch.chain_default(format!("{}-pad", raw_model.node(input.node).name), op.clone())?;
                 patch.shunt_outside(*input, OutletId::new(pad, 0))?;
             }

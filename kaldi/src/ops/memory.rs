@@ -147,6 +147,7 @@ fn incorporate_memory_ops_as_scans(
             0,
             vec![0; scan_inputs.len()],
             vec![0; scan_outputs.len()],
+            false,
         );
 
         let mut output_facts = tvec!();
