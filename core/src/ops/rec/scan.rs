@@ -18,6 +18,7 @@ where
     closure_inputs: usize,
     scan_input_axes: Vec<usize>,
     scan_output_axes: Vec<usize>,
+    prune_scanning_dim: bool,
 }
 
 impl<TI, O> Scan<TI, O>
@@ -32,8 +33,12 @@ where
         i: usize,
     ) -> TractResult<Tensor> {
         let view = scan_inputs[input].to_array_view::<T>()?;
-        let axis = self.scan_input_axes.get(input).cloned().unwrap_or(0);
-        let slice = view.slice_axis(Axis(axis), (i..=i).into());
+        let axis = Axis(self.scan_input_axes.get(input).cloned().unwrap_or(0));
+        let slice = if self.prune_scanning_dim {
+            view.index_axis_move(axis, i)
+        } else {
+            view.slice_axis(axis, (i..=i).into())
+        };
         Ok(slice.to_owned().into_tensor())
     }
 
@@ -45,8 +50,12 @@ where
     ) -> TractResult<Tensor> {
         let axis = self.scan_output_axes.get(output).cloned().unwrap_or(0);
         let mut shape = element_shape.to_vec();
-        shape[axis] = iters;
-        Ok(Array::<T, _>::default(&*shape).into())
+        if self.prune_scanning_dim {
+            shape.insert(axis, iters);
+        } else {
+            shape[axis] = iters
+        };
+        unsafe { Tensor::uninitialized::<T>(&shape) }
     }
 
     fn assign_output_t<T: Datum + Default>(
@@ -58,7 +67,11 @@ where
     ) -> TractResult<()> {
         let axis = self.scan_output_axes.get(output_id).cloned().unwrap_or(0);
         let mut view = output.to_array_view_mut::<T>()?;
-        let mut slice = view.slice_axis_mut(Axis(axis), (i..=i).into());
+        let mut slice = if self.prune_scanning_dim {
+            view.index_axis_move(Axis(axis), i)
+        } else {
+            view.slice_axis_mut(Axis(axis), (i..=i).into())
+        };
         let element = element_value.to_array_view::<T>()?;
         slice.assign(&element);
         Ok(())
@@ -78,6 +91,7 @@ impl Op for Scan<TensorFact, Box<InferenceOp>> {
             self.closure_inputs,
             self.scan_input_axes.clone(),
             self.scan_output_axes.clone(),
+            self.prune_scanning_dim,
         ))))
     }
 }
