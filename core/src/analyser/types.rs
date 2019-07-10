@@ -23,10 +23,24 @@ pub trait Fact: fmt::Debug + Clone + PartialEq + Default {
     fn unify(&self, other: &Self) -> TractResult<Self>;
 
     /// Tries to unify the fact with another fact of the same type and update
-    /// them.
+    /// self.
     ///
     /// Returns true if it actually changed something.
-    fn unify_with(&mut self, other: &mut Self) -> TractResult<bool> {
+    fn unify_with(&mut self, other: &Self) -> TractResult<bool> {
+        let new = self.unify(&other)?;
+        let mut changed = false;
+        if &new != self {
+            changed = true;
+            *self = new.clone();
+        }
+        Ok(changed)
+    }
+
+    /// Tries to unify the fact with another fact of the same type and update
+    /// both of them.
+    ///
+    /// Returns true if it actually changed something.
+    fn unify_with_mut(&mut self, other: &mut Self) -> TractResult<bool> {
         let new = self.unify(&other)?;
         let mut changed = false;
         if &new != self {
@@ -326,6 +340,16 @@ impl ShapeFact {
 
     pub fn dim(&self, i: usize) -> Option<DimFact> {
         self.dims().nth(i)
+    }
+
+    pub fn set_dim(&mut self, i:usize, d: TDim) {
+        match d.to_integer() {
+            Ok(n) => self.dims[i] = GenericFact::Only(n),
+            Err(_) => {
+                self.dims[i] = GenericFact::Only(-1);
+                self.stream = Some(StreamInfo { axis:i, len: d })
+            }
+        }
     }
 
     pub fn dims(&self) -> impl Iterator<Item = DimFact> {

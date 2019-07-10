@@ -1,7 +1,6 @@
 use crate::model::{ParseResult, ParsingContext};
 use crate::pb::*;
 use tract_core::internal::*;
-use tract_core::ndarray::prelude::*;
 
 use tract_core::ops::rec::scan::Scan;
 
