@@ -151,7 +151,7 @@ impl StatelessOp for Scan<TypedTensorInfo, Box<Op>> {
                     .push(inputs[inputs.len() - self.closure_inputs + i].clone().into_tensor());
             }
             println!("inputs: {:?}", iter_inputs);
-            let mut iter_outputs = plan.run(iter_inputs).unwrap();
+            let mut iter_outputs = plan.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
             println!("outputs: {:?}", iter_outputs);
             for _ in 0..hidden_state_len {
                 state.push(iter_outputs.remove(0).into_tensor());
