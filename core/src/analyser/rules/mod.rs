@@ -69,8 +69,8 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
 
     fn observe_outlets(
         &self,
-        model: &InferenceModel,
-        node: &InferenceNode,
+        _model: &InferenceModel,
+        _node: &InferenceNode,
     ) -> TractResult<Vec<OutletId>> {
         Ok(vec!())
     }

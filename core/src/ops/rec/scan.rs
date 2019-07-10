@@ -41,10 +41,11 @@ where
             view.index_axis_move(axis, i).to_owned()
         } else if (i + 1) * count > full_len {
             let remain = full_len - i * count;
-            let mut shape:TVec<usize> = view.shape().into();
+            let mut shape: TVec<usize> = view.shape().into();
             shape[axis.0] = count;
             let mut t = ArrayD::<T>::default(&*shape);
-            t.slice_axis_mut(axis, (0..remain).into()).assign(&view.slice_axis(axis, (i*count..).into()));
+            t.slice_axis_mut(axis, (0..remain).into())
+                .assign(&view.slice_axis(axis, (i * count..).into()));
             t
         } else {
             view.slice_axis(axis, (i * count..(i + 1) * count).into()).to_owned()
@@ -69,10 +70,10 @@ where
         if self.prune_scanning_dim {
             view.index_axis_move(Axis(axis), i).assign(&element);
         } else {
-            let offset = i*element_value.shape()[axis];
+            let offset = i * element_value.shape()[axis];
             let count = element_value.shape()[axis].min(view.shape()[axis] - offset);
-            view.slice_axis_mut(Axis(axis), (offset..offset+count).into()).assign(
-                &element.slice_axis(Axis(axis), (..count).into()));
+            view.slice_axis_mut(Axis(axis), (offset..offset + count).into())
+                .assign(&element.slice_axis(Axis(axis), (..count).into()));
         };
         Ok(())
     }
@@ -120,19 +121,33 @@ impl StatelessOp for Scan<TypedTensorInfo, Box<Op>> {
         }
 
         let first_input_axis = self.scan_input_axes.get(0).cloned().unwrap_or(0);
-        let iters = inputs[0].shape()[first_input_axis]
-            .div_ceil(self.body.input_fact(0)?.shape.dim(first_input_axis).to_integer()? as usize);
+        let iters = if self.prune_scanning_dim {
+            inputs[0].shape()[first_input_axis]
+        } else {
+            inputs[0].shape()[first_input_axis].div_ceil(
+                self.body.input_fact(hidden_state_len)?.shape.dim(first_input_axis).to_integer()?
+                    as usize,
+            )
+        };
 
         let mut scan_outputs = tvec!();
         for i in 0..(self.body.output_outlets()?.len() - hidden_state_len) {
             let fact = self.body.output_fact(hidden_state_len + i)?;
             let dt = fact.datum_type;
             let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
-            shape[self.scan_output_axes[i]] = self.scan_output_len_hint[i]
-                .as_ref()
+            let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
+            let scanning_dim = self
+                .scan_output_len_hint
+                .get(0)
+                .and_then(|x| x.as_ref())
                 .and_then(|i| i.to_integer().ok())
                 .map(|i| i as usize)
-                .unwrap_or(shape[self.scan_output_axes[i]] * iters);
+                .unwrap_or(if self.prune_scanning_dim { iters } else { shape[axis] * iters });
+            if self.prune_scanning_dim {
+                shape.insert(axis, scanning_dim)
+            } else {
+                shape[axis] = scanning_dim
+            }
             let t = dispatch_datum!(Self::alloc_output_t(dt)(self, &*shape))?;
             scan_outputs.push(t);
         }
@@ -144,7 +159,8 @@ impl StatelessOp for Scan<TypedTensorInfo, Box<Op>> {
             let mut iter_inputs: TVec<Tensor> = state.drain().collect();
             for input in 0..self.num_scan_inputs {
                 let fact = self.body.input_fact(input + hidden_state_len)?;
-                let count = fact.shape.dim(self.scan_input_axes[input]);
+                let axis = self.scan_input_axes.get(input).cloned().unwrap_or(0);
+                let count = fact.shape.dim(axis);
                 let tensor = dispatch_datum!(Self::slice_input_t(inputs[input].datum_type())(
                     self,
                     &*inputs,
@@ -186,6 +202,46 @@ impl StatelessOp for Scan<TypedTensorInfo, Box<Op>> {
 }
 
 impl Scan<TensorFact, Box<InferenceOp>> {
+    fn unify_scanning_tensor_fact(
+        outer: &mut TensorFact,
+        inner: &mut TensorFact,
+        outer_scan_axis: usize,
+        prune_scanning_dim: bool,
+    ) -> TractResult<()> {
+        outer.datum_type.unify_with_mut(&mut inner.datum_type)?;
+        let outer_rank = outer
+            .shape
+            .rank()
+            .concretize()
+            .or(inner.shape.rank().concretize().map(|r| r - prune_scanning_dim as usize as i32))
+            .map(|r| r as usize);
+        if let Some(outer_rank) = outer_rank {
+            let inner_rank = outer_rank - prune_scanning_dim as usize;
+            outer
+                .shape
+                .unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; outer_rank as usize)))?;
+            inner
+                .shape
+                .unify_with(&ShapeFact::closed(tvec!(GenericFact::Any; inner_rank as usize)))?;
+            for outer_axis in 0..outer_rank {
+                if outer_axis != outer_scan_axis {
+                    let inner_axis =
+                        outer_axis - (prune_scanning_dim && outer_axis > outer_scan_axis) as usize;
+                    let value = outer.shape.dim(outer_axis).unwrap().concretize().or(inner
+                        .shape
+                        .dim(inner_axis)
+                        .unwrap()
+                        .concretize());
+                    if let Some(value) = value {
+                        outer.shape.set_dim(outer_axis, value.clone());
+                        inner.shape.set_dim(inner_axis, value);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn unify_facts(
         &mut self,
         inputs: &mut [TensorFact],
@@ -228,18 +284,12 @@ impl Scan<TensorFact, Box<InferenceOp>> {
             output.shape.ensure_rank_at_least(axis);
             iters = iters.or_else(|| output.shape.dims().nth(axis).unwrap().concretize());
         }
-        trace!("Iterations: {:?}", iters);
         for i in 0..self.num_scan_inputs {
             trace!("Unifying scan input #{}", hidden_state_len + i);
             let incoming = &mut inputs[hidden_state_len + i];
             let inner = self.body.input_fact_mut(hidden_state_len + i)?;
-            incoming.datum_type.unify_with(&mut inner.datum_type)?;
-            if let Some(shape) = incoming.shape.concretize() {
-                let mut shape: Vec<TDim> = shape.to_vec();
-                let axis = self.scan_input_axes.get(i).cloned().unwrap_or(0);
-                shape.remove(axis);
-                inner.shape.unify_with(&mut ShapeFact::from(shape))?;
-            }
+            let axis = self.scan_input_axes.get(i).cloned().unwrap_or(0);
+            Self::unify_scanning_tensor_fact(incoming, inner, axis, self.prune_scanning_dim)?;
         }
         for i in 0..self.closure_inputs {
             let id = hidden_state_len + self.num_scan_inputs + i;
@@ -247,15 +297,11 @@ impl Scan<TensorFact, Box<InferenceOp>> {
             inputs[id].unify_with(self.body.input_fact_mut(id)?)?;
         }
         for i in 0..num_scan_outputs {
-            let inner = self.body.output_fact_mut(hidden_state_len + i)?;
+            trace!("Unifying scan output #{}", hidden_state_len + i);
             let outgoing = &mut outputs[hidden_state_len + i];
-            outgoing.datum_type.unify_with(&mut inner.datum_type)?;
-            if let (Some(shape), Some(iters)) = (inner.shape.concretize(), iters.clone()) {
-                let mut shape: Vec<TDim> = shape.to_vec();
-                let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
-                shape.insert(axis, iters);
-                outgoing.shape.unify_with(&mut ShapeFact::from(shape))?;
-            }
+            let inner = self.body.output_fact_mut(hidden_state_len + i)?;
+            let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
+            Self::unify_scanning_tensor_fact(outgoing, inner, axis, self.prune_scanning_dim)?;
         }
         Ok(())
     }
