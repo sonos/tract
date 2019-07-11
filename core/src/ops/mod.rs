@@ -101,6 +101,12 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
 pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp {
     fn name(&self) -> Cow<str>;
 
+    /// Early pass on inference model, after analyse, but before translation to
+    /// typed network. Meant to deal with some framework idiosyncrasies that
+    /// manifest with temporaries nodes that can run some form of inference but
+    /// require refactoring the network before it can be evaluated.
+    ///
+    /// Called after succesful analyse, but before translating to typed model.
     fn incorporate(
         &self,
         _model: &InferenceModel,
@@ -109,10 +115,14 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(None)
     }
 
+    /// Called during translation to TypedModel.
+    ///
+    /// Most of the time, None is returned, and the InferenceOp is used instead.
     fn to_typed(&self) -> TractResult<Option<Box<Op>>> {
         Ok(None)
     }
 
+    /// Declutter the op to the tract_core operator set as much as possible.
     fn declutter(
         &self,
         _model: &TypedModel,
@@ -121,6 +131,8 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(None)
     }
 
+    /// Translate an op in a normalized network (no constants) to a pulsing
+    /// form, if possible.
     fn pulsify(
         &self,
         _source: &NormalizedModel,
@@ -131,6 +143,10 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         bail!("Operator {} do not support pulsification", self.name())
     }
 
+    /// Translate the op into the most efficient form possible for execution.
+    ///
+    /// This transformation is supposed to be final, no more pass are expected
+    /// to be run on the codegen networks.
     fn codegen(
         &self,
         _model: &TypedModel,
@@ -139,18 +155,27 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(None)
     }
 
+    /// Computes a cost hint of the operation.
+    ///
+    /// Each pair is a type of operation and a number per call on eval.
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         Ok(tvec!())
     }
 
+    /// The kind of accuracy check that should be performed on operation when
+    /// testing them.
     fn validation(&self) -> Validation {
         Validation::Accurate
     }
 
+    /// Compare two ops.
+    // Should this one be and Eq or PartialEq impl instead ?
     fn same_as(&self, _other: &Op) -> bool {
         false
     }
 
+    /// A short (one-line) string giving an hint on internal implementation
+    /// choice (like linalg kernels, for instance) to be displayed in dumps.
     fn info(&self) -> TractResult<Option<String>> {
         Ok(None)
     }
