@@ -271,19 +271,6 @@ impl Scan<TensorFact, Box<InferenceOp>> {
             self.body.input_fact_mut(i)?.shape.unify_with(&mut merged)?;
             self.body.output_fact_mut(i)?.shape.unify_with(&mut merged)?;
         }
-        let mut iters: Option<TDim> = None;
-        for i in 0..self.num_scan_inputs {
-            let axis = self.scan_input_axes.get(i).cloned().unwrap_or(0);
-            let input = &mut inputs[hidden_state_len + i];
-            input.shape.ensure_rank_at_least(axis);
-            iters = iters.or_else(|| input.shape.dims().nth(axis).unwrap().concretize());
-        }
-        for i in 0..num_scan_outputs {
-            let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
-            let output = &mut outputs[hidden_state_len + i];
-            output.shape.ensure_rank_at_least(axis);
-            iters = iters.or_else(|| output.shape.dims().nth(axis).unwrap().concretize());
-        }
         for i in 0..self.num_scan_inputs {
             trace!("Unifying scan input #{}", hidden_state_len + i);
             let incoming = &mut inputs[hidden_state_len + i];
