@@ -37,7 +37,7 @@ echo binary_size.cli $binary_size_cli > metrics
 )
 
 arm_ml_kws_cnn_m=`$TRACT --machine-friendly $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
-    -O -i 49x10xf32 --input-node Mfcc --prune profile --bench \
+    -O -i 49x10xf32 --input-node Mfcc --partial profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
 
@@ -84,7 +84,7 @@ inceptionv3=`$TRACT --machine-friendly $CACHEDIR/inception_v3_2016_08_28_frozen.
 echo net.inceptionv3.evaltime.pass $inceptionv3 >> metrics
 
 speaker_id_pulse8=`$TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
-    -O -i 1xSx40xf32 --output-node 257 --prune --pulse 8 profile --bench \
+    -O -i 1xSx40xf32 --output-node 257 --partial --pulse 8 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.speaker_id.evaltime.pulse8 $speaker_id_pulse8 >> metrics
 

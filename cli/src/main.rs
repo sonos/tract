@@ -91,9 +91,9 @@ fn main() {
         (@arg output_node: --("output-node") +takes_value
             "Override output nodes name (auto-detects otherwise).")
 
-        (@arg prune: --("prune") "Prune model dead branches before analyse")
+        (@arg recursive: --recursive "Apply to sub graphes")
 
-        (@arg proto: --("proto") "Keep proto model around after parse")
+        (@arg proto: --proto "Keep proto model around after parse")
         (@arg determinize: --determinize "Enforce a seed in random operator")
 
         (@arg partial: --partial "Before analyse, eliminate dead branches")
@@ -447,26 +447,30 @@ impl Parameters {
             }
         }
 
-        if matches.value_of("kaldi_left_context").is_some() || matches.value_of("kaldi_right_context").is_some() {
+        if matches.value_of("kaldi_left_context").is_some()
+            || matches.value_of("kaldi_right_context").is_some()
+        {
             let left = matches.value_of("kaldi_left_context").unwrap_or("0").parse()?;
             let right = matches.value_of("kaldi_right_context").unwrap_or("0").parse()?;
-            let op = tract_core::ops::array::Pad::new(vec!((left, right),(0,0)), tract_core::ops::array::PadMode::Edge);
+            let op = tract_core::ops::array::Pad::new(
+                vec![(left, right), (0, 0)],
+                tract_core::ops::array::PadMode::Edge,
+            );
             let mut patch = InferenceModelPatch::default();
             for input in raw_model.input_outlets()? {
                 patch.tap_model(&raw_model, *input)?;
-                let pad = patch.chain_default(format!("{}-pad", raw_model.node(input.node).name), op.clone())?;
+                let pad = patch.chain_default(
+                    format!("{}-pad", raw_model.node(input.node).name),
+                    op.clone(),
+                )?;
                 patch.shunt_outside(*input, OutletId::new(pad, 0))?;
             }
             patch.apply(&mut raw_model)?;
         }
 
-        if matches.is_present("prune") {
-            raw_model = raw_model.eliminate_dead_branches()?;
-        }
-
         let machine_friendly = matches.is_present("machine_friendly");
 
-        let mut input_values = vec!();
+        let mut input_values = vec![];
 
         if let Some(inputs) = matches.values_of("input") {
             for (ix, v) in inputs.enumerate() {
@@ -501,8 +505,7 @@ impl Parameters {
                 let input_outlets = raw_model.input_outlets()?.to_vec();
                 for (ix, input) in input_outlets.iter().enumerate() {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
-                    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name)
-                    {
+                    if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
                         let shape = t.shape().to_vec();
                         let fact = TensorFact::dt_shape(f32::datum_type(), shape);
                         raw_model.set_input_fact(ix, fact)?;
@@ -517,12 +520,13 @@ impl Parameters {
 
         let pulse: Option<usize> = matches.value_of("pulse").map(|s| s.parse()).transpose()?;
 
+        if matches.is_present("partial") {
+            raw_model = raw_model.eliminate_dead_branches()?;
+        }
+
         let mut typed_model = None;
         let mut tract_model = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
-            if matches.is_present("partial") {
-                raw_model = raw_model.eliminate_dead_branches()?;
-            }
             if let Err(e) = raw_model.analyse(true) {
                 // do not stop on mere analyse error
                 error!("Analyse failed: {}", e);
@@ -639,7 +643,8 @@ impl Assertions {
                     .iter()
                     .map(move |name| {
                         let npy_name = format!("{}.npy", name);
-                        for output_bundle in sub_matches.values_of("assert-output-bundle").unwrap() {
+                        for output_bundle in sub_matches.values_of("assert-output-bundle").unwrap()
+                        {
                             let mut npz =
                                 ndarray_npy::NpzReader::new(std::fs::File::open(output_bundle)?)?;
                             if let Ok(t) =
