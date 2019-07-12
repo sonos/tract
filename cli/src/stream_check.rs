@@ -2,18 +2,20 @@ use itertools::Itertools;
 use ndarray::ArrayD;
 use ndarray::Axis;
 
-use tract_core::model::{OutletId, TensorInfo};
+use tract_core::model::{ OutletId, TensorInfo };
 use tract_core::plan::{SimplePlan, SimpleState};
 
 use crate::display_graph;
 use crate::{CliResult, Parameters, SomeModel};
 
 pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
-    let (fixed, pulsed) = if let SomeModel::Pulsed(n, p) = params.tract_model {
-        (n, p)
+    let pulsed = if let SomeModel::Pulsed(p) = params.tract_model {
+        p
     } else {
         unreachable!();
     };
+
+    let fixed = params.normalized_model.clone().unwrap();
 
     let fixed_input_fact = fixed.input_fact(0)?;
     let pulsed_input_fact = pulsed.input_fact(0)?;

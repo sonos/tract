@@ -22,7 +22,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
         SomeModel::Inference(m) => handle_benching_t(m, &params, profiling),
         SomeModel::Typed(m) => handle_benching_t(m, &params, profiling),
         SomeModel::Normalized(m) => handle_benching_t(m, &params, profiling),
-        SomeModel::Pulsed(_, m) => handle_benching_t(m, &params, profiling),
+        SomeModel::Pulsed(m) => handle_benching_t(m, &params, profiling),
     }
 }
 
@@ -87,7 +87,7 @@ pub fn handle(
         SomeModel::Inference(ref m) => handle_t(m, &params, profiling, display_options),
         SomeModel::Typed(ref m) => handle_t(m, &params, profiling, display_options),
         SomeModel::Normalized(ref m) => handle_t(m, &params, profiling, display_options),
-        SomeModel::Pulsed(_, ref m) => handle_t(m, &params, profiling, display_options),
+        SomeModel::Pulsed(ref m) => handle_t(m, &params, profiling, display_options),
     }
 }
 

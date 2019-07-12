@@ -9,7 +9,7 @@ pub fn handle(params: Parameters, options: DisplayOptions) -> CliResult<()> {
         SomeModel::Inference(_) => panic!("Cost can only be performed on typed nets"),
         SomeModel::Typed(m) => handle_t(m, &params, options),
         SomeModel::Normalized(m) => handle_t(&m.clone().into_typed()?, &params, options),
-        SomeModel::Pulsed(_, m) => handle_t(&m.clone().into_typed()?, &params, options),
+        SomeModel::Pulsed(m) => handle_t(&m.clone().into_typed()?, &params, options),
     }
 }
 

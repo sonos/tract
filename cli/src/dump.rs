@@ -11,7 +11,7 @@ pub fn handle(params: Parameters, options: DisplayOptions, inner:Vec<String>) ->
         SomeModel::Typed(m) if inner.len() == 0 => handle_t(m, &params, options),
         SomeModel::Typed(m)  => handle_inner(m, &params, options, inner),
         SomeModel::Normalized(m) => handle_t(m, &params, options),
-        SomeModel::Pulsed(_, m) => handle_t(m, &params, options),
+        SomeModel::Pulsed(m) => handle_t(m, &params, options),
     }
 }
 

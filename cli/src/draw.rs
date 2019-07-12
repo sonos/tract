@@ -12,7 +12,7 @@ pub fn render(model: &SomeModel, options: DisplayOptions) -> CliResult<()> {
         SomeModel::Inference(m) => render_t(m, options),
         SomeModel::Typed(m) => render_t(m, options),
         SomeModel::Normalized(m) => render_t(m, options),
-        SomeModel::Pulsed(_, m) => render_t(m, options),
+        SomeModel::Pulsed( m) => render_t(m, options),
     }
 }
 
