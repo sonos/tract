@@ -12,6 +12,7 @@ pub struct Scan<TI, O>
 where
     TI: TensorInfo,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+    Model<TI, O>: SomeModel,
 {
     pub body: Model<TI, O>,
     num_scan_inputs: usize,
@@ -26,6 +27,7 @@ impl<TI, O> Scan<TI, O>
 where
     TI: TensorInfo,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+    Model<TI, O>: SomeModel,
 {
     fn slice_input_t<T: Datum>(
         &self,

@@ -6,7 +6,6 @@ use itertools::Itertools;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::{Debug, Display};
 use tract_core::internal::*;
 #[cfg(feature = "onnx")]
 use tract_onnx::pb::ModelProto;
@@ -26,47 +25,34 @@ pub struct DisplayOptions {
 }
 
 impl DisplayOptions {
-    pub fn filter<TI, O>(&self, _model: &Model<TI, O>, node: &BaseNode<TI, O>) -> CliResult<bool>
-    where
-        TI: TensorInfo,
-        O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    pub fn filter(&self, model: &SomeModel, node_id: usize) -> CliResult<bool>
     {
         if let Some(nodes) = self.node_ids.as_ref() {
-            return Ok(nodes.contains(&node.id));
+            return Ok(nodes.contains(&node_id));
         }
         if let Some(node_name) = self.node_name.as_ref() {
-            return Ok(node.name.starts_with(&*node_name));
+            return Ok(model.node_name(node_id).starts_with(&*node_name));
         }
         if let Some(op_name) = self.op_name.as_ref() {
-            return Ok(node.op().name().starts_with(op_name));
+            return Ok(model.node_op_name(node_id).starts_with(op_name));
         }
         if let Some(successor) = self.successors {
-            return Ok(node.inputs.iter().any(|i| i.node == successor));
+            return Ok(model.node_inputs(node_id).iter().any(|i| i.node == successor));
         }
-        Ok(node.op().name() != "Const" || self.konst)
+        Ok(model.node_op_name(node_id) != "Const" || self.konst)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct DisplayGraph<TI, O, M>
-where
-    TI: TensorInfo,
-    O: AsRef<Op> + AsMut<Op> + Display + Debug,
-    M: Borrow<Model<TI, O>>,
-{
-    model: M,
+pub struct DisplayGraph<'a> {
+    model: &'a SomeModel,
     pub options: DisplayOptions,
     node_color: HashMap<usize, Style>,
     node_labels: HashMap<usize, Vec<String>>,
     node_sections: HashMap<usize, Vec<Vec<String>>>,
-    _bloody_baron: ::std::marker::PhantomData<(TI, O)>,
 }
 
-impl<TI, O, M> DisplayGraph<TI, O, M>
-where
-    TI: TensorInfo,
-    O: AsRef<Op> + AsMut<Op> + Display + Debug,
-    M: Borrow<Model<TI, O>>,
+impl<'a> DisplayGraph<'a>
 {
     pub fn render(&self) -> CliResult<()> {
         if self.options.quiet {
@@ -74,51 +60,53 @@ where
         }
         let model = self.model.borrow();
         let node_ids = if self.options.natural_order {
-            (0..model.nodes().len()).collect()
+            (0..model.nodes_len()).collect()
         } else {
-            ::tract_core::model::eval_order(&model)?
+            model.eval_order()?
         };
         for node in node_ids {
-            let node = &model.nodes()[node];
             if self.options.filter(model, node)? {
-                self.render_node(&node)?
+                self.render_node(node)?
             }
         }
         Ok(())
     }
 
-    pub fn render_node(&self, node: &BaseNode<TI, O>) -> CliResult<()> {
-        let name_color = self.node_color.get(&node.id).cloned().unwrap_or(White.into());
+    pub fn render_node(&self, node_id: usize) -> CliResult<()> {
+        let model = self.model.borrow();
+        let name_color = self.node_color.get(&node_id).cloned().unwrap_or(White.into());
+        let node_name = model.node_name(node_id);
+        let node_op_name = model.node_op_name(node_id);
         println!(
             "{} {} {}",
-            White.bold().paint(format!("{}", node.id)),
-            (if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() { Red.bold() } else { Blue.bold() }).paint(node.op().name()),
-            name_color.italic().paint(&node.name)
+            White.bold().paint(format!("{}", node_id)),
+            (if node_name == "UnimplementedOp" { Red.bold() } else { Blue.bold() }).paint(node_op_name),
+            name_color.italic().paint(node_name)
         );
-        for label in self.node_labels.get(&node.id).unwrap_or(&vec!()).iter() {
+        for label in self.node_labels.get(&node_id).unwrap_or(&vec!()).iter() {
             println!("  * {}", label);
         }
-        if node.control_inputs.len() > 0 {
-            println!("  * control nodes: {}", node.control_inputs.iter().join(", "));
+        if model.node_control_inputs(node_id).len() > 0 {
+            println!("  * control nodes: {}", model.node_control_inputs(node_id).iter().join(", "));
         }
-        for (ix, i) in node.inputs.iter().enumerate() {
+        for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
             println!(
                 "  {} input fact  #{}: {} {:?}",
                 star,
                 ix,
                 White.bold().paint(format!("{:?}", i)),
-                self.model.borrow().outlet_fact(*i)?
+                self.model.borrow().outlet_tensorfact(*i)
             );
         }
-        for (ix, o) in node.outputs.iter().enumerate() {
+        for ix in 0..model.node_output_count(node_id) {
             let star = if ix == 0 { '*' } else { ' ' };
             let io = if let Some(id) = self
                 .model
                 .borrow()
                 .input_outlets()?
                 .iter()
-                .position(|n| n.node == node.id && n.slot == ix)
+                .position(|n| n.node == node_id && n.slot == ix)
             {
                 Cyan.bold().paint(format!("MODEL INPUT #{}", id)).to_string()
             } else if let Some(id) = self
@@ -126,21 +114,24 @@ where
                 .borrow()
                 .output_outlets()?
                 .iter()
-                .position(|n| n.node == node.id && n.slot == ix)
+                .position(|n| n.node == node_id && n.slot == ix)
             {
                 Yellow.bold().paint(format!("MODEL OUTPUT #{}", id)).to_string()
             } else {
                 "".to_string()
             };
-            println!("  {} output fact #{}: {:?} {} {}", star, format!("{:?}", ix), o.fact, White.bold().paint(o.successors.iter().map(|s| format!("{:?}", s)).join(" ")), io);
+            let outlet = OutletId::new(node_id, ix);
+            let fact = model.outlet_tensorfact(outlet);
+            let successors = model.outlet_successors(outlet);
+            println!("  {} output fact #{}: {:?} {} {}", star, format!("{:?}", ix), fact, White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")), io);
         }
-        if let Some(info) = node.op().info()? {
+        if let Some(info) = model.node_op(node_id).info()? {
             println!("  * {}", info);
         }
         if self.options.debug_op {
-            println!("  * {:?}", node.op());
+            println!("  * {:?}", model.node_op(node_id));
         }
-        if let Some(node_sections) = self.node_sections.get(&node.id) {
+        if let Some(node_sections) = self.node_sections.get(&node_id) {
             for section in node_sections {
                 if section.is_empty() {
                     continue;
@@ -155,20 +146,19 @@ where
     }
 
     pub fn from_model_and_options(
-        model: M,
+        model: &'a SomeModel,
         options: DisplayOptions,
-    ) -> CliResult<DisplayGraph<TI, O, M>> {
+    ) -> CliResult<DisplayGraph<'a>> {
         Ok(DisplayGraph {
             model,
             options,
             node_color: HashMap::new(),
             node_labels: HashMap::new(),
             node_sections: HashMap::new(),
-            _bloody_baron: std::marker::PhantomData,
         })
     }
 
-    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<TI, O, M>> {
+    pub fn with_graph_def(self, graph_def: &SomeGraphDef) -> CliResult<DisplayGraph<'a>> {
         match graph_def {
             SomeGraphDef::NoGraphDef => Ok(self),
             #[cfg(feature = "kaldi")]
@@ -199,11 +189,11 @@ where
     pub fn with_kaldi(
         mut self,
         proto_model: &tract_kaldi::KaldiProtoModel,
-    ) -> CliResult<DisplayGraph<TI, O, M>> {
+    ) -> CliResult<DisplayGraph<'a>> {
         use tract_kaldi::model::NodeLine;
         let bold = Style::new().bold();
         for (name, proto_node) in &proto_model.config_lines.nodes {
-            if let Ok(node_id) = self.model.borrow().node_by_name(&*name).map(|n| n.id) {
+            if let Ok(node_id) = self.model.borrow().node_id_by_name(&*name) {
                 let mut vs = vec![];
                 match proto_node {
                     NodeLine::Component(compo) => {
@@ -222,10 +212,10 @@ where
     }
 
     #[cfg(feature = "tf")]
-    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<TI, O, M>> {
+    pub fn with_tf_graph_def(mut self, graph_def: &GraphDef) -> CliResult<DisplayGraph<'a>> {
         let bold = Style::new().bold();
         for gnode in graph_def.get_node().iter() {
-            if let Ok(node_id) = self.model.borrow().node_by_name(gnode.get_name()).map(|n| n.id) {
+            if let Ok(node_id) = self.model.borrow().node_id_by_name(gnode.get_name()) {
                 let mut v = vec![];
                 for a in gnode.get_attr().iter() {
                     let value = if a.1.has_tensor() {
@@ -245,14 +235,14 @@ where
     pub fn with_onnx_model(
         mut self,
         model_proto: &ModelProto,
-    ) -> CliResult<DisplayGraph<TI, O, M>> {
+    ) -> CliResult<DisplayGraph<'a>> {
         let bold = Style::new().bold();
         for gnode in model_proto.get_graph().get_node().iter() {
             let mut node_name = gnode.get_name();
             if node_name == "" && gnode.get_output().len() > 0 {
                 node_name = &gnode.get_output()[0];
             }
-            if let Ok(id) = self.model.borrow().node_by_name(node_name).map(|n| n.id) {
+            if let Ok(id) = self.model.borrow().node_id_by_name(node_name) {
                 let mut v = vec![];
                 for a in gnode.get_attribute().iter() {
                     let value = if a.has_t() {

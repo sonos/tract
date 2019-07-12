@@ -18,12 +18,7 @@ use crate::tensor::make_inputs;
 use tract_core::internal::*;
 
 pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResult<()> {
-    match &params.tract_model {
-        SomeModel::Inference(m) => handle_benching_t(m, &params, profiling),
-        SomeModel::Typed(m) => handle_benching_t(m, &params, profiling),
-        SomeModel::Normalized(m) => handle_benching_t(m, &params, profiling),
-        SomeModel::Pulsed(m) => handle_benching_t(m, &params, profiling),
-    }
+    dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling))
 }
 
 pub fn make_inputs_for_model<TI, O>(model: &Model<TI, O>) -> CliResult<TVec<Tensor>>
@@ -83,12 +78,7 @@ pub fn handle(
     profiling: ProfilingMode,
     display_options: DisplayOptions,
 ) -> CliResult<()> {
-    match &params.tract_model {
-        SomeModel::Inference(ref m) => handle_t(m, &params, profiling, display_options),
-        SomeModel::Typed(ref m) => handle_t(m, &params, profiling, display_options),
-        SomeModel::Normalized(ref m) => handle_t(m, &params, profiling, display_options),
-        SomeModel::Pulsed(ref m) => handle_t(m, &params, profiling, display_options),
-    }
+    dispatch_model!(params.tract_model, |m| handle_t(m, &params, profiling, display_options))
 }
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
@@ -101,6 +91,7 @@ pub fn handle_t<TI, O>(
 where
     TI: TensorInfo,
     O: AsRef<Op> + AsMut<Op> + Display + Debug,
+    Model<TI, O>: SomeModel,
 {
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
         (max_iters, max_time)
@@ -140,7 +131,7 @@ where
             continue;
         }
 
-        if !display_options.filter(model, node)? {
+        if !display_options.filter(model, node.id)? {
             continue;
         }
         state.compute_recursively(n)?;

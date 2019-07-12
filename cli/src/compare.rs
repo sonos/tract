@@ -106,27 +106,6 @@ pub fn handle_npz(
     params: Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
-    {
-        return match &params.tract_model {
-            SomeModel::Inference(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Typed(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Normalized(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Pulsed(_) => panic!("Compare unsupported in pulse mode"),
-        };
-    }
-}
-
-pub fn handle_npz_t<TI, O>(
-    cumulative: bool,
-    tract: &Model<TI, O>,
-    npz: &str,
-    params: &Parameters,
-    output_params: DisplayOptions,
-) -> CliResult<()>
-where
-    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
-    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
-{
     let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(npz)?)?;
     let mut values = HashMap::new();
     for name in npz.names()? {
@@ -135,38 +114,16 @@ where
             values.insert(name.to_string(), Ok(tvec!(value.into())));
         }
     }
-    compare(cumulative, tract, &values, params, output_params)
+    dispatch_model_no_pulse!(params.tract_model, |m| compare(cumulative, m, &values, &params, output_params))
 }
 
 #[cfg(feature = "onnx")]
 pub fn handle_pbdir(
     cumulative: bool,
-    npz: &str,
+    pbdir: &str,
     params: Parameters,
     output_params: DisplayOptions,
 ) -> CliResult<()> {
-    {
-        return match &params.tract_model {
-            SomeModel::Inference(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Typed(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Normalized(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Pulsed(_) => panic!("Compare unsupported in pulse mode"),
-        };
-    }
-}
-
-#[cfg(feature = "onnx")]
-pub fn handle_pbdir_t<TI, O>(
-    cumulative: bool,
-    tract: &Model<TI, O>,
-    pbdir: &str,
-    params: &Parameters,
-    output_params: DisplayOptions,
-) -> CliResult<()>
-where
-    TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
-    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
-{
     let mut values:HashMap<&str, TVec<Option<Tensor>>> = HashMap::new();
     let parsed_model = if let SomeGraphDef::Onnx(_, ref parsed) = params.graph {
         parsed
@@ -187,7 +144,7 @@ where
         output_tuple[outlet.slot] = Some(tensor.try_into()?);
     }
     let values = values.into_iter().filter(|(_,t)| t.iter().all(|t| t.is_some())).map(|(k,t)| (k.to_string(), Ok(t.into_iter().map(Option::unwrap).collect::<TVec<Tensor>>()))).collect();
-    compare(cumulative, tract, &values, params, output_params)
+    dispatch_model_no_pulse!(params.tract_model, |m| compare(cumulative, m, &values, &params, output_params))
 }
 
 pub fn compare<TI, O>(
@@ -200,6 +157,7 @@ pub fn compare<TI, O>(
 where
     TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
+    Model<TI, O>: SomeModel,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;
 
@@ -214,7 +172,7 @@ where
     }
 
     let mut display_graph =
-        crate::display_graph::DisplayGraph::from_model_and_options(tract.clone(), output_params)?
+        crate::display_graph::DisplayGraph::from_model_and_options(tract as &SomeModel, output_params)?
             .with_graph_def(&params.graph)?;
 
     let mut failing = vec![];
@@ -330,7 +288,7 @@ where
         display_graph.render()?;
     } else {
         for f in &failing {
-            display_graph.render_node(&tract.nodes()[*f])?;
+            display_graph.render_node(*f)?;
         }
     }
 

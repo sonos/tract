@@ -2,16 +2,14 @@ use tract_core::internal::*;
 use tract_core::ops::source::Source;
 
 use crate::display_graph;
-use crate::{CliResult, Parameters, SomeModel};
+use crate::{CliResult, Parameters};
 
 pub fn handle(params: Parameters, _options: display_graph::DisplayOptions) -> CliResult<()> {
     let plain = params.typed_model.unwrap();
-    let optimized = if let SomeModel::Typed(m) = params.tract_model {
-        m
-    } else {
-        bail!("Can only optimize-check typed models")
-    };
-
+    let optimized = params
+        .tract_model
+        .downcast_ref::<TypedModel>()
+        .expect("Can only optmize-check typed models");
     let generated = crate::tensor::make_inputs(&[plain.input_fact(0)?.to_tensor_fact()])?;
 
     let original_plan = SimplePlan::new(plain)?;

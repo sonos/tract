@@ -1,15 +1,12 @@
-use std::fmt::{Debug, Display};
-
 use crate::errors::*;
 use crate::{Parameters, SomeModel};
 use tract_core::internal::*;
 
 pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
-    let outputs = match &params.tract_model {
-        SomeModel::Inference(ref m) => run_regular_t(m, &params)?,
-        SomeModel::Typed(ref m) => run_regular_t(m, &params)?,
-        SomeModel::Normalized(ref m) => run_regular_t(m, &params)?,
-        SomeModel::Pulsed(m) => run_pulse_t(m, &params)?,
+    let outputs = if let Some(pulse) = params.tract_model.downcast_ref::<PulsedModel>() {
+        run_pulse_t(pulse, &params)?
+    } else {
+        dispatch_model!(params.tract_model, |m| run_regular(m, &params))?
     };
 
     if dump {
@@ -32,26 +29,19 @@ pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
     Ok(())
 }
 
-fn run_regular_t<TI, O>(tract: &Model<TI, O>, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>>
-where
-    TI: TensorInfo,
-    O: AsRef<Op> + AsMut<Op> + Display + Debug,
-{
-    let plan = SimplePlan::new(tract)?;
+fn run_regular(tract: &SomeModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
     let mut inputs: TVec<Tensor> = tvec!();
     for (ix, input) in tract.input_outlets()?.iter().enumerate() {
         if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
             inputs.push(input.clone().into_tensor())
         } else {
-            let fact = tract.outlet_fact(*input)?;
-            inputs.push(crate::tensor::tensor_for_fact(&fact.to_tensor_fact(), None)?);
+            let fact = tract.outlet_tensorfact(*input);
+            inputs.push(crate::tensor::tensor_for_fact(&fact, None)?);
         }
     }
-    info!("Running");
-    let outputs = plan.run(inputs)?;
-    debug!("Outputs: {:?}", outputs);
-    Ok(outputs)
+    Ok(dispatch_model!(tract, |m| SimplePlan::new(m)?.run(inputs))?)
 }
+
 
 fn run_pulse_t(model: &PulsedModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
     let input_fact = model.input_fact(0)?;

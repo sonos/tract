@@ -1,26 +1,11 @@
-use std::fmt::{Debug, Display};
-
 use crate::display_graph::DisplayOptions;
 use crate::{CliResult, SomeModel};
 use ansi_term::{Color, Style};
 use box_drawing::light::*;
-use tract_core::model::{Model, Op, OutletId, TensorInfo};
+use tract_core::model::OutletId;
 use tract_core::ops::konst::Const;
 
 pub fn render(model: &SomeModel, options: DisplayOptions) -> CliResult<()> {
-    match model {
-        SomeModel::Inference(m) => render_t(m, options),
-        SomeModel::Typed(m) => render_t(m, options),
-        SomeModel::Normalized(m) => render_t(m, options),
-        SomeModel::Pulsed( m) => render_t(m, options),
-    }
-}
-
-fn render_t<TI, O>(model: &Model<TI, O>, options: DisplayOptions) -> CliResult<()> 
-where
-    TI: TensorInfo,
-    O: AsRef<Op> + AsMut<Op> + Display + Debug,
-{
     let colors: &[Style] = &[
         Color::Red.normal(),
         Color::Green.normal(),
@@ -41,11 +26,10 @@ where
     let mut next_color: usize = 0;
     let mut wires: Vec<Option<(OutletId, Style, usize, bool)>> = vec![];
     for node in model.eval_order()? {
-        let node = &model.nodes()[node];
-        let inputs = if model.input_outlets()?.contains(&OutletId::new(node.id, 0)) {
+        let inputs = if model.input_outlets()?.contains(&OutletId::new(node, 0)) {
             &[]
         } else {
-            &*node.inputs
+            model.node_inputs(node)
         };
         let mut memory_wires: Vec<_> = wires.clone();
         for i in inputs {
@@ -108,13 +92,14 @@ where
                 }
             }
         }
-        let display = options.konst || !(node.op_is::<Const>());
+        let display = options.konst || !(model.node_op(node).is::<Const>());
         if display {
             for wire in &wires[0..first_input_wire] {
                 print!("{}", wire.unwrap().1.paint(VERTICAL));
             }
         }
-        let node_color: Style = if inputs.len() == 1 && node.outputs.len() == 1 {
+        let node_output_count = model.node_output_count(node);
+        let node_color: Style = if inputs.len() == 1 && node_output_count == 1 {
             wires[first_input_wire].unwrap().1
         } else {
             let col = colors[next_color % colors.len()];
@@ -122,7 +107,7 @@ where
             col
         };
         if display {
-            match (inputs.len(), node.outputs.len()) {
+            match (inputs.len(), node_output_count) {
                 (0, 1) => print!("{}", node_color.paint(DOWN_RIGHT)),
                 (1, 0) => print!("{}", node_color.paint("╵")),
                 (u, d) => {
@@ -140,14 +125,16 @@ where
             }
             println!(
                 " {} {} {}",
-                node_color.paint(format!("{}", node.id)),
-                node.op.as_ref().name(),
-                node.name
+                node_color.paint(format!("{}", node)),
+                model.node_op_name(node),
+                model.node_name(node),
             );
         }
         wires.truncate(first_input_wire);
-        for (ix, output) in node.outputs.iter().enumerate() {
-            if output.successors.len() == 0 {
+        for ix in 0..node_output_count {
+            let outlet = OutletId::new(node, ix);
+            let successors = model.outlet_successors(outlet);
+            if successors.len() == 0 {
                 continue;
             }
             let color = if ix == 0 {
@@ -157,7 +144,7 @@ where
                 next_color += 1;
                 col
             };
-            wires.push(Some((OutletId::new(node.id, ix), color, output.successors.len(), display)));
+            wires.push(Some((outlet, color, successors.len(), display)));
         }
     }
     Ok(())

@@ -316,7 +316,7 @@ pub struct Parameters {
     graph: SomeGraphDef,
     typed_model: Option<TypedModel>,
     normalized_model: Option<NormalizedModel>,
-    tract_model: SomeModel,
+    tract_model: Box<SomeModel>,
 
     output_names: Vec<String>,
 
@@ -518,22 +518,22 @@ impl Parameters {
         }
 
         let mut typed_model = None;
-        let mut tract_model = if !matches.is_present("skip_analyse") {
+        let mut tract_model:Box<SomeModel> = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
             if let Err(e) = raw_model.analyse(true) {
                 // do not stop on mere analyse error
                 error!("Analyse failed: {}", e);
             }
             if matches.is_present("skip_type") {
-                SomeModel::Inference(raw_model)
+                Box::new(raw_model)
             } else {
                 let typed = raw_model.into_typed()?;
                 typed_model = Some(typed.clone());
-                SomeModel::Typed(typed)
+                Box::new(typed)
             }
         } else {
             info!("Skipping analyse");
-            SomeModel::Inference(raw_model)
+            Box::new(raw_model)
         };
 
         if matches.is_present("optimize")
@@ -541,28 +541,28 @@ impl Parameters {
             || pulse.is_some()
             || matches.subcommand().0 == "optimize-check"
         {
-            if let SomeModel::Typed(typed) = tract_model {
+            if let Ok(typed) = tract_model.downcast::<TypedModel>() {
                 info!("Declutter");
-                tract_model = SomeModel::Typed(typed.declutter()?);
+                tract_model = Box::new(typed.declutter()?);
             } else {
                 bail!("Can not run optimize without analyse")
             }
         }
 
         let mut normalized_model: Option<NormalizedModel> = None;
-        if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model) {
+        if let (Some(pulse), Some(model)) = (pulse, tract_model.downcast_ref::<TypedModel>()) {
             info!("Convert to normalized net");
             normalized_model = Some(model.clone().into_normalized()?);
             info!("Pulsify {}", pulse);
             let pulsed = ::tract_core::pulse::PulsedModel::new(normalized_model.as_ref().unwrap(), pulse)?;
-            tract_model = SomeModel::Pulsed(pulsed);
+            tract_model = Box::new(pulsed);
         };
 
         if matches.is_present("optimize") {
-            if let SomeModel::Typed(typed) = tract_model {
-                tract_model = SomeModel::Typed(typed.codegen()?);
-            } else if let SomeModel::Pulsed(pulsed) = tract_model {
-                tract_model = SomeModel::Typed(pulsed.into_typed()?.codegen()?);
+            if let Some(typed) = tract_model.downcast_ref::<TypedModel>() {
+                tract_model = Box::new(typed.clone().codegen()?);
+            } else if let Some(pulsed) = tract_model.downcast_ref::<PulsedModel>() {
+                tract_model = Box::new(pulsed.clone().into_typed()?.codegen()?);
             }
         }
 
@@ -726,7 +726,7 @@ fn handle(matches: clap::ArgMatches) -> CliResult<()> {
         ("cost", Some(m)) => crate::cost::handle(params, display_options_from_clap(m)?),
 
         ("draw", Some(m)) => {
-            crate::draw::render(&params.tract_model, display_options_from_clap(m)?)
+            crate::draw::render(&*params.tract_model, display_options_from_clap(m)?)
         }
 
         ("dump", Some(m)) => {
