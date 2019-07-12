@@ -10,8 +10,8 @@ use ndarray::prelude::*;
 #[derive(Debug, Clone, new, Default)]
 pub struct Scan<TI, O>
 where
-    TI: TensorInfo,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     Model<TI, O>: SomeModel,
 {
     pub body: Model<TI, O>,
@@ -25,8 +25,8 @@ where
 
 impl<TI, O> Scan<TI, O>
 where
-    TI: TensorInfo,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     Model<TI, O>: SomeModel,
 {
     fn slice_input_t<T: Datum>(

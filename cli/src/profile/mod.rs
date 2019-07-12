@@ -47,8 +47,8 @@ impl ProfileData {
 
     pub fn print_most_consuming_ops<TI, O>(&self, model: &Model<TI, O>) -> CliResult<()>
     where
-        TI: TensorInfo,
-        O: AsRef<Op> + AsMut<Op> + Display + Debug,
+        TI: TensorInfo + Clone + 'static,
+        O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone + 'static,
     {
         let sum = self.summed();
         println!("Most time consuming operations:");

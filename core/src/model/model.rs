@@ -8,8 +8,8 @@ use std::fmt;
 #[derive(Clone, Debug)]
 pub struct Model<TI, O>
 where
-    TI: TensorInfo,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     /// all nodes in the model
     pub(super) nodes: Vec<BaseNode<TI, O>>,
@@ -23,8 +23,8 @@ where
 
 impl<TI, O> Default for Model<TI, O>
 where
-    TI: TensorInfo,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     fn default() -> Model<TI, O> {
         Model { nodes: vec![], nodes_by_name: HashMap::new(), inputs: vec![], outputs: vec![] }
@@ -33,8 +33,9 @@ where
 
 impl<TI, O> Model<TI, O>
 where
-    TI: TensorInfo,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    Model<TI, O>: SomeModel,
 {
     /// add a node to the model, returning its id
     pub fn add_node(
@@ -206,9 +207,8 @@ where
 
     /// Find a node by its name.
     pub fn node_by_name<S:AsRef<str>>(&self, name: S) -> TractResult<&BaseNode<TI, O>> {
-        let id: &usize =
-            self.nodes_by_name.get(name.as_ref()).ok_or_else(|| format!("Node named {} not found", name.as_ref()))?;
-        Ok(&self.nodes[*id])
+        let id: usize = self.node_id_by_name(name.as_ref())?;
+        Ok(&self.nodes[id])
     }
 
     /// Borrow mutably a node by its name.
@@ -317,3 +317,67 @@ where
         Ok(())
     }
 }
+
+impl<TI, O> SomeModel for Model<TI, O>
+where
+    TI: TensorInfo + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+{
+    fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
+        Ok(self.nodes_by_name.get(name).ok_or("Unfound node").map(|x| *x)?)
+    }
+
+    fn node_name(&self, id: usize) -> &str {
+        &*self.nodes[id].name
+    }
+
+    fn node_inputs(&self, id: usize) -> &[OutletId] {
+        &*self.nodes[id].inputs
+    }
+
+    fn node_output_count(&self, id: usize) -> usize {
+        self.nodes[id].outputs.len()
+    }
+
+    fn node_control_inputs(&self, id: usize) -> &[usize] {
+        &*self.nodes[id].control_inputs
+    }
+
+    fn nodes_len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    fn node_format(&self, id: usize) -> String {
+        format!("{:?}", self.nodes[id])
+    }
+
+    fn eval_order(&self) -> TractResult<Vec<usize>> {
+        crate::model::eval_order(&self)
+    }
+
+    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>> {
+        crate::model::order::eval_order_for_nodes(&self.nodes, inputs, outputs)
+    }
+
+    fn input_outlets(&self) -> &[OutletId] {
+        &*self.inputs
+    }
+
+    fn output_outlets(&self) -> &[OutletId] {
+        &*self.outputs
+    }
+
+    fn node_op(&self, id: usize) -> &Op {
+        self.nodes[id].op.as_ref()
+    }
+
+    fn outlet_tensorfact(&self, outlet: OutletId) -> TensorFact {
+        self.outlet_fact(outlet).unwrap().to_tensor_fact()
+    }
+
+    fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
+        &self.nodes[outlet.node].outputs[outlet.slot].successors
+    }
+
+}
+

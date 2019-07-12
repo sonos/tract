@@ -10,8 +10,8 @@ use std::fmt::{ Display, Debug };
 /// pre-existing graph.
 #[derive(Clone, Debug)]
 pub struct ModelPatch<TI, O>
-where TI: TensorInfo,
-      O: Display + Debug + AsRef<Op> + AsMut<Op>
+where TI: TensorInfo + Clone + 'static,
+      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
     /// the model-like 'patch' of nodes to add to the model
     pub model: Model<TI, O>,
@@ -20,8 +20,8 @@ where TI: TensorInfo,
 }
 
 impl<TI, O> Default for ModelPatch<TI, O>
-where TI: TensorInfo,
-      O: Display + Debug + AsRef<Op> + AsMut<Op>
+where TI: TensorInfo + Clone + 'static,
+      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
     fn default() -> ModelPatch<TI, O> {
         ModelPatch {
@@ -33,8 +33,8 @@ where TI: TensorInfo,
 }
 
 impl<TI, O> Deref for ModelPatch<TI, O>
-where TI: TensorInfo,
-      O: Display + Debug + AsRef<Op> + AsMut<Op>
+where TI: TensorInfo + Clone + 'static,
+      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
     type Target = Model<TI, O>;
     fn deref(&self) -> &Model<TI, O> {
@@ -43,8 +43,8 @@ where TI: TensorInfo,
 }
 
 impl<TI, O> DerefMut for ModelPatch<TI, O>
-where TI: TensorInfo,
-      O: Display + Debug + AsRef<Op> + AsMut<Op>
+where TI: TensorInfo + Clone + 'static,
+      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
     fn deref_mut(&mut self) -> &mut Model<TI, O> {
         &mut self.model
@@ -52,8 +52,8 @@ where TI: TensorInfo,
 }
 
 impl<TI, O> ModelPatch<TI, O>
-where TI: TensorInfo,
-      O: Display + Debug + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op>
+where TI: TensorInfo + Clone + 'static,
+      O: Display + Debug + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
     /// Draw a tap from a preexisting node.
     ///

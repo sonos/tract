@@ -16,7 +16,7 @@ pub fn handle_model(model: &SomeModel, params: &Parameters, options: DisplayOpti
     if let Some(asserts) = &params.assertions {
         if let Some(asserts) = &asserts.assert_output_facts {
             let outputs_facts: Vec<TensorFact> = model
-                .output_outlets()?
+                .output_outlets()
                 .iter()
                 .map(|o| model.outlet_tensorfact(*o))
                 .collect();

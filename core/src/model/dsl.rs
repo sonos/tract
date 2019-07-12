@@ -7,8 +7,8 @@ pub use super::{InletId, Model, Node, OutletId};
 /// Extensions on Model to explore and build graph models more easily.
 pub trait ModelDsl<TI, O>
 where
-    TI: TensorInfo,
-    O: Debug + Display + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     /// Find the lone precursor of a node, if applicable.
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
@@ -52,8 +52,8 @@ where
 
 impl<TI, O> ModelDsl<TI, O> for Model<TI, O>
 where
-    TI: TensorInfo,
-    O: Debug + Display + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize> {
         let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
@@ -145,11 +145,11 @@ pub trait ModelDslConst {
     ) -> TractResult<()>;
 }
 
-impl<TI: TensorInfo, O, E> ModelDslConst for Model<TI, O>
+impl<TI: TensorInfo + Clone + 'static, O, E> ModelDslConst for Model<TI, O>
 where
     TractError: From<E>,
-    TI: TensorInfo + TryFrom<TensorFact, Error=E>,
-    O: Debug + Display + From<crate::ops::konst::Const> + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static + TryFrom<TensorFact, Error=E>,
+    O: Debug + Display + From<crate::ops::konst::Const> + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize> {
         let v = v.into_arc_tensor();

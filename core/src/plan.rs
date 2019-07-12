@@ -15,8 +15,8 @@ pub struct SessionState {
 #[derive(Debug, Clone)]
 pub struct SimplePlan<TI, O, M>
 where
-    TI: TensorInfo,
-    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     M: Borrow<Model<TI, O>>,
 {
     pub model: M,
@@ -28,8 +28,8 @@ where
 
 impl<TI, O, M> SimplePlan<TI, O, M>
 where
-    TI: TensorInfo,
-    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     M: Borrow<Model<TI, O>>,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
@@ -83,8 +83,8 @@ where
 #[derive(Debug)]
 pub struct SimpleState<TI, O, M, P>
 where
-    TI: TensorInfo,
-    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     M: Borrow<Model<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>>,
 {
@@ -97,8 +97,8 @@ where
 
 impl<TI, O, M, P> Clone for SimpleState<TI, O, M, P>
 where
-    TI: TensorInfo,
-    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     M: Borrow<Model<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,
 {
@@ -122,8 +122,8 @@ where
 
 impl<TI, O, M, P> SimpleState<TI, O, M, P>
 where
-    TI: TensorInfo,
-    O: Debug + Display + AsRef<Op> + AsMut<Op>,
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     M: Borrow<Model<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,
 {

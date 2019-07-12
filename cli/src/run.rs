@@ -31,7 +31,7 @@ pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
 
 fn run_regular(tract: &SomeModel, params: &Parameters) -> CliResult<TVec<Arc<Tensor>>> {
     let mut inputs: TVec<Tensor> = tvec!();
-    for (ix, input) in tract.input_outlets()?.iter().enumerate() {
+    for (ix, input) in tract.input_outlets().iter().enumerate() {
         if let Some(input) = params.input_values.get(ix).and_then(|x| x.as_ref()) {
             inputs.push(input.clone().into_tensor())
         } else {
