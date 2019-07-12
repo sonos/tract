@@ -25,7 +25,7 @@ use std::str::FromStr;
 #[cfg(feature = "tf")]
 use crate::tfpb::graph::GraphDef;
 use tract_core::internal::*;
-use tract_core::model::{InferenceModel, NormalizedModel, TypedModel};
+use tract_core::model::{NormalizedModel, TypedModel};
 #[cfg(feature = "tf")]
 use tract_tensorflow::tfpb;
 
@@ -311,18 +311,11 @@ pub enum SomeGraphDef {
     Onnx(tract_onnx::pb::ModelProto, tract_onnx::model::ParseResult),
 }
 
-#[derive(Debug)]
-pub enum SomeModel {
-    Inference(InferenceModel),
-    Typed(TypedModel),
-    Normalized(NormalizedModel),
-    Pulsed(NormalizedModel, PulsedModel),
-}
-
 /// Structure holding the parsed parameters.
 pub struct Parameters {
     graph: SomeGraphDef,
     typed_model: Option<TypedModel>,
+    normalized_model: Option<NormalizedModel>,
     tract_model: SomeModel,
 
     output_names: Vec<String>,
@@ -556,18 +549,19 @@ impl Parameters {
             }
         }
 
+        let mut normalized_model: Option<NormalizedModel> = None;
         if let (Some(pulse), &SomeModel::Typed(ref model)) = (pulse, &tract_model) {
             info!("Convert to normalized net");
-            let normalized = model.clone().into_normalized()?;
+            normalized_model = Some(model.clone().into_normalized()?);
             info!("Pulsify {}", pulse);
-            let pulsed = ::tract_core::pulse::PulsedModel::new(&normalized, pulse)?;
-            tract_model = SomeModel::Pulsed(normalized, pulsed);
+            let pulsed = ::tract_core::pulse::PulsedModel::new(normalized_model.as_ref().unwrap(), pulse)?;
+            tract_model = SomeModel::Pulsed(pulsed);
         };
 
         if matches.is_present("optimize") {
             if let SomeModel::Typed(typed) = tract_model {
                 tract_model = SomeModel::Typed(typed.codegen()?);
-            } else if let SomeModel::Pulsed(_, pulsed) = tract_model {
+            } else if let SomeModel::Pulsed(pulsed) = tract_model {
                 tract_model = SomeModel::Typed(pulsed.into_typed()?.codegen()?);
             }
         }
@@ -577,6 +571,7 @@ impl Parameters {
         Ok(Parameters {
             graph,
             typed_model,
+            normalized_model,
             tract_model,
             tf_model,
             input_values,

@@ -9,7 +9,7 @@ pub fn handle(params: Parameters, dump: bool) -> CliResult<()> {
         SomeModel::Inference(ref m) => run_regular_t(m, &params)?,
         SomeModel::Typed(ref m) => run_regular_t(m, &params)?,
         SomeModel::Normalized(ref m) => run_regular_t(m, &params)?,
-        SomeModel::Pulsed(_, m) => run_pulse_t(m, &params)?,
+        SomeModel::Pulsed(m) => run_pulse_t(m, &params)?,
     };
 
     if dump {

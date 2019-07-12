@@ -111,7 +111,7 @@ pub fn handle_npz(
             SomeModel::Inference(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
             SomeModel::Typed(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
             SomeModel::Normalized(m) => handle_npz_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
+            SomeModel::Pulsed(_) => panic!("Compare unsupported in pulse mode"),
         };
     }
 }
@@ -150,7 +150,7 @@ pub fn handle_pbdir(
             SomeModel::Inference(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
             SomeModel::Typed(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
             SomeModel::Normalized(m) => handle_pbdir_t(cumulative, m, npz, &params, output_params),
-            SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
+            SomeModel::Pulsed(_) => panic!("Compare unsupported in pulse mode"),
         };
     }
 }

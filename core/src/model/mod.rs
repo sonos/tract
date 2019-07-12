@@ -59,6 +59,7 @@ pub use self::patch::ModelPatch;
 pub use self::tensor_info::*;
 pub use crate::analyser::types::TensorFact;
 pub use crate::ops::{InferenceOp, Op};
+use crate::pulse::PulsedModel;
 
 use crate::TractResult;
 
@@ -84,6 +85,15 @@ pub type NormalizedModel = Model<NormalizedTensorInfo, Box<Op>>;
 pub type NormalizedNode = Node<NormalizedTensorInfo>;
 /// A ModelPatch for NormalizedModel.
 pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<Op>>;
+
+/// Enumeration holding variants of model.
+#[derive(Debug)]
+pub enum SomeModel {
+    Inference(InferenceModel),
+    Typed(TypedModel),
+    Normalized(NormalizedModel),
+    Pulsed(PulsedModel),
+}
 
 impl InferenceModel {
     /// Analyse one node of the graph.
