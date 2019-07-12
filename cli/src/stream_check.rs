@@ -4,16 +4,13 @@ use ndarray::Axis;
 
 use tract_core::model::{ OutletId, TensorInfo };
 use tract_core::plan::{SimplePlan, SimpleState};
+use tract_core::pulse::PulsedModel;
 
 use crate::display_graph;
-use crate::{CliResult, Parameters, SomeModel};
+use crate::{CliResult, Parameters};
 
 pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> CliResult<()> {
-    let pulsed = if let SomeModel::Pulsed(p) = params.tract_model {
-        p
-    } else {
-        unreachable!();
-    };
+    let pulsed = params.tract_model.downcast_ref::<PulsedModel>().unwrap();
 
     let fixed = params.normalized_model.clone().unwrap();
 
@@ -23,7 +20,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
 
     // First generate random values for the inputs.
     let display_graph =
-        display_graph::DisplayGraph::from_model_and_options(pulsed.clone(), options)?
+        display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, options)?
             .with_graph_def(&params.graph)?;
 
     let eval_order = ::tract_core::model::eval_order(&fixed)?;
@@ -103,7 +100,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
                 let valid_fixed_result =
                     fixed_result.slice_axis(Axis(output_axis), (f_o..f_o + count).into());
                 if valid_pulse_result != valid_fixed_result {
-                    display_graph.render_node(pulsed.node(pulsed_node))?;
+                    display_graph.render_node(pulsed_node)?;
                     println!("pulse: {} ({}..{})", i, i * output_pulse, (i + 1) * output_pulse);
                     println!(
                         "expected: {}",

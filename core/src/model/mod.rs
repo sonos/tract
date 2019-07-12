@@ -86,13 +86,106 @@ pub type NormalizedNode = Node<NormalizedTensorInfo>;
 /// A ModelPatch for NormalizedModel.
 pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<Op>>;
 
-/// Enumeration holding variants of model.
-#[derive(Debug)]
-pub enum SomeModel {
-    Inference(InferenceModel),
-    Typed(TypedModel),
-    Normalized(NormalizedModel),
-    Pulsed(PulsedModel),
+/// Common methods for all variants of model.
+pub trait SomeModel: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
+    fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
+        unimplemented!()
+    }
+
+    fn node_name(&self, id: usize) -> &str {
+        unimplemented!()
+    }
+
+    fn node_op_name(&self, id: usize) -> &str {
+        unimplemented!()
+    }
+
+    fn node_inputs(&self, id: usize) -> &[OutletId] {
+        unimplemented!()
+    }
+
+    fn node_output_count(&self, id: usize) -> usize {
+        unimplemented!()
+    }
+
+    fn node_control_inputs(&self, id: usize) -> &[usize] {
+        unimplemented!()
+    }
+
+    fn nodes_len(&self) -> usize {
+        unimplemented!()
+    }
+
+    fn node_format(&self, id: usize) -> String {
+        unimplemented!()
+    }
+
+    fn eval_order(&self) -> TractResult<Vec<usize>> {
+        unimplemented!()
+    }
+
+    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>> {
+        unimplemented!()
+    }
+
+    fn input_outlets(&self) -> TractResult<&[OutletId]> {
+        unimplemented!()
+    }
+
+    fn output_outlets(&self) -> TractResult<&[OutletId]> {
+        unimplemented!()
+    }
+
+    fn node_op(&self, id: usize) -> &Op {
+        unimplemented!()
+    }
+
+    fn outlet_tensorfact(&self, outlet: OutletId) -> TensorFact {
+        unimplemented!()
+    }
+
+    fn outlet_successors(&self, outlet: OutletId) -> TVec<InletId> {
+        unimplemented!()
+    }
+}
+
+impl SomeModel for InferenceModel {}
+impl SomeModel for TypedModel {}
+impl SomeModel for NormalizedModel {}
+impl SomeModel for PulsedModel {}
+
+impl_downcast!(SomeModel);
+
+#[macro_export]
+macro_rules! dispatch_model {
+    ($model: expr, $expr: expr) => {
+        if let Some(m) = $model.downcast_ref::<InferenceModel>() {
+            $expr(m)
+        } else if let Some(m) = $model.downcast_ref::<TypedModel>() {
+            $expr(m)
+        } else if let Some(m) = $model.downcast_ref::<NormalizedModel>() {
+            $expr(m)
+        } else if let Some(m) = $model.downcast_ref::<PulsedModel>() {
+            $expr(m)
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! dispatch_model_no_pulse {
+    ($model: expr, $expr: expr) => {
+        if let Some(m) = $model.downcast_ref::<InferenceModel>() {
+            $expr(m)
+        } else if let Some(m) = $model.downcast_ref::<TypedModel>() {
+            $expr(m)
+        } else if let Some(m) = $model.downcast_ref::<NormalizedModel>() {
+            $expr(m)
+        } else {
+            bail!("Pulse model are unsupported here")
+        }
+    }
 }
 
 impl InferenceModel {
