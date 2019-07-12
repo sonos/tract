@@ -26,7 +26,7 @@ pub fn render(model: &SomeModel, options: DisplayOptions) -> CliResult<()> {
     let mut next_color: usize = 0;
     let mut wires: Vec<Option<(OutletId, Style, usize, bool)>> = vec![];
     for node in model.eval_order()? {
-        let inputs = if model.input_outlets()?.contains(&OutletId::new(node, 0)) {
+        let inputs = if model.input_outlets().contains(&OutletId::new(node, 0)) {
             &[]
         } else {
             model.node_inputs(node)
@@ -126,7 +126,7 @@ pub fn render(model: &SomeModel, options: DisplayOptions) -> CliResult<()> {
             println!(
                 " {} {} {}",
                 node_color.paint(format!("{}", node)),
-                model.node_op_name(node),
+                model.node_op(node).name(),
                 model.node_name(node),
             );
         }

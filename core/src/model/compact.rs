@@ -7,10 +7,10 @@ use std::fmt::{ Display, Debug };
 pub(crate) fn translate<TI1, TI2, O1, O2, E1, E2>(old: &Model<TI1, O1>) -> TractResult<Model<TI2, O2>>
 where
     TractError: From<E1> + From<E2>,
-    TI1: TensorInfo + Clone,
-    TI2: TensorInfo + TryFrom<TI1, Error=E1>,
-    O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op>,
-    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op>,
+    TI1: TensorInfo + Clone + 'static,
+    TI2: TensorInfo + TryFrom<TI1, Error=E1> + Clone + 'static,
+    O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     let mut model = Model::default();
     for old_node in old.nodes() {
@@ -35,10 +35,10 @@ where
 pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(old: &Model<TI1, O1>) -> TractResult<Model<TI2, O2>>
 where
     TractError: From<E1> + From<E2>,
-    TI1: TensorInfo + Clone,
-    TI2: TensorInfo + TryFrom<TI1, Error=E1>,
-    O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op>,
-    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op>,
+    TI1: TensorInfo + Clone + 'static,
+    TI2: TensorInfo + TryFrom<TI1, Error=E1> + Clone + 'static,
+    O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     let mut model = Model::default();
     let mut map = HashMap::new();

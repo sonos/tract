@@ -34,12 +34,12 @@ impl DisplayOptions {
             return Ok(model.node_name(node_id).starts_with(&*node_name));
         }
         if let Some(op_name) = self.op_name.as_ref() {
-            return Ok(model.node_op_name(node_id).starts_with(op_name));
+            return Ok(model.node_op(node_id).name().starts_with(op_name));
         }
         if let Some(successor) = self.successors {
             return Ok(model.node_inputs(node_id).iter().any(|i| i.node == successor));
         }
-        Ok(model.node_op_name(node_id) != "Const" || self.konst)
+        Ok(model.node_op(node_id).name() != "Const" || self.konst)
     }
 }
 
@@ -76,7 +76,7 @@ impl<'a> DisplayGraph<'a>
         let model = self.model.borrow();
         let name_color = self.node_color.get(&node_id).cloned().unwrap_or(White.into());
         let node_name = model.node_name(node_id);
-        let node_op_name = model.node_op_name(node_id);
+        let node_op_name = model.node_op(node_id).name();
         println!(
             "{} {} {}",
             White.bold().paint(format!("{}", node_id)),
@@ -104,7 +104,7 @@ impl<'a> DisplayGraph<'a>
             let io = if let Some(id) = self
                 .model
                 .borrow()
-                .input_outlets()?
+                .input_outlets()
                 .iter()
                 .position(|n| n.node == node_id && n.slot == ix)
             {
@@ -112,7 +112,7 @@ impl<'a> DisplayGraph<'a>
             } else if let Some(id) = self
                 .model
                 .borrow()
-                .output_outlets()?
+                .output_outlets()
                 .iter()
                 .position(|n| n.node == node_id && n.slot == ix)
             {

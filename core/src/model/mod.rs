@@ -59,7 +59,6 @@ pub use self::patch::ModelPatch;
 pub use self::tensor_info::*;
 pub use crate::analyser::types::TensorFact;
 pub use crate::ops::{InferenceOp, Op};
-use crate::pulse::PulsedModel;
 
 use crate::TractResult;
 
@@ -88,71 +87,40 @@ pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<Op>>;
 
 /// Common methods for all variants of model.
 pub trait SomeModel: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
-    fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
-        unimplemented!()
-    }
+    fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
 
-    fn node_name(&self, id: usize) -> &str {
-        unimplemented!()
-    }
+    fn node_name(&self, id: usize) -> &str;
 
-    fn node_op_name(&self, id: usize) -> &str {
-        unimplemented!()
-    }
+    fn node_inputs(&self, id: usize) -> &[OutletId];
 
-    fn node_inputs(&self, id: usize) -> &[OutletId] {
-        unimplemented!()
-    }
+    fn node_output_count(&self, id: usize) -> usize;
 
-    fn node_output_count(&self, id: usize) -> usize {
-        unimplemented!()
-    }
+    fn node_control_inputs(&self, id: usize) -> &[usize];
 
-    fn node_control_inputs(&self, id: usize) -> &[usize] {
-        unimplemented!()
-    }
+    fn nodes_len(&self) -> usize;
 
-    fn nodes_len(&self) -> usize {
-        unimplemented!()
-    }
+    fn node_format(&self, id: usize) -> String;
 
-    fn node_format(&self, id: usize) -> String {
-        unimplemented!()
-    }
+    fn eval_order(&self) -> TractResult<Vec<usize>>;
 
-    fn eval_order(&self) -> TractResult<Vec<usize>> {
-        unimplemented!()
-    }
+    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>>;
 
-    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>> {
-        unimplemented!()
-    }
+    fn input_outlets(&self) -> &[OutletId];
 
-    fn input_outlets(&self) -> TractResult<&[OutletId]> {
-        unimplemented!()
-    }
+    fn output_outlets(&self) -> &[OutletId];
 
-    fn output_outlets(&self) -> TractResult<&[OutletId]> {
-        unimplemented!()
-    }
+    fn node_op(&self, id: usize) -> &Op;
 
-    fn node_op(&self, id: usize) -> &Op {
-        unimplemented!()
-    }
+    fn outlet_tensorfact(&self, outlet: OutletId) -> TensorFact;
 
-    fn outlet_tensorfact(&self, outlet: OutletId) -> TensorFact {
-        unimplemented!()
-    }
-
-    fn outlet_successors(&self, outlet: OutletId) -> TVec<InletId> {
-        unimplemented!()
-    }
+    fn outlet_successors(&self, outlet: OutletId) -> &[InletId];
 }
 
+/*
 impl SomeModel for InferenceModel {}
 impl SomeModel for TypedModel {}
 impl SomeModel for NormalizedModel {}
-impl SomeModel for PulsedModel {}
+impl SomeModel for PulsedModel {}*/
 
 impl_downcast!(SomeModel);
 
