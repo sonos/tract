@@ -163,7 +163,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     }
 
     /// Nested models, with label (for audit).
-    fn nested_models(&self) -> Vec<(Cow<str>, &SomeModel)> {
+    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
         vec!()
     }
 

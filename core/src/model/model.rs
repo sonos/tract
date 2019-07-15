@@ -35,7 +35,7 @@ impl<TI, O> ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    ModelImpl<TI, O>: SomeModel,
+    ModelImpl<TI, O>: Model,
 {
     /// add a node to the model, returning its id
     pub fn add_node(
@@ -318,7 +318,7 @@ where
     }
 }
 
-impl<TI, O> SomeModel for ModelImpl<TI, O>
+impl<TI, O> Model for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,

@@ -20,16 +20,16 @@ pub fn handle_tensorflow(
     {
         let tf = params.tf_model.take().unwrap();
         return match &params.tract_model {
-            SomeModel::Inference(m) => {
+            Model::Inference(m) => {
                 handle_tensorflow_t(cumulative, resilient, m, tf, &params, output_params)
             }
-            SomeModel::Typed(m) => {
+            Model::Typed(m) => {
                 handle_tensorflow_t(cumulative, resilient, m, tf, &params, output_params)
             }
-            SomeModel::Normalized(m) => {
+            Model::Normalized(m) => {
                 handle_tensorflow_t(cumulative, resilient, m, tf, &params, output_params)
             }
-            SomeModel::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
+            Model::Pulsed(_, _) => panic!("Compare unsupported in pulse mode"),
         };
     }
 }
@@ -157,7 +157,7 @@ pub fn compare<TI, O>(
 where
     TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
-    ModelImpl<TI, O>: SomeModel,
+    ModelImpl<TI, O>: Model,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;
 
@@ -172,7 +172,7 @@ where
     }
 
     let mut display_graph =
-        crate::display_graph::DisplayGraph::from_model_and_options(tract as &SomeModel, output_params.into())?
+        crate::display_graph::DisplayGraph::from_model_and_options(tract as &Model, output_params.into())?
             .with_graph_def(&params.graph)?;
 
     let mut failing = vec![];

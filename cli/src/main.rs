@@ -319,7 +319,7 @@ pub struct Parameters {
     graph: SomeGraphDef,
     typed_model: Option<TypedModel>,
     normalized_model: Option<NormalizedModel>,
-    tract_model: Box<SomeModel>,
+    tract_model: Box<Model>,
 
     output_names: Vec<String>,
 
@@ -524,7 +524,7 @@ impl Parameters {
         }
 
         let mut typed_model = None;
-        let mut tract_model:Box<SomeModel> = if !matches.is_present("skip_analyse") {
+        let mut tract_model:Box<Model> = if !matches.is_present("skip_analyse") {
             info!("Running analyse");
             if let Err(e) = raw_model.analyse(true) {
                 // do not stop on mere analyse error
