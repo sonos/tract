@@ -86,6 +86,10 @@ impl Op for Scan<TensorFact, Box<InferenceOp>> {
         "Scan".into()
     }
 
+    fn nested_models(&self) -> Vec<(Cow<str>, &SomeModel)> {
+        vec!(("loop".into(), &self.body as _))
+    }
+
     fn to_typed(&self) -> TractResult<Option<Box<Op>>> {
         let typed_model = self.body.clone().into_typed()?;
         Ok(Some(Box::new(Scan::new(
@@ -109,6 +113,10 @@ impl StatelessOp for Scan<TensorFact, Box<InferenceOp>> {
 impl Op for Scan<TypedTensorInfo, Box<Op>> {
     fn name(&self) -> Cow<str> {
         "Scan".into()
+    }
+
+    fn nested_models(&self) -> Vec<(Cow<str>, &SomeModel)> {
+        vec!(("loop".into(), &self.body as _))
     }
 }
 

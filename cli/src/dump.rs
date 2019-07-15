@@ -10,7 +10,7 @@ pub fn handle(params: Parameters, options: DisplayOptions, _inner:Vec<String>) -
 
 pub fn handle_model(model: &SomeModel, params: &Parameters, options: DisplayOptions) -> CliResult<()> {
     let display_graph =
-        DisplayGraph::from_model_and_options(model, options)?.with_graph_def(&params.graph)?;
+        DisplayGraph::from_model_and_options(model, Arc::new(options))?.with_graph_def(&params.graph)?;
     display_graph.render()?;
 
     if let Some(asserts) = &params.assertions {

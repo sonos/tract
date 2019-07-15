@@ -153,7 +153,7 @@ where
     };
 
     let mut display_graph =
-        crate::display_graph::DisplayGraph::from_model_and_options(model, display_options)?
+        crate::display_graph::DisplayGraph::from_model_and_options(model, Arc::new(display_options))?
             .with_graph_def(&params.graph)?;
 
     let sum = profile.summed();
