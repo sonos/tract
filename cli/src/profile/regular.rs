@@ -8,7 +8,7 @@ use log::Level::Info;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
-use crate::{Parameters, ProfilingMode, SomeModel};
+use crate::{Parameters, ProfilingMode, Model};
 
 use crate::format::*;
 use crate::profile::ProfileData;
@@ -91,7 +91,7 @@ pub fn handle_t<TI, O>(
 where
     TI: TensorInfo + Clone + 'static,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone + 'static,
-    ModelImpl<TI, O>: SomeModel,
+    ModelImpl<TI, O>: Model,
 {
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
         (max_iters, max_time)

@@ -12,7 +12,7 @@ pub struct Scan<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    ModelImpl<TI, O>: SomeModel,
+    ModelImpl<TI, O>: Model,
 {
     pub body: ModelImpl<TI, O>,
     num_scan_inputs: usize,
@@ -27,7 +27,7 @@ impl<TI, O> Scan<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    ModelImpl<TI, O>: SomeModel,
+    ModelImpl<TI, O>: Model,
 {
     fn slice_input_t<T: Datum>(
         &self,
@@ -86,7 +86,7 @@ impl Op for Scan<TensorFact, Box<InferenceOp>> {
         "Scan".into()
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &SomeModel)> {
+    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
         vec!(("loop".into(), &self.body as _))
     }
 
@@ -115,7 +115,7 @@ impl Op for Scan<TypedTensorInfo, Box<Op>> {
         "Scan".into()
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &SomeModel)> {
+    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
         vec!(("loop".into(), &self.body as _))
     }
 }

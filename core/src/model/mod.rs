@@ -62,67 +62,52 @@ pub use crate::ops::{InferenceOp, Op};
 
 use crate::TractResult;
 
-/// A model with partially types and shapes, as produced by parsing ONNX or
-/// Tensorflow graphs.
-pub type InferenceModel = ModelImpl<TensorFact, Box<InferenceOp>>;
-/// Node for InferenceModel graph
-pub type InferenceNode = BaseNode<TensorFact, Box<InferenceOp>>;
-/// A ModelPatch for InferenceModel.
-pub type InferenceModelPatch = ModelPatch<TensorFact, Box<InferenceOp>>;
-
-/// A model with completely determined types and shapes.
-pub type TypedModel = ModelImpl<TypedTensorInfo, Box<Op>>;
-/// Node for TypedModel graph
-pub type TypedNode = Node<TypedTensorInfo>;
-/// A ModelPatch for TypedModel.
-pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<Op>>;
-
-/// A model with determined types and shapes, where constant have been
-/// eleminated from the graph.
-pub type NormalizedModel = ModelImpl<NormalizedTensorInfo, Box<Op>>;
-/// A Node for NormalizedModel.
-pub type NormalizedNode = Node<NormalizedTensorInfo>;
-/// A ModelPatch for NormalizedModel.
-pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<Op>>;
-
 /// Common methods for all variants of model.
-pub trait SomeModel: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
+pub trait Model: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
+    /// Lookup node id by name
     fn node_id_by_name(&self, name: &str) -> TractResult<usize>;
 
+    /// Node name by id
     fn node_name(&self, id: usize) -> &str;
 
-    fn node_inputs(&self, id: usize) -> &[OutletId];
-
-    fn node_output_count(&self, id: usize) -> usize;
-
-    fn node_control_inputs(&self, id: usize) -> &[usize];
-
-    fn nodes_len(&self) -> usize;
-
-    fn node_format(&self, id: usize) -> String;
-
-    fn eval_order(&self) -> TractResult<Vec<usize>>;
-
-    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>>;
-
-    fn input_outlets(&self) -> &[OutletId];
-
-    fn output_outlets(&self) -> &[OutletId];
-
+    /// Node op by id
     fn node_op(&self, id: usize) -> &Op;
 
+    /// Node inputs by id
+    fn node_inputs(&self, id: usize) -> &[OutletId];
+
+    /// Number of outputs for a node, by id.
+    fn node_output_count(&self, id: usize) -> usize;
+
+    /// Number of outputs for a node, by id.
+    fn node_control_inputs(&self, id: usize) -> &[usize];
+
+    /// Number nodes
+    fn nodes_len(&self) -> usize;
+
+    /// Formatted node label
+    fn node_format(&self, id: usize) -> String;
+
+    /// Eval order for the model
+    fn eval_order(&self) -> TractResult<Vec<usize>>;
+
+    /// Eval order for the model overriding input and outputs node
+    fn eval_order_for_io(&self, inputs: &[usize], outputs: &[usize]) -> TractResult<Vec<usize>>;
+
+    /// Inputs of the model
+    fn input_outlets(&self) -> &[OutletId];
+
+    /// Outputs of the model
+    fn output_outlets(&self) -> &[OutletId];
+
+    /// Tensorfact for an outlet
     fn outlet_tensorfact(&self, outlet: OutletId) -> TensorFact;
 
+    /// List consumers of an outlet
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId];
 }
 
-/*
-impl SomeModel for InferenceModel {}
-impl SomeModel for TypedModel {}
-impl SomeModel for NormalizedModel {}
-impl SomeModel for PulsedModel {}*/
-
-impl_downcast!(SomeModel);
+impl_downcast!(Model);
 
 #[macro_export]
 macro_rules! dispatch_model {
@@ -155,6 +140,29 @@ macro_rules! dispatch_model_no_pulse {
         }
     }
 }
+
+/// A model with partially types and shapes, as produced by parsing ONNX or
+/// Tensorflow graphs.
+pub type InferenceModel = ModelImpl<TensorFact, Box<InferenceOp>>;
+/// Node for InferenceModel graph
+pub type InferenceNode = BaseNode<TensorFact, Box<InferenceOp>>;
+/// A ModelPatch for InferenceModel.
+pub type InferenceModelPatch = ModelPatch<TensorFact, Box<InferenceOp>>;
+
+/// A model with completely determined types and shapes.
+pub type TypedModel = ModelImpl<TypedTensorInfo, Box<Op>>;
+/// Node for TypedModel graph
+pub type TypedNode = Node<TypedTensorInfo>;
+/// A ModelPatch for TypedModel.
+pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<Op>>;
+
+/// A model with determined types and shapes, where constant have been
+/// eleminated from the graph.
+pub type NormalizedModel = ModelImpl<NormalizedTensorInfo, Box<Op>>;
+/// A Node for NormalizedModel.
+pub type NormalizedNode = Node<NormalizedTensorInfo>;
+/// A ModelPatch for NormalizedModel.
+pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<Op>>;
 
 impl InferenceModel {
     /// Analyse one node of the graph.
