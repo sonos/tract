@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use itertools::Itertools;
 use ndarray::ArrayD;
 use ndarray::Axis;
@@ -20,7 +22,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
 
     // First generate random values for the inputs.
     let display_graph =
-        display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, options)?
+        display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, Arc::new(options))?
             .with_graph_def(&params.graph)?;
 
     let eval_order = ::tract_core::model::eval_order(&fixed)?;

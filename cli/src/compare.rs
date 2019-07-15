@@ -172,7 +172,7 @@ where
     }
 
     let mut display_graph =
-        crate::display_graph::DisplayGraph::from_model_and_options(tract as &SomeModel, output_params)?
+        crate::display_graph::DisplayGraph::from_model_and_options(tract as &SomeModel, output_params.into())?
             .with_graph_def(&params.graph)?;
 
     let mut failing = vec![];
