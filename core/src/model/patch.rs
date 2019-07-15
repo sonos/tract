@@ -14,7 +14,7 @@ where TI: TensorInfo + Clone + 'static,
       O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
     /// the model-like 'patch' of nodes to add to the model
-    pub model: Model<TI, O>,
+    pub model: ModelImpl<TI, O>,
     incoming: HashMap<OutletId, OutletId>,
     shunt_outlet_by: HashMap<OutletId, OutletId>,
 }
@@ -25,7 +25,7 @@ where TI: TensorInfo + Clone + 'static,
 {
     fn default() -> ModelPatch<TI, O> {
         ModelPatch {
-            model: Model::default(),
+            model: ModelImpl::default(),
             incoming: HashMap::new(),
             shunt_outlet_by: HashMap::new(),
         }
@@ -36,8 +36,8 @@ impl<TI, O> Deref for ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
       O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
-    type Target = Model<TI, O>;
-    fn deref(&self) -> &Model<TI, O> {
+    type Target = ModelImpl<TI, O>;
+    fn deref(&self) -> &ModelImpl<TI, O> {
         &self.model
     }
 }
@@ -46,7 +46,7 @@ impl<TI, O> DerefMut for ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
       O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
-    fn deref_mut(&mut self) -> &mut Model<TI, O> {
+    fn deref_mut(&mut self) -> &mut ModelImpl<TI, O> {
         &mut self.model
     }
 }
@@ -58,7 +58,7 @@ where TI: TensorInfo + Clone + 'static,
     /// Draw a tap from a preexisting node.
     ///
     /// returns an OutletId usable in the little "patch" model
-    pub fn tap_model(&mut self, model: &Model<TI, O>, outlet: OutletId) -> TractResult<OutletId> {
+    pub fn tap_model(&mut self, model: &ModelImpl<TI, O>, outlet: OutletId) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let node_id = self
             .add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), objekt::clone(fact))?;
@@ -75,7 +75,7 @@ where TI: TensorInfo + Clone + 'static,
 
     /// Convenience method creating a patch that replace a single operation.
     pub fn replace_single_op<IO: Into<O>>(
-        patched_model: &Model<TI, O>,
+        patched_model: &ModelImpl<TI, O>,
         node: &Node<TI>,
         inputs: &[OutletId],
         new_op: IO,
@@ -96,7 +96,7 @@ where TI: TensorInfo + Clone + 'static,
 
     /// Convenience method creating a patch that replace a single unary operation.
     pub fn single_unary_op<IO: Into<O>>(
-        patched_model: &Model<TI, O>,
+        patched_model: &ModelImpl<TI, O>,
         node: &Node<TI>,
         new_op: IO,
     ) -> TractResult<ModelPatch<TI, O>> {
@@ -104,7 +104,7 @@ where TI: TensorInfo + Clone + 'static,
     }
 
     /// Apply all changes in the patch to the target model.
-    pub fn apply(self, target: &mut Model<TI, O>) -> TractResult<()> {
+    pub fn apply(self, target: &mut ModelImpl<TI, O>) -> TractResult<()> {
         let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by } = self;
         let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {

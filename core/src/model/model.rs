@@ -6,7 +6,7 @@ use std::fmt;
 ///
 /// Parameterized by a TensorInfo class.
 #[derive(Clone, Debug)]
-pub struct Model<TI, O>
+pub struct ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
@@ -21,21 +21,21 @@ where
     pub(crate) outputs: Vec<OutletId>,
 }
 
-impl<TI, O> Default for Model<TI, O>
+impl<TI, O> Default for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
-    fn default() -> Model<TI, O> {
-        Model { nodes: vec![], nodes_by_name: HashMap::new(), inputs: vec![], outputs: vec![] }
+    fn default() -> ModelImpl<TI, O> {
+        ModelImpl { nodes: vec![], nodes_by_name: HashMap::new(), inputs: vec![], outputs: vec![] }
     }
 }
 
-impl<TI, O> Model<TI, O>
+impl<TI, O> ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    Model<TI, O>: SomeModel,
+    ModelImpl<TI, O>: SomeModel,
 {
     /// add a node to the model, returning its id
     pub fn add_node(
@@ -318,7 +318,7 @@ where
     }
 }
 
-impl<TI, O> SomeModel for Model<TI, O>
+impl<TI, O> SomeModel for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,

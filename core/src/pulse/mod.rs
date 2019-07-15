@@ -78,7 +78,7 @@ impl PulsedTensorFact {
     }
 }
 
-pub type PulsedModel = Model<PulsedTensorFact, Box<Op>>;
+pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<Op>>;
 
 impl PulsedModel {
     pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
@@ -134,14 +134,14 @@ mod tests {
 
     #[test]
     fn test_source_must_stream() {
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let _a =
             model.add_source("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3])).unwrap();
         assert!(
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).is_err()
         );
 
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let _a = model
             .add_source(
                 "a",
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_immediate() {
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let _a = model
             .add_source(
                 "a",
@@ -252,7 +252,7 @@ mod tests {
         fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
             use crate::ops::array::Crop;
             let input_len = input_len + begin + end;
-            let mut model = Model::default();
+            let mut model = InferenceModel::default();
             let _ = model
                 .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
                 .unwrap();
@@ -265,7 +265,7 @@ mod tests {
         #[test]
         fn proptest_pad(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
             use crate::ops::array::{ Pad, PadMode };
-            let mut model = Model::default();
+            let mut model = InferenceModel::default();
             let _ = model
                 .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
                 .unwrap();
@@ -281,7 +281,7 @@ mod tests {
     fn test_simple_conv() {
         use crate::ops::cnn::*;
 
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let ker = model.add_const("kernel", tensor3(&[[[0.5f32, 1.0, -0.1]]])).unwrap();
         let _ = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S))) // NCT
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_pad_after_1() {
         use crate::ops::array::{Pad, PadMode};
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("pad", Pad::new(vec![(0, 1)], PadMode::Constant(-1.0))).unwrap();
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn test_pad_before_1() {
         use crate::ops::array::{Pad, PadMode};
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("pad", Pad::new(vec![(1, 0)], PadMode::Constant(-1.0))).unwrap();
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn test_pad_before_2() {
         use crate::ops::array::{Pad, PadMode};
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("pad", Pad::new(vec![(1, 0)], PadMode::Constant(-1.0))).unwrap();

@@ -1,10 +1,10 @@
-use crate::model::{InletId, Model, OutletId, TensorInfo};
+use crate::model::{InletId, ModelImpl, OutletId, TensorInfo};
 use crate::prelude::*;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{ Display, Debug };
 
-pub(crate) fn translate<TI1, TI2, O1, O2, E1, E2>(old: &Model<TI1, O1>) -> TractResult<Model<TI2, O2>>
+pub(crate) fn translate<TI1, TI2, O1, O2, E1, E2>(old: &ModelImpl<TI1, O1>) -> TractResult<ModelImpl<TI2, O2>>
 where
     TractError: From<E1> + From<E2>,
     TI1: TensorInfo + Clone + 'static,
@@ -12,7 +12,7 @@ where
     O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op> + Clone + 'static,
     O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
-    let mut model = Model::default();
+    let mut model = ModelImpl::default();
     for old_node in old.nodes() {
         let facts = old_node
             .outputs
@@ -32,7 +32,7 @@ where
     Ok(model)
 }
 
-pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(old: &Model<TI1, O1>) -> TractResult<Model<TI2, O2>>
+pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(old: &ModelImpl<TI1, O1>) -> TractResult<ModelImpl<TI2, O2>>
 where
     TractError: From<E1> + From<E2>,
     TI1: TensorInfo + Clone + 'static,
@@ -40,7 +40,7 @@ where
     O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op> + Clone + 'static,
     O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
-    let mut model = Model::default();
+    let mut model = ModelImpl::default();
     let mut map = HashMap::new();
     for old_id in old.eval_order()? {
         let old_node = &old.nodes()[old_id];

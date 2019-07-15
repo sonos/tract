@@ -2,9 +2,9 @@ use crate::internal::*;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display};
 
-pub use super::{InletId, Model, Node, OutletId};
+pub use super::{InletId, ModelImpl, Node, OutletId};
 
-/// Extensions on Model to explore and build graph models more easily.
+/// Extensions on ModelImpl to explore and build graph models more easily.
 pub trait ModelDsl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
@@ -50,7 +50,7 @@ where
     ) -> TractResult<usize>;
 }
 
-impl<TI, O> ModelDsl<TI, O> for Model<TI, O>
+impl<TI, O> ModelDsl<TI, O> for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: Debug + Display + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op> + Clone + 'static,
@@ -145,7 +145,7 @@ pub trait ModelDslConst {
     ) -> TractResult<()>;
 }
 
-impl<TI: TensorInfo + Clone + 'static, O, E> ModelDslConst for Model<TI, O>
+impl<TI: TensorInfo + Clone + 'static, O, E> ModelDslConst for ModelImpl<TI, O>
 where
     TractError: From<E>,
     TI: TensorInfo + Clone + 'static + TryFrom<TensorFact, Error=E>,

@@ -14,7 +14,7 @@
 //!
 //! At this stage, the model can be converted into a `TypedModel`.
 //!
-//! InferanceModel and TypeModel are two variants of `Model`, Parameterized
+//! InferanceModel and TypeModel are two variants of `ModelImpl`, Parameterized
 //! by a TensorInfo implementation: TypedModel uses TypedTensorInfo, enforcing
 //! complete determination of element type and shape, and allowing a constant
 //! value for the tensor. InferenceModel uses TensorFact, which can handle
@@ -64,14 +64,14 @@ use crate::TractResult;
 
 /// A model with partially types and shapes, as produced by parsing ONNX or
 /// Tensorflow graphs.
-pub type InferenceModel = Model<TensorFact, Box<InferenceOp>>;
+pub type InferenceModel = ModelImpl<TensorFact, Box<InferenceOp>>;
 /// Node for InferenceModel graph
 pub type InferenceNode = BaseNode<TensorFact, Box<InferenceOp>>;
 /// A ModelPatch for InferenceModel.
 pub type InferenceModelPatch = ModelPatch<TensorFact, Box<InferenceOp>>;
 
 /// A model with completely determined types and shapes.
-pub type TypedModel = Model<TypedTensorInfo, Box<Op>>;
+pub type TypedModel = ModelImpl<TypedTensorInfo, Box<Op>>;
 /// Node for TypedModel graph
 pub type TypedNode = Node<TypedTensorInfo>;
 /// A ModelPatch for TypedModel.
@@ -79,7 +79,7 @@ pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<Op>>;
 
 /// A model with determined types and shapes, where constant have been
 /// eleminated from the graph.
-pub type NormalizedModel = Model<NormalizedTensorInfo, Box<Op>>;
+pub type NormalizedModel = ModelImpl<NormalizedTensorInfo, Box<Op>>;
 /// A Node for NormalizedModel.
 pub type NormalizedNode = Node<NormalizedTensorInfo>;
 /// A ModelPatch for NormalizedModel.

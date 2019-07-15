@@ -21,7 +21,7 @@ pub fn handle_benching(params: Parameters, profiling: ProfilingMode) -> CliResul
     dispatch_model!(params.tract_model, |m| handle_benching_t(m, &params, profiling))
 }
 
-pub fn make_inputs_for_model<TI, O>(model: &Model<TI, O>) -> CliResult<TVec<Tensor>>
+pub fn make_inputs_for_model<TI, O>(model: &ModelImpl<TI, O>) -> CliResult<TVec<Tensor>>
 where
     TI: TensorInfo + Clone + 'static,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone + 'static,
@@ -36,7 +36,7 @@ where
 }
 
 fn handle_benching_t<TI, O>(
-    model: &Model<TI, O>,
+    model: &ModelImpl<TI, O>,
     params: &Parameters,
     profiling: ProfilingMode,
 ) -> CliResult<()>
@@ -83,7 +83,7 @@ pub fn handle(
 
 /// Handles the `profile` subcommand when there are no streaming dimensions.
 pub fn handle_t<TI, O>(
-    model: &Model<TI, O>,
+    model: &ModelImpl<TI, O>,
     params: &Parameters,
     profiling: ProfilingMode,
     mut display_options: DisplayOptions,
@@ -91,7 +91,7 @@ pub fn handle_t<TI, O>(
 where
     TI: TensorInfo + Clone + 'static,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone + 'static,
-    Model<TI, O>: SomeModel,
+    ModelImpl<TI, O>: SomeModel,
 {
     let (max_iters, max_time) = if let ProfilingMode::Regular { max_iters, max_time } = profiling {
         (max_iters, max_time)
