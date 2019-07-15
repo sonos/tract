@@ -43,7 +43,7 @@ echo net.arm_ml_kws_cnn_m.evaltime.pass $arm_ml_kws_cnn_m >> metrics
 
 deepspeech_0_4_1=`$TRACT --machine-friendly $CACHEDIR/deepspeech-0.4.1.pb \
     --input-node input_node -i 1x16x19x26xf32 \
-    --input-node input_lengths -i 1xi32=16 \
+    --input-node input_lengths -i 1xi32=16 --const-input input_lengths \
     -O profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.deepspeech_0_4_1.evaltime.pass $deepspeech_0_4_1 >> metrics

@@ -68,7 +68,10 @@ fn main() {
             "Hint the model format ('kaldi', 'onnx' or 'tf') instead of guess from extension.")
 
         (@arg input: -i --input +takes_value +multiple number_of_values(1)
-            "Set input value (@file.pb or @file.npz:thing.npy or 3x4xi32)")
+            "Set input shape and type (@file.pb or @file.npz:thing.npy or 3x4xi32).")
+
+        (@arg const_input: --("const-input") +takes_value +multiple number_of_values(1)
+            "Treat input as a Const (by name), retaining its value.")
 
         (@arg input_bundle: --("input-bundle") +takes_value +multiple number_of_values(1)
             "Path to an input container (.npz)")
@@ -466,6 +469,7 @@ impl Parameters {
         let mut input_values = vec![];
 
         if let Some(inputs) = matches.values_of("input") {
+            let const_inputs = matches.values_of("const_input").map(|cis| cis.map(|s| s.to_string()).collect()).unwrap_or(vec!());
             for (ix, v) in inputs.enumerate() {
                 let (name, mut t) = tensor::for_string(v)?;
                 let outlet = if let Some(name) = name {
@@ -481,7 +485,9 @@ impl Parameters {
                     input_values.push(Some(t));
                 }
                 raw_model.node_mut(outlet.node).op = Box::new(tract_core::ops::Source::new());
-                t.value = GenericFact::Any;
+                if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {
+                    t.value = GenericFact::Any;
+                }
                 raw_model.set_outlet_fact(outlet, t)?;
             }
         }
