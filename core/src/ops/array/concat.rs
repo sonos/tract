@@ -103,11 +103,14 @@ impl InferenceRulesOp for Concat {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_output_arity(&outputs, 1)?;
-        s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         let n = inputs.len() as usize;
         s.equals_all((0..n).map(|i| (&inputs[i].rank).bex()).collect())?;
-        s.equals_all((0..n).map(|i| (&inputs[i].datum_type).bex()).collect())?;
+        s.given_all((0..n).map(|i| (&inputs[i].datum_type).bex()), move |s, dts| {
+            let super_type: DatumType = DatumType::super_type_for(dts)
+                .ok_or_else(|| format!("No supertype found"))?;
+            s.equals(&outputs[0].datum_type, super_type)
+        })?;
         s.given(&inputs[0].rank, move |s, rank| {
             let axis = self.resolve_axis(rank as i64)?;
             s.equals(
