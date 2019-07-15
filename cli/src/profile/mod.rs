@@ -45,7 +45,7 @@ impl ProfileData {
         Ok(top)
     }
 
-    pub fn print_most_consuming_ops<TI, O>(&self, model: &Model<TI, O>) -> CliResult<()>
+    pub fn print_most_consuming_ops<TI, O>(&self, model: &ModelImpl<TI, O>) -> CliResult<()>
     where
         TI: TensorInfo + Clone + 'static,
         O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone + 'static,

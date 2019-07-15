@@ -25,7 +25,7 @@ impl<'a> ParsingContext<'a> {
     pub fn parse_graph(&self, graph: &pb::GraphProto) -> TractResult<ParseResult> {
         let mut ctx = self.clone();
         ctx.parent_graphs.push(graph);
-        let mut model = Model::default();
+        let mut model = InferenceModel::default();
         let mut unresolved_inputs = vec!();
         let mut closures_to_wire = vec!();
         let mut initializers: HashMap<&str, Tensor> = graph

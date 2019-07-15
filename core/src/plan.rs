@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use crate::internal::*;
 use crate::model::order::eval_order_for_nodes;
-use crate::model::{Model, OutletId, TensorInfo};
+use crate::model::{ModelImpl, OutletId, TensorInfo};
 
 #[derive(Debug, Default)]
 pub struct SessionState {
@@ -17,7 +17,7 @@ pub struct SimplePlan<TI, O, M>
 where
     TI: TensorInfo + Clone + 'static,
     O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    M: Borrow<Model<TI, O>>,
+    M: Borrow<ModelImpl<TI, O>>,
 {
     pub model: M,
     pub outputs: Vec<OutletId>,
@@ -30,7 +30,7 @@ impl<TI, O, M> SimplePlan<TI, O, M>
 where
     TI: TensorInfo + Clone + 'static,
     O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    M: Borrow<Model<TI, O>>,
+    M: Borrow<ModelImpl<TI, O>>,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
     pub fn new(model: M) -> TractResult<SimplePlan<TI, O, M>> {
@@ -75,7 +75,7 @@ where
         state.run(inputs)
     }
 
-    pub fn model(&self) -> &Model<TI, O> {
+    pub fn model(&self) -> &ModelImpl<TI, O> {
         self.model.borrow()
     }
 }
@@ -85,7 +85,7 @@ pub struct SimpleState<TI, O, M, P>
 where
     TI: TensorInfo + Clone + 'static,
     O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    M: Borrow<Model<TI, O>>,
+    M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>>,
 {
     plans: Vec<P>,
@@ -99,7 +99,7 @@ impl<TI, O, M, P> Clone for SimpleState<TI, O, M, P>
 where
     TI: TensorInfo + Clone + 'static,
     O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    M: Borrow<Model<TI, O>>,
+    M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,
 {
     fn clone(&self) -> SimpleState<TI, O, M, P> {
@@ -124,7 +124,7 @@ impl<TI, O, M, P> SimpleState<TI, O, M, P>
 where
     TI: TensorInfo + Clone + 'static,
     O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    M: Borrow<Model<TI, O>>,
+    M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,
 {
     pub fn new(plan: P) -> TractResult<SimpleState<TI, O, M, P>> {
@@ -400,7 +400,7 @@ where
         &self.plans[0].borrow()
     }
 
-    pub fn model(&self) -> &Model<TI, O> {
+    pub fn model(&self) -> &ModelImpl<TI, O> {
         self.plan().model()
     }
 }

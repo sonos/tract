@@ -6,7 +6,7 @@ use std::fmt::{Debug, Display};
 /// Find an evaluation order for a model, using its default inputs and outputs
 /// as boundaries.
 pub fn eval_order<TI: TensorInfo + Clone + 'static, O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static>(
-    model: &super::Model<TI, O>,
+    model: &super::ModelImpl<TI, O>,
 ) -> TractResult<Vec<usize>> {
     let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
     let targets = model.output_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn simple() {
-        let mut model = Model::default();
+        let mut model = ModelImpl::default();
         model.add_source_default("a").unwrap();
         model.chain_default("add", Add::default()).unwrap();
         model.add_const("b", Tensor::from(12.0f32)).unwrap();
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn diamond() {
-        let mut model = Model::default();
+        let mut model = ModelImpl::default();
         model.add_source_default("a").unwrap();
         model.chain_default("add", Add::default()).unwrap();
         model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn dodge_loop() {
-        let mut model = Model::default();
+        let mut model = ModelImpl::default();
         model.add_source_default("a").unwrap();
         let add = model.chain_default("add", Add::default()).unwrap();
         let neg = model.chain_default("neg", Add::default()).unwrap();

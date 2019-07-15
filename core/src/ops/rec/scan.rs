@@ -12,9 +12,9 @@ pub struct Scan<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    Model<TI, O>: SomeModel,
+    ModelImpl<TI, O>: SomeModel,
 {
-    pub body: Model<TI, O>,
+    pub body: ModelImpl<TI, O>,
     num_scan_inputs: usize,
     closure_inputs: usize,
     scan_input_axes: Vec<usize>,
@@ -27,7 +27,7 @@ impl<TI, O> Scan<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    Model<TI, O>: SomeModel,
+    ModelImpl<TI, O>: SomeModel,
 {
     fn slice_input_t<T: Datum>(
         &self,

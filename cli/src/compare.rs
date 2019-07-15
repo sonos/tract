@@ -38,7 +38,7 @@ pub fn handle_tensorflow(
 fn handle_tensorflow_t<TI: TensorInfo, O>(
     cumulative: bool,
     resilient: bool,
-    tract: &Model<TI, O>,
+    tract: &ModelImpl<TI, O>,
     mut tf: tract_tensorflow::conform::tf::Tensorflow,
     params: &Parameters,
     output_params: DisplayOptions,
@@ -149,7 +149,7 @@ pub fn handle_pbdir(
 
 pub fn compare<TI, O>(
     cumulative: bool,
-    tract: &Model<TI, O>,
+    tract: &ModelImpl<TI, O>,
     all_values: &HashMap<String, CliResult<TVec<Tensor>>>,
     params: &Parameters,
     output_params: DisplayOptions,
@@ -157,7 +157,7 @@ pub fn compare<TI, O>(
 where
     TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
     O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
-    Model<TI, O>: SomeModel,
+    ModelImpl<TI, O>: SomeModel,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;
 
