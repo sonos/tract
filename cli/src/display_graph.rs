@@ -188,7 +188,6 @@ impl<'a> DisplayGraph<'a> {
                 );
             }
         }
-        println!("node_nested_graphs: {:?}", node_nested_graphs.len());
         Ok(DisplayGraph {
             model,
             options,
