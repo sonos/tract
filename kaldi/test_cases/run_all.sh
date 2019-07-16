@@ -9,25 +9,34 @@ FAILED=()
 cd $TEST_CASES
 for tc in */
 do
-    echo -n "$tc "
     . $tc/vars.sh
-    cmd="cargo run -q -p tract -- \
-        -f kaldi $tc/model.raw.txt \
-        --input-bundle $tc/io.npz \
-        --kaldi-downsample $subsampling \
-        --kaldi-left-context $left_context \
-        --kaldi-right-context $right_context \
-        run \
-        --assert-output-bundle $tc/io.npz"
+    for form in txt bin
+    do
+        if [ "$form" = "txt" ]
+        then
+            suffix=".txt"
+        else
+            suffix=""
+        fi
+        echo -n "$tc ($form) "
+        cmd="cargo run -q -p tract -- \
+            -f kaldi $tc/model.raw$suffix \
+            --input-bundle $tc/io.npz \
+            --kaldi-downsample $subsampling \
+            --kaldi-left-context $left_context \
+            --kaldi-right-context $right_context \
+            run \
+            --assert-output-bundle $tc/io.npz"
 
-    if $($cmd 2> /dev/null > /dev/null)
-    then
-        echo -e "\e[92mOK\e[39m"
-    else
-        echo -e "\e[91mFAIL\e[39m"
-        FAILED+=("$cmd")
-        FAILURES="$FAILURES $tc"
-    fi
+        if $($cmd 2> /dev/null > /dev/null)
+        then
+            echo -e "\e[92mOK\e[39m"
+        else
+            echo -e "\e[91mFAIL\e[39m"
+            FAILED+=("$cmd")
+            FAILURES="$FAILURES $tc"
+        fi
+    done
 done
 
 if [ -n "$FAILURES" ]

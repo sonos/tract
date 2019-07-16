@@ -2,34 +2,48 @@ use tract_core::internal::*;
 
 use nom::IResult;
 use nom::{
-    bytes::complete::*, character::complete::*, combinator::*, multi::separated_list,
-    number::complete::float, sequence::*,
+    bytes::complete::*, character::complete::*, combinator::*,
+    number::complete::le_i32, sequence::*,
 };
 
 use std::collections::HashMap;
 
 use crate::model::{Component, KaldiProtoModel};
 
+use itertools::Itertools;
+
+mod bin;
+mod components;
 mod config_lines;
 mod descriptor;
+mod text;
 
 pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
-        nom::Err::Error(err) => format!("Parsing kaldi enveloppe at: {:?}", err),
+        nom::Err::Error(err) => format!("Parsing kaldi enveloppe at: {:?}", err.0.iter().map(|b| format!("{:02x}", b)).join(" ")),
         e => format!("{:?}", e),
     })?;
     let config_lines = config_lines::parse_config(config)?;
     Ok(KaldiProtoModel { config_lines, components })
 }
 
+pub fn if_then_else<'a, T>(
+    condition: bool,
+    then: impl Fn(&'a [u8]) -> IResult<&'a [u8], T>,
+    otherwise: impl Fn(&'a [u8]) -> IResult<&'a [u8], T>,
+) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], T> {
+    map(pair(cond(condition, then), cond(!condition, otherwise)), |(a, b)| a.or(b).unwrap())
+}
+
 fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, Component>)> {
+    let (i, bin) = map(opt(tag([0, 0x42])), |o| Option::is_some(&o))(i)?;
     let (i, _) = open(i, "Nnet3")?;
     let (i, config_lines) = map_res(take_until("<NumComponents>"), std::str::from_utf8)(i)?;
-    let (i, num_components) = num_components(i)?;
+    let (i, num_components) = num_components(bin, i)?;
     let mut components = HashMap::new();
     let mut i = i;
     for _ in 0..num_components {
-        let (new_i, (name, op)) = pair(component_name, component)(i)?;
+        let (new_i, (name, op)) = pair(component_name, component(bin))(i)?;
         i = new_i;
         components.insert(name.to_owned(), op);
     }
@@ -37,20 +51,19 @@ fn parse_top_level(i: &[u8]) -> IResult<&[u8], (&str, HashMap<String, Component>
     Ok((i, (config_lines, components)))
 }
 
-fn num_components(i: &[u8]) -> IResult<&[u8], usize> {
+fn num_components(bin: bool, i: &[u8]) -> IResult<&[u8], usize> {
     let (i, _) = open(i, "NumComponents")?;
-    let (i, n) = multispaced(integer)(i)?;
+    let (i, n) = multispaced(integer(bin))(i)?;
     Ok((i, n as usize))
 }
 
-fn component(i: &[u8]) -> IResult<&[u8], Component> {
-    let (i, klass) = open_any(i)?;
-    let (i, attributes) = nom::multi::many0(map(pair(open_any, tensor), |(k, v)| {
-        (k.to_string(), v.into_arc_tensor())
-    }))(i)?;
-    let attributes = attributes.into_iter().collect();
-    let (i, _) = close(i, klass)?;
-    Ok((i, Component { klass: klass.to_string(), attributes }))
+fn component(bin: bool) -> impl Fn(&[u8]) -> IResult<&[u8], Component> {
+    move |i: &[u8]| {
+        let (i, klass) = open_any(i)?;
+        let (i, attributes) = if bin { bin::attributes(i, klass)? } else { text::attributes(i)? };
+        let (i, _) = close(i, klass)?;
+        Ok((i, Component { klass: klass.to_string(), attributes }))
+    }
 }
 
 fn component_name(i: &[u8]) -> IResult<&[u8], &str> {
@@ -79,47 +92,18 @@ pub fn name(i: &[u8]) -> IResult<&[u8], &str> {
     )(i)
 }
 
-pub fn tensor(i: &[u8]) -> IResult<&[u8], Tensor> {
-    nom::branch::alt((scalar, vector, matrix))(i)
-}
-
-pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
-    let (i, v) = delimited(
-        multispaced(tag("[")),
-        separated_list(spaced(tag("\n")), separated_list(space1, float)),
-        multispaced(tag("]")),
-    )(i)?;
-    let lines = v.len();
-    let data: Vec<_> = v.into_iter().flat_map(|v| v.into_iter()).collect();
-    let cols = data.len() / lines;
-    let t = tract_core::ndarray::Array1::from_vec(data);
-    let t = t.into_shape((lines, cols)).unwrap();
-    Ok((i, t.into_tensor()))
-}
-
-pub fn vector(i: &[u8]) -> IResult<&[u8], Tensor> {
-    map(delimited(spaced(tag("[")), separated_list(space1, float), spaced(tag("]"))), |t| {
-        tensor1(&*t)
-    })(i)
-}
-
-pub fn scalar(i: &[u8]) -> IResult<&[u8], Tensor> {
-    nom::branch::alt((
-        map(float, Tensor::from),
-        map(integer, Tensor::from),
-        map(tag("F"), |_| Tensor::from(false)),
-        map(tag("T"), |_| Tensor::from(true)),
-    ))(i)
-}
-
-pub fn integer(i: &[u8]) -> IResult<&[u8], i32> {
-    map_res(
+pub fn integer<'a>(bin: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], i32> {
+    if_then_else(
+        bin,
+        preceded(tag([4]), le_i32),
         map_res(
-            recognize(pair(opt(tag("-")), take_while(nom::character::is_digit))),
-            std::str::from_utf8,
+            map_res(
+                recognize(pair(opt(tag("-")), take_while(nom::character::is_digit))),
+                std::str::from_utf8,
+            ),
+            |s| s.parse::<i32>(),
         ),
-        |s| s.parse::<i32>(),
-    )(i)
+    )
 }
 
 pub fn spaced<I, O, E: nom::error::ParseError<I>, F>(it: F) -> impl Fn(I) -> nom::IResult<I, O, E>
