@@ -2,8 +2,12 @@ use tract_core::internal::*;
 
 use nom::IResult;
 use nom::{
-    bytes::complete::*, character::complete::*, combinator::*,
-    number::complete::le_i32, sequence::*,
+    branch::alt,
+    bytes::complete::*,
+    character::complete::*,
+    combinator::*,
+    number::complete::{le_i32, le_i64},
+    sequence::*,
 };
 
 use std::collections::HashMap;
@@ -20,7 +24,10 @@ mod text;
 
 pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
     let (_, (config, components)) = parse_top_level(slice).map_err(|e| match e {
-        nom::Err::Error(err) => format!("Parsing kaldi enveloppe at: {:?}", err.0.iter().map(|b| format!("{:02x}", b)).join(" ")),
+        nom::Err::Error(err) => format!(
+            "Parsing kaldi enveloppe at: {:?}",
+            err.0.iter().map(|b| format!("{:02x}", b)).join(" ")
+        ),
         e => format!("{:?}", e),
     })?;
     let config_lines = config_lines::parse_config(config)?;
@@ -95,7 +102,7 @@ pub fn name(i: &[u8]) -> IResult<&[u8], &str> {
 pub fn integer<'a>(bin: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], i32> {
     if_then_else(
         bin,
-        preceded(tag([4]), le_i32),
+        alt((preceded(tag([4]), le_i32), preceded(tag([8]), map(le_i64, |i| i as i32)))),
         map_res(
             map_res(
                 recognize(pair(opt(tag("-")), take_while(nom::character::is_digit))),
@@ -125,4 +132,3 @@ where
 {
     delimited(multispace0, it, multispace0)
 }
-
