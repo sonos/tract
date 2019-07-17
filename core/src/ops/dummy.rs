@@ -1,7 +1,7 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone)]
-struct Dummy;
+#[derive(Debug, Clone, new)]
+pub struct Dummy;
 
 impl Op for Dummy {
     fn name(&self) -> Cow<str> {
@@ -13,4 +13,17 @@ impl StatelessOp for Dummy {
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         bail!("eval() called on a Dummy op. This is a bug.")
     }
+}
+
+impl InferenceRulesOp for Dummy {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        _s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        Ok(())
+    }
+
+    inference_op_as_op!();
 }

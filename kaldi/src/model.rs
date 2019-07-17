@@ -243,7 +243,6 @@ impl Framework<KaldiProtoModel> for Kaldi {
             )?;
             outputs.push(OutletId::new(output, 0));
         }
-        println!("outputs: {:?}", outputs);
         for (inlet, name) in inputs_to_wire {
             let src = OutletId::new(model.node_by_name(&*name)?.id, 0);
             model.add_edge(src, inlet)?;
