@@ -83,6 +83,8 @@ fn incorporate_memory_ops_as_scans(
         coupled_mem_ops.iter().for_each(|i| {
             loops.remove(i);
         });
+        trace!("Loops still in queue: {:?}. Processing: {:?}", loops, coupled_mem_ops);
+
         let scan_inputs: Vec<OutletId> = time_loop
             .iter()
             .flat_map(|node_id| model.node(node_id).inputs.iter())
@@ -219,6 +221,10 @@ fn incorporate_memory_ops_as_scans(
         for (ix, output) in scan_outputs.iter().enumerate() {
             let old_outlet = model.node(output.node).inputs[output.slot];
             patch.shunt_outside(old_outlet, OutletId::new(scan_id, ix + coupled_mem_ops.len()))?;
+        }
+
+        for mem in coupled_mem_ops {
+            patch.obliterate(mem)?
         }
     }
     Ok(patch)

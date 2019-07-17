@@ -1,7 +1,10 @@
-use crate::internal::*;
-use crate::model::*;
 use std::ops::{Deref, DerefMut};
 use std::fmt::{ Display, Debug };
+
+use crate::internal::*;
+use crate::model::*;
+use crate::ops::dummy::Dummy;
+use crate::ops::source::Source;
 
 /// A change to apply to a model.
 ///
@@ -17,6 +20,7 @@ where TI: TensorInfo + Clone + 'static,
     pub model: ModelImpl<TI, O>,
     incoming: HashMap<OutletId, OutletId>,
     shunt_outlet_by: HashMap<OutletId, OutletId>,
+    obliterate: Vec<usize>,
 }
 
 impl<TI, O> Default for ModelPatch<TI, O>
@@ -28,6 +32,7 @@ where TI: TensorInfo + Clone + 'static,
             model: ModelImpl::default(),
             incoming: HashMap::new(),
             shunt_outlet_by: HashMap::new(),
+            obliterate: vec!()
         }
     }
 }
@@ -53,7 +58,7 @@ where TI: TensorInfo + Clone + 'static,
 
 impl<TI, O> ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + From<crate::ops::source::Source> + AsRef<Op> + AsMut<Op> + Clone + 'static
+      O: Display + Debug + From<Source> + From<Dummy> + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
     /// Draw a tap from a preexisting node.
     ///
@@ -72,6 +77,12 @@ where TI: TensorInfo + Clone + 'static,
         self.shunt_outlet_by.insert(outlet, by);
         Ok(())
     }
+
+    pub fn obliterate(&mut self, node: usize) -> TractResult<()> {
+        self.obliterate.push(node);
+        Ok(())
+    }
+
 
     /// Convenience method creating a patch that replace a single operation.
     pub fn replace_single_op<IO: Into<O>>(
@@ -105,10 +116,10 @@ where TI: TensorInfo + Clone + 'static,
 
     /// Apply all changes in the patch to the target model.
     pub fn apply(self, target: &mut ModelImpl<TI, O>) -> TractResult<()> {
-        let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by } = self;
+        let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by, obliterate } = self;
         let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {
-            if node.op_is::<crate::ops::source::Source>() {
+            if node.op_is::<Source>() {
                 continue;
             }
             let BaseNode { id, name, inputs, control_inputs, op, outputs } = node;
@@ -139,6 +150,9 @@ where TI: TensorInfo + Clone + 'static,
             for (ix, input) in inputs.into_iter().enumerate() {
                 target.add_edge(mapping[&input], InletId::new(node, ix))?;
             }
+        }
+        for node in obliterate {
+            target.node_mut(node).op = Dummy::new().into();
         }
         Ok(())
     }
