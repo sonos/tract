@@ -100,12 +100,13 @@ fn main() {
         (@arg determinize: --determinize "Enforce a seed in random operator")
 
         (@arg partial: --partial "Before analyse, eliminate dead branches")
-        (@arg skip_analyse: --("skip-analyse") "Skip analyse after model build")
-        (@arg skip_type: --("skip-type") "Analyse as much as possible, but do not enforce full typing")
 
-        (@arg incorporate: --incorporate "Incorporate model after load")
-        (@arg declutter: --declutter "Declutter model after load")
-        (@arg optimize: -O --optimize "Optimize after model load")
+        (@arg pass: --pass +takes_value
+            default_value("declutter")
+            possible_values(&["load", "analyse", "incorporate", "type", "declutter"])
+         "Pass to stop preprocessing after.")
+
+        (@arg optimize: -O --optimize "Optimize before running")
         (@arg pulse: --pulse +takes_value "Translate to pulse network")
 
         (@arg verbosity: -v ... "Sets the level of verbosity.")
@@ -469,7 +470,10 @@ impl Parameters {
         let mut input_values = vec![];
 
         if let Some(inputs) = matches.values_of("input") {
-            let const_inputs = matches.values_of("const_input").map(|cis| cis.map(|s| s.to_string()).collect()).unwrap_or(vec!());
+            let const_inputs = matches
+                .values_of("const_input")
+                .map(|cis| cis.map(|s| s.to_string()).collect())
+                .unwrap_or(vec![]);
             for (ix, v) in inputs.enumerate() {
                 let (name, mut t) = tensor::for_string(v)?;
                 let outlet = if let Some(name) = name {
@@ -524,22 +528,32 @@ impl Parameters {
         }
 
         let mut typed_model = None;
-        let mut tract_model:Box<Model> = if !matches.is_present("skip_analyse") {
-            info!("Running analyse");
-            if let Err(e) = raw_model.analyse(true) {
-                // do not stop on mere analyse error
-                error!("Analyse failed: {}", e);
-            }
-            if matches.is_present("skip_type") {
-                Box::new(raw_model)
-            } else {
-                let typed = raw_model.into_typed()?;
-                typed_model = Some(typed.clone());
-                Box::new(typed)
-            }
-        } else {
-            info!("Skipping analyse");
-            Box::new(raw_model)
+        let mut tract_model: Box<Model> = {
+            let stop_at = matches.value_of("pass").unwrap();
+            (|| -> CliResult<Box<Model>>{
+                if stop_at == "load" {
+                    return Ok(Box::new(raw_model) as _)
+                }
+                info!("Running analyse");
+                raw_model.analyse(true)?;
+                if stop_at == "analyse" {
+                    return Ok(Box::new(raw_model) as _)
+                }
+                info!("Running incorporate");
+                let model = raw_model.incorporate()?;
+                if stop_at == "incorporate" {
+                    return Ok(Box::new(model) as _)
+                }
+                info!("Running typing");
+                let model = model.into_typed()?;
+                typed_model = Some(model.clone());
+                if stop_at == "type" {
+                    return Ok(Box::new(model) as _)
+                }
+                info!("Running declutter");
+                let model = model.declutter()?;
+                Ok(Box::new(model) as _)
+            })()?
         };
 
         if matches.is_present("optimize")
@@ -560,7 +574,8 @@ impl Parameters {
             info!("Convert to normalized net");
             normalized_model = Some(model.clone().into_normalized()?);
             info!("Pulsify {}", pulse);
-            let pulsed = ::tract_core::pulse::PulsedModel::new(normalized_model.as_ref().unwrap(), pulse)?;
+            let pulsed =
+                ::tract_core::pulse::PulsedModel::new(normalized_model.as_ref().unwrap(), pulse)?;
             tract_model = Box::new(pulsed);
         };
 
