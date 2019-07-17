@@ -13,14 +13,19 @@ pub struct ConfigLines {
     pub input_name: String,
     pub input_dim: usize,
     pub nodes: Vec<(String, NodeLine)>,
-    pub output_name: String,
-    pub output_input: GeneralDescriptor,
+    pub outputs: Vec<OutputLine>,
 }
 
 #[derive(Clone, Debug)]
 pub enum NodeLine {
     Component(ComponentNode),
     DimRange(DimRangeNode),
+}
+
+#[derive(Clone, Debug)]
+pub struct OutputLine {
+    pub output_alias: String,
+    pub descriptor: GeneralDescriptor,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -224,21 +229,26 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 }
             }
         }
-        let output = model.add_node_default(
-            proto_model.config_lines.output_name.to_string(),
-            tract_core::ops::identity::Identity::default(),
-        )?;
-        proto_model.config_lines.output_input.wire(
-            InletId::new(output, 0),
-            "output",
-            &mut model,
-            &mut inputs_to_wire,
-        )?;
+        let mut outputs = vec!();
+        for o in &proto_model.config_lines.outputs {
+            let output = model.add_node_default(
+                &o.output_alias,
+                tract_core::ops::identity::Identity::default(),
+            )?;
+            o.descriptor.wire(
+                InletId::new(output, 0),
+                "output",
+                &mut model,
+                &mut inputs_to_wire,
+            )?;
+            outputs.push(OutletId::new(output, 0));
+        }
+        println!("outputs: {:?}", outputs);
         for (inlet, name) in inputs_to_wire {
             let src = OutletId::new(model.node_by_name(&*name)?.id, 0);
             model.add_edge(src, inlet)?;
         }
-        model.set_output_outlets(&[OutletId::new(output, 0)])?;
+        model.set_output_outlets(&*outputs)?;
         Ok(model)
     }
 }

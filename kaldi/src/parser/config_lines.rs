@@ -3,13 +3,13 @@ use tract_core::internal::*;
 use nom::IResult;
 use nom::{bytes::complete::*, character::complete::*, combinator::*, sequence::*};
 
-use crate::model::{ComponentNode, ConfigLines, DimRangeNode, GeneralDescriptor, NodeLine};
+use crate::model::{ComponentNode, ConfigLines, DimRangeNode, NodeLine, OutputLine};
 use crate::parser::spaced;
 
 pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
     let mut input_node: Option<(String, usize)> = None;
     let mut nodes = vec!();
-    let mut output_node: Option<(String, GeneralDescriptor)> = None;
+    let mut outputs = vec!();
     for line in s.lines() {
         if line.trim().is_empty() {
             continue;
@@ -40,7 +40,7 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
                 nodes.push((name, NodeLine::Component(it)));
             }
             "output-node" => {
-                output_node = Some(
+                outputs.push(
                     parse_output_node_line(line)
                         .map_err(|e| format!("Error {:?} while parsing {}", e, line))?
                         .1,
@@ -50,13 +50,11 @@ pub fn parse_config(s: &str) -> TractResult<ConfigLines> {
         }
     }
     let (input_name, input_dim) = input_node.unwrap();
-    let (output_name, output_input) = output_node.unwrap();
     Ok(ConfigLines {
         input_dim,
         input_name,
         nodes,
-        output_name,
-        output_input,
+        outputs,
     })
 }
 
@@ -89,12 +87,12 @@ fn parse_dim_range_node_line(i: &str) -> IResult<&str, (String, DimRangeNode)> {
     Ok((i, (name, DimRangeNode { input, dim, offset })))
 }
 
-fn parse_output_node_line(i: &str) -> IResult<&str, (String, GeneralDescriptor)> {
+fn parse_output_node_line(i: &str) -> IResult<&str, OutputLine> {
     let (i, _) = tag("output-node")(i)?;
-    nom::branch::permutation((
+    map(nom::branch::permutation((
         spaced(map(preceded(tag("name="), identifier), |n: &str| n.to_string())),
         spaced(preceded(tag("input="), super::descriptor::parse_general))
-    ))(i)
+    )), |(output_alias, descriptor)| OutputLine {output_alias, descriptor})(i)
 }
 
 pub fn identifier(i: &str) -> IResult<&str, &str> {

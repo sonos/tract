@@ -11,7 +11,7 @@ pub struct Memory {
 }
 
 impl Op for Memory {
-    fn name(&self) -> std::borrow::Cow<str> {
+    fn name(&self) -> Cow<str> {
         "kaldi.Memory".into()
     }
 
@@ -58,14 +58,22 @@ fn incorporate_memory_ops_as_scans(
 ) -> TractResult<InferenceModelPatch> {
     let memory_node_ids: Vec<usize> =
         model.nodes().iter().filter(|n| n.op_is::<Memory>()).map(|n| n.id).collect();
+
+    trace!("Identified memory nodes: {:?}", memory_node_ids);
+
     let mut loops: BTreeMap<usize, BitSet> = memory_node_ids
         .iter()
         .map(|id| Ok((*id, time_loop_nodes_for_memory(model, *id)?)))
         .collect::<TractResult<_>>()?;
 
+    trace!("Loops: {:?}", loops);
+
     let mut patch = InferenceModelPatch::default();
     while loops.len() > 0 {
-        let (_, time_loop) = loops.iter().next().unwrap();
+        let (mem, time_loop) = loops.iter().next().unwrap();
+
+        trace!("Dealing with node {} / loop: {:?}", model.node(*mem), time_loop);
+
         let coupled_mem_ops: Vec<usize> = loops
             .iter()
             .filter_map(|other| if !other.1.is_disjoint(time_loop) { Some(*other.0) } else { None })
