@@ -232,7 +232,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
         let mut outputs = vec!();
         for o in &proto_model.config_lines.outputs {
             let output = model.add_node_default(
-                &o.output_alias,
+                &*o.output_alias,
                 tract_core::ops::identity::Identity::default(),
             )?;
             o.descriptor.wire(
