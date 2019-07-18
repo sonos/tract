@@ -16,9 +16,9 @@ pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> C
                 debug!("Got: {:?}", got);
             }
             if exp.shape() != got.shape() {
-                bail!("Chacking output {}, expected shape: {:?}, got {:?}", ix, exp.shape(), got.shape())
+                bail!("Checking output {}, expected shape: {:?}, got {:?}", ix, exp.shape(), got.shape())
             } else if !exp.close_enough(got, true) {
-                bail!("Chacking output {}, values differ too much.", ix);
+                bail!("Checking output {}, values differ too much.", ix);
             } else {
                 info!("Checked output #{}, ok.", ix);
             }

@@ -45,7 +45,10 @@ impl InferenceRulesOp for Downsample {
             for i in 0..(r as usize) {
                 if i == self.axis {
                     s.given(&inputs[0].shape[i], move |s, d| {
-                        s.equals(&outputs[0].shape[i], (d - self.modulo.to_dim()).div_ceil(self.stride.to_dim()))
+                        s.equals(
+                            &outputs[0].shape[i],
+                            (d - self.modulo.to_dim()).div_ceil(self.stride.to_dim()),
+                        )
                     })?
                 } else {
                     s.equals(&inputs[0].shape[i], &outputs[0].shape[i])?
