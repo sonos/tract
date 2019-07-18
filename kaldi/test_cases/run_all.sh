@@ -2,29 +2,36 @@
 
 set -e
 
-TEST_CASES=$(dirname $0)
+TEST_CASE_DIR=$(dirname $0)
 FAILURES=""
 FAILED=()
 
-cd $TEST_CASES
-for tc in */
+if [ "$#" -gt 0 ]
+then
+    TEST_CASES="$@"
+else
+    TEST_CASES="$TEST_CASE_DIR/*"
+fi
+
+for tc in $TEST_CASES
 do
+    if [ ! -e "$tc/vars.sh" ]
+    then
+        continue
+    fi
     . $tc/vars.sh
     for form in txt bin
     do
-        if [ "$form" = "txt" ]
-        then
-            suffix=".txt"
-        else
-            suffix=""
-        fi
+        [[ "$form" = "txt" ]] && suffix=.txt || suffix=""
         echo -n "$tc ($form) "
-        cmd="cargo run -q -p tract -- \
+        cmd="cargo run -q -p tract $CARGO_OPTS -- \
             -f kaldi $tc/model.raw$suffix \
+            --output-node output \
             --input-bundle $tc/io.npz \
             --kaldi-downsample $subsampling \
             --kaldi-left-context $left_context \
             --kaldi-right-context $right_context \
+            --kaldi-adjust-final-offset $adjust_final_offset \
             run \
             --assert-output-bundle $tc/io.npz"
 

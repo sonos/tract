@@ -31,7 +31,7 @@ pub fn nnet3(slice: &[u8]) -> TractResult<KaldiProtoModel> {
         e => format!("{:?}", e),
     })?;
     let config_lines = config_lines::parse_config(config)?;
-    Ok(KaldiProtoModel { config_lines, components })
+    Ok(KaldiProtoModel { config_lines, components, adjust_final_offset: 0 })
 }
 
 pub fn if_then_else<'a, T>(
