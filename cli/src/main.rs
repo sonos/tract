@@ -61,6 +61,7 @@ fn main() {
         (about: "Tract command line interface")
 
         (@setting DeriveDisplayOrder)
+        (@setting AllowLeadingHyphen)
 
         (@arg model: +takes_value "Sets the model to use")
 
@@ -78,6 +79,9 @@ fn main() {
 
         (@arg stream_axis: -s --("stream-axis") +takes_value
             "Set Axis number to stream upon (first is 0)")
+
+        (@arg kaldi_adjust_final_offset: --("kaldi-adjust-final-offset") +takes_value
+            "Adjust value of final offset in network (for reproducibility)")
 
         (@arg kaldi_downsample: --("kaldi-downsample") +takes_value
             "Add a subsampling to output on axis 0")
@@ -351,7 +355,10 @@ impl Parameters {
             #[cfg(feature = "kaldi")]
             "kaldi" => {
                 let kaldi = tract_kaldi::kaldi();
-                let graph = kaldi.proto_model_for_path(&name)?;
+                let mut graph = kaldi.proto_model_for_path(&name)?;
+                if let Some(i) = matches.value_of("kaldi_adjust_final_offset") {
+                    graph.adjust_final_offset = i.parse()?;
+                }
                 let parsed = kaldi.model_for_proto_model(&graph)?;
                 (SomeGraphDef::Kaldi(graph), parsed)
             }

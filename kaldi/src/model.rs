@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 pub struct KaldiProtoModel {
     pub config_lines: ConfigLines,
     pub components: HashMap<String, Component>,
+    pub adjust_final_offset: isize,
 }
 
 #[derive(Clone, Debug)]
@@ -80,6 +81,7 @@ impl GeneralDescriptor {
         name: &str,
         model: &mut InferenceModel,
         deferred: &mut BTreeMap<InletId, String>,
+        adjust_final_offset: Option<isize>,
     ) -> TractResult<()> {
         use GeneralDescriptor::*;
         match &self {
@@ -93,7 +95,7 @@ impl GeneralDescriptor {
                 model.add_edge(OutletId::new(id, 0), inlet)?;
                 for (ix, appendee) in appendees.iter().enumerate() {
                     let name = format!("{}-{}", name, ix);
-                    appendee.wire(InletId::new(id, ix), &*name, model, deferred)?;
+                    appendee.wire(InletId::new(id, ix), &*name, model, deferred, adjust_final_offset)?;
                 }
                 return Ok(());
             }
@@ -112,12 +114,16 @@ impl GeneralDescriptor {
             }
             &Offset(ref n, o) if *o > 0 => {
                 let name = format!("{}-Delay", name);
+                let crop = *o as isize + adjust_final_offset.unwrap_or(0);
+                if crop < 0 {
+                    bail!("Invalid offset adjustment (network as {}, adjustment is {}", o, crop)
+                }
                 let id = model.add_node_default(
                     &*name,
-                    tract_core::ops::array::Crop::new(vec!((*o as usize, 0), (0,0)))
+                    tract_core::ops::array::Crop::new(vec!((crop as usize, 0), (0,0)))
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
-                n.wire(InletId::new(id, 0), &*name, model, deferred)?;
+                n.wire(InletId::new(id, 0), &*name, model, deferred, adjust_final_offset)?;
                 return Ok(());
             }
             _ => (),
@@ -215,6 +221,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                             name,
                             &mut model,
                             &mut inputs_to_wire,
+                            None,
                         )?
                     }
                 }
@@ -225,7 +232,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                         vec![(line.offset + line.dim) as usize],
                     );
                     let id = model.add_node_default(name.to_string(), op)?;
-                    line.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire)?
+                    line.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire, None)?
                 }
             }
         }
@@ -240,6 +247,7 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 "output",
                 &mut model,
                 &mut inputs_to_wire,
+                Some(proto_model.adjust_final_offset),
             )?;
             outputs.push(OutletId::new(output, 0));
         }

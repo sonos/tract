@@ -89,10 +89,11 @@ fn parse_dim_range_node_line(i: &str) -> IResult<&str, (String, DimRangeNode)> {
 
 fn parse_output_node_line(i: &str) -> IResult<&str, OutputLine> {
     let (i, _) = tag("output-node")(i)?;
-    map(nom::branch::permutation((
+    map(tuple((
         spaced(map(preceded(tag("name="), identifier), |n: &str| n.to_string())),
+        spaced(opt(map(preceded(tag("objective="), identifier), |n: &str| n.to_string()))),
         spaced(preceded(tag("input="), super::descriptor::parse_general))
-    )), |(output_alias, descriptor)| OutputLine {output_alias, descriptor})(i)
+    )), |(output_alias, _objective, descriptor)| OutputLine {output_alias, descriptor})(i)
 }
 
 pub fn identifier(i: &str) -> IResult<&str, &str> {
