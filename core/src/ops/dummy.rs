@@ -19,8 +19,8 @@ impl InferenceRulesOp for Dummy {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         _s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
+        _inputs: &'p [TensorProxy],
+        _outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         Ok(())
     }

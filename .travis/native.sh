@@ -29,7 +29,6 @@ then
     sh .travis/tf.sh
 fi
 
-
 ./.travis/cache_file.sh \
     ARM-ML-KWS-CNN-M.pb \
     inception_v3_2016_08_28_frozen.pb \
@@ -50,17 +49,33 @@ fi
     -i 1x299x299x3xf32 -O \
     dump -q --assert-output-fact 1x1001xf32
 
- ./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
+./target/release/tract $CACHEDIR/ARM-ML-KWS-CNN-M.pb \
      -O -i 49x10xf32 --partial \
      --input-node Mfcc run > /dev/null
 
- ./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
+./target/release/tract $CACHEDIR/mobilenet_v1_1.0_224_frozen.pb \
      -O -i 1x224x224x3xf32 \
     dump -q --assert-output-fact 1x1001xf32
 
- ./target/release/tract $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
+./target/release/tract $CACHEDIR/mobilenet_v2_1.4_224_frozen.pb \
      -O -i 1x224x224x3xf32 \
     dump -q --assert-output-fact 1x1001xf32
+
+(
+    cd $CACHEDIR
+    [ -e librispeech_clean_tdnn_lstm_1e_256.tgz ] \
+        || wget -q https://s3.amazonaws.com/tract-ci-builds/fridge/kaldi/librispeech_clean_tdnn_lstm_1e_256.tgz
+    [ -d librispeech_clean_tdnn_lstm_1e_256 ] \
+        || tar zxf librispeech_clean_tdnn_lstm_1e_256.tgz
+)
+(
+    [ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
+        || ln -s `pwd`/$CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/
+    cd kaldi/test_cases
+    ./run_all.sh
+)
+
+
 
 # these tests require access to private snips models
 if [ -n "$RUN_ALL_TESTS" ]
@@ -78,5 +93,4 @@ then
 
     ./target/release/tract $CACHEDIR/snips-voice-commands-cnn-fake-quant.pb \
         -O -i 200x10xf32 run > /dev/null
-
 fi

@@ -27,6 +27,7 @@ pub fn handle_model(model: &Model, params: &Parameters, options: DisplayOptions)
     Ok(())
 }
 
+/*
 fn handle_inner(tract: &TypedModel, params: &Parameters, options: DisplayOptions, inner: Vec<String>) -> CliResult<()> {
     if let Some(node) = inner.get(0) {
         let node = tract.node(node.parse()?);
@@ -37,3 +38,4 @@ fn handle_inner(tract: &TypedModel, params: &Parameters, options: DisplayOptions
     }
     Ok(())
 }
+*/
