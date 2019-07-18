@@ -2,7 +2,7 @@ use crate::model::{ParseResult, ParsingContext};
 use crate::pb::*;
 use tract_core::internal::*;
 
-use tract_core::ops::rec::scan::Scan;
+use tract_core::ops::scan::Generic;
 
 pub fn scan(
     ctx: &ParsingContext,
@@ -16,7 +16,7 @@ pub fn scan(
     let ParseResult { model, unresolved_inputs, .. } = ctx.parse_graph(graph)?;
     let scan_output_len_hints = vec!(None; scan_output_axes.len());
     Ok((
-        Box::new(Scan::new(
+        Box::new(Generic::new(
             model,
             num_scan_inputs,
             unresolved_inputs.len(),
