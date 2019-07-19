@@ -47,7 +47,6 @@ where
         let name = name.into();
         let id = self.nodes.len();
         self.nodes_by_name.insert(name.clone(), id);
-        let noutputs = output_facts.len();
         let outputs =
             output_facts.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
         let node = BaseNode { id, name, op, inputs: vec![], control_inputs: vec![], outputs };
