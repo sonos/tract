@@ -111,7 +111,6 @@ mod tests {
             let index = Tensor::from(arr0(idx as i64));
             let outputs = gatherer.eval(tvec![data.clone().into(), index.into()]).unwrap();
             let output = &outputs[0];
-            //            println!("{:?}", output);
             assert_eq!(output.shape().len(), 0);
             assert_eq!(*output.to_scalar::<i64>().unwrap(), idx + 1);
         }

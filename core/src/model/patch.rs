@@ -162,7 +162,6 @@ where TI: TensorInfo + Clone + 'static,
         for node in obliterate {
             target.node_mut(node).op = Dummy::new().into();
         }
-        println!("after: {:#?}", target);
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         Ok(())
