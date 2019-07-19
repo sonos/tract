@@ -1,5 +1,5 @@
-mod generic;
+mod codegen;
 mod inference;
 mod typed;
 
-pub use generic::Generic;
+pub use inference::Inference;

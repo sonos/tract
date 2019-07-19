@@ -1,18 +1,29 @@
 use crate::internal::*;
-use super::Generic;
+use super::typed::Typed;
 
-impl Op for Generic<TensorFact, Box<InferenceOp>> {
+#[derive(Debug, Clone, new, Default)]
+pub struct Inference {
+    pub body: InferenceModel,
+    pub(super) num_scan_inputs: usize,
+    pub(super) closure_inputs: usize,
+    pub(super) scan_input_axes: Vec<usize>,
+    pub(super) scan_output_axes: Vec<usize>,
+    pub(super) scan_output_len_hint: Vec<Option<TDim>>,
+    pub(super) prune_scanning_dim: bool, // TODO check scanning dims == 1
+}
+
+impl Op for Inference {
     fn name(&self) -> Cow<str> {
-        "Inference".into()
+        "Scan::Inference".into()
     }
 
     fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
-        vec!(("loop".into(), &self.body as _))
+        vec!(("loop".into(), &self.body))
     }
 
     fn to_typed(&self) -> TractResult<Option<Box<Op>>> {
         let typed_model = self.body.clone().into_typed()?;
-        Ok(Some(Box::new(Generic::new(
+        Ok(Some(Box::new(Typed::new(
             typed_model,
             self.num_scan_inputs,
             self.closure_inputs,
@@ -24,14 +35,14 @@ impl Op for Generic<TensorFact, Box<InferenceOp>> {
     }
 }
 
-impl StatelessOp for Generic<TensorFact, Box<InferenceOp>> {
+impl StatelessOp for Inference {
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         unimplemented!()
     }
 }
 
 
-impl Generic<TensorFact, Box<InferenceOp>> {
+impl Inference {
     fn unify_scanning_tensor_fact(
         outer: &mut TensorFact,
         inner: &mut TensorFact,
@@ -124,7 +135,7 @@ impl Generic<TensorFact, Box<InferenceOp>> {
     }
 }
 
-impl InferenceOp for Generic<TensorFact, Box<InferenceOp>> {
+impl InferenceOp for Inference {
     fn infer_facts(
         &mut self,
         inputs: TVec<&TensorFact>,
