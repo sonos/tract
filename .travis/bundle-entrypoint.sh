@@ -89,7 +89,7 @@ kaldi_librispeech_clean_tdnn_lstm_1e_256=`$TRACT --machine-friendly \
      --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
     -O -i 264x40 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
-echo kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.2600ms $kaldi_librispeech_clean_tdnn_lstm_1e_256 >> metrics
+echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.2600ms $kaldi_librispeech_clean_tdnn_lstm_1e_256 >> metrics
 
 speaker_id_pulse8=`$TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
     -O -i 1xSx40xf32 --output-node 257 --partial --pulse 8 profile --bench \
