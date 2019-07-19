@@ -20,10 +20,11 @@ do
         continue
     fi
     . $tc/vars.sh
-    for form in txt bin
+    for pass in txt bin bin-opti
     do
-        [[ "$form" = "txt" ]] && suffix=.txt || suffix=""
-        echo -n "$tc ($form) "
+        [[ "$pass" = "txt" ]] && suffix=.txt || suffix=""
+        [[ "$pass" = "bin-opti" ]] && opti="-O" || opti=""
+        echo -n "$tc ($pass) "
         cmd="cargo run -q -p tract $CARGO_OPTS -- \
             -f kaldi $tc/model.raw$suffix \
             --output-node output \
@@ -32,6 +33,7 @@ do
             --kaldi-left-context $left_context \
             --kaldi-right-context $right_context \
             --kaldi-adjust-final-offset $adjust_final_offset \
+            $opti \
             run \
             --assert-output-bundle $tc/io.npz"
 

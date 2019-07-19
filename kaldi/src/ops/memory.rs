@@ -91,12 +91,20 @@ fn incorporate_memory_ops_as_scans(
             .filter(|outlet| !time_loop.contains(outlet.node))
             .cloned()
             .collect();
-        let scan_outputs: Vec<InletId> = time_loop
+        let scan_outputs: Vec<OutletId> = time_loop
             .iter()
-            .flat_map(|node_id| model.node(node_id).outputs.iter())
-            .flat_map(|outputs| outputs.successors.iter())
-            .filter(|outlet| !time_loop.contains(outlet.node))
-            .cloned()
+            .flat_map(|node_id| {
+                model
+                    .node(node_id)
+                    .outputs
+                    .iter()
+                    .enumerate()
+                    .map(move |(ix, outlet_fact)| (OutletId::new(node_id, ix), outlet_fact))
+            })
+            .filter(|(_, outlet_fact)| {
+                outlet_fact.successors.iter().any(|inlet| !time_loop.contains(inlet.node))
+            })
+            .map(|(id, _fact)| id)
             .collect();
         let mut inner_model = InferenceModel::default();
         let mut node_id_old_to_new: HashMap<usize, usize> = HashMap::new();
@@ -108,7 +116,10 @@ fn incorporate_memory_ops_as_scans(
                     as usize;
             let id = inner_model.add_source(
                 &*mem_node.name,
-                TensorFact::dt_shape(f32::datum_type(), ShapeFact::from(&[(-op.offset) as usize, channel])),
+                TensorFact::dt_shape(
+                    f32::datum_type(),
+                    ShapeFact::from(&[(-op.offset) as usize, channel]),
+                ),
             )?;
             node_id_old_to_new.insert(mem, id);
         }
@@ -152,7 +163,7 @@ fn incorporate_memory_ops_as_scans(
                 Ok(OutletId::new(node_id_old_to_new[&observed_id], 0))
             })
             .collect::<TractResult<_>>()?;
-        let mut scan_output_len_hints = vec!();
+        let mut scan_output_len_hints = vec![];
         for output in &scan_outputs {
             let old_outlet = model.node(output.node).inputs[output.slot];
             inner_outputs
@@ -163,7 +174,7 @@ fn incorporate_memory_ops_as_scans(
         inner_model.set_output_outlets(&inner_outputs)?;
 
         // prepare patch
-        let scan = tract_core::ops::scan::Generic::new(
+        let scan = tract_core::ops::scan::Inference::new(
             inner_model,
             scan_inputs.len(),
             0,

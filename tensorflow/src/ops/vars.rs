@@ -183,6 +183,7 @@ mod tests {
         let set = model.add_node_default("set", Assign::new(Some("xxx".into()))).unwrap();
         model.add_edge(OutletId::new(var, 0), InletId::new(set, 0)).unwrap();
         model.add_edge(OutletId::new(one, 0), InletId::new(set, 1)).unwrap();
+        model.auto_outputs().unwrap();
         let model = model.into_typed().unwrap();
         let model = std::rc::Rc::new(model);
         let var = model.node_id_by_name("var").unwrap();

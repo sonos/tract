@@ -119,6 +119,7 @@ impl StatelessOp for Codegen {
             scan_outputs.push(t);
         }
 
+
         for i in 0..iters {
             // body inputs are state + one slice of each input
             let mut iter_inputs: TVec<Tensor> = state.drain().collect();

@@ -194,6 +194,7 @@ impl InferenceModel {
             }
         }
         model = compact::compact(&model)?;
+        model.analyse(false)?;
         Ok(model)
     }
 
@@ -248,12 +249,16 @@ impl TypedModel {
     /// Perform declutter pass on the network.
     pub fn declutter(self) -> TractResult<TypedModel> {
         let mut model = self;
+        let model_inputs = model.input_outlets()?.len();
+        let model_outputs = model.output_outlets()?.len();
         loop {
             let mut done_something = false;
             for p in crate::optim::declutter() {
                 done_something = done_something || p.pass(&mut model)?;
                 if cfg!(debug_assertions) {
                     model.check_edges()?;
+                    assert_eq!(model.input_outlets()?.len(), model_inputs);
+                    assert_eq!(model.output_outlets()?.len(), model_outputs);
                 }
             }
             if !done_something {
@@ -290,8 +295,10 @@ impl TypedModel {
 
     /// Declutter as much as possible, then translate to optimized operators.
     pub fn into_optimized(self) -> TractResult<TypedModel> {
-        let model = self.declutter()?.codegen()?;
-        compact::compact(&model)
+        let model = self.declutter()?;
+        let model = model.codegen()?;
+        let model = compact::compact(&model)?;
+        Ok(model)
     }
 }
 

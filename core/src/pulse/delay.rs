@@ -113,6 +113,7 @@ mod test {
             delay,
         };
         model.chain("delay", Delay::new(fact1, delay, overlap), tvec!(fact2)).unwrap();
+        model.auto_outputs().unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = crate::plan::SimpleState::new(plan).unwrap();
@@ -175,6 +176,7 @@ mod test {
             delay: 4,
         };
         model.chain("delay-2", Delay::new(fact_1, 2, 0), tvec!(fact_2)).unwrap();
+        model.auto_outputs().unwrap();
 
         let plan = SimplePlan::new(model).unwrap();
         let mut state = crate::plan::SimpleState::new(plan).unwrap();

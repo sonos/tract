@@ -75,6 +75,7 @@ mod tests {
         model.chain_default("add", Add::default()).unwrap();
         model.add_const("b", Tensor::from(12.0f32)).unwrap();
         model.add_edge(OutletId::new(2, 0), InletId::new(1, 1)).unwrap();
+        model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 2, 1));
     }
 
@@ -84,6 +85,7 @@ mod tests {
         model.add_source_default("a").unwrap();
         model.chain_default("add", Add::default()).unwrap();
         model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
+        model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 1));
     }
 

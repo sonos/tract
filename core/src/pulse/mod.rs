@@ -137,6 +137,7 @@ mod tests {
         let mut model = InferenceModel::default();
         let _a =
             model.add_source("a", TensorFact::dt_shape(DatumType::F32, vec![1, 2, 3])).unwrap();
+        model.auto_outputs().unwrap();
         assert!(
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).is_err()
         );
@@ -148,6 +149,7 @@ mod tests {
                 TensorFact::dt_shape(DatumType::F32, vec![1.to_dim(), TDim::s(), 3.to_dim()]),
             )
             .unwrap();
+        model.auto_outputs().unwrap();
         let pulse =
             PulsedModel::new(&model.into_typed().unwrap().into_normalized().unwrap(), 4).unwrap();
         assert_eq!(
@@ -165,6 +167,7 @@ mod tests {
                 TensorFact::dt_shape(DatumType::F32, vec![TDim::s(), 2.to_dim(), 3.to_dim()]),
             )
             .unwrap();
+        model.auto_outputs().unwrap();
 
         let pulse = PulsedModel::new(&model.into_normalized().unwrap(), 4).unwrap();
 
@@ -257,6 +260,7 @@ mod tests {
                 .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
                 .unwrap();
             model.chain_default("slice", Crop::new(vec![(begin as usize, end as usize)])).unwrap();
+            model.auto_outputs().unwrap();
 
             let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
             proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -270,6 +274,7 @@ mod tests {
                 .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
                 .unwrap();
             model.chain_default("pad", Pad::new(vec![(begin as _, end as _)], PadMode::Constant(-1.0))).unwrap();
+            model.auto_outputs().unwrap();
 
             let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
             proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
@@ -289,6 +294,7 @@ mod tests {
 
         let conv = model.chain_default("conv", Conv::default()).unwrap();
         model.add_edge(OutletId::new(ker, 0), InletId::new(conv, 1)).unwrap();
+        model.auto_outputs().unwrap();
 
         let input = arr3(&[[[1.0f32, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0]]]);
         proptest_regular_against_pulse(model, 4, input.into_dyn(), 2).unwrap();
@@ -301,6 +307,7 @@ mod tests {
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("pad", Pad::new(vec![(0, 1)], PadMode::Constant(-1.0))).unwrap();
+        model.auto_outputs().unwrap();
 
         let input = arr1(&[]);
         proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
@@ -313,6 +320,7 @@ mod tests {
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("pad", Pad::new(vec![(1, 0)], PadMode::Constant(-1.0))).unwrap();
+        model.auto_outputs().unwrap();
 
         let input = arr1(&[1.0]);
         proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
@@ -325,6 +333,7 @@ mod tests {
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
         model.chain_default("pad", Pad::new(vec![(1, 0)], PadMode::Constant(-1.0))).unwrap();
+        model.auto_outputs().unwrap();
 
         let input = arr1(&[1.0, 2.0]);
         proptest_regular_against_pulse(model, 2, input.into_dyn(), 0).unwrap();

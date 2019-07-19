@@ -54,6 +54,7 @@ fn deepspeech() -> TractResult<()> {
     model.set_input_names(&["input_node", "input_lengths"])?;
     model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), tvec!(1, 16, 19, 26)))?;
     model.set_input_fact(1, TensorFact::dt_shape(i32::datum_type(), tvec!(1)))?;
+    model.set_output_names(&["initialize_state", "logits"])?;
     let model = model.into_typed()?;
     let model = Rc::new(model);
 

@@ -137,6 +137,7 @@ impl Framework<GraphDef> for Tensorflow {
                 }
             }
         }
+        model.auto_outputs()?;
         Ok(model)
     }
 }

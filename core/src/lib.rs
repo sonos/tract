@@ -21,6 +21,7 @@
 //!
 //! model.add_edge(OutletId::new(input, 0), InletId::new(add, 0)).unwrap();
 //! model.add_edge(OutletId::new(three, 0), InletId::new(add, 1)).unwrap();
+//! model.auto_outputs().unwrap();
 //!
 //! // We build an execution plan. Default inputs and outputs are inferred from
 //! // the model graph.
