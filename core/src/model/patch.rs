@@ -116,6 +116,8 @@ where TI: TensorInfo + Clone + 'static,
 
     /// Apply all changes in the patch to the target model.
     pub fn apply(self, target: &mut ModelImpl<TI, O>) -> TractResult<()> {
+        let prior_target_inputs = target.input_outlets()?.len();
+        let prior_target_outputs = target.output_outlets()?.len();
         let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by, obliterate } = self;
         let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {
@@ -125,7 +127,7 @@ where TI: TensorInfo + Clone + 'static,
             let BaseNode { id, name, inputs, control_inputs, op, outputs } = node;
             let n_outputs = outputs.len();
             let facts = outputs.into_iter().map(|of| of.fact).collect();
-            let added_node_id = target.add_node_disable_output_guess(name, op, facts, true)?;
+            let added_node_id = target.add_node(name, op, facts)?;
             for &prec in control_inputs.iter() {
                 target.nodes[added_node_id].control_inputs.push(mapping[&OutletId::new(prec, 0)].node)
             }
@@ -134,6 +136,8 @@ where TI: TensorInfo + Clone + 'static,
             }
             all_inputs.insert(added_node_id, inputs);
         }
+        debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
+        debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for (outlet, by) in shunt_outlet_by {
             let fixed_by = mapping[&by];
             let succs = target.nodes()[outlet.node].outputs[outlet.slot].successors.clone();
@@ -146,14 +150,21 @@ where TI: TensorInfo + Clone + 'static,
                 }
             }
         }
+        debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
+        debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for (node, inputs) in all_inputs {
             for (ix, input) in inputs.into_iter().enumerate() {
                 target.add_edge(mapping[&input], InletId::new(node, ix))?;
             }
         }
+        debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
+        debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for node in obliterate {
             target.node_mut(node).op = Dummy::new().into();
         }
+        println!("after: {:#?}", target);
+        debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
+        debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         Ok(())
     }
 }

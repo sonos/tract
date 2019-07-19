@@ -37,22 +37,11 @@ where
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
     ModelImpl<TI, O>: Model,
 {
-    /// add a node to the model, returning its id
     pub fn add_node(
         &mut self,
         name: impl Into<String>,
         op: impl Into<O>,
         output_facts: TVec<TI>,
-    ) -> TractResult<usize> {
-        self.add_node_disable_output_guess(name, op, output_facts, false)
-    }
-
-    pub(crate) fn add_node_disable_output_guess(
-        &mut self,
-        name: impl Into<String>,
-        op: impl Into<O>,
-        output_facts: TVec<TI>,
-        disable_output_guess: bool,
     ) -> TractResult<usize> {
         let op = op.into();
         let name = name.into();
@@ -61,14 +50,9 @@ where
         let noutputs = output_facts.len();
         let outputs =
             output_facts.into_iter().map(|fact| OutletFact { fact, successors: tvec!() }).collect();
-        let node = BaseNode { id, name, op, inputs: vec![], control_inputs: vec!(), outputs };
+        let node = BaseNode { id, name, op, inputs: vec![], control_inputs: vec![], outputs };
         if node.op_is::<crate::ops::source::Source>() {
             self.inputs.push(OutletId::new(id, 0));
-        }
-        if !disable_output_guess {
-            for o in 0..noutputs {
-                self.outputs.push(OutletId::new(id, o));
-            }
         }
         self.nodes.push(node);
         Ok(id)
@@ -95,7 +79,6 @@ where
         {
             let prec = &mut self.nodes[outlet.node];
             prec.outputs[outlet.slot].successors.push(inlet);
-            self.outputs.retain(|&o| o != outlet);
         }
         let succ = &mut self.nodes[inlet.node];
         if inlet.slot == succ.inputs.len() {
@@ -161,6 +144,24 @@ where
         Ok(&self.outputs)
     }
 
+    /// Guess outputs from the topology: node or nodes with no successors.
+    pub fn auto_outputs(&mut self) -> TractResult<()> {
+        let outputs = self
+            .nodes
+            .iter()
+            .flat_map(|n| {
+                let id = n.id;
+                n.outputs.iter().enumerate().map(move |(ix, output_fact)| {
+                    (OutletId::new(id, ix), output_fact.successors.len())
+                })
+            })
+            .filter(|(_f, succs)| *succs == 0)
+            .map(|(f, _)| f)
+            .collect();
+        self.outputs = outputs;
+        Ok(())
+    }
+
     /// Change model outputs.
     pub fn set_output_outlets(&mut self, outputs: &[OutletId]) -> TractResult<()> {
         self.outputs = outputs.to_vec();
@@ -206,7 +207,7 @@ where
     }
 
     /// Find a node by its name.
-    pub fn node_by_name<S:AsRef<str>>(&self, name: S) -> TractResult<&BaseNode<TI, O>> {
+    pub fn node_by_name<S: AsRef<str>>(&self, name: S) -> TractResult<&BaseNode<TI, O>> {
         let id: usize = self.node_id_by_name(name.as_ref())?;
         Ok(&self.nodes[id])
     }
@@ -258,14 +259,18 @@ where
     /// Get tensor information for a single outlet.
     pub fn outlet_fact(&self, outlet: OutletId) -> TractResult<&TI> {
         let outlets = &self.nodes[outlet.node].outputs;
-        outlets.get(outlet.slot).map(|o| &o.fact)
+        outlets
+            .get(outlet.slot)
+            .map(|o| &o.fact)
             .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
     }
 
     /// Get tensor information for a single outlet.
     pub fn outlet_fact_mut(&mut self, outlet: OutletId) -> TractResult<&mut TI> {
         let outlets = &mut self.nodes[outlet.node].outputs;
-        outlets.get_mut(outlet.slot).map(|o| &mut o.fact)
+        outlets
+            .get_mut(outlet.slot)
+            .map(|o| &mut o.fact)
             .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
     }
 
@@ -378,6 +383,4 @@ where
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
         &self.nodes[outlet.node].outputs[outlet.slot].successors
     }
-
 }
-

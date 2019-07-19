@@ -15,7 +15,9 @@ pub struct Typed {
 
 impl Typed {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
+        println!("PRE OPTIM {:?}", self.body.output_outlets());
         let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
+        println!("POST {:?}", plan.model().output_outlets());
         Ok(Codegen::new(
             Arc::new(plan),
             self.num_scan_inputs,

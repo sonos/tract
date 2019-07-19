@@ -440,14 +440,16 @@ impl Parameters {
         if let Some(sub) = matches.value_of("kaldi_downsample") {
             let period = sub.parse::<isize>()?;
             if period != 1 {
-                let output = raw_model.output_outlets()?[0];
-                let output_name = raw_model.node(output.node).name.clone();
-                raw_model.node_mut(output.node).name = format!("{}-old", output_name);
+                let mut outputs = raw_model.output_outlets()?.to_vec();
+                let output_name = raw_model.node(outputs[0].node).name.clone();
+                raw_model.node_mut(outputs[0].node).name = format!("{}-old", output_name);
                 let id = raw_model.add_node_default(
                     output_name,
                     tract_core::ops::array::Downsample::new(0, period, 0),
                 )?;
-                raw_model.add_edge(output, InletId::new(id, 0))?;
+                raw_model.add_edge(outputs[0], InletId::new(id, 0))?;
+                outputs[0].node = id;
+                raw_model.set_output_outlets(&*outputs)?;
             }
         }
 
