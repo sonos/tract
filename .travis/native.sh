@@ -23,7 +23,7 @@ cargo build --release
 cargo test --release --all
 cargo build --release --benches
 
-if [ -n "$TRAVIS" -a -z "$PARTIAL_CI" ]
+if [ -n "$TRAVIS" -a -n "$PARTIAL_CI" ]
 then
     exit 0
 fi
