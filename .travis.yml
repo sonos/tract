@@ -30,6 +30,7 @@ matrix:
     - rust: stable
       os: osx
       osx_image: xcode9.3
+      env: PARTIAL_CI=true
     - rust: stable
       env: PLATFORM=raspbian
     - rust: stable

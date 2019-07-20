@@ -23,7 +23,7 @@ cargo build --release
 cargo test --release --all
 cargo build --release --benches
 
-if [ -z "$TRAVIS" ]
+if [ -z "$TRAVIS" -a -z "$PARTIAL_CI"]
 then
     sh .travis/debug-tests.sh
     sh .travis/tf.sh
