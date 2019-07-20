@@ -1,7 +1,7 @@
 use crate::frame;
-use crate::frame::tiling::*;
-use crate::frame::tiling::TileStorageSpec::*;
 use crate::frame::tiling::LinearSpec::*;
+use crate::frame::tiling::TileStorageSpec::*;
+use crate::frame::tiling::*;
 
 #[derive(Copy, Clone, Debug)]
 pub struct STiling4x4;
@@ -61,7 +61,7 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
                     let pb3 = *(col_ptrs.offset(3));
                     for i in 0..k {
                         let a = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
-                        let offset = *row_byte_offsets.offset(i as isize);
+                        let offset = *row_byte_offsets.offset(i as isize) / 4;
                         let b0 = *(pb0.offset(offset));
                         let b1 = *(pb1.offset(offset));
                         let b2 = *(pb2.offset(offset));
@@ -83,8 +83,9 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
                         ab[3][2] += a[3] * b2;
                         ab[3][3] += a[3] * b3;
                     }
+                    println!("ab: {:?}", ab);
                 }
-                _ => return 1
+                _ => return 1,
             }
             let mut pnl = spec.non_linear;
             loop {
@@ -115,9 +116,51 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
                     c[2 * csc + 3 * rsc] = ab[3][2];
                     c[3 * csc + 3 * rsc] = ab[3][3];
                 }
-                _ => return 1
+                _ => return 1,
             }
         }
         0
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::frame::tiling::test::*;
+    use proptest::*;
+
+    proptest! {
+        #[test]
+        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
+            test_mat_mul_prep_f32::<STiling4x4>(m, k, n, a, b)?
+        }
+
+        #[test]
+        fn conv_prepacked(pb in strat_conv_1d()) {
+            let found = pb.run::<STiling4x4>();
+            let expected = pb.expected();
+            prop_assert_eq!(found, expected)
+        }
+    }
+
+    #[test]
+    fn mat_mul_prepacked_1() {
+        test_mat_mul_prep_f32::<STiling4x4>(1, 2, 1, &[0.0, 1.0], &[0.0, -1.0]).unwrap()
+    }
+
+    #[test]
+    fn conv_prepacked_1() {
+        let pb = ConvProblem {
+            ci: 1,
+            co: 1,
+            kt: 2,
+            stride: 1,
+            dilation: 1,
+            filters: vec![0.0, 1.0],
+            data: vec![0.0, -1.0],
+        };
+        let found = pb.run::<STiling4x4>();
+        let expected = pb.expected();
+        assert_eq!(found, expected);
     }
 }
