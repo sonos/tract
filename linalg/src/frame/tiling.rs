@@ -1,7 +1,9 @@
-use num_traits::Zero;
+use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
+
+use num_traits::Zero;
 
 use super::PackA;
 use super::PackB;
@@ -13,7 +15,7 @@ where
     T: Copy + Add + Mul + Zero + Debug + PartialEq,
 {
     Strides { ptr: *const T, row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
-    Packed { ptr: *const T, panel_len: isize },
+    Packed { ptr: *const T, panel_len: usize },
     OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_ptrs: Vec<*const T>, nr: usize },
 }
 
@@ -24,7 +26,7 @@ where
     unsafe fn panel_a(&self, i: usize) -> TileStorageSpec<T> {
         match self {
             StorageSpec::Packed { ptr, panel_len } => {
-                TileStorageSpec::Packed { ptr: ptr.offset(panel_len * i as isize) }
+                TileStorageSpec::Packed { ptr: ptr.offset((panel_len * i) as isize) }
             }
             _ => unimplemented!(),
         }
@@ -33,7 +35,7 @@ where
     unsafe fn panel_b(&self, i: usize) -> TileStorageSpec<T> {
         match self {
             StorageSpec::Packed { ptr, panel_len } => {
-                TileStorageSpec::Packed { ptr: ptr.offset(panel_len * i as isize) }
+                TileStorageSpec::Packed { ptr: ptr.offset((panel_len * i) as isize) }
             }
             StorageSpec::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr } => {
                 TileStorageSpec::OffsetsAndPtrs {
@@ -73,15 +75,15 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, new)]
 pub struct TileOp<K, T>
 where
     T: Copy + Add + Mul + Zero + Debug + PartialEq,
     K: TilingKer<T>,
 {
     pub m: usize,
-    pub n: usize,
     pub k: usize,
+    pub n: usize,
     phantom: PhantomData<(K, T)>,
 }
 
@@ -111,7 +113,11 @@ where
     }
 
     pub unsafe fn a_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
-        StorageSpec::Packed { ptr, panel_len: (self.k * K::mr()) as isize }
+        StorageSpec::Packed { ptr, panel_len: (self.k * K::mr()) }
+    }
+
+    pub unsafe fn b_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
+        StorageSpec::Packed { ptr, panel_len: (self.k * K::nr()) }
     }
 
     pub unsafe fn b_from_data_and_offsets(
@@ -125,12 +131,13 @@ where
         while col_ptrs.len() < wanted {
             col_ptrs.push(col_ptrs[col_ptrs.len() - 1]);
         }
+        let row_byte_offsets = rows_offsets
+            .iter()
+            .map(|&ro| ro * std::mem::size_of::<T>() as isize)
+            .collect();
         StorageSpec::OffsetsAndPtrs {
             col_ptrs,
-            row_byte_offsets: rows_offsets
-                .iter()
-                .map(|&ro| ro * std::mem::size_of::<T>() as isize)
-                .collect(),
+            row_byte_offsets,
             nr: K::nr(),
         }
     }
@@ -187,12 +194,12 @@ where
             }
         }
         if m % mr != 0 {
-            let ref a = a.panel_a(m / mr);
+            let ref panel_a = a.panel_a(m / mr);
             let ref tmp_tile_c = tmp_tile.tile(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 K::kernel(&TileOpSpec {
-                    a: a as _,
+                    a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
@@ -207,7 +214,7 @@ where
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
                 K::kernel(&TileOpSpec {
-                    a: a as _,
+                    a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
@@ -254,7 +261,7 @@ where
 }
 
 #[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone)]
 pub enum TileStorageSpec<T>
 where
     T: Copy + Clone + Debug + Add + Mul + Zero,
@@ -280,4 +287,177 @@ where
     fn alignment_bytes_packed_a() -> usize;
     #[inline(always)]
     fn alignment_bytes_packed_b() -> usize;
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use crate::align;
+    use proptest::prelude::*;
+
+    pub fn strat_mat_mul() -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
+        (1usize..5, 1usize..5, 1usize..5)
+            .prop_flat_map(move |(m, k, n)| {
+                (
+                    Just(m),
+                    Just(k),
+                    Just(n),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), m * k),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), n * k),
+                )
+            })
+            .boxed()
+    }
+
+    pub fn test_mat_mul_prep_f32<K: TilingKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+        a: &[f32],
+        b: &[f32],
+    ) -> Result<(), proptest::test_runner::TestCaseError> {
+        let op = TileOp::<K, f32>::new(m, k, n);
+        unsafe {
+            let mut packed_a: Vec<f32> =
+                align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+            op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+
+            let mut packed_b: Vec<f32> =
+                align::uninitialized(op.b_pack().len(), op.b_pack().alignment());
+            op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+
+            let mut found = vec![9999.0f32; m * n];
+
+            op.run(
+                &op.a_from_packed(packed_a.as_ptr()),
+                &op.b_from_packed(packed_b.as_ptr()),
+                &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
+            );
+
+            let mut expect = vec![0.0f32; m * n];
+            for x in 0..n {
+                for y in 0..m {
+                    for i in 0..k {
+                        expect[x + y * n] += a[i + k * y] * b[x + i * n]
+                    }
+                }
+            }
+            prop_assert_eq!(found, expect);
+        }
+        Ok(())
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct ConvProblem {
+        pub ci: usize,
+        pub co: usize,
+        pub kt: usize,
+        pub stride: usize,
+        pub dilation: usize,
+        pub filters: Vec<f32>,
+        pub data: Vec<f32>,
+    }
+
+    impl ConvProblem {
+        pub fn kernel_field(&self) -> usize {
+            self.dilation * (self.kt - 1) + 1
+        }
+        pub fn input_width(&self) -> usize {
+            self.data.len() / self.ci
+        }
+        pub fn output_width(&self) -> usize {
+            (self.input_width() - self.kernel_field()) / self.stride + 1
+        }
+        pub fn m(&self) -> usize {
+            self.co
+        }
+        pub fn k(&self) -> usize {
+            self.ci * self.kt
+        }
+        pub fn n(&self) -> usize {
+            self.output_width()
+        }
+        pub fn data_cols_offsets(&self) -> Vec<isize> {
+            (0..self.output_width()).map(|i| (i * self.stride) as isize).collect()
+        }
+        pub fn data_rows_offsets(&self) -> Vec<isize> {
+            (0..self.ci)
+                .flat_map(move |ici| {
+                    (0..self.kt)
+                        .map(move |ikt| (ikt * self.dilation + ici * self.input_width()) as isize)
+                })
+                .collect()
+        }
+        pub fn expected(&self) -> Vec<f32> {
+            let mut expect = vec![0.0f32; self.co * self.output_width()];
+            for x in 0..self.output_width() {
+                for ico in 0..self.co {
+                    for ikt in 0..self.kt {
+                        for ici in 0..self.ci {
+                            let f = self.filters[ici * self.kt + ikt + self.ci * self.kt * ico];
+                            let d = self.data
+                                [x * self.stride + ikt * self.dilation + ici * self.input_width()];
+                            expect[x + ico * self.output_width()] += f * d;
+                        }
+                    }
+                }
+            }
+            expect
+        }
+
+        pub fn run<K: TilingKer<f32>>(&self) -> Vec<f32> {
+            let op = TileOp::<K, f32>::new(self.m(), self.k(), self.n());
+            unsafe {
+                let mut packed_a: Vec<f32> =
+                    align::uninitialized(op.a_pack().len(), op.b_pack().alignment());
+                op.a_pack().pack(
+                    packed_a.as_mut_ptr(),
+                    self.filters.as_ptr(),
+                    self.k() as isize,
+                    1,
+                );
+
+                let mut found = vec![9999.0f32; self.co * self.output_width()];
+                op.run(
+                    &op.a_from_packed(packed_a.as_ptr()),
+                    &op.b_from_data_and_offsets(
+                        self.data.as_ptr(),
+                        &self.data_rows_offsets(),
+                        &self.data_cols_offsets(),
+                    ),
+                    &mut op.c_from_data_and_strides(found.as_mut_ptr(), self.n() as isize, 1),
+                );
+                found
+            }
+        }
+    }
+
+    pub fn strat_conv_1d() -> BoxedStrategy<ConvProblem> {
+        (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)
+            .prop_flat_map(|(ci, co, kt, stride, dilation)| {
+                let min = (kt - 1) * dilation + 1;
+                (Just(ci), Just(co), Just(kt), Just(stride), Just(dilation), min..min + 10)
+            })
+            .prop_flat_map(move |(ci, co, kt, stride, dilation, t)| {
+                (
+                    Just(ci),
+                    Just(co),
+                    Just(kt),
+                    Just(stride),
+                    Just(dilation),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), ci * co * kt),
+                    proptest::collection::vec((-10..10).prop_map(|a| a as f32), t * ci),
+                )
+            })
+            .prop_map(move |(ci, co, kt, stride, dilation, filters, data)| ConvProblem {
+                ci,
+                co,
+                kt,
+                stride,
+                dilation,
+                filters,
+                data,
+            })
+            .boxed()
+    }
 }
