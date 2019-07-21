@@ -1,4 +1,3 @@
-use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
@@ -12,7 +11,7 @@ use super::PackB;
 #[derive(PartialEq, Clone, Debug)]
 pub enum StorageSpec<T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
 {
     Strides { ptr: *const T, row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
     Packed { ptr: *const T, panel_len: usize },
@@ -21,7 +20,7 @@ where
 
 impl<T> StorageSpec<T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
 {
     unsafe fn panel_a(&self, i: usize) -> TileStorageSpec<T> {
         match self {
@@ -75,10 +74,41 @@ where
     }
 }
 
+pub trait Tile<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + objekt::Clone
+where
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
+{
+    fn a_pack(&self) -> PackA<T>;
+    fn b_pack(&self) -> PackB<T>;
+
+    fn m(&self) -> usize;
+    fn k(&self) -> usize;
+    fn n(&self) -> usize;
+
+    unsafe fn a_from_packed(&self, ptr: *const T) -> StorageSpec<T>;
+    unsafe fn b_from_packed(&self, ptr: *const T) -> StorageSpec<T>;
+
+    unsafe fn b_from_data_and_offsets(
+        &self,
+        data: *const T,
+        rows_offsets: &[isize],
+        cols_offsets: &[isize],
+    ) -> StorageSpec<T>;
+
+    unsafe fn c_from_data_and_strides(
+        &self,
+        data: *const T,
+        row_stride: isize,
+        col_stride: isize,
+    ) -> StorageSpec<T>;
+
+    unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>);
+}
+
 #[derive(Debug, Clone, new)]
 pub struct TileOp<K, T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
     K: TilingKer<T>,
 {
     pub m: usize,
@@ -87,40 +117,40 @@ where
     phantom: PhantomData<(K, T)>,
 }
 
-impl<K, T> TileOp<K, T>
+impl<K, T> Tile<T> for TileOp<K, T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
     K: TilingKer<T>,
 {
-    pub fn a_pack(&self) -> PackA<T> {
+    fn a_pack(&self) -> PackA<T> {
         PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
     }
 
-    pub fn b_pack(&self) -> PackB<T> {
+    fn b_pack(&self) -> PackB<T> {
         PackB::new(self.k, self.n, K::nr(), K::alignment_bytes_packed_b())
     }
 
-    pub fn m(&self) -> usize {
+    fn m(&self) -> usize {
         self.m
     }
 
-    pub fn n(&self) -> usize {
+    fn n(&self) -> usize {
         self.n
     }
 
-    pub fn k(&self) -> usize {
+    fn k(&self) -> usize {
         self.k
     }
 
-    pub unsafe fn a_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
+    unsafe fn a_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
         StorageSpec::Packed { ptr, panel_len: (self.k * K::mr()) }
     }
 
-    pub unsafe fn b_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
+    unsafe fn b_from_packed(&self, ptr: *const T) -> StorageSpec<T> {
         StorageSpec::Packed { ptr, panel_len: (self.k * K::nr()) }
     }
 
-    pub unsafe fn b_from_data_and_offsets(
+    unsafe fn b_from_data_and_offsets(
         &self,
         data: *const T,
         rows_offsets: &[isize],
@@ -142,7 +172,7 @@ where
         }
     }
 
-    pub unsafe fn c_from_data_and_strides(
+    unsafe fn c_from_data_and_strides(
         &self,
         data: *const T,
         row_stride: isize,
@@ -157,7 +187,7 @@ where
         }
     }
 
-    pub unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>) {
+    unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;

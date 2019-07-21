@@ -30,6 +30,7 @@ pub struct Ops {
     pub smm: Box<dyn Fn(usize, usize, usize) -> Box<dyn MatMul<f32>> + Send + Sync>,
     pub dmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn MatMul<f64>> + Send + Sync>,
     pub sconv: Box<dyn Fn(usize, Vec<isize>, Vec<isize>) -> Box<dyn Conv<f32>> + Send + Sync>,
+    pub stile: Box<dyn Fn(usize, usize, usize) -> Box<dyn Tile<f32>> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
@@ -40,6 +41,7 @@ pub fn generic() -> Ops {
         sconv: Box::new(|co, kernel_offsets, data_offsets| {
             Box::new(PackedConv::<generic::SConv4x4, f32>::new(co, kernel_offsets, data_offsets))
         }),
+        stile: Box::new(|m, k, n| Box::new(TileOp::<generic::STiling4x4, f32>::new(m, k, n))),
     }
 }
 
