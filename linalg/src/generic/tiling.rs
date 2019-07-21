@@ -83,7 +83,6 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
                         ab[3][2] += a[3] * b2;
                         ab[3][3] += a[3] * b3;
                     }
-                    println!("ab: {:?}", ab);
                 }
                 _ => return 1,
             }
