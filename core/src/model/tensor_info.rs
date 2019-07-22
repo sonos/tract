@@ -99,6 +99,33 @@ impl ShapeInfo {
         self.shape[i].to_dim()
     }
 
+    /// Set the i-th axis dimension.
+    pub fn set_dim(&mut self, i: usize, dim: TDim) -> TractResult<()> {
+        if let Some(ref stream) = self.stream_info {
+            if let Ok(int) = dim.to_integer() {
+                self.shape[i] = int as _;
+                if stream.axis == i {
+                    self.stream_info = None;
+                }
+            } else {
+                if stream.axis == i {
+                    bail!("Attempt at building a shape with two streaming dim")
+                } else {
+                    self.shape[i] = 0;
+                    self.stream_info = Some(StreamInfo { len: dim, axis: i })
+                }
+            }
+        } else {
+            if let Ok(int) = dim.to_integer() {
+                self.shape[i] = int as _;
+            } else {
+                self.shape[i] = 0;
+                self.stream_info = Some(StreamInfo { len: dim, axis: i })
+            }
+        }
+        Ok(())
+    }
+
     /// Shape of the tensor, unless it is streaming.
     pub fn as_finite(&self) -> Option<&[usize]> {
         match self.stream_info {

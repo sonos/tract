@@ -83,7 +83,6 @@ where TI: TensorInfo + Clone + 'static,
         Ok(())
     }
 
-
     /// Convenience method creating a patch that replace a single operation.
     pub fn replace_single_op<IO: Into<O>>(
         patched_model: &ModelImpl<TI, O>,
@@ -102,6 +101,17 @@ where TI: TensorInfo + Clone + 'static,
         for ix in 0..node.outputs.len() {
             patch.shunt_outside(OutletId::new(node.id, ix), OutletId::new(by, ix))?;
         }
+        Ok(patch)
+    }
+
+    /// Convenience method creating a patch that shunt the given node.
+    pub fn shunt_one_op(
+        patched_model: &ModelImpl<TI, O>,
+        node: &Node<TI>,
+    ) -> TractResult<ModelPatch<TI, O>> {
+        let mut patch = ModelPatch::default();
+        let tap = patch.tap_model(patched_model, node.inputs[0])?;
+        patch.shunt_outside(OutletId::new(node.id,0), tap)?;
         Ok(patch)
     }
 
