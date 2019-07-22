@@ -4,7 +4,7 @@ use ndarray::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Crop {
-    prune: Vec<(usize, usize)>,
+    pub(crate) prune: Vec<(usize, usize)>,
 }
 
 impl Crop {
