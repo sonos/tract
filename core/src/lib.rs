@@ -132,7 +132,7 @@ pub mod internal {
     pub use crate::model::*;
     pub use crate::ops::{
         check_input_arity, check_output_arity, Cost, InferenceOp, Op, OpState, StatefullOp,
-        StatelessOp, Validation
+        StatelessOp, TranslationInvariant, Validation
     };
     pub use crate::plan::SessionState;
     pub use crate::prelude::*;

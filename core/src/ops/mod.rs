@@ -52,6 +52,13 @@ pub enum Validation {
     Accurate,
 }
 
+/// Translation invariance property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TranslationInvariant {
+    axis: usize,
+    period: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Cost {
     FMA(DatumType),
@@ -164,13 +171,20 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
 
     /// Nested models, with label (for audit).
     fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
-        vec!()
+        vec![]
     }
 
     /// The kind of accuracy check that should be performed on operation when
     /// testing them.
     fn validation(&self) -> Validation {
         Validation::Accurate
+    }
+
+    fn translation_invariants(&self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        Ok(vec!())
     }
 
     /// Compare two ops.
