@@ -25,6 +25,7 @@ impl Op for Inference {
         let typed_model = self.body.clone().into_typed()?;
         Ok(Some(Box::new(Typed::new(
             typed_model,
+            false,
             self.num_scan_inputs,
             self.closure_inputs,
             self.scan_input_axes.clone(),

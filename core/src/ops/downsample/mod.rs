@@ -3,6 +3,7 @@ use crate::ops;
 use ndarray::prelude::*;
 
 mod array;
+mod scan;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Downsample {
@@ -30,7 +31,7 @@ impl Downsample {
         Ok(sampled)
     }
 
-    fn transform_shape(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
+    fn transform_fact(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
         let mut downed = input_fact.clone();
         let down_len = (input_fact.shape.dim(self.axis) - self.modulo).div_ceil(self.stride.into());
         downed.shape.set_dim(self.axis, down_len.clone())?;
@@ -109,7 +110,7 @@ fn pull_downsample_up(
             patch.tap_model(model, prec.inputs[0])?;
             let input_outlet = prec.inputs[0].clone();
             let input_fact = model.outlet_fact(input_outlet).unwrap();
-            let downed = down_op.transform_shape(&input_fact)?;
+            let downed = down_op.transform_fact(&input_fact)?;
             patch.chain(&*down_node.name, down_op.clone(), tvec!(downed))?;
             let other = patch.chain(
                 &*prec.name,
@@ -125,6 +126,8 @@ fn pull_downsample_up(
             return array::pull_downsample_over_rmdims(model, prec, other_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::array::AddDims>() {
             return array::pull_downsample_over_adddims(model, prec, other_op, down_node, down_op);
+        } else if let Some(other_op) = prec.op_as::<ops::scan::Typed>() {
+            return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         }
     }
     Ok(None)

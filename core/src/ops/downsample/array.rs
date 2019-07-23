@@ -17,7 +17,7 @@ pub fn pull_downsample_over_crop(
     let input_fact = model.outlet_fact(input_outlet).unwrap();
     let final_len = down_node.outputs[0].fact.shape.dim(down_op.axis);
     let new_down = Downsample::new(down_op.axis, down_op.stride, modulo);
-    let downed = new_down.transform_shape(&input_fact)?;
+    let downed = new_down.transform_fact(&input_fact)?;
     let midway_len = downed.shape.dim(down_op.axis);
     patch.chain(&*down_node.name, new_down, tvec!(downed))?;
     let mut new_prunes = crop_op.prune.clone();
@@ -46,7 +46,7 @@ pub fn pull_downsample_over_adddims(
     let input_fact = model.outlet_fact(input_outlet).unwrap();
     let mut new_down = down_op.clone();
     new_down.axis -= add_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
-    let downed = new_down.transform_shape(&input_fact)?;
+    let downed = new_down.transform_fact(&input_fact)?;
     patch.chain(&*down_node.name, new_down, tvec!(downed))?;
     let new_node =
         patch.chain(&*add_node.name, add_op.clone(), tvec!(down_node.outputs[0].fact.clone()))?;
@@ -67,7 +67,7 @@ pub fn pull_downsample_over_rmdims(
     let input_fact = model.outlet_fact(input_outlet).unwrap();
     let mut new_down = down_op.clone();
     new_down.axis += rm_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
-    let downed = new_down.transform_shape(&input_fact)?;
+    let downed = new_down.transform_fact(&input_fact)?;
     patch.chain(&*down_node.name, new_down, tvec!(downed))?;
     let new_rm =
         patch.chain(&*rm_node.name, rm_op.clone(), tvec!(down_node.outputs[0].fact.clone()))?;

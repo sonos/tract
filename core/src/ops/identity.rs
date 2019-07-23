@@ -13,10 +13,7 @@ impl Op for Identity {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let mut patch = TypedModelPatch::default();
-        let tap = patch.tap_model(model, node.inputs[0])?;
-        patch.shunt_outside(OutletId::new(node.id, 0), tap)?;
-        Ok(Some(patch))
+        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
 }
 
