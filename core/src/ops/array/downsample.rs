@@ -27,6 +27,13 @@ impl Downsample {
         };
         Ok(sampled)
     }
+
+    fn transform_shape(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
+        let mut downed = input_fact.clone();
+        let down_len = (input_fact.shape.dim(self.axis) - self.modulo).div_ceil(self.stride.into());
+        downed.shape.set_dim(self.axis, down_len.clone())?;
+        Ok(downed)
+    }
 }
 
 impl Op for Downsample {
@@ -92,6 +99,8 @@ fn pull_downsample_up(
     if let Some(prec) = model.single_prec(down_node.id)? {
         if let Some(crop_op) = prec.op_as::<ops::array::Crop>() {
             return pull_downsample_over_crop(model, prec, crop_op, down_node, down_op);
+        } else if let Some(rm_dims_op) = prec.op_as::<ops::array::RmDims>() {
+            return pull_downsample_over_rmdims(model, prec, rm_dims_op, down_node, down_op);
         }
     }
     Ok(None)
@@ -130,6 +139,27 @@ fn pull_downsample_over_crop(
         tvec!(down_node.outputs[0].fact.clone()),
     )?;
     patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_crop, 0))?;
+    return Ok(Some(patch));
+}
+
+fn pull_downsample_over_rmdims(
+    model: &TypedModel,
+    rm_node: &TypedNode,
+    rm_op: &ops::array::RmDims,
+    down_node: &TypedNode,
+    down_op: &Downsample,
+) -> TractResult<Option<TypedModelPatch>> {
+    let mut patch = TypedModelPatch::default();
+    patch.tap_model(model, rm_node.inputs[0])?;
+    let input_outlet = rm_node.inputs[0].clone();
+    let input_fact = model.outlet_fact(input_outlet).unwrap();
+    let mut new_down = down_op.clone();
+    new_down.axis += rm_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
+    let downed = new_down.transform_shape(&input_fact)?;
+    patch.chain(&down_node.name, new_down, tvec!(downed))?;
+    let new_rm =
+        patch.chain(&rm_node.name, rm_op.clone(), tvec!(down_node.outputs[0].fact.clone()))?;
+    patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_rm, 0))?;
     return Ok(Some(patch));
 }
 
