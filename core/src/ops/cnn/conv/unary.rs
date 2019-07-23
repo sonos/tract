@@ -327,7 +327,7 @@ impl ConvUnary {
         }
         let kernel_shape: TVec<usize> =
             copy_rm_nth(self.kernel.shape().clone(), geo_axis + self.kernel_fmt.h_axis());
-        let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? }; 
+        let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
         let new_op = ConvUnary {
             data_format: self.data_format,
             kernel_fmt: self.kernel_fmt,
@@ -439,7 +439,7 @@ impl Op for ConvUnary {
             if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
                 let kernel_shape = &self.kernel.shape()[spatial_rank..];
-                let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? }; 
+                let kernel = unsafe { self.kernel.clone().into_shape(&kernel_shape)? };
                 return Ok(Some(TypedModelPatch::single_unary_op(
                     model,
                     node,
@@ -533,6 +533,25 @@ impl Op for ConvUnary {
 
             Ok(tvec!(OutletId::new(id, 0)))
         }
+    }
+
+    fn translation_invariants(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
+        let mut axes = vec![TranslationInvariant { axis: shape.n_axis(), period: 1 }];
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let h_axis = shape.h_axis();
+        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
+            if dim == 1 {
+                axes.push(TranslationInvariant { axis: ix + h_axis, period: 1 });
+            }
+        }
+        Ok(axes)
     }
 }
 

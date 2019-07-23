@@ -97,10 +97,32 @@ fn pull_downsample_up(
 ) -> TractResult<Option<TypedModelPatch>> {
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
+        let invariants = prec.op().translation_invariants(model, prec)?;
+        if invariants
+            .iter()
+            .find(|inv| inv.axis == down_op.axis && down_op.stride % inv.period == 0)
+            .is_some()
+        {
+            let mut patch = TypedModelPatch::default();
+            patch.tap_model(model, prec.inputs[0])?;
+            let input_outlet = prec.inputs[0].clone();
+            let input_fact = model.outlet_fact(input_outlet).unwrap();
+            let downed = down_op.transform_shape(&input_fact)?;
+            patch.chain(&down_node.name, down_op.clone(), tvec!(downed))?;
+            let other = patch.chain(
+                &prec.name,
+                objekt::clone_box(prec.op()),
+                tvec!(down_node.outputs[0].fact.clone()),
+            )?;
+            patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(other, 0))?;
+            return Ok(Some(patch));
+        }
         if let Some(crop_op) = prec.op_as::<ops::array::Crop>() {
             return pull_downsample_over_crop(model, prec, crop_op, down_node, down_op);
-        } else if let Some(rm_dims_op) = prec.op_as::<ops::array::RmDims>() {
-            return pull_downsample_over_rmdims(model, prec, rm_dims_op, down_node, down_op);
+        } else if let Some(other_op) = prec.op_as::<ops::array::RmDims>() {
+            return pull_downsample_over_rmdims(model, prec, other_op, down_node, down_op);
+        } else if let Some(other_op) = prec.op_as::<ops::array::AddDims>() {
+            return pull_downsample_over_adddims(model, prec, other_op, down_node, down_op);
         }
     }
     Ok(None)
@@ -119,16 +141,11 @@ fn pull_downsample_over_crop(
     patch.tap_model(model, crop_node.inputs[0])?;
     let input_outlet = crop_node.inputs[0].clone();
     let input_fact = model.outlet_fact(input_outlet).unwrap();
-    let input_len = input_fact.shape.dim(down_op.axis);
     let final_len = down_node.outputs[0].fact.shape.dim(down_op.axis);
-    let mut downed = input_fact.clone();
-    let midway_len = (input_len - modulo).div_ceil(down_op.stride.into());
-    downed.shape.set_dim(down_op.axis, midway_len.clone())?;
-    patch.chain(
-        &down_node.name,
-        Downsample::new(down_op.axis, down_op.stride, modulo),
-        tvec!(downed),
-    )?;
+    let new_down = Downsample::new(down_op.axis, down_op.stride, modulo);
+    let downed = new_down.transform_shape(&input_fact)?;
+    let midway_len = downed.shape.dim(down_op.axis);
+    patch.chain(&down_node.name, new_down, tvec!(downed))?;
     let mut new_prunes = crop_op.prune.clone();
     new_prunes[down_op.axis].0 = left;
     new_prunes[down_op.axis].1 =
@@ -139,6 +156,27 @@ fn pull_downsample_over_crop(
         tvec!(down_node.outputs[0].fact.clone()),
     )?;
     patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_crop, 0))?;
+    return Ok(Some(patch));
+}
+
+fn pull_downsample_over_adddims(
+    model: &TypedModel,
+    add_node: &TypedNode,
+    add_op: &ops::array::AddDims,
+    down_node: &TypedNode,
+    down_op: &Downsample,
+) -> TractResult<Option<TypedModelPatch>> {
+    let mut patch = TypedModelPatch::default();
+    patch.tap_model(model, add_node.inputs[0])?;
+    let input_outlet = add_node.inputs[0].clone();
+    let input_fact = model.outlet_fact(input_outlet).unwrap();
+    let mut new_down = down_op.clone();
+    new_down.axis -= add_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
+    let downed = new_down.transform_shape(&input_fact)?;
+    patch.chain(&down_node.name, new_down, tvec!(downed))?;
+    let new_node =
+        patch.chain(&add_node.name, add_op.clone(), tvec!(down_node.outputs[0].fact.clone()))?;
+    patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_node, 0))?;
     return Ok(Some(patch));
 }
 
