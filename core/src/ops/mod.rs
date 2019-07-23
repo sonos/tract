@@ -13,6 +13,7 @@ pub mod macros;
 pub mod array;
 pub mod cast;
 pub mod cnn;
+pub mod downsample;
 pub mod dummy;
 pub mod identity;
 pub mod konst;
@@ -24,6 +25,7 @@ pub mod source;
 pub mod unimpl;
 
 pub use source::Source;
+pub use downsample::Downsample;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
