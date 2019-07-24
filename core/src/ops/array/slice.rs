@@ -12,8 +12,10 @@ impl<D: DimLike + ToDim> Slice<D> {
     fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let mut input = input.to_array_view::<T>()?;
         for (axis, b, e) in itertools::izip!(&self.axes, &self.starts, &self.ends) {
-            input
-                .slice_axis_inplace(Axis(*axis), ::ndarray::Slice::from((b.to_integer()?)..(e.to_integer()?)));
+            input.slice_axis_inplace(
+                Axis(*axis),
+                ::ndarray::Slice::from((b.to_integer()?)..(e.to_integer()?)),
+            );
         }
         Ok(Tensor::from(input.to_owned()).into())
     }
@@ -22,6 +24,19 @@ impl<D: DimLike + ToDim> Slice<D> {
 impl<D: DimLike + ToDim> Op for Slice<D> {
     fn name(&self) -> Cow<str> {
         "Slice".into()
+    }
+
+    fn translation_invariants(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let axes = (0..fact.shape.rank())
+            .filter(|ax| !self.axes.contains(ax))
+            .map(|axis| TranslationInvariant { axis, period: 1 })
+            .collect();
+        Ok(axes)
     }
 }
 
@@ -47,7 +62,10 @@ impl<D: DimLike + ToDim> InferenceRulesOp for Slice<D> {
         s.given(&inputs[0].rank, move |s, rank| {
             (0..(rank as usize)).try_for_each(move |axis| {
                 if let Some(pos) = self.axes.iter().position(|i| i == &axis) {
-                    s.equals(&outputs[0].shape[axis], (self.ends[pos].clone() - &self.starts[pos]).to_dim())
+                    s.equals(
+                        &outputs[0].shape[axis],
+                        (self.ends[pos].clone() - &self.starts[pos]).to_dim(),
+                    )
                 } else {
                     s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])
                 }
