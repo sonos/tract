@@ -131,6 +131,21 @@ where TI: TensorInfo + Clone + 'static,
         Self::replace_single_op(patched_model, node, &[node.inputs[0]], new_op)
     }
 
+    /// Convenience method creating a patch that insert an unary op on an outlet.
+    pub fn intercept<IO: Into<O>>(
+        patched_model: &ModelImpl<TI, O>,
+        outlet: OutletId,
+        name: impl Into<String>,
+        new_op: IO,
+        fact: TI,
+    ) -> TractResult<ModelPatch<TI, O>> {
+        let mut patch = ModelPatch::default();
+        patch.tap_model(patched_model, outlet)?;
+        let new_id = patch.chain(name, new_op, tvec!(fact))?;
+        patch.shunt_outside(outlet, OutletId::new(new_id, 0))?;
+        Ok(patch)
+    }
+
     /// Apply all changes in the patch to the target model.
     pub fn apply(self, target: &mut ModelImpl<TI, O>) -> TractResult<()> {
         let prior_target_inputs = target.input_outlets()?.len();

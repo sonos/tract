@@ -61,6 +61,9 @@ impl InferenceRulesOp for RmDims {
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - self.axes.len() as i32)?;
+        for axis in &self.axes {
+            s.equals(&inputs[0].shape[*axis], 1.to_dim())?;
+        }
         s.given(&inputs[0].shape, move |s, shape| {
             let output_shape = self.compute_shape(&shape);
             s.equals(&outputs[0].shape, output_shape)
