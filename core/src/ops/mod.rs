@@ -57,8 +57,8 @@ pub enum Validation {
 /// Translation invariance property.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TranslationInvariant {
-    axis: usize,
-    period: usize,
+    pub axis: usize,
+    pub period: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
