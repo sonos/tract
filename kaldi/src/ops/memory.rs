@@ -176,12 +176,10 @@ fn incorporate_memory_ops_as_scans(
         // prepare patch
         let scan = tract_core::ops::scan::Inference::new(
             inner_model,
-            scan_inputs.len(),
             0,
             vec![0; scan_inputs.len()],
             vec![0; scan_outputs.len()],
             scan_output_len_hints,
-            false,
         );
 
         let mut output_facts = tvec!();

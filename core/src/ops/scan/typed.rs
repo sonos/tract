@@ -5,12 +5,10 @@ use crate::internal::*;
 pub struct Typed {
     pub body: TypedModel,
     decluttered: bool,
-    pub(super) num_scan_inputs: usize,
     pub(super) closure_inputs: usize,
     pub(super) scan_input_axes: Vec<usize>,
     pub(super) scan_output_axes: Vec<usize>,
     pub(super) scan_output_len_hint: Vec<Option<TDim>>,
-    pub(super) prune_scanning_dim: bool, // TODO check scanning dims == 1
 }
 
 impl Typed {
@@ -18,12 +16,10 @@ impl Typed {
         let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
         Ok(Codegen::new(
             Arc::new(plan),
-            self.num_scan_inputs,
             self.closure_inputs,
             self.scan_input_axes.clone(),
             self.scan_output_axes.clone(),
             self.scan_output_len_hint.clone(),
-            self.prune_scanning_dim,
         ))
     }
 }
