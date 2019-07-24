@@ -20,18 +20,26 @@ pub fn scan(
         node.get_attr_opt_vec("scan_output_axes")?.unwrap_or(vec![0; num_scan_outputs]);
     let scan_output_len_hints = vec![None; scan_output_axes.len()];
 
-    for input in 0..num_scan_inputs {
-        let op = tract_core::ops::array::RmDims::new(vec![scan_input_axes[input]]);
-        let outlet = model.input_outlets()?[num_hidden_state + input];
+    let mut mapped_inputs = vec![];
+    for ix in 0..num_hidden_state {
+        mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
+            initializer: tract_core::ops::scan::StateInitializer::FromInput(ix),
+        });
+    }
+
+    for (ix, ax) in scan_input_axes.iter().enumerate() {
+        let op = tract_core::ops::array::RmDims::new(vec![*ax]);
+        let outlet = model.input_outlets()?[num_hidden_state + ix];
         InferenceModelPatch::intercept(
             &model,
             outlet,
-            format!("input-{}-adjust-dim", input),
+            format!("input-{}-adjust-dim", ix),
             op,
             model.outlet_fact(outlet)?.clone(),
-    )?
+        )?
         .apply(&mut model)?;
         model.set_outlet_fact(outlet, TensorFact::default())?;
+        mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan { axis: *ax, slot: ix + num_hidden_state, chunk: () });
     }
 
     for output in 0..num_scan_outputs {
@@ -49,8 +57,8 @@ pub fn scan(
     Ok((
         Box::new(Inference::new(
             model,
-            unresolved_inputs.len(),
-            scan_input_axes,
+            num_hidden_state,
+            mapped_inputs,
             scan_output_axes,
             scan_output_len_hints,
         )),

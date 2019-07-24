@@ -163,6 +163,17 @@ impl TensorFact {
             )
         }
     }
+
+    pub fn dt_shape_from_tensor(t: &Tensor) -> TensorFact {
+        TensorFact::dt_shape(t.datum_type(), t.shape())
+    }
+
+    pub fn without_value(self) -> TensorFact {
+        TensorFact {
+            value: GenericFact::Any,
+            ..self
+        }
+    }
 }
 
 impl Fact for TensorFact {

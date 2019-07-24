@@ -1,12 +1,14 @@
 use super::codegen::Codegen;
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default)]
+use super::*;
+
+#[derive(Debug, Clone, Default)]
 pub struct Typed {
     pub body: TypedModel,
     decluttered: bool,
-    pub(super) closure_inputs: usize,
-    pub(super) scan_input_axes: Vec<usize>,
+    pub hidden_state_len: usize,
+    pub input_mapping: Vec<InputMapping<TDim>>,
     pub(super) scan_output_axes: Vec<usize>,
     pub(super) scan_output_len_hint: Vec<Option<TDim>>,
 }
@@ -14,13 +16,47 @@ pub struct Typed {
 impl Typed {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
         let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
+        let input_mapping = self
+            .input_mapping
+            .iter()
+            .map(|im| {
+                Ok(match im {
+                    InputMapping::Scan { axis, slot, chunk } => InputMapping::Scan {
+                        axis: *axis,
+                        slot: *slot,
+                        chunk: chunk.to_integer()? as usize,
+                    },
+                    InputMapping::Full { slot } => InputMapping::Full { slot: *slot },
+                    InputMapping::State { initializer } => {
+                        InputMapping::State { initializer: initializer.clone() }
+                    }
+                })
+            })
+            .collect::<TractResult<_>>()?;
         Ok(Codegen::new(
             Arc::new(plan),
-            self.closure_inputs,
-            self.scan_input_axes.clone(),
+            self.hidden_state_len,
+            input_mapping,
             self.scan_output_axes.clone(),
             self.scan_output_len_hint.clone(),
         ))
+    }
+
+    pub fn new(
+        body: TypedModel,
+        hidden_state_len: usize,
+        input_mapping: Vec<InputMapping<TDim>>,
+        scan_output_axes: Vec<usize>,
+        scan_output_len_hint: Vec<Option<TDim>>,
+    ) -> Typed {
+        Typed {
+            body,
+            decluttered: false,
+            hidden_state_len,
+            input_mapping,
+            scan_output_axes,
+            scan_output_len_hint,
+        }
     }
 }
 

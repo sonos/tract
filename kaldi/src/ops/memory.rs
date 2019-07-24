@@ -107,6 +107,7 @@ fn incorporate_memory_ops_as_scans(
             .map(|(id, _fact)| id)
             .collect();
         let mut inner_model = InferenceModel::default();
+        let mut mapped_inputs = vec!();
         let mut node_id_old_to_new: HashMap<usize, usize> = HashMap::new();
         for &mem in &coupled_mem_ops {
             let mem_node = model.node(mem);
@@ -122,8 +123,16 @@ fn incorporate_memory_ops_as_scans(
                 ),
             )?;
             node_id_old_to_new.insert(mem, id);
+
+            let zeroes = Tensor::from(tract_core::ndarray::Array2::<f32>::zeros((
+                (-op.offset) as usize,
+                channel,
+            )));
+            mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
+                initializer: tract_core::ops::scan::StateInitializer::Value(zeroes.into()),
+            });
         }
-        for scan_input in scan_inputs.iter() {
+        for (ix, scan_input) in scan_inputs.iter().enumerate() {
             let old_node = model.node(scan_input.node);
             let channel =
                 old_node.outputs[0].fact.shape.dim(1).unwrap().concretize().unwrap().to_integer()?
@@ -133,6 +142,8 @@ fn incorporate_memory_ops_as_scans(
                 TensorFact::dt_shape(f32::datum_type(), shapefact!(_, channel)),
             )?;
             node_id_old_to_new.insert(scan_input.node, new_id);
+            mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
+                axis: 0, chunk: (), slot: ix });
         }
         for old_node_id in time_loop.iter() {
             if coupled_mem_ops.contains(&old_node_id) {
@@ -173,11 +184,13 @@ fn incorporate_memory_ops_as_scans(
         }
         inner_model.set_output_outlets(&inner_outputs)?;
 
+        println!("mapped_inputs: {:?}", mapped_inputs);
+
         // prepare patch
         let scan = tract_core::ops::scan::Inference::new(
             inner_model,
-            0,
-            vec![0; scan_inputs.len()],
+            coupled_mem_ops.len(),
+            mapped_inputs,
             vec![0; scan_outputs.len()],
             scan_output_len_hints,
         );
@@ -210,21 +223,9 @@ fn incorporate_memory_ops_as_scans(
             output_facts.iter().map(|ti| ti.to_tensor_fact()).collect(),
         )?;
 
-        for (ix, memory) in coupled_mem_ops.iter().enumerate() {
-            let op = model.node(*memory).op_as::<Memory>().unwrap();
-            let zeroes = Tensor::from(tract_core::ndarray::ArrayD::<f32>::zeros(
-                &*output_facts[ix].shape.as_concrete_finite().unwrap().unwrap(),
-            ));
-            patch.plug_const(
-                InletId::new(scan_id, ix),
-                format!("initial-zeros-for-{}", op.name),
-                zeroes,
-            )?;
-        }
-
         for (ix, input) in scan_inputs.iter().enumerate() {
             let tapped = patch.tap_model(model, *input)?;
-            patch.add_edge(tapped, InletId::new(scan_id, ix + coupled_mem_ops.len()))?;
+            patch.add_edge(tapped, InletId::new(scan_id, ix))?;
         }
 
         for (ix, output) in scan_outputs.iter().enumerate() {
