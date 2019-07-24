@@ -273,6 +273,13 @@ where
             .ok_or_else(|| format!("Invalid outlet reference: {:?}", outlet).into())
     }
 
+    /// Get multiple mutable tensor information for outlets.
+    pub fn outlets_fact_mut(&mut self, outlets: &[OutletId]) -> TractResult<TVec<&mut TI>> {
+        use itertools::Itertools;
+        assert!(outlets.iter().tuple_combinations().all(|(a,b)| a != b));
+        Ok(unsafe { outlets.iter().map(|o| &mut *(&self.nodes[o.node].outputs[o.slot].fact as *const TI as *mut TI)).collect() })
+    }
+
     /// Set tensor information for a single outlet.
     pub fn set_outlet_fact(&mut self, outlet: OutletId, fact: TI) -> TractResult<()> {
         let outlets = &mut self.nodes[outlet.node].outputs;

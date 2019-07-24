@@ -1,13 +1,14 @@
-use crate::internal::*;
 use crate::plan::SimplePlan;
 
 use ndarray::*;
 
+use super::*;
+
 #[derive(Debug, Clone, new)]
 pub struct Codegen {
     pub plan: Arc<SimplePlan<TypedTensorInfo, Box<Op>, ModelImpl<TypedTensorInfo, Box<Op>>>>,
-    pub(super) closure_inputs: usize,
-    pub(super) scan_input_axes: Vec<usize>,
+    pub hidden_state_len: usize,
+    pub input_mapping: Vec<InputMapping<usize>>,
     pub(super) scan_output_axes: Vec<usize>,
     pub(super) scan_output_len_hint: Vec<Option<TDim>>,
 }
@@ -15,24 +16,26 @@ pub struct Codegen {
 impl Codegen {
     pub(super) fn slice_input_t<T: Datum>(
         &self,
-        scan_inputs: &[Arc<Tensor>],
-        input: usize,
+        input: &Tensor,
+        axis: usize,
         i: usize,
         count: usize,
     ) -> TractResult<Tensor> {
-        let view = scan_inputs[input].to_array_view::<T>()?;
-        let axis = Axis(self.scan_input_axes.get(input).cloned().unwrap_or(0));
-        let full_len = view.shape()[axis.0];
+        let view = input.to_array_view::<T>()?;
+        let full_len = view.shape()[axis];
         if (i + 1) * count > full_len {
             let remain = full_len - i * count;
             let mut shape: TVec<usize> = view.shape().into();
-            shape[axis.0] = count;
+            shape[axis] = count;
             let mut t = ArrayD::<T>::default(&*shape);
-            t.slice_axis_mut(axis, (0..remain).into())
-                .assign(&view.slice_axis(axis, (i * count..).into()));
+            t.slice_axis_mut(Axis(axis), (0..remain).into())
+                .assign(&view.slice_axis(Axis(axis), (i * count..).into()));
             Ok(t.into_tensor())
         } else {
-            Ok(view.slice_axis(axis, (i * count..(i + 1) * count).into()).to_owned().into_tensor())
+            Ok(view
+                .slice_axis(Axis(axis), (i * count..(i + 1) * count).into())
+                .to_owned()
+                .into_tensor())
         }
     }
 
@@ -73,26 +76,33 @@ impl Op for Codegen {
 
 impl StatelessOp for Codegen {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let hidden_state_len = inputs.len() - self.scan_input_axes.len() - self.closure_inputs;
-
-        // extract hidden state original values from inputs
+        // initialize state
         let mut state: TVec<Tensor> = tvec!();
-        for _ in 0..hidden_state_len {
-            state.push(inputs.remove(0).into_tensor());
+        for input in &self.input_mapping {
+            if let InputMapping::State { initializer } = input {
+                state.push(match initializer {
+                    StateInitializer::FromInput(slot) => (*inputs[*slot]).to_owned(),
+                    StateInitializer::Value(v) => (**v).to_owned(),
+                });
+            }
         }
 
-        let first_input_axis = self.scan_input_axes.get(0).cloned().unwrap_or(0);
-        let iters = inputs[0].shape()[first_input_axis].div_ceil(
-            self.plan
-                .model()
-                .input_fact(hidden_state_len)?
-                .shape
-                .dim(first_input_axis)
-                .to_integer()? as usize,
-        );
+        let (inner_ix, outside_slot, axis, chunk) = self
+            .input_mapping
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, it)| match it {
+                InputMapping::Scan { axis, slot, chunk } => Some((ix, *slot, *axis, *chunk)),
+                _ => None,
+            })
+            .next()
+            .unwrap();
+
+        let iters = inputs[outside_slot].shape()[axis].div_ceil(chunk);
+
         let mut scan_outputs = tvec!();
-        for i in 0..(self.plan.model().output_outlets()?.len() - hidden_state_len) {
-            let fact = self.plan.model().output_fact(hidden_state_len + i)?;
+        for i in 0..(self.plan.model().output_outlets()?.len() - self.hidden_state_len) {
+            let fact = self.plan.model().output_fact(self.hidden_state_len + i)?;
             let dt = fact.datum_type;
             let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
             let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
@@ -109,34 +119,31 @@ impl StatelessOp for Codegen {
         }
 
         for i in 0..iters {
-            // body inputs are state + one slice of each input
-            let mut iter_inputs: TVec<Tensor> = state.drain().collect();
-            for input in 0..self.scan_input_axes.len() {
-                let fact = self.plan.model().input_fact(input + hidden_state_len)?;
-                let axis = self.scan_input_axes.get(input).cloned().unwrap_or(0);
-                let count = fact.shape.dim(axis);
-                let tensor = dispatch_datum!(Self::slice_input_t(inputs[input].datum_type())(
-                    self,
-                    &*inputs,
-                    input,
-                    i,
-                    count.to_integer()? as usize
-                ))?;
-                if cfg!(debug_assert) {
-                    fact.to_tensor_fact().unify(&TensorFact::from(tensor.clone()))?;
-                }
-                iter_inputs.push(tensor);
-            }
-            for i in 0..self.closure_inputs {
-                iter_inputs
-                    .push(inputs[inputs.len() - self.closure_inputs + i].clone().into_tensor());
-            }
+            state.reverse();
+
+            let iter_inputs: TVec<Tensor> = self
+                .input_mapping
+                .iter()
+                .map(|m| Ok(match m {
+                    InputMapping::State { .. } => state.pop().unwrap(),
+                    InputMapping::Scan { slot, axis, chunk } => {
+                        dispatch_datum!(Self::slice_input_t(inputs[*slot].datum_type())(
+                            self,
+                            inputs[*slot].as_ref(),
+                            *axis,
+                            i,
+                            *chunk
+                        ))?
+                    }
+                    InputMapping::Full { slot } => inputs[*slot].clone().into_tensor(),
+                }))
+                .collect::<TractResult<_>>()?;
 
             trace!("iter_inputs: {:?}", iter_inputs);
             let mut iter_outputs =
                 self.plan.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
 
-            for _ in 0..hidden_state_len {
+            for _ in 0..self.hidden_state_len {
                 state.push(iter_outputs.remove(0).into_tensor());
             }
             for (ix, o) in scan_outputs.iter_mut().enumerate() {
