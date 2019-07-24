@@ -9,6 +9,7 @@ addons:
     packages:
     - awscli
     - jshon
+    - moreutils
 env:
   global:
   - RUST_BACKTRACE=1
