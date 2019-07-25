@@ -21,10 +21,12 @@ pub fn scan(
     let scan_output_len_hints = vec![None; scan_output_axes.len()];
 
     let mut mapped_inputs = vec![];
+    let mut mapped_outputs = vec![];
     for ix in 0..num_hidden_state {
         mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
             initializer: tract_core::ops::scan::StateInitializer::FromInput(ix),
         });
+        mapped_outputs.push(tract_core::ops::scan::OutputMapping::State { slot: Some(ix) });
     }
 
     for (ix, ax) in scan_input_axes.iter().enumerate() {
@@ -42,24 +44,25 @@ pub fn scan(
         mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan { axis: *ax, slot: ix + num_hidden_state, chunk: () });
     }
 
-    for output in 0..num_scan_outputs {
-        let op = tract_core::ops::array::AddDims::new(vec![scan_output_axes[output]]);
+    for (ix, ax) in scan_output_axes.iter().enumerate() {
+        let op = tract_core::ops::array::AddDims::new(vec![*ax]);
+        let outlet = model.output_outlets()?[num_hidden_state + ix];
         InferenceModelPatch::intercept(
             &model,
-            model.output_outlets()?[num_hidden_state + output],
-            format!("output-{}-adjust-dim", output),
+            outlet,
+            format!("output-{}-adjust-dim", ix),
             op,
             TensorFact::default(),
         )?
         .apply(&mut model)?;
+        mapped_outputs.push(tract_core::ops::scan::OutputMapping::Scan { axis: *ax, slot: ix + num_hidden_state, chunk: () });
     }
 
     Ok((
         Box::new(Inference::new(
             model,
-            num_hidden_state,
             mapped_inputs,
-            scan_output_axes,
+            mapped_outputs,
             scan_output_len_hints,
         )),
         unresolved_inputs,

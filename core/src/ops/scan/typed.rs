@@ -1,5 +1,4 @@
 use super::codegen::Codegen;
-use crate::internal::*;
 
 use super::*;
 
@@ -7,9 +6,8 @@ use super::*;
 pub struct Typed {
     pub body: TypedModel,
     decluttered: bool,
-    pub hidden_state_len: usize,
     pub input_mapping: Vec<InputMapping<TDim>>,
-    pub(super) scan_output_axes: Vec<usize>,
+    pub output_mapping: Vec<OutputMapping<TDim>>,
     pub(super) scan_output_len_hint: Vec<Option<TDim>>,
 }
 
@@ -33,30 +31,37 @@ impl Typed {
                 })
             })
             .collect::<TractResult<_>>()?;
+
+        let output_mapping = self
+            .output_mapping
+            .iter()
+            .map(|im| {
+                Ok(match im {
+                    OutputMapping::Scan { axis, slot, chunk } => OutputMapping::Scan {
+                        axis: *axis,
+                        slot: *slot,
+                        chunk: chunk.to_integer()? as usize,
+                    },
+                    OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
+                })
+            })
+            .collect::<TractResult<_>>()?;
+
         Ok(Codegen::new(
             Arc::new(plan),
-            self.hidden_state_len,
             input_mapping,
-            self.scan_output_axes.clone(),
+            output_mapping,
             self.scan_output_len_hint.clone(),
         ))
     }
 
     pub fn new(
         body: TypedModel,
-        hidden_state_len: usize,
         input_mapping: Vec<InputMapping<TDim>>,
-        scan_output_axes: Vec<usize>,
+        output_mapping: Vec<OutputMapping<TDim>>,
         scan_output_len_hint: Vec<Option<TDim>>,
     ) -> Typed {
-        Typed {
-            body,
-            decluttered: false,
-            hidden_state_len,
-            input_mapping,
-            scan_output_axes,
-            scan_output_len_hint,
-        }
+        Typed { body, decluttered: false, input_mapping, output_mapping, scan_output_len_hint }
     }
 }
 
