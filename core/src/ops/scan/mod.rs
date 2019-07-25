@@ -32,6 +32,22 @@ impl<C: Clone> InputMapping<C> {
 }
 
 #[derive(Debug, Clone, new)]
+pub enum OutputMapping<C: Clone> {
+    State { slot: Option<usize> },
+    Scan { slot: usize, axis: usize, chunk: C },
+}
+
+impl<C: Clone> OutputMapping<C> {
+    pub fn invisible(&self) -> bool {
+        if let OutputMapping::State { slot: None } = self {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug, Clone, new)]
 pub enum StateInitializer {
     FromInput(usize),
     Value(Arc<Tensor>),

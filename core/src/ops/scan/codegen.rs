@@ -7,9 +7,8 @@ use super::*;
 #[derive(Debug, Clone, new)]
 pub struct Codegen {
     pub plan: Arc<SimplePlan<TypedTensorInfo, Box<Op>, ModelImpl<TypedTensorInfo, Box<Op>>>>,
-    pub hidden_state_len: usize,
     pub input_mapping: Vec<InputMapping<usize>>,
-    pub(super) scan_output_axes: Vec<usize>,
+    pub output_mapping: Vec<OutputMapping<usize>>,
     pub(super) scan_output_len_hint: Vec<Option<TDim>>,
 }
 
@@ -49,11 +48,10 @@ impl Codegen {
     pub(super) fn assign_output_t<T: Datum + Default>(
         &self,
         output: &mut Tensor,
-        output_id: usize,
+        axis: usize,
         element_value: &Tensor,
         i: usize,
     ) -> TractResult<()> {
-        let axis = self.scan_output_axes.get(output_id).cloned().unwrap_or(0);
         let mut view = output.to_array_view_mut::<T>()?;
         let element = element_value.to_array_view::<T>()?;
         let offset = i * element_value.shape()[axis];
@@ -75,7 +73,7 @@ impl Op for Codegen {
 }
 
 impl StatelessOp for Codegen {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         // initialize state
         let mut state: TVec<Tensor> = tvec!();
         for input in &self.input_mapping {
@@ -87,36 +85,45 @@ impl StatelessOp for Codegen {
             }
         }
 
-        let (inner_ix, outside_slot, axis, chunk) = self
-            .input_mapping
-            .iter()
-            .enumerate()
-            .filter_map(|(ix, it)| match it {
-                InputMapping::Scan { axis, slot, chunk } => Some((ix, *slot, *axis, *chunk)),
-                _ => None,
-            })
-            .next()
-            .unwrap();
+        let iters = {
+            let (outside_slot, axis, chunk) = self
+                .input_mapping
+                .iter()
+                .filter_map(|it| match it {
+                    InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, *chunk)),
+                    _ => None,
+                })
+                .next()
+                .unwrap();
+            inputs[outside_slot].shape()[axis].div_ceil(chunk)
+        };
 
-        let iters = inputs[outside_slot].shape()[axis].div_ceil(chunk);
-
-        let mut scan_outputs = tvec!();
-        for i in 0..(self.plan.model().output_outlets()?.len() - self.hidden_state_len) {
-            let fact = self.plan.model().output_fact(self.hidden_state_len + i)?;
-            let dt = fact.datum_type;
-            let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
-            let axis = self.scan_output_axes.get(i).cloned().unwrap_or(0);
-            let scanning_dim = self
-                .scan_output_len_hint
-                .get(0)
-                .and_then(|x| x.as_ref())
-                .and_then(|i| i.to_integer().ok())
-                .map(|i| i as usize)
-                .unwrap_or(shape[axis] * iters);
-            shape[axis] = scanning_dim;
-            let t = dispatch_datum!(Self::alloc_output_t(dt)(self, &*shape))?;
-            scan_outputs.push(t);
+        let mut outputs = tvec!();
+        for (ix, output) in self.output_mapping.iter().enumerate() {
+            match output {
+                OutputMapping::Scan { slot, axis, .. } => {
+                    let fact = self.plan.model().output_fact(ix)?;
+                    let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
+                    let scanning_dim = self
+                        .scan_output_len_hint
+                        .get(0)
+                        .and_then(|x| x.as_ref())
+                        .and_then(|i| i.to_integer().ok())
+                        .map(|i| i as usize)
+                        .unwrap_or(shape[*axis] * iters);
+                    shape[*axis] = scanning_dim;
+                    let t = dispatch_datum!(Self::alloc_output_t(fact.datum_type)(self, &*shape))?;
+                    outputs.push((slot, t));
+                }
+                OutputMapping::State { slot } => {
+                    if let Some(slot) = slot {
+                        outputs.push((slot, Tensor::default()));
+                    }
+                }
+            }
         }
+        outputs.sort_by_key(|a| a.0);
+        let mut outputs:TVec<Tensor> = outputs.into_iter().map(|(_slot, v)| v).collect();
 
         for i in 0..iters {
             state.reverse();
@@ -124,41 +131,53 @@ impl StatelessOp for Codegen {
             let iter_inputs: TVec<Tensor> = self
                 .input_mapping
                 .iter()
-                .map(|m| Ok(match m {
-                    InputMapping::State { .. } => state.pop().unwrap(),
-                    InputMapping::Scan { slot, axis, chunk } => {
-                        dispatch_datum!(Self::slice_input_t(inputs[*slot].datum_type())(
-                            self,
-                            inputs[*slot].as_ref(),
-                            *axis,
-                            i,
-                            *chunk
-                        ))?
-                    }
-                    InputMapping::Full { slot } => inputs[*slot].clone().into_tensor(),
-                }))
+                .map(|m| {
+                    Ok(match m {
+                        InputMapping::State { .. } => state.pop().unwrap(),
+                        InputMapping::Scan { slot, axis, chunk } => {
+                            dispatch_datum!(Self::slice_input_t(inputs[*slot].datum_type())(
+                                self,
+                                inputs[*slot].as_ref(),
+                                *axis,
+                                i,
+                                *chunk
+                            ))?
+                        }
+                        InputMapping::Full { slot } => inputs[*slot].clone().into_tensor(),
+                    })
+                })
                 .collect::<TractResult<_>>()?;
 
             trace!("iter_inputs: {:?}", iter_inputs);
-            let mut iter_outputs =
+            let iter_outputs =
                 self.plan.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
 
-            for _ in 0..self.hidden_state_len {
-                state.push(iter_outputs.remove(0).into_tensor());
-            }
-            for (ix, o) in scan_outputs.iter_mut().enumerate() {
-                dispatch_datum!(Self::assign_output_t(o.datum_type())(
-                    self,
-                    o,
-                    ix,
-                    &iter_outputs[ix],
-                    i
-                ))?;
+            for (v, mapping) in iter_outputs.into_iter().zip(&self.output_mapping) {
+                match mapping {
+                    OutputMapping::State { .. } => state.push(v.into_tensor()),
+                    OutputMapping::Scan { axis, slot, .. } => {
+                        dispatch_datum!(Self::assign_output_t(v.datum_type())(
+                            self,
+                            &mut outputs[*slot],
+                            *axis,
+                            v.as_ref(),
+                            i
+                        ))?;
+                    }
+                }
             }
         }
-        let mut output: TVec<Arc<Tensor>> =
-            state.into_iter().map(|t| t.into_arc_tensor()).collect();
-        output.extend(scan_outputs.into_iter().map(|t| t.into_arc_tensor()));
-        Ok(output)
+
+        state.reverse();
+        for map in self.output_mapping.iter() {
+            if let OutputMapping::State { slot } = map {
+                let value = state.pop().unwrap();
+                if let Some(slot) = slot {
+                    outputs[*slot] = value;
+                }
+            }
+        }
+
+        Ok(outputs.into_iter().map(Arc::new).collect())
     }
 }

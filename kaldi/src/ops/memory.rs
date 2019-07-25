@@ -107,7 +107,8 @@ fn incorporate_memory_ops_as_scans(
             .map(|(id, _fact)| id)
             .collect();
         let mut inner_model = InferenceModel::default();
-        let mut mapped_inputs = vec!();
+        let mut mapped_inputs = vec![];
+        let mut mapped_outputs = vec![];
         let mut node_id_old_to_new: HashMap<usize, usize> = HashMap::new();
         for &mem in &coupled_mem_ops {
             let mem_node = model.node(mem);
@@ -131,6 +132,7 @@ fn incorporate_memory_ops_as_scans(
             mapped_inputs.push(tract_core::ops::scan::InputMapping::State {
                 initializer: tract_core::ops::scan::StateInitializer::Value(zeroes.into()),
             });
+            mapped_outputs.push(tract_core::ops::scan::OutputMapping::State { slot: None });
         }
         for (ix, scan_input) in scan_inputs.iter().enumerate() {
             let old_node = model.node(scan_input.node);
@@ -143,7 +145,15 @@ fn incorporate_memory_ops_as_scans(
             )?;
             node_id_old_to_new.insert(scan_input.node, new_id);
             mapped_inputs.push(tract_core::ops::scan::InputMapping::Scan {
-                axis: 0, chunk: (), slot: ix });
+                axis: 0,
+                chunk: (),
+                slot: ix,
+            });
+            mapped_outputs.push(tract_core::ops::scan::OutputMapping::Scan {
+                axis: 0,
+                chunk: (),
+                slot: ix,
+            });
         }
         for old_node_id in time_loop.iter() {
             if coupled_mem_ops.contains(&old_node_id) {
@@ -184,18 +194,16 @@ fn incorporate_memory_ops_as_scans(
         }
         inner_model.set_output_outlets(&inner_outputs)?;
 
-        println!("mapped_inputs: {:?}", mapped_inputs);
-
         // prepare patch
         let scan = tract_core::ops::scan::Inference::new(
             inner_model,
-            coupled_mem_ops.len(),
             mapped_inputs,
-            vec![0; scan_outputs.len()],
+            mapped_outputs,
             scan_output_len_hints,
         );
 
         let mut output_facts = tvec!();
+        /*
         for memory in coupled_mem_ops.iter() {
             let channels = model.node(*memory).outputs[0]
                 .fact
@@ -209,6 +217,7 @@ fn incorporate_memory_ops_as_scans(
             let delay = (-op.offset) as usize;
             output_facts.push(TensorFact::dt_shape(f32::datum_type(), tvec![delay, channels]));
         }
+        */
 
         for output in &scan_outputs {
             let old_outlet = model.node(output.node).inputs[output.slot];
@@ -230,7 +239,7 @@ fn incorporate_memory_ops_as_scans(
 
         for (ix, output) in scan_outputs.iter().enumerate() {
             let old_outlet = model.node(output.node).inputs[output.slot];
-            patch.shunt_outside(old_outlet, OutletId::new(scan_id, ix + coupled_mem_ops.len()))?;
+            patch.shunt_outside(old_outlet, OutletId::new(scan_id, ix))?;
         }
 
         for mem in coupled_mem_ops {
