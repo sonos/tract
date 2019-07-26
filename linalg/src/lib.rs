@@ -27,20 +27,12 @@ pub use self::frame::*;
 
 pub struct Ops {
     pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn VecMatMul<f32>> + Send + Sync>,
-    pub smm: Box<dyn Fn(usize, usize, usize) -> Box<dyn MatMul<f32>> + Send + Sync>,
-    pub dmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn MatMul<f64>> + Send + Sync>,
-    pub sconv: Box<dyn Fn(usize, Vec<isize>, Vec<isize>) -> Box<dyn Conv<f32>> + Send + Sync>,
     pub stile: Box<dyn Fn(usize, usize, usize) -> Box<dyn Tile<f32>> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
     Ops {
         svmm: Box::new(|k, n| Box::new(PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))),
-        smm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::SMatMul4x4, f32>::new(m, k, n))),
-        dmm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::DMatMul4x2, f64>::new(m, k, n))),
-        sconv: Box::new(|co, kernel_offsets, data_offsets| {
-            Box::new(PackedConv::<generic::SConv4x4, f32>::new(co, kernel_offsets, data_offsets))
-        }),
         stile: Box::new(|m, k, n| Box::new(TileOp::<generic::STiling4x4, f32>::new(m, k, n))),
     }
 }
@@ -51,6 +43,7 @@ pub fn best() -> Ops {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("fma") {
+            /*
             log::info!("x86_64/fma activated for smm and sconv");
             ops.smm = Box::new(|m, k, n| {
                 Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(m, k, n))
@@ -62,6 +55,7 @@ pub fn best() -> Ops {
                     data_offsets,
                 ))
             });
+            */
         }
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
