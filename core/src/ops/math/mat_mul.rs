@@ -18,7 +18,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
     let b_pack = geo.mm.b_pack();
 
     let mut pa = unsafe {
-        Tensor::uninitialized_aligned::<T>(&[geo.mm.packed_a_len()], geo.mm.packed_a_alignment())?
+        Tensor::uninitialized_aligned::<T>(&[geo.mm.a_pack().len()], geo.mm.a_pack().alignment())?
     };
     let mut pb =
         unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
@@ -35,7 +35,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
             c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
         }
 
-        geo.mm.pack_a(
+        geo.mm.a_pack().pack(
             pa.as_ptr_mut()?,
             a.as_ptr(),
             a.strides()[prefix.ndim()],
@@ -47,13 +47,17 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
             b.strides()[prefix.ndim()],
             b.strides()[prefix.ndim() + 1],
         );
-        geo.mm.mat_mul_prepacked(
-            pa.as_ptr()?,
-            pb.as_ptr()?,
-            c.as_mut_ptr(),
-            c.strides()[prefix.ndim()],
-            c.strides()[prefix.ndim() + 1],
-        );
+        unsafe {
+            geo.mm.run(
+                &geo.mm.a_from_packed(pa.as_ptr()?),
+                &geo.mm.b_from_packed(pb.as_ptr()?),
+                &mut geo.mm.c_from_data_and_strides(
+                    c.as_mut_ptr(),
+                    c.strides()[prefix.ndim()],
+                    c.strides()[prefix.ndim() + 1],
+                ),
+            );
+        }
     }
     Ok(c.into_tensor())
 }
@@ -90,7 +94,7 @@ struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<dyn tract_linalg::MatMul<T>>,
+    mm: Box<dyn tract_linalg::Tile<T>>,
     a_shape: TVec<usize>,
     b_shape: TVec<usize>,
     bc_a_shape: TVec<usize>,
@@ -108,7 +112,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Geo<T> {
         let m = bc_a_shape[bc_a_shape.len() - 2];
         let k = bc_a_shape[bc_a_shape.len() - 1];
         let n = bc_b_shape[bc_b_shape.len() - 1];
-        let mm = T::packed_mat_mul(m, k, n);
+        let mm = T::tile_op(m, k, n);
         let a_stride_prefix = bc_a_shape
             .iter()
             .rev()
@@ -329,25 +333,22 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
         let a = args_1!(inputs);
         let a = a.to_array_view::<T>()?;
 
-        let mut c = unsafe { Array::uninitialized(&*self.c_shape) };
+        unsafe {
+            let mut c = Array::uninitialized(&*self.c_shape);
 
-        let mut pa = unsafe {
-            Tensor::uninitialized_aligned::<T>(
-                &[self.geo.mm.packed_a_len()],
-                self.geo.mm.packed_a_alignment(),
-            )?
-        };
+            let mut pa = Tensor::uninitialized_aligned::<T>(
+                &[self.geo.mm.a_pack().len()],
+                self.geo.mm.a_pack().alignment(),
+            )?;
 
-        self.geo.mm.pack_a(pa.as_ptr_mut()?, a.as_ptr(), self.geo.k as isize, 1);
-        self.geo.mm.mat_mul_prepacked(
-            pa.as_ptr()?,
-            self.packed_b.as_ptr()?,
-            c.as_mut_ptr(),
-            self.geo.n as isize,
-            1,
-        );
-
-        Ok(tvec!(c.into_arc_tensor()))
+            self.geo.mm.a_pack().pack(pa.as_ptr_mut()?, a.as_ptr(), self.geo.k as isize, 1);
+            self.geo.mm.run(
+                &self.geo.mm.a_from_packed(pa.as_ptr()?),
+                &self.geo.mm.b_from_packed(self.packed_b.as_ptr()?),
+                &mut self.geo.mm.c_from_data_and_strides(c.as_mut_ptr(), self.geo.n as isize, 1),
+            );
+            Ok(tvec!(c.into_arc_tensor()))
+        }
     }
 }
 
@@ -413,8 +414,8 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
 
         let mut pa = unsafe {
             Tensor::uninitialized_aligned::<T>(
-                &[self.geo.mm.packed_a_len()],
-                self.geo.mm.packed_a_alignment(),
+                &[self.geo.mm.a_pack().len()],
+                self.geo.mm.a_pack().alignment(),
             )?
         };
 
@@ -430,19 +431,23 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
                 c.slice_axis_inplace(Axis(axis), (dim..=dim).into());
             }
 
-            self.geo.mm.pack_a(
+            self.geo.mm.a_pack().pack(
                 pa.as_ptr_mut()?,
                 a.as_ptr(),
                 a.strides()[prefix.ndim()],
                 a.strides()[prefix.ndim() + 1],
             );
-            self.geo.mm.mat_mul_prepacked(
-                pa.as_ptr_mut()?,
-                b.as_ptr(),
-                c.as_mut_ptr(),
-                c.strides()[prefix.ndim()],
-                c.strides()[prefix.ndim() + 1],
-            );
+            unsafe {
+                self.geo.mm.run(
+                    &self.geo.mm.a_from_packed(pa.as_ptr()?),
+                    &self.geo.mm.b_from_packed(b.as_ptr()),
+                    &mut self.geo.mm.c_from_data_and_strides(
+                        c.as_mut_ptr(),
+                        c.strides()[prefix.ndim()],
+                        c.strides()[prefix.ndim() + 1],
+                    ),
+                );
+            }
         }
         Ok(tvec!(c.into_arc_tensor()))
     }
