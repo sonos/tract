@@ -105,6 +105,8 @@ where
     unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>);
 }
 
+clone_trait_object!(<T> Tile<T> where T: Copy + Add + Mul + Zero);
+
 #[derive(Debug, Clone, new)]
 pub struct TileOp<K, T>
 where

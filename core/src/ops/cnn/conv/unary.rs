@@ -114,20 +114,20 @@ impl ConvUnary {
             })
             .collect();
         let conv =
-            (tract_linalg::ops().sconv)(self.output_channels(), kernel_offsets, data_offsets);
+            (tract_linalg::ops().stile)(self.output_channels(), kernel_offsets.len(), data_offsets.len());
 
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed = unsafe {
-            Tensor::uninitialized_aligned::<f32>(&[conv.packed_a_len()], conv.packed_a_alignment())?
+            Tensor::uninitialized_aligned::<f32>(&[conv.a_pack().len()], conv.a_pack().alignment())?
         };
-        conv.pack_a(
+        conv.a_pack().pack(
             packed.as_slice_mut()?.as_mut_ptr(),
             kernel.as_slice().unwrap().as_ptr(),
             kernel.strides()[1],
             kernel.strides()[2],
         );
 
-        Ok(super::Direct::new(conv, input_shape, output_shape, packed))
+        Ok(super::Direct::new(conv, data_offsets, kernel_offsets, input_shape, output_shape, packed))
     }
 
     fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {

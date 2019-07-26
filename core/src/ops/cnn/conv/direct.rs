@@ -1,14 +1,15 @@
 use crate::internal::*;
 use crate::ops::nn::DataShape;
 use ndarray::prelude::*;
-use tract_linalg::Conv;
+use tract_linalg::Tile;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {
-    conv: Box<dyn Conv<f32>>,
+    tile: Box<dyn Tile<f32>>,
+    data_offsets: Vec<isize>,
+    kernel_offsets: Vec<isize>,
     input_shape: DataShape,
     output_shape: DataShape,
-    #[debug(skip)]
     packed_filters: Tensor,
 }
 
@@ -24,14 +25,14 @@ impl Op for Direct {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.conv)))
+        Ok(vec!(format!("{:?}", self.tile)))
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            batch * self.conv.n() * self.conv.co() * self.conv.k()
+            batch * self.tile.n() * self.tile.m() * self.tile.k()
         )))
     }
 
@@ -46,15 +47,22 @@ impl StatelessOp for Direct {
         unsafe {
             let input = input.to_array_view::<f32>()?;
             let mut output = ArrayD::<f32>::uninitialized(&*self.output_shape.shape);
+            let filters = self.packed_filters.as_ptr::<f32>()?;
             for n in 0..*self.input_shape.n() {
                 let input = input.slice_axis(Axis(0), (n..=n).into());
                 let mut output = output.slice_axis_mut(Axis(0), (n..=n).into());
-                self.conv.conv(
-                    self.packed_filters.as_slice::<f32>()?.as_ptr(),
-                    input.as_ptr(),
-                    output.as_mut_ptr(),
-                    *self.output_shape.c_stride() as isize,
-                    *self.output_shape.w_stride() as isize,
+                self.tile.run(
+                    &self.tile.a_from_packed(filters),
+                    &self.tile.b_from_data_and_offsets(
+                        input.as_ptr(),
+                        &self.kernel_offsets,
+                        &self.data_offsets,
+                    ),
+                    &mut self.tile.c_from_data_and_strides(
+                        output.as_mut_ptr(),
+                        *self.output_shape.c_stride() as isize,
+                        *self.output_shape.w_stride() as isize,
+                    ),
                 );
             }
             Ok(tvec!(output.into_arc_tensor()))
