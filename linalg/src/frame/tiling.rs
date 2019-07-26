@@ -322,10 +322,36 @@ where
 }
 
 #[cfg(test)]
+#[macro_use]
 pub mod test {
     use super::*;
     use crate::align;
     use proptest::prelude::*;
+
+    #[macro_export]
+    macro_rules! tile_tests {
+        ($cond:expr, $ker:ty) => {
+            #[allow(unused_imports)]
+            use crate::frame::tiling::test::*;
+            proptest::proptest! {
+                #[test]
+                fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
+                    if $cond {
+                        test_mat_mul_prep_f32::<$ker>(m, k, n, a, b)?
+                    }
+                }
+
+                #[test]
+                fn conv_prepacked(pb in strat_conv_1d()) {
+                    if $cond {
+                        let found = pb.run::<$ker>();
+                        let expected = pb.expected();
+                        proptest::prop_assert_eq!(found, expected)
+                    }
+                }
+            }
+        }
+    }
 
     pub fn strat_mat_mul() -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {
         (1usize..5, 1usize..5, 1usize..5)
@@ -350,6 +376,7 @@ pub mod test {
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         let op = TileOp::<K, f32>::new(m, k, n);
         unsafe {
+            dbg!(m, k, n);
             let mut packed_a: Vec<f32> =
                 align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
@@ -374,6 +401,7 @@ pub mod test {
                     }
                 }
             }
+
             prop_assert_eq!(found, expect);
         }
         Ok(())
@@ -441,7 +469,7 @@ pub mod test {
             let op = TileOp::<K, f32>::new(self.m(), self.k(), self.n());
             unsafe {
                 let mut packed_a: Vec<f32> =
-                    align::uninitialized(op.a_pack().len(), op.b_pack().alignment());
+                    align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
                 op.a_pack().pack(
                     packed_a.as_mut_ptr(),
                     self.filters.as_ptr(),

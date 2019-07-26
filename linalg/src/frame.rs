@@ -1,5 +1,6 @@
 pub mod conv;
 pub mod matmul;
+#[macro_use]
 pub mod tiling;
 pub mod pack_a;
 pub mod pack_b;
