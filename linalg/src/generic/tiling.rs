@@ -118,7 +118,7 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
                 _ => return 1,
             }
         }
-        0
+        return 0
     }
 }
 
@@ -126,40 +126,6 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
 mod test {
     use super::*;
     use crate::frame::tiling::test::*;
-    use proptest::*;
 
-    proptest! {
-        #[test]
-        fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
-            test_mat_mul_prep_f32::<STiling4x4>(m, k, n, a, b)?
-        }
-
-        #[test]
-        fn conv_prepacked(pb in strat_conv_1d()) {
-            let found = pb.run::<STiling4x4>();
-            let expected = pb.expected();
-            prop_assert_eq!(found, expected)
-        }
-    }
-
-    #[test]
-    fn mat_mul_prepacked_1() {
-        test_mat_mul_prep_f32::<STiling4x4>(1, 2, 1, &[0.0, 1.0], &[0.0, -1.0]).unwrap()
-    }
-
-    #[test]
-    fn conv_prepacked_1() {
-        let pb = ConvProblem {
-            ci: 1,
-            co: 1,
-            kt: 2,
-            stride: 1,
-            dilation: 1,
-            filters: vec![0.0, 1.0],
-            data: vec![0.0, -1.0],
-        };
-        let found = pb.run::<STiling4x4>();
-        let expected = pb.expected();
-        assert_eq!(found, expected);
-    }
+    tile_tests!(true, STiling4x4);
 }

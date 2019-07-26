@@ -11,6 +11,7 @@ extern crate proptest;
 
 pub mod align;
 pub mod f16;
+#[macro_use]
 pub mod frame;
 mod generic;
 
@@ -43,6 +44,9 @@ pub fn best() -> Ops {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("fma") {
+            ops.stile = Box::new(|m, k, n| {
+                Box::new(TileOp::<x86_64_fma::tile::STile16x6, f32>::new(m, k, n))
+            });
             /*
             log::info!("x86_64/fma activated for smm and sconv");
             ops.smm = Box::new(|m, k, n| {
