@@ -300,6 +300,7 @@ pub trait FloatLike: Datum {
         kernel_offsets: Vec<isize>,
         data_offsets: Vec<isize>,
     ) -> Box<dyn tract_linalg::Conv<Self>>;
+    fn tile_op(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::Tile<Self>>;
     fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::MatMul<Self>>;
     fn packed_vec_mat_mul(k: usize, n: usize) -> Box<dyn tract_linalg::VecMatMul<Self>>;
 }
@@ -310,6 +311,9 @@ impl FloatLike for f16 {
         _kernel_offsets: Vec<isize>,
         _data_offsets: Vec<isize>,
     ) -> Box<dyn tract_linalg::Conv<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn tile_op(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::Tile<Self>> {
         unimplemented!("f16 ops");
     }
     fn packed_mat_mul(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::MatMul<Self>> {
@@ -328,6 +332,9 @@ impl FloatLike for f32 {
     ) -> Box<dyn tract_linalg::Conv<Self>> {
         (tract_linalg::ops().sconv)(m, kernel_offsets, data_offsets)
     }
+    fn tile_op(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::Tile<Self>> {
+        (tract_linalg::ops().stile)(m, k, n)
+    }
     fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::MatMul<Self>> {
         (tract_linalg::ops().smm)(m, k, n)
     }
@@ -342,6 +349,9 @@ impl FloatLike for f64 {
         _kernel_offsets: Vec<isize>,
         _data_offsets: Vec<isize>,
     ) -> Box<dyn tract_linalg::Conv<Self>> {
+        unimplemented!("f64 ops");
+    }
+    fn tile_op(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::Tile<Self>> {
         unimplemented!("f64 ops");
     }
     fn packed_mat_mul(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::MatMul<Self>> {

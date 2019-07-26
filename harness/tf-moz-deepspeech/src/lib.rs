@@ -98,9 +98,9 @@ fn deepspeech() -> TractResult<()> {
         if h.is_some() && cs.is_some() && logits.is_some() {
             let mut outputs = state.run_plan(inputs.clone(), 1)?;
             let (logits_, cs_, h_) = args_3!(outputs);
-            assert!(h.take().unwrap().close_enough(&h_, true));
-            assert!(cs.take().unwrap().close_enough(&cs_, true));
-            assert!(logits.take().unwrap().close_enough(&logits_, true));
+            h.take().unwrap().close_enough(&h_, true).unwrap();
+            cs.take().unwrap().close_enough(&cs_, true).unwrap();
+            logits.take().unwrap().close_enough(&logits_, true).unwrap();
             println!("chunk ok");
         }
     }

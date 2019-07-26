@@ -41,10 +41,11 @@ pub fn handle(params: Parameters, _options: display_graph::DisplayOptions) -> Cl
             }
 
             for (got, exp) in optim_result.iter().zip(orig_result.iter()) {
-                if !exp.close_enough(got, true) {
+                if let Err(e) = exp.close_enough(got, true) {
                     error!(
-                        "Values for {} are not close enough",
-                        original_state.model().nodes()[orig]
+                        "Values for {} are not close enough: {:?}",
+                        original_state.model().nodes()[orig],
+                        e
                     );
                     println!("{:?}\n", original_state.model().nodes()[orig]);
                     println!("{:?}\n", exp);

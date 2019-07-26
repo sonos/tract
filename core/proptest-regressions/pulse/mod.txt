@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0184be29ad040d6bef8be6e31f62e4453fba7a941b18202cddf3f7c902f94450 # shrinks to pulse = 1, input_len = 0, begin = 0, end = 0
+cc d23b295fc14e59c3a49e0d3bb320f09032ee440a142039a7350b934c1213c296 # shrinks to pulse = 1, input_len = 0, begin = 0, end = 0
+cc b90418b2443a4e0af60938152114c1c27e44787567fd34436bc6baaf4c0c3e14 # shrinks to pb = PadPlusConvProblem { pad: 2, stride: 2, dilation: 1, pulse: 2, ker: [[[0.0, -1.0]]] shape=[1, 1, 2], strides=[2, 2, 1], layout=C (0x1), const ndim=3, input: [[[-1.0, 0.0]]] shape=[1, 1, 2], strides=[2, 2, 1], layout=C (0x1), const ndim=3 }
+cc 013590871b9051be0fe131499d7c055bb2ce3afa21c688c09d9685868e07044b # shrinks to pb = PadPlusConvProblem { pad: 0, stride: 2, dilation: 1, pulse: 2, ker: [[[0.0]]] shape=[1, 1, 1], strides=[1, 1, 1], layout=C (0x1), const ndim=3, input: [[[0.0, 0.0, 0.0]]] shape=[1, 1, 3], strides=[3, 3, 1], layout=C (0x1), const ndim=3 }
+cc 5155c8e3ec3db74340d7e5c7499a005f4bf0a5e8d193555eda9ca9b952a35d3b # shrinks to pb = PadPlusConvProblem { pad_before: 0, pad_after: 1, pad_mode: Edge, stride: 1, dilation: 1, pulse: 1, ker: [[[0.0]]] shape=[1, 1, 1], strides=[1, 1, 1], layout=C (0x1), const ndim=3, input: [[[0.0]]] shape=[1, 1, 1], strides=[1, 1, 1], layout=C (0x1), const ndim=3 }
+cc 299a025345e5204a6e8ccf61748a08dce8a724f5158a42e86c5b393211028e77 # shrinks to pb = PadPlusConvProblem { pad_before: 1, pad_after: 0, pad_mode: Edge, stride: 2, dilation: 2, pulse: 2, ker: [[[-4.0]]] shape=[1, 1, 1], strides=[1, 1, 1], layout=C (0x1), const ndim=3, input: [[[0.0, 0.0, 0.0, 0.0]]] shape=[1, 1, 4], strides=[4, 4, 1], layout=C (0x1), const ndim=3 }

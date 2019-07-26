@@ -648,10 +648,11 @@ macro_rules! assert_close {
     ($left:expr, $right:expr) => ({
         match (&$left, &$right) {
             (left_val, right_val) => {
-                if !(left_val.close_enough(right_val, true)) {
+                if let Err(e) = left_val.close_enough(right_val, true) {
                     panic!(r#"assertion failed: `(left ~ right)`
   left: `{:?}`,
- right: `{:?}`"#, left_val, right_val)
+ right: `{:?}`
+ {:?}"#, left_val, right_val, e)
                 }
             }
         }
@@ -662,11 +663,12 @@ macro_rules! assert_close {
     ($left:expr, $right:expr, $($arg:tt)+) => ({
         match (&($left), &($right)) {
             (left_val, right_val) => {
-                if !(left_val.close_enough(right_val, true)) {
+                if let Err(e) = left_val.close_enough(right_val, true) {
                     panic!(r#"assertion failed: `(left ~ right)`
   left: `{:?}`,
- right: `{:?}`: {}"#, left_val, right_val,
-                           format_args!($($arg)+))
+ right: `{:?}`: {}
+ {:?}"#, left_val, right_val,
+                           format_args!($($arg)+), e)
                 }
             }
         }

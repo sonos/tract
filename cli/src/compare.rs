@@ -254,12 +254,12 @@ where
                                     } else if tf_output[ix].shape() != data.shape() {
                                         display_graph.set_node_color(n, Red.bold())?;
                                         display_graph.add_node_label(n, format!("Output {} has wrong shape. Expected {:?}, got {:?}", ix, tf_output[ix].shape(), data.shape()))?;
-                                    } else if !tf_output[ix].close_enough(
+                                    } else if let Err(e) = tf_output[ix].close_enough(
                                         data,
                                         node.op().validation() == Validation::Rounding,
                                     ) {
                                         display_graph.set_node_color(n, Red.bold())?;
-                                        let mut msg = vec!(Red.bold().paint(format!("Wrong value for output {}", ix)).to_string());
+                                        let mut msg = vec!(Red.bold().paint(format!("Wrong value for output {}, {:?}", ix, e)).to_string());
                                         msg.push(format!("got     : {:?}", data));
                                         display_graph.add_node_section(n, msg)?;
                                     } else {
