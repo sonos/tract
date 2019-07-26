@@ -8,7 +8,7 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::{DataFormat, DataShape};
 
-use tract_linalg::MatMul;
+use tract_linalg::Tile;
 
 /*
  * group=1, N=1         N>1             g>1
@@ -51,7 +51,7 @@ where
     pub packed_kernels: Vec<Tensor>,
     pub bias: Option<ArrayD<T>>,
     pub group: usize,
-    pub mm: Box<dyn MatMul<T>>,
+    pub tile: Box<dyn Tile<T>>,
 }
 
 impl<T> MatMat<T>
@@ -63,9 +63,14 @@ where
         packed_input: &'i ArrayView3<'i, T>,
     ) -> TractResult<ArrayD<T>> {
         let mut output = unsafe { ArrayD::<T>::uninitialized(&*self.output_shape.shape) };
-        let packed_b_len = self.mm.b_pack().len();
+        let packed_b_len = self.tile.b_pack().len();
 
         let co_per_group = self.output_shape.c() / self.group;
+
+        let (rsc, csc) = match self.output_shape.fmt {
+            DataFormat::NHWC => (1, (self.m * self.group) as isize),
+            DataFormat::NCHW => (self.n as isize, 1),
+        };
 
         for i in 0..*self.output_shape.n() {
             unsafe {
@@ -77,19 +82,14 @@ where
                         *self.output_shape.c_stride() as isize * co_per_group as isize * g as isize,
                     );
 
-                    let (rsc, csc) = match self.output_shape.fmt {
-                        DataFormat::NHWC => (1, (self.m * self.group) as isize),
-                        DataFormat::NCHW => (self.n as isize, 1),
-                    };
-
-                    self.mm.mat_mul_prepacked(
-                        a.as_ptr()?,
-                        packed_input
-                            .as_ptr()
-                            .offset(((self.group * i + g) * packed_b_len) as isize),
-                        output_i_g,
-                        rsc,
-                        csc,
+                    self.tile.run(
+                        &self.tile.a_from_packed(a.as_ptr()?),
+                        &self.tile.b_from_packed(
+                            packed_input
+                                .as_ptr()
+                                .offset(((self.group * i + g) * packed_b_len) as isize),
+                        ),
+                        &mut self.tile.c_from_data_and_strides(output_i_g, rsc, csc),
                     );
                 }
             }
@@ -112,14 +112,14 @@ where
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.mm)))
+        Ok(vec!(format!("{:?}", self.tile)))
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((
             Cost::FMA(f32::datum_type()),
-            batch * self.group * self.mm.m() * self.mm.k() * self.mm.n()
+            batch * self.group * self.tile.m() * self.tile.k() * self.tile.n()
         )))
     }
 }

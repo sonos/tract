@@ -150,13 +150,14 @@ fn run_model(model: TypedModel, path: &path::Path) {
             for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
                 //                println!("computed: {:?}", computed[ix].dump(true));
                 //                println!("expected: {:?}", expected[ix].dump(true));
-                if !a.close_enough(b, true) {
+                if let Err(e) = a.close_enough(b, true) {
                     panic!(
-                        "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}",
+                        "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}\n{:?}",
                         d.file_name(),
                         ix,
                         a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                         b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
+                        e
                     )
                 }
             }

@@ -174,31 +174,30 @@ impl Tensor {
         Ok(sum / self.len() as f64)
     }
 
-    pub fn all_close_default(&self, other: &Self) -> TractResult<bool> {
-        self.all_close(other, 1e-4, 1e-4)
-    }
-
-    pub fn all_close(&self, other: &Self, rtol: f32, atol: f32) -> TractResult<bool> {
-        let ma = self.cast_to::<f32>()?;
-        let ma = ma.to_array_view::<f32>()?;
-        let mb = other.cast_to::<f32>()?;
-        let mb = mb.to_array_view::<f32>()?;
-        Ok(ma.iter().zip(mb.iter()).all(|(a, b)| {
-            (a.is_nan() && b.is_nan())
-                || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
-                || (a - b).abs() <= atol + rtol * b.abs()
-        }))
-    }
-
     /// Compare two tensors, allowing for rounding errors.
-    pub fn close_enough(&self, other: &Self, approx: bool) -> bool {
+    pub fn close_enough(&self, other: &Self, approx: bool) -> TractResult<()> {
         if self.is_null() != other.is_null() {
-            return false;
+            return Ok(())
         }
         if approx {
-            self.all_close_default(other).unwrap()
+            let atol = 5e-4;
+            let rtol = 1e-4;
+            let ma = self.cast_to::<f32>()?;
+            let ma = ma.to_array_view::<f32>()?;
+            let mb = other.cast_to::<f32>()?;
+            let mb = mb.to_array_view::<f32>()?;
+            ndarray::indices_of(&ma).into_iter().try_for_each(|indices| {
+                let a = ma[&indices];
+                let b = mb[&indices];
+                if !((a.is_nan() && b.is_nan())
+                    || (a.is_infinite() && b.is_infinite() && a.signum() == b.signum())
+                    || (a - b).abs() <= atol + rtol * b.abs()) {
+                        bail!("Mismatch at {:?} {} != {}", indices.slice(), a, b)
+                    }
+                Ok(())
+            })
         } else {
-            self.eq(other)
+            if self.eq(other) { Ok(()) } else { bail!("Mismatch") }
         }
     }
 

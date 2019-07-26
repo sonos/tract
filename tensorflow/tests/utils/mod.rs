@@ -48,7 +48,7 @@ pub fn compare_optim<S: AsRef<str>>(
         tract_tensorflow::conform::tf::for_slice(&graph)?.run(tf_inputs.clone(), &output.name)?;
 
     prop_assert!(
-        expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true),
+        expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true).is_ok(),
         "\nexpected:\n{:?}\nfound:\n{:?}\n",
         expected[0].to_array_view::<f32>().unwrap(),
         found[0].to_array_view::<f32>().unwrap(),

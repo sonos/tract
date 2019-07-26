@@ -128,7 +128,9 @@ mod tests {
         let exp = rctensor2::<i32, _>(&[[]]);
         let found = pack.eval(tvec![input]).unwrap();
 
-        assert!(exp.close_enough(&found[0], false), "expected: {:?} found: {:?}", exp, found[0])
+        if let Err(e) = exp.close_enough(&found[0], false) {
+            panic!("expected: {:?} found: {:?}. {:?}", exp, found[0], e)
+        }
     }
 
     #[test]

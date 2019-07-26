@@ -166,7 +166,7 @@ mod tests {
         let got = &conv.as_stateless().unwrap().eval(tvec![data, filter]).unwrap()[0];
         //println!("{:?}", got);
         //println!("{:?}", exp);
-        assert!(exp.close_enough(&got, true));
+        exp.close_enough(&got, true).unwrap()
     }
 
     #[test]

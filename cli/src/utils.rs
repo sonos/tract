@@ -17,8 +17,8 @@ pub fn check_outputs(got: &[Arc<Tensor>], expected: &[Option<Arc<Tensor>>]) -> C
             }
             if exp.shape() != got.shape() {
                 bail!("Checking output {}, expected shape: {:?}, got {:?}", ix, exp.shape(), got.shape())
-            } else if !exp.close_enough(got, true) {
-                bail!("Checking output {}, values differ too much.", ix);
+            } else if let Err(e) = exp.close_enough(got, true) {
+                bail!("Checking output {}, {:?}", ix, e);
             } else {
                 info!("Checked output #{}, ok.", ix);
             }

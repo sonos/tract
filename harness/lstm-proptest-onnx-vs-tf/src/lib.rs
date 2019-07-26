@@ -278,7 +278,7 @@ proptest::proptest! {
         let t = pb.tf_run().unwrap();
         prop_assert_eq!(o.len(), t.len());
         for (o,t) in o.iter().zip(t.iter()) {
-            prop_assert!(o.close_enough(&t, true), "\nonnx:{:?}\n tf :{:?}\n", o, t);
+            prop_assert!(o.close_enough(&t, true).is_ok(), "\nonnx:{:?}\n tf :{:?}\n", o, t);
         }
     }
 }

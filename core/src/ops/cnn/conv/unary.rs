@@ -198,7 +198,7 @@ impl ConvUnary {
         let mut packed_kernels: Vec<Tensor> = vec![];
 
         let (op2, b_pack): (Box<dyn Op>, _) = if m > 1 {
-            let mm = T::packed_mat_mul(m, k, n);
+            let mm = T::tile_op(m, k, n);
             let b_pack = mm.b_pack();
 
             trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
@@ -206,11 +206,11 @@ impl ConvUnary {
             for subkernel in kernel.outer_iter() {
                 let mut packed = unsafe {
                     Tensor::uninitialized_aligned::<T>(
-                        &[mm.packed_a_len()],
-                        mm.packed_a_alignment(),
+                        &[mm.a_pack().len()],
+                        mm.a_pack().alignment(),
                     )?
                 };
-                mm.pack_a(
+                mm.a_pack().pack(
                     packed.as_slice_mut()?.as_mut_ptr(),
                     subkernel.as_ptr(),
                     subkernel.strides()[0],
