@@ -195,10 +195,10 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         false
     }
 
-    /// A short (one-line) string giving an hint on internal implementation
-    /// choice (like linalg kernels, for instance) to be displayed in dumps.
-    fn info(&self) -> TractResult<Option<String>> {
-        Ok(None)
+    /// Short (one-line) strings giving hints on internal implementation or
+    /// important configuration details to be displayed in dumps.
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!())
     }
 }
 

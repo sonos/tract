@@ -12,11 +12,7 @@ pub trait IncorporatePass: Debug + Send + Sync {
     fn pass(&self, model: &mut InferenceModel) -> TractResult<bool>;
 }
 
-pub trait DeclutterPass: Debug + Send + Sync {
-    fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
-}
-
-pub trait CodegenPass: Debug + Send + Sync {
+pub trait TypedPass: Debug + Send + Sync {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
 }
 
@@ -24,11 +20,11 @@ pub fn incorporate() -> Vec<Box<IncorporatePass>> {
     vec![Box::new(IncorporateOps)]
 }
 
-pub fn declutter() -> Vec<Box<DeclutterPass>> {
-    vec![Box::new(PropConst) as _, Box::new(NormalizeOps)]
+pub fn declutter() -> Vec<Box<TypedPass>> {
+    vec![Box::new(PropConst) as _, Box::new(NormalizeOps), Box::new(PushSplitDown)]
 }
 
-pub fn codegen() -> Vec<Box<CodegenPass>> {
+pub fn codegen() -> Vec<Box<TypedPass>> {
     vec![Box::new(CodegenOps), Box::new(PushSplitDown)]
 }
 
@@ -73,7 +69,7 @@ impl IncorporatePass for IncorporateOps {
 #[derive(Debug)]
 pub struct NormalizeOps;
 
-impl DeclutterPass for NormalizeOps {
+impl TypedPass for NormalizeOps {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
@@ -110,7 +106,7 @@ impl DeclutterPass for NormalizeOps {
 #[derive(Debug)]
 pub struct CodegenOps;
 
-impl CodegenPass for CodegenOps {
+impl TypedPass for CodegenOps {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
         let mut done_something = false;
         loop {
