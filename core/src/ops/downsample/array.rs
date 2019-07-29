@@ -54,29 +54,6 @@ pub fn pull_downsample_over_adddims(
     return Ok(Some(patch));
 }
 
-/*
-pub fn pull_downsample_over_concat(
-    model: &TypedModel,
-    concat_node: &TypedNode,
-    concat_op: &ops::array::concat::NormConcat,
-    down_node: &TypedNode,
-    down_op: &Downsample,
-) -> TractResult<Option<TypedModelPatch>> {
-    let mut patch = TypedModelPatch::default();
-    patch.tap_model(model, add_node.inputs[0])?;
-    let input_outlet = add_node.inputs[0].clone();
-    let input_fact = model.outlet_fact(input_outlet).unwrap();
-    let mut new_down = down_op.clone();
-    new_down.axis -= add_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
-    let downed = new_down.transform_fact(&input_fact)?;
-    patch.chain(&*down_node.name, new_down, tvec!(downed))?;
-    let new_node =
-        patch.chain(&*add_node.name, add_op.clone(), tvec!(down_node.outputs[0].fact.clone()))?;
-    patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_node, 0))?;
-    return Ok(Some(patch));
-}
-*/
-
 pub fn pull_downsample_over_rmdims(
     model: &TypedModel,
     rm_node: &TypedNode,

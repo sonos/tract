@@ -153,8 +153,8 @@ impl NormConcatSlice {
 
 #[derive(new, Debug, Clone)]
 pub struct NormConcat {
-    axis: usize,
-    slices: TVec<NormConcatSlice>,
+    pub axis: usize,
+    pub slices: TVec<NormConcatSlice>,
 }
 
 impl NormConcat {
@@ -182,6 +182,19 @@ impl NormConcat {
 impl Op for NormConcat {
     fn name(&self) -> Cow<str> {
         "NormConcat".into()
+    }
+
+    fn translation_invariants(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        if self.slices.iter().any(|s| s.as_const().is_some()) {
+            Ok(vec!())
+        } else {
+            let rank = model.outlet_fact(node.inputs[0])?.shape.rank();
+            Ok((0..rank).filter(|&ax| ax != self.axis).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
+        }
     }
 
     fn codegen(

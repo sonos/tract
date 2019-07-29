@@ -39,7 +39,6 @@ impl Downsample {
     }
 }
 
-
 impl Op for Downsample {
     fn name(&self) -> Cow<str> {
         "Downsample".into()
@@ -104,25 +103,27 @@ fn pull_downsample_up(
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
         let invariants = prec.op().translation_invariants(model, prec)?;
-        println!("Considering moving {:?} over {:?} of invariants {:?}", down_node, prec, invariants);
         if invariants
             .iter()
             .find(|inv| inv.axis == down_op.axis && down_op.stride % inv.period == 0)
             .is_some()
         {
-            println!("Doing it because invariants");
             let mut patch = TypedModelPatch::default();
-            patch.tap_model(model, prec.inputs[0])?;
-            let input_outlet = prec.inputs[0].clone();
-            let input_fact = model.outlet_fact(input_outlet).unwrap();
-            let downed = down_op.transform_fact(&input_fact)?;
-            patch.chain(&*down_node.name, down_op.clone(), tvec!(downed))?;
-            let other = patch.chain(
+            let other = patch.add_node(
                 &*prec.name,
                 objekt::clone_box(prec.op()),
                 tvec!(down_node.outputs[0].fact.clone()),
             )?;
             patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(other, 0))?;
+            for (ix, &oo) in prec.inputs.iter().enumerate() {
+                let source = patch.tap_model(model, oo)?;
+                let ds = patch.chain(
+                    format!("{}-{}", prec.name, ix),
+                    down_op.clone(),
+                    tvec!(down_op.transform_fact(model.outlet_fact(oo)?)?),
+                )?;
+                patch.add_edge(OutletId::new(ds, 0), InletId::new(other, ix))?;
+            }
             return Ok(Some(patch));
         }
         if let Some(crop_op) = prec.op_as::<ops::array::Crop>() {
@@ -137,4 +138,3 @@ fn pull_downsample_up(
     }
     Ok(None)
 }
-
