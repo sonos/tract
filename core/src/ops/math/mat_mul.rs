@@ -312,8 +312,8 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimp
         "MatMulUnaryImplASimpleB".into()
     }
 
-    fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!("{:?}", self.geo.mm)))
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.geo.mm)))
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -391,8 +391,8 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplA<T> 
         "MatMulUnaryImplA".into()
     }
 
-    fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!("{:?}", self.geo.mm)))
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.geo.mm)))
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {

@@ -23,8 +23,8 @@ impl Op for Direct {
         "ConvDirect".into()
     }
 
-    fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!("{:?}", self.conv)))
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.conv)))
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {

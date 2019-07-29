@@ -111,8 +111,8 @@ where
         "MatMat".into()
     }
 
-    fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!("{:?}", self.mm)))
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.mm)))
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {

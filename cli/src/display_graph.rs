@@ -144,7 +144,7 @@ impl<'a> DisplayGraph<'a> {
                 io
             );
         }
-        if let Some(info) = model.node_op(node_id).info()? {
+        for info in model.node_op(node_id).info()? {
             println!("{}  * {}", prefix, info);
         }
         if self.options.debug_op {

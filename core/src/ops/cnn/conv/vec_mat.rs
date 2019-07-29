@@ -82,8 +82,8 @@ where
         "VecMat".into()
     }
 
-    fn info(&self) -> TractResult<Option<String>> {
-        Ok(Some(format!("{:?}", self.vmm)))
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("{:?}", self.vmm)))
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {

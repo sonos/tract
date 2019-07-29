@@ -70,6 +70,17 @@ impl Op for Typed {
         "Scan::Typed".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        let mut lines = vec!();
+        for (ix, im) in self.input_mapping.iter().enumerate() {
+            lines.push(format!("Model input  #{}: {:?}", ix, im));
+        }
+        for (ix, om) in self.output_mapping.iter().enumerate() {
+            lines.push(format!("Model output #{}: {:?}", ix, om));
+        }
+        Ok(lines)
+    }
+
     fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
         vec![("loop".into(), &self.body)]
     }

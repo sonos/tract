@@ -5,7 +5,7 @@ use ndarray::prelude::*;
 mod array;
 mod scan;
 
-#[derive(Debug, Clone, new, Default)]
+#[derive(Debug, Clone, new, Default, PartialEq)]
 pub struct Downsample {
     axis: usize,
     stride: usize,
@@ -39,6 +39,7 @@ impl Downsample {
     }
 }
 
+
 impl Op for Downsample {
     fn name(&self) -> Cow<str> {
         "Downsample".into()
@@ -54,6 +55,8 @@ impl Op for Downsample {
         }
         pull_downsample_up(model, node)
     }
+
+    impl_op_same_as!();
 }
 
 impl StatelessOp for Downsample {
@@ -101,11 +104,13 @@ fn pull_downsample_up(
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
         let invariants = prec.op().translation_invariants(model, prec)?;
+        println!("Considering moving {:?} over {:?} of invariants {:?}", down_node, prec, invariants);
         if invariants
             .iter()
             .find(|inv| inv.axis == down_op.axis && down_op.stride % inv.period == 0)
             .is_some()
         {
+            println!("Doing it because invariants");
             let mut patch = TypedModelPatch::default();
             patch.tap_model(model, prec.inputs[0])?;
             let input_outlet = prec.inputs[0].clone();

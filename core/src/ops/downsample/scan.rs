@@ -9,34 +9,36 @@ pub fn pull_downsample_over_scan(
     down_node: &TypedNode,
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
-    /*
     let mut inner_model = scan_op.body.clone();
-    let downsampled_outputs = scan_op
-        .body
-        .output_outlets()?
-        .into_iter()
-        .enumerate()
-        .map(|(ix, output)| {
-            let fact = scan_op.body.output_fact(ix)?;
-            let ds = inner_model.chain_after(
-                *output,
-                format!("{}-{}", &down_node.name, ix),
-                down_op.clone(),
-                tvec!(down_op.transform_fact(fact)?),
-            )?;
-            Ok(OutletId::new(ds, 0))
-        })
-        .collect::<TractResult<Vec<_>>>()?;
-    inner_model.set_output_outlets(&downsampled_outputs)?;
+    println!("ORIGINAL\n{:#?}", inner_model);
 
+    let outputs = inner_model.output_outlets()?.to_owned();
+    let downsample_outputs = outputs.into_iter().enumerate().map(|(ix, oo)| {
+        let ds = inner_model.chain_after(oo, 
+            format!("{}-{}", &down_node.name, ix),
+            down_op.clone(),
+            tvec!(down_op.transform_fact(inner_model.outlet_fact(oo)?)?),
+        )?;
+        Ok(OutletId::new(ds, 0))
+    }).collect::<TractResult<Vec<_>>>()?;
+    inner_model.set_output_outlets(&*downsample_outputs)?;
+
+    println!("DOWNSAMPLED\n{:#?}", inner_model);
+
+    let inner_model = inner_model.declutter()?;
+    println!("DECLUTTERED\n{:#?}", inner_model);
+
+    panic!();
     let mut new_scan = scan_op.clone();
     new_scan.body = inner_model;
 
     let mut patch = TypedModelPatch::default();
     patch.tap_model(model, scan_node.inputs[0])?;
-    let id = patch.chain(scan_node.name.clone(), new_scan, model.node_input_facts(scan_node.id)?.into_iter().cloned().collect())?;
+    let id = patch.chain(
+        scan_node.name.clone(),
+        new_scan,
+        model.node_input_facts(scan_node.id)?.into_iter().cloned().collect(),
+    )?;
     patch.shunt_outside(OutletId::new(down_node.id, 2), OutletId::new(id, 2))?;
     Ok(Some(patch))
-    */
-    return Ok(None)
 }

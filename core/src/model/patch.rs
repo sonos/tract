@@ -18,9 +18,9 @@ where TI: TensorInfo + Clone + 'static,
 {
     /// the model-like 'patch' of nodes to add to the model
     pub model: ModelImpl<TI, O>,
-    incoming: HashMap<OutletId, OutletId>,
-    shunt_outlet_by: HashMap<OutletId, OutletId>,
-    obliterate: Vec<usize>,
+    pub incoming: HashMap<OutletId, OutletId>,
+    pub shunt_outlet_by: HashMap<OutletId, OutletId>,
+    pub obliterate: Vec<usize>,
 }
 
 impl<TI, O> Default for ModelPatch<TI, O>
@@ -60,6 +60,10 @@ impl<TI, O> ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
       O: Display + Debug + From<Source> + From<Dummy> + AsRef<Op> + AsMut<Op> + Clone + 'static
 {
+    pub fn is_empty(&self) -> bool {
+        self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()
+    }
+
     /// Draw a tap from a preexisting node.
     ///
     /// returns an OutletId usable in the little "patch" model
