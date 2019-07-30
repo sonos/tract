@@ -121,7 +121,7 @@ fn main() {
     );
 
     let compare = clap::SubCommand::with_name("compare")
-        .help("Compares the output of tract and tensorflow on randomly generated input.")
+        .long_about("Compares the output of tract and tensorflow on randomly generated input.")
         .arg(
             Arg::with_name("cumulative")
                 .long("cumulative")
@@ -137,7 +137,7 @@ fn main() {
     app = app.subcommand(output_options(compare));
 
     let compare_npz = clap::SubCommand::with_name("compare-npz")
-        .help("Compares the output of tract to a refrence npz file.")
+        .long_about("Compares the output of tract to a refrence npz file.")
         .arg(
             Arg::with_name("cumulative")
                 .long("cumulative")
@@ -148,7 +148,7 @@ fn main() {
     app = app.subcommand(output_options(compare_npz));
 
     let compare_pbdir = clap::SubCommand::with_name("compare-pbdir")
-        .help(
+        .long_about(
             "Compares the output of tract to a refrence directory of onnx protobufs tensors files.",
         )
         .arg(
@@ -161,7 +161,7 @@ fn main() {
     app = app.subcommand(output_options(compare_pbdir));
 
     let dump = clap::SubCommand::with_name("dump")
-        .help("Dumps the Tensorflow graph in human readable form.")
+        .long_about("Dumps the Tensorflow graph in human readable form.")
         .arg(
             Arg::with_name("assert-output")
                 .takes_value(true)
@@ -189,7 +189,7 @@ fn main() {
 
     let profile =
         clap::SubCommand::with_name("profile")
-            .help("Benchmarks tract on randomly generated input.")
+            .long_about("Benchmarks tract on randomly generated input.")
             .arg(Arg::with_name("bench").long("bench").help("Run as an overall bench"))
             .arg(
                 Arg::with_name("max_iters").takes_value(true).long("max-iters").short("n").help(
@@ -210,7 +210,7 @@ fn main() {
     app = app.subcommand(output_options(profile));
 
     let run = clap::SubCommand::with_name("run")
-        .help("Run the graph")
+        .long_about("Run the graph")
         .arg(Arg::with_name("dump").long("dump").help("Show output"))
         .arg(
             Arg::with_name("assert-output-bundle")
@@ -239,11 +239,11 @@ fn main() {
     app = app.subcommand(output_options(optimize));
 
     let optimize_check = clap::SubCommand::with_name("optimize-check")
-        .help("Compare output of optimized and un-optimized graph");
+        .long_about("Compare output of optimized and un-optimized graph");
     app = app.subcommand(output_options(optimize_check));
 
     let stream_check = clap::SubCommand::with_name("stream-check")
-        .help("Compare output of streamed and regular exec");
+        .long_about("Compare output of streamed and regular exec");
     app = app.subcommand(output_options(stream_check));
 
     let matches = app.get_matches();
