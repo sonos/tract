@@ -52,7 +52,6 @@ pub fn matrix(i: &[u8]) -> IResult<&[u8], Tensor> {
 #[allow(non_snake_case)]
 mod tests {
     use super::*;
-    use tract_core::internal::*;
     use super::super::nnet3;
 
     #[test]
