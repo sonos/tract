@@ -89,7 +89,7 @@ impl PoolSpec {
                 final_fact.shape[fact.axis] = final_fact.shape[fact.axis] / stride;
                 final_fact.dim = final_fact.dim.clone() / stride;
                 final_fact.delay = final_fact.delay / stride;
-                let id = target.chain_after(input, &node.name, node.op.clone(), tvec!(final_fact))?;
+                let id = target.chain_after(input, &*node.name, node.op.clone(), tvec!(final_fact))?;
                 return Ok(tvec!(OutletId::new(id, 0)))
             }
 
