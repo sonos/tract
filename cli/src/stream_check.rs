@@ -20,7 +20,6 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
     let pulsed_input_fact = pulsed.input_fact(0)?;
     let pulse = pulsed_input_fact.pulse();
 
-    // First generate random values for the inputs.
     let display_graph =
         display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, Arc::new(options))?
             .with_graph_def(&params.graph)?;
