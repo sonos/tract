@@ -61,6 +61,7 @@ pub use crate::analyser::types::TensorFact;
 pub use crate::ops::{InferenceOp, Op};
 
 use crate::TractResult;
+use crate::plan::{ SimplePlan, SimpleState };
 
 /// Common methods for all variants of model.
 pub trait Model: downcast_rs::Downcast + std::fmt::Debug + objekt::Clone {
@@ -148,6 +149,10 @@ pub type InferenceModel = ModelImpl<TensorFact, Box<InferenceOp>>;
 pub type InferenceNode = BaseNode<TensorFact, Box<InferenceOp>>;
 /// A ModelPatch for InferenceModel.
 pub type InferenceModelPatch = ModelPatch<TensorFact, Box<InferenceOp>>;
+/// An execution plan for InferenceModel.
+pub type InferenceSimplePlan<M> = SimplePlan<TensorFact, Box<InferenceOp>, M>;
+/// An execution state for InferenceModel.
+pub type InferenceSimpleState<M,P> = SimpleState<TensorFact, Box<InferenceOp>, M, P>;
 
 /// A model with completely determined types and shapes.
 pub type TypedModel = ModelImpl<TypedTensorInfo, Box<Op>>;
@@ -155,6 +160,10 @@ pub type TypedModel = ModelImpl<TypedTensorInfo, Box<Op>>;
 pub type TypedNode = Node<TypedTensorInfo>;
 /// A ModelPatch for TypedModel.
 pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<Op>>;
+/// An execution plan for TypedModel.
+pub type TypedSimplePlan<M> = SimplePlan<TypedTensorInfo, Box<Op>, M>;
+/// An execution state for TypedModel.
+pub type TypedSimpleState<M,P> = SimpleState<TypedTensorInfo, Box<Op>, M, P>;
 
 /// A model with determined types and shapes, where constant have been
 /// eleminated from the graph.
@@ -163,6 +172,10 @@ pub type NormalizedModel = ModelImpl<NormalizedTensorInfo, Box<Op>>;
 pub type NormalizedNode = Node<NormalizedTensorInfo>;
 /// A ModelPatch for NormalizedModel.
 pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<Op>>;
+/// An execution plan for NormalizedModel.
+pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedTensorInfo, Box<Op>, M>;
+/// An execution state for TypedModel.
+pub type NormalizedSimpleState<M,P> = SimpleState<NormalizedTensorInfo, Box<Op>, M, P>;
 
 impl InferenceModel {
     /// Analyse one node of the graph.
