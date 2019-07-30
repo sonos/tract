@@ -498,30 +498,17 @@ impl Op for ConvUnary {
         if fact.axis == shape.n_axis() {
             let mut op = self.clone();
             op.full_output_shape[fact.axis] = fact.pulse().to_dim();
-            fact.shape =
-                op.full_output_shape
-                    .iter()
-                    .enumerate()
-                    .map(|(ax, d)| {
-                        if ax == fact.axis {
-                            fact.pulse()
-                        } else {
-                            d.to_integer().unwrap() as usize
-                        }
-                    })
-                    .collect();
+            fact.shape = op.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
             let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
             Ok(tvec!(OutletId::new(id, 0)))
         } else if fact.axis == shape.c_axis() {
-            bail!("Can not pulsify convolution alongs the input channel axis");
+            bail!("Can not pulsify convolution along the input channel axis");
         } else {
             let spatial_rank = self.full_input_shape.len() - 2;
             let geo_axis = fact.axis - shape.h_axis();
             let kernel_spatial_shape =
                 &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-            let kernel_len = (kernel_spatial_shape[geo_axis] - 1)
-                * self.strides[geo_axis] // TODO do we really need * strides here ?
-                * self.dilations[geo_axis];
+            let kernel_len = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
             let mut augmented_fact = fact.clone();
             augmented_fact.shape[augmented_fact.axis] += kernel_len;
             augmented_fact.delay += kernel_len;
@@ -529,20 +516,9 @@ impl Op for ConvUnary {
             let mut conv_op = self.clone();
             conv_op.full_input_shape[fact.axis] = augmented_fact.pulse().to_dim();
             conv_op.full_output_shape[fact.axis] =
-                (augmented_fact.pulse() - kernel_len / self.strides[geo_axis]).to_dim();
+                ((augmented_fact.pulse() - kernel_len) / self.strides[geo_axis]).to_dim();
             let mut conv_fact = fact.clone();
-            conv_fact.shape = self
-                .full_output_shape
-                .iter()
-                .enumerate()
-                .map(|(ax, d)| {
-                    if ax == fact.axis {
-                        fact.pulse() / self.strides[geo_axis]
-                    } else {
-                        d.to_integer().unwrap() as usize
-                    }
-                })
-                .collect();
+            conv_fact.shape = conv_op.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
             conv_fact.delay += kernel_len;
             conv_fact.dim -= kernel_len.to_dim();
 

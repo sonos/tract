@@ -18,7 +18,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
 
     let fixed_input_fact = fixed.input_fact(0)?;
     let pulsed_input_fact = pulsed.input_fact(0)?;
-    let pulse = pulsed_input_fact.pulse();
+    let input_pulse = pulsed_input_fact.pulse();
 
     let display_graph =
         display_graph::DisplayGraph::from_model_and_options(&*params.tract_model, Arc::new(options))?
@@ -44,7 +44,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
             let output_axis = pulsed_output_fact.axis;
             let delay = pulsed_output_fact.delay;
 
-            let stream_dim = delay + 3 * output_pulse + output_pulse / 2;
+            let stream_dim = delay + 3 * input_pulse + input_pulse / 2;
 
             let fixed_input = crate::tensor::tensor_for_fact(
                 &fixed_input_fact.to_tensor_fact(),
@@ -62,9 +62,9 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
 
             for i in 0.. {
                 let mut pulsed_input = ArrayD::from_elem(&*pulsed_input_fact.shape, std::f32::NAN);
-                let offset = i * pulse;
+                let offset = i * input_pulse;
                 if offset < stream_dim {
-                    let count = pulse.min(stream_dim - offset);
+                    let count = input_pulse.min(stream_dim - offset);
                     pulsed_input
                         .slice_axis_mut(Axis(pulsed_input_fact.axis), (0..count).into())
                         .assign(&fixed_input.to_array_view::<f32>()?.slice_axis(
@@ -72,14 +72,16 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
                             (offset..offset + count).into(),
                         ));
                 };
-                if offset + pulse > stream_dim {
+                if offset + input_pulse > stream_dim {
                     debug!("Set known_stream_len: {}", stream_dim);
                     state.session_state.known_stream_len = Some(stream_dim)
                 };
+
                 let output = state.run(tvec!(pulsed_input.into()))?.remove(0);
+
                 let output = output.to_array_view::<f32>()?;
                 let output_offset = i * output_pulse;
-                let (f_o, p_o, count) = if output_offset + output_pulse < delay {
+                let (f_o, p_o, count) = if output_offset + output_pulse <= delay {
                     // entire pulse before signal, wait
                     continue;
                 } else if output_offset >= delay + fixed_output_len {
@@ -87,7 +89,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
                     break;
                 } else if output_offset < delay {
                     // beginning of signal
-                    let count = pulse + output_offset - delay;
+                    let count = output_pulse + output_offset - delay;
                     (0, output_pulse - count, count)
                 } else if output_offset + output_pulse > delay + fixed_output_len {
                     // end of signal

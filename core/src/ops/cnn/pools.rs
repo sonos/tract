@@ -53,4 +53,67 @@ impl PoolSpec {
             Ok(())
         })
     }
+
+    pub fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.outlet_fact(input)?.clone();
+        let input_shape = self.data_format.shape(&*fact.shape);
+        if fact.axis == input_shape.n_axis() {
+            let (_input_shape, _patch, output_shape) = self.compute_geo(&*fact.shape);
+            fact.shape = output_shape.shape;
+            let id = target.chain_after(input, &*node.name, node.op.clone(), tvec!(fact))?;
+            Ok(tvec!(OutletId::new(id, 0)))
+        } else if fact.axis == input_shape.c_axis() {
+            bail!("Can not pulsify cnn pooling ops along the input channel axis");
+        } else {
+            let geo_axis = fact.axis - input_shape.h_axis();
+            let stride = self.strides.as_ref().and_then(|v| v.get(geo_axis).cloned()).unwrap_or(1);
+            if fact.pulse() % stride != 0 {
+                bail!("Pulsificaton requires pulse to be a stride multiple")
+            }
+            let dilation = 1;
+            let kernel_len = (self.kernel_shape[geo_axis] - 1) * dilation;
+
+            if kernel_len < stride {
+                let misalignment = fact.delay % stride;
+                if misalignment != 0 {
+                    unimplemented!();
+                }
+                let mut final_fact = fact.clone();
+                final_fact.shape[fact.axis] = final_fact.shape[fact.axis] / stride;
+                final_fact.dim = final_fact.dim.clone() / stride;
+                final_fact.delay = final_fact.delay / stride;
+                let id = target.chain_after(input, &node.name, node.op.clone(), tvec!(final_fact))?;
+                return Ok(tvec!(OutletId::new(id, 0)))
+            }
+
+            // overlap case, need delay with augmented output
+
+            let mut augmented_fact = fact.clone();
+            augmented_fact.shape[augmented_fact.axis] += kernel_len;
+            augmented_fact.delay += kernel_len;
+
+            let mut final_fact = fact.clone();
+            final_fact.shape[fact.axis] = (augmented_fact.shape[augmented_fact.axis] - kernel_len) / stride;
+            final_fact.delay += kernel_len;
+            final_fact.dim = (final_fact.dim.clone() - kernel_len.to_dim()) / stride;
+
+            let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_len);
+            target.chain_after(
+                input,
+                format!("{}/Delay", node.name),
+                delay,
+                tvec!(augmented_fact),
+            )?;
+            let id = target.chain(&*node.name, node.op.clone(), tvec!(final_fact))?;
+
+            Ok(tvec!(OutletId::new(id, 0)))
+        }
+    }
 }
