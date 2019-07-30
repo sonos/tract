@@ -1,6 +1,6 @@
 [package]
 name = "tract-linalg"
-version = "0.4.0"
+version = "0.4.1-pre"
 license = "MIT/Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
