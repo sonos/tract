@@ -42,6 +42,16 @@ impl Op for AvgPool {
         }
         Ok(None)
     }
+
+    fn pulsify(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        self.pool_spec.pulsify(source, node, target, mapping)
+    }
 }
 
 impl StatelessOp for AvgPool {
