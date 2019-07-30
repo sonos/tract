@@ -5,7 +5,15 @@ authors = [
     "Mathieu Poumeyrol <kali@zoy.org>",
     "Theodore Bluche <theodore.bluche@snips.ai>"
 ]
+license = "MIT/Apache-2.0"
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "TensorFlow", "NeuralNetworks", "ONNX" ]
+categories = [ "science" ]
 edition = "2018"
+
+[badges]
+travis-ci = { repository = "snipsco/tract" }
 
 [dependencies]
 bit-set="0.5"
