@@ -106,7 +106,8 @@ impl PulsedModel {
                 mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
             } else {
                 let node = &source.nodes()[old_id];
-                let outlets = node.op().pulsify(&source, &node, &mut target, &mapping)?;
+                let outlets = node.op().pulsify(&source, &node, &mut target, &mapping)
+                    .chain_err(|| format!("Pulsifying {:?}", node))?;
                 for (ix, outlet) in outlets.into_iter().enumerate() {
                     mapping.insert(OutletId::new(node.id, ix), outlet);
                 }
@@ -273,7 +274,8 @@ mod tests {
             let _ = model
                 .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
                 .unwrap();
-            model.chain_default("pad", Pad::new(vec![(begin as _, end as _)], PadMode::Constant(-1.0))).unwrap();
+            model.chain_default("pad", Pad::new(vec![(begin as _, end as _)],
+                PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
             model.auto_outputs().unwrap();
 
             let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
@@ -306,7 +308,8 @@ mod tests {
         let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
-        model.chain_default("pad", Pad::new(vec![(0, 1)], PadMode::Constant(-1.0))).unwrap();
+        model.chain_default("pad", Pad::new(vec![(0, 1)],
+                PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
         model.auto_outputs().unwrap();
 
         let input = arr1(&[]);
@@ -319,7 +322,8 @@ mod tests {
         let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
-        model.chain_default("pad", Pad::new(vec![(1, 0)], PadMode::Constant(-1.0))).unwrap();
+        model.chain_default("pad", Pad::new(vec![(1, 0)],
+                PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
         model.auto_outputs().unwrap();
 
         let input = arr1(&[1.0]);
@@ -332,7 +336,8 @@ mod tests {
         let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
-        model.chain_default("pad", Pad::new(vec![(1, 0)], PadMode::Constant(-1.0))).unwrap();
+        model.chain_default("pad", Pad::new(vec![(1, 0)],
+                PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
         model.auto_outputs().unwrap();
 
         let input = arr1(&[1.0, 2.0]);

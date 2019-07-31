@@ -100,7 +100,7 @@ pub fn gather(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<Infer
 }
 
 pub fn pad(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<InferenceOp>,Vec<String>)> {
-    let value = node.get_attr_opt("value")?;
+    let value:f32 = node.get_attr_opt("value")?.unwrap_or(0.0);
     let mode = match node.get_attr_opt("mode")? {
         None | Some("constant") => None,
         Some(mode) => node.check_value(
@@ -112,7 +112,7 @@ pub fn pad(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<Inferenc
             },
         )?,
     }
-    .unwrap_or_else(|| tractops::array::PadMode::Constant(value.unwrap_or(0.)));
+    .unwrap_or_else(|| tractops::array::PadMode::Constant(Arc::new(value.into())));
     let pads = node.get_attr_tvec("pads")?;
     let rank = pads.len() / 2;
     let pads = (0..rank).map(|ax| (pads[ax], pads[ax + rank])).collect();
