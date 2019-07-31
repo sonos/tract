@@ -113,14 +113,13 @@ impl Op for Pad {
             PadMode::Constant(_) => (),
             PadMode::Edge if before < pulse => {
                 let start_offset = (fact.delay + extra_delay) % pulse;
-                if start_offset + before >= pulse {
-                    extra_delay += pulse - start_offset;
+                if before > start_offset {
+                    extra_delay += before - start_offset;
                 }
             },
             PadMode::Edge => bail!("Edge padding mode needs pulse strictly bigger than left padding (pulse={} padding={})", pulse, before),
             PadMode::Reflect => bail!("Reflect padding mode pulsing is not supported")
         };
-
         let mut prec = input;
         if extra_delay > 0 {
             let buffer_op = Delay::new(fact.clone(), extra_delay, 0);
@@ -140,8 +139,8 @@ impl Op for Pad {
             input_fact.pulse(),
             before,
             after,
-            input_fact.delay + before,
-            (input_fact.delay + before).to_dim() + input_fact.dim,
+            fact.delay + before,
+            (fact.delay + before).to_dim() + input_fact.dim,
             self.mode.clone(),
         );
         let id = target.chain_after(prec, &*node.name, op, tvec!(fact))?;
@@ -204,7 +203,7 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
         if let PadMode::Edge = op.mode {
             if self.last_valid_frame.is_none() && pulse_end >= end_input {
                 let data = inputs[0].to_array_view::<T>()?;
-                let last_frame = pulse_end - end_input;
+                let last_frame = end_input - pulse_begin - 1;
                 self.last_valid_frame =
                     Some(data.index_axis(Axis(op.axis), last_frame).to_owned().into_tensor());
             }
@@ -222,6 +221,7 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
         }
         let input = args_1!(inputs);
         let mut data = input.into_tensor().into_array::<T>()?;
+
         if pulse_begin < op.begin_input {
             let fill_up_to = (op.begin_input - pulse_begin).min(op.pulse);
             match &op.mode {
@@ -257,6 +257,7 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
                 _ => unimplemented!(),
             }
         }
+
         Ok(tvec!(data.into_arc_tensor()))
     }
 }
