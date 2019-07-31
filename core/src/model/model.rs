@@ -265,8 +265,13 @@ where
     /// Get multiple mutable tensor information for outlets.
     pub fn outlets_fact_mut(&mut self, outlets: &[OutletId]) -> TractResult<TVec<&mut TI>> {
         use itertools::Itertools;
-        assert!(outlets.iter().tuple_combinations().all(|(a,b)| a != b));
-        Ok(unsafe { outlets.iter().map(|o| &mut *(&self.nodes[o.node].outputs[o.slot].fact as *const TI as *mut TI)).collect() })
+        assert!(outlets.iter().tuple_combinations().all(|(a, b)| a != b));
+        Ok(unsafe {
+            outlets
+                .iter()
+                .map(|o| &mut *(&self.nodes[o.node].outputs[o.slot].fact as *const TI as *mut TI))
+                .collect()
+        })
     }
 
     /// Set tensor information for a single outlet.
@@ -324,7 +329,11 @@ where
     O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
 {
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
-        Ok(self.nodes_by_name.get(name).ok_or("Unfound node").map(|x| *x)?)
+        Ok(self
+            .nodes_by_name
+            .get(name)
+            .ok_or_else(|| format!("Node not found {}", name))
+            .map(|x| *x)?)
     }
 
     fn node_name(&self, id: usize) -> &str {
