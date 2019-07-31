@@ -501,6 +501,10 @@ impl Parameters {
                 if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {
                     t.value = GenericFact::Any;
                 }
+                if let Some(s) = matches.value_of("stream_axis") {
+                    t.shape.set_dim(s.parse()?, TDim::s());
+                }
+                info!("Input #{}: {:?}", ix, t);
                 raw_model.set_outlet_fact(outlet, t)?;
             }
         }
@@ -519,7 +523,10 @@ impl Parameters {
                     let name = format!("{}.npy", raw_model.node(input.node).name);
                     if let Ok(t) = npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(&*name) {
                         let shape = t.shape().to_vec();
-                        let fact = TensorFact::dt_shape(f32::datum_type(), shape);
+                        let mut fact = TensorFact::dt_shape(f32::datum_type(), shape);
+                        if let Some(s) = matches.value_of("stream_axis") {
+                            fact.shape.set_dim(s.parse()?, TDim::s());
+                        }
                         raw_model.set_input_fact(ix, fact)?;
                         while input_values.len() <= ix {
                             input_values.push(None);
