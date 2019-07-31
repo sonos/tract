@@ -107,6 +107,7 @@ fn pull_downsample_up(
 ) -> TractResult<Option<TypedModelPatch>> {
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
+        debug!("Consider pull {:?} over {:?}", down_op, prec);
         let invariants = prec.op().translation_invariants(model, prec)?;
         if invariants
             .iter()

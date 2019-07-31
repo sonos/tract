@@ -108,10 +108,9 @@ impl ShapeInfo {
                     self.stream_info = None;
                 }
             } else {
-                if stream.axis == i {
+                if stream.axis != i {
                     bail!("Attempt at building a shape with two streaming dim")
                 } else {
-                    self.shape[i] = 0;
                     self.stream_info = Some(StreamInfo { len: dim, axis: i })
                 }
             }
