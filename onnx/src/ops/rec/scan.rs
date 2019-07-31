@@ -18,7 +18,6 @@ pub fn scan(
     let num_scan_outputs = model.output_outlets()?.len() - num_hidden_state;
     let scan_output_axes =
         node.get_attr_opt_vec("scan_output_axes")?.unwrap_or(vec![0; num_scan_outputs]);
-    let scan_output_len_hints = vec![None; scan_output_axes.len()];
 
     let mut mapped_inputs = vec![];
     let mut mapped_outputs = vec![];
@@ -55,7 +54,7 @@ pub fn scan(
             TensorFact::default(),
         )?
         .apply(&mut model)?;
-        mapped_outputs.push(tract_core::ops::scan::OutputMapping::Scan { axis: *ax, slot: ix + num_hidden_state, chunk: () });
+        mapped_outputs.push(tract_core::ops::scan::OutputMapping::Scan { axis: *ax, slot: ix + num_hidden_state, chunk: (), full_dim_hint: None });
     }
 
     Ok((
@@ -63,7 +62,6 @@ pub fn scan(
             model,
             mapped_inputs,
             mapped_outputs,
-            scan_output_len_hints,
         )),
         unresolved_inputs,
     ))

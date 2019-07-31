@@ -4,8 +4,7 @@ use super::*;
 pub struct Inference {
     pub body: InferenceModel,
     pub input_mapping: Vec<InputMapping<()>>,
-    pub output_mapping: Vec<OutputMapping<()>>,
-    pub(super) scan_output_len_hint: Vec<Option<TDim>>,
+    pub output_mapping: Vec<OutputMapping<(), TDim>>,
 }
 
 impl Op for Inference {
@@ -43,10 +42,11 @@ impl Op for Inference {
             .enumerate()
             .map(|(ix, im)| {
                 Ok(match im {
-                    OutputMapping::Scan { axis, slot, chunk: _ } => OutputMapping::Scan {
+                    OutputMapping::Scan { axis, slot, full_dim_hint, chunk: _ } => OutputMapping::Scan {
                         axis: *axis,
                         slot: *slot,
                         chunk: typed_model.input_fact(ix)?.shape.dim(*axis),
+                        full_dim_hint: full_dim_hint.clone(),
                     },
                     OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
                 })
@@ -56,7 +56,6 @@ impl Op for Inference {
             typed_model,
             input_mapping,
             output_mapping,
-            self.scan_output_len_hint.clone(),
         ))))
     }
 }

@@ -32,12 +32,12 @@ impl<C: Clone> InputMapping<C> {
 }
 
 #[derive(Debug, Clone, new)]
-pub enum OutputMapping<C: Clone> {
+pub enum OutputMapping<C: Clone, F:Clone> {
     State { slot: Option<usize> },
-    Scan { slot: usize, axis: usize, chunk: C },
+    Scan { slot: usize, axis: usize, chunk: C, full_dim_hint: Option<F> },
 }
 
-impl<C: Clone> OutputMapping<C> {
+impl<C: Clone, F:Clone> OutputMapping<C, F> {
     pub fn invisible(&self) -> bool {
         if let OutputMapping::State { slot: None } = self {
             true
