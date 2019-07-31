@@ -419,6 +419,29 @@ impl Op for ConvUnary {
                 }
             }
         }
+        if let Some(axis) = (0..self.strides.len()).find(|&ax| {
+            self.padding.valid_dim(ax)
+                && self.strides[ax] > 1
+                && self.dilations[ax] % self.strides[ax] == 0
+        }) {
+            let downsample_factor = self.strides[axis];
+            let mut new_op = self.clone();
+            new_op.dilations[axis] /= downsample_factor;
+            new_op.strides[axis] /= downsample_factor;
+            let mut patch = TypedModelPatch::default();
+            patch.tap_model(model, node.inputs[0])?;
+            let input_fact = model.outlet_fact(node.inputs[0])?;
+            let shape = self.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
+            let downample_op = crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0);
+            let downsampled_fact = downample_op.transform_fact(input_fact)?;
+            patch.chain(format!("Downsample-{}", node.name), downample_op, tvec!(downsampled_fact))?;
+            let id = patch.chain(
+                &*node.name,
+                new_op,
+                tvec!(node.outputs[0].fact.clone()))?;
+            patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(id, 0))?;
+            return Ok(Some(patch))
+        }
         Ok(None)
     }
 
@@ -498,7 +521,8 @@ impl Op for ConvUnary {
         if fact.axis == shape.n_axis() {
             let mut op = self.clone();
             op.full_output_shape[fact.axis] = fact.pulse().to_dim();
-            fact.shape = op.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+            fact.shape =
+                op.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
             let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
             Ok(tvec!(OutletId::new(id, 0)))
         } else if fact.axis == shape.c_axis() {
@@ -518,7 +542,11 @@ impl Op for ConvUnary {
             conv_op.full_output_shape[fact.axis] =
                 ((augmented_fact.pulse() - kernel_len) / self.strides[geo_axis]).to_dim();
             let mut conv_fact = fact.clone();
-            conv_fact.shape = conv_op.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+            conv_fact.shape = conv_op
+                .full_output_shape
+                .iter()
+                .map(|d| d.to_integer().unwrap() as usize)
+                .collect();
             conv_fact.delay += kernel_len;
             conv_fact.dim -= kernel_len.to_dim();
 

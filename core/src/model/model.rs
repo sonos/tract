@@ -57,17 +57,6 @@ where
         Ok(id)
     }
 
-    pub(crate) fn clear_inputs(&mut self, node: usize) -> TractResult<()> {
-        for ix in 0..self.nodes[node].inputs.len() {
-            let previous = self.nodes[node].inputs[ix];
-            self.nodes[previous.node].outputs[previous.slot]
-                .successors
-                .retain(|succ| succ.node != node);
-        }
-        self.nodes[node].inputs.clear();
-        Ok(())
-    }
-
     /// Connect a node outlet to a node inlet.
     pub fn add_edge(&mut self, outlet: OutletId, inlet: InletId) -> TractResult<()> {
         if let Some(previous) = self.nodes[inlet.node].inputs.get(inlet.slot).cloned() {
