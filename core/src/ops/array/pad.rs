@@ -1,18 +1,17 @@
 use crate::internal::*;
 use crate::pulse::delay::Delay;
 use ndarray::*;
-use num_traits::AsPrimitive;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PadMode {
-    Constant(f32),
+    Constant(Arc<Tensor>),
     Reflect,
     Edge,
 }
 
 impl Default for PadMode {
     fn default() -> PadMode {
-        PadMode::Constant(0.0)
+        PadMode::Constant(Arc::new(0.0f32.into()))
     }
 }
 
@@ -26,13 +25,12 @@ impl Pad {
     fn eval_t<T>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>>
     where
         T: Copy + Datum,
-        f32: AsPrimitive<T>,
     {
         let input = input.to_array_view::<T>()?;
         let output_shape: Vec<usize> =
             input.shape().iter().zip(self.pads.iter()).map(|(&d, &(a, b))| d + a + b).collect();
-        let element = match self.mode {
-            PadMode::Constant(f) => f.as_(),
+        let element = match &self.mode {
+            PadMode::Constant(f) => f.to_scalar::<T>()?.clone(),
             _ => T::default(),
         };
         let mut output = ArrayD::<T>::from_elem(output_shape, element);
@@ -107,36 +105,48 @@ impl Op for Pad {
         {
             bail!("Pad pulse only implemented for streaming dim");
         }
-        if let PadMode::Constant(c) = self.mode {
-            let (before, after) = self.pads[input_fact.axis];
-            let mut fact = input_fact.clone();
-            let mut prec = input;
-            if fact.delay < before {
-                let buffer_op = Delay::new(fact.clone(), before - fact.delay, 0);
-                fact.delay = before;
-                let id = target.chain_after(
-                    input,
-                    format!("{}/Delay", node.name),
-                    buffer_op,
-                    tvec!(fact.clone()),
-                )?;
-                prec = OutletId::new(id, 0);
-            }
-            fact.dim += (before + after).to_dim();
-            fact.delay -= before;
-            let op = PulsePad::<f32>::new(
-                input_fact.axis,
-                input_fact.pulse(),
-                input_fact.delay + before,
-                (input_fact.delay + before).to_dim() + input_fact.dim,
-                c,
-            );
-            let id = target.chain_after(prec, &*node.name, op, tvec!(fact))?;
+        let (before, after) = self.pads[input_fact.axis];
+        let mut fact = input_fact.clone();
+        let pulse = fact.pulse();
+        let mut extra_delay = before.saturating_sub(fact.delay);
+        match self.mode {
+            PadMode::Constant(_) => (),
+            PadMode::Edge if before < pulse => {
+                let start_offset = (fact.delay + extra_delay) % pulse;
+                if start_offset + before >= pulse {
+                    extra_delay += pulse - start_offset;
+                }
+            },
+            PadMode::Edge => bail!("Edge padding mode needs pulse strictly bigger than left padding (pulse={} padding={})", pulse, before),
+            PadMode::Reflect => bail!("Reflect padding mode pulsing is not supported")
+        };
 
-            Ok(tvec!(OutletId::new(id, 0)))
-        } else {
-            bail!("Pad pulse only implemented for constant");
+        let mut prec = input;
+        if extra_delay > 0 {
+            let buffer_op = Delay::new(fact.clone(), extra_delay, 0);
+            fact.delay += extra_delay;
+            let id = target.chain_after(
+                input,
+                format!("{}/Delay", node.name),
+                buffer_op,
+                tvec!(fact.clone()),
+            )?;
+            prec = OutletId::new(id, 0);
         }
+        fact.dim += (before + after).to_dim();
+        fact.delay -= before;
+        let op = PulsePad::<f32>::new(
+            input_fact.axis,
+            input_fact.pulse(),
+            before,
+            after,
+            input_fact.delay + before,
+            (input_fact.delay + before).to_dim() + input_fact.dim,
+            self.mode.clone(),
+        );
+        let id = target.chain_after(prec, &*node.name, op, tvec!(fact))?;
+
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 }
 
@@ -171,6 +181,7 @@ impl InferenceRulesOp for Pad {
 #[derive(Debug, Clone, Default, new)]
 struct PulsePadOpState<T: Datum + Copy> {
     current_pos: usize,
+    last_valid_frame: Option<Tensor>,
     _slimer: PhantomData<T>,
 }
 
@@ -181,31 +192,69 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
         op: &Op,
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
         let op = op.downcast_ref::<PulsePad<T>>().ok_or("Wrong Op type")?;
-        let current_pos = self.current_pos;
+        let pulse_begin = self.current_pos;
+        let pulse_end = self.current_pos + op.pulse;
         self.current_pos += op.pulse;
-        // pulse is entirely before or after input, emit padding constant
-        // (if the session has not seen the end of input stream, then
-        // we can't be processing it yet)
-        if current_pos + op.pulse <= op.begin_input
-            || session
-                .known_stream_len
-                .map(|s| current_pos >= op.end_input.eval(s as i32).unwrap() as usize)
-                .unwrap_or(false)
+        let end_input = session
+            .known_stream_len
+            .map(|s| op.end_input.eval(s as i32).unwrap() as usize)
+            .unwrap_or(std::usize::MAX);
+
+        if let PadMode::Edge = op.mode {
+            if self.last_valid_frame.is_none() && pulse_end >= end_input {
+                let data = inputs[0].to_array_view::<T>()?;
+                let last_frame = pulse_end - end_input;
+                self.last_valid_frame =
+                    Some(data.index_axis(Axis(op.axis), last_frame).to_owned().into_tensor());
+            }
+        }
+
+        // pulse is entirely in valid input, just forward
+        if pulse_begin >= op.begin_input && pulse_end <= end_input {
+            return Ok(inputs);
+        }
+        // pulse is entirely before or after output is valid, just forward
+        if pulse_end <= op.begin_input - op.before
+            || pulse_begin >= end_input.saturating_add(op.after)
         {
-            return Ok(tvec!(ArrayD::from_elem(input.shape(), op.constant).into_arc_tensor()));
+            return Ok(inputs);
         }
+        let input = args_1!(inputs);
         let mut data = input.into_tensor().into_array::<T>()?;
-        if current_pos < op.begin_input {
-            data.slice_axis_mut(Axis(op.axis), (0..op.begin_input - current_pos).into())
-                .fill(op.constant);
+        if pulse_begin < op.begin_input {
+            let fill_up_to = (op.begin_input - pulse_begin).min(op.pulse);
+            match &op.mode {
+                PadMode::Constant(c) => {
+                    let c = c.to_scalar::<T>()?;
+                    data.slice_axis_mut(Axis(op.axis), (0..fill_up_to).into()).fill(*c);
+                }
+                PadMode::Edge => {
+                    let data = data.view_mut();
+                    let (mut padding, valid) = data.split_at(Axis(op.axis), fill_up_to);
+                    let first_frame = valid.index_axis_move(Axis(op.axis), 0);
+                    for i in 0..fill_up_to {
+                        padding.index_axis_mut(Axis(op.axis), i).assign(&first_frame);
+                    }
+                }
+                _ => unimplemented!(),
+            }
         }
-        if let Some(s) = session.known_stream_len {
-            let end_input = op.end_input.eval(s as i32).unwrap() as usize;
-            if current_pos + op.pulse > end_input {
-                data.slice_axis_mut(Axis(op.axis), (end_input - current_pos..op.pulse).into())
-                    .fill(op.constant);
+        if pulse_end > end_input {
+            let fill_from = op.pulse - (pulse_end - end_input).min(op.pulse);
+            match &op.mode {
+                PadMode::Constant(c) => {
+                    let c = c.to_scalar::<T>()?;
+                    data.slice_axis_mut(Axis(op.axis), (fill_from..op.pulse).into()).fill(*c);
+                }
+                PadMode::Edge => {
+                    let mut data = data.view_mut();
+                    let last_frame = self.last_valid_frame.as_ref().unwrap().to_array_view::<T>()?;
+                    for i in fill_from..op.pulse {
+                        data.index_axis_mut(Axis(op.axis), i).assign(&last_frame);
+                    }
+                }
+                _ => unimplemented!(),
             }
         }
         Ok(tvec!(data.into_arc_tensor()))
@@ -216,9 +265,12 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
 struct PulsePad<T: Datum + Copy> {
     axis: usize,
     pulse: usize,
+    before: usize,
+    after: usize,
     begin_input: usize,
     end_input: TDim,
-    constant: T,
+    mode: PadMode,
+    _slimer: PhantomData<T>,
 }
 
 impl<T: Datum + Copy> Op for PulsePad<T> {
@@ -228,8 +280,11 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
-    fn state(&self, _session: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<OpState>>> {
         Ok(Some(Box::new(PulsePadOpState::<T>::default())))
     }
 }
-
