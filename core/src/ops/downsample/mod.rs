@@ -32,11 +32,11 @@ impl Downsample {
         Ok(sampled)
     }
 
-    fn transform_dim(&self, input_dim: &TDim) -> TDim {
+    pub(crate) fn transform_dim(&self, input_dim: &TDim) -> TDim {
         (input_dim.clone() - self.modulo).div_ceil(self.stride.into())
     }
 
-    fn transform_fact(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
+    pub(crate) fn transform_fact(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape.dim(self.axis));
         downed.shape.set_dim(self.axis, down_len.clone())?;
