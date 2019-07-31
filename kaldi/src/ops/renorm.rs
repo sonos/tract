@@ -22,6 +22,14 @@ impl Op for Renorm {
     fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.Renorm".into()
     }
+
+    fn translation_invariants(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
+    }
 }
 
 impl StatelessOp for Renorm {
