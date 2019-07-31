@@ -547,7 +547,7 @@ impl Op for ConvUnary {
             &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
         let h_axis = shape.h_axis();
         for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
-            if dim == 1 {
+            if dim == 1 && self.strides[ix] == 1 {
                 axes.push(TranslationInvariant { axis: ix + h_axis, period: 1 });
             }
         }

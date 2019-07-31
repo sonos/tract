@@ -7,8 +7,7 @@ pub struct Typed {
     pub body: TypedModel,
     decluttered: bool,
     pub input_mapping: Vec<InputMapping<TDim>>,
-    pub output_mapping: Vec<OutputMapping<TDim>>,
-    pub(super) scan_output_len_hint: Vec<Option<TDim>>,
+    pub output_mapping: Vec<OutputMapping<TDim, TDim>>,
 }
 
 impl Typed {
@@ -37,31 +36,32 @@ impl Typed {
             .iter()
             .map(|im| {
                 Ok(match im {
-                    OutputMapping::Scan { axis, slot, chunk } => OutputMapping::Scan {
-                        axis: *axis,
-                        slot: *slot,
-                        chunk: chunk.to_integer()? as usize,
-                    },
+                    OutputMapping::Scan { axis, slot, chunk, full_dim_hint } => {
+                        OutputMapping::Scan {
+                            axis: *axis,
+                            slot: *slot,
+                            chunk: chunk.to_integer()? as usize,
+                            full_dim_hint: full_dim_hint
+                                .as_ref()
+                                .map(|d| d.to_integer())
+                                .transpose()?
+                                .map(|d| d as usize),
+                        }
+                    }
                     OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
                 })
             })
             .collect::<TractResult<_>>()?;
 
-        Ok(Codegen::new(
-            Arc::new(plan),
-            input_mapping,
-            output_mapping,
-            self.scan_output_len_hint.clone(),
-        ))
+        Ok(Codegen::new(Arc::new(plan), input_mapping, output_mapping))
     }
 
     pub fn new(
         body: TypedModel,
         input_mapping: Vec<InputMapping<TDim>>,
-        output_mapping: Vec<OutputMapping<TDim>>,
-        scan_output_len_hint: Vec<Option<TDim>>,
+        output_mapping: Vec<OutputMapping<TDim, TDim>>,
     ) -> Typed {
-        Typed { body, decluttered: false, input_mapping, output_mapping, scan_output_len_hint }
+        Typed { body, decluttered: false, input_mapping, output_mapping }
     }
 }
 
@@ -71,7 +71,7 @@ impl Op for Typed {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let mut lines = vec!();
+        let mut lines = vec![];
         for (ix, im) in self.input_mapping.iter().enumerate() {
             lines.push(format!("Model input  #{}: {:?}", ix, im));
         }

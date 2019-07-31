@@ -51,7 +51,7 @@ pub fn pull_downsample_over_scan(
 
     let mut new_scan = scan_op.clone();
     new_scan.body = inner_model;
-    for mut input in &mut new_scan.input_mapping {
+    for input in &mut new_scan.input_mapping {
         match input {
             InputMapping::State { ref mut initializer } => {
                 if let StateInitializer::Value(ref v) = initializer {
@@ -59,15 +59,25 @@ pub fn pull_downsample_over_scan(
                     *initializer = StateInitializer::Value(new_v[0].clone())
                 }
             }
-            // FIXME: check chunk multiple of stride
-            InputMapping::Scan { ref mut chunk, .. } => *chunk = chunk.clone() / down_op.stride,
+            InputMapping::Scan { ref mut chunk, .. } => {
+                if chunk.to_integer()? as usize % down_op.stride != 0 {
+                    return Ok(None)
+                }
+                *chunk = chunk.div_ceil(down_op.stride.to_dim())
+            },
             _ => (),
         }
     }
-    for mut output in &mut new_scan.output_mapping {
+    for output in &mut new_scan.output_mapping {
         match output {
             // FIXME: check chunk multiple of stride
-            OutputMapping::Scan { ref mut chunk, .. } => *chunk = chunk.clone() / down_op.stride,
+            OutputMapping::Scan { ref mut chunk, ref mut full_dim_hint, .. } => {
+                if chunk.to_integer()? as usize % down_op.stride != 0 {
+                    return Ok(None)
+                }
+                full_dim_hint.as_mut().map(|d| *d = down_op.transform_dim(d));
+                *chunk = chunk.div_ceil(down_op.stride.to_dim());
+            }
             _ => (),
         }
     }
@@ -77,7 +87,7 @@ pub fn pull_downsample_over_scan(
         scan_node.name.clone(),
         new_scan,
         model
-            .node_input_facts(scan_node.id)?
+            .node_output_facts(scan_node.id)?
             .into_iter()
             .map(|f| down_op.transform_fact(f))
             .collect::<TractResult<_>>()?,

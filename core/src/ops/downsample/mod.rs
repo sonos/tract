@@ -3,6 +3,7 @@ use crate::ops;
 use ndarray::prelude::*;
 
 mod array;
+mod conv;
 mod scan;
 
 #[derive(Debug, Clone, new, Default, PartialEq)]
@@ -31,9 +32,13 @@ impl Downsample {
         Ok(sampled)
     }
 
+    fn transform_dim(&self, input_dim: &TDim) -> TDim {
+        (input_dim.clone() - self.modulo).div_ceil(self.stride.into())
+    }
+
     fn transform_fact(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
         let mut downed = input_fact.clone();
-        let down_len = (input_fact.shape.dim(self.axis) - self.modulo).div_ceil(self.stride.into());
+        let down_len = self.transform_dim(&input_fact.shape.dim(self.axis));
         downed.shape.set_dim(self.axis, down_len.clone())?;
         Ok(downed)
     }
@@ -116,7 +121,7 @@ fn pull_downsample_up(
             )?;
             patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(other, 0))?;
             for (ix, &oo) in prec.inputs.iter().enumerate() {
-                let source = patch.tap_model(model, oo)?;
+                let _source = patch.tap_model(model, oo)?;
                 let ds = patch.chain(
                     format!("{}-{}", prec.name, ix),
                     down_op.clone(),
@@ -125,13 +130,14 @@ fn pull_downsample_up(
                 patch.add_edge(OutletId::new(ds, 0), InletId::new(other, ix))?;
             }
             return Ok(Some(patch));
-        }
-        if let Some(crop_op) = prec.op_as::<ops::array::Crop>() {
+        } else if let Some(crop_op) = prec.op_as::<ops::array::Crop>() {
             return array::pull_downsample_over_crop(model, prec, crop_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::array::RmDims>() {
             return array::pull_downsample_over_rmdims(model, prec, other_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::array::AddDims>() {
             return array::pull_downsample_over_adddims(model, prec, other_op, down_node, down_op);
+        } else if let Some(conv_op) = prec.op_as::<ops::cnn::conv::ConvUnary>() {
+            return conv::fuse_downsample_into_conv(model, prec, conv_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::scan::Typed>() {
             return scan::pull_downsample_over_scan(model, prec, other_op, down_node, down_op);
         }

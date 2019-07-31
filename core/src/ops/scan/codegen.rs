@@ -8,8 +8,7 @@ use super::*;
 pub struct Codegen {
     pub plan: Arc<SimplePlan<TypedTensorInfo, Box<Op>, ModelImpl<TypedTensorInfo, Box<Op>>>>,
     pub input_mapping: Vec<InputMapping<usize>>,
-    pub output_mapping: Vec<OutputMapping<usize>>,
-    pub(super) scan_output_len_hint: Vec<Option<TDim>>,
+    pub output_mapping: Vec<OutputMapping<usize, usize>>,
 }
 
 impl Codegen {
@@ -101,15 +100,10 @@ impl StatelessOp for Codegen {
         let mut outputs = tvec!();
         for (ix, output) in self.output_mapping.iter().enumerate() {
             match output {
-                OutputMapping::Scan { slot, axis, .. } => {
+                OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
                     let fact = self.plan.model().output_fact(ix)?;
                     let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
-                    let scanning_dim = self
-                        .scan_output_len_hint
-                        .get(0)
-                        .and_then(|x| x.as_ref())
-                        .and_then(|i| i.to_integer().ok())
-                        .map(|i| i as usize)
+                    let scanning_dim = full_dim_hint.clone()
                         .unwrap_or(shape[*axis] * iters);
                     shape[*axis] = scanning_dim;
                     let t = dispatch_datum!(Self::alloc_output_t(fact.datum_type)(self, &*shape))?;

@@ -153,6 +153,7 @@ fn incorporate_memory_ops_as_scans(
                 axis: 0,
                 chunk: (),
                 slot: ix,
+                full_dim_hint: old_node.outputs[0].fact.shape.dim(0).unwrap().concretize(),
             });
         }
         for old_node_id in time_loop.iter() {
@@ -184,14 +185,14 @@ fn incorporate_memory_ops_as_scans(
                 Ok(OutletId::new(node_id_old_to_new[&observed_id], 0))
             })
             .collect::<TractResult<_>>()?;
-        let mut scan_output_len_hints = vec![];
+
         for output in &scan_outputs {
             let old_outlet = model.node(output.node).inputs[output.slot];
             inner_outputs
                 .push(OutletId::new(node_id_old_to_new[&old_outlet.node], old_outlet.slot));
-            let fact = model.outlet_fact(old_outlet)?;
-            scan_output_len_hints.push(fact.shape.dim(0).unwrap().concretize());
         }
+
+
         inner_model.set_output_outlets(&inner_outputs)?;
 
         // prepare patch
@@ -199,7 +200,6 @@ fn incorporate_memory_ops_as_scans(
             inner_model,
             mapped_inputs,
             mapped_outputs,
-            scan_output_len_hints,
         );
 
         let mut output_facts = tvec!();

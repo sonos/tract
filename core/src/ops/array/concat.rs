@@ -55,9 +55,7 @@ impl Op for Concat {
                             c_input.cast_to_dt(super_type)?.into_owned(),
                         ));
                     }
-                    None => {
-                        slices.push(NormConcatSlice::Var(input.shape.clone()));
-                    }
+                    None => slices.push(NormConcatSlice::Var)
                 }
             }
             let op = NormConcat::new(axis, slices);
@@ -133,22 +131,25 @@ impl InferenceRulesOp for Concat {
 #[derive(Debug, Clone)]
 pub enum NormConcatSlice {
     Const(Tensor),
-    Var(ShapeInfo),
+    Var,
 }
 
 impl NormConcatSlice {
+
     pub fn as_const(&self) -> Option<&Tensor> {
         match self {
             NormConcatSlice::Const(c) => Some(&c),
-            NormConcatSlice::Var(_) => None,
+            NormConcatSlice::Var => None,
         }
     }
+
     pub fn is_var(&self) -> bool {
         match self {
             NormConcatSlice::Const(_) => false,
-            NormConcatSlice::Var(_) => true,
+            NormConcatSlice::Var => true,
         }
     }
+
 }
 
 #[derive(new, Debug, Clone)]
@@ -166,10 +167,7 @@ impl NormConcat {
                 NormConcatSlice::Const(c) => {
                     fixed_slices.push(FixedConcatSlice::Const(c.clone().into_array::<T>()?))
                 }
-                NormConcatSlice::Var(shape) => {
-                    if Some(input_shapes[input_idx]) != shape.as_finite() {
-                        bail!("Incompatible shapes {:?} and {:?}", &input_shapes[input_idx], shape)
-                    }
+                NormConcatSlice::Var => {
                     fixed_slices.push(FixedConcatSlice::Var(input_shapes[input_idx].into()));
                     input_idx += 1;
                 }
