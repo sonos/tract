@@ -355,7 +355,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn proptest_conv(pb in proptest_conv_strat()) { pb.run() }
+        fn proptest_conv(pb in proptest_conv_strat()) { pb.run().unwrap() }
     }
 
     #[test]
@@ -399,6 +399,62 @@ mod tests {
             pulse: 2,
             ker: arr3(&[[[0.0f32]]]),
             input: arr3(&[[[0.0f32, 0.0]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_3() {
+        PadPlusConvProblem {
+            pad: 0,
+            stride: 2,
+            dilation: 1,
+            pulse: 2,
+            ker: arr3(&[[[0.0f32]]]),
+            input: arr3(&[[[0.0f32, 0.0, 0.0]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_4() {
+        PadPlusConvProblem {
+            pad: 0,
+            stride: 2,
+            dilation: 2,
+            pulse: 2,
+            ker: arr3(&[[[0.0f32]]]),
+            input: arr3(&[[[0.0f32, 0.0, 0.0]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_5() {
+        PadPlusConvProblem {
+            pad: 2,
+            stride: 2,
+            dilation: 1,
+            pulse: 2,
+            ker: arr3(&[[[0.0f32, 1.0]]]),
+            input: arr3(&[[[1.0f32, 0.0]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_6() {
+        PadPlusConvProblem {
+            pad: 0,
+            stride: 2,
+            dilation: 1,
+            pulse: 2,
+            ker: arr3(&[[[0.0f32]]]),
+            input: arr3(&[[[0.0f32, 0.0, 0.0]]]),
         }
         .run()
         .unwrap()
