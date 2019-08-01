@@ -550,6 +550,7 @@ impl Op for ConvUnary {
                 final_fact.shape[fact.axis] /= stride;
                 final_fact.dim = (final_fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
                 let mut conv_op = self.clone();
+                conv_op.full_input_shape[fact.axis] = fact.pulse().to_dim();
                 conv_op.full_output_shape[fact.axis] = final_fact.shape[fact.axis].to_dim();
                 let id = target.chain_after(input, &*node.name, conv_op, tvec!(final_fact))?;
                 return Ok(tvec!(OutletId::new(id, 0)));

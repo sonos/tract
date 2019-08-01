@@ -200,12 +200,15 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
             .map(|s| op.end_input.eval(s as i32).unwrap() as usize)
             .unwrap_or(std::usize::MAX);
 
+        dbg!((pulse_begin, pulse_end));
+        dbg!(end_input);
+
         if let PadMode::Edge = op.mode {
-            if self.last_valid_frame.is_none() && pulse_end >= end_input {
+            if op.after > 0 && pulse_begin < end_input {
+                let latest_valid_frame = (end_input - pulse_begin).min(op.pulse) - 1;
                 let data = inputs[0].to_array_view::<T>()?;
-                let last_frame = end_input - pulse_begin - 1;
                 self.last_valid_frame =
-                    Some(data.index_axis(Axis(op.axis), last_frame).to_owned().into_tensor());
+                    Some(data.index_axis(Axis(op.axis), latest_valid_frame).to_owned().into_tensor());
             }
         }
 
