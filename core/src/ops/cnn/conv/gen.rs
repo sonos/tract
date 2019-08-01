@@ -11,11 +11,11 @@ use std::borrow::Borrow;
 pub struct Conv {
     pub(super) data_format: DataFormat,
     pub(super) kernel_fmt: KernelFormat,
-    pub(super) dilations: Option<TVec<usize>>,
+    pub(crate) dilations: Option<TVec<usize>>,
     kernel_shape: Option<TVec<usize>>,
-    pub(super) padding: PaddingSpec,
-    pub(super) strides: Option<TVec<usize>>,
-    pub(super) group: usize,
+    pub(crate) padding: PaddingSpec,
+    pub(crate) strides: Option<TVec<usize>>,
+    pub(crate) group: usize,
 }
 
 impl ::std::default::Default for Conv {
@@ -64,6 +64,15 @@ impl Conv {
     ) -> TractResult<Option<ConvUnary>> {
         let input = &inputs[0];
         let kernel = &inputs[1];
+        let input_shape = self.data_format.shape(input.borrow().shape.iter().collect::<TVec<_>>());
+        let kshape = kernel.borrow().shape.iter().collect::<TVec<_>>();
+        let channels_in = match self.kernel_fmt {
+            KernelFormat::OIHW => kshape[1].clone(),
+            KernelFormat::HWIO => kshape[kshape.len() - 2].clone() * self.group,
+        };
+        if input_shape.c_dim() != &channels_in {
+            bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
+        }
         if inputs.len() == 2 {
             if let Some(kvalue) = kernel.borrow().konst.clone() {
                 let ishape: TVec<TDim> = input.borrow().shape.iter().collect();

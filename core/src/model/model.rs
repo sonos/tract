@@ -384,6 +384,10 @@ where
         self.outlet_fact(outlet).unwrap().to_tensor_fact()
     }
 
+    fn outlet_fact_format(&self, outlet: OutletId) -> String {
+        format!("{:?}", self.outlet_fact(outlet).unwrap())
+    }
+
     fn outlet_successors(&self, outlet: OutletId) -> &[InletId] {
         &self.nodes[outlet.node].outputs[outlet.slot].successors
     }
