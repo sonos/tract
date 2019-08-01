@@ -515,7 +515,7 @@ impl Op for ConvUnary {
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
+        let mut input = mapping[&node.inputs[0]];
         let mut fact = target.outlet_fact(input)?.clone();
         let shape = self.data_format.shape(&fact.shape);
         if fact.axis == shape.n_axis() {
@@ -530,34 +530,41 @@ impl Op for ConvUnary {
         } else {
             let spatial_rank = self.full_input_shape.len() - 2;
             let geo_axis = fact.axis - shape.h_axis();
+            let stride = self.strides[geo_axis];
+            if fact.pulse() % stride != 0 {
+                bail!("Convolution pulsification can only be achieved when the pulse length is a multiple of the stride. Got pulse={}, stride={}", fact.pulse(), stride)
+            }
             let kernel_spatial_shape =
                 &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
-            let kernel_len = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
+            let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
             let mut augmented_fact = fact.clone();
-            augmented_fact.shape[augmented_fact.axis] += kernel_len;
-            augmented_fact.delay += kernel_len;
+            augmented_fact.shape[augmented_fact.axis] += kernel_overreach;
+            augmented_fact.delay += kernel_overreach;
 
             let mut conv_op = self.clone();
             conv_op.full_input_shape[fact.axis] = augmented_fact.pulse().to_dim();
             conv_op.full_output_shape[fact.axis] =
-                ((augmented_fact.pulse() - kernel_len) / self.strides[geo_axis]).to_dim();
+                ((augmented_fact.pulse() - kernel_overreach) / self.strides[geo_axis]).to_dim();
             let mut conv_fact = fact.clone();
             conv_fact.shape = conv_op
                 .full_output_shape
                 .iter()
                 .map(|d| d.to_integer().unwrap() as usize)
                 .collect();
-            conv_fact.delay += kernel_len;
-            conv_fact.dim -= kernel_len.to_dim();
+            conv_fact.delay = (conv_fact.delay + kernel_overreach) / stride;
+            conv_fact.dim = (conv_fact.dim - kernel_overreach.to_dim()) / stride;
 
-            let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_len);
-            target.chain_after(
-                input,
-                format!("{}/Delay", node.name),
-                delay,
-                tvec!(augmented_fact),
-            )?;
-            let id = target.chain(&*node.name, conv_op, tvec!(conv_fact))?;
+            if kernel_overreach > 0 {
+                let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_overreach);
+                let node = target.chain_after(
+                    input,
+                    format!("{}/Delay", node.name),
+                    delay,
+                    tvec!(augmented_fact),
+                )?;
+                input = OutletId::new(node, 0);
+            }
+            let id = target.chain_after(input, &*node.name, conv_op, tvec!(conv_fact))?;
 
             Ok(tvec!(OutletId::new(id, 0)))
         }

@@ -132,14 +132,13 @@ impl<'a> DisplayGraph<'a> {
                 "".to_string()
             };
             let outlet = OutletId::new(node_id, ix);
-            let fact = model.outlet_tensorfact(outlet);
             let successors = model.outlet_successors(outlet);
             println!(
-                "{}  {} output fact #{}: {:?} {} {}",
+                "{}  {} output fact #{}: {} {} {}",
                 prefix,
                 star,
-                format!("{:?}", ix),
-                fact,
+                ix,
+                model.outlet_fact_format(outlet),
                 White.bold().paint(successors.iter().map(|s| format!("{:?}", s)).join(" ")),
                 io
             );

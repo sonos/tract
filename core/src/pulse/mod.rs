@@ -20,7 +20,7 @@ impl fmt::Debug for PulsedTensorFact {
         use itertools::Itertools;
         write!(
             fmt,
-            "Pulse:{}x{:?}{{ax:{},d:{},dim:{:?}}}",
+            "{}x{:?} [pulse axis:{} ∂:{} full dim:{:?}]",
             self.shape.iter().join("x"),
             self.dt,
             self.axis,
@@ -49,7 +49,8 @@ impl PulsedTensorFact {
         pulse: usize,
     ) -> TractResult<PulsedTensorFact> {
         let dt = tf.datum_type;
-        let stream = tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;
+        let stream =
+            tf.shape.stream_info.as_ref().ok_or("Can not pulse a tensor with no streaming dim")?;
         let shape =
             tf.shape.iter().map(|d| d.to_integer().map(|d| d as usize).unwrap_or(pulse)).collect();
         Ok(PulsedTensorFact { dt, shape, axis: stream.axis, dim: stream.len.clone(), delay: 0 })
@@ -106,7 +107,9 @@ impl PulsedModel {
                 mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
             } else {
                 let node = &source.nodes()[old_id];
-                let outlets = node.op().pulsify(&source, &node, &mut target, &mapping)
+                let outlets = node
+                    .op()
+                    .pulsify(&source, &node, &mut target, &mapping)
                     .chain_err(|| format!("Pulsifying {:?}", node))?;
                 for (ix, outlet) in outlets.into_iter().enumerate() {
                     mapping.insert(OutletId::new(node.id, ix), outlet);
@@ -129,6 +132,7 @@ impl PulsedModel {
 mod tests {
     use super::*;
     use ndarray::*;
+    use proptest::prelude::*;
     use proptest::proptest;
     use proptest::test_runner::TestCaseResult;
     use proptest::*;
@@ -196,8 +200,10 @@ mod tests {
         let outputs = plan.run(tvec!(input.clone())).unwrap();
 
         let model = model.into_normalized().unwrap();
+        dbg!(&model);
 
         let pulsed = PulsedModel::new(&model, pulse).unwrap();
+        dbg!(&pulsed);
         let output_fact = pulsed.output_fact(0).unwrap().clone();
 
         let output_stream_axis = output_fact.axis;
@@ -281,7 +287,75 @@ mod tests {
             let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
             proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
         }
+    }
 
+    fn vec(len: impl Strategy<Value = usize>) -> impl Strategy<Value = Vec<f32>> {
+        len.prop_flat_map(|l| proptest::collection::vec(-5..5, l..=l))
+            .prop_map(|v| v.into_iter().map(|f| f as f32).collect())
+    }
+
+    #[derive(Debug, Clone)]
+    struct PadPlusConvProblem {
+        pad: usize,
+        stride: usize,
+        dilation: usize,
+        pulse: usize,
+        ker: Array3<f32>,
+        input: Array3<f32>,
+    }
+
+    impl PadPlusConvProblem {
+        pub fn run(&self) -> TestCaseResult {
+            use crate::ops::array::{Pad, PadMode};
+            use crate::ops::cnn::*;
+            let mut model = InferenceModel::default();
+            let _ = model
+                .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S)))
+                .unwrap();
+            if self.pad > 0 {
+                model
+                    .chain_default(
+                        "pad",
+                        Pad::new(
+                            vec![(0, 0), (0,0), (self.pad as _, 0)],
+                            PadMode::Constant(Arc::new(Tensor::from(9999f32))),
+                        ),
+                    )
+                    .unwrap();
+            }
+            let mut conv = Conv::default();
+            conv.dilations = Some(tvec!(self.dilation));
+            conv.strides = Some(tvec!(self.stride));
+            let conv = model.chain_default("conv", conv).unwrap();
+            model.plug_const(InletId::new(conv, 1), "kernel", self.ker.clone()).unwrap();
+            model.auto_outputs().unwrap();
+            proptest_regular_against_pulse(model, self.pulse as _, self.input.clone().into_dyn(), 2)
+        }
+    }
+
+    fn proptest_conv_strat() -> impl Strategy<Value = PadPlusConvProblem> {
+        (1usize..3, vec(1usize..3), 1usize..3, 0usize..5, 1usize..3)
+            .prop_flat_map(|(stride, ker, dil, pad, pulse_factor)| {
+                let min_input = (ker.len() * dil).max(pulse_factor * stride);
+                (
+                    Just(stride),
+                    Just(ker),
+                    Just(dil),
+                    Just(pad),
+                    Just(stride * pulse_factor),
+                    vec(min_input..3 * min_input),
+                )
+            })
+            .prop_map(|(stride, ker, dilation, pad, pulse, input)| {
+                let input = Array3::from_shape_vec((1, 1, input.len()), input).unwrap(); // NCHW
+                let ker = Array3::from_shape_vec((1, 1, ker.len()), ker).unwrap(); // OIHW
+                PadPlusConvProblem { pad, stride, dilation, pulse, ker, input }
+            })
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_conv(pb in proptest_conv_strat()) { pb.run() }
     }
 
     #[test]
@@ -303,13 +377,45 @@ mod tests {
     }
 
     #[test]
+    fn conv_1() {
+        PadPlusConvProblem {
+            pad: 0,
+            stride: 1,
+            dilation: 1,
+            pulse: 1,
+            ker: arr3(&[[[0.0f32]]]),
+            input: arr3(&[[[0.0f32, 0.0]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_2() {
+        PadPlusConvProblem {
+            pad: 0,
+            stride: 2,
+            dilation: 2,
+            pulse: 2,
+            ker: arr3(&[[[0.0f32]]]),
+            input: arr3(&[[[0.0f32, 0.0]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
     fn test_pad_after_1() {
         use crate::ops::array::{Pad, PadMode};
         let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
-        model.chain_default("pad", Pad::new(vec![(0, 1)],
-                PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
+        model
+            .chain_default(
+                "pad",
+                Pad::new(vec![(0, 1)], PadMode::Constant(Arc::new(Tensor::from(-1f32)))),
+            )
+            .unwrap();
         model.auto_outputs().unwrap();
 
         let input = arr1(&[]);
@@ -322,8 +428,12 @@ mod tests {
         let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
-        model.chain_default("pad", Pad::new(vec![(1, 0)],
-                PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
+        model
+            .chain_default(
+                "pad",
+                Pad::new(vec![(1, 0)], PadMode::Constant(Arc::new(Tensor::from(-1f32)))),
+            )
+            .unwrap();
         model.auto_outputs().unwrap();
 
         let input = arr1(&[1.0]);
@@ -336,8 +446,12 @@ mod tests {
         let mut model = InferenceModel::default();
         let _ =
             model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
-        model.chain_default("pad", Pad::new(vec![(1, 0)],
-                PadMode::Constant(Arc::new(Tensor::from(-1f32))))).unwrap();
+        model
+            .chain_default(
+                "pad",
+                Pad::new(vec![(1, 0)], PadMode::Constant(Arc::new(Tensor::from(-1f32)))),
+            )
+            .unwrap();
         model.auto_outputs().unwrap();
 
         let input = arr1(&[1.0, 2.0]);

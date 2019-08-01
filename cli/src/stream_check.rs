@@ -119,7 +119,7 @@ pub fn handle(params: Parameters, options: display_graph::DisplayOptions) -> Cli
                             .map(|s| *s.iter().next().unwrap())
                             .join(" ")
                     );
-                    bail!("Error checking pulse mode")
+                    bail!("Pulse check failed")
                 }
             }
         }
