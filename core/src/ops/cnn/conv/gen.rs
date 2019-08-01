@@ -67,8 +67,8 @@ impl Conv {
         let input_shape = self.data_format.shape(input.borrow().shape.iter().collect::<TVec<_>>());
         let kshape = kernel.borrow().shape.iter().collect::<TVec<_>>();
         let channels_in = match self.kernel_fmt {
-            KernelFormat::OIHW => kshape[1].clone(),
-            KernelFormat::HWIO => kshape[kshape.len() - 2].clone() * self.group,
+            KernelFormat::OIHW => kshape[1].clone() * self.group,
+            KernelFormat::HWIO => kshape[kshape.len() - 2].clone(),
         };
         if input_shape.c_dim() != &channels_in {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)

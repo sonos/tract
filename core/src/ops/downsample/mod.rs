@@ -60,6 +60,25 @@ impl Op for Downsample {
         pull_downsample_up(model, node)
     }
 
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.outlet_fact(input)?.clone();
+        if fact.pulse() % self.stride != 0 {
+            bail!("Pulsificaton requires pulse to be a stride multiple")
+        }
+        fact.shape[self.axis] /= self.stride;
+        fact.dim = fact.dim.div_ceil(self.stride.to_dim());
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+
     impl_op_same_as!();
 }
 

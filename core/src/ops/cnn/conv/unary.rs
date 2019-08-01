@@ -296,6 +296,7 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
     {
         let input = args_1!(inputs);
+        dbg!(&input);
         let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
         trace!("im2col: {:?}", mega);
@@ -432,15 +433,17 @@ impl Op for ConvUnary {
             patch.tap_model(model, node.inputs[0])?;
             let input_fact = model.outlet_fact(node.inputs[0])?;
             let shape = self.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
-            let downample_op = crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0);
+            let downample_op =
+                crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0);
             let downsampled_fact = downample_op.transform_fact(input_fact)?;
-            patch.chain(format!("Downsample-{}", node.name), downample_op, tvec!(downsampled_fact))?;
-            let id = patch.chain(
-                &*node.name,
-                new_op,
-                tvec!(node.outputs[0].fact.clone()))?;
+            patch.chain(
+                format!("Downsample-{}", node.name),
+                downample_op,
+                tvec!(downsampled_fact),
+            )?;
+            let id = patch.chain(&*node.name, new_op, tvec!(node.outputs[0].fact.clone()))?;
             patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(id, 0))?;
-            return Ok(Some(patch))
+            return Ok(Some(patch));
         }
         Ok(None)
     }
@@ -537,6 +540,21 @@ impl Op for ConvUnary {
             let kernel_spatial_shape =
                 &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
             let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
+
+            if kernel_overreach < stride {
+                let misalignment = fact.delay % stride;
+                if misalignment != 0 {
+                    unimplemented!();
+                }
+                let mut final_fact = fact.clone();
+                final_fact.shape[fact.axis] /= stride;
+                final_fact.dim = (final_fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
+                let mut conv_op = self.clone();
+                conv_op.full_output_shape[fact.axis] = final_fact.shape[fact.axis].to_dim();
+                let id = target.chain_after(input, &*node.name, conv_op, tvec!(final_fact))?;
+                return Ok(tvec!(OutletId::new(id, 0)));
+            }
+
             let mut augmented_fact = fact.clone();
             augmented_fact.shape[augmented_fact.axis] += kernel_overreach;
             augmented_fact.delay += kernel_overreach;
@@ -552,7 +570,7 @@ impl Op for ConvUnary {
                 .map(|d| d.to_integer().unwrap() as usize)
                 .collect();
             conv_fact.delay = (conv_fact.delay + kernel_overreach) / stride;
-            conv_fact.dim = (conv_fact.dim - kernel_overreach.to_dim()) / stride;
+            conv_fact.dim = (conv_fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
 
             if kernel_overreach > 0 {
                 let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_overreach);
