@@ -136,6 +136,7 @@ mod tests {
     use proptest::proptest;
     use proptest::test_runner::TestCaseResult;
     use proptest::*;
+    use crate::ops::array::PadMode;
 
     #[test]
     fn test_source_must_stream() {
@@ -296,7 +297,9 @@ mod tests {
 
     #[derive(Debug, Clone)]
     struct PadPlusConvProblem {
-        pad: usize,
+        pad_before: usize,
+        pad_after: usize,
+        pad_mode: PadMode,
         stride: usize,
         dilation: usize,
         pulse: usize,
@@ -304,21 +307,54 @@ mod tests {
         input: Array3<f32>,
     }
 
+    impl Arbitrary for PadPlusConvProblem {
+        type Parameters = ();
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(_: Self::Parameters) -> BoxedStrategy<PadPlusConvProblem> {
+            (1usize..3, vec(1usize..3), 1usize..3, 0usize..15, 0usize..15, 1usize..3, bool::ANY)
+                .prop_flat_map(|(stride, ker, dil, pad_before, pad_after, pulse_factor, edge)| {
+                    let min_input = (ker.len() * dil).max(pulse_factor * stride);
+                    (
+                        Just(stride),
+                        Just(ker),
+                        Just(dil),
+                        Just(pad_before),
+                        Just(pad_after),
+                        Just(stride * pulse_factor),
+                        vec(min_input..3 * min_input),
+                        Just(edge)
+                    )
+                })
+                .prop_map(|(stride, ker, dilation, pad_before, pad_after, pulse, input, edge)| {
+                    let pad_mode = if edge && pad_before < pulse {
+                        PadMode::Edge
+                    } else {
+                        PadMode::Constant(Tensor::from(9999f32).into())
+                    };
+                    let input = Array3::from_shape_vec((1, 1, input.len()), input).unwrap(); // NCHW
+                    let ker = Array3::from_shape_vec((1, 1, ker.len()), ker).unwrap(); // OIHW
+                    PadPlusConvProblem { pad_before, pad_after, pad_mode, stride, dilation, pulse, ker, input }
+                })
+                .boxed()
+        }
+    }
+
     impl PadPlusConvProblem {
         pub fn run(&self) -> TestCaseResult {
-            use crate::ops::array::{Pad, PadMode};
+            use crate::ops::array::Pad;
             use crate::ops::cnn::*;
             let mut model = InferenceModel::default();
             let _ = model
                 .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(1, 1, S)))
                 .unwrap();
-            if self.pad > 0 {
+            if self.pad_before > 0 || self.pad_after > 0 {
                 model
                     .chain_default(
                         "pad",
                         Pad::new(
-                            vec![(0, 0), (0,0), (self.pad as _, 0)],
-                            PadMode::Constant(Arc::new(Tensor::from(9999f32))),
+                            vec![(0, 0), (0, 0), (self.pad_before, self.pad_after)],
+                            self.pad_mode.clone(),
                         ),
                     )
                     .unwrap();
@@ -333,29 +369,9 @@ mod tests {
         }
     }
 
-    fn proptest_conv_strat() -> impl Strategy<Value = PadPlusConvProblem> {
-        (1usize..3, vec(1usize..3), 1usize..3, 0usize..5, 1usize..3)
-            .prop_flat_map(|(stride, ker, dil, pad, pulse_factor)| {
-                let min_input = (ker.len() * dil).max(pulse_factor * stride);
-                (
-                    Just(stride),
-                    Just(ker),
-                    Just(dil),
-                    Just(pad),
-                    Just(stride * pulse_factor),
-                    vec(min_input..3 * min_input),
-                )
-            })
-            .prop_map(|(stride, ker, dilation, pad, pulse, input)| {
-                let input = Array3::from_shape_vec((1, 1, input.len()), input).unwrap(); // NCHW
-                let ker = Array3::from_shape_vec((1, 1, ker.len()), ker).unwrap(); // OIHW
-                PadPlusConvProblem { pad, stride, dilation, pulse, ker, input }
-            })
-    }
-
     proptest! {
         #[test]
-        fn proptest_conv(pb in proptest_conv_strat()) { pb.run().unwrap() }
+        fn proptest_conv(pb in PadPlusConvProblem::arbitrary()) { pb.run().unwrap() }
     }
 
     #[test]
@@ -379,7 +395,9 @@ mod tests {
     #[test]
     fn conv_1() {
         PadPlusConvProblem {
-            pad: 0,
+            pad_before: 0,
+            pad_after: 0,
+            pad_mode: PadMode::Constant(tensor0(9999f32).into()),
             stride: 1,
             dilation: 1,
             pulse: 1,
@@ -393,7 +411,9 @@ mod tests {
     #[test]
     fn conv_2() {
         PadPlusConvProblem {
-            pad: 0,
+            pad_before: 0,
+            pad_after: 0,
+            pad_mode: PadMode::Constant(tensor0(9999f32).into()),
             stride: 2,
             dilation: 2,
             pulse: 2,
@@ -407,7 +427,9 @@ mod tests {
     #[test]
     fn conv_3() {
         PadPlusConvProblem {
-            pad: 0,
+            pad_before: 0,
+            pad_after: 0,
+            pad_mode: PadMode::Constant(tensor0(9999f32).into()),
             stride: 2,
             dilation: 1,
             pulse: 2,
@@ -421,7 +443,9 @@ mod tests {
     #[test]
     fn conv_4() {
         PadPlusConvProblem {
-            pad: 0,
+            pad_before: 0,
+            pad_after: 0,
+            pad_mode: PadMode::Constant(tensor0(9999f32).into()),
             stride: 2,
             dilation: 2,
             pulse: 2,
@@ -435,7 +459,9 @@ mod tests {
     #[test]
     fn conv_5() {
         PadPlusConvProblem {
-            pad: 2,
+            pad_before: 2,
+            pad_after: 0,
+            pad_mode: PadMode::Constant(tensor0(9999f32).into()),
             stride: 2,
             dilation: 1,
             pulse: 2,
@@ -449,12 +475,30 @@ mod tests {
     #[test]
     fn conv_6() {
         PadPlusConvProblem {
-            pad: 0,
+            pad_before: 0,
+            pad_after: 0,
+            pad_mode: PadMode::Constant(tensor0(9999f32).into()),
             stride: 2,
             dilation: 1,
             pulse: 2,
             ker: arr3(&[[[0.0f32]]]),
             input: arr3(&[[[0.0f32, 0.0, 0.0]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_7() {
+        PadPlusConvProblem {
+            pad_before: 0,
+            pad_after: 1,
+            pad_mode: PadMode::Edge,
+            stride: 1,
+            dilation: 1,
+            pulse: 1,
+            ker: arr3(&[[[0.0f32]]]),
+            input: arr3(&[[[0.0f32]]]),
         }
         .run()
         .unwrap()
