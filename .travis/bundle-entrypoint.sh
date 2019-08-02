@@ -91,6 +91,14 @@ kaldi_librispeech_clean_tdnn_lstm_1e_256=`$TRACT --machine-friendly \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
 echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.2600ms $kaldi_librispeech_clean_tdnn_lstm_1e_256 >> metrics
 
+kaldi_librispeech_clean_tdnn_lstm_1e_256=`$TRACT --machine-friendly \
+    $CACHEDIR/librispeech_clean_tdnn_lstm_1e_256.kaldi \
+    -f kaldi  --output-node output \
+     --kaldi-downsample 3 --kaldi-left-context 5 --kaldi-right-context 15 --kaldi-adjust-final-offset -5 \
+    -O -i Sx40 --pulse 24 profile --bench \
+    | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
+echo net.kaldi_librispeech_clean_tdnn_lstm_1e_256.evaltime.pulse_240ms $kaldi_librispeech_clean_tdnn_lstm_1e_256 >> metrics
+
 speaker_id_pulse8=`$TRACT --machine-friendly $CACHEDIR/speaker-id-2019-03.onnx \
     -O -i 1xSx40xf32 --output-node 257 --partial --pulse 8 profile --bench \
     | grep real | cut -f 2 -d ' ' | sed 's/\([0-9]\{9,9\}\)[0-9]*/\1/'`
@@ -173,4 +181,3 @@ do
     sec=`python -c "print(float($usec) / 1000000)"`
     echo net.mobilenet_v2.tflite_$tflite.pass $sec >> metrics
 done
-
