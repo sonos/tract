@@ -9,13 +9,13 @@ use std::borrow::Borrow;
 
 #[derive(Debug, Clone, new)]
 pub struct Conv {
-    pub(super) data_format: DataFormat,
-    pub(super) kernel_fmt: KernelFormat,
-    pub(crate) dilations: Option<TVec<usize>>,
-    kernel_shape: Option<TVec<usize>>,
-    pub(crate) padding: PaddingSpec,
-    pub(crate) strides: Option<TVec<usize>>,
-    pub(crate) group: usize,
+    pub data_format: DataFormat,
+    pub kernel_fmt: KernelFormat,
+    pub dilations: Option<TVec<usize>>,
+    pub kernel_shape: Option<TVec<usize>>,
+    pub padding: PaddingSpec,
+    pub strides: Option<TVec<usize>>,
+    pub group: usize,
 }
 
 impl ::std::default::Default for Conv {
