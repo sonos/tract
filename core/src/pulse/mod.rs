@@ -131,12 +131,6 @@ impl PulsedModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::*;
-    use proptest::prelude::*;
-    use proptest::proptest;
-    use proptest::test_runner::TestCaseResult;
-    use proptest::*;
-    use crate::ops::array::PadMode;
 
     #[test]
     fn test_source_must_stream() {
