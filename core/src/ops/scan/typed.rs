@@ -4,6 +4,7 @@ use super::*;
 
 #[derive(Debug, Clone, Default)]
 pub struct Typed {
+    pub skip: usize,
     pub body: TypedModel,
     decluttered: bool,
     pub input_mapping: Vec<InputMapping<TDim>>,
@@ -12,7 +13,9 @@ pub struct Typed {
 
 impl Typed {
     pub fn to_codegen_op(&self) -> TractResult<Codegen> {
+        trace!("Optimizing(Codegen) inner model");
         let plan = SimplePlan::new(self.body.clone().into_optimized()?)?;
+        trace!("Optimizing(Codegen) inner model done");
         let input_mapping = self
             .input_mapping
             .iter()
@@ -41,11 +44,7 @@ impl Typed {
                             axis: *axis,
                             slot: *slot,
                             chunk: chunk.to_integer()? as usize,
-                            full_dim_hint: full_dim_hint
-                                .as_ref()
-                                .map(|d| d.to_integer())
-                                .transpose()?
-                                .map(|d| d as usize),
+                            full_dim_hint: full_dim_hint.clone(),
                         }
                     }
                     OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
@@ -53,7 +52,7 @@ impl Typed {
             })
             .collect::<TractResult<_>>()?;
 
-        Ok(Codegen::new(Arc::new(plan), input_mapping, output_mapping))
+        Ok(Codegen::new(self.skip, Arc::new(plan), input_mapping, output_mapping))
     }
 
     pub fn new(
@@ -61,7 +60,7 @@ impl Typed {
         input_mapping: Vec<InputMapping<TDim>>,
         output_mapping: Vec<OutputMapping<TDim, TDim>>,
     ) -> Typed {
-        Typed { body, decluttered: false, input_mapping, output_mapping }
+        Typed { skip: 0, body, decluttered: false, input_mapping, output_mapping }
     }
 }
 
@@ -99,6 +98,39 @@ impl Op for Typed {
         Ok(None)
     }
 
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if node.inputs.len() > 1 || node.outputs.len() > 1 {
+            bail!("Scan pulsificiaton limited to single streaming input and output case");
+        }
+        let input = mapping[&node.inputs[0]];
+        let input_fact = target.outlet_fact(input)?;
+        let (_slot, axis, _chunk) = self
+            .input_mapping
+            .iter()
+            .filter_map(InputMapping::as_scan)
+            .find(|mapping| mapping.0 == 0)
+            .unwrap();
+        if input_fact.axis != axis {
+            bail!("Scan pulsification limited to scanning axis");
+        }
+
+        let mut output_fact = crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(
+            &node.outputs[0].fact,
+            input_fact.pulse(),
+        )?;
+        output_fact.delay = input_fact.delay;
+        let mut op = self.clone();
+        op.skip = input_fact.delay;
+        let id = target.chain_after(input, &*node.name, op, tvec!(output_fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
@@ -113,8 +145,12 @@ impl Op for Typed {
     }
 }
 
-impl StatelessOp for Typed {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.to_codegen_op()?.eval(inputs)
+impl StatefullOp for Typed {
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<OpState>>> {
+        self.to_codegen_op()?.state(session, node_id)
     }
 }
