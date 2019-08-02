@@ -296,7 +296,6 @@ impl ConvUnary {
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
     {
         let input = args_1!(inputs);
-        dbg!(&input);
         let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
         let mega = im2col.im2col(&input.to_array_view()?)?;
         trace!("im2col: {:?}", mega);
@@ -519,10 +518,11 @@ impl Op for ConvUnary {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let mut input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
+        let fact = target.outlet_fact(input)?;
         let shape = self.data_format.shape(&fact.shape);
         if fact.axis == shape.n_axis() {
             let mut op = self.clone();
+            let mut fact = fact.clone();
             op.full_output_shape[fact.axis] = fact.pulse().to_dim();
             fact.shape =
                 op.full_output_shape.iter().map(|d| d.to_integer().unwrap() as usize).collect();
@@ -541,40 +541,33 @@ impl Op for ConvUnary {
                 &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
             let kernel_overreach = (kernel_spatial_shape[geo_axis] - 1) * self.dilations[geo_axis];
 
-            if kernel_overreach < stride {
-                let misalignment = fact.delay % stride;
-                if misalignment != 0 {
-                    unimplemented!();
-                }
-                let mut final_fact = fact.clone();
-                final_fact.shape[fact.axis] /= stride;
-                final_fact.dim = (final_fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
-                let mut conv_op = self.clone();
-                conv_op.full_input_shape[fact.axis] = fact.pulse().to_dim();
-                conv_op.full_output_shape[fact.axis] = final_fact.shape[fact.axis].to_dim();
-                let id = target.chain_after(input, &*node.name, conv_op, tvec!(final_fact))?;
-                return Ok(tvec!(OutletId::new(id, 0)));
-            }
+            let overlap = (kernel_overreach + 1).saturating_sub(stride);
 
             let mut augmented_fact = fact.clone();
-            augmented_fact.shape[augmented_fact.axis] += kernel_overreach;
-            augmented_fact.delay += kernel_overreach;
+            augmented_fact.shape[augmented_fact.axis] += overlap;
+            augmented_fact.delay += overlap;
+            augmented_fact.delay = augmented_fact.delay.div_ceil(stride) * stride;
 
             let mut conv_op = self.clone();
             conv_op.full_input_shape[fact.axis] = augmented_fact.pulse().to_dim();
             conv_op.full_output_shape[fact.axis] =
-                ((augmented_fact.pulse() - kernel_overreach) / self.strides[geo_axis]).to_dim();
+                ((augmented_fact.pulse() - overlap) / self.strides[geo_axis]).to_dim();
             let mut conv_fact = fact.clone();
             conv_fact.shape = conv_op
                 .full_output_shape
                 .iter()
                 .map(|d| d.to_integer().unwrap() as usize)
                 .collect();
-            conv_fact.delay = (conv_fact.delay + kernel_overreach) / stride;
+            conv_fact.delay = augmented_fact.delay / stride;
             conv_fact.dim = (conv_fact.dim - kernel_overreach.to_dim()).div_ceil(stride.to_dim());
 
-            if kernel_overreach > 0 {
-                let delay = crate::pulse::delay::Delay::new(fact, 0, kernel_overreach);
+            if augmented_fact != *fact {
+                let extra_delay = augmented_fact.delay - fact.delay - overlap;
+                let delay = crate::pulse::delay::Delay::new(
+                    fact.clone(),
+                    extra_delay,
+                    augmented_fact.pulse() - fact.pulse(),
+                );
                 let node = target.chain_after(
                     input,
                     format!("{}/Delay", node.name),
@@ -611,6 +604,7 @@ impl Op for ConvUnary {
 
 impl StatelessOp for ConvUnary {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        dbg!(inputs[0].to_array_view::<f32>()?);
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }

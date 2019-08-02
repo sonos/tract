@@ -102,12 +102,12 @@ impl<'a> DisplayGraph<'a> {
         for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
             println!(
-                "{}  {} input fact  #{}: {} {:?}",
+                "{}  {} input fact  #{}: {} {}",
                 prefix,
                 star,
                 ix,
                 White.bold().paint(format!("{:?}", i)),
-                self.model.borrow().outlet_tensorfact(*i)
+                model.outlet_fact_format(*i),
             );
         }
         for ix in 0..model.node_output_count(node_id) {

@@ -201,10 +201,8 @@ mod tests {
         let outputs = plan.run(tvec!(input.clone())).unwrap();
 
         let model = model.into_normalized().unwrap();
-        dbg!(&model);
 
         let pulsed = PulsedModel::new(&model, pulse).unwrap();
-        dbg!(&pulsed);
         let output_fact = pulsed.output_fact(0).unwrap().clone();
 
         let output_stream_axis = output_fact.axis;
@@ -499,6 +497,38 @@ mod tests {
             pulse: 1,
             ker: arr3(&[[[0.0f32]]]),
             input: arr3(&[[[0.0f32]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_8() {
+        PadPlusConvProblem {
+            pad_before: 1,
+            pad_after: 0,
+            pad_mode: PadMode::Edge,
+            stride: 2,
+            dilation: 2,
+            pulse: 2,
+            ker: arr3(&[[[0.0f32]]]),
+            input: arr3(&[[[0.0f32, 0.0f32]]]),
+        }
+        .run()
+        .unwrap()
+    }
+
+    #[test]
+    fn conv_kaldi_librispeech() {
+        PadPlusConvProblem {
+            pad_before: 5,
+            pad_after: 15,
+            pad_mode: PadMode::Edge,
+            stride: 3,
+            dilation: 1,
+            pulse: 9,
+            ker: arr3(&[[[1f32, 0f32, 0f32, 0f32, 0f32]]]),
+            input: Array3::from_shape_vec((1,1,10), (1..=10).map(|i| i as f32).collect()).unwrap()
         }
         .run()
         .unwrap()

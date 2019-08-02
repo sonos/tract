@@ -200,9 +200,6 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
             .map(|s| op.end_input.eval(s as i32).unwrap() as usize)
             .unwrap_or(std::usize::MAX);
 
-        dbg!((pulse_begin, pulse_end));
-        dbg!(end_input);
-
         if let PadMode::Edge = op.mode {
             if op.after > 0 && pulse_begin < end_input {
                 let latest_valid_frame = (end_input - pulse_begin).min(op.pulse) - 1;
@@ -243,7 +240,7 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
                 _ => unimplemented!(),
             }
         }
-        if pulse_end > end_input {
+        if pulse_end > end_input && op.after > 0 {
             let fill_from = op.pulse - (pulse_end - end_input).min(op.pulse);
             match &op.mode {
                 PadMode::Constant(c) => {
