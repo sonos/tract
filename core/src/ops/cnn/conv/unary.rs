@@ -604,7 +604,6 @@ impl Op for ConvUnary {
 
 impl StatelessOp for ConvUnary {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dbg!(inputs[0].to_array_view::<f32>()?);
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
