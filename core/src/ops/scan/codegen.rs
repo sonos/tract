@@ -1,17 +1,47 @@
-use crate::plan::SimplePlan;
-
 use ndarray::*;
 
 use super::*;
 
 #[derive(Debug, Clone, new)]
 pub struct Codegen {
-    pub plan: Arc<SimplePlan<TypedTensorInfo, Box<Op>, ModelImpl<TypedTensorInfo, Box<Op>>>>,
+    pub skip: usize,
+    pub plan: Arc<TypedSimplePlan<TypedModel>>,
     pub input_mapping: Vec<InputMapping<usize>>,
-    pub output_mapping: Vec<OutputMapping<usize, usize>>,
+    pub output_mapping: Vec<OutputMapping<usize, TDim>>,
 }
 
-impl Codegen {
+impl Op for Codegen {
+    fn name(&self) -> Cow<str> {
+        "Codegen".into()
+    }
+
+    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
+        vec![("loop".into(), self.plan.model())]
+    }
+}
+
+impl StatefullOp for Codegen {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        _node_id: usize,
+    ) -> TractResult<Option<Box<OpState>>> {
+        Ok(Some(Box::new(State {
+            position: 0,
+            hidden_state: tvec!(),
+            model_state: TypedSimpleState::new(Arc::clone(&self.plan))?,
+        })))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct State {
+    position: usize,
+    hidden_state: TVec<Tensor>,
+    model_state: TypedSimpleState<TypedModel, Arc<TypedSimplePlan<TypedModel>>>,
+}
+
+impl State {
     pub(super) fn slice_input_t<T: Datum>(
         &self,
         input: &Tensor,
@@ -61,31 +91,36 @@ impl Codegen {
     }
 }
 
-impl Op for Codegen {
-    fn name(&self) -> Cow<str> {
-        "Codegen".into()
-    }
+impl OpState for State {
+    fn eval(
+        &mut self,
+        _session: &mut SessionState,
+        op: &Op,
+        inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        let mut _codegen_op_holder = None;
+        let op = if let Some(op) = op.downcast_ref::<Codegen>() {
+            op
+        } else {
+            _codegen_op_holder =
+                Some(op.downcast_ref::<Typed>().ok_or("Wrong op")?.to_codegen_op()?);
+            _codegen_op_holder.as_ref().unwrap()
+        };
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
-        vec![("loop".into(), self.plan.model())]
-    }
-}
-
-impl StatelessOp for Codegen {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        // initialize state
-        let mut state: TVec<Tensor> = tvec!();
-        for input in &self.input_mapping {
-            if let InputMapping::State { initializer } = input {
-                state.push(match initializer {
-                    StateInitializer::FromInput(slot) => (*inputs[*slot]).to_owned(),
-                    StateInitializer::Value(v) => (**v).to_owned(),
-                });
+        // initialize state at first pass
+        if self.hidden_state.len() == 0 {
+            for input in &op.input_mapping {
+                if let InputMapping::State { initializer } = input {
+                    self.hidden_state.push(match initializer {
+                        StateInitializer::FromInput(slot) => (*inputs[*slot]).to_owned(),
+                        StateInitializer::Value(v) => (**v).to_owned(),
+                    });
+                }
             }
         }
 
         let iters = {
-            let (outside_slot, axis, chunk) = self
+            let (outside_slot, axis, chunk) = op
                 .input_mapping
                 .iter()
                 .filter_map(|it| match it {
@@ -98,12 +133,14 @@ impl StatelessOp for Codegen {
         };
 
         let mut outputs = tvec!();
-        for (ix, output) in self.output_mapping.iter().enumerate() {
+        for (ix, output) in op.output_mapping.iter().enumerate() {
             match output {
                 OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
-                    let fact = self.plan.model().output_fact(ix)?;
+                    let fact = op.plan.model().output_fact(ix)?;
                     let mut shape: TVec<usize> = fact.shape.as_finite().unwrap().into();
-                    let scanning_dim = full_dim_hint.clone()
+                    let scanning_dim = full_dim_hint
+                        .as_ref()
+                        .and_then(|d| d.to_integer().ok().map(|i| i as usize))
                         .unwrap_or(shape[*axis] * iters);
                     shape[*axis] = scanning_dim;
                     let t = dispatch_datum!(Self::alloc_output_t(fact.datum_type)(self, &*shape))?;
@@ -117,17 +154,21 @@ impl StatelessOp for Codegen {
             }
         }
         outputs.sort_by_key(|a| a.0);
-        let mut outputs:TVec<Tensor> = outputs.into_iter().map(|(_slot, v)| v).collect();
+        let mut outputs: TVec<Tensor> = outputs.into_iter().map(|(_slot, v)| v).collect();
 
         for i in 0..iters {
-            state.reverse();
+            self.position += 1;
+            if self.position <= op.skip {
+                continue;
+            }
+            self.hidden_state.reverse();
 
-            let iter_inputs: TVec<Tensor> = self
+            let iter_inputs: TVec<Tensor> = op
                 .input_mapping
                 .iter()
                 .map(|m| {
                     Ok(match m {
-                        InputMapping::State { .. } => state.pop().unwrap(),
+                        InputMapping::State { .. } => self.hidden_state.pop().unwrap(),
                         InputMapping::Scan { slot, axis, chunk } => {
                             dispatch_datum!(Self::slice_input_t(inputs[*slot].datum_type())(
                                 self,
@@ -144,11 +185,11 @@ impl StatelessOp for Codegen {
 
             trace!("iter_inputs: {:?}", iter_inputs);
             let iter_outputs =
-                self.plan.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
+                self.model_state.run(iter_inputs).chain_err(|| "Evaluating inner body")?;
 
-            for (v, mapping) in iter_outputs.into_iter().zip(&self.output_mapping) {
+            for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
                 match mapping {
-                    OutputMapping::State { .. } => state.push(v.into_tensor()),
+                    OutputMapping::State { .. } => self.hidden_state.push(v.into_tensor()),
                     OutputMapping::Scan { axis, slot, .. } => {
                         dispatch_datum!(Self::assign_output_t(v.datum_type())(
                             self,
@@ -162,10 +203,9 @@ impl StatelessOp for Codegen {
             }
         }
 
-        state.reverse();
-        for map in self.output_mapping.iter() {
+        for (ix, map) in op.output_mapping.iter().enumerate() {
             if let OutputMapping::State { slot } = map {
-                let value = state.pop().unwrap();
+                let value = self.hidden_state[ix].clone();
                 if let Some(slot) = slot {
                     outputs[*slot] = value;
                 }
