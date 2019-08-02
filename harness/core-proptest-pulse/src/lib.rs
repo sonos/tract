@@ -10,6 +10,7 @@ use tract_core::dimfact;
 use tract_core::shapefact;
 
 mod pad_plus_conv;
+mod conv_plus_conv;
 
 fn proptest_regular_against_pulse(
     model: InferenceModel,
