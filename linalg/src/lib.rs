@@ -53,15 +53,6 @@ pub fn best() -> Ops {
             ops.smm = Box::new(|m, k, n| {
                 Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(m, k, n))
             });
-            /*
-            ops.sconv = Box::new(|co, kernel_offsets, data_offsets| {
-                Box::new(PackedConv::<x86_64_fma::conv::SConvFma16x6, f32>::new(
-                    co,
-                    kernel_offsets,
-                    data_offsets,
-                ))
-            });
-            */
         }
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]

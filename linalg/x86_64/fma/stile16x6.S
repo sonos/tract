@@ -11,7 +11,7 @@
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
-    preserve: rbx, rsp, rbp, r12, r13, r14, and r15 
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15 
     scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
     return: rax (+rdx)
 */
@@ -20,50 +20,67 @@ fma_stile16x6:
     push        rbx
     push        r12
     push        r13
-    mov         rax, 0
+    push        r14
+    push        r15
+    mov         rax, 1
 
     vzeroall
 
+    mov     rsi,    [rdi]       // A
+    mov     rbx,    [rdi + 8]   // B
 
-    // FIXME: assumes a packed
-    mov     rax,    [rdi]
-    mov     rax,    [rax + 8] // skip over discriminant, get ptr
-
-    mov     rbx,    [rdi + 8]
-    mov     rbx,    [rbx + 8] // B
-
-    mov     rcx,    [rdi + 24]
-    mov     rcx,    [rcx + 8] // k
-
+    mov     rcx,    [rdi + 24]  // Linear spec
+    mov     rcx,    [rcx + 8]   // k
     test    rcx,    rcx
     je      .non_linear
 
-.main_loop_k:
-    vbroadcastss    ymm14,  [rbx]
-    vbroadcastss    ymm15,  [rbx + 4]
+    mov     r8, [rbx]   // B discriminant
+    cmpq    r8,  1
+    je      .packed_packed
+    cmpq    r8,  2
+    je      .packed_tops_and_offsets
 
-    vmovaps         ymm12,  [rax]
-    vmovaps         ymm13,  [rax + 32]
+    jp      .return
+
+.packed_tops_and_offsets:
+    mov     rsi,    [rsi + 8] // A
+    mov     r14,    [rbx + 8] // B rows offsets
+    mov     r15,    [rbx + 16] // B cols head
+
+    mov     r8,     [r15]
+    mov     r9,     [r15 + 8]
+    mov     r10,    [r15 + 16]
+    mov     r11,    [r15 + 24]
+    mov     r12,    [r15 + 32]
+    mov     r13,    [r15 + 40]
+
+.main_loop_packed_tops_and_offsets:
+    vmovaps         ymm12,  [rsi]
+    vmovaps         ymm13,  [rsi + 32]
+    mov     r15,    [r14]
+
+    vbroadcastss    ymm14,  [r8 + r15]
+    vbroadcastss    ymm15,  [r9 + r15]
 
     vfmadd231ps     ymm0,   ymm12, ymm14
     vfmadd231ps     ymm1,   ymm13, ymm14
 
-    vbroadcastss    ymm14,  [rbx + 8]
+    vbroadcastss    ymm14,  [r10 + r15]
 
     vfmadd231ps     ymm2,   ymm12, ymm15
     vfmadd231ps     ymm3,   ymm13, ymm15
 
-    vbroadcastss    ymm15,  [rbx + 12]
+    vbroadcastss    ymm15,  [r11 + r15]
 
     vfmadd231ps     ymm4,   ymm12, ymm14
     vfmadd231ps     ymm5,   ymm13, ymm14
 
-    vbroadcastss    ymm14,  [rbx + 16]
+    vbroadcastss    ymm14,  [r12 + r15]
 
     vfmadd231ps     ymm6,   ymm12, ymm15
     vfmadd231ps     ymm7,   ymm13, ymm15
 
-    vbroadcastss    ymm15,  [rbx + 20]
+    vbroadcastss    ymm15,  [r13 + r15]
 
     vfmadd231ps     ymm8,   ymm12, ymm14
     vfmadd231ps     ymm9,   ymm13, ymm14
@@ -71,10 +88,55 @@ fma_stile16x6:
     vfmadd231ps     ymm10,   ymm12, ymm15
     vfmadd231ps     ymm11,   ymm13, ymm15
 
-    add             rbx,    24
-    add             rax,    64
+    add     r14,    8
+    add             rsi,    64
     dec             rcx
-    jnz             .main_loop_k
+    jnz             .main_loop_packed_tops_and_offsets
+
+    jp              .non_linear
+
+.packed_packed:
+
+    mov     rsi,   [rsi + 8] // A
+    mov     r8,    [rbx + 8] // B 
+
+.main_loop_packed_packed:
+    vbroadcastss    ymm14,  [r8]
+    vbroadcastss    ymm15,  [r8 + 4]
+
+    vmovaps         ymm12,  [rsi]
+    vmovaps         ymm13,  [rsi + 32]
+
+    vfmadd231ps     ymm0,   ymm12, ymm14
+    vfmadd231ps     ymm1,   ymm13, ymm14
+
+    vbroadcastss    ymm14,  [r8 + 8]
+
+    vfmadd231ps     ymm2,   ymm12, ymm15
+    vfmadd231ps     ymm3,   ymm13, ymm15
+
+    vbroadcastss    ymm15,  [r8 + 12]
+
+    vfmadd231ps     ymm4,   ymm12, ymm14
+    vfmadd231ps     ymm5,   ymm13, ymm14
+
+    vbroadcastss    ymm14,  [r8 + 16]
+
+    vfmadd231ps     ymm6,   ymm12, ymm15
+    vfmadd231ps     ymm7,   ymm13, ymm15
+
+    vbroadcastss    ymm15,  [r8 + 20]
+
+    vfmadd231ps     ymm8,   ymm12, ymm14
+    vfmadd231ps     ymm9,   ymm13, ymm14
+
+    vfmadd231ps     ymm10,   ymm12, ymm15
+    vfmadd231ps     ymm11,   ymm13, ymm15
+
+    add             r8,     24
+    add             rsi,    64
+    dec             rcx
+    jnz             .main_loop_packed_packed
 
 .non_linear:
 
@@ -134,6 +196,10 @@ fma_stile16x6:
 
     mov     rax,    0
 
+.return:
+
+    pop r15
+    pop r14
     pop r13
     pop r12
     pop rbx
