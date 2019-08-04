@@ -206,18 +206,24 @@ where
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 let ref tile_c = c.tile(ia, ib);
-                K::kernel(&TileOpSpec { a: a as _, b: b as _, c: tile_c as _, linear, non_linear });
+                let err = K::kernel(&TileOpSpec { a: a as _, b: b as _, c: tile_c as _, linear, non_linear });
+                if err != 0 {
+                    panic!("Kernel return error {}", err);
+                }
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
                 let ref tmp_tile_c = tmp_tile.tile(0, 0);
-                K::kernel(&TileOpSpec {
+                let err = K::kernel(&TileOpSpec {
                     a: a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
                     non_linear,
                 });
+                if err != 0 {
+                    panic!("Kernel return error {}", err);
+                }
                 for y in 0..mr {
                     for x in 0..(n % nr) {
                         c.set(mr * ia + y, x + n / nr * nr, tmpc[y * nr + x])
@@ -230,13 +236,16 @@ where
             let ref tmp_tile_c = tmp_tile.tile(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
-                K::kernel(&TileOpSpec {
+                let err = K::kernel(&TileOpSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
                     non_linear,
                 });
+                if err != 0 {
+                    panic!("Kernel return error {}", err);
+                }
                 for y in 0..(m % mr) {
                     for x in 0..nr {
                         c.set(m / mr * mr + y, x + ib * nr, tmpc[y * nr + x])
@@ -245,13 +254,16 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
-                K::kernel(&TileOpSpec {
+                let err = K::kernel(&TileOpSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
                     non_linear,
                 });
+                if err != 0 {
+                    panic!("Kernel return error {}", err);
+                }
                 for y in 0..(m % mr) {
                     for x in 0..(n % nr) {
                         c.set(m / mr * mr + y, x + n / nr * nr, tmpc[y * nr + x])
@@ -279,6 +291,7 @@ where
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum LinearSpec {
     Mul { k: usize },
+    Noop
 }
 
 #[repr(C, usize)]
@@ -376,7 +389,6 @@ pub mod test {
     ) -> Result<(), proptest::test_runner::TestCaseError> {
         let op = TileOp::<K, f32>::new(m, k, n);
         unsafe {
-            dbg!(m, k, n);
             let mut packed_a: Vec<f32> =
                 align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
             op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
