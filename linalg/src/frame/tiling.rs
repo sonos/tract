@@ -7,6 +7,8 @@ use num_traits::Zero;
 use super::PackA;
 use super::PackB;
 
+use super::*;
+
 #[repr(C, usize)]
 #[derive(PartialEq, Clone, Debug)]
 pub enum StorageSpec<T>
@@ -163,15 +165,9 @@ where
         while col_ptrs.len() < wanted {
             col_ptrs.push(col_ptrs[col_ptrs.len() - 1]);
         }
-        let row_byte_offsets = rows_offsets
-            .iter()
-            .map(|&ro| ro * std::mem::size_of::<T>() as isize)
-            .collect();
-        StorageSpec::OffsetsAndPtrs {
-            col_ptrs,
-            row_byte_offsets,
-            nr: K::nr(),
-        }
+        let row_byte_offsets =
+            rows_offsets.iter().map(|&ro| ro * std::mem::size_of::<T>() as isize).collect();
+        StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
     }
 
     unsafe fn c_from_data_and_strides(
@@ -206,7 +202,13 @@ where
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 let ref tile_c = c.tile(ia, ib);
-                let err = K::kernel(&TileOpSpec { a: a as _, b: b as _, c: tile_c as _, linear, non_linear });
+                let err = K::kernel(&TileOpSpec {
+                    a: a as _,
+                    b: b as _,
+                    c: tile_c as _,
+                    linear,
+                    non_linear,
+                });
                 if err != 0 {
                     panic!("Kernel return error {}", err);
                 }
@@ -274,66 +276,6 @@ where
     }
 }
 
-#[repr(C)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub struct TileOpSpec<T>
-where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
-{
-    pub a: *const TileStorageSpec<T>,
-    pub b: *const TileStorageSpec<T>,
-    pub c: *const TileStorageSpec<T>,
-    pub linear: *const LinearSpec,
-    pub non_linear: *const NonLinearSpec<T>,
-}
-
-#[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub enum LinearSpec {
-    Mul { k: usize },
-    Noop
-}
-
-#[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone, Debug)]
-pub enum NonLinearSpec<T>
-where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
-{
-    Done,
-    Min(T),
-    Max(T),
-}
-
-#[repr(C, usize)]
-#[derive(PartialEq, Copy, Clone)]
-pub enum TileStorageSpec<T>
-where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
-{
-    Strides { ptr: *mut T, row_byte_stride: isize, col_byte_stride: isize },
-    Packed { ptr: *const T },
-    OffsetsAndPtrs { row_byte_offsets: *const isize, col_ptrs: *const *const T },
-}
-
-pub trait TilingKer<T>: Copy + Clone + Debug + Send + Sync
-where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
-{
-    #[inline(always)]
-    fn name() -> &'static str;
-    #[inline(always)]
-    fn kernel(op: &TileOpSpec<T>) -> isize;
-    #[inline(always)]
-    fn mr() -> usize;
-    #[inline(always)]
-    fn nr() -> usize;
-    #[inline(always)]
-    fn alignment_bytes_packed_a() -> usize;
-    #[inline(always)]
-    fn alignment_bytes_packed_b() -> usize;
-}
-
 #[cfg(test)]
 #[macro_use]
 pub mod test {
@@ -342,28 +284,30 @@ pub mod test {
     use proptest::prelude::*;
 
     #[macro_export]
-    macro_rules! tile_tests {
+    macro_rules! tile_frame_tests {
         ($cond:expr, $ker:ty) => {
-            #[allow(unused_imports)]
-            use crate::frame::tiling::test::*;
-            proptest::proptest! {
-                #[test]
-                fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
-                    if $cond {
-                        test_mat_mul_prep_f32::<$ker>(m, k, n, a, b)?
+            mod frame {
+                #[allow(unused_imports)]
+                use crate::frame::tiling::test::*;
+                proptest::proptest! {
+                    #[test]
+                    fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
+                        if $cond {
+                            test_mat_mul_prep_f32::<$ker>(m, k, n, a, b)?
+                        }
                     }
-                }
 
-                #[test]
-                fn conv_prepacked(pb in strat_conv_1d()) {
-                    if $cond {
-                        let found = pb.run::<$ker>();
-                        let expected = pb.expected();
-                        proptest::prop_assert_eq!(found, expected)
+                    #[test]
+                    fn conv_prepacked(pb in strat_conv_1d()) {
+                        if $cond {
+                            let found = pb.run::<$ker>();
+                            let expected = pb.expected();
+                            proptest::prop_assert_eq!(found, expected)
+                        }
                     }
                 }
             }
-        }
+        };
     }
 
     pub fn strat_mat_mul() -> BoxedStrategy<(usize, usize, usize, Vec<f32>, Vec<f32>)> {

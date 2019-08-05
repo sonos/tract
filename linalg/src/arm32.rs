@@ -1,9 +1,8 @@
 use std::{env, fs};
 mod armv7neon;
 mod armvfpv2;
+use crate::frame::TileOp;
 
-use crate::frame::PackedConv;
-use crate::frame::PackedMatMul;
 use crate::Ops;
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
@@ -22,15 +21,12 @@ fn has_neon() -> bool {
 
 pub fn plug(ops: &mut Ops) {
     if has_neon() {
-        ops.smm = Box::new(|m, k, n| {
-            log::info!("armv7neon activated for smm");
-            Box::new(PackedMatMul::<armv7neon::SMatMul8x4, f32>::new(m, k, n))
-        });
-        ops.sconv = Box::new(|m, k, n| {
-            log::info!("arm7neon activated for sconv");
-            Box::new(PackedConv::<armv7neon::SConv8x4, f32>::new(m, k, n))
+        ops.stile = Box::new(|m, k, n| {
+            log::info!("armv7neon activated for stile");
+            Box::new(TileOp::<armv7neon::STile8x4, f32>::new(m, k, n))
         });
     } else {
+        /*
         ops.smm = Box::new(|m, k, n| {
             log::info!("armvfpv2 activated for smm");
             Box::new(PackedMatMul::<armvfpv2::SMatMul4x4, f32>::new(m, k, n))
@@ -39,6 +35,7 @@ pub fn plug(ops: &mut Ops) {
             log::info!("armvfpv2 activated for sconv");
             Box::new(PackedConv::<armvfpv2::SConv4x4, f32>::new(m, k, n))
         });
+        */
     }
 }
 

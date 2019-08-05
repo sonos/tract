@@ -40,7 +40,7 @@ fma_stile16x6:
     cmpq    r8,  2
     je      .packed_tops_and_offsets
 
-    jp      .return
+    jp      .unimplemented
 
 .packed_tops_and_offsets:
     mov     rsi,    [rsi + 8] // A
@@ -139,6 +139,94 @@ fma_stile16x6:
     jnz             .main_loop_packed_packed
 
 .non_linear:
+    mov     rcx,    [rdi + 32]          // non linear spec
+    test    rcx,    rcx
+    jz      .store
+
+    sub     rcx,    16
+.non_linear_loop:
+    add     rcx,    16
+    mov     rax,    [rcx]
+
+    cmpq    rax,    0
+    je      .store
+
+    cmpq    rax,    3
+    je      .non_linear_addc
+
+.non_linear_addc:
+    mov     rax,    [rdi + 16]
+
+    // FIXME: assume Strides storage
+    mov     r10,    [rax + 8]           // c ptr
+    mov     rsi,    [rax + 16]          // row stride
+    mov     rbx,    [rax + 24]          // col stride
+
+.macro gather_8_from_r8_to_ymm14
+    lea     r9,     [ r8 + 2 * rsi]
+    vinsertps       xmm14,  xmm14,  [r8],         0b00000000
+    vinsertps       xmm14,  xmm14,  [r8 + rsi],   0b01010000
+    vinsertps       xmm14,  xmm14,  [r9],         0b10100000
+    vinsertps       xmm14,  xmm14,  [r9 + rsi],   0b11110000
+
+    lea     r8,     [ r8 + 4 * rsi ]
+    lea     r9,     [ r8 + 2 * rsi ]
+    vinsertps       xmm15,  xmm15,  [r8],         0b00000000
+    vinsertps       xmm15,  xmm15,  [r8 + rsi],   0b01010000
+    vinsertps       xmm15,  xmm15,  [r9],         0b10100000
+    vinsertps       xmm15,  xmm15,  [r9 + rsi],   0b11110000
+
+    vperm2f128      ymm14,  ymm14, ymm15,         0b00100000
+.endm
+
+    mov     r8,     r10
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm0,   ymm0,   ymm14
+    lea     r8,     [r10 + 8 * rsi ]
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm1,   ymm1,   ymm14
+
+    add     r10,    rbx
+    mov     r8,     r10
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm2,   ymm2,   ymm14
+    lea     r8,     [r10 + 8 * rsi ]
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm3,   ymm3,   ymm14
+
+    add     r10,    rbx
+    mov     r8,     r10
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm4,   ymm4,   ymm14
+    lea     r8,     [r10 + 8 * rsi ]
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm5,   ymm5,   ymm14
+
+    add     r10,    rbx
+    mov     r8,     r10
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm6,   ymm6,   ymm14
+    lea     r8,     [r10 + 8 * rsi ]
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm7,   ymm7,   ymm14
+
+    add     r10,    rbx
+    mov     r8,     r10
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm8,   ymm8,   ymm14
+    lea     r8,     [r10 + 8 * rsi ]
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm9,   ymm9,   ymm14
+
+    add     r10,    rbx
+    mov     r8,     r10
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm10,   ymm10,   ymm14
+    lea     r8,     [r10 + 8 * rsi ]
+    gather_8_from_r8_to_ymm14
+    vaddps          ymm11,   ymm11,   ymm14
+
+    jp      .non_linear_loop
 
 .store:
     mov     rcx,    [rdi + 16]
@@ -194,10 +282,14 @@ fma_stile16x6:
     move_24_values_to_top_of_tile(3)
     push_24_values_to_memory
 
+.ok:
     mov     rax,    0
+    jp      .return
+
+.unimplemented:
+    mov     rax,    1
 
 .return:
-
     pop r15
     pop r14
     pop r13

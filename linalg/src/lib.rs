@@ -27,14 +27,12 @@ pub mod arm32;
 pub use self::frame::*;
 
 pub struct Ops {
-    pub smm: Box<dyn Fn(usize, usize, usize) -> Box<dyn MatMul<f32>> + Send + Sync>,
     pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn VecMatMul<f32>> + Send + Sync>,
     pub stile: Box<dyn Fn(usize, usize, usize) -> Box<dyn Tile<f32>> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
     Ops {
-        smm: Box::new(|m, k, n| Box::new(PackedMatMul::<generic::SMatMul4x4, f32>::new(m, k, n))),
         svmm: Box::new(|k, n| Box::new(PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))),
         stile: Box::new(|m, k, n| Box::new(TileOp::<generic::STiling4x4, f32>::new(m, k, n))),
     }
@@ -49,10 +47,7 @@ pub fn best() -> Ops {
             ops.stile = Box::new(|m, k, n| {
                 Box::new(TileOp::<x86_64_fma::tile::STile16x6, f32>::new(m, k, n))
             });
-            log::info!("x86_64/fma activated for smm and sconv");
-            ops.smm = Box::new(|m, k, n| {
-                Box::new(PackedMatMul::<x86_64_fma::matmul::KerFma16x6, f32>::new(m, k, n))
-            });
+            log::info!("x86_64/fma activated");
         }
     }
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]

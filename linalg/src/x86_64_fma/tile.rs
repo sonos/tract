@@ -1,5 +1,4 @@
-use crate::frame;
-use crate::frame::tiling::*;
+use crate::frame::tiling_kernel::*;
 
 extern "C" {
     #[no_mangle]
@@ -9,7 +8,7 @@ extern "C" {
 #[derive(Copy, Clone, Debug)]
 pub struct STile16x6;
 
-impl frame::tiling::TilingKer<f32> for STile16x6 {
+impl TilingKer<f32> for STile16x6 {
     #[inline(always)]
     fn name() -> &'static str {
         "fma"
@@ -37,12 +36,6 @@ impl frame::tiling::TilingKer<f32> for STile16x6 {
 #[cfg(test)]
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"),))]
 mod test {
-    use super::*;
-
-    tile_tests!(is_x86_feature_detected!("fma"), STile16x6);
-
-    #[test]
-    fn mat_mul_1() {
-        test_mat_mul_prep_f32::<STile16x6>(1, 1, 1, &[1f32], &[1f32]).unwrap();
-    }
+    tile_frame_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::tile::STile16x6);
+    tile_kernel_tests!(is_x86_feature_detected!("fma"), crate::x86_64_fma::tile::STile16x6, f32);
 }
