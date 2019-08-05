@@ -21,6 +21,7 @@ objekt = "0.1.1"
 
 [build-dependencies]
 cc = "1.0"
+liquid = "0.18"
 
 [dev-dependencies]
 criterion = "0.2"

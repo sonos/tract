@@ -59,7 +59,11 @@ matrix:
       env: PLATFORM=aarch64-apple-ios
     - rust: beta
     - rust: nightly
+    - rust: stable
+      os: windows
+      script: cargo test -p tract-linalg
   allow_failures:
    - rust: nightly
+   - os: windows
 
 script: ".travis/travis.sh"

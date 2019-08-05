@@ -1,0 +1,260 @@
+{% if family == "unix" %}
+/* vim: set syntax=asm : */
+
+/* tile 16 x 6:
+
+    ymm0 ymm2 ymm4 ymm6 ymm8 ymm10
+    ymm1 ymm3 ymm5 ymm7 ymm8 ymm11
+
+System V ABI:
+    args: rdi, rsi, rdx, rcx, r8, r9
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15 
+    scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
+    return: rax (+rdx)
+*/
+
+.intel_syntax noprefix
+.text
+.align 32;
+.globl fma_stile16x6
+
+fma_stile16x6:
+{% endif %}
+{% if family == "windows" %}
+_text segment
+fma_stile16x6 proc
+    mov         rdi,    rcx
+{% endif %}
+
+    push        rbp
+    mov         ebp, esp
+
+    push        rbx
+    push        r12
+    push        r13
+    push        r14
+    push        r15
+    mov         rax, 1
+
+    vzeroall
+
+    mov     rax,    [rdi]       // A
+    mov     rbx,    [rdi + 8]   // B
+
+    mov     rcx,    [rdi + 24]  // Linear spec
+    mov     rcx,    [rcx + 8]   // k
+    test    rcx,    rcx
+    je      {{L}}non_linear
+
+    mov     rsi, [rbx]   // B discriminant
+    cmp     rsi,  1
+    je      {{L}}packed_packed
+    cmp     rsi,  2
+    je      {{L}}packed_tops_and_offsets
+
+    jmp     {{L}}unimplemented
+
+{{L}}packed_tops_and_offsets:
+    mov     rax,    [rax + 8]   // A
+    mov     rsi,    [rbx + 16]  // B cols head
+    mov     rbx,    [rbx + 8]   // rbx: current row offset ptr
+
+    mov     r8,     [rsi]
+    mov     r9,     [rsi + 8]
+    mov     r10,    [rsi + 16]
+    mov     r11,    [rsi + 24]
+    mov     r12,    [rsi + 32]
+    mov     r13,    [rsi + 40]
+
+{{L}}main_loop_packed_tops_and_offsets:
+    mov             rsi,    [rbx]   // rsi: current row offset
+
+    vmovaps         ymm12,  [rax]
+    vmovaps         ymm13,  [rax + 32]
+
+    vbroadcastss    ymm14,  dword ptr [r8 + rsi]
+    vbroadcastss    ymm15,  dword ptr [r9 + rsi]
+
+    vfmadd231ps     ymm0,   ymm12, ymm14
+    vfmadd231ps     ymm1,   ymm13, ymm14
+
+    vbroadcastss    ymm14,  dword ptr [r10 + rsi]
+
+    vfmadd231ps     ymm2,   ymm12, ymm15
+    vfmadd231ps     ymm3,   ymm13, ymm15
+
+    vbroadcastss    ymm15,  dword ptr [r11 + rsi]
+
+    vfmadd231ps     ymm4,   ymm12, ymm14
+    vfmadd231ps     ymm5,   ymm13, ymm14
+
+    vbroadcastss    ymm14,  dword ptr [r12 + rsi]
+
+    vfmadd231ps     ymm6,   ymm12, ymm15
+    vfmadd231ps     ymm7,   ymm13, ymm15
+
+    vbroadcastss    ymm15,  dword ptr [r13 + rsi]
+
+    vfmadd231ps     ymm8,   ymm12, ymm14
+    vfmadd231ps     ymm9,   ymm13, ymm14
+
+    vfmadd231ps     ymm10,   ymm12, ymm15
+    vfmadd231ps     ymm11,   ymm13, ymm15
+
+    add             rbx,    8
+    add             rax,    64
+    dec             rcx
+    jnz             {{L}}main_loop_packed_tops_and_offsets
+
+    jmp             {{L}}non_linear
+
+{{L}}packed_packed:
+
+    mov     rax,   [rax + 8] // A
+    mov     rbx,   [rbx + 8] // B 
+
+{{L}}main_loop_packed_packed:
+    vbroadcastss    ymm14,  dword ptr [rbx]
+    vbroadcastss    ymm15,  dword ptr [rbx + 4]
+
+    vmovaps         ymm12,  [rax]
+    vmovaps         ymm13,  [rax + 32]
+
+    vfmadd231ps     ymm0,   ymm12, ymm14
+    vfmadd231ps     ymm1,   ymm13, ymm14
+
+    vbroadcastss    ymm14,  dword ptr [rbx + 8]
+
+    vfmadd231ps     ymm2,   ymm12, ymm15
+    vfmadd231ps     ymm3,   ymm13, ymm15
+
+    vbroadcastss    ymm15,  dword ptr [rbx + 12]
+
+    vfmadd231ps     ymm4,   ymm12, ymm14
+    vfmadd231ps     ymm5,   ymm13, ymm14
+
+    vbroadcastss    ymm14,  dword ptr [rbx + 16]
+
+    vfmadd231ps     ymm6,   ymm12, ymm15
+    vfmadd231ps     ymm7,   ymm13, ymm15
+
+    vbroadcastss    ymm15,  dword ptr [rbx + 20]
+
+    vfmadd231ps     ymm8,   ymm12, ymm14
+    vfmadd231ps     ymm9,   ymm13, ymm14
+
+    vfmadd231ps     ymm10,   ymm12, ymm15
+    vfmadd231ps     ymm11,   ymm13, ymm15
+
+    add             rbx,    24
+    add             rax,    64
+    dec             rcx
+    jnz             {{L}}main_loop_packed_packed
+
+{{L}}non_linear:
+
+    mov     rcx,    [rdi + 32]          // non linear spec
+    test    rcx,    rcx
+    jz      {{L}}store
+
+    sub     rcx,    16
+{{L}}non_linear_loop:
+    add     rcx,    16
+    mov     rax,    [rcx]
+
+    cmp     rax,    0
+    je      {{L}}store
+
+    cmp     rax,    3
+    je      {{L}}non_linear_addc
+
+    jmp     {{L}}unimplemented
+
+{{L}}non_linear_addc:
+    mov     rax,    [rdi + 16]
+
+    // FIXME: assume Strides storage
+    mov     r10,    [rax + 8]           // c ptr
+    mov     rsi,    [rax + 16]          // row stride
+    mov     rbx,    [rax + 24]          // col stride
+
+    mov     eax,    0
+{% for i in (0..3) %}
+    pinsrd  xmm14, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+{% for i in (0..3) %}
+    pinsrd  xmm15, eax, {{i}}
+    add     eax,    esi
+{% endfor %}
+
+    vperm2f128      ymm14,  ymm14, ymm15,         32 // ymm14 <- xmm14::xmm15
+
+    lea             r8, [ r10 + rsi * 8 ]
+
+{% for i in (0..5) %}
+    vpcmpeqd        ymm15,  ymm15, ymm15
+    vgatherdps      ymm12,  [ r10 + ymm14 ],      ymm15
+    vpcmpeqd        ymm15,  ymm15, ymm15
+    vgatherdps      ymm13,  [ r8  + ymm14 ],      ymm15
+    add     r10, rbx
+    add     r8, rbx
+    vaddps          ymm{{i | times:2 }},   ymm{{i | times:2}},   ymm12
+    vaddps          ymm{{i | times:2 | plus: 1}}, ymm{{i | times:2 | plus:1 }},   ymm13
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+{{L}}store:
+    mov     rcx,    [rdi + 16]
+
+    // FIXME: assume Strides storage
+    mov     r8,     [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // row stride
+    mov     rbx,    [rcx + 24]          // col stride
+
+    // tops of cols
+    lea     r9,     [ r8 + rbx ]
+    lea     r10,    [ r8 + 2 * rbx ]
+    lea     r12,    [ r8 + 4 * rbx ]
+    lea     r11,    [ r10 + rbx ]
+    lea     r13,    [ r12 + rbx ]
+
+    {% for quarter in (0..3) %}
+        {% if quarter != 0 %}
+            // move next four rows at top (xmm0,2,..10)
+            vperm2f128  ymm0,   ymm0,   ymm1,  {{quarter}}
+            vperm2f128  ymm2,   ymm2,   ymm3,  {{quarter}}
+            vperm2f128  ymm4,   ymm4,   ymm5,  {{quarter}}
+            vperm2f128  ymm6,   ymm6,   ymm7,  {{quarter}}
+            vperm2f128  ymm8,   ymm8,   ymm9,  {{quarter}}
+            vperm2f128  ymm10,  ymm10,  ymm11, {{quarter}}
+        {% endif %}
+        {% for row in (0..3) %}
+            {% for i in (0..5) %}
+                vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | times:2}}, {{row}}
+                add         r{{i | plus: 8}}, rsi
+            {% endfor %}
+        {% endfor %}
+    {% endfor %}
+
+{{L}}ok:
+    mov     rax,    0
+    jmp     {{L}}return
+
+{{L}}unimplemented:
+    mov     rax,    1
+
+{{L}}return:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+{% if family == "windows" %}
+fma_stile16x6 endp
+_text ends
+end
+{% endif %}
