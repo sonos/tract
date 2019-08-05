@@ -1,12 +1,11 @@
-use crate::frame;
-use crate::frame::tiling::LinearSpec::*;
-use crate::frame::tiling::TileStorageSpec::*;
-use crate::frame::tiling::*;
+use crate::frame::tiling_kernel::LinearSpec::*;
+use crate::frame::tiling_kernel::TileStorageSpec::*;
+use crate::frame::tiling_kernel::*;
 
 #[derive(Copy, Clone, Debug)]
 pub struct STiling4x4;
 
-impl frame::tiling::TilingKer<f32> for STiling4x4 {
+impl TilingKer<f32> for STiling4x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "generic"
@@ -88,8 +87,38 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
             }
             let mut pnl = spec.non_linear;
             loop {
-                if pnl.is_null() || *pnl == NonLinearSpec::Done {
+                if pnl.is_null() {
                     break;
+                }
+                match *pnl {
+                    NonLinearSpec::Done => break,
+                    NonLinearSpec::AddC => {
+                        match *spec.c {
+                            Strides { ptr: c, row_byte_stride, col_byte_stride } => {
+                                let rsc = row_byte_stride as usize / 4;
+                                let csc = col_byte_stride as usize / 4;
+                                let c = std::slice::from_raw_parts_mut(c, 1 + 3 * csc + 3 * rsc);
+                                ab[0][0] += c[0 * csc + 0 * rsc];
+                                ab[0][1] += c[1 * csc + 0 * rsc];
+                                ab[0][2] += c[2 * csc + 0 * rsc];
+                                ab[0][3] += c[3 * csc + 0 * rsc];
+                                ab[1][0] += c[0 * csc + 1 * rsc];
+                                ab[1][1] += c[1 * csc + 1 * rsc];
+                                ab[1][2] += c[2 * csc + 1 * rsc];
+                                ab[1][3] += c[3 * csc + 1 * rsc];
+                                ab[2][0] += c[0 * csc + 2 * rsc];
+                                ab[2][1] += c[1 * csc + 2 * rsc];
+                                ab[2][2] += c[2 * csc + 2 * rsc];
+                                ab[2][3] += c[3 * csc + 2 * rsc];
+                                ab[3][0] += c[0 * csc + 3 * rsc];
+                                ab[3][1] += c[1 * csc + 3 * rsc];
+                                ab[3][2] += c[2 * csc + 3 * rsc];
+                                ab[3][3] += c[3 * csc + 3 * rsc];
+                            }
+                            _ => return 1
+                        }
+                    }
+                    _ => return 1
                 }
                 pnl = pnl.add(1);
             }
@@ -124,8 +153,6 @@ impl frame::tiling::TilingKer<f32> for STiling4x4 {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::frame::tiling::test::*;
-
-    tile_tests!(true, STiling4x4);
+    tile_kernel_tests!(true, crate::generic::STiling4x4, f32);
+    tile_frame_tests!(true, crate::generic::STiling4x4);
 }
