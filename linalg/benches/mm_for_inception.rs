@@ -9,14 +9,6 @@ pub fn vec(len: usize, align: usize) -> *mut f32 {
     unsafe { std::alloc::alloc_zeroed(layout) as *mut f32 }
 }
 
-fn mat_mul_smm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
-    let mm = (tract_linalg::ops().smm)(m, k, n);
-    let pa = vec(mm.packed_a_len(), mm.packed_a_alignment());
-    let pb = vec(mm.b_pack().len(), mm.b_pack().alignment());
-    let mut c = vec![0.0; m * n];
-    be.iter(move || mm.mat_mul_prepacked(pa, pb, c.as_mut_ptr(), n as _, 1))
-}
-
 fn mat_mul_stile(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     let mm = (tract_linalg::ops().stile)(m, k, n);
     let pa = vec(mm.a_pack().len(), mm.a_pack().alignment());
@@ -34,7 +26,7 @@ fn mat_mul_stile(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)
 fn mat_mul_prepacked(c: &mut Criterion, m: usize, k: usize, n: usize) {
     c.bench_functions(
         &format!("mat_mul_prepacked"),
-        vec![criterion::Fun::new("smm", mat_mul_smm), criterion::Fun::new("stitle", mat_mul_stile)],
+        vec![criterion::Fun::new("stitle", mat_mul_stile)],
         (m, k, n),
     );
 }

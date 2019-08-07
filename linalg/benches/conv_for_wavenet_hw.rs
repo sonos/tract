@@ -6,7 +6,6 @@ use criterion::Criterion;
 fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) {
     c.bench_function(&format!("conv_d{}p{}ci{}co{}", dilation, pulse, ci, co), move |be| {
         let t = pulse + 2 * dilation;
-        let n = pulse;
         let data_offsets: Vec<_> = (0..pulse).map(|x| x as isize).collect();
         let kernel_offsets: Vec<_> =
             (0..ci).flat_map(|ici| (0..3).map(move |x| (ici * t * 3 + x * t) as isize)).collect();

@@ -85,7 +85,6 @@ pub mod test {
                 #[allow(unused_imports)]
                 use crate::frame::tiling::test::*;
                 use crate::frame::tiling_kernel::test;
-                use crate::frame::tiling_kernel::*;
                 /*
                 proptest::proptest! {
                     #[test]
@@ -104,11 +103,11 @@ pub mod test {
                         }
                     }
                 }
-                */
 
                 fn packed(v: &mut [$t]) -> TileStorageSpec<$t> {
                     TileStorageSpec::Packed { ptr: v.as_mut_ptr() }
                 }
+                */
 
                 #[test]
                 fn return_zeros() {
