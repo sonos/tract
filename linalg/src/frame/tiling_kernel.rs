@@ -197,7 +197,6 @@ pub mod test {
             non_linear: &[NonLinearSpec::AddC, NonLinearSpec::Done] as _,
         });
         assert_eq!(err, 0);
-        dbg!(&v);
         assert!(v.iter().enumerate().all(|(ix, &a)| a == (ix as f32).into()));
     }
 
@@ -209,6 +208,8 @@ pub mod test {
         let len = K::mr() * K::nr();
         let pa = realign_vec(vec![T::one(); K::mr() * k], K::alignment_bytes_packed_a());
         let pb = realign_vec(vec![T::one(); K::nr() * k], K::alignment_bytes_packed_b());
+        dbg!(&pa);
+        dbg!(&pb);
         let mut v: Vec<T> = vec![T::zero(); len];
         let mut c = tile_stride_storage(&mut v, K::nr());
         let err = K::kernel(&TileOpSpec {
@@ -219,6 +220,7 @@ pub mod test {
             non_linear: &[NonLinearSpec::AddC, NonLinearSpec::Done] as _,
         });
         assert_eq!(err, 0);
+        dbg!(&v);
         assert!(v.iter().all(|&a| a == (k as f32).into()));
     }
 }
