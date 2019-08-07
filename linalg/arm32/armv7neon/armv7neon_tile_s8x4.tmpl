@@ -216,97 +216,64 @@ neon_stile8x4:
     b  .non_linear
 
     .non_linear:
-
-    ldr     r4, [r0, #16]
-    cmp     r4, #0
+/*
+    ldr     r1, [r0, #16]
+    cmp     r1, #0
     beq     .STORE
 
     .non_linear_loop:
-    ldr     r5, [r4, #4]!
+    ldr     r2, [r1], #8
+    cmp     r2, #0
+    beq     .STORE
+    cmp     r2, #3
+    beq     .non_linear_addc
 
+    b .unsupported
 
-    .STORE:
+    .non_linear_addc:
 
-    ldr     r4, [r0, #8]
-    ldr     r5, [r4]
-    cmp     r5, #0
+    ldr     r3, [r0, #8]
+    ldr     r4, [r3]
+    cmp     r4, #0
     bne     .unsupported
 
-    ldr     r3, [r4, #4]   // C ptr
-    ldr     r9, [r4, #8]   // rsc
-    ldr     r8, [r4, #12]  // csc
+    ldr     r4, [r3, #4]   // C ptr
+    ldr     r5, [r3, #8]   // rsc
+    ldr     r6, [r3, #12]  // csc
 
-    add r4, r3, r8
-    add r5, r4, r8
-    add r6, r5, r8 // r3,r4,r5,r6 are now addr for cols of C
+    {% for col in (0..3) %}
+        mov         r7, r4
+        {% for reg in (0..3) %}
+            vld1.f32    d0[0], [ r7 ]
+            add         r7, r7, r5
+            vld1.f32    d0[1], [ r7 ]
+            add         r7, r7, r5
+            vadd.f32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
+        {% endfor %}
+        add r4, r4, r6
+    {% endfor %}
+*/
+    .STORE:
 
-    vst1.f32    d16[0], [ r3 ]
-    add r3 , r3, r9
-    vst1.f32    d16[1], [ r3 ]
-    add r3 , r3, r9
-    vst1.f32    d17[0], [ r3 ]
-    add r3 , r3, r9
-    vst1.f32    d17[1], [ r3 ]
-    add r3 , r3, r9
+    ldr     r3, [r0, #8]
+    ldr     r4, [r3]
+    cmp     r4, #0
+    bne     .unsupported
 
-    vst1.f32   d18[0], [ r3 ]
-    add r3 , r3, r9
-    vst1.f32   d18[1], [ r3 ]
-    add r3 , r3, r9
-    vst1.f32   d19[0], [ r3 ]
-    add r3 , r3, r9
-    vst1.f32   d19[1], [ r3 ]
+    ldr     r4, [r3, #4]   // C ptr
+    ldr     r5, [r3, #8]   // rsc
+    ldr     r6, [r3, #12]  // csc
 
-    vst1.f32   d20[0], [ r4 ]
-    add r4 , r4, r9
-    vst1.f32   d20[1], [ r4 ]
-    add r4 , r4, r9
-    vst1.f32   d21[0], [ r4 ]
-    add r4 , r4, r9
-    vst1.f32   d21[1], [ r4 ]
-    add r4 , r4, r9
-
-    vst1.f32   d22[0], [ r4 ]
-    add r4 , r4, r9
-    vst1.f32   d22[1], [ r4 ]
-    add r4 , r4, r9
-    vst1.f32   d23[0], [ r4 ]
-    add r4 , r4, r9
-    vst1.f32   d23[1], [ r4 ]
-
-    vst1.f32   d24[0], [ r5 ]
-    add r5 , r5, r9
-    vst1.f32   d24[1], [ r5 ]
-    add r5 , r5, r9
-    vst1.f32   d25[0], [ r5 ]
-    add r5 , r5, r9
-    vst1.f32   d25[1], [ r5 ]
-    add r5 , r5, r9
-
-    vst1.f32   d26[0], [ r5 ]
-    add r5 , r5, r9
-    vst1.f32   d26[1], [ r5 ]
-    add r5 , r5, r9
-    vst1.f32   d27[0], [ r5 ]
-    add r5 , r5, r9
-    vst1.f32   d27[1], [ r5 ]
-
-    vst1.f32   d28[0], [ r6 ]
-    add r6 , r6, r9
-    vst1.f32   d28[1], [ r6 ]
-    add r6 , r6, r9
-    vst1.f32   d29[0], [ r6 ]
-    add r6 , r6, r9
-    vst1.f32   d29[1], [ r6 ]
-    add r6 , r6, r9
-
-    vst1.f32   d30[0], [ r6 ]
-    add r6 , r6, r9
-    vst1.f32   d30[1], [ r6 ]
-    add r6 , r6, r9
-    vst1.f32   d31[0], [ r6 ]
-    add r6 , r6, r9
-    vst1.f32   d31[1], [ r6 ]
+    {% for col in (0..3) %}
+        mov         r7, r4
+        {% for reg in (0..3) %}
+            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[0], [ r7 ]
+            add         r7, r7, r5
+            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[1], [ r7 ]
+            add         r7, r7, r5
+        {% endfor %}
+        add r4, r4, r6
+    {% endfor %}
 
 .ok:
     mov         r0,     #0
