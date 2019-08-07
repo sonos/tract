@@ -236,7 +236,7 @@ pub mod test {
             b: &TileStorageSpec::Packed { ptr: pb.as_ptr() },
             c: &mut c,
             linear: &LinearSpec::Mul { k },
-            non_linear: &[NonLinearSpec::AddC, NonLinearSpec::Done] as _,
+            non_linear: &[NonLinearSpec::Done] as _,
         });
         assert_eq!(err, 0);
         assert!(v.iter().all(|&a| a == (k as f32).into()));
@@ -264,7 +264,7 @@ pub mod test {
             },
             c: &mut c,
             linear: &LinearSpec::Mul { k },
-            non_linear: &[NonLinearSpec::AddC, NonLinearSpec::Done] as _,
+            non_linear: &[NonLinearSpec::Done] as _,
         });
         assert_eq!(err, 0);
         dbg!(&v);
