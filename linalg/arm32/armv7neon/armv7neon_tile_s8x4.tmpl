@@ -55,14 +55,12 @@ neon_stile8x4:
     beq .non_linear
 
     // B
-    ldr     r4, [r0, #8]
+    ldr     r4, [r0, #4]
     ldr     r5, [r4]
-    cmp     r5, #0
-    bne     .unsupported
     cmp     r5, #1
-    bne     .packed_packed
-    cmp     r5, #1
-    bne     .packed_tops_and_offsets
+    beq     .packed_packed
+    cmp     r5, #2
+    beq     .packed_tops_and_offsets
     b       .unsupported
 
     .packed_tops_and_offsets:
@@ -216,7 +214,7 @@ neon_stile8x4:
     b  .non_linear
 
     .non_linear:
-/*
+
     ldr     r1, [r0, #16]
     cmp     r1, #0
     beq     .STORE
@@ -252,7 +250,7 @@ neon_stile8x4:
         {% endfor %}
         add r4, r4, r6
     {% endfor %}
-*/
+
     .STORE:
 
     ldr     r3, [r0, #8]
