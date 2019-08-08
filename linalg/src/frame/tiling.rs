@@ -195,8 +195,7 @@ where
         let ref mut tmp_tile = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
         let linear = LinearSpec::Mul { k };
         let linear = (&linear) as *const LinearSpec;
-        let non_linear = NonLinearSpec::Done;
-        let non_linear = (&non_linear) as *const NonLinearSpec<T>;
+        let non_linear = std::ptr::null();
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {

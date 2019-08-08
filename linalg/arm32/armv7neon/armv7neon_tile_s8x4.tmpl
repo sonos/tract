@@ -36,37 +36,34 @@ neon_stile8x4:
     veor      q14, q14 ,q14
     veor      q15, q15 ,q15
 
-    ldr     r4, [r0]
+    ldm     r0, { r7, r8, r9, r10 }      // a, b, c, lin
     // check a->discriminant == 1 (packed)
-    ldr     r5, [r4]
-    cmp     r5, #1
+    ldm     r7, { r1, r2 }
+    cmp     r1, #1
     bne     .unsupported
-    ldr     r1, [r4, #4]  // packed A ptr
+    mov     r1, r2 // packed A ptr
     pld     [r1]
 
     // check linear
-    ldr     r4, [r0, #12]
-    ldr     r5, [r4]
+    ldm     r10, {r5, r6}
     cmp     r5, #0
     bne     .unsupported
-    ldr     r3, [r4, #4] // k
+    cmp     r6, #0
+    beq     .non_linear
 
-    cmp r3, #0
-    beq .non_linear
+    mov     r3, r6 // k
 
     // B
-    ldr     r4, [r0, #4]
-    ldr     r5, [r4]
-    cmp     r5, #1
+    ldm     r8, { r7, r8, r9 }
+    cmp     r7, #1
     beq     .packed_packed
-    cmp     r5, #2
+    cmp     r7, #2
     beq     .packed_tops_and_offsets
     b       .unsupported
 
     .packed_tops_and_offsets:
-    ldr             r2, [r4, #8] // B cols
-    ldm             r2, {r5, r6, r7, r8}
-    ldr             r2, [r4, #4] // B row offsets
+    mov             r2, r8                  // rows offsets
+    ldm             r9, {r5, r6, r7, r8}    // cols tops ptr
 
     .packed_tops_and_offsets_loop_1:
 
@@ -95,12 +92,12 @@ neon_stile8x4:
     vmla.f32        q14, q0, d9[1]
     vmla.f32        q15, q1, d9[1]
 
-    subs 	    r3, r3, #1
+    subs            r3, r3, #1
     bne .packed_tops_and_offsets_loop_1
     b   .non_linear
 
     .packed_packed:
-    ldr     r2, [r4, #4] // packed B ptr
+    mov     r2, r8                          // packed B ptr
     pld     [r2]
 
     cmp r3, #4
@@ -258,31 +255,28 @@ neon_stile8x4:
     .STORE:
 
     ldr     r3, [r0, #8]
-    ldr     r4, [r3]
+    ldm     r3, { r4, r5, r6, r7 } // discr, ...
     cmp     r4, #0
     bne     .unsupported
 
-    ldr     r4, [r3, #4]   // C ptr
-    ldr     r5, [r3, #8]   // rsc
-    ldr     r6, [r3, #12]  // csc
+    // r5,r6,r7 are c,src,csc
 
     {% for col in (0..3) %}
-        mov         r7, r4
+        mov         r8, r5
         {% for reg in (0..3) %}
-            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[0], [ r7 ]
-            add         r7, r7, r5
-            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[1], [ r7 ]
-            add         r7, r7, r5
+            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[0], [ r8 ]
+            add         r8, r8, r6
+            vst1.f32    d{{col | times: 4 | plus: reg | plus : 16}}[1], [ r8 ]
+            {% if reg < 3 %}
+                add         r8, r8, r6
+            {% endif %}
         {% endfor %}
-        add r4, r4, r6
+        {% if col < 3 %}
+            add r5, r5, r7
+        {% endif %}
     {% endfor %}
 
-.ok:
     mov         r0,     #0
-    b           .return
-
-.unsupported:
-    mov         r0,     #1
 
 .return:
 
@@ -290,3 +284,7 @@ neon_stile8x4:
     pop         { r4-r10 }
 
     bx          lr
+
+.unsupported:
+    mov         r0,     #1
+    b           .return
