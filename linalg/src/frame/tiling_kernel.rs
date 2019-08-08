@@ -3,10 +3,10 @@ use std::fmt::Debug;
 use std::ops::{Add, Mul};
 
 #[repr(C)]
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone)]
 pub struct TileOpSpec<T>
 where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
+    T: Copy + Clone + Debug + Add + Mul + Zero + Debug,
 {
     pub a: *const TileStorageSpec<T>,
     pub b: *const TileStorageSpec<T>,
@@ -263,10 +263,9 @@ pub mod test {
             },
             c: &mut c,
             linear: &LinearSpec::Mul { k },
-            non_linear: &[NonLinearSpec::Done] as _,
+            non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
-        dbg!(&v);
         assert!(v.iter().enumerate().all(|(ix, &v)| {
             let row = ix / K::nr();
             let col = ix % K::nr();
