@@ -202,50 +202,15 @@ neon_stile8x4:
 
     subs r3, r3, #1
     bne .packed_packed_loop_1
-    b  .non_linear
 
-    .non_linear:
+.non_linear:
 
     ldr     r1, [r0, #16]
     cmp     r1, #0
-    beq     .STORE
     sub     r1, #8
+    bne     .non_linear_loop
 
-    .non_linear_loop:
-    add     r1, #8
-    ldr     r2, [r1]
-    cmp     r2, #0
-    beq     .STORE
-    cmp     r2, #3
-    beq     .non_linear_addc
-
-    b .unsupported
-
-    .non_linear_addc:
-
-    ldr     r3, [r0, #8]
-    ldr     r4, [r3]
-    cmp     r4, #0
-    bne     .unsupported
-
-    ldr     r4, [r3, #4]   // C ptr
-    ldr     r5, [r3, #8]   // rsc
-    ldr     r6, [r3, #12]  // csc
-
-    {% for col in (0..3) %}
-        mov         r7, r4
-        {% for reg in (0..3) %}
-            vld1.f32    d0[0], [ r7 ]
-            add         r7, r7, r5
-            vld1.f32    d0[1], [ r7 ]
-            add         r7, r7, r5
-            vadd.f32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
-        {% endfor %}
-        add r4, r4, r6
-    {% endfor %}
-
-    .STORE:
-
+.store:
     ldr     r3, [r0, #8]
     ldm     r3, { r4, r5, r6, r7 } // discr, ...
     cmp     r4, #0
@@ -271,12 +236,47 @@ neon_stile8x4:
     mov         r0,     #0
 
 .return:
-
     vpop        { q4-q5 }
     pop         { r4-r10 }
 
     bx          lr
 
+.non_linear_loop:
+    add     r1, #8
+    ldr     r2, [r1]
+    cmp     r2, #0
+    beq     .store
+    cmp     r2, #3
+    beq     .non_linear_addc
+
+    b .unsupported
+
+.non_linear_addc:
+
+    ldr     r3, [r0, #8]
+    ldr     r4, [r3]
+    cmp     r4, #0
+    bne     .unsupported
+
+    ldr     r4, [r3, #4]   // C ptr
+    ldr     r5, [r3, #8]   // rsc
+    ldr     r6, [r3, #12]  // csc
+
+    {% for col in (0..3) %}
+        mov         r7, r4
+        {% for reg in (0..3) %}
+            vld1.f32    d0[0], [ r7 ]
+            add         r7, r7, r5
+            vld1.f32    d0[1], [ r7 ]
+            add         r7, r7, r5
+            vadd.f32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
+        {% endfor %}
+        add r4, r4, r6
+    {% endfor %}
+
+    b .non_linear_loop
+
 .unsupported:
     mov         r0,     #1
     b           .return
+
