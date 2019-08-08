@@ -24,21 +24,24 @@
 
 neon_stile8x4:
 
-    push        { r4-r10 }               // no lr (we're a leaf), no fp. #24 bytes
-    vpush       { q4-q5 }
+    pld     [r0]
+    push    { r4-r10 }
+    vpush   { q4-q5 }
 
-    veor      q8, q8 ,q8
-    veor      q9, q9 ,q9
-    veor      q10, q10 ,q10
-    veor      q11, q11 ,q11
-    veor      q12, q12 ,q12
-    veor      q13, q13 ,q13
-    veor      q14, q14 ,q14
-    veor      q15, q15 ,q15
+    veor    q8, q8 ,q8
+    veor    q9, q9 ,q9
+    veor    q10, q10 ,q10
+    veor    q11, q11 ,q11
+    veor    q12, q12 ,q12
+    veor    q13, q13 ,q13
+    veor    q14, q14 ,q14
+    veor    q15, q15 ,q15
 
     ldm     r0, { r7, r8, r9, r10 }      // a, b, c, lin
-    // check a->discriminant == 1 (packed)
     ldm     r7, { r1, r2 }
+    pld     [r10]
+    pld     [r8]
+    // check a->discriminant == 1 (packed)
     cmp     r1, #1
     bne     .unsupported
     mov     r1, r2 // packed A ptr
@@ -97,17 +100,18 @@ neon_stile8x4:
     b   .non_linear
 
     .packed_packed:
-    mov     r2, r8                          // packed B ptr
-    pld     [r2]
+    pld     [r8]                           // packed B ptr       
 
     cmp r3, #4
     blt .packed_packed_loop_1
 
     .packed_packed_loop_4:
+    pld             [r1, #64]
+    pld             [r8, #64]
 
     // 1
     vldmia          r1!, { q0, q1 }
-    vldmia          r2!, { q4 }
+    vldmia          r8!, { q4 }
 
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
@@ -117,7 +121,7 @@ neon_stile8x4:
     vmla.f32        q10, q0, d8[1]
     vmla.f32        q11, q1, d8[1]
 
-    vldmia          r2!, { q5 }
+    vldmia          r8!, { q5 }
 
     vmla.f32        q12, q0, d9[0]
     vmla.f32        q13, q1, d9[0]
@@ -131,7 +135,7 @@ neon_stile8x4:
     vmla.f32        q8, q2, d10[0]
     vmla.f32        q9, q3, d10[0]
 
-    vldmia          r2!, { q4 }
+    vldmia          r8!, { q4 }
 
     vmla.f32        q10, q2, d10[1]
     vmla.f32        q11, q3, d10[1]
@@ -148,38 +152,26 @@ neon_stile8x4:
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
 
-    vldmia          r2!, { q5 }
+    vldmia          r8!, { q5 }
 
     vmla.f32        q10, q0, d8[1]
     vmla.f32        q11, q1, d8[1]
 
-    pld [r1]
-
     vmla.f32        q12, q0, d9[0]
     vmla.f32        q13, q1, d9[0]
 
-    pld [r1, #8]
-
     vmla.f32        q14, q0, d9[1]
     vmla.f32        q15, q1, d9[1]
-    pld [r1, #16]
 
     // 4
-
     vmla.f32        q8, q2, d10[0]
     vmla.f32        q9, q3, d10[0]
-
-    pld [r1, #24]
 
     vmla.f32        q10, q2, d10[1]
     vmla.f32        q11, q3, d10[1]
 
-    pld [r2]
-
     vmla.f32        q12, q2, d11[0]
     vmla.f32        q13, q3, d11[0]
-
-    pld [r2, #8]
 
     vmla.f32        q14, q2, d11[1]
     vmla.f32        q15, q3, d11[1]
@@ -194,7 +186,7 @@ neon_stile8x4:
     .packed_packed_loop_1:
 
     vldmia          r1!, { q0, q1 }
-    vldmia          r2!, { q4 }
+    vldmia          r8!, { q4 }
 
     vmla.f32        q8, q0, d8[0]
     vmla.f32        q9, q1, d8[0]
