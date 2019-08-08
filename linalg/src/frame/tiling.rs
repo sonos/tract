@@ -301,7 +301,7 @@ pub mod test {
                         if $cond {
                             let found = pb.run::<$ker>();
                             let expected = pb.expected();
-                            proptest::prop_assert_eq!(found, expected)
+                            proptest::prop_assert!(found.iter().zip(expected.iter()).all(|(a,b)| (a-b).abs() < 0.001));
                         }
                     }
                 }
@@ -316,6 +316,28 @@ pub mod test {
                             &[-3.0, 3.0, 5.0, -5.0, 6.0, 0.0, -6.0, -5.0, 0.0, 0.0, 9.0, 7.0],
                             &[-8.0, 5.0, 5.0, -3.0, 5.0, 7.0, -8.0, -1.0],
                         ).unwrap()
+                    }
+                }
+
+                #[test]
+                fn conv_prepacked_1() {
+                    if $cond {
+                        let mut filters = vec!(0.0f32; 3*14*2-1);
+                        filters.push(1.0);
+                        let mut data = vec!(0.0f32; 11);
+                        data.push(1.0);
+                        let pb = ConvProblem {
+                            ci: 3,
+                            co: 14,
+                            kt: 2,
+                            stride: 3,
+                            dilation: 2,
+                            filters,
+                            data,
+                        };
+                        let found = pb.run::<$ker>();
+                        let expected = pb.expected();
+                        assert!(found.iter().zip(expected.iter()).all(|(a,b)| (a-b).abs() < 0.001));
                     }
                 }
             }
@@ -361,16 +383,21 @@ pub mod test {
                 &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
             );
 
-            let mut expect = vec![0.0f32; m * n];
+            let mut expected = vec![0.0f32; m * n];
             for x in 0..n {
                 for y in 0..m {
                     for i in 0..k {
-                        expect[x + y * n] += a[i + k * y] * b[x + i * n]
+                        expected[x + y * n] += a[i + k * y] * b[x + i * n]
                     }
                 }
             }
 
-            prop_assert_eq!(found, expect);
+            proptest::prop_assert!(
+                found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
+                "found: {:?} expected: {:?}",
+                found,
+                expected
+            );
         }
         Ok(())
     }
