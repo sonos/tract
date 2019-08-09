@@ -165,7 +165,7 @@ where
         while col_ptrs.len() < wanted {
             col_ptrs.push(col_ptrs[col_ptrs.len() - 1]);
         }
-        let row_byte_offsets =
+        let row_byte_offsets: Vec<_> =
             rows_offsets.iter().map(|&ro| ro * std::mem::size_of::<T>() as isize).collect();
         StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
     }
@@ -281,6 +281,17 @@ pub mod test {
     use super::*;
     use crate::align;
     use proptest::prelude::*;
+    use proptest::test_runner::TestCaseResult;
+
+    pub fn check_close(found: &[f32], expected: &[f32]) -> TestCaseResult {
+        proptest::prop_assert!(
+            found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
+            "found: {:?} expected: {:?}",
+            found,
+            expected
+        );
+        Ok(())
+    }
 
     #[macro_export]
     macro_rules! tile_frame_tests {
@@ -299,9 +310,7 @@ pub mod test {
                     #[test]
                     fn conv_prepacked(pb in strat_conv_1d()) {
                         if $cond {
-                            let found = pb.run::<$ker>();
-                            let expected = pb.expected();
-                            proptest::prop_assert!(found.iter().zip(expected.iter()).all(|(a,b)| (a-b).abs() < 0.001));
+                            check_close(&*pb.run::<$ker>(), &*pb.expected())?;
                         }
                     }
                 }
@@ -315,17 +324,18 @@ pub mod test {
                             2,
                             &[-3.0, 3.0, 5.0, -5.0, 6.0, 0.0, -6.0, -5.0, 0.0, 0.0, 9.0, 7.0],
                             &[-8.0, 5.0, 5.0, -3.0, 5.0, 7.0, -8.0, -1.0],
-                        ).unwrap()
+                        )
+                        .unwrap()
                     }
                 }
 
                 #[test]
                 fn conv_prepacked_1() {
                     if $cond {
-                        let mut filters = vec!(0.0f32; 3*14*2-1);
-                        filters.push(1.0);
-                        let mut data = vec!(0.0f32; 11);
-                        data.push(1.0);
+                        let mut filters = vec![0.0f32; 3 * 14 * 2];
+                        filters[13 * 6 + 5] = 1.0;
+                        let mut data = vec![0.0f32; 3 * 10];
+                        data[8 + 2 * 10] = 1.0; // last used input
                         let pb = ConvProblem {
                             ci: 3,
                             co: 14,
@@ -335,9 +345,7 @@ pub mod test {
                             filters,
                             data,
                         };
-                        let found = pb.run::<$ker>();
-                        let expected = pb.expected();
-                        assert!(found.iter().zip(expected.iter()).all(|(a,b)| (a-b).abs() < 0.001));
+                        check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
                     }
                 }
             }
@@ -417,7 +425,9 @@ pub mod test {
         pub fn kernel_field(&self) -> usize {
             self.dilation * (self.kt - 1) + 1
         }
+        // this is not n, but the T in NTC of input to direct convolution
         pub fn input_width(&self) -> usize {
+            assert!(self.data.len() % self.ci == 0);
             self.data.len() / self.ci
         }
         pub fn output_width(&self) -> usize {
@@ -490,7 +500,7 @@ pub mod test {
     pub fn strat_conv_1d() -> BoxedStrategy<ConvProblem> {
         (1usize..40, 1usize..40, 1usize..10, 1usize..5, 1usize..5)
             .prop_flat_map(|(ci, co, kt, stride, dilation)| {
-                let min = (kt - 1) * dilation + 1;
+                let min = ((kt - 1) * dilation + 1) * stride;
                 (Just(ci), Just(co), Just(kt), Just(stride), Just(dilation), min..min + 10)
             })
             .prop_flat_map(move |(ci, co, kt, stride, dilation, t)| {
