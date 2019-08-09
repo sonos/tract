@@ -67,13 +67,16 @@ neon_stile8x4:
     .packed_tops_and_offsets:
     mov             r2, r5                  // rows offsets
     ldm             r6, {r5, r6, r7, r8}    // cols tops ptr
-    mov             r10, #0
+    mov             r9, #0
 
     .packed_tops_and_offsets_loop_1:
 
-    ldr             r4, [r2], #4
+    ldr             r10, [r2], #4
     vldmia          r1!, { q0, q1 }
-    sub             r4, r4, r10
+    pld             [r1, #64]
+    pld             [r2, #64]
+    sub             r4, r10, r9
+    mov             r9, r10
 
     add             r5, r5, r4
     add             r6, r6, r4
