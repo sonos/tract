@@ -83,31 +83,8 @@ pub mod test {
         ($cond:expr, $ker:ty, $t:ty) => {
             mod kernel {
                 #[allow(unused_imports)]
-                use crate::frame::tiling::test::*;
                 use crate::frame::tiling_kernel::test;
-                /*
-                proptest::proptest! {
-                    #[test]
-                    fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
-                        if $cond {
-                            test_mat_mul_prep_f32::<$ker>(m, k, n, a, b)?
-                        }
-                    }
-
-                    #[test]
-                    fn conv_prepacked(pb in strat_conv_1d()) {
-                        if $cond {
-                            let found = pb.run::<$ker>();
-                            let expected = pb.expected();
-                            proptest::prop_assert_eq!(found, expected)
-                        }
-                    }
-                }
-
-                fn packed(v: &mut [$t]) -> TileStorageSpec<$t> {
-                    TileStorageSpec::Packed { ptr: v.as_mut_ptr() }
-                }
-                */
+                use crate::frame::tiling_kernel::TilingKer;
 
                 #[test]
                 fn return_zeros() {
@@ -138,16 +115,30 @@ pub mod test {
                 }
 
                 #[test]
-                fn packed_offsets_1() {
+                fn packed_offsets_k1() {
                     if $cond {
-                        test::packed_offsets::<$ker, $t>(1)
+                        test::packed_offsets::<$ker, $t>(1, <$ker>::nr())
                     }
                 }
 
                 #[test]
-                fn packed_offsets_2() {
+                fn packed_offsets_k2() {
                     if $cond {
-                        test::packed_offsets::<$ker, $t>(2)
+                        test::packed_offsets::<$ker, $t>(2, <$ker>::nr())
+                    }
+                }
+
+                #[test]
+                fn packed_offsets_k13() {
+                    if $cond {
+                        test::packed_offsets::<$ker, $t>(13, <$ker>::nr())
+                    }
+                }
+
+                #[test]
+                fn packed_offsets_with_row_stride() {
+                    if $cond {
+                        test::packed_offsets::<$ker, $t>(2, <$ker>::nr() + 5)
                     }
                 }
             }
@@ -241,25 +232,25 @@ pub mod test {
         assert!(v.iter().all(|&a| a == (k as f32).into()));
     }
 
-    pub fn packed_offsets<K, T>(k: usize)
+    pub fn packed_offsets<K, T>(k: usize, t: usize)
     where
         K: TilingKer<T>,
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
     {
         let a = (1..=(k * K::mr())).map(|x| (x as f32).into()).collect();
         let pa = realign_vec(a, K::alignment_bytes_packed_a());
-        let b: Vec<T> = (0..(k * K::nr())).map(|x| (x as f32).into()).collect();
+        let b: Vec<T> = (0..(k * t)).map(|x| (x as f32).into()).collect();
         let len = K::mr() * K::nr();
         let mut v: Vec<T> = vec![T::zero(); len];
         let mut c = tile_stride_storage(&mut v, K::nr());
+        let col_ptrs = (0..K::nr()).map(|i| (&b[i]) as _).collect::<Vec<_>>();
+        let row_byte_offsets =
+            (0..k).map(|i| (i * std::mem::size_of::<T>() * t) as isize).collect::<Vec<_>>();
         let err = K::kernel(&TileOpSpec {
             a: &TileStorageSpec::Packed { ptr: pa.as_ptr() },
             b: &TileStorageSpec::OffsetsAndPtrs {
-                col_ptrs: (0..K::nr()).map(|i| (&b[i]) as _).collect::<Vec<_>>().as_ptr(),
-                row_byte_offsets: (0..K::mr())
-                    .map(|i| (i * std::mem::size_of::<T>() * K::nr()) as isize)
-                    .collect::<Vec<_>>()
-                    .as_ptr(),
+                col_ptrs: col_ptrs.as_ptr(),
+                row_byte_offsets: row_byte_offsets.as_ptr(),
             },
             c: &mut c,
             linear: &LinearSpec::Mul { k },
@@ -269,7 +260,9 @@ pub mod test {
         assert!(v.iter().enumerate().all(|(ix, &v)| {
             let row = ix / K::nr();
             let col = ix % K::nr();
-            let s = (0..k).map(|i| pa[K::mr()*i + row] * b[K::nr()*i + col]).fold(T::zero(), |s, a| s+a);
+            let s = (0..k)
+                .map(|i| pa[K::mr() * i + row] * b[t * i + col])
+                .fold(T::zero(), |s, a| s + a);
             v == s
         }));
     }
