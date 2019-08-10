@@ -3,7 +3,7 @@ use tract_core::ndarray;
 
 use crate::model::ParsingContext;
 
-pub fn renorm(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
+pub fn renorm(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn InferenceOp>> {
     let component = &ctx.proto_model.components[name];
     let rms = *component
         .attributes

@@ -10,7 +10,7 @@ pub struct Range {
     dtype: DatumType,
 }
 
-pub fn range(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn range(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("Tidx")?;
     Ok(Box::new(Range::new(dtype)))
 }

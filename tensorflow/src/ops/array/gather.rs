@@ -8,7 +8,7 @@ use crate::model::ParsingContext;
 #[derive(Debug, Clone, new)]
 pub struct GatherNd {}
 
-pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::new(GatherNd::new()))
 }
 

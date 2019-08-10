@@ -5,7 +5,7 @@ use tract_linalg::Conv;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {
-    conv: Box<Conv<f32>>,
+    conv: Box<dyn Conv<f32>>,
     input_shape: DataShape,
     output_shape: DataShape,
     #[debug(skip)]

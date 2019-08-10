@@ -324,7 +324,7 @@ pub struct Parameters {
     graph: SomeGraphDef,
     typed_model: Option<TypedModel>,
     normalized_model: Option<NormalizedModel>,
-    tract_model: Box<Model>,
+    tract_model: Box<dyn Model>,
 
     output_names: Vec<String>,
 
@@ -544,9 +544,9 @@ impl Parameters {
         }
 
         let mut typed_model = None;
-        let mut tract_model: Box<Model> = {
+        let mut tract_model: Box<dyn Model> = {
             let stop_at = matches.value_of("pass").unwrap();
-            (|| -> CliResult<Box<Model>>{
+            (|| -> CliResult<Box<dyn Model>>{
                 if stop_at == "load" {
                     return Ok(Box::new(raw_model) as _)
                 }

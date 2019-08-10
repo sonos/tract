@@ -3,7 +3,7 @@ use tract_core::internal::*;
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;
 
-pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     let n = pb.get_input().len();
     let axis = pb.get_attr_int("axis")?;

@@ -4,7 +4,7 @@ use tract_core::ndarray;
 use crate::model::ParsingContext;
 use crate::model::NodeLine;
 
-pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
+pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn InferenceOp>> {
     let node = &ctx.proto_model.config_lines.nodes.iter().find(|l| l.0 == name);
     let line = if let Some((_, NodeLine::Component(line))) = node { line } else {
         bail!("Could not find component {}", name);

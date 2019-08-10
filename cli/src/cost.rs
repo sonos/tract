@@ -25,7 +25,7 @@ fn handle_t(
 ) -> CliResult<()> {
     let mut total: HashMap<Cost, TDim> = HashMap::default();
     let mut display_graph =
-        DisplayGraph::from_model_and_options(model as &Model, options.into())?.with_graph_def(&params.graph)?;
+        DisplayGraph::from_model_and_options(model as &dyn Model, options.into())?.with_graph_def(&params.graph)?;
     for i in ::tract_core::model::eval_order(&model)? {
         let inputs = model.node_input_facts(i)?;
         let cost = model.nodes()[i].op().cost(&*inputs)?;

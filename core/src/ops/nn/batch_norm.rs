@@ -61,7 +61,7 @@ impl Op for BatchNorm {
                 mean: Arc<Tensor>,
                 var: Arc<Tensor>,
                 epsilon: f32,
-            ) -> TractResult<Box<Op>>
+            ) -> TractResult<Box<dyn Op>>
             where
                 T: Datum
                     + ::num_traits::Float

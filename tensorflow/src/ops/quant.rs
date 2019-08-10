@@ -8,7 +8,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("FakeQuantWithMinMaxVars", fake_quant_with_min_max_vars);
 }
 
-fn fake_quant_with_min_max_vars(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn fake_quant_with_min_max_vars(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let narrow_range = node.get_attr_bool("narrow_range")?;
     let num_bits = node.get_attr_int("num_bits")?;
     Ok(Box::new(FakeQuantWithMinMaxVars::new(narrow_range, num_bits)))

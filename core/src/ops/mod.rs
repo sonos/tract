@@ -72,7 +72,7 @@ pub trait OpState: fmt::Debug + Send + objekt::Clone {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        op: &Op,
+        op: &dyn Op,
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>>;
 }
@@ -86,8 +86,8 @@ pub trait StatefullOp {
         &self,
         _session: &mut SessionState,
         node_id: usize,
-    ) -> TractResult<Option<Box<OpState>>>;
-    fn as_stateless(&self) -> Option<&StatelessOp> {
+    ) -> TractResult<Option<Box<dyn OpState>>>;
+    fn as_stateless(&self) -> Option<&dyn StatelessOp> {
         None
     }
 }
@@ -97,11 +97,11 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-    ) -> TractResult<Option<Box<OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
-    fn as_stateless(&self) -> Option<&StatelessOp> {
+    fn as_stateless(&self) -> Option<&dyn StatelessOp> {
         Some(self)
     }
 }
@@ -127,7 +127,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     /// Called during translation to TypedModel.
     ///
     /// Most of the time, None is returned, and the InferenceOp is used instead.
-    fn to_typed(&self) -> TractResult<Option<Box<Op>>> {
+    fn to_typed(&self) -> TractResult<Option<Box<dyn Op>>> {
         Ok(None)
     }
 
@@ -172,7 +172,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     }
 
     /// Nested models, with label (for audit).
-    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
+    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![]
     }
 
@@ -191,7 +191,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
 
     /// Compare two ops.
     // Should this one be and Eq or PartialEq impl instead ?
-    fn same_as(&self, _other: &Op) -> bool {
+    fn same_as(&self, _other: &dyn Op) -> bool {
         false
     }
 
@@ -272,10 +272,10 @@ pub trait InferenceOp:
     ) -> TractResult<(TVec<TensorFact>, TVec<TensorFact>, TVec<TensorFact>)>;
 
     /// Reinterpret the InferenceOp as an Op.
-    fn as_op(&self) -> &Op;
+    fn as_op(&self) -> &dyn Op;
 
     /// Reinterpret the InferenceOp as an Op, mutably.
-    fn as_op_mut(&mut self) -> &mut Op;
+    fn as_op_mut(&mut self) -> &mut dyn Op;
 }
 
 impl_downcast!(Op);
@@ -284,57 +284,57 @@ clone_trait_object!(Op);
 clone_trait_object!(StatelessOp);
 clone_trait_object!(InferenceOp);
 
-impl<O: Op> From<O> for Box<Op> {
-    fn from(it: O) -> Box<Op> {
+impl<O: Op> From<O> for Box<dyn Op> {
+    fn from(it: O) -> Box<dyn Op> {
         Box::new(it)
     }
 }
 
-impl<O: InferenceOp> From<O> for Box<InferenceOp> {
-    fn from(it: O) -> Box<InferenceOp> {
+impl<O: InferenceOp> From<O> for Box<dyn InferenceOp> {
+    fn from(it: O) -> Box<dyn InferenceOp> {
         Box::new(it)
     }
 }
 
-impl TryFrom<Box<InferenceOp>> for Box<Op> {
+impl TryFrom<Box<dyn InferenceOp>> for Box<dyn Op> {
     type Error = TractError;
 
-    fn try_from(it: Box<InferenceOp>) -> TractResult<Box<Op>> {
+    fn try_from(it: Box<dyn InferenceOp>) -> TractResult<Box<dyn Op>> {
         Ok(it.to_typed()?.unwrap_or_else(|| objekt::clone_box(it.as_op())))
     }
 }
 
-impl AsRef<Op> for InferenceOp {
-    fn as_ref(&self) -> &Op {
+impl AsRef<dyn Op> for dyn InferenceOp {
+    fn as_ref(&self) -> &dyn Op {
         self.as_op()
     }
 }
 
-impl AsRef<Op> for Box<InferenceOp> {
-    fn as_ref(&self) -> &Op {
+impl AsRef<dyn Op> for Box<dyn InferenceOp> {
+    fn as_ref(&self) -> &dyn Op {
         self.as_op()
     }
 }
 
-impl AsMut<Op> for InferenceOp {
-    fn as_mut(&mut self) -> &mut Op {
+impl AsMut<dyn Op> for dyn InferenceOp {
+    fn as_mut(&mut self) -> &mut dyn Op {
         self.as_op_mut()
     }
 }
 
-impl AsMut<Op> for Box<InferenceOp> {
-    fn as_mut(&mut self) -> &mut Op {
+impl AsMut<dyn Op> for Box<dyn InferenceOp> {
+    fn as_mut(&mut self) -> &mut dyn Op {
         self.as_op_mut()
     }
 }
 
-impl std::fmt::Display for Box<Op> {
+impl std::fmt::Display for Box<dyn Op> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.name())
     }
 }
 
-impl std::fmt::Display for Box<InferenceOp> {
+impl std::fmt::Display for Box<dyn InferenceOp> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.name())
     }

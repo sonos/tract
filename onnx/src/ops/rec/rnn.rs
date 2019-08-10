@@ -4,7 +4,7 @@ use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
 
-pub fn rnn(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<InferenceOp>, Vec<String>)> {
+pub fn rnn(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut rnn = RNN::default();
     rnn.want_output_0_y = pb.get_output().get(0).map(|s| !s.is_empty()).unwrap_or(false);
     rnn.want_output_1_y_h = pb.get_output().get(1).map(|s| !s.is_empty()).unwrap_or(false);
@@ -15,8 +15,8 @@ pub fn rnn(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<InferenceO
 pub struct RNN {
     pub want_output_0_y: bool,
     pub want_output_1_y_h: bool,
-    pub fore: Box<StatelessOp>,
-    pub back: Box<StatelessOp>,
+    pub fore: Box<dyn StatelessOp>,
+    pub back: Box<dyn StatelessOp>,
     pub initial_h: Option<Tensor>,
 }
 

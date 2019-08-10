@@ -24,10 +24,10 @@ pub mod arm32;
 pub use self::frame::*;
 
 pub struct Ops {
-    pub svmm: Box<Fn(usize, usize) -> Box<VecMatMul<f32>> + Send + Sync>,
-    pub smm: Box<Fn(usize, usize, usize) -> Box<MatMul<f32>> + Send + Sync>,
-    pub dmm: Box<Fn(usize, usize, usize) -> Box<MatMul<f64>> + Send + Sync>,
-    pub sconv: Box<Fn(usize, Vec<isize>, Vec<isize>) -> Box<Conv<f32>> + Send + Sync>,
+    pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn VecMatMul<f32>> + Send + Sync>,
+    pub smm: Box<dyn Fn(usize, usize, usize) -> Box<dyn MatMul<f32>> + Send + Sync>,
+    pub dmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn MatMul<f64>> + Send + Sync>,
+    pub sconv: Box<dyn Fn(usize, Vec<isize>, Vec<isize>) -> Box<dyn Conv<f32>> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {

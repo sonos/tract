@@ -10,12 +10,12 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 fn category_mapper(
     _ctx: &ParsingContext,
     node: &NodeProto,
-) -> TractResult<(Box<InferenceOp>, Vec<String>)> {
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let ints: Vec<i64> = node.get_attr_vec("cats_int64s")?;
     let strings: Vec<String> = node.get_attr_vec("cats_strings")?;
     let default_int:Option<i64> = node.get_attr_opt("default_int64")?;
     let default_string:Option<String> = node.get_attr_opt("default_string")?;
-    let op: Box<InferenceOp> = match (default_int, default_string.as_ref()) {
+    let op: Box<dyn InferenceOp> = match (default_int, default_string.as_ref()) {
         (None, None) | (Some(_), Some(_)) => bail!(
             "CategoryMapper requires exactly one of default_int64 and default_string (found {:?})",
             (default_int, default_string)

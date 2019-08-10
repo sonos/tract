@@ -5,7 +5,7 @@ use box_drawing::light::*;
 use tract_core::model::OutletId;
 use tract_core::ops::konst::Const;
 
-pub fn render(model: &Model, options: DisplayOptions) -> CliResult<()> {
+pub fn render(model: &dyn Model, options: DisplayOptions) -> CliResult<()> {
     let colors: &[Style] = &[
         Color::Red.normal(),
         Color::Green.normal(),

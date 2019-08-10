@@ -6,7 +6,7 @@ use crate::model::ParsingContext;
 #[derive(Debug, Clone, new)]
 pub struct Reshape<T: Datum>(PhantomData<T>);
 
-pub fn reshape(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn reshape(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Reshape(dtype)()))
 }

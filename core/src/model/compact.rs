@@ -9,8 +9,8 @@ where
     TractError: From<E1> + From<E2>,
     TI1: TensorInfo + Clone + 'static,
     TI2: TensorInfo + TryFrom<TI1, Error=E1> + Clone + 'static,
-    O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O1: Display + Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let mut model = ModelImpl::default();
     for old_node in old.nodes() {
@@ -37,8 +37,8 @@ where
     TractError: From<E1> + From<E2>,
     TI1: TensorInfo + Clone + 'static,
     TI2: TensorInfo + TryFrom<TI1, Error=E1> + Clone + 'static,
-    O1: Display + Debug + Clone + AsRef<Op> + AsMut<Op> + Clone + 'static,
-    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O1: Display + Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let mut model = ModelImpl::default();
     let mut map = HashMap::new();

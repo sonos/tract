@@ -9,7 +9,7 @@ use std::fmt;
 pub struct ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// all nodes in the model
     pub(super) nodes: Vec<BaseNode<TI, O>>,
@@ -24,7 +24,7 @@ where
 impl<TI, O> Default for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn default() -> ModelImpl<TI, O> {
         ModelImpl { nodes: vec![], nodes_by_name: HashMap::new(), inputs: vec![], outputs: vec![] }
@@ -34,7 +34,7 @@ where
 impl<TI, O> ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: Model,
 {
     pub fn add_node(
@@ -326,7 +326,7 @@ where
 impl<TI, O> Model for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: fmt::Debug + fmt::Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: fmt::Debug + fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn node_id_by_name(&self, name: &str) -> TractResult<usize> {
         Ok(self
@@ -376,7 +376,7 @@ where
         &*self.outputs
     }
 
-    fn node_op(&self, id: usize) -> &Op {
+    fn node_op(&self, id: usize) -> &dyn Op {
         self.nodes[id].op.as_ref()
     }
 

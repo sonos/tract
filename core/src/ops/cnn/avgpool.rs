@@ -14,7 +14,7 @@ pub struct AvgPool {
 }
 
 impl AvgPool {
-    fn to_fixed<T: Datum + Float + Sum>(&self, input_shape: &[usize]) -> TractResult<Box<Op>>
+    fn to_fixed<T: Datum + Float + Sum>(&self, input_shape: &[usize]) -> TractResult<Box<dyn Op>>
     where
         usize: AsPrimitive<T>,
     {

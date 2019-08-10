@@ -44,8 +44,8 @@ pub trait InferenceRulesOp {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult;
 
-    fn as_op(&self) -> &Op;
-    fn as_op_mut(&mut self) -> &mut Op;
+    fn as_op(&self) -> &dyn Op;
+    fn as_op_mut(&mut self) -> &mut dyn Op;
 }
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
@@ -75,11 +75,11 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
         Ok(vec!())
     }
 
-    fn as_op(&self) -> &Op {
+    fn as_op(&self) -> &dyn Op {
         self.as_op()
     }
 
-    fn as_op_mut(&mut self) -> &mut Op {
+    fn as_op_mut(&mut self) -> &mut dyn Op {
         self.as_op_mut()
     }
 }

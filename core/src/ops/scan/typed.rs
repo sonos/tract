@@ -80,7 +80,7 @@ impl Op for Typed {
         Ok(lines)
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
+    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), &self.body)]
     }
 
@@ -150,7 +150,7 @@ impl StatefullOp for Typed {
         &self,
         session: &mut SessionState,
         node_id: usize,
-    ) -> TractResult<Option<Box<OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         self.to_codegen_op()?.state(session, node_id)
     }
 }

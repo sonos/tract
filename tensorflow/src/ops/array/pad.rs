@@ -11,7 +11,7 @@ pub struct Pad<T: Copy + Datum + Zero> {
     _phantom: PhantomData<T>,
 }
 
-pub fn pad(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn pad(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = pb.get_attr_datum_type("T")?;
     Ok(boxed_new!(Pad(dtype)()))
 }

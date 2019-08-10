@@ -173,7 +173,7 @@ impl ConvUnary {
     pub fn to_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
-    ) -> TractResult<(Im2Col<T>, TVec<usize>, Box<Op>)>
+    ) -> TractResult<(Im2Col<T>, TVec<usize>, Box<dyn Op>)>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
     {
@@ -197,7 +197,7 @@ impl ConvUnary {
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed_kernels: Vec<Tensor> = vec![];
 
-        let (op2, b_pack): (Box<Op>, _) = if m > 1 {
+        let (op2, b_pack): (Box<dyn Op>, _) = if m > 1 {
             let mm = T::packed_mat_mul(m, k, n);
             let b_pack = mm.b_pack();
 
@@ -283,7 +283,7 @@ impl ConvUnary {
     pub fn to_boxed_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
-    ) -> TractResult<(Box<Op>, TVec<usize>, Box<Op>)>
+    ) -> TractResult<(Box<dyn Op>, TVec<usize>, Box<dyn Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
     {
@@ -343,7 +343,7 @@ impl ConvUnary {
         Ok(Some(new_op))
     }
 
-    pub fn to_depth_wise<T>(&self, shape: &[usize]) -> TractResult<Box<Op>>
+    pub fn to_depth_wise<T>(&self, shape: &[usize]) -> TractResult<Box<dyn Op>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
     {

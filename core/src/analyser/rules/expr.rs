@@ -127,7 +127,7 @@ pub trait TExp<T>: fmt::Debug {
     fn get_paths(&self) -> Vec<&Path>;
 }
 
-pub struct Exp<T>(Box<TExp<T>>);
+pub struct Exp<T>(Box<dyn TExp<T>>);
 impl<T: Fact + Output + Clone + fmt::Debug> TExp<T> for Exp<T> {
     /// Returns the current value of the expression in the given context.
     fn get(&self, context: &Context) -> TractResult<T> {

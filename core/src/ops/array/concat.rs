@@ -159,7 +159,7 @@ pub struct NormConcat {
 }
 
 impl NormConcat {
-    fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<Op>> {
+    fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<dyn Op>> {
         let mut fixed_slices: TVec<FixedConcatSlice<T>> = tvec![];
         let mut input_idx = 0;
         for slice in &self.slices {
@@ -403,7 +403,7 @@ impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-    ) -> TractResult<Option<Box<OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         return Ok(Some(Box::new(PulsedSameAxisConcatState::<T>::default())));
     }
 }
@@ -418,7 +418,7 @@ impl<T: Datum> OpState for PulsedSameAxisConcatState<T> {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        op: &Op,
+        op: &dyn Op,
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<PulsedSameAxisConcat<T>>().ok_or("Wrong Op type")?;

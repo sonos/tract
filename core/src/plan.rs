@@ -16,7 +16,7 @@ pub struct SessionState {
 pub struct SimplePlan<TI, O, M>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
 {
     pub model: M,
@@ -29,7 +29,7 @@ where
 impl<TI, O, M> SimplePlan<TI, O, M>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
 {
     /// This contructor returns a plan that will compute all the model default outputs in one pass.
@@ -84,12 +84,12 @@ where
 pub struct SimpleState<TI, O, M, P>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>>,
 {
     plans: Vec<P>,
-    pub states: Vec<Option<Box<OpState>>>,
+    pub states: Vec<Option<Box<dyn OpState>>>,
     pub session_state: SessionState,
     pub values: Vec<Option<TVec<Arc<Tensor>>>>,
     _phantom: PhantomData<(M, TI, O)>,
@@ -98,7 +98,7 @@ where
 impl<TI, O, M, P> Clone for SimpleState<TI, O, M, P>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,
 {
@@ -106,7 +106,7 @@ where
         let states = self
             .states
             .iter()
-            .map(|opt: &Option<Box<OpState>>| -> Option<Box<OpState>> {
+            .map(|opt: &Option<Box<dyn OpState>>| -> Option<Box<dyn OpState>> {
                 opt.as_ref().map(|b| ::objekt::clone_box(&**b))
             })
             .collect();
@@ -123,7 +123,7 @@ where
 impl<TI, O, M, P> SimpleState<TI, O, M, P>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + AsRef<Op> + AsMut<Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     M: Borrow<ModelImpl<TI, O>>,
     P: Borrow<SimplePlan<TI, O, M>> + Clone,
 {

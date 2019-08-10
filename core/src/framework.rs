@@ -14,7 +14,7 @@ where
       ProtoModel: Debug,
 {
     /// Parse a proto model from a reader.
-    fn proto_model_for_read(&self, reader: &mut Read) -> TractResult<ProtoModel>;
+    fn proto_model_for_read(&self, reader: &mut dyn Read) -> TractResult<ProtoModel>;
 
     /// Translate a proto model into a model.
     fn model_for_proto_model(&self, proto: &ProtoModel) -> TractResult<InferenceModel>;
@@ -27,7 +27,7 @@ where
     }
 
     /// Read a model from a reader
-    fn model_for_read(&self, r: &mut Read) -> TractResult<InferenceModel> {
+    fn model_for_read(&self, r: &mut dyn Read) -> TractResult<InferenceModel> {
         let proto_model = self.proto_model_for_read(r)?;
         self.model_for_proto_model(&proto_model)
     }

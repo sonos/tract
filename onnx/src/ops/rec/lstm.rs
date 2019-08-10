@@ -4,7 +4,7 @@ use tract_core::internal::*;
 use tract_core::ndarray::*;
 use tract_core::ops as core_ops;
 
-pub fn lstm(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<InferenceOp>, Vec<String>)> {
+pub fn lstm(_ctx: &ParsingContext, pb: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let mut lstm = LSTM::default();
     lstm.want_output_0_y = pb.get_output().get(0).map(|s| !s.is_empty()).unwrap_or(false);
     lstm.want_output_1_y_h = pb.get_output().get(1).map(|s| !s.is_empty()).unwrap_or(false);
@@ -17,9 +17,9 @@ pub struct LSTM {
     pub want_output_0_y: bool,
     pub want_output_1_y_h: bool,
     pub want_output_2_y_c: bool,
-    pub f: Box<StatelessOp>,
-    pub g: Box<StatelessOp>,
-    pub h: Box<StatelessOp>,
+    pub f: Box<dyn StatelessOp>,
+    pub g: Box<dyn StatelessOp>,
+    pub h: Box<dyn StatelessOp>,
     pub initial_c: Option<Tensor>,
     pub initial_h: Option<Tensor>,
 }

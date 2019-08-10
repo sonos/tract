@@ -90,7 +90,7 @@ struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<tract_linalg::MatMul<T>>,
+    mm: Box<dyn tract_linalg::MatMul<T>>,
     a_shape: TVec<usize>,
     b_shape: TVec<usize>,
     bc_a_shape: TVec<usize>,
@@ -215,7 +215,7 @@ impl MatMulUnaryA {
     pub fn codegen<T: Copy + Datum + Add + Mul + Zero + FloatLike>(
         &self,
         a_shape: &[usize],
-    ) -> TractResult<Option<Box<Op>>> {
+    ) -> TractResult<Option<Box<dyn Op>>> {
         if self.b.shape().len() == 2 {
             return Ok(Some(Box::new(MatMulUnaryImplASimpleB::<T>::new(
                 a_shape,

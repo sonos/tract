@@ -57,7 +57,7 @@ impl InferenceRulesOp for Switch {
     inference_op_as_op!();
 }
 
-fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let inputs = pb.get_attr_int::<i32>("N")?;
     Ok(Box::new(Merge::new(inputs as usize)))
 }

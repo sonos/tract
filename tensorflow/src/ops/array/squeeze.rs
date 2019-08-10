@@ -3,7 +3,7 @@ use tract_core::ops::array::Squeeze;
 use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
 
-pub fn squeeze(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn squeeze(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let squeeze_dims = pb.get_attr_opt_list_int("squeeze_dims")?;
     if let Some(mut squeeze_dims) = squeeze_dims {
         if squeeze_dims.len() > 0 {

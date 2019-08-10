@@ -8,7 +8,7 @@ pub struct Transpose {
     t_perm: DatumType,
 }
 
-pub fn transpose(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn transpose(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;
     let t_perm = pb.get_attr_datum_type("Tperm")?;
     Ok(Box::new(Transpose::new(t, t_perm)))

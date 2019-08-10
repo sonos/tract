@@ -8,7 +8,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("VariableV2", variable_v2);
 }
 
-fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn variable_v2(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let shared_name = node.get_attr_str("shared_name")?;
     let shared_name = if shared_name != "" { Some(shared_name) } else { None };
     let container = node.get_attr_str("container")?;
@@ -27,7 +27,7 @@ impl OpState for VariableV2State {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        op: &Op,
+        op: &dyn Op,
         _inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op
@@ -58,7 +58,7 @@ impl Op for VariableV2 {
 }
 
 impl StatefullOp for VariableV2 {
-    fn state(&self, state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
             ::ndarray::ArrayD::<T>::default(shape).into()
         }
@@ -106,7 +106,7 @@ impl OpState for AssignState {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        op: &Op,
+        op: &dyn Op,
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let (_current, new) = args_2!(inputs);
@@ -136,7 +136,7 @@ impl OpState for AssignState {
 }
 
 impl StatefullOp for Assign {
-    fn state(&self, _state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _state: &mut SessionState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(AssignState)))
     }
 }

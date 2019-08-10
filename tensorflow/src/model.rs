@@ -5,10 +5,10 @@ use tract_core::internal::*;
 pub struct ParsingContext;
 
 #[derive(Clone, Default)]
-pub struct TfOpRegister(pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>>>);
+pub struct TfOpRegister(pub HashMap<String, fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>>);
 
 impl TfOpRegister {
-    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>>) {
+    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>>) {
         self.0.insert(s.into(), builder);
     }
 }
@@ -47,7 +47,7 @@ impl Tensorflow {
 }
 
 impl Framework<GraphDef> for Tensorflow {
-    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<GraphDef> {
+    fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<GraphDef> {
         Ok(::protobuf::parse_from_reader::<GraphDef>(r).map_err(|e| format!("{:?}", e))?)
     }
 

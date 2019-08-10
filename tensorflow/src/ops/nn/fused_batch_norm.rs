@@ -3,7 +3,7 @@ use tract_core::internal::*;
 use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
 
-pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn fused_batch_norm(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let epsilon = pb.get_attr_float::<f32>("epsilon")?;
     Ok(Box::new(FusedBatchNorm::new(epsilon)))
 }

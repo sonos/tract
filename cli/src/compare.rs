@@ -156,7 +156,7 @@ pub fn compare<TI, O>(
 ) -> CliResult<()>
 where
     TI: TensorInfo + Clone + for<'a> From<&'a Tensor>,
-    O: AsRef<Op> + AsMut<Op> + Display + Debug + Clone,
+    O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone,
     ModelImpl<TI, O>: Model,
 {
     let eval_order = ::tract_core::model::eval_order(&tract)?;
@@ -172,7 +172,7 @@ where
     }
 
     let mut display_graph =
-        crate::display_graph::DisplayGraph::from_model_and_options(tract as &Model, output_params.into())?
+        crate::display_graph::DisplayGraph::from_model_and_options(tract as &dyn Model, output_params.into())?
             .with_graph_def(&params.graph)?;
 
     let mut failing = vec![];

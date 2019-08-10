@@ -4,7 +4,7 @@ use tract_core::ops::cnn::*;
 use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
 
-pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let data_format = super::data_format(pb)?;
     let padding = super::padding(pb)?;
     let strides = super::strides(pb)?;
@@ -34,7 +34,7 @@ mod tests {
             .into()
     }
 
-    fn make_conv(h_stride: usize, v_stride: usize, padding: PaddingSpec) -> Box<InferenceOp> {
+    fn make_conv(h_stride: usize, v_stride: usize, padding: PaddingSpec) -> Box<dyn InferenceOp> {
         Box::new(Conv::new(
             DataFormat::NHWC,
             KernelFormat::HWIO,

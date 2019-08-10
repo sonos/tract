@@ -10,7 +10,7 @@ pub struct Max {
     keep_dims: bool,
 }
 
-pub fn max(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn max(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let t = pb.get_attr_datum_type("T")?;
     let t_idx = pb.get_attr_datum_type("Tidx")?;
     let keep_dims = pb.get_attr_bool("keep_dims")?;

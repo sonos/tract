@@ -3,7 +3,7 @@ use tract_core::internal::*;
 use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
 
-pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let n = pb.get_attr_int("N")?;
     let t = pb.get_attr_datum_type("T")?;
     let tidx = pb.get_attr_datum_type("Tidx")?;

@@ -8,12 +8,12 @@ pub mod raw;
 pub mod unary;
 use tract_core::internal::*;
 
-pub fn space_to_batch_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn space_to_batch_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::SpaceToBatch::new(datum_type)))
 }
 
-pub fn batch_to_space_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn batch_to_space_nd(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let datum_type = pb.get_attr_datum_type("T")?;
     Ok(Box::new(raw::BatchToSpace::new(datum_type)))
 }

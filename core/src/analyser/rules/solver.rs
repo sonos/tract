@@ -41,7 +41,7 @@ pub trait Rule<'rules>: fmt::Debug {
     /// The method must return Ok(true) if the rule was applied successfully
     /// (meaning that the Context was mutated), or Ok(false) if the rule was
     /// not applied but didn't generate any errors.
-    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)>;
+    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)>;
 
     /// Returns the paths that the rule depends on.
     fn get_paths(&self) -> Vec<&Path>;
@@ -68,7 +68,7 @@ impl<T: Output + Fact> EqualsRule<T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for EqualsRule<T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)> {
         let value =
             self.items.iter().try_fold(T::default(), |acc, f| acc.unify(&f.get(context)?))?;
         let mut changed = false;
@@ -110,7 +110,7 @@ where
     F: Fact + Zero + Add<F, Output = F> + Neg<Output = F> + Clone + ::std::fmt::Debug + Output,
 {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)> {
         Ok((self.0.set(context, F::zero())?, vec![]))
     }
 
@@ -142,7 +142,7 @@ where
 /// ```
 pub struct WithRule<'rules, T: Fact> {
     pub item: Exp<T>,
-    pub closure: Box<Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules>,
+    pub closure: Box<dyn Fn(&mut Solver<'rules>, T) -> InferenceResult + 'rules>,
 }
 
 impl<'rules, T: Output + Fact> WithRule<'rules, T> {
@@ -158,7 +158,7 @@ impl<'rules, T: Output + Fact> WithRule<'rules, T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for WithRule<'rules, T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)> {
         let value = self.item.get(context)?;
         trace!("    With rule: {:?} is {:?}", self.item, value);
         let mut solver = Solver::default();
@@ -190,7 +190,7 @@ impl<'s, T: Output + Fact> fmt::Debug for WithRule<'s, T> {
 /// ```
 pub struct GivenRule<'rules, T: Fact> {
     pub item: Exp<T>,
-    pub closure: Box<Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules>,
+    pub closure: Box<dyn Fn(&mut Solver<'rules>, T::Concrete) -> InferenceResult + 'rules>,
 }
 
 impl<'rules, T: Output + Fact> GivenRule<'rules, T> {
@@ -207,7 +207,7 @@ impl<'rules, T: Output + Fact> GivenRule<'rules, T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for GivenRule<'rules, T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)> {
         let value = self.item.get(context)?;
 
         if let Some(value) = value.concretize() {
@@ -253,7 +253,7 @@ impl<'s, T: Output + Fact> fmt::Debug for GivenRule<'s, T> {
 /// ```
 pub struct GivenAllRule<'rules, T: Fact> {
     pub items: Vec<Exp<T>>,
-    pub closure: Box<Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules>,
+    pub closure: Box<dyn Fn(&mut Solver<'rules>, Vec<T::Concrete>) -> InferenceResult + 'rules>,
 }
 
 impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
@@ -270,7 +270,7 @@ impl<'rules, T: Output + Fact> GivenAllRule<'rules, T> {
 
 impl<'rules, T: Output + Fact> Rule<'rules> for GivenAllRule<'rules, T> {
     /// Tries to apply the rule to a given context.
-    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+    fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)> {
         let values: Vec<T> =
             self.items.iter().map(|it| it.get(context)).collect::<TractResult<Vec<T>>>()?;
         let concrete: Vec<_> = values.iter().filter_map(|it| it.concretize()).collect();
@@ -303,12 +303,12 @@ impl<'s, T: Output + Fact> fmt::Debug for GivenAllRule<'s, T> {
 #[derive(Default)]
 pub struct Solver<'rules> {
     // The rules used by the solver.
-    pub rules: Vec<Box<Rule<'rules> + 'rules>>,
+    pub rules: Vec<Box<dyn Rule<'rules> + 'rules>>,
 }
 
 impl<'rules> Solver<'rules> {
     /// Consumes the solver and returns the rules that it uses.
-    pub fn take_rules(self) -> Vec<Box<Rule<'rules> + 'rules>> {
+    pub fn take_rules(self) -> Vec<Box<dyn Rule<'rules> + 'rules>> {
         self.rules
     }
 
@@ -494,7 +494,7 @@ macro_rules! given_tuple {
         #[allow(non_camel_case_types)]
         pub struct $Name<'rules, $($id: Fact),*> {
             $(pub $id: Exp<$id>,)*
-            pub closure: Box<Fn(&mut Solver<'rules>, $($id::Concrete,)*) -> InferenceResult + 'rules>,
+            pub closure: Box<dyn Fn(&mut Solver<'rules>, $($id::Concrete,)*) -> InferenceResult + 'rules>,
         }
 
         #[allow(non_camel_case_types)]
@@ -512,7 +512,7 @@ macro_rules! given_tuple {
         #[allow(non_camel_case_types)]
         impl<'rules, $($id: Fact + Output,)*> Rule<'rules> for $Name<'rules, $($id,)*> {
             /// Tries to apply the rule to a given context.
-            fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<Rule<'rules> + 'rules>>)> {
+            fn apply(&self, context: &mut Context) -> TractResult<(bool, Vec<Box<dyn Rule<'rules> + 'rules>>)> {
                 $(
                 let $id = if let Some(it) = self.$id.get(context)?.concretize() {
                     it

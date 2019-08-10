@@ -113,10 +113,10 @@ impl<'a> ParsingContext<'a> {
 }
 
 #[derive(Clone, Default)]
-pub struct OnnxOpRegister(pub HashMap<String, fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<(Box<InferenceOp>, Vec<String>)>>);
+pub struct OnnxOpRegister(pub HashMap<String, fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>>);
 
 impl OnnxOpRegister {
-    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<(Box<InferenceOp>, Vec<String>)>) {
+    pub fn insert(&mut self, s: &'static str, builder: fn(&ParsingContext, node: &pb::NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)>) {
         self.0.insert(s.into(), builder);
     }
 }
@@ -136,7 +136,7 @@ impl Onnx {
 
 
 impl Framework<pb::ModelProto> for Onnx {
-    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<pb::ModelProto> {
+    fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<pb::ModelProto> {
         Ok(::protobuf::parse_from_reader(r).map_err(|e| format!("{:?}", e))?)
     }
 

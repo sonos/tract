@@ -157,14 +157,14 @@ pub struct ParsingContext<'a> {
 
 #[derive(Clone, Default)]
 pub struct KaldiOpRegister(
-    pub HashMap<String, fn(&ParsingContext, node: &str) -> TractResult<Box<InferenceOp>>>,
+    pub HashMap<String, fn(&ParsingContext, node: &str) -> TractResult<Box<dyn InferenceOp>>>,
 );
 
 impl KaldiOpRegister {
     pub fn insert(
         &mut self,
         s: &'static str,
-        builder: fn(&ParsingContext, node: &str) -> TractResult<Box<InferenceOp>>,
+        builder: fn(&ParsingContext, node: &str) -> TractResult<Box<dyn InferenceOp>>,
     ) {
         self.0.insert(s.into(), builder);
     }
@@ -176,7 +176,7 @@ pub struct Kaldi {
 }
 
 impl Framework<KaldiProtoModel> for Kaldi {
-    fn proto_model_for_read(&self, r: &mut std::io::Read) -> TractResult<KaldiProtoModel> {
+    fn proto_model_for_read(&self, r: &mut dyn std::io::Read) -> TractResult<KaldiProtoModel> {
         use crate::parser;
         let mut v = vec![];
         r.read_to_end(&mut v)?;

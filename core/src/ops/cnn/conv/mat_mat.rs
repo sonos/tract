@@ -51,7 +51,7 @@ where
     pub packed_kernels: Vec<Tensor>,
     pub bias: Option<ArrayD<T>>,
     pub group: usize,
-    pub mm: Box<MatMul<T>>,
+    pub mm: Box<dyn MatMul<T>>,
 }
 
 impl<T> MatMat<T>

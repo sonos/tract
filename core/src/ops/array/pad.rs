@@ -188,7 +188,7 @@ impl<T: Datum + Copy> OpState for PulsePadOpState<T> {
     fn eval(
         &mut self,
         session: &mut SessionState,
-        op: &Op,
+        op: &dyn Op,
         mut inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let op = op.downcast_ref::<PulsePad<T>>().ok_or("Wrong Op type")?;
@@ -285,7 +285,7 @@ impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-    ) -> TractResult<Option<Box<OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(PulsePadOpState::<T>::default())))
     }
 }

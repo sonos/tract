@@ -68,7 +68,7 @@ impl Op for NextIteration {
 }
 
 impl StatefullOp for NextIteration {
-    fn state(&self, _state: &mut SessionState, _id: usize) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _state: &mut SessionState, _id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         unimplemented!();
     }
 }

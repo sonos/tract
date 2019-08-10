@@ -14,7 +14,7 @@ use crate::ops::source::Source;
 #[derive(Clone, Debug)]
 pub struct ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
+      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     /// the model-like 'patch' of nodes to add to the model
     pub model: ModelImpl<TI, O>,
@@ -25,7 +25,7 @@ where TI: TensorInfo + Clone + 'static,
 
 impl<TI, O> Default for ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
+      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     fn default() -> ModelPatch<TI, O> {
         ModelPatch {
@@ -39,7 +39,7 @@ where TI: TensorInfo + Clone + 'static,
 
 impl<TI, O> Deref for ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
+      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     type Target = ModelImpl<TI, O>;
     fn deref(&self) -> &ModelImpl<TI, O> {
@@ -49,7 +49,7 @@ where TI: TensorInfo + Clone + 'static,
 
 impl<TI, O> DerefMut for ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<Op> + AsMut<Op> + Clone + 'static
+      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     fn deref_mut(&mut self) -> &mut ModelImpl<TI, O> {
         &mut self.model
@@ -58,7 +58,7 @@ where TI: TensorInfo + Clone + 'static,
 
 impl<TI, O> ModelPatch<TI, O>
 where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + From<Source> + From<Dummy> + AsRef<Op> + AsMut<Op> + Clone + 'static
+      O: Display + Debug + From<Source> + From<Dummy> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
 {
     pub fn is_empty(&self) -> bool {
         self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()

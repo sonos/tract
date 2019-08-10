@@ -26,7 +26,7 @@ pub struct DisplayOptions {
 }
 
 impl DisplayOptions {
-    pub fn filter(&self, model: &Model, node_id: usize) -> CliResult<bool> {
+    pub fn filter(&self, model: &dyn Model, node_id: usize) -> CliResult<bool> {
         if let Some(nodes) = self.node_ids.as_ref() {
             return Ok(nodes.contains(&node_id));
         }
@@ -45,7 +45,7 @@ impl DisplayOptions {
 
 #[derive(Debug, Clone)]
 pub struct DisplayGraph<'a> {
-    model: &'a Model,
+    model: &'a dyn Model,
     pub options: Arc<DisplayOptions>,
     node_color: HashMap<usize, Style>,
     node_labels: HashMap<usize, Vec<String>>,
@@ -167,7 +167,7 @@ impl<'a> DisplayGraph<'a> {
     }
 
     pub fn from_model_and_options(
-        model: &'a Model,
+        model: &'a dyn Model,
         options: Arc<DisplayOptions>,
     ) -> CliResult<DisplayGraph<'a>> {
         let mut node_nested_graphs = HashMap::new();

@@ -34,12 +34,12 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Placeholder", |_, _| Ok(Box::new(::tract_core::ops::source::Source::new())));
 }
 
-fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = node.get_attr_datum_type("DstT")?;
     Ok(Box::new(::tract_core::ops::cast::Cast::new(dtype)))
 }
 
-fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+fn konst(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let dtype = node.get_attr_datum_type("dtype")?;
     let mat = node.get_attr_tensor("value")?;
 

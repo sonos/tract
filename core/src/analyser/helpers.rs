@@ -3,7 +3,7 @@ use crate::model::TVec;
 
 /// Infers every possible fact when all the values are concrete.
 pub fn infer_forward_concrete(
-    op: &Op,
+    op: &dyn Op,
     inputs: &Vec<&TensorFact>,
 ) -> TractResult<Option<TVec<TensorFact>>> {
     let input_values: TVec<_> =
@@ -84,7 +84,7 @@ pub fn infer_shape_broadcasting(shapes: &[&ShapeFact]) -> TractResult<Option<Sha
 
 /// Infers basic facts in the case of unary or binary operators.
 pub fn infer_forward_basic(
-    op: &Op,
+    op: &dyn Op,
     inputs: Vec<&TensorFact>,
 ) -> TractResult<Option<TVec<TensorFact>>> {
     if let Some(output) = infer_forward_concrete(op, &inputs)? {

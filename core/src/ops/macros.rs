@@ -1,11 +1,11 @@
 #[macro_export]
 macro_rules! inference_op_as_op {
     () => {
-        fn as_op(&self) -> &Op {
+        fn as_op(&self) -> &dyn Op {
             self
         }
 
-        fn as_op_mut(&mut self) -> &mut Op {
+        fn as_op_mut(&mut self) -> &mut dyn Op {
             self
         }
     }
@@ -633,7 +633,7 @@ macro_rules! dispatch_floatlike {
 #[macro_export]
 macro_rules! impl_op_same_as {
     () => {
-        fn same_as(&self, other: &Op) -> bool {
+        fn same_as(&self, other: &dyn Op) -> bool {
             if let Some(other) = other.downcast_ref::<Self>() {
                 self == other
             } else {

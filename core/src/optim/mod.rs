@@ -16,15 +16,15 @@ pub trait TypedPass: Debug + Send + Sync {
     fn pass(&self, model: &mut TypedModel) -> TractResult<bool>;
 }
 
-pub fn incorporate() -> Vec<Box<IncorporatePass>> {
+pub fn incorporate() -> Vec<Box<dyn IncorporatePass>> {
     vec![Box::new(IncorporateOps)]
 }
 
-pub fn declutter() -> Vec<Box<TypedPass>> {
+pub fn declutter() -> Vec<Box<dyn TypedPass>> {
     vec![Box::new(PropConst) as _, Box::new(NormalizeOps), Box::new(PushSplitDown)]
 }
 
-pub fn codegen() -> Vec<Box<TypedPass>> {
+pub fn codegen() -> Vec<Box<dyn TypedPass>> {
     vec![Box::new(CodegenOps), Box::new(PushSplitDown)]
 }
 

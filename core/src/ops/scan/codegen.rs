@@ -15,7 +15,7 @@ impl Op for Codegen {
         "Codegen".into()
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
+    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), self.plan.model())]
     }
 }
@@ -25,7 +25,7 @@ impl StatefullOp for Codegen {
         &self,
         _session: &mut SessionState,
         _node_id: usize,
-    ) -> TractResult<Option<Box<OpState>>> {
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State {
             position: 0,
             hidden_state: tvec!(),
@@ -95,7 +95,7 @@ impl OpState for State {
     fn eval(
         &mut self,
         _session: &mut SessionState,
-        op: &Op,
+        op: &dyn Op,
         inputs: TVec<Arc<Tensor>>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let mut _codegen_op_holder = None;

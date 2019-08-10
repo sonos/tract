@@ -24,7 +24,7 @@ where
     pub packed_kernels: Vec<Tensor>,
     pub bias: Option<ArrayD<T>>,
     pub group: usize,
-    pub vmm: Box<VecMatMul<T>>,
+    pub vmm: Box<dyn VecMatMul<T>>,
 }
 
 impl<T> VecMat<T>

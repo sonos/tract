@@ -12,11 +12,11 @@ impl Op for Inference {
         "Scan::Inference".into()
     }
 
-    fn nested_models(&self) -> Vec<(Cow<str>, &Model)> {
+    fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), &self.body)]
     }
 
-    fn to_typed(&self) -> TractResult<Option<Box<Op>>> {
+    fn to_typed(&self) -> TractResult<Option<Box<dyn Op>>> {
         let typed_model = self.body.clone().into_typed()?;
         let input_mapping = self
             .input_mapping

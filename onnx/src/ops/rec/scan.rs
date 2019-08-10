@@ -7,7 +7,7 @@ use tract_core::ops::scan::Inference;
 pub fn scan(
     ctx: &ParsingContext,
     node: &NodeProto,
-) -> TractResult<(Box<InferenceOp>, Vec<String>)> {
+) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let num_scan_inputs = node.get_attr("num_scan_inputs")?;
     let graph: &GraphProto = node.get_attr("body")?;
     let ParseResult { mut model, unresolved_inputs, .. } = ctx.parse_graph(graph)?;

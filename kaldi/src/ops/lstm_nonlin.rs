@@ -2,7 +2,7 @@ use crate::model::NodeLine;
 use crate::model::ParsingContext;
 use tract_core::internal::*;
 
-pub fn lstm_nonlin(ctx: &ParsingContext, name: &str) -> TractResult<Box<InferenceOp>> {
+pub fn lstm_nonlin(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn InferenceOp>> {
     let node = &ctx.proto_model.config_lines.nodes.iter().find(|l| l.0 == name);
     let line = if let Some((_, NodeLine::Component(line))) = node {
         line

@@ -6,7 +6,7 @@ use tract_core::internal::*;
 use tract_core::ops::nn::sigmoid::sigmoid_f32;
 use tract_core::ops::nn::tanh::tanh_f32;
 
-pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<InferenceOp>> {
+pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);
     let cell_clip = node.get_attr_opt_float("cell_clip")?.unwrap_or(3.0);
     let t = node.get_attr_datum_type("T")?;

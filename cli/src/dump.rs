@@ -8,7 +8,7 @@ pub fn handle(params: Parameters, options: DisplayOptions, _inner:Vec<String>) -
     handle_model(&**tract, &params, options)
 }
 
-pub fn handle_model(model: &Model, params: &Parameters, options: DisplayOptions) -> CliResult<()> {
+pub fn handle_model(model: &dyn Model, params: &Parameters, options: DisplayOptions) -> CliResult<()> {
     let display_graph =
         DisplayGraph::from_model_and_options(model, Arc::new(options))?.with_graph_def(&params.graph)?;
     display_graph.render()?;

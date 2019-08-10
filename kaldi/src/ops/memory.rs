@@ -25,7 +25,7 @@ impl Op for Memory {
 }
 
 impl StatefullOp for Memory {
-    fn state(&self, _session: &mut SessionState, _id: usize) -> TractResult<Option<Box<OpState>>> {
+    fn state(&self, _session: &mut SessionState, _id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         unimplemented!()
     }
 }

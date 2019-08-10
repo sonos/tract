@@ -80,7 +80,7 @@ impl Problem {
         Box::new(unary.unwrap())
     }
 
-    pub fn to_direct(&self) -> SimplePlan<TypedTensorInfo, Box<Op>, TypedModel> {
+    pub fn to_direct(&self) -> SimplePlan<TypedTensorInfo, Box<dyn Op>, TypedModel> {
         let unary = self.to_unary();
 
         let direct = unary.to_direct(&*self.image_shape()).unwrap();
@@ -90,7 +90,7 @@ impl Problem {
         SimplePlan::new(model_direct).unwrap()
     }
 
-    pub fn to_im2col(&self) -> SimplePlan<TypedTensorInfo, Box<Op>, TypedModel> {
+    pub fn to_im2col(&self) -> SimplePlan<TypedTensorInfo, Box<dyn Op>, TypedModel> {
         let unary = self.to_unary();
         let output_shape:TVec<usize> = unary.full_output_shape.iter().map(|a| a.to_integer().unwrap() as usize).collect();
 
