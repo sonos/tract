@@ -186,7 +186,7 @@ pub mod test {
             b: &null_packed_storage(),
             c: &mut c,
             linear: &LinearSpec::Mul { k: 0 },
-            non_linear: &NonLinearSpec::Done,
+            non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
         assert!(v.iter().all(|&a| a.is_zero()));
@@ -226,7 +226,7 @@ pub mod test {
             b: &TileStorageSpec::Packed { ptr: pb.as_ptr() },
             c: &mut c,
             linear: &LinearSpec::Mul { k },
-            non_linear: &[NonLinearSpec::Done] as _,
+            non_linear: std::ptr::null(),
         });
         assert_eq!(err, 0);
         assert!(v.iter().all(|&a| a == (k as f32).into()));

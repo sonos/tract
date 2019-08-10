@@ -21,8 +21,8 @@ fn has_neon() -> bool {
 
 pub fn plug(ops: &mut Ops) {
     if has_neon() {
+        log::info!("armv7neon activated for stile");
         ops.stile = Box::new(|m, k, n| {
-            log::info!("armv7neon activated for stile");
             Box::new(TileOp::<armv7neon::STile8x4, f32>::new(m, k, n))
         });
     } else {
