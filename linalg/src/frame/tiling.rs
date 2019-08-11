@@ -64,12 +64,19 @@ where
         }
     }
 
-    unsafe fn set(&mut self, row: usize, col: usize, val: T) {
+    unsafe fn set_from_tile(&mut self, down: usize, right: usize, height:usize, width: usize, tile: &[T]) {
         match self {
-            StorageSpec::Strides { ptr, row_byte_stride, col_byte_stride, .. } => {
-                *(((*ptr as isize)
-                    + (*row_byte_stride as usize * row + *col_byte_stride as usize * col) as isize)
-                    as *mut T) = val;
+            StorageSpec::Strides { ptr, row_byte_stride, col_byte_stride, mr, nr } => {
+                for y in 0..height {
+                    for x in 0..width {
+                        let ptr = ((*ptr as isize)
+                            + (*row_byte_stride as usize * (down * *mr + y)
+                                + *col_byte_stride as usize * (right * *nr + x))
+                                as isize) as *mut T;
+                        let value = *tile.get_unchecked(y * *nr + x);
+                        *ptr = value;
+                    }
+                }
             }
             _ => unimplemented!(),
         }
@@ -160,13 +167,28 @@ where
         rows_offsets: &[isize],
         cols_offsets: &[isize],
     ) -> StorageSpec<T> {
-        let mut col_ptrs: Vec<_> = cols_offsets.iter().map(|&co| data.offset(co)).collect();
-        let wanted = (col_ptrs.len() + K::nr() - 1) / K::nr() * K::nr();
-        while col_ptrs.len() < wanted {
-            col_ptrs.push(col_ptrs[col_ptrs.len() - 1]);
+        debug_assert!(rows_offsets.len() > 0);
+        debug_assert!(cols_offsets.len() > 0);
+        let wanted = (cols_offsets.len() + K::nr() - 1) / K::nr() * K::nr();
+        let mut col_ptrs: Vec<_> = Vec::with_capacity(wanted);
+        col_ptrs.set_len(wanted);
+        for i in 0..cols_offsets.len() {
+            *col_ptrs.get_unchecked_mut(i) = data.offset(*cols_offsets.get_unchecked(i));
         }
-        let row_byte_offsets: Vec<_> =
-            rows_offsets.iter().map(|&ro| ro * std::mem::size_of::<T>() as isize).collect();
+        let pad = *col_ptrs.get_unchecked(cols_offsets.len() - 1);
+        for i in cols_offsets.len()..wanted {
+            *col_ptrs.get_unchecked_mut(i) = pad;
+        }
+        // repeat the last offset four times to simplify kernel loop unrolling
+        let mut row_byte_offsets: Vec<_> = Vec::with_capacity(rows_offsets.len() + 4);
+        row_byte_offsets.set_len(rows_offsets.len()+4);
+        for i in 0..rows_offsets.len() {
+            *row_byte_offsets.get_unchecked_mut(i) = *rows_offsets.get_unchecked(i) * std::mem::size_of::<T>() as isize;
+        }
+        let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
+        for i in 0..4 {
+            *row_byte_offsets.get_unchecked_mut(rows_offsets.len()+i) = pad;
+        }
         StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
     }
 
@@ -208,9 +230,7 @@ where
                     linear,
                     non_linear,
                 });
-                if err != 0 {
-                    panic!("Kernel return error {}", err);
-                }
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
@@ -222,14 +242,8 @@ where
                     linear,
                     non_linear,
                 });
-                if err != 0 {
-                    panic!("Kernel return error {}", err);
-                }
-                for y in 0..mr {
-                    for x in 0..(n % nr) {
-                        c.set(mr * ia + y, x + n / nr * nr, tmpc[y * nr + x])
-                    }
-                }
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                c.set_from_tile(ia, n/nr, mr, n%nr, &*tmpc);
             }
         }
         if m % mr != 0 {
@@ -244,14 +258,8 @@ where
                     linear,
                     non_linear,
                 });
-                if err != 0 {
-                    panic!("Kernel return error {}", err);
-                }
-                for y in 0..(m % mr) {
-                    for x in 0..nr {
-                        c.set(m / mr * mr + y, x + ib * nr, tmpc[y * nr + x])
-                    }
-                }
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                c.set_from_tile(m/mr, ib, m%mr, nr, &*tmpc);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
@@ -262,14 +270,8 @@ where
                     linear,
                     non_linear,
                 });
-                if err != 0 {
-                    panic!("Kernel return error {}", err);
-                }
-                for y in 0..(m % mr) {
-                    for x in 0..(n % nr) {
-                        c.set(m / mr * mr + y, x + n / nr * nr, tmpc[y * nr + x])
-                    }
-                }
+                debug_assert_eq!(err, 0, "Kernel return error {}", err);
+                c.set_from_tile(m/mr, n/nr, m%mr, n%nr, &*tmpc);
             }
         }
     }
