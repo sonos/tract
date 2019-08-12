@@ -12,7 +12,7 @@ where
     pub b: *const TileStorageSpec<T>,
     pub c: *const TileStorageSpec<T>,
     pub linear: *const LinearSpec,
-    pub non_linear: *const NonLinearSpec<T>,
+    pub non_linear: *const NonLinearUSpec<T>,
 }
 
 #[repr(C, usize)]
@@ -24,7 +24,7 @@ pub enum LinearSpec {
 
 #[repr(C, usize)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum NonLinearSpec<T>
+pub enum NonLinearUSpec<T>
 where
     T: Copy + Clone + Debug + Add + Mul + Zero,
 {
@@ -32,6 +32,8 @@ where
     Min(T),
     Max(T),
     AddC,
+    PerRowMul(*const T),
+    PerRowAdd(*const T),
 }
 
 #[repr(C, usize)]
@@ -73,7 +75,7 @@ pub mod test {
     #[test]
     fn check_non_linear_enum_size() {
         assert_eq!(
-            std::mem::size_of::<super::NonLinearSpec<f32>>(),
+            std::mem::size_of::<super::NonLinearUSpec<f32>>(),
             2 * std::mem::size_of::<usize>()
         )
     }
@@ -97,6 +99,20 @@ pub mod test {
                 fn return_c() {
                     if $cond {
                         test::return_c::<$ker, $t>()
+                    }
+                }
+
+                #[test]
+                fn return_c_mul_row() {
+                    if $cond {
+                        test::return_c_mul_row::<$ker, $t>()
+                    }
+                }
+
+                #[test]
+                fn return_c_add_row() {
+                    if $cond {
+                        test::return_c_add_row::<$ker, $t>()
                     }
                 }
 
@@ -212,10 +228,64 @@ pub mod test {
             b: &null_packed_storage(),
             c: &mut c,
             linear: &LinearSpec::Mul { k: 0 },
-            non_linear: &[NonLinearSpec::AddC, NonLinearSpec::Done] as _,
+            non_linear: &[NonLinearUSpec::AddC, NonLinearUSpec::Done] as _,
         });
         assert_eq!(err, 0);
         assert!(v.iter().enumerate().all(|(ix, &a)| a == (ix as f32).into()));
+    }
+
+    pub fn return_c_mul_row<K, T>()
+    where
+        K: TilingKer<T>,
+        T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
+    {
+        let len = K::mr() * K::nr();
+        let mut v: Vec<T> = (0..len).map(|f| (f as f32).into()).collect();
+        let bias: Vec<T> = (0..K::mr()).map(|f| (f as f32).into()).collect();
+        let mut c = tile_stride_storage(&mut v, K::nr());
+        let err = K::kernel(&TileOpSpec {
+            a: &null_packed_storage(),
+            b: &null_packed_storage(),
+            c: &mut c,
+            linear: &LinearSpec::Mul { k: 0 },
+            non_linear: &[
+                NonLinearUSpec::AddC,
+                NonLinearUSpec::PerRowMul(bias.as_ptr()),
+                NonLinearUSpec::Done,
+            ] as _,
+        });
+        assert_eq!(err, 0);
+        assert!(v.iter().enumerate().all(|(ix, &a)| {
+            let row = ix / K::nr();
+            a == T::from(ix as f32) * bias[row]
+        }));
+    }
+
+    pub fn return_c_add_row<K, T>()
+    where
+        K: TilingKer<T>,
+        T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
+    {
+        let len = K::mr() * K::nr();
+        let mut v: Vec<T> = (0..len).map(|f| (f as f32).into()).collect();
+        let bias: Vec<T> = (0..K::mr()).map(|f| (f as f32).into()).collect();
+        let mut c = tile_stride_storage(&mut v, K::nr());
+        let err = K::kernel(&TileOpSpec {
+            a: &null_packed_storage(),
+            b: &null_packed_storage(),
+            c: &mut c,
+            linear: &LinearSpec::Mul { k: 0 },
+            non_linear: &[
+                NonLinearUSpec::AddC,
+                NonLinearUSpec::PerRowAdd(bias.as_ptr()),
+                NonLinearUSpec::Done,
+            ] as _,
+        });
+        assert_eq!(err, 0);
+        assert!(v.iter().enumerate().all(|(ix, &a)| {
+            let row = ix / K::nr();
+            a == T::from(ix as f32) + bias[row]
+        }));
     }
 
     pub fn packed_packed<K, T>(k: usize)

@@ -91,8 +91,8 @@ impl TilingKer<f32> for STiling4x4 {
                     break;
                 }
                 match *pnl {
-                    NonLinearSpec::Done => break,
-                    NonLinearSpec::AddC => {
+                    NonLinearUSpec::Done => break,
+                    NonLinearUSpec::AddC => {
                         match *spec.c {
                             Strides { ptr: c, row_byte_stride, col_byte_stride } => {
                                 let rsc = row_byte_stride as usize / 4;
@@ -118,7 +118,36 @@ impl TilingKer<f32> for STiling4x4 {
                             _ => return 1
                         }
                     }
-                    _ => return 1
+                    NonLinearUSpec::PerRowMul(bias) => {
+                        for i in 0..4 {
+                            ab[i][0] *= *bias.offset(i as isize);
+                            ab[i][1] *= *bias.offset(i as isize);
+                            ab[i][2] *= *bias.offset(i as isize);
+                            ab[i][3] *= *bias.offset(i as isize);
+                        }
+                    }
+                    NonLinearUSpec::PerRowAdd(bias) => {
+                        for i in 0..4 {
+                            ab[i][0] += *bias.offset(i as isize);
+                            ab[i][1] += *bias.offset(i as isize);
+                            ab[i][2] += *bias.offset(i as isize);
+                            ab[i][3] += *bias.offset(i as isize);
+                        }
+                    }
+                    NonLinearUSpec::Min(m) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].min(m)
+                            }
+                        }
+                    }
+                    NonLinearUSpec::Max(m) => {
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                ab[i][j] = ab[i][j].max(m)
+                            }
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }
@@ -218,8 +247,8 @@ impl TilingKer<f32> for STilingTest3x2 {
                     break;
                 }
                 match *pnl {
-                    NonLinearSpec::Done => break,
-                    NonLinearSpec::AddC => {
+                    NonLinearUSpec::Done => break,
+                    NonLinearUSpec::AddC => {
                         match *spec.c {
                             Strides { ptr: c, row_byte_stride, col_byte_stride } => {
                                 let rsc = row_byte_stride as usize / 4;
@@ -235,7 +264,32 @@ impl TilingKer<f32> for STilingTest3x2 {
                             _ => return 1
                         }
                     }
-                    _ => return 1
+                    NonLinearUSpec::PerRowMul(bias) => {
+                        for i in 0..3 {
+                            ab[i][0] *= *bias.offset(i as isize);
+                            ab[i][1] *= *bias.offset(i as isize);
+                        }
+                    }
+                    NonLinearUSpec::PerRowAdd(bias) => {
+                        for i in 0..3 {
+                            ab[i][0] += *bias.offset(i as isize);
+                            ab[i][1] += *bias.offset(i as isize);
+                        }
+                    }
+                    NonLinearUSpec::Min(m) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] = ab[i][j].min(m)
+                            }
+                        }
+                    }
+                    NonLinearUSpec::Max(m) => {
+                        for i in 0..3 {
+                            for j in 0..2 {
+                                ab[i][j] = ab[i][j].max(m)
+                            }
+                        }
+                    }
                 }
                 pnl = pnl.add(1);
             }

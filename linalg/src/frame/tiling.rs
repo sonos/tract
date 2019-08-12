@@ -64,7 +64,14 @@ where
         }
     }
 
-    unsafe fn set_from_tile(&mut self, down: usize, right: usize, height:usize, width: usize, tile: &[T]) {
+    unsafe fn set_from_tile(
+        &mut self,
+        down: usize,
+        right: usize,
+        height: usize,
+        width: usize,
+        tile: &[T],
+    ) {
         match self {
             StorageSpec::Strides { ptr, row_byte_stride, col_byte_stride, mr, nr } => {
                 for y in 0..height {
@@ -79,6 +86,37 @@ where
                 }
             }
             _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum NonLinearSpec<T>
+where
+    T: Copy + Clone + Debug + Add + Mul + Zero,
+{
+    Min(T),
+    Max(T),
+    AddC,
+    PerRowMul(Vec<T>),
+    PerRowAdd(Vec<T>),
+}
+
+impl<T> NonLinearSpec<T>
+where
+    T: Copy + Clone + Debug + Add + Mul + Zero,
+{
+    unsafe fn micro<K: TilingKer<T>>(&self, down: usize, _right: usize) -> NonLinearUSpec<T> {
+        match self {
+            NonLinearSpec::Min(m) => NonLinearUSpec::Min(*m),
+            NonLinearSpec::Max(m) => NonLinearUSpec::Max(*m),
+            NonLinearSpec::AddC => NonLinearUSpec::AddC,
+            NonLinearSpec::PerRowMul(v) => {
+                NonLinearUSpec::PerRowMul(v.as_ptr().add(down * K::mr()))
+            }
+            NonLinearSpec::PerRowAdd(v) => {
+                NonLinearUSpec::PerRowAdd(v.as_ptr().add(down * K::mr()))
+            }
         }
     }
 }
@@ -111,7 +149,13 @@ where
         col_stride: isize,
     ) -> StorageSpec<T>;
 
-    unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>);
+    unsafe fn run(
+        &self,
+        a: &StorageSpec<T>,
+        b: &StorageSpec<T>,
+        c: &mut StorageSpec<T>,
+        non_linear: &[NonLinearSpec<T>],
+    );
 }
 
 clone_trait_object!(<T> Tile<T> where T: Copy + Add + Mul + Zero);
@@ -181,13 +225,14 @@ where
         }
         // repeat the last offset four times to simplify kernel loop unrolling
         let mut row_byte_offsets: Vec<_> = Vec::with_capacity(rows_offsets.len() + 4);
-        row_byte_offsets.set_len(rows_offsets.len()+4);
+        row_byte_offsets.set_len(rows_offsets.len() + 4);
         for i in 0..rows_offsets.len() {
-            *row_byte_offsets.get_unchecked_mut(i) = *rows_offsets.get_unchecked(i) * std::mem::size_of::<T>() as isize;
+            *row_byte_offsets.get_unchecked_mut(i) =
+                *rows_offsets.get_unchecked(i) * std::mem::size_of::<T>() as isize;
         }
         let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
         for i in 0..4 {
-            *row_byte_offsets.get_unchecked_mut(rows_offsets.len()+i) = pad;
+            *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
         }
         StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
     }
@@ -207,7 +252,13 @@ where
         }
     }
 
-    unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>) {
+    unsafe fn run(
+        &self,
+        a: &StorageSpec<T>,
+        b: &StorageSpec<T>,
+        c: &mut StorageSpec<T>,
+        non_linear: &[NonLinearSpec<T>],
+    ) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
@@ -217,33 +268,49 @@ where
         let ref mut tmp_tile = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
         let linear = LinearSpec::Mul { k };
         let linear = (&linear) as *const LinearSpec;
-        let non_linear = std::ptr::null();
+        let mut non_linear_micro = vec![NonLinearUSpec::Done; non_linear.len() + 1];
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 let ref tile_c = c.tile(ia, ib);
+                for i in 0..non_linear.len() {
+                    *non_linear_micro.get_unchecked_mut(i) =
+                        non_linear.get_unchecked(i).micro::<K>(ia, ib);
+                }
                 let err = K::kernel(&TileOpSpec {
                     a: a as _,
                     b: b as _,
                     c: tile_c as _,
                     linear,
-                    non_linear,
+                    non_linear: if non_linear.len() == 0 {
+                        std::ptr::null()
+                    } else {
+                        non_linear_micro.as_ptr()
+                    },
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
                 let ref tmp_tile_c = tmp_tile.tile(0, 0);
+                for i in 0..non_linear.len() {
+                    *non_linear_micro.get_unchecked_mut(i) =
+                        non_linear.get_unchecked(i).micro::<K>(ia, n / nr);
+                }
                 let err = K::kernel(&TileOpSpec {
                     a: a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
-                    non_linear,
+                    non_linear: if non_linear.len() == 0 {
+                        std::ptr::null()
+                    } else {
+                        non_linear_micro.as_ptr()
+                    },
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(ia, n/nr, mr, n%nr, &*tmpc);
+                c.set_from_tile(ia, n / nr, mr, n % nr, &*tmpc);
             }
         }
         if m % mr != 0 {
@@ -251,27 +318,43 @@ where
             let ref tmp_tile_c = tmp_tile.tile(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
+                for i in 0..non_linear.len() {
+                    *non_linear_micro.get_unchecked_mut(i) =
+                        non_linear.get_unchecked(i).micro::<K>(m / mr, ib);
+                }
                 let err = K::kernel(&TileOpSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
-                    non_linear,
+                    non_linear: if non_linear.len() == 0 {
+                        std::ptr::null()
+                    } else {
+                        non_linear_micro.as_ptr()
+                    },
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(m/mr, ib, m%mr, nr, &*tmpc);
+                c.set_from_tile(m / mr, ib, m % mr, nr, &*tmpc);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
+                for i in 0..non_linear.len() {
+                    *non_linear_micro.get_unchecked_mut(i) =
+                        non_linear.get_unchecked(i).micro::<K>(m / mr, n / nr);
+                }
                 let err = K::kernel(&TileOpSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
-                    non_linear,
+                    non_linear: if non_linear.len() == 0 {
+                        std::ptr::null()
+                    } else {
+                        non_linear_micro.as_ptr()
+                    },
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(m/mr, n/nr, m%mr, n%nr, &*tmpc);
+                c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &*tmpc);
             }
         }
     }
@@ -350,6 +433,34 @@ pub mod test {
                         check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
                     }
                 }
+
+                #[test]
+                fn bias_mul_2_1_3() {
+                    if $cond {
+                        unsafe { bias_mul::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn bias_add_2_1_3() {
+                    if $cond {
+                        unsafe { bias_add::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn max_2_1_3() {
+                    if $cond {
+                        unsafe { max::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn min_2_1_3() {
+                    if $cond {
+                        unsafe { min::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
             }
         };
     }
@@ -391,6 +502,7 @@ pub mod test {
                 &op.a_from_packed(packed_a.as_ptr()),
                 &op.b_from_packed(packed_b.as_ptr()),
                 &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
+                &[],
             );
 
             let mut expected = vec![0.0f32; m * n];
@@ -410,6 +522,103 @@ pub mod test {
             );
         }
         Ok(())
+    }
+
+    pub unsafe fn fused_op<K: TilingKer<f32>, F: Fn(&mut [f32])>(
+        m: usize,
+        k: usize,
+        n: usize,
+        spec: &[NonLinearSpec<f32>],
+        expect: F,
+    ) -> proptest::test_runner::TestCaseResult {
+        let a = vec![1.0f32; m];
+        let b = vec![1.0f32; n];
+        let op = TileOp::<K, f32>::new(m, k, n);
+
+        let mut packed_a: Vec<f32> =
+            align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+        op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+
+        let mut packed_b: Vec<f32> =
+            align::uninitialized(op.b_pack().len(), op.b_pack().alignment());
+        op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+
+        let mut found = vec![9999.0f32; m * n];
+
+        op.run(
+            &op.a_from_packed(packed_a.as_ptr()),
+            &op.b_from_packed(packed_b.as_ptr()),
+            &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
+            spec,
+        );
+
+        let mut expected = vec![0.0f32; m * n];
+        for x in 0..n {
+            for y in 0..m {
+                for i in 0..k {
+                    expected[x + y * n] += a[i + k * y] * b[x + i * n]
+                }
+            }
+        }
+        expect(&mut expected);
+
+        proptest::prop_assert!(
+            found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
+            "found: {:?} expected: {:?}",
+            found,
+            expected
+        );
+        Ok(())
+    }
+
+    pub unsafe fn bias_add<K: TilingKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerRowAdd(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] += bias[y]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn bias_mul<K: TilingKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerRowMul(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] *= bias[y]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn max<K: TilingKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        fused_op::<K, _>(m, k, n, &[NonLinearSpec::Max(5f32)], |exp| {
+            exp.iter_mut().for_each(|x| *x = x.max(5f32))
+        })
+    }
+
+    pub unsafe fn min<K: TilingKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        fused_op::<K, _>(m, k, n, &[NonLinearSpec::Min(5f32)], |exp| {
+            exp.iter_mut().for_each(|x| *x = x.min(5f32))
+        })
     }
 
     #[derive(Clone, Debug)]
@@ -493,6 +702,7 @@ pub mod test {
                         &self.data_cols_offsets(),
                     ),
                     &mut op.c_from_data_and_strides(found.as_mut_ptr(), self.n() as isize, 1),
+                    &[],
                 );
                 found
             }

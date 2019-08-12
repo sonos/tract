@@ -56,6 +56,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
                     c.strides()[prefix.ndim()],
                     c.strides()[prefix.ndim() + 1],
                 ),
+                &[],
             );
         }
     }
@@ -346,6 +347,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
                 &self.geo.mm.a_from_packed(pa.as_ptr()?),
                 &self.geo.mm.b_from_packed(self.packed_b.as_ptr()?),
                 &mut self.geo.mm.c_from_data_and_strides(c.as_mut_ptr(), self.geo.n as isize, 1),
+                &[],
             );
             Ok(tvec!(c.into_arc_tensor()))
         }
@@ -446,6 +448,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
                         c.strides()[prefix.ndim()],
                         c.strides()[prefix.ndim() + 1],
                     ),
+                    &[],
                 );
             }
         }

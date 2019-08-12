@@ -167,8 +167,57 @@ fma_stile16x6 proc
 
     mov     rcx,    [rdi + 32]          // non linear spec
     test    rcx,    rcx
-    jz      {{L}}store
+    jnz     {{L}}non_linear_loop_enter
 
+{{L}}store:
+    mov     rcx,    [rdi + 16]
+
+    // FIXME: assume Strides storage
+    mov     r8,     [rcx + 8]           // c ptr
+    mov     rsi,    [rcx + 16]          // row stride
+    mov     rbx,    [rcx + 24]          // col stride
+
+    // tops of cols
+    lea     r9,     [ r8 + rbx ]
+    lea     r10,    [ r8 + 2 * rbx ]
+    lea     r12,    [ r8 + 4 * rbx ]
+    lea     r11,    [ r10 + rbx ]
+    lea     r13,    [ r12 + rbx ]
+
+    {% for quarter in (0..3) %}
+        {% if quarter != 0 %}
+            // move next four rows at top (xmm0,2,..10)
+            vperm2f128  ymm0,   ymm0,   ymm1,  {{quarter}}
+            vperm2f128  ymm2,   ymm2,   ymm3,  {{quarter}}
+            vperm2f128  ymm4,   ymm4,   ymm5,  {{quarter}}
+            vperm2f128  ymm6,   ymm6,   ymm7,  {{quarter}}
+            vperm2f128  ymm8,   ymm8,   ymm9,  {{quarter}}
+            vperm2f128  ymm10,  ymm10,  ymm11, {{quarter}}
+        {% endif %}
+        {% for row in (0..3) %}
+            {% for i in (0..5) %}
+                vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | times:2}}, {{row}}
+                add         r{{i | plus: 8}}, rsi
+            {% endfor %}
+        {% endfor %}
+    {% endfor %}
+
+    mov     rax,    0
+
+{{L}}return:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+
+{{L}}unimplemented:
+    mov     rax,    1
+    jmp     {{L}}return
+
+{{L}}non_linear_loop_enter:
     sub     rcx,    16
 {{L}}non_linear_loop:
     add     rcx,    16
@@ -177,8 +226,20 @@ fma_stile16x6 proc
     cmp     rax,    0
     je      {{L}}store
 
+    cmp     rax,    1
+    je      {{L}}min
+
+    cmp     rax,    2
+    je      {{L}}max
+
     cmp     rax,    3
     je      {{L}}non_linear_addc
+
+    cmp     rax,    4
+    je      {{L}}per_row_mul
+
+    cmp     rax,    5
+    je      {{L}}per_row_add
 
     jmp     {{L}}unimplemented
 
@@ -217,54 +278,46 @@ fma_stile16x6 proc
 
     jmp    {{L}}non_linear_loop
 
-{{L}}store:
-    mov     rcx,    [rdi + 16]
+{{L}}max:
+    vbroadcastss    ymm12, [rcx + 8]
+{% for i in (0..11) %}
+    vmaxps          ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+    jmp    {{L}}non_linear_loop
 
-    // FIXME: assume Strides storage
-    mov     r8,     [rcx + 8]           // c ptr
-    mov     rsi,    [rcx + 16]          // row stride
-    mov     rbx,    [rcx + 24]          // col stride
+{{L}}min:
+    vbroadcastss    ymm12, [rcx + 8]
+{% for i in (0..11) %}
+    vminps          ymm{{i}}, ymm{{i}}, ymm12
+{% endfor %}
+    jmp    {{L}}non_linear_loop
 
-    // tops of cols
-    lea     r9,     [ r8 + rbx ]
-    lea     r10,    [ r8 + 2 * rbx ]
-    lea     r12,    [ r8 + 4 * rbx ]
-    lea     r11,    [ r10 + rbx ]
-    lea     r13,    [ r12 + rbx ]
+{{L}}per_row_mul:
+    mov             rax, [ rcx + 8 ]
 
-    {% for quarter in (0..3) %}
-        {% if quarter != 0 %}
-            // move next four rows at top (xmm0,2,..10)
-            vperm2f128  ymm0,   ymm0,   ymm1,  {{quarter}}
-            vperm2f128  ymm2,   ymm2,   ymm3,  {{quarter}}
-            vperm2f128  ymm4,   ymm4,   ymm5,  {{quarter}}
-            vperm2f128  ymm6,   ymm6,   ymm7,  {{quarter}}
-            vperm2f128  ymm8,   ymm8,   ymm9,  {{quarter}}
-            vperm2f128  ymm10,  ymm10,  ymm11, {{quarter}}
-        {% endif %}
-        {% for row in (0..3) %}
-            {% for i in (0..5) %}
-                vextractps  dword ptr [r{{i | plus: 8}}], xmm{{i | times:2}}, {{row}}
-                add         r{{i | plus: 8}}, rsi
-            {% endfor %}
-        {% endfor %}
-    {% endfor %}
+    vmovups         ymm12,  [rax]
+    vmovups         ymm13,  [rax + 32]
 
-{{L}}ok:
-    mov     rax,    0
-    jmp     {{L}}return
+{% for i in (0..6) %}
+    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
+{% endfor %}
 
-{{L}}unimplemented:
-    mov     rax,    1
+    jmp    {{L}}non_linear_loop
 
-{{L}}return:
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop rbx
-    pop rbp
-    ret
+{{L}}per_row_add:
+    mov             rax, [ rcx + 8 ]
+
+    vmovups         ymm12,  [rax]
+    vmovups         ymm13,  [rax + 32]
+
+{% for i in (0..6) %}
+    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
 {% if family == "windows" %}
 fma_stile16x6 endp
 _text ends

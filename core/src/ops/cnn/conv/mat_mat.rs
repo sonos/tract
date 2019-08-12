@@ -90,6 +90,7 @@ where
                                 .offset(((self.group * i + g) * packed_b_len) as isize),
                         ),
                         &mut self.tile.c_from_data_and_strides(output_i_g, rsc, csc),
+                        &[]
                     );
                 }
             }

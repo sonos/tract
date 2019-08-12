@@ -127,7 +127,7 @@ impl ConvUnary {
             kernel.strides()[2],
         );
 
-        Ok(super::Direct::new(conv, data_offsets, kernel_offsets, input_shape, output_shape, packed))
+        Ok(super::Direct::new(conv, data_offsets, kernel_offsets, input_shape, output_shape, packed, vec!()))
     }
 
     fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {

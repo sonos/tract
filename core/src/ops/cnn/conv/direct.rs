@@ -2,6 +2,7 @@ use crate::internal::*;
 use crate::ops::nn::DataShape;
 use ndarray::prelude::*;
 use tract_linalg::Tile;
+use tract_linalg::NonLinearSpec;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {
@@ -11,6 +12,7 @@ pub struct Direct {
     input_shape: DataShape,
     output_shape: DataShape,
     packed_filters: Tensor,
+    non_linear_fused_op: Vec<NonLinearSpec<f32>>,
 }
 
 impl Direct {
@@ -19,13 +21,72 @@ impl Direct {
     }
 }
 
+
+
 impl Op for Direct {
     fn name(&self) -> Cow<str> {
         "ConvDirect".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.tile)))
+        let mut info = vec!(format!("{:?}", self.tile));
+        for op in &self.non_linear_fused_op {
+            info.push(format!(" + {:?}", op));
+        }
+        Ok(info)
+    }
+
+    fn fuse(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(succ) = model.single_succ(node.id)? {
+            if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
+                if op.b.shape() == &[*self.output_shape.c()] {
+                    let mut ops = self.non_linear_fused_op.clone();
+                    ops.push(NonLinearSpec::PerRowMul(op.b.as_slice::<f32>()?.to_vec()));
+                    let mut patch = TypedModelPatch::default();
+                    patch.tap_model(&model, node.inputs[0])?;
+                    let id = patch.chain(&*node.name,
+                        Direct {
+                            non_linear_fused_op: ops,
+                            .. self.clone()
+                        }, tvec!(succ.outputs[0].fact.clone()))?;
+                    patch.shunt_outside(OutletId::new(succ.id, 0), OutletId::new(id, 0))?;
+                    return Ok(Some(patch))
+                }
+            }
+            if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
+                if op.b.shape() == &[*self.output_shape.c()] {
+                    let mut ops = self.non_linear_fused_op.clone();
+                    ops.push(NonLinearSpec::PerRowAdd(op.b.as_slice::<f32>()?.to_vec()));
+                    let mut patch = TypedModelPatch::default();
+                    patch.tap_model(&model, node.inputs[0])?;
+                    let id = patch.chain(&*node.name,
+                        Direct {
+                            non_linear_fused_op: ops,
+                            .. self.clone()
+                        }, tvec!(succ.outputs[0].fact.clone()))?;
+                    patch.shunt_outside(OutletId::new(succ.id, 0), OutletId::new(id, 0))?;
+                    return Ok(Some(patch))
+                }
+            }
+            if succ.op_is::<crate::ops::nn::Relu>() {
+                let mut ops = self.non_linear_fused_op.clone();
+                ops.push(NonLinearSpec::Max(0f32));
+                let mut patch = TypedModelPatch::default();
+                patch.tap_model(&model, node.inputs[0])?;
+                let id = patch.chain(&*node.name,
+                    Direct {
+                        non_linear_fused_op: ops,
+                        .. self.clone()
+                    }, tvec!(succ.outputs[0].fact.clone()))?;
+                patch.shunt_outside(OutletId::new(succ.id, 0), OutletId::new(id, 0))?;
+                return Ok(Some(patch))
+            }
+        }
+        Ok(None)
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -63,6 +124,7 @@ impl StatelessOp for Direct {
                         *self.output_shape.c_stride() as isize,
                         *self.output_shape.w_stride() as isize,
                     ),
+                    &[],
                 );
             }
             Ok(tvec!(output.into_arc_tensor()))

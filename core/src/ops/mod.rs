@@ -167,6 +167,15 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(None)
     }
 
+    /// Fuse op after codegen to deal with local optimisations.
+    fn fuse(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+
     /// Computes a cost hint of the operation.
     ///
     /// Each pair is a type of operation and a number per call on eval.
