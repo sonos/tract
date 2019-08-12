@@ -1,5 +1,3 @@
-pub mod conv;
-pub mod matmul;
 #[macro_use]
 pub mod tiling;
 #[macro_use]
@@ -14,9 +12,5 @@ pub use pack_b::PackB;
 pub use self::tiling::*;
 pub use self::tiling_kernel::*;
 
-pub use self::conv::Conv;
-pub use self::conv::PackedConv;
-pub use self::matmul::MatMul;
-pub use self::matmul::PackedMatMul;
 pub use self::vecmatmul::PackedVecMatMul;
 pub use self::vecmatmul::VecMatMul;
