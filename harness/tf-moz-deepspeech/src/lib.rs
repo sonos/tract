@@ -9,8 +9,8 @@ use ndarray::*;
 use tract_core::internal::*;
 
 fn download() {
-    use std::sync::{Once, ONCE_INIT};
-    static START: Once = ONCE_INIT;
+    use std::sync::Once;
+    static START: Once = Once::new();
 
     START.call_once(|| do_download().unwrap());
 }

@@ -10,8 +10,8 @@ use std::{fs, io, path};
 use tract_core::prelude::*;
 
 fn download() {
-    use std::sync::{Once, ONCE_INIT};
-    static START: Once = ONCE_INIT;
+    use std::sync::Once;
+    static START: Once = Once::new();
 
     START.call_once(|| do_download().unwrap());
 }
