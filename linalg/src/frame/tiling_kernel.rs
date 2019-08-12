@@ -115,6 +115,13 @@ pub mod test {
                 }
 
                 #[test]
+                fn packed_packed_13() {
+                    if $cond {
+                        test::packed_packed::<$ker, $t>(13)
+                    }
+                }
+
+                #[test]
                 fn packed_offsets_k1() {
                     if $cond {
                         test::packed_offsets::<$ker, $t>(1, <$ker>::nr())
