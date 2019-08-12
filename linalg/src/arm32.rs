@@ -26,16 +26,10 @@ pub fn plug(ops: &mut Ops) {
             Box::new(TileOp::<armv7neon::STile8x4, f32>::new(m, k, n))
         });
     } else {
-        /*
-        ops.smm = Box::new(|m, k, n| {
-            log::info!("armvfpv2 activated for smm");
-            Box::new(PackedMatMul::<armvfpv2::SMatMul4x4, f32>::new(m, k, n))
+        log::info!("armvfpv2 activated for stile");
+        ops.stile = Box::new(|m, k, n| {
+            Box::new(TileOp::<armvfpv2::STile4x4, f32>::new(m, k, n))
         });
-        ops.sconv = Box::new(|m, k, n| {
-            log::info!("armvfpv2 activated for sconv");
-            Box::new(PackedConv::<armvfpv2::SConv4x4, f32>::new(m, k, n))
-        });
-        */
     }
 }
 
@@ -45,10 +39,9 @@ mod tests {
 
     #[test]
     fn may_have_neon() {
+        println!("Has neon ? {:?}", has_neon());
         if let Ok(neon) = env::var("TRACT_CPU_EXPECT_ARM32_NEON") {
             assert_eq!(neon == "true", has_neon());
-        } else {
-            println!("Has neon ? {:?}", has_neon());
         }
     }
 }
