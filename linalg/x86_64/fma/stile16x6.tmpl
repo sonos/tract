@@ -1,4 +1,4 @@
-{% if family == "unix" %}
+{% comment %}
 /* vim: set syntax=asm : */
 
 /* tile 16 x 6:
@@ -12,18 +12,30 @@ System V ABI:
     scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
     return: rax (+rdx)
 */
+{% endcomment %}
+
+{% if os == "macos" %}
+
+.intel_syntax noprefix
+.text
+.p2align 5
+.globl _fma_stile16x6
+_fma_stile16x6:
+
+{% elsif family == "unix" %}
 
 .intel_syntax noprefix
 .text
 .p2align 5
 .globl fma_stile16x6
-
 fma_stile16x6:
-{% endif %}
-{% if family == "windows" %}
+
+{% elsif family == "windows" %}
+
 _text segment
 fma_stile16x6 proc
     mov         rdi,    rcx
+
 {% endif %}
 
     push        rbp

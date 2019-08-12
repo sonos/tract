@@ -7,6 +7,7 @@ fn main() {
     let target = var("TARGET").unwrap();
     let family = var("CARGO_CFG_TARGET_FAMILY").unwrap();
     let arch = var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let os = var("CARGO_CFG_TARGET_OS").unwrap();
     let out_dir = path::PathBuf::from(var("OUT_DIR").unwrap());
     if arch == "x86_64" {
         let files = preprocess_files("x86_64/fma");
@@ -23,6 +24,22 @@ fn main() {
                 lib_exe.arg(obj);
             }
             assert!(lib_exe.status().unwrap().success());
+            println!("cargo:rustc-link-search=native={}", out_dir.to_str().unwrap());
+            println!("cargo:rustc-link-lib=static=x86_64_fma");
+        } else if os == "macos" {
+            let lib = out_dir.join("libx86_64_fma.a");
+            if lib.exists() {
+                std::fs::remove_file(lib).unwrap();
+            }
+            let mut lib = std::process::Command::new("xcrun");
+            lib.args(&["ar", "-rv"]).arg(out_dir.join("libx86_64_fma.a"));
+            for f in files {
+                let mut obj = f.clone();
+                obj.set_extension("o");
+                assert!(std::process::Command::new("cc").args(&["-c", "-o"]).arg(&obj).arg(&f).status().unwrap().success());
+                lib.arg(obj);
+            }
+            assert!(lib.status().unwrap().success());
             println!("cargo:rustc-link-search=native={}", out_dir.to_str().unwrap());
             println!("cargo:rustc-link-lib=static=x86_64_fma");
         } else {
@@ -68,9 +85,10 @@ fn preprocess_files(input: impl AsRef<path::Path>) -> Vec<path::PathBuf> {
 
 fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>) {
     let family = var("CARGO_CFG_TARGET_FAMILY").unwrap();
+    let os = var("CARGO_CFG_TARGET_OS").unwrap();
     let mut globals = liquid::value::Object::new();
-    globals.insert("num".into(), liquid::value::Value::scalar(4f64));
     globals.insert("family".into(), liquid::value::Value::scalar(family.clone()));
+    globals.insert("os".into(), liquid::value::Value::scalar(os.clone()));
     let mut input = fs::read_to_string(input).unwrap();
     if family == "windows" {
         input =
@@ -78,7 +96,7 @@ fn preprocess_file(input: impl AsRef<path::Path>, output: impl AsRef<path::Path>
     }
     globals.insert(
         "L".into(),
-        liquid::value::Value::scalar(if family == "windows" { "" } else { "." }),
+        liquid::value::Value::scalar(if os == "macos" { "L" } else if family == "windows" { "" } else { "." }),
     );
     liquid::ParserBuilder::with_liquid()
         .build()
