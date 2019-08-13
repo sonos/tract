@@ -19,6 +19,7 @@ fn mat_mul_stile(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)
             &mm.a_from_packed(pa),
             &mm.b_from_packed(pb),
             &mut mm.c_from_data_and_strides(c.as_mut_ptr(), n as _, 1),
+            &[]
         )
     });
 }

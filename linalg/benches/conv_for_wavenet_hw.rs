@@ -21,6 +21,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
                 &conv.a_from_packed(a.as_ptr()),
                 &conv.b_from_data_and_offsets(input.as_ptr(), &*kernel_offsets, &*data_offsets),
                 &mut conv.c_from_data_and_strides(output.as_mut_ptr(), t as _, 1),
+                &[],
             )
         });
     });
