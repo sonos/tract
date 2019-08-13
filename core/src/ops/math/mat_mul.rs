@@ -4,6 +4,8 @@ use std::ops::{Add, Mul};
 use crate::internal::*;
 use ndarray::*;
 
+use tract_linalg::{NonLinearSpec, Tile};
+
 fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
     a: &Tensor,
     b: &Tensor,
@@ -95,7 +97,7 @@ struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<dyn tract_linalg::Tile<T>>,
+    mm: Box<dyn Tile<T>>,
     a_shape: TVec<usize>,
     b_shape: TVec<usize>,
     bc_a_shape: TVec<usize>,
@@ -293,6 +295,7 @@ pub struct MatMulUnaryImplASimpleB<T: Copy + Datum + Add + Mul + Zero + FloatLik
     packed_b: Tensor,
     a_shape: TVec<usize>,
     c_shape: TVec<usize>,
+    non_linear: Vec<NonLinearSpec<T>>,
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplASimpleB<T> {
@@ -308,7 +311,13 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplASimpleB<T> 
         let mut packed_b =
             unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
         b_pack.pack(packed_b.as_ptr_mut()?, b.as_ptr(), b.strides()[0], b.strides()[1]);
-        Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
+        Ok(MatMulUnaryImplASimpleB {
+            geo,
+            packed_b,
+            c_shape,
+            a_shape: a_shape.into(),
+            non_linear: vec![],
+        })
     }
 }
 
@@ -318,7 +327,11 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimp
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.geo.mm)))
+        let mut info = vec![format!("{:?}", self.geo.mm)];
+        for op in &self.non_linear {
+            info.push(format!(" + {:?}", op));
+        }
+        Ok(info)
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -326,6 +339,35 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimp
             Cost::FMA(T::datum_type()),
             (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k()).to_dim()
         )))
+    }
+
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(succ) = model.single_succ(node.id)? {
+            let fused_micro_op = (|| -> TractResult<Option<NonLinearSpec<T>>> {
+                if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
+                    if op.b.shape() == &[self.geo.n] {
+                        return Ok(Some(NonLinearSpec::PerColMul(op.b.as_slice::<T>()?.to_vec())));
+                    }
+                } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
+                    if op.b.shape() == &[self.geo.n] {
+                        return Ok(Some(NonLinearSpec::PerColAdd(op.b.as_slice::<T>()?.to_vec())));
+                    }
+                } else if succ.op_is::<crate::ops::nn::Relu>() {
+                    return Ok(Some(NonLinearSpec::Max(T::zero())));
+                }
+                Ok(None)
+            })()?;
+            if let Some(op) = fused_micro_op {
+                let mut ops = self.non_linear.clone();
+                ops.push(op);
+                return Ok(Some(TypedModelPatch::fuse_with_next(
+                    model,
+                    &node,
+                    Self { non_linear: ops, ..self.clone() },
+                )?));
+            }
+        }
+        Ok(None)
     }
 }
 
@@ -347,7 +389,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
                 &self.geo.mm.a_from_packed(pa.as_ptr()?),
                 &self.geo.mm.b_from_packed(self.packed_b.as_ptr()?),
                 &mut self.geo.mm.c_from_data_and_strides(c.as_mut_ptr(), self.geo.n as isize, 1),
-                &[],
+                &*self.non_linear,
             );
             Ok(tvec!(c.into_arc_tensor()))
         }
@@ -395,7 +437,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplA<T> 
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.geo.mm)))
+        Ok(vec![format!("{:?}", self.geo.mm)])
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {

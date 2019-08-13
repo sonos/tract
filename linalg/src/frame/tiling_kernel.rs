@@ -34,6 +34,8 @@ where
     AddC,
     PerRowMul(*const T),
     PerRowAdd(*const T),
+    PerColMul(*const T),
+    PerColAdd(*const T),
 }
 
 #[repr(C, usize)]

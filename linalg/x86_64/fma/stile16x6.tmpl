@@ -217,6 +217,8 @@ fma_stile16x6 proc
     mov     rax,    1
     jmp     {{L}}return
 
+// NON LINEAR LOOP
+
 {{L}}non_linear_loop_enter:
     sub     rcx,    16
 {{L}}non_linear_loop:
@@ -241,7 +243,15 @@ fma_stile16x6 proc
     cmp     rax,    5
     je      {{L}}per_row_add
 
+    cmp     rax,    6
+    je      {{L}}per_col_mul
+
+    cmp     rax,    7
+    je      {{L}}per_col_add
+
     jmp     {{L}}unimplemented
+
+// NON LINEAR / ADDC
 
 {{L}}non_linear_addc:
     mov     rax,    [rdi + 16]
@@ -278,12 +288,16 @@ fma_stile16x6 proc
 
     jmp    {{L}}non_linear_loop
 
+// NON LINEAR / MAX
+
 {{L}}max:
     vbroadcastss    ymm12, [rcx + 8]
 {% for i in (0..11) %}
     vmaxps          ymm{{i}}, ymm{{i}}, ymm12
 {% endfor %}
     jmp    {{L}}non_linear_loop
+
+// NON LINEAR / MIN
 
 {{L}}min:
     vbroadcastss    ymm12, [rcx + 8]
@@ -292,18 +306,22 @@ fma_stile16x6 proc
 {% endfor %}
     jmp    {{L}}non_linear_loop
 
+// NON LINEAR / PER ROW MUL
+
 {{L}}per_row_mul:
     mov             rax, [ rcx + 8 ]
 
     vmovups         ymm12,  [rax]
     vmovups         ymm13,  [rax + 32]
 
-{% for i in (0..6) %}
+{% for i in (0..5) %}
     vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
     vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
+
+// NON LINEAR / PER ROW ADD
 
 {{L}}per_row_add:
     mov             rax, [ rcx + 8 ]
@@ -311,12 +329,39 @@ fma_stile16x6 proc
     vmovups         ymm12,  [rax]
     vmovups         ymm13,  [rax + 32]
 
-{% for i in (0..6) %}
+{% for i in (0..5) %}
     vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
     vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm13
 {% endfor %}
 
     jmp    {{L}}non_linear_loop
+
+// NON LINEAR / PER COL MUL
+
+{{L}}per_col_mul:
+    mov             rax, [ rcx + 8 ]
+
+{% for i in (0..5) %}
+    vbroadcastss    ymm12, [rax + {{i|times:4}}]
+    vmulps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vmulps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
+// NON LINEAR / PER COL ADD
+
+{{L}}per_col_add:
+    mov             rax, [ rcx + 8 ]
+
+{% for i in (0..5) %}
+    vbroadcastss    ymm12, [rax + {{i|times:4}}]
+    vaddps          ymm{{i|times:2}}, ymm{{i|times:2}}, ymm12
+    vaddps          ymm{{i|times:2|plus:1}}, ymm{{i|times:2|plus:1}}, ymm12
+{% endfor %}
+
+    jmp    {{L}}non_linear_loop
+
 
 {% if family == "windows" %}
 fma_stile16x6 endp

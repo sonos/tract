@@ -134,6 +134,22 @@ impl TilingKer<f32> for STiling4x4 {
                             ab[i][3] += *bias.offset(i as isize);
                         }
                     }
+                    NonLinearUSpec::PerColMul(bias) => {
+                        for i in 0..4 {
+                            ab[0][i] *= *bias.offset(i as isize);
+                            ab[1][i] *= *bias.offset(i as isize);
+                            ab[2][i] *= *bias.offset(i as isize);
+                            ab[3][i] *= *bias.offset(i as isize);
+                        }
+                    }
+                    NonLinearUSpec::PerColAdd(bias) => {
+                        for i in 0..4 {
+                            ab[0][i] += *bias.offset(i as isize);
+                            ab[1][i] += *bias.offset(i as isize);
+                            ab[2][i] += *bias.offset(i as isize);
+                            ab[3][i] += *bias.offset(i as isize);
+                        }
+                    }
                     NonLinearUSpec::Min(m) => {
                         for i in 0..4 {
                             for j in 0..4 {
@@ -274,6 +290,20 @@ impl TilingKer<f32> for STilingTest3x2 {
                         for i in 0..3 {
                             ab[i][0] += *bias.offset(i as isize);
                             ab[i][1] += *bias.offset(i as isize);
+                        }
+                    }
+                    NonLinearUSpec::PerColMul(bias) => {
+                        for i in 0..2 {
+                            ab[0][i] *= *bias.offset(i as isize);
+                            ab[1][i] *= *bias.offset(i as isize);
+                            ab[2][i] *= *bias.offset(i as isize);
+                        }
+                    }
+                    NonLinearUSpec::PerColAdd(bias) => {
+                        for i in 0..2 {
+                            ab[0][i] += *bias.offset(i as isize);
+                            ab[1][i] += *bias.offset(i as isize);
+                            ab[2][i] += *bias.offset(i as isize);
                         }
                     }
                     NonLinearUSpec::Min(m) => {

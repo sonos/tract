@@ -101,6 +101,8 @@ where
     AddC,
     PerRowMul(Vec<T>),
     PerRowAdd(Vec<T>),
+    PerColMul(Vec<T>),
+    PerColAdd(Vec<T>),
 }
 
 impl<T> Debug for NonLinearSpec<T>
@@ -114,6 +116,8 @@ where
             NonLinearSpec::AddC => write!(fmt, "AddC"),
             NonLinearSpec::PerRowMul(_) => write!(fmt, "PerRowMul"),
             NonLinearSpec::PerRowAdd(_) => write!(fmt, "PerRowAdd"),
+            NonLinearSpec::PerColMul(_) => write!(fmt, "PerColMul"),
+            NonLinearSpec::PerColAdd(_) => write!(fmt, "PerColAdd"),
         }
     }
 }
@@ -122,7 +126,7 @@ impl<T> NonLinearSpec<T>
 where
     T: Copy + Clone + Debug + Add + Mul + Zero,
 {
-    unsafe fn micro<K: TilingKer<T>>(&self, down: usize, _right: usize) -> NonLinearUSpec<T> {
+    unsafe fn micro<K: TilingKer<T>>(&self, down: usize, right: usize) -> NonLinearUSpec<T> {
         match self {
             NonLinearSpec::Min(m) => NonLinearUSpec::Min(*m),
             NonLinearSpec::Max(m) => NonLinearUSpec::Max(*m),
@@ -132,6 +136,12 @@ where
             }
             NonLinearSpec::PerRowAdd(v) => {
                 NonLinearUSpec::PerRowAdd(v.as_ptr().add(down * K::mr()))
+            }
+            NonLinearSpec::PerColMul(v) => {
+                NonLinearUSpec::PerColMul(v.as_ptr().add(right * K::nr()))
+            }
+            NonLinearSpec::PerColAdd(v) => {
+                NonLinearUSpec::PerColAdd(v.as_ptr().add(right * K::nr()))
             }
         }
     }
@@ -451,16 +461,30 @@ pub mod test {
                 }
 
                 #[test]
-                fn bias_mul_2_1_3() {
+                fn row_mul_2_1_3() {
                     if $cond {
-                        unsafe { bias_mul::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { row_mul::<$ker>(2, 1, 3).unwrap() }
                     }
                 }
 
                 #[test]
-                fn bias_add_2_1_3() {
+                fn row_add_2_1_3() {
                     if $cond {
-                        unsafe { bias_add::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { row_add::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn col_mul_2_1_3() {
+                    if $cond {
+                        unsafe { col_mul::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn col_add_2_1_3() {
+                    if $cond {
+                        unsafe { col_add::<$ker>(2, 1, 3).unwrap() }
                     }
                 }
 
@@ -587,7 +611,7 @@ pub mod test {
         Ok(())
     }
 
-    pub unsafe fn bias_add<K: TilingKer<f32>>(
+    pub unsafe fn row_add<K: TilingKer<f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -602,7 +626,7 @@ pub mod test {
         })
     }
 
-    pub unsafe fn bias_mul<K: TilingKer<f32>>(
+    pub unsafe fn row_mul<K: TilingKer<f32>>(
         m: usize,
         k: usize,
         n: usize,
@@ -612,6 +636,36 @@ pub mod test {
             for x in 0..n {
                 for y in 0..m {
                     exp[x + y * n] *= bias[y]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn col_add<K: TilingKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerColAdd(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] += bias[x]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn col_mul<K: TilingKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerColMul(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] *= bias[x]
                 }
             }
         })
