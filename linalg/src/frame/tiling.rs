@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul};
@@ -90,7 +91,7 @@ where
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone)]
 pub enum NonLinearSpec<T>
 where
     T: Copy + Clone + Debug + Add + Mul + Zero,
@@ -100,6 +101,21 @@ where
     AddC,
     PerRowMul(Vec<T>),
     PerRowAdd(Vec<T>),
+}
+
+impl<T> Debug for NonLinearSpec<T>
+where
+    T: Copy + Clone + Debug + Add + Mul + Zero,
+{
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            NonLinearSpec::Min(t) => write!(fmt, "Min({:?})", t),
+            NonLinearSpec::Max(t) => write!(fmt, "Max({:?})", t),
+            NonLinearSpec::AddC => write!(fmt, "AddC"),
+            NonLinearSpec::PerRowMul(_) => write!(fmt, "PerRowMul"),
+            NonLinearSpec::PerRowAdd(_) => write!(fmt, "PerRowAdd"),
+        }
+    }
 }
 
 impl<T> NonLinearSpec<T>

@@ -117,8 +117,13 @@ where
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}", self.tile)])
+        let mut info = vec![format!("{:?}", self.tile)];
+        for op in &self.non_linear {
+            info.push(format!(" + {:?}", op));
+        }
+        Ok(info)
     }
+
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
