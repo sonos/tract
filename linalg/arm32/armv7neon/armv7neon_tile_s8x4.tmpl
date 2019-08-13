@@ -374,6 +374,10 @@ neon_stile8x4:
     beq     .per_row_mul
     cmp     r2, #5
     beq     .per_row_add
+    cmp     r2, #6
+    beq     .per_col_mul
+    cmp     r2, #7
+    beq     .per_col_add
 
     b .unsupported
 
@@ -435,6 +439,34 @@ neon_stile8x4:
     {% for col in (0..3) %}
         vmul.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q0
         vmul.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q1
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_add:
+    ldr         r2, [r1, #4]
+    vldm        r2, { q0 }
+    vdup.f32    q3, d1[1]
+    vdup.f32    q2, d1[0]
+    vdup.f32    q1, d0[1]
+    vdup.f32    q0, d0[0]
+    {% for col in (0..3) %}
+        vadd.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q{{col}}
+        vadd.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q{{col}}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_mul:
+    ldr         r2, [r1, #4]
+    vldm        r2, { q0 }
+    vdup.f32    q3, d1[1]
+    vdup.f32    q2, d1[0]
+    vdup.f32    q1, d0[1]
+    vdup.f32    q0, d0[0]
+    {% for col in (0..3) %}
+        vmul.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q{{col}}
+        vmul.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q{{col}}
     {% endfor %}
 
     b .non_linear_loop
