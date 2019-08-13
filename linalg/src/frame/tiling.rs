@@ -458,7 +458,7 @@ pub mod test {
                 #[test]
                 fn min_2_1_3() {
                     if $cond {
-                        unsafe { min::<$ker>(2, 1, 3).unwrap() }
+                        unsafe { min::<$ker>(2, 3, 3).unwrap() }
                     }
                 }
             }
@@ -531,8 +531,8 @@ pub mod test {
         spec: &[NonLinearSpec<f32>],
         expect: F,
     ) -> proptest::test_runner::TestCaseResult {
-        let a = vec![1.0f32; m];
-        let b = vec![1.0f32; n];
+        let a = vec![1.0f32; m * k];
+        let b = vec![1.0f32; n * k];
         let op = TileOp::<K, f32>::new(m, k, n);
 
         let mut packed_a: Vec<f32> =
@@ -616,8 +616,8 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        fused_op::<K, _>(m, k, n, &[NonLinearSpec::Min(5f32)], |exp| {
-            exp.iter_mut().for_each(|x| *x = x.min(5f32))
+        fused_op::<K, _>(m, k, n, &[NonLinearSpec::Min(1f32)], |exp| {
+            exp.iter_mut().for_each(|x| *x = x.min(1f32))
         })
     }
 
