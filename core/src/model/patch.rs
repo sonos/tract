@@ -1,5 +1,5 @@
+use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
-use std::fmt::{ Display, Debug };
 
 use crate::internal::*;
 use crate::model::*;
@@ -13,8 +13,9 @@ use crate::ops::source::Source;
 /// pre-existing graph.
 #[derive(Clone, Debug)]
 pub struct ModelPatch<TI, O>
-where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+where
+    TI: TensorInfo + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// the model-like 'patch' of nodes to add to the model
     pub model: ModelImpl<TI, O>,
@@ -24,22 +25,24 @@ where TI: TensorInfo + Clone + 'static,
 }
 
 impl<TI, O> Default for ModelPatch<TI, O>
-where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+where
+    TI: TensorInfo + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn default() -> ModelPatch<TI, O> {
         ModelPatch {
             model: ModelImpl::default(),
             incoming: HashMap::new(),
             shunt_outlet_by: HashMap::new(),
-            obliterate: vec!()
+            obliterate: vec![],
         }
     }
 }
 
 impl<TI, O> Deref for ModelPatch<TI, O>
-where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+where
+    TI: TensorInfo + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     type Target = ModelImpl<TI, O>;
     fn deref(&self) -> &ModelImpl<TI, O> {
@@ -48,8 +51,9 @@ where TI: TensorInfo + Clone + 'static,
 }
 
 impl<TI, O> DerefMut for ModelPatch<TI, O>
-where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+where
+    TI: TensorInfo + Clone + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn deref_mut(&mut self) -> &mut ModelImpl<TI, O> {
         &mut self.model
@@ -57,8 +61,16 @@ where TI: TensorInfo + Clone + 'static,
 }
 
 impl<TI, O> ModelPatch<TI, O>
-where TI: TensorInfo + Clone + 'static,
-      O: Display + Debug + From<Source> + From<Dummy> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static
+where
+    TI: TensorInfo + Clone + 'static,
+    O: Display
+        + Debug
+        + From<Source>
+        + From<Dummy>
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static,
 {
     pub fn is_empty(&self) -> bool {
         self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()
@@ -67,7 +79,11 @@ where TI: TensorInfo + Clone + 'static,
     /// Draw a tap from a preexisting node.
     ///
     /// returns an OutletId usable in the little "patch" model
-    pub fn tap_model(&mut self, model: &ModelImpl<TI, O>, outlet: OutletId) -> TractResult<OutletId> {
+    pub fn tap_model(
+        &mut self,
+        model: &ModelImpl<TI, O>,
+        outlet: OutletId,
+    ) -> TractResult<OutletId> {
         let fact = model.outlet_fact(outlet)?;
         let node_id = self
             .add_source(format!("incoming-{}/{}", outlet.node, outlet.slot), objekt::clone(fact))?;
@@ -77,7 +93,12 @@ where TI: TensorInfo + Clone + 'static,
     }
 
     /// Draw a tap from a preexisting node and connect it to an inlet.
-    pub fn tap_model_and_plug(&mut self, model: &ModelImpl<TI, O>, outlet: OutletId, inlet: InletId) -> TractResult<OutletId> {
+    pub fn tap_model_and_plug(
+        &mut self,
+        model: &ModelImpl<TI, O>,
+        outlet: OutletId,
+        inlet: InletId,
+    ) -> TractResult<OutletId> {
         let tap = self.tap_model(model, outlet)?;
         self.add_edge(tap, inlet)?;
         Ok(tap)
@@ -100,7 +121,7 @@ where TI: TensorInfo + Clone + 'static,
         node: &Node<TI>,
         inputs: &[OutletId],
         new_op: IO,
-    ) -> TractResult<ModelPatch<TI,O>> {
+    ) -> TractResult<ModelPatch<TI, O>> {
         let mut patch = ModelPatch::default();
         let new_op = new_op.into();
         let outputs = node.outputs.iter().map(|o| objekt::clone(&o.fact)).collect();
@@ -115,6 +136,30 @@ where TI: TensorInfo + Clone + 'static,
         Ok(patch)
     }
 
+    /// Convenience method creating a patch that replace a single operation.
+    pub fn fuse_with_next<IO: Into<O>>(
+        patched_model: &ModelImpl<TI, O>,
+        node: &Node<TI>,
+        new_op: IO,
+    ) -> TractResult<ModelPatch<TI, O>> {
+        let mut patch = ModelPatch::default();
+        let succ = if let Some(succ) = patched_model.single_succ(node.id)? {
+            succ
+        } else {
+            bail!("Non single successor fuse attempt")
+        };
+        let new_op = new_op.into();
+        let by = patch.add_node(&*node.name, new_op, tvec!(succ.outputs[0].fact.clone()))?;
+        for (ix, i) in node.inputs.iter().enumerate() {
+            let o = patch.tap_model(&patched_model, *i)?;
+            patch.add_edge(o, InletId::new(by, ix))?;
+        }
+        for ix in 0..node.outputs.len() {
+            patch.shunt_outside(OutletId::new(succ.id, ix), OutletId::new(by, ix))?;
+        }
+        Ok(patch)
+    }
+
     /// Convenience method creating a patch that shunt the given node.
     pub fn shunt_one_op(
         patched_model: &ModelImpl<TI, O>,
@@ -122,7 +167,7 @@ where TI: TensorInfo + Clone + 'static,
     ) -> TractResult<ModelPatch<TI, O>> {
         let mut patch = ModelPatch::default();
         let tap = patch.tap_model(patched_model, node.inputs[0])?;
-        patch.shunt_outside(OutletId::new(node.id,0), tap)?;
+        patch.shunt_outside(OutletId::new(node.id, 0), tap)?;
         Ok(patch)
     }
 
@@ -165,7 +210,9 @@ where TI: TensorInfo + Clone + 'static,
             let facts = outputs.into_iter().map(|of| of.fact).collect();
             let added_node_id = target.add_node(name, op, facts)?;
             for &prec in control_inputs.iter() {
-                target.nodes[added_node_id].control_inputs.push(mapping[&OutletId::new(prec, 0)].node)
+                target.nodes[added_node_id]
+                    .control_inputs
+                    .push(mapping[&OutletId::new(prec, 0)].node)
             }
             for ix in 0..n_outputs {
                 mapping.insert(OutletId::new(id, ix), OutletId::new(added_node_id, ix));

@@ -1,5 +1,9 @@
 use ndarray::*;
 
+use itertools::Itertools;
+
+use tract_linalg::NonLinearSpec;
+
 use crate::internal::*;
 use crate::model::*;
 
@@ -226,9 +230,10 @@ impl ConvUnary {
                 n,
                 self.kernel_fmt,
                 packed_kernels,
-                bias,
                 self.group,
                 mm.clone(),
+                bias.map(|bias| bias.iter().chunks(m).into_iter().map(|b| NonLinearSpec::PerRowAdd(b.cloned().collect())).collect()),
+                vec!(),
             );
             (Box::new(conv_gemm), b_pack)
         } else {

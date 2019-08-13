@@ -1,8 +1,8 @@
 use crate::internal::*;
 use crate::ops::nn::DataShape;
 use ndarray::prelude::*;
-use tract_linalg::Tile;
 use tract_linalg::NonLinearSpec;
+use tract_linalg::Tile;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {
@@ -21,69 +21,47 @@ impl Direct {
     }
 }
 
-
-
 impl Op for Direct {
     fn name(&self) -> Cow<str> {
         "ConvDirect".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let mut info = vec!(format!("{:?}", self.tile));
+        let mut info = vec![format!("{:?}", self.tile)];
         for op in &self.non_linear_fused_op {
             info.push(format!(" + {:?}", op));
         }
         Ok(info)
     }
 
-    fn fuse(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
-            if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
-                if op.b.shape() == &[*self.output_shape.c()] {
-                    let mut ops = self.non_linear_fused_op.clone();
-                    ops.push(NonLinearSpec::PerRowMul(op.b.as_slice::<f32>()?.to_vec()));
-                    let mut patch = TypedModelPatch::default();
-                    patch.tap_model(&model, node.inputs[0])?;
-                    let id = patch.chain(&*node.name,
-                        Direct {
-                            non_linear_fused_op: ops,
-                            .. self.clone()
-                        }, tvec!(succ.outputs[0].fact.clone()))?;
-                    patch.shunt_outside(OutletId::new(succ.id, 0), OutletId::new(id, 0))?;
-                    return Ok(Some(patch))
+            let fused_micro_op = (|| -> TractResult<Option<NonLinearSpec<f32>>> {
+                if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
+                    if op.b.shape() == &[*self.output_shape.c()] {
+                        return Ok(Some(NonLinearSpec::PerRowMul(
+                            op.b.as_slice::<f32>()?.to_vec(),
+                        )));
+                    }
+                } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
+                    if op.b.shape() == &[*self.output_shape.c()] {
+                        return Ok(Some(NonLinearSpec::PerRowAdd(
+                            op.b.as_slice::<f32>()?.to_vec(),
+                        )));
+                    }
+                } else if succ.op_is::<crate::ops::nn::Relu>() {
+                    return Ok(Some(NonLinearSpec::Max(0f32)));
                 }
-            }
-            if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
-                if op.b.shape() == &[*self.output_shape.c()] {
-                    let mut ops = self.non_linear_fused_op.clone();
-                    ops.push(NonLinearSpec::PerRowAdd(op.b.as_slice::<f32>()?.to_vec()));
-                    let mut patch = TypedModelPatch::default();
-                    patch.tap_model(&model, node.inputs[0])?;
-                    let id = patch.chain(&*node.name,
-                        Direct {
-                            non_linear_fused_op: ops,
-                            .. self.clone()
-                        }, tvec!(succ.outputs[0].fact.clone()))?;
-                    patch.shunt_outside(OutletId::new(succ.id, 0), OutletId::new(id, 0))?;
-                    return Ok(Some(patch))
-                }
-            }
-            if succ.op_is::<crate::ops::nn::Relu>() {
+                Ok(None)
+            })()?;
+            if let Some(op) = fused_micro_op {
                 let mut ops = self.non_linear_fused_op.clone();
-                ops.push(NonLinearSpec::Max(0f32));
-                let mut patch = TypedModelPatch::default();
-                patch.tap_model(&model, node.inputs[0])?;
-                let id = patch.chain(&*node.name,
-                    Direct {
-                        non_linear_fused_op: ops,
-                        .. self.clone()
-                    }, tvec!(succ.outputs[0].fact.clone()))?;
-                patch.shunt_outside(OutletId::new(succ.id, 0), OutletId::new(id, 0))?;
-                return Ok(Some(patch))
+                ops.push(op);
+                return Ok(Some(TypedModelPatch::fuse_with_next(
+                    model,
+                    &node,
+                    Direct { non_linear_fused_op: ops, ..self.clone() },
+                )?));
             }
         }
         Ok(None)
@@ -131,4 +109,3 @@ impl StatelessOp for Direct {
         }
     }
 }
-
