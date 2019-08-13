@@ -5,6 +5,7 @@ use ansi_term::Style;
 use itertools::Itertools;
 use std::borrow::Borrow;
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use std::convert::TryFrom;
 use std::sync::Arc;
 use tract_core::internal::*;

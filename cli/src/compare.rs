@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use std::fs;
 use std::fmt::{Debug, Display};
 
