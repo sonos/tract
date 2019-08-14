@@ -45,12 +45,12 @@ element_map!(Atanh, [f16, f32, f64], |x| x.atanh());
 element_map!(Neg, [i8, i16, i32, i64, f16, f32, f64, TDim], |x| -x);
 
 element_map!(Sign, match
-     f16 => f16 { |a:f16| if a.is_zero() { (0.0).into() } else { a.signum()} },
-     f32 => f32 { |a:f32| if a == 0.0 { 0.0 } else { a.signum()} },
-     f64 => f64 { |a:f64| if a == 0.0 { 0.0 } else { a.signum()} }
+     f16 => { |a:f16| if a.is_zero() { (0.0).into() } else { a.signum()} },
+     f32 => { |a:f32| if a == 0.0 { 0.0 } else { a.signum()} },
+     f64 => { |a:f64| if a == 0.0 { 0.0 } else { a.signum()} }
 );
 
-element_map!(IsNan, match
+element_map_move!(IsNan, match
      f16 => bool { |a:f16| a.is_nan() },
      f32 => bool { |a:f32| a.is_nan() },
      f64 => bool { |a:f64| a.is_nan() }
