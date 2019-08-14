@@ -122,36 +122,92 @@ where
     }
 }
 
-impl<T> NonLinearSpec<T>
+#[derive(Default)]
+struct ScratchSpace<T>
 where
-    T: Copy + Clone + Debug + Add + Mul + Zero,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
 {
-    unsafe fn micro<K: TilingKer<T>>(&self, down: usize, right: usize) -> NonLinearUSpec<T> {
-        match self {
-            NonLinearSpec::Min(m) => NonLinearUSpec::Min(*m),
-            NonLinearSpec::Max(m) => NonLinearUSpec::Max(*m),
-            NonLinearSpec::AddC => NonLinearUSpec::AddC,
-            NonLinearSpec::PerRowMul(v) => {
-                debug_assert!((down + 1) * K::mr() <= v.len());
-                NonLinearUSpec::PerRowMul(v.as_ptr().add(down * K::mr()))
-            }
-            NonLinearSpec::PerRowAdd(v) => {
-                debug_assert!((down + 1) * K::mr() <= v.len());
-                NonLinearUSpec::PerRowAdd(v.as_ptr().add(down * K::mr()))
-            }
-            NonLinearSpec::PerColMul(v) => {
-                debug_assert!((right + 1) * K::nr() <= v.len());
-                NonLinearUSpec::PerColMul(v.as_ptr().add(right * K::nr()))
-            }
-            NonLinearSpec::PerColAdd(v) => {
-                debug_assert!((right + 1) * K::nr() <= v.len());
-                NonLinearUSpec::PerColAdd(v.as_ptr().add(right * K::nr()))
-            }
+    uspecs: Vec<NonLinearUSpec<T>>,
+    non_linear_buffers: Vec<Vec<T>>,
+}
+
+impl<T> ScratchSpace<T>
+where
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
+{
+    unsafe fn non_linear<K: TilingKer<T>>(
+        &mut self,
+        specs: &[NonLinearSpec<T>],
+        down: usize,
+        right: usize,
+    ) -> *const NonLinearUSpec<T> {
+        self.uspecs.clear();
+        for spec in specs {
+            let s = match spec {
+                NonLinearSpec::Min(m) => NonLinearUSpec::Min(*m),
+                NonLinearSpec::Max(m) => NonLinearUSpec::Max(*m),
+                NonLinearSpec::AddC => NonLinearUSpec::AddC,
+                NonLinearSpec::PerRowMul(v) => {
+                    let have = v.len() - down * K::mr();
+                    let ptr = if have < K::mr() {
+                        let mut buf = vec![T::zero(); K::mr()];
+                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(down * K::mr())
+                    };
+                    NonLinearUSpec::PerRowMul(ptr)
+                }
+                NonLinearSpec::PerRowAdd(v) => {
+                    let have = v.len() - down * K::mr();
+                    let ptr = if have < K::mr() {
+                        let mut buf = vec![T::zero(); K::mr()];
+                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(down * K::mr())
+                    };
+                    NonLinearUSpec::PerRowAdd(ptr)
+                }
+                NonLinearSpec::PerColMul(v) => {
+                    let have = v.len() - right * K::nr();
+                    let ptr = if have < K::nr() {
+                        let mut buf = vec![T::zero(); K::nr()];
+                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(right * K::nr())
+                    };
+                    NonLinearUSpec::PerColMul(ptr)
+                }
+                NonLinearSpec::PerColAdd(v) => {
+                    let have = v.len() - right * K::nr();
+                    let ptr = if have < K::nr() {
+                        let mut buf = vec![T::zero(); K::nr()];
+                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(right * K::nr())
+                    };
+                    NonLinearUSpec::PerColAdd(ptr)
+                }
+            };
+            self.uspecs.push(s);
         }
+        self.uspecs.push(NonLinearUSpec::Done);
+        self.uspecs.as_ptr()
     }
 }
 
-pub trait Tile<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + objekt::Clone
+pub trait Tile<T>: Send + Sync + Debug + objekt::Clone
 where
     T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
 {
@@ -204,7 +260,7 @@ where
 
 impl<K, T> Tile<T> for TileOp<K, T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
     K: TilingKer<T>,
 {
     fn a_pack(&self) -> PackA<T> {
@@ -294,50 +350,36 @@ where
         let m = self.m;
         let k = self.k;
         let n = self.n;
+        let mut scratch = ScratchSpace::default();
         let tmpc = vec![T::zero(); mr * nr];
         let ref mut tmp_tile = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
         let linear = LinearSpec::Mul { k };
         let linear = (&linear) as *const LinearSpec;
-        let mut non_linear_micro = vec![NonLinearUSpec::Done; non_linear.len() + 1];
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 let ref tile_c = c.tile(ia, ib);
-                for i in 0..non_linear.len() {
-                    *non_linear_micro.get_unchecked_mut(i) =
-                        non_linear.get_unchecked(i).micro::<K>(ia, ib);
-                }
+                let non_linear = scratch.non_linear::<K>(non_linear, ia, ib);
                 let err = K::kernel(&TileOpSpec {
                     a: a as _,
                     b: b as _,
                     c: tile_c as _,
                     linear,
-                    non_linear: if non_linear.len() == 0 {
-                        std::ptr::null()
-                    } else {
-                        non_linear_micro.as_ptr()
-                    },
+                    non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
                 let ref tmp_tile_c = tmp_tile.tile(0, 0);
-                for i in 0..non_linear.len() {
-                    *non_linear_micro.get_unchecked_mut(i) =
-                        non_linear.get_unchecked(i).micro::<K>(ia, n / nr);
-                }
+                let non_linear = scratch.non_linear::<K>(non_linear, ia, n / nr);
                 let err = K::kernel(&TileOpSpec {
                     a: a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
-                    non_linear: if non_linear.len() == 0 {
-                        std::ptr::null()
-                    } else {
-                        non_linear_micro.as_ptr()
-                    },
+                    non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
                 c.set_from_tile(ia, n / nr, mr, n % nr, &*tmpc);
@@ -348,40 +390,26 @@ where
             let ref tmp_tile_c = tmp_tile.tile(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
-                for i in 0..non_linear.len() {
-                    *non_linear_micro.get_unchecked_mut(i) =
-                        non_linear.get_unchecked(i).micro::<K>(m / mr, ib);
-                }
+                let non_linear = scratch.non_linear::<K>(non_linear, m / mr, ib);
                 let err = K::kernel(&TileOpSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
-                    non_linear: if non_linear.len() == 0 {
-                        std::ptr::null()
-                    } else {
-                        non_linear_micro.as_ptr()
-                    },
+                    non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
                 c.set_from_tile(m / mr, ib, m % mr, nr, &*tmpc);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
-                for i in 0..non_linear.len() {
-                    *non_linear_micro.get_unchecked_mut(i) =
-                        non_linear.get_unchecked(i).micro::<K>(m / mr, n / nr);
-                }
+                let non_linear = scratch.non_linear::<K>(non_linear, m / mr, n / nr);
                 let err = K::kernel(&TileOpSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
                     linear,
-                    non_linear: if non_linear.len() == 0 {
-                        std::ptr::null()
-                    } else {
-                        non_linear_micro.as_ptr()
-                    },
+                    non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
                 c.set_from_tile(m / mr, n / nr, m % mr, n % nr, &*tmpc);
@@ -620,10 +648,7 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m)
-            .map(|f| f as f32)
-            .chain(std::iter::repeat(0f32).take(K::mr()))
-            .collect::<Vec<f32>>();
+        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerRowAdd(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
@@ -638,10 +663,7 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m)
-            .map(|f| f as f32)
-            .chain(std::iter::repeat(0f32).take(K::mr()))
-            .collect::<Vec<f32>>();
+        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerRowMul(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
@@ -656,10 +678,7 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m)
-            .map(|f| f as f32)
-            .chain(std::iter::repeat(0f32).take(K::nr()))
-            .collect::<Vec<f32>>();
+        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerColAdd(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
@@ -674,10 +693,7 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m)
-            .map(|f| f as f32)
-            .chain(std::iter::repeat(0f32).take(K::nr()))
-            .collect::<Vec<f32>>();
+        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerColMul(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
