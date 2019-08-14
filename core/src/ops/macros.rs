@@ -196,6 +196,19 @@ macro_rules! element_map_with_params {
             fn name(&self) -> Cow<str> {
                 stringify!($Name).into()
             }
+
+            fn pulsify(
+                &self,
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let fact = target.outlet_fact(input)?.clone();
+                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+                Ok(tvec!(OutletId::new(id, 0)))
+            }
         }
 
         impl InferenceRulesOp for $Name {
