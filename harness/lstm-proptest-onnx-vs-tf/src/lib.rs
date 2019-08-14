@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use proptest::prelude::*;
-use proptest::*;
 
 use tract_core::internal::*;
 use tract_core::ndarray::*;
