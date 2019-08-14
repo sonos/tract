@@ -15,6 +15,14 @@ impl Op for Identity {
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
+
+    fn fuse(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+    }
 }
 
 impl StatelessOp for Identity {
