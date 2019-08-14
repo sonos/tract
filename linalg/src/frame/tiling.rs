@@ -132,15 +132,19 @@ where
             NonLinearSpec::Max(m) => NonLinearUSpec::Max(*m),
             NonLinearSpec::AddC => NonLinearUSpec::AddC,
             NonLinearSpec::PerRowMul(v) => {
+                debug_assert!((down + 1) * K::mr() <= v.len());
                 NonLinearUSpec::PerRowMul(v.as_ptr().add(down * K::mr()))
             }
             NonLinearSpec::PerRowAdd(v) => {
+                debug_assert!((down + 1) * K::mr() <= v.len());
                 NonLinearUSpec::PerRowAdd(v.as_ptr().add(down * K::mr()))
             }
             NonLinearSpec::PerColMul(v) => {
+                debug_assert!((right + 1) * K::nr() <= v.len());
                 NonLinearUSpec::PerColMul(v.as_ptr().add(right * K::nr()))
             }
             NonLinearSpec::PerColAdd(v) => {
+                debug_assert!((right + 1) * K::nr() <= v.len());
                 NonLinearUSpec::PerColAdd(v.as_ptr().add(right * K::nr()))
             }
         }
@@ -616,7 +620,10 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
+        let bias = (0..m)
+            .map(|f| f as f32)
+            .chain(std::iter::repeat(0f32).take(K::mr()))
+            .collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerRowAdd(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
@@ -631,7 +638,10 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
+        let bias = (0..m)
+            .map(|f| f as f32)
+            .chain(std::iter::repeat(0f32).take(K::mr()))
+            .collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerRowMul(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
@@ -646,7 +656,10 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
+        let bias = (0..m)
+            .map(|f| f as f32)
+            .chain(std::iter::repeat(0f32).take(K::nr()))
+            .collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerColAdd(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
@@ -661,7 +674,10 @@ pub mod test {
         k: usize,
         n: usize,
     ) -> proptest::test_runner::TestCaseResult {
-        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
+        let bias = (0..m)
+            .map(|f| f as f32)
+            .chain(std::iter::repeat(0f32).take(K::nr()))
+            .collect::<Vec<f32>>();
         fused_op::<K, _>(m, k, n, &[NonLinearSpec::PerColMul(bias.clone())], |exp| {
             for x in 0..n {
                 for y in 0..m {
