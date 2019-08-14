@@ -1,4 +1,4 @@
-use num_traits::Zero;
+use num_traits::{AsPrimitive, Zero};
 use std::ops::{Add, AddAssign, Mul};
 
 use crate::internal::*;
@@ -40,6 +40,7 @@ use tract_linalg::{NonLinearSpec, Tile};
 pub struct MatMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy,
+    f32: AsPrimitive<T>,
 {
     pub patch: Patch,
     pub output_shape: DataShape,
@@ -58,6 +59,7 @@ where
 impl<T> MatMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy + AddAssign + ndarray::LinalgScalar,
+    f32: AsPrimitive<T>,
 {
     pub(super) fn conv_gemm<'i>(
         &'i self,
@@ -111,6 +113,7 @@ where
 impl<T> Op for MatMat<T>
 where
     T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    f32: AsPrimitive<T>,
 {
     fn name(&self) -> Cow<str> {
         "MatMat".into()
@@ -124,7 +127,6 @@ where
         Ok(info)
     }
 
-
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((
@@ -135,27 +137,30 @@ where
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
-            let fused_micro_op = (|| -> TractResult<Option<NonLinearSpec<T>>> {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<NonLinearSpec<T>>>> {
                 if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
                     if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(NonLinearSpec::PerRowMul(
-                            op.b.as_slice::<T>()?.to_vec(),
-                        )));
+                        return Ok(Some(tvec!(NonLinearSpec::PerRowMul(op.b.as_slice::<T>()?.to_vec()))));
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
                     if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(NonLinearSpec::PerRowAdd(
-                            op.b.as_slice::<T>()?.to_vec(),
-                        )));
+                        return Ok(Some(tvec!(NonLinearSpec::PerRowAdd(op.b.as_slice::<T>()?.to_vec()))));
                     }
-                } else if succ.op_is::<crate::ops::nn::Relu>() {
-                    return Ok(Some(NonLinearSpec::Max(T::zero())));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
+                    return Ok(Some(tvec!(NonLinearSpec::Max(op.max.as_()))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
+                    return Ok(Some(tvec!(NonLinearSpec::Min(op.min.as_()))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
+                    return Ok(Some(tvec!(
+                                NonLinearSpec::Min(op.min.as_()),
+                                NonLinearSpec::Max(op.max.as_()),
+                                )));
                 }
                 Ok(None)
             })()?;
             if let Some(op) = fused_micro_op {
                 let mut ops = self.non_linear.clone();
-                ops.push(op);
+                ops.extend(op.into_iter());
                 return Ok(Some(TypedModelPatch::fuse_with_next(
                     model,
                     &node,
@@ -167,13 +172,14 @@ where
     }
 }
 
-impl<D> StatelessOp for MatMat<D>
+impl<T> StatelessOp for MatMat<T>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+    T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    f32: AsPrimitive<T>,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
+        let output = self.conv_gemm(&input.to_array_view::<T>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into_arc_tensor()))
     }
 }

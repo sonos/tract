@@ -20,7 +20,6 @@ pub use self::tanh::Tanh;
 
 use num_traits::AsPrimitive;
 
-element_map!(Relu, [f32, i32], |x| if x < 0 as _ { 0 as _ } else { x });
 element_map!(Softplus, [f32], |x| (x.exp() + 1.0).ln());
 element_map!(Softsign, [f32], |x| x / (x.abs() + 1.0));
 

@@ -52,9 +52,15 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 }
 
 pub fn clip(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let min = node.get_attr_opt("min")?.unwrap_or(::std::f32::MIN);
-    let max = node.get_attr_opt("max")?.unwrap_or(::std::f32::MAX);
-    Ok((Box::new(tractops::math::Clip::new(min, max)),vec!()))
+    let min = node.get_attr_opt("min")?;
+    let max = node.get_attr_opt("max")?;
+    let op:Box<dyn InferenceOp> = match (min, max) {
+        (Some(min), Some(max)) => Box::new(tractops::math::ScalarMinMax::new(max, min)),
+        (None, Some(max)) => Box::new(tractops::math::ScalarMin::new(max)),
+        (Some(min), None) => Box::new(tractops::math::ScalarMax::new(min)),
+        (None, None) => Box::new(tractops::identity::Identity::default()),
+    };
+    Ok((op, vec!()))
 }
 
 pub fn gemm(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {

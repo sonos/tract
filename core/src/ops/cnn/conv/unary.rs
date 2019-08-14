@@ -1,5 +1,7 @@
 use ndarray::*;
 
+use num_traits::AsPrimitive;
+
 use itertools::Itertools;
 
 use tract_linalg::NonLinearSpec;
@@ -161,6 +163,7 @@ impl ConvUnary {
     fn bias_reshaped<T>(&self, output_shape: &[usize]) -> TractResult<Option<ArrayD<T>>>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T>,
+        f32: AsPrimitive<T>,
     {
         Ok(self
             .bias
@@ -180,6 +183,7 @@ impl ConvUnary {
     ) -> TractResult<(Im2Col<T>, TVec<usize>, Box<dyn Op>)>
     where
         T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + FloatLike,
+        f32: AsPrimitive<T>,
     {
         trace!("to_im2col_pair: {:?}", self);
         let patch = self.patch(input_full_shape);
@@ -291,6 +295,7 @@ impl ConvUnary {
     ) -> TractResult<(Box<dyn Op>, TVec<usize>, Box<dyn Op>)>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
+        f32: AsPrimitive<T>,
     {
         let (op1, shape, op2) = self.to_im2col_pair::<T>(input_full_shape)?;
         Ok((Box::new(op1), shape, op2))
@@ -299,6 +304,7 @@ impl ConvUnary {
     fn eval_t<T>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + FloatLike,
+        f32: AsPrimitive<T>,
     {
         let input = args_1!(inputs);
         let (im2col, _shape, conv_gemm) = self.to_im2col_pair::<T>(input.shape())?;
@@ -351,6 +357,7 @@ impl ConvUnary {
     pub fn to_depth_wise<T>(&self, shape: &[usize]) -> TractResult<Box<dyn Op>>
     where
         T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq + Sum,
+        f32: AsPrimitive<T>,
     {
         let patch = self.patch(shape);
         let input_shape = self.data_format.shape(shape.into());

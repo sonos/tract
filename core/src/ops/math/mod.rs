@@ -20,11 +20,37 @@ element_map!(Rsqrt, [f16, f32], |x| x.sqrt().recip());
 element_map!(Ceil, [f16, f32, f64], |x| x.ceil());
 element_map!(Floor, [f16, f32, f64], |x| x.floor());
 
-element_map_with_params!(Clip, [f16, f32, f64], { min: f32, max: f32 },
-    fn eval_one<T>(clip: &Clip, x:T) -> T
+element_map_with_params!(ScalarMinMax, [f16, f32, f64], { min: f32, max: f32 },
+    fn eval_one<T>(clip: &ScalarMinMax, x:T) -> T
     where T: Datum+::num_traits::Float, f32: ::num_traits::AsPrimitive<T>
     {
-        x.max(clip.min.as_()).min(clip.max.as_())
+        x.max(clip.max.as_()).min(clip.min.as_())
+    }
+);
+
+element_map_with_params!(
+    ScalarMin,
+    [f32, f64],
+    { min: f32 },
+    fn eval_one<T>(sm: &ScalarMin, x: T) -> T
+    where
+        T: Datum + ::num_traits::Float,
+        f32: ::num_traits::AsPrimitive<T>,
+    {
+        x.min(sm.min.as_())
+    }
+);
+
+element_map_with_params!(
+    ScalarMax,
+    [f32, f64],
+    { max: f32 },
+    fn eval_one<T>(sm: &ScalarMax, x: T) -> T
+    where
+        T: Datum + ::num_traits::Float,
+        f32: ::num_traits::AsPrimitive<T>,
+    {
+        x.max(sm.max.as_())
     }
 );
 

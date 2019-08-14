@@ -36,27 +36,34 @@ impl Op for Direct {
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
-            let fused_micro_op = (|| -> TractResult<Option<NonLinearSpec<f32>>> {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<NonLinearSpec<f32>>>> {
                 if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
                     if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(NonLinearSpec::PerRowMul(
+                        return Ok(Some(tvec!(NonLinearSpec::PerRowMul(
                             op.b.as_slice::<f32>()?.to_vec(),
-                        )));
+                        ))));
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
                     if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(NonLinearSpec::PerRowAdd(
+                        return Ok(Some(tvec!(NonLinearSpec::PerRowAdd(
                             op.b.as_slice::<f32>()?.to_vec(),
-                        )));
+                        ))));
                     }
-                } else if succ.op_is::<crate::ops::nn::Relu>() {
-                    return Ok(Some(NonLinearSpec::Max(0f32)));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
+                    return Ok(Some(tvec!(NonLinearSpec::Max(op.max))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
+                    return Ok(Some(tvec!(NonLinearSpec::Min(op.min))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
+                    return Ok(Some(tvec!(
+                                NonLinearSpec::Min(op.min),
+                                NonLinearSpec::Max(op.max),
+                                )));
                 }
                 Ok(None)
             })()?;
             if let Some(op) = fused_micro_op {
                 let mut ops = self.non_linear_fused_op.clone();
-                ops.push(op);
+                ops.extend(op.into_iter());
                 return Ok(Some(TypedModelPatch::fuse_with_next(
                     model,
                     &node,

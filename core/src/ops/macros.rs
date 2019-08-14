@@ -167,24 +167,26 @@ macro_rules! element_map_move {
 
 #[macro_export]
 macro_rules! element_map_with_params {
-    ($Name:ident, [$($type:ty),*], {$($pname:ident : $pty:ty),*}, $expr:item) => {
+    ($Name:ident, [$($type:ty),*], {$($pname:ident : $pty:ty),*}, $eval_one:item) => {
         #[allow(unused_imports)]
         use $crate::internal::*;
 
         #[derive(Debug, Clone, new, Default)]
         pub struct $Name {
-            $( $pname: $pty ),*
+            $( pub $pname: $pty ),*
         }
 
         impl StatelessOp for $Name {
             fn eval(&self, mut inputs: TVec<Arc<Tensor>>,) -> TractResult<TVec<Arc<Tensor>>> {
                 let a = args_1!(inputs);
                 let dt = a.datum_type();
-                $expr;
+                $eval_one;
                 $(if dt == <$type>::datum_type() {
-                    let mut a = a.into_tensor().into_array::<$type>()?;
-                    a.mapv_inplace(|x| eval_one(self,x));
-                    return Ok(tvec![a.into_arc_tensor()])
+                    let mut a = a.into_tensor();
+                    for x in a.as_slice_mut::<$type>()? {
+                        *x = eval_one(self, x.clone());
+                    }
+                    return Ok(tvec!(a.into_arc_tensor()))
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
