@@ -238,7 +238,7 @@ where
         let n = self.n;
         let mut scratch = ScratchSpace::default();
         let tmpc = vec![T::zero(); mr * nr];
-        let ref mut tmp_mmm = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
+        let ref mut tmp_tile = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
         let linear = LinearSpec::Mul { k };
         let linear = (&linear) as *const LinearSpec;
         for ia in 0..m / mr {
@@ -258,12 +258,12 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
-                let ref tmp_mmm_c = tmp_mmm.mmm(0, 0);
+                let ref tmp_tile_c = tmp_tile.mmm(0, 0);
                 let non_linear = scratch.non_linear::<K>(non_linear, ia, n / nr);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
-                    c: tmp_mmm_c as _,
+                    c: tmp_tile_c as _,
                     linear,
                     non_linear,
                 });
@@ -273,14 +273,14 @@ where
         }
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
-            let ref tmp_mmm_c = tmp_mmm.mmm(0, 0);
+            let ref tmp_tile_c = tmp_tile.mmm(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
                 let non_linear = scratch.non_linear::<K>(non_linear, m / mr, ib);
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
-                    c: tmp_mmm_c as _,
+                    c: tmp_tile_c as _,
                     linear,
                     non_linear,
                 });
@@ -293,7 +293,7 @@ where
                 let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
-                    c: tmp_mmm_c as _,
+                    c: tmp_tile_c as _,
                     linear,
                     non_linear,
                 });
