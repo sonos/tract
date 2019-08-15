@@ -2,7 +2,7 @@ use crate::frame::mmm::*;
 
 extern "C" {
     #[no_mangle]
-    fn arm64simd_smmm8x8(op: *const MatMatMulKerSpec<f32>) -> isize;
+    fn arm64simd_smmm_8x8(op: *const MatMatMulKerSpec<f32>) -> isize;
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -29,7 +29,7 @@ impl MatMatMulKer<f32> for SMatMatMul8x8 {
     }
     #[inline(never)]
     fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
-        unsafe { arm64simd_smmm8x8(op) }
+        unsafe { arm64simd_smmm_8x8(op) }
     }
 }
 
