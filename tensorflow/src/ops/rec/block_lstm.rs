@@ -54,10 +54,10 @@ impl StatelessOp for BlockLSTM {
         dbg!(&cs_prev);
         */
 
-        let ref sigmoid = tract_linalg::ops().ssigmoid;
+        let sigmoid = (tract_linalg::ops().ssigmoid)();
         let sigmoid_f32 = |f: f32| -> f32 {
             let mut f = [f];
-            sigmoid(&mut f);
+            sigmoid.run(&mut f);
             f[0]
         };
 

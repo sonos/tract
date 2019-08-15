@@ -197,10 +197,10 @@ impl StatelessOp for LstmNonlin {
         use tract_core::ndarray::*;
         use tract_core::ops::nn::tanh::tanh_f32;
 
-        let ref sigmoid = tract_linalg::ops().ssigmoid;
+        let sigmoid = (tract_linalg::ops().ssigmoid)();
         let sigmoid_f32 = |f: f32| -> f32 {
             let mut f = [f];
-            sigmoid(&mut f);
+            sigmoid.run(&mut f);
             f[0]
         };
 
