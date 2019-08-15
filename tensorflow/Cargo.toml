@@ -23,6 +23,7 @@ num-traits = "0.2"
 protobuf = "2.0"
 tensorflow = { version = "0", optional = true }
 tract-core = { path = "../core" }
+tract-linalg = { path = "../linalg" }
 
 [features]
 conform = [ "tensorflow" ]
