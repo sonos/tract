@@ -11,6 +11,7 @@
 */
 
 armv7neon_ssigmoid_4:
+    vpush       { q4-q7 }
 
     ldr         r2, =.coeffs_num
     vldmia      r2!, { s0-s13 }
@@ -61,6 +62,7 @@ armv7neon_ssigmoid_4:
 
     subs        r1, #4;
     bne         .loop
+    vpop        { q4-q7 }
     bx          lr
 
 .coeffs_num:
