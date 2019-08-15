@@ -62,12 +62,5 @@ impl SigmoidKer<f32> for SSigmoid4 {
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    /*
-    use super::*;
-    use crate::align;
-    use proptest::prelude::*;
-    use proptest::test_runner::TestCaseResult;
-    */
-
     sigmoid_frame_tests!(true, crate::generic::sigmoid::SSigmoid4);
 }

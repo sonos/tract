@@ -310,7 +310,6 @@ pub mod test {
     use super::*;
     use crate::align;
     use proptest::prelude::*;
-    use proptest::test_runner::TestCaseResult;
 
     #[macro_export]
     macro_rules! mmm_frame_tests {

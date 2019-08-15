@@ -11,57 +11,184 @@
 */
 
 armv7neon_ssigmoid_4:
+    cmp         r1, #0
+    blxeq       lr
+
     vpush       { q4-q7 }
 
     ldr         r2, =.coeffs_num
     vldmia      r2!, { s0-s13 }
 
+// q4 -> q4,5,6
+// q5 -> q7,8,9
+// q6 -> q10,11,12
+// q7 -> q13,14,15
+
+
+    cmp         r1, #12
+    blt         .loop
+
+.loop_3:
+    vldmia      r0, { q4, q5, q6 }         // q4 <- x
+
+    vdup.32     q15, d0[0]
+    vmax.f32    q4, q15
+    vmax.f32    q5, q15
+    vmax.f32    q6, q15
+    vdup.32     q15, d0[1]
+    vmin.f32    q4, q15
+    vmin.f32    q5, q15
+    vmin.f32    q6, q15
+
+    vmul.f32    q7, q4, q4          // q7 <- x2
+    vmul.f32    q8, q5, q5
+    vmul.f32    q9, q6, q6
+
+    vdup.32     q10, d1[0]
+    vdup.32     q11, d1[0]
+    vdup.32     q12, d1[0]
+    vdup.32     q13, d1[1]
+    vdup.32     q14, d1[1]
+    vdup.32     q15, d1[1]
+    vmla.f32    q13, q7, q10
+    vmla.f32    q14, q8, q11
+    vmla.f32    q15, q9, q12
+    vdup.32     q10, d2[0]
+    vdup.32     q11, d2[0]
+    vdup.32     q12, d2[0]
+    vmla.f32    q10, q13, q7
+    vmla.f32    q11, q14, q8
+    vmla.f32    q12, q15, q9
+    vdup.32     q13, d2[1]
+    vdup.32     q14, d2[1]
+    vdup.32     q15, d2[1]
+    vmla.f32    q13, q7, q10
+    vmla.f32    q14, q8, q11
+    vmla.f32    q15, q9, q12
+    vdup.32     q10, d3[0]
+    vdup.32     q11, d3[0]
+    vdup.32     q12, d3[0]
+    vmla.f32    q10, q13, q7
+    vmla.f32    q11, q14, q8
+    vmla.f32    q12, q15, q9
+    vmul.f32    q4, q4, q10          // q4 <- numerator
+    vmul.f32    q5, q5, q11
+    vmul.f32    q6, q6, q12
+
+    vdup.32     q10, d3[1]
+    vdup.32     q11, d3[1]
+    vdup.32     q12, d3[1]
+    vdup.32     q13, d4[0]
+    vdup.32     q14, d4[0]
+    vdup.32     q15, d4[0]
+    vmla.f32    q13, q7, q10
+    vmla.f32    q14, q8, q11
+    vmla.f32    q15, q9, q12
+    vdup.32     q10, d4[1]
+    vdup.32     q11, d4[1]
+    vdup.32     q12, d4[1]
+    vmla.f32    q10, q13, q7
+    vmla.f32    q11, q14, q8
+    vmla.f32    q12, q15, q9
+    vdup.32     q13, d5[0]
+    vdup.32     q14, d5[0]
+    vdup.32     q15, d5[0]
+    vmla.f32    q13, q7, q10
+    vmla.f32    q14, q8, q11
+    vmla.f32    q15, q9, q12
+    vdup.32     q10, d5[1]
+    vdup.32     q11, d5[1]
+    vdup.32     q12, d5[1]
+    vmla.f32    q10, q13, q7
+    vmla.f32    q11, q14, q8
+    vmla.f32    q12, q15, q9
+    vdup.32     q13, d6[0]
+    vdup.32     q14, d6[0]
+    vdup.32     q15, d6[0]
+    vmla.f32    q13, q7, q10          // q13 <- denum
+    vmla.f32    q14, q8, q11
+    vmla.f32    q15, q9, q12
+
+    vrecpe.f32  q7, q13
+    vrecpe.f32  q8, q14
+    vrecpe.f32  q9, q15
+    vrecps.f32  q10, q7, q13
+    vrecps.f32  q11, q8, q14
+    vrecps.f32  q12, q9, q15
+    vmul.f32    q7, q7, q10
+    vmul.f32    q8, q8, q11
+    vmul.f32    q9, q9, q12
+    vrecps.f32  q10, q7, q13
+    vrecps.f32  q11, q8, q14
+    vrecps.f32  q12, q9, q15
+    vmul.f32    q7, q7, q10          // q7 <- 1/q13
+    vmul.f32    q8, q8, q11
+    vmul.f32    q9, q9, q12
+
+    vdup.32     q10, d6[1]
+    vdup.32     q11, d6[1]
+    vdup.32     q12, d6[1]
+    vmla.f32    q10, q4, q7
+    vmla.f32    q11, q5, q8
+    vmla.f32    q12, q6, q9
+
+    vstmia      r0!, { q10, q11, q12 }
+
+    subs        r1, #12
+    cmp         r1, #12
+    bge         .loop_3
+
+    cmp         r1, #0;
+    beq         .return
+
 .loop:
     vldmia      r0, { q4 }         // q4 <- x
 
-    vdup.32     q5, d0[0]
-    vmax.f32    q4, q5
-    vdup.32     q5, d0[1]
-    vmin.f32    q4, q5
+    vdup.32     q15, d0[0]
+    vmax.f32    q4, q15
+    vdup.32     q15, d0[1]
+    vmin.f32    q4, q15
 
-    vmul.f32    q5, q4, q4          // q5 <- x2
+    vmul.f32    q7, q4, q4          // q7 <- x2
 
-    vdup.32     q6, d1[0]
-    vdup.32     q7, d1[1]
-    vmla.f32    q7, q5, q6
-    vdup.32     q6, d2[0]
-    vmla.f32    q6, q7, q5
-    vdup.32     q7, d2[1]
-    vmla.f32    q7, q5, q6
-    vdup.32     q6, d3[0]
-    vmla.f32    q6, q7, q5
-    vmul.f32    q4, q4, q6          // q4 <- numerator
+    vdup.32     q10, d1[0]
+    vdup.32     q13, d1[1]
+    vmla.f32    q13, q7, q10
+    vdup.32     q10, d2[0]
+    vmla.f32    q10, q13, q7
+    vdup.32     q13, d2[1]
+    vmla.f32    q13, q7, q10
+    vdup.32     q10, d3[0]
+    vmla.f32    q10, q13, q7
+    vmul.f32    q4, q4, q10          // q4 <- numerator
 
-    vdup.32     q6, d3[1]
-    vdup.32     q7, d4[0]
-    vmla.f32    q7, q5, q6
-    vdup.32     q6, d4[1]
-    vmla.f32    q6, q7, q5
-    vdup.32     q7, d5[0]
-    vmla.f32    q7, q5, q6
-    vdup.32     q6, d5[1]
-    vmla.f32    q6, q7, q5
-    vdup.32     q7, d6[0]
-    vmla.f32    q7, q5, q6          // q7 <- denum
+    vdup.32     q10, d3[1]
+    vdup.32     q13, d4[0]
+    vmla.f32    q13, q7, q10
+    vdup.32     q10, d4[1]
+    vmla.f32    q10, q13, q7
+    vdup.32     q13, d5[0]
+    vmla.f32    q13, q7, q10
+    vdup.32     q10, d5[1]
+    vmla.f32    q10, q13, q7
+    vdup.32     q13, d6[0]
+    vmla.f32    q13, q7, q10          // q13 <- denum
 
-    vrecpe.f32  q5, q7
-    vrecps.f32  q6, q5, q7
-    vmul.f32    q5, q5, q6
-    vrecps.f32  q6, q5, q7
-    vmul.f32    q5, q5, q6          // q5 <- 1/q7
+    vrecpe.f32  q7, q13
+    vrecps.f32  q10, q7, q13
+    vmul.f32    q7, q7, q10
+    vrecps.f32  q10, q7, q13
+    vmul.f32    q7, q7, q10          // q7 <- 1/q13
 
-    vdup.32     q6, d6[1]
-    vmla.f32    q6, q4, q5
+    vdup.32     q10, d6[1]
+    vmla.f32    q10, q4, q7
 
-    vstmia      r0!, { q6 }
+    vstmia      r0!, { q10 }
 
     subs        r1, #4;
     bne         .loop
+
+.return:
     vpop        { q4-q7 }
     bx          lr
 
