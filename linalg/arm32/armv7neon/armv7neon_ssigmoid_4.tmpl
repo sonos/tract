@@ -1,0 +1,80 @@
+// vim: ft=arm
+
+    .arm
+    .text
+    .global armv7neon_ssigmoid_4
+    .type armv7neon_ssigmoid_4, %function
+
+/*
+    s16–s31 (d8–d15, q4–q7) must be preserved
+    s0–s15 (d0–d7, q0–q3) and d16–d31 (q8–q15) do not need to be preserved
+*/
+
+armv7neon_ssigmoid_4:
+
+    ldr         r2, =.coeffs_num
+    vldmia      r2!, { s0-s13 }
+
+.loop:
+    vldmia      r0, { q4 }         // q4 <- x
+
+    vdup.32     q5, d0[0]
+    vmax.f32    q4, q5
+    vdup.32     q5, d0[1]
+    vmin.f32    q4, q5
+
+    vmul.f32    q5, q4, q4          // q5 <- x2
+
+    vdup.32     q6, d1[0]
+    vdup.32     q7, d1[1]
+    vmla.f32    q7, q5, q6
+    vdup.32     q6, d2[0]
+    vmla.f32    q6, q7, q5
+    vdup.32     q7, d2[1]
+    vmla.f32    q7, q5, q6
+    vdup.32     q6, d3[0]
+    vmla.f32    q6, q7, q5
+    vmul.f32    q4, q4, q6          // q4 <- numerator
+
+    vdup.32     q6, d3[1]
+    vdup.32     q7, d4[0]
+    vmla.f32    q7, q5, q6
+    vdup.32     q6, d4[1]
+    vmla.f32    q6, q7, q5
+    vdup.32     q7, d5[0]
+    vmla.f32    q7, q5, q6
+    vdup.32     q6, d5[1]
+    vmla.f32    q6, q7, q5
+    vdup.32     q7, d6[0]
+    vmla.f32    q7, q5, q6          // q7 <- denum
+
+    vrecpe.f32  q5, q7
+    vrecps.f32  q6, q5, q7
+    vmul.f32    q5, q5, q6
+    vrecps.f32  q6, q5, q7
+    vmul.f32    q5, q5, q6          // q5 <- 1/q7
+
+    vdup.32     q6, d6[1]
+    vmla.f32    q6, q4, q5
+
+    vstmia      r0!, { q6 }
+
+    subs        r1, #4;
+    bne         .loop
+    bx          lr
+
+.coeffs_num:
+    .float -18.0                    // low          s0   d0   q0
+    .float 18.0                     // high         s1
+    .float 4.37031012579801e-11     // alpha_9      s2   d1
+    .float 1.15627324459942e-07     // alpha_7      s3
+    .float 6.08574864600143e-05     // alpha_5      s4   d2   q1
+    .float 8.51377133304701e-03     // alpha_3      s5
+    .float 2.48287947061529e-01     // alpha_1      s6   d3
+    .float 6.10247389755681e-13     // beta_10      s7 
+    .float 5.76102136993427e-09     // beta_8       s8   d4   q2
+    .float 6.29106785017040e-06     // beta_6       s9
+    .float 1.70198817374094e-03     // beta_4       s10  d5
+    .float 1.16817656904453e-01     // beta_2       s11
+    .float 9.93151921023180e-01     // beta_0       s12  d6   q3
+    .float 0.5                      //              s13
