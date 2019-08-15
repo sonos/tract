@@ -297,6 +297,7 @@ datum!(String, String);
 pub trait FloatLike: Datum {
     fn mmm(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::mmm::MatMatMul<Self>>;
     fn packed_vec_mat_mul(k: usize, n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>>;
+    fn sigmoid(vec: &mut[Self]);
 }
 
 impl FloatLike for f16 {
@@ -304,6 +305,9 @@ impl FloatLike for f16 {
         unimplemented!("f16 ops");
     }
     fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn sigmoid(_vec: &mut[Self]) {
         unimplemented!("f16 ops");
     }
 }
@@ -315,6 +319,9 @@ impl FloatLike for f32 {
     fn packed_vec_mat_mul(k: usize, n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
         (tract_linalg::ops().svmm)(k, n)
     }
+    fn sigmoid(vec: &mut[Self]) {
+        (tract_linalg::ops().ssigmoid)(vec)
+    }
 }
 
 impl FloatLike for f64 {
@@ -322,6 +329,9 @@ impl FloatLike for f64 {
         unimplemented!("f64 ops");
     }
     fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
+        unimplemented!("f64 ops");
+    }
+    fn sigmoid(_vec: &mut[Self]) {
         unimplemented!("f64 ops");
     }
 }

@@ -5,7 +5,6 @@ mod global_pools;
 mod layer_max;
 mod lrn;
 mod reduce;
-pub mod sigmoid;
 pub mod tanh;
 
 pub use self::arg_max_min::ArgMaxMin;
@@ -15,13 +14,13 @@ pub use self::global_pools::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
 pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::lrn::Lrn;
 pub use self::reduce::{Reduce, Reducer};
-pub use self::sigmoid::Sigmoid;
 pub use self::tanh::Tanh;
 
 use num_traits::AsPrimitive;
 
 element_map!(Softplus, [f32], |x| (x.exp() + 1.0).ln());
 element_map!(Softsign, [f32], |x| x / (x.abs() + 1.0));
+element_map_inplace!(Sigmoid, [f32], f32::sigmoid);
 
 element_map_with_params!(
     Elu,

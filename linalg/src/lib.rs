@@ -30,12 +30,14 @@ pub use self::frame::vecmatmul;
 pub struct Ops {
     pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn vecmatmul::VecMatMul<f32>> + Send + Sync>,
     pub smmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<f32>> + Send + Sync>,
+    pub ssigmoid: Box<dyn Fn(&mut [f32]) + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
     Ops {
         svmm: Box::new(|k, n| Box::new(vecmatmul::PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))),
         smmm: Box::new(|m, k, n| Box::new(mmm::MatMatMulImpl::<generic::SMmm4x4, f32>::new(m, k, n))),
+        ssigmoid: Box::new(generic::ssigmoid),
     }
 }
 
