@@ -19,12 +19,12 @@
 .text
 .align 4
 {% if family == "ios" %}
-    .global _arm64simd_stile8x8
-    _arm64simd_stile8x8:
+    .global _arm64simd_smmm_8x8
+    _arm64simd_smmm_8x8:
 {% else %}
     .cpu generic+fp+simd
-    .global arm64simd_stile8x8
-    arm64simd_stile8x8:
+    .global arm64simd_smmm_8x8
+    arm64simd_smmm_8x8:
 {% endif %}
 
 /*

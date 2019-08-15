@@ -1,7 +1,7 @@
 {% comment %}
 /* vim: set syntax=asm : */
 
-/* tile 16 x 6:
+/* mmm 16 x 6:
 
     ymm0 ymm2 ymm4 ymm6 ymm8 ymm10
     ymm1 ymm3 ymm5 ymm7 ymm8 ymm11
@@ -19,21 +19,21 @@ System V ABI:
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl _fma_stile16x6
-_fma_stile16x6:
+.globl _fma_smmm16x6
+_fma_smmm16x6:
 
 {% elsif family == "unix" %}
 
 .intel_syntax noprefix
 .text
 .p2align 5
-.globl fma_stile16x6
-fma_stile16x6:
+.globl fma_smmm16x6
+fma_smmm16x6:
 
 {% elsif family == "windows" %}
 
 _text segment
-fma_stile16x6 proc
+fma_smmm16x6 proc
     mov         rdi,    rcx
 
 {% endif %}
@@ -364,7 +364,7 @@ fma_stile16x6 proc
 
 
 {% if family == "windows" %}
-fma_stile16x6 endp
+fma_smmm16x6 endp
 _text ends
 end
 {% endif %}

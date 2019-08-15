@@ -1,11 +1,11 @@
-use crate::frame::tiling_kernel::LinearSpec::*;
-use crate::frame::tiling_kernel::TileStorageSpec::*;
-use crate::frame::tiling_kernel::*;
+use crate::frame::mmm::*;
+use crate::frame::mmm::LinearSpec::*;
+use crate::frame::mmm::StorageKerSpec::*;
 
 #[derive(Copy, Clone, Debug)]
-pub struct STiling4x4;
+pub struct SMmm4x4;
 
-impl TilingKer<f32> for STiling4x4 {
+impl MatMatMulKer<f32> for SMmm4x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "generic"
@@ -27,7 +27,7 @@ impl TilingKer<f32> for STiling4x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &TileOpSpec<f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
         unsafe {
             let mut ab = [[0.0f32; 4]; 4];
             match (*spec.a, *spec.b, *spec.linear) {
@@ -91,8 +91,8 @@ impl TilingKer<f32> for STiling4x4 {
                     break;
                 }
                 match *pnl {
-                    NonLinearUSpec::Done => break,
-                    NonLinearUSpec::AddC => {
+                    FusedKerSpec::Done => break,
+                    FusedKerSpec::AddC => {
                         match *spec.c {
                             Strides { ptr: c, row_byte_stride, col_byte_stride } => {
                                 let rsc = row_byte_stride as usize / 4;
@@ -118,7 +118,7 @@ impl TilingKer<f32> for STiling4x4 {
                             _ => return 1
                         }
                     }
-                    NonLinearUSpec::PerRowMul(bias) => {
+                    FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..4 {
                             ab[i][0] *= *bias.offset(i as isize);
                             ab[i][1] *= *bias.offset(i as isize);
@@ -126,7 +126,7 @@ impl TilingKer<f32> for STiling4x4 {
                             ab[i][3] *= *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::PerRowAdd(bias) => {
+                    FusedKerSpec::PerRowAdd(bias) => {
                         for i in 0..4 {
                             ab[i][0] += *bias.offset(i as isize);
                             ab[i][1] += *bias.offset(i as isize);
@@ -134,7 +134,7 @@ impl TilingKer<f32> for STiling4x4 {
                             ab[i][3] += *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::PerColMul(bias) => {
+                    FusedKerSpec::PerColMul(bias) => {
                         for i in 0..4 {
                             ab[0][i] *= *bias.offset(i as isize);
                             ab[1][i] *= *bias.offset(i as isize);
@@ -142,7 +142,7 @@ impl TilingKer<f32> for STiling4x4 {
                             ab[3][i] *= *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::PerColAdd(bias) => {
+                    FusedKerSpec::PerColAdd(bias) => {
                         for i in 0..4 {
                             ab[0][i] += *bias.offset(i as isize);
                             ab[1][i] += *bias.offset(i as isize);
@@ -150,14 +150,14 @@ impl TilingKer<f32> for STiling4x4 {
                             ab[3][i] += *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::Min(m) => {
+                    FusedKerSpec::Min(m) => {
                         for i in 0..4 {
                             for j in 0..4 {
                                 ab[i][j] = ab[i][j].min(m)
                             }
                         }
                     }
-                    NonLinearUSpec::Max(m) => {
+                    FusedKerSpec::Max(m) => {
                         for i in 0..4 {
                             for j in 0..4 {
                                 ab[i][j] = ab[i][j].max(m)
@@ -198,10 +198,10 @@ impl TilingKer<f32> for STiling4x4 {
 
 #[cfg(test)]
 #[derive(Copy, Clone, Debug)]
-pub struct STilingTest3x2;
+pub struct SMmmTest3x2;
 
 #[cfg(test)]
-impl TilingKer<f32> for STilingTest3x2 {
+impl MatMatMulKer<f32> for SMmmTest3x2 {
     #[inline(always)]
     fn name() -> &'static str {
         "generic-test-3x2"
@@ -223,7 +223,7 @@ impl TilingKer<f32> for STilingTest3x2 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &TileOpSpec<f32>) -> isize {
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
         unsafe {
             let mut ab = [[0.0f32; 2]; 3];
             match (*spec.a, *spec.b, *spec.linear) {
@@ -263,8 +263,8 @@ impl TilingKer<f32> for STilingTest3x2 {
                     break;
                 }
                 match *pnl {
-                    NonLinearUSpec::Done => break,
-                    NonLinearUSpec::AddC => {
+                    FusedKerSpec::Done => break,
+                    FusedKerSpec::AddC => {
                         match *spec.c {
                             Strides { ptr: c, row_byte_stride, col_byte_stride } => {
                                 let rsc = row_byte_stride as usize / 4;
@@ -280,40 +280,40 @@ impl TilingKer<f32> for STilingTest3x2 {
                             _ => return 1
                         }
                     }
-                    NonLinearUSpec::PerRowMul(bias) => {
+                    FusedKerSpec::PerRowMul(bias) => {
                         for i in 0..3 {
                             ab[i][0] *= *bias.offset(i as isize);
                             ab[i][1] *= *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::PerRowAdd(bias) => {
+                    FusedKerSpec::PerRowAdd(bias) => {
                         for i in 0..3 {
                             ab[i][0] += *bias.offset(i as isize);
                             ab[i][1] += *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::PerColMul(bias) => {
+                    FusedKerSpec::PerColMul(bias) => {
                         for i in 0..2 {
                             ab[0][i] *= *bias.offset(i as isize);
                             ab[1][i] *= *bias.offset(i as isize);
                             ab[2][i] *= *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::PerColAdd(bias) => {
+                    FusedKerSpec::PerColAdd(bias) => {
                         for i in 0..2 {
                             ab[0][i] += *bias.offset(i as isize);
                             ab[1][i] += *bias.offset(i as isize);
                             ab[2][i] += *bias.offset(i as isize);
                         }
                     }
-                    NonLinearUSpec::Min(m) => {
+                    FusedKerSpec::Min(m) => {
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] = ab[i][j].min(m)
                             }
                         }
                     }
-                    NonLinearUSpec::Max(m) => {
+                    FusedKerSpec::Max(m) => {
                         for i in 0..3 {
                             for j in 0..2 {
                                 ab[i][j] = ab[i][j].max(m)
@@ -344,12 +344,12 @@ impl TilingKer<f32> for STilingTest3x2 {
 
 #[cfg(test)]
 mod test_3_2 {
-    tile_kernel_tests!(true, crate::generic::tiling::STilingTest3x2, f32);
-    tile_frame_tests!(true, crate::generic::tiling::STilingTest3x2);
+    mmm_kernel_tests!(true, crate::generic::mmm::SMmmTest3x2, f32);
+    mmm_frame_tests!(true, crate::generic::mmm::SMmmTest3x2);
 }
 
 #[cfg(test)]
 mod test {
-    tile_kernel_tests!(true, crate::generic::STiling4x4, f32);
-    tile_frame_tests!(true, crate::generic::STiling4x4);
+    mmm_kernel_tests!(true, crate::generic::SMmm4x4, f32);
+    mmm_frame_tests!(true, crate::generic::SMmm4x4);
 }

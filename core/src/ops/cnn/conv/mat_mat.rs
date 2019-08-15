@@ -8,7 +8,7 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::{DataFormat, DataShape};
 
-use tract_linalg::{NonLinearSpec, Tile};
+use tract_linalg::frame::mmm::{FusedSpec, MatMatMul};
 
 /*
  * group=1, N=1         N>1             g>1
@@ -51,9 +51,9 @@ where
     #[debug(skip)]
     pub packed_kernels: Vec<Tensor>,
     pub group: usize,
-    pub tile: Box<dyn Tile<T>>,
-    pub bias: Option<Vec<NonLinearSpec<T>>>,
-    pub non_linear: Vec<NonLinearSpec<T>>,
+    pub tile: Box<dyn MatMatMul<T>>,
+    pub bias: Option<Vec<FusedSpec<T>>>,
+    pub non_linear: Vec<FusedSpec<T>>,
 }
 
 impl<T> MatMat<T>
@@ -137,23 +137,23 @@ where
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
-            let fused_micro_op = (|| -> TractResult<Option<TVec<NonLinearSpec<T>>>> {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
                 if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
                     if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(tvec!(NonLinearSpec::PerRowMul(op.b.as_slice::<T>()?.to_vec()))));
+                        return Ok(Some(tvec!(FusedSpec::PerRowMul(op.b.as_slice::<T>()?.to_vec()))));
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
                     if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(tvec!(NonLinearSpec::PerRowAdd(op.b.as_slice::<T>()?.to_vec()))));
+                        return Ok(Some(tvec!(FusedSpec::PerRowAdd(op.b.as_slice::<T>()?.to_vec()))));
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
-                    return Ok(Some(tvec!(NonLinearSpec::Max(op.max.as_()))));
+                    return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
-                    return Ok(Some(tvec!(NonLinearSpec::Min(op.min.as_()))));
+                    return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
                     return Ok(Some(tvec!(
-                                NonLinearSpec::Min(op.min.as_()),
-                                NonLinearSpec::Max(op.max.as_()),
+                                FusedSpec::Min(op.min.as_()),
+                                FusedSpec::Max(op.max.as_()),
                                 )));
                 }
                 Ok(None)

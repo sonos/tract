@@ -24,17 +24,18 @@ pub mod arm64;
 #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
 pub mod arm32;
 
-pub use self::frame::*;
+pub use self::frame::mmm;
+pub use self::frame::vecmatmul;
 
 pub struct Ops {
-    pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn VecMatMul<f32>> + Send + Sync>,
-    pub stile: Box<dyn Fn(usize, usize, usize) -> Box<dyn Tile<f32>> + Send + Sync>,
+    pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn vecmatmul::VecMatMul<f32>> + Send + Sync>,
+    pub smmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<f32>> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
     Ops {
-        svmm: Box::new(|k, n| Box::new(PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))),
-        stile: Box::new(|m, k, n| Box::new(TileOp::<generic::STiling4x4, f32>::new(m, k, n))),
+        svmm: Box::new(|k, n| Box::new(vecmatmul::PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))),
+        smmm: Box::new(|m, k, n| Box::new(mmm::MatMatMulImpl::<generic::SMmm4x4, f32>::new(m, k, n))),
     }
 }
 
@@ -44,8 +45,8 @@ pub fn best() -> Ops {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("fma") {
-            ops.stile = Box::new(|m, k, n| {
-                Box::new(TileOp::<x86_64_fma::tile::STile16x6, f32>::new(m, k, n))
+            ops.smmm = Box::new(|m, k, n| {
+                Box::new(mmm::MatMatMulImpl::<x86_64_fma::mmm::SMatMatMul16x6, f32>::new(m, k, n))
             });
             log::info!("x86_64/fma activated");
         }

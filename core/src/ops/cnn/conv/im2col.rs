@@ -1,4 +1,4 @@
-use tract_linalg::PackB;
+use tract_linalg::frame::PackB;
 
 use crate::internal::*;
 use ndarray::prelude::*;

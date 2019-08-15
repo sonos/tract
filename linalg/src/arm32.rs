@@ -1,7 +1,7 @@
 use std::{env, fs};
 mod armv7neon;
 mod armvfpv2;
-use crate::frame::TileOp;
+use crate::frame::MatMatMulImpl;
 
 use crate::Ops;
 
@@ -21,14 +21,14 @@ fn has_neon() -> bool {
 
 pub fn plug(ops: &mut Ops) {
     if has_neon() {
-        log::info!("armv7neon activated for stile");
-        ops.stile = Box::new(|m, k, n| {
-            Box::new(TileOp::<armv7neon::STile8x4, f32>::new(m, k, n))
+        log::info!("armv7neon activated for smmm");
+        ops.smmm = Box::new(|m, k, n| {
+            Box::new(MatMatMulImpl::<armv7neon::SMatMatMul8x4, f32>::new(m, k, n))
         });
     } else {
-        log::info!("armvfpv2 activated for stile");
-        ops.stile = Box::new(|m, k, n| {
-            Box::new(TileOp::<armvfpv2::STile4x4, f32>::new(m, k, n))
+        log::info!("armvfpv2 activated for smmm");
+        ops.smmm = Box::new(|m, k, n| {
+            Box::new(MatMatMulImpl::<armvfpv2::SMatMatMul4x4, f32>::new(m, k, n))
         });
     }
 }

@@ -4,7 +4,7 @@ use std::ops::{Add, Mul};
 use crate::internal::*;
 use ndarray::*;
 
-use tract_linalg::{NonLinearSpec, Tile};
+use tract_linalg::mmm::{FusedSpec, MatMatMul};
 
 fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
     a: &Tensor,
@@ -97,7 +97,7 @@ struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<dyn Tile<T>>,
+    mm: Box<dyn MatMatMul<T>>,
     a_shape: TVec<usize>,
     b_shape: TVec<usize>,
     bc_a_shape: TVec<usize>,
@@ -115,7 +115,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Geo<T> {
         let m = bc_a_shape[bc_a_shape.len() - 2];
         let k = bc_a_shape[bc_a_shape.len() - 1];
         let n = bc_b_shape[bc_b_shape.len() - 1];
-        let mm = T::tile_op(m, k, n);
+        let mm = T::mmm(m, k, n);
         let a_stride_prefix = bc_a_shape
             .iter()
             .rev()
@@ -300,7 +300,7 @@ where
     packed_b: Tensor,
     a_shape: TVec<usize>,
     c_shape: TVec<usize>,
-    non_linear: Vec<NonLinearSpec<T>>,
+    non_linear: Vec<FusedSpec<T>>,
 }
 
 impl<T> MatMulUnaryImplASimpleB<T>
@@ -356,23 +356,23 @@ where
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
-            let fused_micro_op = (|| -> TractResult<Option<TVec<NonLinearSpec<T>>>> {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
                 if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
                     if op.b.shape() == &[self.geo.n] {
-                        return Ok(Some(tvec!(NonLinearSpec::PerColMul(op.b.as_slice::<T>()?.to_vec()))));
+                        return Ok(Some(tvec!(FusedSpec::PerColMul(op.b.as_slice::<T>()?.to_vec()))));
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
                     if op.b.shape() == &[self.geo.n] {
-                        return Ok(Some(tvec!(NonLinearSpec::PerColAdd(op.b.as_slice::<T>()?.to_vec()))));
+                        return Ok(Some(tvec!(FusedSpec::PerColAdd(op.b.as_slice::<T>()?.to_vec()))));
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
-                    return Ok(Some(tvec!(NonLinearSpec::Max(op.max.as_()))));
+                    return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
-                    return Ok(Some(tvec!(NonLinearSpec::Min(op.min.as_()))));
+                    return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
                     return Ok(Some(tvec!(
-                                NonLinearSpec::Min(op.min.as_()),
-                                NonLinearSpec::Max(op.max.as_()),
+                                FusedSpec::Min(op.min.as_()),
+                                FusedSpec::Max(op.max.as_()),
                                 )));
                 }
                 Ok(None)

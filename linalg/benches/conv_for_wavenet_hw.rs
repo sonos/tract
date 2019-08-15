@@ -9,7 +9,7 @@ fn conv(c: &mut Criterion, dilation: usize, pulse: usize, ci: usize, co: usize) 
         let data_offsets: Vec<_> = (0..pulse).map(|x| x as isize).collect();
         let kernel_offsets: Vec<_> =
             (0..ci).flat_map(|ici| (0..3).map(move |x| (ici * t * 3 + x * t) as isize)).collect();
-        let conv = (tract_linalg::ops().stile)(co, kernel_offsets.len(), data_offsets.len());
+        let conv = (tract_linalg::ops().smmm)(co, kernel_offsets.len(), data_offsets.len());
         let a = tract_linalg::align::realign_vec(
             vec![0.0; conv.a_pack().len()],
             conv.a_pack().alignment(),

@@ -8,7 +8,7 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::{DataFormat, DataShape};
 
-use tract_linalg::VecMatMul;
+use tract_linalg::vecmatmul::VecMatMul;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct VecMat<T>

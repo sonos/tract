@@ -4,7 +4,7 @@ use num_traits::AsPrimitive;
 
 use itertools::Itertools;
 
-use tract_linalg::NonLinearSpec;
+use tract_linalg::mmm::FusedSpec;
 
 use crate::internal::*;
 use crate::model::*;
@@ -119,8 +119,7 @@ impl ConvUnary {
                     .map(move |x| x + (ici * channel_stride) as isize)
             })
             .collect();
-        let conv =
-            (tract_linalg::ops().stile)(self.output_channels(), kernel_offsets.len(), data_offsets.len());
+        let conv = f32::mmm(self.output_channels(), kernel_offsets.len(), data_offsets.len());
 
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed = unsafe {
@@ -133,7 +132,15 @@ impl ConvUnary {
             kernel.strides()[2],
         );
 
-        Ok(super::Direct::new(conv, data_offsets, kernel_offsets, input_shape, output_shape, packed, vec!()))
+        Ok(super::Direct::new(
+            conv,
+            data_offsets,
+            kernel_offsets,
+            input_shape,
+            output_shape,
+            packed,
+            vec![],
+        ))
     }
 
     fn kernel_as_group_o_ihw<T: Datum>(&self) -> TractResult<Array3<T>> {
@@ -206,7 +213,7 @@ impl ConvUnary {
         let mut packed_kernels: Vec<Tensor> = vec![];
 
         let (op2, b_pack): (Box<dyn Op>, _) = if m > 1 {
-            let mm = T::tile_op(m, k, n);
+            let mm = T::mmm(m, k, n);
             let b_pack = mm.b_pack();
 
             trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
@@ -236,8 +243,14 @@ impl ConvUnary {
                 packed_kernels,
                 self.group,
                 mm.clone(),
-                bias.map(|bias| bias.iter().chunks(m).into_iter().map(|b| NonLinearSpec::PerRowAdd(b.cloned().collect())).collect()),
-                vec!(),
+                bias.map(|bias| {
+                    bias.iter()
+                        .chunks(m)
+                        .into_iter()
+                        .map(|b| FusedSpec::PerRowAdd(b.cloned().collect()))
+                        .collect()
+                }),
+                vec![],
             );
             (Box::new(conv_gemm), b_pack)
         } else {

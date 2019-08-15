@@ -1,14 +1,14 @@
-use crate::frame::tiling_kernel::*;
+use crate::frame::mmm_kernel::*;
 
 extern "C" {
     #[no_mangle]
-    fn arm64simd_stile8x8(op: *const TileOpSpec<f32>) -> isize;
+    fn arm64simd_smmm8x8(op: *const MatMatMulKerSpec<f32>) -> isize;
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct STile8x8;
+pub struct SMatMatMul8x8;
 
-impl TilingKer<f32> for STile8x8 {
+impl MatMatMulKer<f32> for SMatMatMul8x8 {
     #[inline(always)]
     fn name() -> &'static str {
         "arm64simd"
@@ -28,13 +28,13 @@ impl TilingKer<f32> for STile8x8 {
         16
     }
     #[inline(never)]
-    fn kernel(op: &TileOpSpec<f32>) -> isize {
-        unsafe { arm64simd_stile8x8(op) }
+    fn kernel(op: &MatMatMulKerSpec<f32>) -> isize {
+        unsafe { arm64simd_smmm8x8(op) }
     }
 }
 
 #[cfg(test)]
 mod test {
-    tile_kernel_tests!(true, crate::arm64::arm64simd::STile8x8, f32);
-    tile_frame_tests!(true, crate::arm64::arm64simd::STile8x8);
+    mmm_kernel_tests!(true, crate::arm64::arm64simd::SMatMatMul8x8, f32);
+    mmm_frame_tests!(true, crate::arm64::arm64simd::SMatMatMul8x8);
 }
