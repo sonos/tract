@@ -25,19 +25,20 @@ pub mod arm64;
 pub mod arm32;
 
 pub use self::frame::mmm;
+pub use self::frame::sigmoid;
 pub use self::frame::vecmatmul;
 
 pub struct Ops {
     pub svmm: Box<dyn Fn(usize, usize) -> Box<dyn vecmatmul::VecMatMul<f32>> + Send + Sync>,
     pub smmm: Box<dyn Fn(usize, usize, usize) -> Box<dyn mmm::MatMatMul<f32>> + Send + Sync>,
-    pub ssigmoid: Box<dyn Fn(&mut [f32]) + Send + Sync>,
+    pub ssigmoid: Box<dyn Fn() -> Box<dyn sigmoid::Sigmoid<f32>> + Send + Sync>,
 }
 
 pub fn generic() -> Ops {
     Ops {
         svmm: Box::new(|k, n| Box::new(vecmatmul::PackedVecMatMul::<generic::SVecMatMul8, f32>::new(k, n))),
         smmm: Box::new(|m, k, n| Box::new(mmm::MatMatMulImpl::<generic::SMmm4x4, f32>::new(m, k, n))),
-        ssigmoid: Box::new(generic::ssigmoid),
+        ssigmoid: Box::new(|| Box::new(sigmoid::SigmoidImpl::<generic::SSigmoid4, f32>::new())),
     }
 }
 
@@ -68,4 +69,15 @@ lazy_static::lazy_static! {
 
 pub fn ops() -> &'static Ops {
     &*OPS
+}
+
+#[cfg(test)]
+pub(crate) fn check_close(found: &[f32], expected: &[f32]) -> proptest::test_runner::TestCaseResult {
+    proptest::prop_assert!(
+        found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
+        "found: {:?} expected: {:?}",
+        found,
+        expected
+    );
+    Ok(())
 }

@@ -20,7 +20,7 @@ use num_traits::AsPrimitive;
 
 element_map!(Softplus, [f32], |x| (x.exp() + 1.0).ln());
 element_map!(Softsign, [f32], |x| x / (x.abs() + 1.0));
-element_map_inplace!(Sigmoid, [f32], f32::sigmoid);
+element_map_inplace!(Sigmoid, [f32], |xs| f32::sigmoid().run(xs));
 
 element_map_with_params!(
     Elu,

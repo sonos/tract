@@ -312,16 +312,6 @@ pub mod test {
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseResult;
 
-    pub fn check_close(found: &[f32], expected: &[f32]) -> TestCaseResult {
-        proptest::prop_assert!(
-            found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
-            "found: {:?} expected: {:?}",
-            found,
-            expected
-        );
-        Ok(())
-    }
-
     #[macro_export]
     macro_rules! mmm_frame_tests {
         ($cond:expr, $ker:ty) => {
@@ -339,7 +329,7 @@ pub mod test {
                     #[test]
                     fn conv_prepacked(pb in strat_conv_1d()) {
                         if $cond {
-                            check_close(&*pb.run::<$ker>(), &*pb.expected())?;
+                            crate::check_close(&*pb.run::<$ker>(), &*pb.expected())?;
                         }
                     }
                 }
@@ -374,7 +364,7 @@ pub mod test {
                             filters,
                             data,
                         };
-                        check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
+                        crate::check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
                     }
                 }
 
