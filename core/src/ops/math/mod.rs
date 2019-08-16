@@ -63,10 +63,11 @@ element_map!(Atan, [f16, f32, f64], |x| x.atan());
 
 element_map!(Cosh, [f16, f32, f64], |x| x.cosh());
 element_map!(Sinh, [f16, f32, f64], |x| x.sinh());
-element_map!(Tanh, [f16, f32, f64], |x| x.tanh());
+element_map_inplace!(Tanh, [f32], |xs| <f32 as FloatLike>::tanh().run(xs));
 element_map!(Acosh, [f16, f32, f64], |x| x.acosh());
 element_map!(Asinh, [f16, f32, f64], |x| x.asinh());
 element_map!(Atanh, [f16, f32, f64], |x| x.atanh());
+
 
 element_map!(Neg, [i8, i16, i32, i64, f16, f32, f64, TDim], |x| -x);
 

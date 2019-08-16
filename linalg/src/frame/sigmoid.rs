@@ -85,7 +85,7 @@ pub mod test {
             }
 
             #[test]
-            fn test_4_magic() {
+            fn sigmoid_4_magic() {
                 if $cond {
                     crate::frame::sigmoid::test::test_sigmoid::<$ker>(&[0f32, -20.0, 20.0, 0.0])
                         .unwrap()
@@ -93,19 +93,19 @@ pub mod test {
             }
 
             #[test]
-            fn test_4zeros() {
+            fn sigmoid_4zeros() {
                 if $cond {
                     crate::frame::sigmoid::test::test_sigmoid::<$ker>(&[0.0; 4]).unwrap();
                 }
             }
 
             #[test]
-            fn test_20_ones() {
+            fn sigmoid_20_ones() {
                 crate::frame::sigmoid::test::test_sigmoid::<$ker>(&[1.0; 20]).unwrap();
             }
 
             #[test]
-            fn test_18_zeros() {
+            fn sigmoid_18_zeros() {
                 if $cond {
                     crate::frame::sigmoid::test::test_sigmoid::<$ker>(&[0.0; 18]).unwrap();
                 }
