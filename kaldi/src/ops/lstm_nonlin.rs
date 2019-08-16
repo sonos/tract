@@ -195,12 +195,18 @@ impl Op for LstmNonlin {
 impl StatelessOp for LstmNonlin {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         use tract_core::ndarray::*;
-        use tract_core::ops::nn::tanh::tanh_f32;
 
         let sigmoid = (tract_linalg::ops().ssigmoid)();
         let sigmoid_f32 = |f: f32| -> f32 {
             let mut f = [f];
             sigmoid.run(&mut f);
+            f[0]
+        };
+
+        let tanh = (tract_linalg::ops().ssigmoid)();
+        let tanh_f32 = |f: f32| -> f32 {
+            let mut f = [f];
+            tanh.run(&mut f);
             f[0]
         };
 

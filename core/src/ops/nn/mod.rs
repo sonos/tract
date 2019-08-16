@@ -5,7 +5,6 @@ mod global_pools;
 mod layer_max;
 mod lrn;
 mod reduce;
-pub mod tanh;
 
 pub use self::arg_max_min::ArgMaxMin;
 pub use self::batch_norm::BatchNorm;
@@ -14,7 +13,6 @@ pub use self::global_pools::{GlobalAvgPool, GlobalLpPool, GlobalMaxPool};
 pub use self::layer_max::{LayerHardmax, LayerLogSoftmax, LayerSoftmax};
 pub use self::lrn::Lrn;
 pub use self::reduce::{Reduce, Reducer};
-pub use self::tanh::Tanh;
 
 use num_traits::AsPrimitive;
 
