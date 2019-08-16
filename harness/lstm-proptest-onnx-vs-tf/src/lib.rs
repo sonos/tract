@@ -47,7 +47,7 @@ impl LstmProblem {
         let mut op = tract_onnx::ops::rec::lstm::LSTM::default();
         op.initial_h = Some(self.h0.clone().insert_axis(Axis(0)).into());
         op.initial_c = Some(self.c0.clone().insert_axis(Axis(0)).into());
-        op.want_output_0_y = true;
+        op.optional_y_output = Some(0);
         let lstm =
             model.chain("lstm", op, tvec!(TensorFact::default())).unwrap();
         model.plug_const(InletId::new(lstm, 1), "w", w_iofc)?;
