@@ -40,7 +40,6 @@ pub struct RNN {
     pub optional_y_h_output: Option<usize>,
     pub fore: Box<dyn StatelessOp>,
     pub back: Box<dyn StatelessOp>,
-    pub initial_h: Option<Tensor>,
 }
 
 impl Default for RNN {
@@ -53,7 +52,6 @@ impl Default for RNN {
             optional_y_h_output: None,
             fore: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
             back: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
-            initial_h: None,
         }
     }
 }
@@ -154,8 +152,8 @@ impl StatelessOp for RNN {
             let w = w.index_axis_move(Axis(0), dir);
             let r = r.index_axis_move(Axis(0), dir);
 
-            let mut ht = if let Some(ref init) = self.initial_h {
-                init.to_array_view::<f32>()?
+            let mut ht = if let Some(init) = self.optional_initial_h_input {
+                inputs[init].to_array_view::<f32>()?
                     .index_axis_move(Axis(0), dir)
                     .to_owned()
                     .into_dimensionality()?

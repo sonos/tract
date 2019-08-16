@@ -45,14 +45,16 @@ impl LstmProblem {
         let _x = model
             .add_source("x", TensorFact::dt_shape(self.x[0].datum_type(), self.x[0].shape()))?;
         let mut op = tract_onnx::ops::rec::lstm::LSTM::default();
-        op.initial_h = Some(self.h0.clone().insert_axis(Axis(0)).into());
-        op.initial_c = Some(self.c0.clone().insert_axis(Axis(0)).into());
         op.optional_y_output = Some(0);
-        let lstm =
-            model.chain("lstm", op, tvec!(TensorFact::default())).unwrap();
+        op.optional_bias_input = Some(3);
+        op.optional_initial_h_input = Some(4);
+        op.optional_initial_c_input = Some(5);
+        let lstm = model.chain("lstm", op, tvec!(TensorFact::default())).unwrap();
         model.plug_const(InletId::new(lstm, 1), "w", w_iofc)?;
         model.plug_const(InletId::new(lstm, 2), "r", r_iofc)?;
         model.plug_const(InletId::new(lstm, 3), "b", b_iofc)?;
+        model.plug_const(InletId::new(lstm, 4), "initial_h", self.h0.clone().insert_axis(Axis(0)))?;
+        model.plug_const(InletId::new(lstm, 5), "initial_c", self.c0.clone().insert_axis(Axis(0)))?;
         model.set_output_outlets(&[OutletId::new(lstm, 0)])?;
         model.analyse(false)?;
         Ok(model.into_typed()?)

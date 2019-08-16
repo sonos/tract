@@ -43,7 +43,6 @@ pub struct GRU {
     pub optional_y_h_output: Option<usize>,
     pub f: Box<dyn StatelessOp>,
     pub g: Box<dyn StatelessOp>,
-    pub initial_h: Option<Tensor>,
     pub linear_before_reset: bool,
 }
 
@@ -57,7 +56,6 @@ impl Default for GRU {
             optional_y_h_output: None,
             f: Box::new(core_ops::nn::Sigmoid::new(f32::datum_type().into())),
             g: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
-            initial_h: None,
             linear_before_reset: false,
         }
     }
@@ -159,8 +157,8 @@ impl StatelessOp for GRU {
             let w = w.index_axis_move(Axis(0), dir);
             let r = r.index_axis_move(Axis(0), dir);
 
-            let mut ht = if let Some(ref init) = self.initial_h {
-                init.to_array_view::<f32>()?
+            let mut ht = if let Some(ix) = self.optional_initial_h_input {
+                inputs[ix].to_array_view::<f32>()?
                     .index_axis_move(Axis(0), dir)
                     .to_owned()
                     .into_dimensionality()?
