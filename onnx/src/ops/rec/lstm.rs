@@ -20,6 +20,7 @@ pub fn lstm(
     lstm.optional_bias_input = options.next().unwrap();
     lstm.optional_sequence_lens_input = options.next().unwrap();
     lstm.optional_initial_h_input = options.next().unwrap();
+    lstm.optional_initial_c_input = options.next().unwrap();
     lstm.optional_p_input = options.next().unwrap();
 
     let mut real_output_count = 0;
@@ -41,6 +42,7 @@ pub struct LSTM {
     pub optional_bias_input: Option<usize>,
     pub optional_sequence_lens_input: Option<usize>,
     pub optional_initial_h_input: Option<usize>,
+    pub optional_initial_c_input: Option<usize>,
     pub optional_p_input: Option<usize>,
     pub optional_y_output: Option<usize>,
     pub optional_y_h_output: Option<usize>,
@@ -48,8 +50,6 @@ pub struct LSTM {
     pub f: Box<dyn StatelessOp>,
     pub g: Box<dyn StatelessOp>,
     pub h: Box<dyn StatelessOp>,
-    pub initial_c: Option<Tensor>,
-    pub initial_h: Option<Tensor>,
 }
 
 impl Default for LSTM {
@@ -58,6 +58,7 @@ impl Default for LSTM {
             optional_bias_input: None,
             optional_sequence_lens_input: None,
             optional_initial_h_input: None,
+            optional_initial_c_input: None,
             optional_p_input: None,
             optional_y_output: None,
             optional_y_h_output: None,
@@ -65,8 +66,6 @@ impl Default for LSTM {
             f: Box::new(core_ops::nn::Sigmoid::new(f32::datum_type().into())),
             g: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
             h: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
-            initial_c: None,
-            initial_h: None,
         }
     }
 }
@@ -92,6 +91,7 @@ impl InferenceRulesOp for LSTM {
             + self.optional_bias_input.is_some() as usize
             + self.optional_sequence_lens_input.is_some() as usize
             + self.optional_initial_h_input.is_some() as usize
+            + self.optional_initial_c_input.is_some() as usize
             + self.optional_p_input.is_some() as usize;
         check_input_arity(&inputs, input_count)?;
         let output_count = self.optional_y_output.is_some() as usize
@@ -124,6 +124,13 @@ impl InferenceRulesOp for LSTM {
             s.equals(&inputs[initial_h].shape[0], &inputs[1].shape[0])?; // num_directions
             s.equals(&inputs[initial_h].shape[1], &inputs[0].shape[1])?; // batch_size
             s.equals(&inputs[initial_h].shape[2], &inputs[2].shape[2])?; // hidden_size
+        }
+        if let Some(initial_c) = self.optional_initial_c_input {
+            s.equals(&inputs[initial_c].datum_type, &inputs[0].datum_type)?;
+            s.equals(&inputs[initial_c].rank, 3)?;
+            s.equals(&inputs[initial_c].shape[0], &inputs[1].shape[0])?; // num_directions
+            s.equals(&inputs[initial_c].shape[1], &inputs[0].shape[1])?; // batch_size
+            s.equals(&inputs[initial_c].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
         if let Some(p) = self.optional_p_input {
             s.equals(&inputs[p].datum_type, &inputs[0].datum_type)?;
@@ -183,8 +190,8 @@ impl StatelessOp for LSTM {
             let w = w.index_axis_move(Axis(0), dir);
             let r = r.index_axis_move(Axis(0), dir);
 
-            let mut ht = if let Some(ref init) = self.initial_h {
-                init.to_array_view::<f32>()?
+            let mut ht = if let Some(init) = self.optional_initial_h_input {
+                inputs[init].to_array_view::<f32>()?
                     .index_axis_move(Axis(0), dir)
                     .to_owned()
                     .into_dimensionality()?
@@ -192,8 +199,8 @@ impl StatelessOp for LSTM {
                 Array2::<f32>::zeros((batch_size, hidden_size)).into()
             };
 
-            let mut ct = if let Some(ref init) = self.initial_c {
-                init.to_array_view::<f32>()?
+            let mut ct = if let Some(init) = self.optional_initial_c_input {
+                inputs[init].to_array_view::<f32>()?
                     .index_axis_move(Axis(0), dir)
                     .to_owned()
                     .into_dimensionality()?
