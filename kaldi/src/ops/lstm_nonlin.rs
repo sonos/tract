@@ -203,7 +203,7 @@ impl StatelessOp for LstmNonlin {
             f[0]
         };
 
-        let tanh = (tract_linalg::ops().ssigmoid)();
+        let tanh = (tract_linalg::ops().stanh)();
         let tanh_f32 = |f: f32| -> f32 {
             let mut f = [f];
             tanh.run(&mut f);
