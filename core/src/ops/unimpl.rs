@@ -18,8 +18,12 @@ impl Op for UnimplementedOp {
     }
 }
 
-impl StatelessOp for UnimplementedOp {
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+impl StatefullOp for UnimplementedOp {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
         bail!("unimplemented operation: {}", self.name)
     }
 }

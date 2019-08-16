@@ -63,7 +63,7 @@ impl<'a> ParsingContext<'a> {
                 format!("{}-{}", model.nodes().len(), pbnode.get_op_type())
             };
             trace!("Creating node {}", name);
-            let facts = (0..pbnode.get_output().len()).map(|_| TensorFact::default()).collect();
+            let facts = pbnode.get_output().iter().filter(|s| !s.is_empty()).map(|_| TensorFact::default()).collect();
             trace!("  outputs {:?}", pbnode.get_output());
             let (op, closures) = match self.framework.op_register.0.get(pbnode.get_op_type()) {
                 Some(builder) => (builder)(&ctx, pbnode)?,
@@ -71,7 +71,7 @@ impl<'a> ParsingContext<'a> {
                             format!("{:?}", pbnode)).into(), vec!()),
             };
             let id = model.add_node(name, op, facts)?;
-            for (ix, output) in pbnode.get_output().iter().enumerate() {
+            for (ix, output) in pbnode.get_output().iter().filter(|s| !s.is_empty()).enumerate() {
                 outlets_by_name.insert(output.to_owned(), OutletId::new(id, ix));
             }
             for closure in closures {
@@ -80,7 +80,7 @@ impl<'a> ParsingContext<'a> {
             }
         }
         for (id, pbnode) in graph.get_node().iter().enumerate() {
-            for (ix, input) in pbnode.get_input().iter().enumerate() {
+            for (ix, input) in pbnode.get_input().iter().filter(|s| !s.is_empty()).enumerate() {
                 if !outlets_by_name.contains_key(&*input) {
                     let id = model.add_source_default(input.clone())?;
                     unresolved_inputs.push(input.to_string());
