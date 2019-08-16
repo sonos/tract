@@ -24,7 +24,7 @@ impl StatefullOp for UnimplementedOp {
         _session: &mut SessionState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        bail!("unimplemented operation: {}", self.name)
+        bail!("unimplemented operation: #{} {}", node_id, self.name)
     }
 }
 
