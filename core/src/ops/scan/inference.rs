@@ -110,6 +110,7 @@ impl Inference {
                 .filter_map(|(ix, m)| m.as_state().map(|init| (ix, init)))
                 .nth(state_ix)
                 .unwrap();
+            trace!(" Hidden state #{} is inner model input #{}. Initialized by: {:?}.", state_ix, inner_model_input_ix, initializer);
             let inner_model_output_ix = self
                 .output_mapping
                 .iter()
@@ -118,6 +119,7 @@ impl Inference {
                 .nth(state_ix)
                 .unwrap()
                 .0;
+            trace!(" Hidden state #{} is inner model output #{}.", state_ix, inner_model_output_ix);
             match initializer {
                 StateInitializer::Value(v) => {
                     let fact = TensorFact::dt_shape_from_tensor(v);
@@ -133,29 +135,38 @@ impl Inference {
                     Fact::unify_all(&mut facts)?;
                 }
             }
+            trace!(" Done with hidden state #{}: {:?}", state_ix, self.body.input_fact(inner_model_input_ix)?);
         }
         for (ix, i) in self.input_mapping.iter().enumerate() {
+            trace!(" Dealing with input mapping #{} {:?}", ix, i);
             match i {
-                InputMapping::State { .. } => {}
+                InputMapping::State { .. } => Ok(()),
                 InputMapping::Full { slot } => {
-                    inputs[*slot].unify_with(self.body.input_fact_mut(ix)?)?;
+                    inputs[*slot].unify_with_mut(self.body.input_fact_mut(ix)?).map(|_| ())
                 }
                 InputMapping::Scan { slot, axis, .. } => {
                     let incoming = &mut inputs[*slot];
                     let inner = self.body.input_fact_mut(ix)?;
-                    Self::unify_scanning_tensor_fact(incoming, inner, *axis)?;
+                    Self::unify_scanning_tensor_fact(incoming, inner, *axis)
                 }
-            }
+            }.chain_err(|| format!("Error unifying inner body input {} {:?}", ix, i))?;
         }
         for (ix, i) in self.output_mapping.iter().enumerate() {
+            trace!(" Dealing with output mapping #{} {:?}", ix, i);
             match i {
-                OutputMapping::State { .. } => {}
+                OutputMapping::State { slot } => {
+                    if let Some(slot) = slot {
+                        outputs[*slot].unify_with_mut(self.body.output_fact_mut(ix)?).map(|_| ())
+                    } else {
+                        Ok(())
+                    }
+                }
                 OutputMapping::Scan { slot, axis, .. } => {
                     let outgoing = &mut outputs[*slot];
                     let inner = self.body.output_fact_mut(ix)?;
-                    Self::unify_scanning_tensor_fact(outgoing, inner, *axis)?;
+                    Self::unify_scanning_tensor_fact(outgoing, inner, *axis)
                 }
-            }
+            }.chain_err(|| format!("Error unifying inner body output {} {:?}", ix, i))?;
         }
         Ok(())
     }
@@ -204,7 +215,7 @@ impl InferenceOp for Inference {
         }
         self.body
             .analyse(false)
-            .map_err(|e| format!("analysing inner model: {}\n{:#?}", e, self.body))?;
+            .chain_err(|| "Analysing inner model")?;
         trace!("Finished inner model analyse");
         self.unify_facts(&mut inputs, &mut outputs)?;
         Ok((inputs, outputs, tvec!()))

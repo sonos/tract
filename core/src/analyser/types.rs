@@ -440,7 +440,7 @@ impl Fact for ShapeFact {
                 ),
             })
             .collect::<TractResult<_>>()
-            .map_err(|e| format!("Unifying shapes {:?} and {:?}, {}", x, y, e))?;
+            .chain_err(|| format!("Error unifying shapes {:?} and {:?}", x, y))?;
 
         if x.open && y.open {
             Ok(ShapeFact::open(dimensions))

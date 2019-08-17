@@ -210,7 +210,6 @@ impl InferenceModel {
             }
         }
         model = compact::compact(&model)?;
-        model.analyse(false)?;
         Ok(model)
     }
 
@@ -244,7 +243,8 @@ impl InferenceModel {
     /// Attempt full analyse and conversion to TypedModel.
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
         self.analyse(false)?;
-        let m = self.incorporate()?;
+        let mut m = self.incorporate()?;
+        m.analyse(false)?;
         compact::translate(&m)
     }
 

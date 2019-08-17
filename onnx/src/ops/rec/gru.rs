@@ -34,6 +34,35 @@ pub fn gru(
     Ok((Box::new(gru), vec![]))
 }
 
+mod helpers {
+    use super::*;
+    use tract_core::ops::{array, math};
+
+    pub fn transpose() -> Box<dyn InferenceOp> {
+        Box::new(array::PermuteAxes::new(Some(vec![1, 0])))
+    }
+
+    pub fn slice(axis: usize, range: std::ops::Range<usize>) -> Box<dyn InferenceOp> {
+        Box::new(array::Slice::new(vec![axis], vec![range.start], vec![range.end]))
+    }
+
+    pub fn dot() -> Box<dyn InferenceOp> {
+        Box::new(math::MatMul::new())
+    }
+
+    pub fn plus() -> Box<dyn InferenceOp> {
+        Box::new(math::Add::default())
+    }
+
+    pub fn sub() -> Box<dyn InferenceOp> {
+        Box::new(math::Sub::default())
+    }
+
+    pub fn mul() -> Box<dyn InferenceOp> {
+        Box::new(math::Mul::default())
+    }
+}
+
 #[derive(Debug, Clone, new)]
 pub struct GRU {
     pub optional_bias_input: Option<usize>,
@@ -41,8 +70,8 @@ pub struct GRU {
     pub optional_initial_h_input: Option<usize>,
     pub optional_y_output: Option<usize>,
     pub optional_y_h_output: Option<usize>,
-    pub f: Box<dyn StatelessOp>,
-    pub g: Box<dyn StatelessOp>,
+    pub f: Box<dyn InferenceOp>,
+    pub g: Box<dyn InferenceOp>,
     pub linear_before_reset: bool,
 }
 
@@ -68,6 +97,186 @@ impl Op for GRU {
 
     fn validation(&self) -> Validation {
         Validation::Rounding
+    }
+
+    fn incorporate(
+        &self,
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        use helpers::*;
+        use tract_core::ops::scan;
+
+        let x_fact = model.outlet_fact(node.inputs[0])?;
+        let b_size = x_fact
+            .shape
+            .dim(1)
+            .unwrap()
+            .concretize()
+            .ok_or("Incomplete analysis, can not incorporate.")?
+            .to_integer()
+            .unwrap() as usize;
+        let r_fact = model.outlet_fact(node.inputs[2])?;
+        let h_size = r_fact
+            .shape
+            .dim(2)
+            .unwrap()
+            .concretize()
+            .ok_or("Incomplete analysis, can not incorporate.")?
+            .to_integer()
+            .unwrap() as usize;
+
+        let mut body = InferenceModel::default();
+        let mut input_mapping = vec![];
+        let mut output_mapping = vec![];
+
+        let _ = body.add_source("x", TensorFact::shape(ShapeFact::open(tvec!(1.to_dim().into()))))?;
+        input_mapping.push(scan::InputMapping::Scan { slot: 0, axis: 0, chunk: () });
+        let x = body.chain_default(
+            format!("{}-x-rm-chunk-dim", &*node.name),
+            tract_core::ops::array::RmDims::new(vec![0]),
+        )?;
+
+        let w = body.add_source_default("w")?;
+        input_mapping.push(scan::InputMapping::Full { slot: 1 });
+
+        let r = body.add_source_default("r")?;
+        input_mapping.push(scan::InputMapping::Full { slot: 2 });
+
+        let _ = body.add_source_default("ht")?;
+        let ht_prev = body.chain_default(
+            format!("{}-ht-rm-chunk-dim", &*node.name),
+            tract_core::ops::array::RmDims::new(vec![0]),
+        )?;
+        let initializer = if let Some(initial_h_input) = self.optional_initial_h_input {
+            scan::StateInitializer::FromInput(initial_h_input)
+        } else {
+            scan::StateInitializer::Value(
+                ndarray::Array3::<f32>::zeros((1, b_size, h_size)).into_arc_tensor(),
+            )
+        };
+        input_mapping.push(scan::InputMapping::State { initializer });
+
+        let rz = body.add_node_simple_default("rz", slice(0, 0..h_size), tvec!(r))?;
+        let rr = body.add_node_simple_default("rr", slice(0, h_size..2 * h_size), tvec!(r))?;
+        let rh = body.add_node_simple_default("rh", slice(0, 2 * h_size..3 * h_size), tvec!(r))?;
+
+        let rz_t = body.add_node_simple_default("rz_t", transpose(), tvec!(rz))?;
+        let rr_t = body.add_node_simple_default("rr_t", transpose(), tvec!(rr))?;
+        let rh_t = body.add_node_simple_default("rh_t", transpose(), tvec!(rh))?;
+
+        let ht_rz_t = body.add_node_simple_default("ht_rz_t", dot(), tvec!(ht_prev, rz_t))?;
+        let ht_rr_t = body.add_node_simple_default("ht_rr_t", dot(), tvec!(ht_prev, rr_t))?;
+
+        let wz = body.add_node_simple_default("wz", slice(0, 0..h_size), tvec!(w))?;
+        let wr = body.add_node_simple_default("wr", slice(0, h_size..2 * h_size), tvec!(w))?;
+        let wh = body.add_node_simple_default("wh", slice(0, 2 * h_size..3 * h_size), tvec!(w))?;
+
+        let wz_t = body.add_node_simple_default("wz_t", transpose(), tvec!(wz))?;
+        let wr_t = body.add_node_simple_default("wr_t", transpose(), tvec!(wr))?;
+        let wh_t = body.add_node_simple_default("wh_t", transpose(), tvec!(wh))?;
+
+        let xt_wz_t = body.add_node_simple_default("xt_wz_t", dot(), tvec!(x, wz_t))?;
+        let xt_wr_t = body.add_node_simple_default("xt_wr_t", dot(), tvec!(x, wr_t))?;
+        let xt_wh_t = body.add_node_simple_default("xt_wh_t", dot(), tvec!(x, wh_t))?;
+
+        let zt0 = body.add_node_simple_default("zt0", plus(), tvec!(xt_wz_t, ht_rz_t))?;
+        let zt = body.add_node_simple_default("zt", self.f.clone(), tvec!(zt0))?;
+        let rt0 = body.add_node_simple_default("rt0", plus(), tvec!(xt_wr_t, ht_rr_t))?;
+        let rt = body.add_node_simple_default("rt", self.f.clone(), tvec!(rt0))?;
+
+        let rt_ht_rht = if self.linear_before_reset {
+            let ht_rht = body.add_node_simple_default("ht_rht", dot(), tvec!(ht_prev, rh_t))?;
+            body.add_node_simple_default("rt_ht_rht", mul(), tvec!(rt, ht_rht))?
+        } else {
+            let rt_ht = body.add_node_simple_default("rt_ht", mul(), tvec!(rt, ht_prev))?;
+            body.add_node_simple_default("rt_ht_rht", dot(), tvec!(rt_ht, rh_t))?
+        };
+        let ht0 = body.add_node_simple_default("ht0", plus(), tvec!(xt_wh_t, rt_ht_rht))?;
+        let ht = body.add_node_simple_default("ht", self.g.clone(), tvec!(ht0))?;
+
+        let one = body.add_const("one", tensor0(1f32))?;
+        let one_sub_zt = body.add_node_simple_default("one_sub_zt", sub(), tvec!(one, zt))?;
+
+        let next_ht_left =
+            body.add_node_simple_default("next_ht_left", mul(), tvec!(one_sub_zt, ht))?;
+        let next_ht_right =
+            body.add_node_simple_default("next_ht_right", mul(), tvec!(zt, ht_prev))?;
+        let next_ht =
+            body.add_node_simple_default("next_ht", plus(), tvec!(next_ht_left, next_ht_right))?;
+
+        let y_h = body.add_node_simple_default(
+            "y_h",
+            tract_core::ops::array::AddDims::new(vec![0]),
+            tvec!(next_ht),
+        )?;
+
+        let y_h_dup = body.add_node_simple_default(
+            "y_h_dup",
+            tract_core::ops::identity::Identity,
+            tvec!(y_h),
+        )?;
+
+        let mut scan_facts = tvec!();
+        let mut output_outlets = tvec!();
+        if let Some(_) = self.optional_y_output {
+            panic!();
+            output_mapping.push(scan::OutputMapping::Scan {
+                slot: output_mapping.len(),
+                axis: 0,
+                chunk: (),
+                full_dim_hint: None,
+            });
+            output_outlets.push(OutletId::new(y_h, 0));
+            scan_facts.push(TensorFact::default());
+        }
+
+        if let Some(_) = self.optional_y_h_output {
+            output_mapping.push(scan::OutputMapping::State { slot: Some(output_mapping.len()) });
+            output_outlets.push(OutletId::new(y_h_dup, 0));
+            scan_facts.push(TensorFact::default());
+        }
+        body.set_output_outlets(&*output_outlets)?;
+
+        let mut patch = InferenceModelPatch::default();
+        let scan = patch.add_node(
+            &*node.name,
+            scan::Inference::new(body, input_mapping, output_mapping),
+            scan_facts,
+        )?;
+
+        let x = patch.tap_model(model, node.inputs[0])?;
+        patch.add_edge(x, InletId::new(scan, 0))?;
+
+        let _ = patch.tap_model(model, node.inputs[1])?;
+        let w = patch.chain_default(
+            format!("{}-w-rm-dir-dim", &*node.name),
+            tract_core::ops::array::RmDims::new(vec![0]),
+        )?;
+        patch.add_edge(OutletId::new(w, 0), InletId::new(scan, 1))?;
+
+        let _ = patch.tap_model(model, node.inputs[2])?;
+        let r = patch.chain_default(
+            format!("{}-r-rm-dir-dim", &*node.name),
+            tract_core::ops::array::RmDims::new(vec![0]),
+        )?;
+        patch.add_edge(OutletId::new(r, 0), InletId::new(scan, 2))?;
+
+        if let Some(slot) = self.optional_y_h_output {
+            let rm_dim = patch.add_node_default(
+                format!("{}-y_h-rm-seq-dim", &*node.name),
+                tract_core::ops::array::RmDims::new(vec![0])
+            )?;
+            patch.add_edge(OutletId::new(scan, slot), InletId::new(rm_dim, 0))?;
+            let add_dim = patch.chain(
+                format!("{}-y_h-add-dir-dim", &*node.name),
+                tract_core::ops::array::AddDims::new(vec![0]),
+                tvec!(node.outputs[slot].fact.clone())
+            )?;
+            patch.shunt_outside(OutletId::new(node.id, slot), OutletId::new(add_dim, 0))?;
+        }
+
+        Ok(Some(patch))
     }
 }
 
@@ -140,7 +349,8 @@ impl StatelessOp for GRU {
         let r: ArrayView3<f32> = inputs[2].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 3*hidden_size, hidden_size]
 
         let bias = if let Some(ix) = self.optional_bias_input {
-            Some(inputs[ix].to_array_view::<f32>()?.into_dimensionality::<Ix2>()?) // [num_directions, 6*hidden_size]
+            Some(inputs[ix].to_array_view::<f32>()?.into_dimensionality::<Ix2>()?)
+        // [num_directions, 6*hidden_size]
         } else {
             None
         };
@@ -150,15 +360,20 @@ impl StatelessOp for GRU {
         let num_directions = w.shape()[0];
         let hidden_size = r.shape()[2];
 
-        let mut output_y = self.optional_y_output.map(|_| Array4::<f32>::zeros((seq_length, num_directions, batch_size, hidden_size)));
-        let mut output_y_h = self.optional_y_h_output.map(|_| Array3::<f32>::zeros((num_directions, batch_size, hidden_size)));
+        let mut output_y = self
+            .optional_y_output
+            .map(|_| Array4::<f32>::zeros((seq_length, num_directions, batch_size, hidden_size)));
+        let mut output_y_h = self
+            .optional_y_h_output
+            .map(|_| Array3::<f32>::zeros((num_directions, batch_size, hidden_size)));
 
         for dir in 0..num_directions {
             let w = w.index_axis_move(Axis(0), dir);
             let r = r.index_axis_move(Axis(0), dir);
 
             let mut ht = if let Some(ix) = self.optional_initial_h_input {
-                inputs[ix].to_array_view::<f32>()?
+                inputs[ix]
+                    .to_array_view::<f32>()?
                     .index_axis_move(Axis(0), dir)
                     .to_owned()
                     .into_dimensionality()?
@@ -188,6 +403,8 @@ impl StatelessOp for GRU {
                 }
                 let zt: Array2<f32> = self
                     .f
+                    .as_stateless()
+                    .unwrap()
                     .eval(tvec!(zt.into_arc_tensor()))?
                     .remove(0)
                     .into_tensor()
@@ -200,6 +417,8 @@ impl StatelessOp for GRU {
                 }
                 let rt = self
                     .f
+                    .as_stateless()
+                    .unwrap()
                     .eval(tvec!(rt.into_arc_tensor()))?
                     .remove(0)
                     .into_tensor()
@@ -221,6 +440,8 @@ impl StatelessOp for GRU {
                 };
                 let ht1 = self
                     .g
+                    .as_stateless()
+                    .unwrap()
                     .eval(tvec!(ht1.into_arc_tensor()))?
                     .remove(0)
                     .into_tensor()

@@ -8,7 +8,13 @@ pub use super::{InletId, ModelImpl, Node, OutletId};
 pub trait ModelDsl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + From<crate::ops::source::Source> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug
+        + Display
+        + From<crate::ops::source::Source>
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static,
 {
     /// Find the lone precursor of a node, if applicable.
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
@@ -53,7 +59,13 @@ where
 impl<TI, O> ModelDsl<TI, O> for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + From<crate::ops::source::Source> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug
+        + Display
+        + From<crate::ops::source::Source>
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static,
 {
     fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize> {
         let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
@@ -148,8 +160,14 @@ pub trait ModelDslConst {
 impl<TI: TensorInfo + Clone + 'static, O, E> ModelDslConst for ModelImpl<TI, O>
 where
     TractError: From<E>,
-    TI: TensorInfo + Clone + 'static + TryFrom<TensorFact, Error=E>,
-    O: Debug + Display + From<crate::ops::konst::Const> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    TI: TensorInfo + Clone + 'static + TryFrom<TensorFact, Error = E>,
+    O: Debug
+        + Display
+        + From<crate::ops::konst::Const>
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static,
 {
     fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize> {
         let v = v.into_arc_tensor();
@@ -206,6 +224,15 @@ pub trait ModelDslInfer: ModelDsl<TensorFact, Box<dyn InferenceOp>> {
         name: impl Into<String>,
         op: impl Into<Box<dyn InferenceOp>>,
     ) -> TractResult<usize>;
+
+    /// Add a node without tensor information assuming inputs use first outlet
+    /// of precursors.
+    fn add_node_simple_default(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<Box<dyn InferenceOp>>,
+        inputs: impl IntoIterator<Item = usize>,
+    ) -> TractResult<usize>;
 }
 
 impl ModelDslInfer for super::InferenceModel {
@@ -227,5 +254,18 @@ impl ModelDslInfer for super::InferenceModel {
         op: impl Into<Box<dyn InferenceOp>>,
     ) -> TractResult<usize> {
         self.chain(name, op, tvec!(TensorFact::default()))
+    }
+
+    fn add_node_simple_default(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<Box<dyn InferenceOp>>,
+        inputs: impl IntoIterator<Item = usize>,
+    ) -> TractResult<usize> {
+        let node = self.add_node_default(name, op)?;
+        for (ix, input) in inputs.into_iter().enumerate() {
+            self.add_edge(OutletId::new(input, 0), InletId::new(node, ix))?;
+        }
+        Ok(node)
     }
 }

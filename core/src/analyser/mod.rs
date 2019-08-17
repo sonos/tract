@@ -70,7 +70,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     }
                 }
                 Err(e) => {
-                    let e = format!("Analysing node {}, {}", self.model.borrow().node(node), e);
+                    let e = e.chain_err(|| format!("Failed analyse for node {}", self.model.borrow().node(node)));
                     if !obstinate {
                         return Err(e.into());
                     }
@@ -131,8 +131,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     .borrow_mut()
                     .node_mut(node)
                     .op
-                    .infer(inputs, outputs, observed)
-                    .map_err(|e| format!("while running inference on {} : {}", self.model.borrow().node(node), e))?
+                    .infer(inputs, outputs, observed)?
             };
 
             let node = self.model.borrow().node(node);
@@ -141,7 +140,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                 let old_fact = self.model.borrow().outlet_fact(outlet)?;
                 let unified = inferred_fact
                     .unify(&old_fact)
-                    .map_err(|e| format!("while unifying inputs of {} : {}", node, e))?;
+                    .chain_err(|| format!("Unifying input #{} of {}", ix, node))?;
 
                 if &unified != old_fact {
                     debug!("  Refined {:?}: {:?} -> {:?}", outlet, old_fact, unified);
@@ -151,7 +150,8 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
 
             for (ix, inferred_fact) in inferred.1.iter().enumerate() {
                 let old_fact = self.model.borrow().outlet_fact(OutletId::new(node.id, ix))?;
-                let unified = old_fact.unify(inferred_fact)?;
+                let unified = old_fact.unify(inferred_fact)
+                    .chain_err(|| format!("Unifying output #{} of {}", ix, node))?;
 
                 if &unified != old_fact {
                     let outlet = OutletId::new(node.id, ix);

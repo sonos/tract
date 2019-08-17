@@ -97,7 +97,7 @@ where TI: TensorInfo + Clone + 'static,
     /// Convenience method creating a patch that replace a single operation.
     pub fn replace_single_op<IO: Into<O>>(
         patched_model: &ModelImpl<TI, O>,
-        node: &Node<TI>,
+        node: &BaseNode<TI, O>,
         inputs: &[OutletId],
         new_op: IO,
     ) -> TractResult<ModelPatch<TI,O>> {
@@ -129,7 +129,7 @@ where TI: TensorInfo + Clone + 'static,
     /// Convenience method creating a patch that replace a single unary operation.
     pub fn single_unary_op<IO: Into<O>>(
         patched_model: &ModelImpl<TI, O>,
-        node: &Node<TI>,
+        node: &BaseNode<TI, O>,
         new_op: IO,
     ) -> TractResult<ModelPatch<TI, O>> {
         Self::replace_single_op(patched_model, node, &[node.inputs[0]], new_op)

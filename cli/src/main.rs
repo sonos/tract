@@ -107,7 +107,7 @@ fn main() {
 
         (@arg pass: --pass +takes_value
             default_value("declutter")
-            possible_values(&["load", "analyse", "incorporate", "type", "declutter"])
+            possible_values(&["load", "analyse", "incorporate", "analyse-inc", "type", "declutter"])
          "Pass to stop preprocessing after.")
 
         (@arg optimize: -O --optimize "Optimize before running")
@@ -263,12 +263,15 @@ fn main() {
     env_logger::Builder::from_env(env).default_format_timestamp_nanos(true).init();
 
     if let Err(e) = handle(matches) {
-        error!("{}", e);
-        for e in e.iter().skip(1) {
-            error!("caused by: {}", e);
-        }
+        display_error(e);
         process::exit(1)
     }
+}
+
+fn display_error(e: CliError) {
+    use crate::error_chain::ChainedError;
+    error!("{}", e);
+    eprintln!("{}", e.display_chain());
 }
 
 fn output_options<'a, 'b>(command: clap::App<'a, 'b>) -> clap::App<'a, 'b> {
@@ -551,13 +554,22 @@ impl Parameters {
                     return Ok(Box::new(raw_model) as _)
                 }
                 info!("Running analyse");
-                raw_model.analyse(true)?;
+                if let Err(e) = raw_model.analyse(true) {
+                    display_error(e.into());
+                }
                 if stop_at == "analyse" {
                     return Ok(Box::new(raw_model) as _)
                 }
                 info!("Running incorporate");
-                let model = raw_model.incorporate()?;
+                let mut model = raw_model.incorporate()?;
                 if stop_at == "incorporate" {
+                    return Ok(Box::new(model) as _)
+                }
+                info!("Running analyse-inc");
+                if let Err(e) = model.analyse(true) {
+                    display_error(e.into());
+                }
+                if stop_at == "analyse-inc" {
                     return Ok(Box::new(model) as _)
                 }
                 info!("Running typing");

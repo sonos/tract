@@ -58,15 +58,21 @@ impl InferenceRulesOp for RmDims {
         inputs: &'p [TensorProxy],
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
         s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         s.equals(&outputs[0].rank, (&inputs[0].rank).bex() - self.axes.len() as i32)?;
-        for axis in &self.axes {
-            s.equals(&inputs[0].shape[*axis], 1.to_dim())?;
-        }
-        s.given(&inputs[0].shape, move |s, shape| {
-            let output_shape = self.compute_shape(&shape);
-            s.equals(&outputs[0].shape, output_shape)
+        s.given(&inputs[0].rank, move |s, rank| {
+            let mut output_rank = 0;
+            for i in 0..(rank as usize) {
+                if self.axes.contains(&i) {
+                    s.equals(&inputs[0].shape[i], 1.to_dim())?
+                } else {
+                    s.equals(&inputs[0].shape[i], &outputs[0].shape[output_rank])?;
+                    output_rank += 1;
+                };
+            }
+            Ok(())
         })
     }
 
