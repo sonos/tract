@@ -50,7 +50,7 @@ mod helpers {
         Box::new(math::MatMul::new())
     }
 
-    pub fn plus() -> Box<dyn InferenceOp> {
+    pub fn add() -> Box<dyn InferenceOp> {
         Box::new(math::Add::default())
     }
 
@@ -157,6 +157,14 @@ impl Op for GRU {
         };
         input_mapping.push(scan::InputMapping::State { initializer });
 
+        let b = if let Some(slot) = self.optional_bias_input {
+            let b = body.add_source_default("b")?;
+            input_mapping.push(scan::InputMapping::Full { slot });
+            Some(b)
+        } else {
+            None
+        };
+
         let rz = body.add_node_simple_default("rz", slice(0, 0..h_size), tvec!(r))?;
         let rr = body.add_node_simple_default("rr", slice(0, h_size..2 * h_size), tvec!(r))?;
         let rh = body.add_node_simple_default("rh", slice(0, 2 * h_size..3 * h_size), tvec!(r))?;
@@ -180,9 +188,21 @@ impl Op for GRU {
         let xt_wr_t = body.add_node_simple_default("xt_wr_t", dot(), tvec!(x, wr_t))?;
         let xt_wh_t = body.add_node_simple_default("xt_wh_t", dot(), tvec!(x, wh_t))?;
 
-        let zt0 = body.add_node_simple_default("zt0", plus(), tvec!(xt_wz_t, ht_rz_t))?;
+        let mut zt0 = body.add_node_simple_default("zt0", add(), tvec!(xt_wz_t, ht_rz_t))?;
+        if let Some(b) = b {
+            let wbz = body.add_node_simple_default("wbz", slice(0, 0..h_size), tvec!(b))?;
+            let rbz = body.add_node_simple_default("rbz", slice(0, 3*h_size..4*h_size), tvec!(b))?;
+            let wbz_rbz = body.add_node_simple_default("wbz_rbz", add(), tvec!(wbz, rbz))?;
+            zt0 = body.add_node_simple_default("zt0_biased", add(), tvec!(zt0, wbz_rbz))?;
+        };
         let zt = body.add_node_simple_default("zt", self.f.clone(), tvec!(zt0))?;
-        let rt0 = body.add_node_simple_default("rt0", plus(), tvec!(xt_wr_t, ht_rr_t))?;
+        let mut rt0 = body.add_node_simple_default("rt0", add(), tvec!(xt_wr_t, ht_rr_t))?;
+        if let Some(b) = b {
+            let wbr = body.add_node_simple_default("wbr", slice(0, h_size..2*h_size), tvec!(b))?;
+            let rbr = body.add_node_simple_default("rbr", slice(0, 4*h_size..5*h_size), tvec!(b))?;
+            let wbr_rbr = body.add_node_simple_default("wbr_rbr", add(), tvec!(wbr, rbr))?;
+            rt0 = body.add_node_simple_default("rt0_biased", add(), tvec!(rt0, wbr_rbr))?;
+        };
         let rt = body.add_node_simple_default("rt", self.f.clone(), tvec!(rt0))?;
 
         let rt_ht_rht = if self.linear_before_reset {
@@ -192,7 +212,13 @@ impl Op for GRU {
             let rt_ht = body.add_node_simple_default("rt_ht", mul(), tvec!(rt, ht_prev))?;
             body.add_node_simple_default("rt_ht_rht", dot(), tvec!(rt_ht, rh_t))?
         };
-        let ht0 = body.add_node_simple_default("ht0", plus(), tvec!(xt_wh_t, rt_ht_rht))?;
+        let mut ht0 = body.add_node_simple_default("ht0", add(), tvec!(xt_wh_t, rt_ht_rht))?;
+        if let Some(b) = b {
+            let wbh = body.add_node_simple_default("wbh", slice(0, 2*h_size..3*h_size), tvec!(b))?;
+            let rbh = body.add_node_simple_default("rbh", slice(0, 5*h_size..6*h_size), tvec!(b))?;
+            let wbh_rbh = body.add_node_simple_default("wbh_rbh", add(), tvec!(wbh, rbh))?;
+            ht0 = body.add_node_simple_default("ht0_biased", add(), tvec!(ht0, wbh_rbh))?;
+        };
         let ht = body.add_node_simple_default("ht", self.g.clone(), tvec!(ht0))?;
 
         let one = body.add_const("one", tensor0(1f32))?;
@@ -203,7 +229,7 @@ impl Op for GRU {
         let next_ht_right =
             body.add_node_simple_default("next_ht_right", mul(), tvec!(zt, ht_prev))?;
         let next_ht =
-            body.add_node_simple_default("next_ht", plus(), tvec!(next_ht_left, next_ht_right))?;
+            body.add_node_simple_default("next_ht", add(), tvec!(next_ht_left, next_ht_right))?;
 
         let y_h = body.add_node_simple_default(
             "y_h",
@@ -220,20 +246,19 @@ impl Op for GRU {
         let mut scan_facts = tvec!();
         let mut output_outlets = tvec!();
         if let Some(_) = self.optional_y_output {
-            panic!();
             output_mapping.push(scan::OutputMapping::Scan {
                 slot: output_mapping.len(),
                 axis: 0,
                 chunk: (),
                 full_dim_hint: None,
             });
-            output_outlets.push(OutletId::new(y_h, 0));
+            output_outlets.push(OutletId::new(y_h, scan_facts.len()));
             scan_facts.push(TensorFact::default());
         }
 
         if let Some(_) = self.optional_y_h_output {
             output_mapping.push(scan::OutputMapping::State { slot: Some(output_mapping.len()) });
-            output_outlets.push(OutletId::new(y_h_dup, 0));
+            output_outlets.push(OutletId::new(y_h_dup, scan_facts.len()));
             scan_facts.push(TensorFact::default());
         }
         body.set_output_outlets(&*output_outlets)?;
@@ -261,6 +286,15 @@ impl Op for GRU {
             tract_core::ops::array::RmDims::new(vec![0]),
         )?;
         patch.add_edge(OutletId::new(r, 0), InletId::new(scan, 2))?;
+
+        if let Some(slot) = self.optional_bias_input {
+            let _ = patch.tap_model(model, node.inputs[slot])?;
+            let b = patch.chain_default(
+                format!("{}-b-rm-dir-dim", &*node.name),
+                tract_core::ops::array::RmDims::new(vec![0]),
+            )?;
+            patch.add_edge(OutletId::new(b, 0), InletId::new(scan, slot))?;
+        }
 
         if let Some(slot) = self.optional_y_h_output {
             let rm_dim = patch.add_node_default(
