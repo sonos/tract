@@ -1,7 +1,7 @@
 language: rust
 dist: trusty
 cache:
-- cargo
+  # - cargo
   #- directories:
   #- $HOME/cached
 addons:
