@@ -119,7 +119,7 @@ impl Op for LstmNonlin {
         // let c_t = f_t * c_prev + i_t * tanh_f32(c_part);
         let tanh_c = patch.add_node_simple(
             format!("{}-c_t-tanh", node.name),
-            nn::Tanh::default(),
+            math::Tanh::default(),
             tvec!(c),
             fact.clone(),
         )?;
@@ -168,7 +168,7 @@ impl Op for LstmNonlin {
         // let m_t = o_t * tanh_f32(c_t);
         let tanh_c_t = patch.add_node_simple(
             format!("{}-tanh_c_t", node.name),
-            nn::Tanh::default(),
+            math::Tanh::default(),
             tvec!(c_t),
             fact.clone(),
         )?;
