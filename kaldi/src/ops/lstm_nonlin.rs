@@ -23,12 +23,172 @@ impl Op for LstmNonlin {
     fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.LstmNonlin".into()
     }
+
     fn translation_invariants(
         &self,
         _model: &TypedModel,
         _node: &TypedNode,
     ) -> TractResult<Vec<TranslationInvariant>> {
-        Ok(vec!(TranslationInvariant { axis: 0, period: 1 }))
+        Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
+    }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        use std::convert::TryInto;
+        use tract_core::ndarray;
+        use tract_core::ops::{array, math, nn};
+
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let ref t_len = input_fact.shape.dim(0);
+        let cell_hidden_dim = input_fact.shape.dim(1).to_integer()? as usize / 5;
+
+        let params =
+            self.peepholes_params.to_array_view::<f32>()?.into_dimensionality::<ndarray::Ix2>()?;
+
+        let mut patch = TypedModelPatch::default();
+        let input = patch.tap_model(&model, node.inputs[0])?;
+
+        let fact: TypedTensorInfo =
+            TensorFact::dt_shape(f32::datum_type(), tvec!(t_len.clone(), cell_hidden_dim.to_dim()))
+                .try_into()?;
+
+        let mut five_parts = (0..5)
+            .map(|ix| {
+                patch.add_node_simple(
+                    format!("{}-part-{}", node.name, ix),
+                    array::Slice::new(
+                        vec![1],
+                        vec![cell_hidden_dim * ix],
+                        vec![cell_hidden_dim * (ix + 1)],
+                    ),
+                    tvec!(input.node),
+                    fact.clone(),
+                )
+            })
+            .collect::<TractResult<Vec<_>>>()?;
+        let (i, f, c, o, c_prev) = args_5!(five_parts);
+        // let i_t = sigmoid_f32(i_part + w_ic * c_prev);
+        let i_t = patch.add_node_simple(
+            format!("{}-i_t-mul", node.name),
+            math::Mul::UnaryA::new(
+                f32::datum_type().into(),
+                params.index_axis(ndarray::Axis(0), 0).to_owned().into_arc_tensor(),
+            ),
+            tvec!(c_prev),
+            fact.clone(),
+        )?;
+        let i_t = patch.add_node_simple(
+            format!("{}-i_t-add", node.name),
+            math::Add::default(),
+            tvec!(i_t, i),
+            fact.clone(),
+        )?;
+        let i_t = patch.add_node_simple(
+            format!("{}-i_t-sigmoid", node.name),
+            nn::Sigmoid::default(),
+            tvec!(i_t),
+            fact.clone(),
+        )?;
+
+        // let f_t = sigmoid_f32(f_part + w_fc * c_prev);
+        let f_t = patch.add_node_simple(
+            format!("{}-f_t-mul", node.name),
+            math::Mul::UnaryA::new(
+                f32::datum_type().into(),
+                params.index_axis(ndarray::Axis(0), 1).to_owned().into_arc_tensor(),
+            ),
+            tvec!(c_prev),
+            fact.clone(),
+        )?;
+        let f_t = patch.add_node_simple(
+            format!("{}-f_t-add", node.name),
+            math::Add::default(),
+            tvec!(f_t, f),
+            fact.clone(),
+        )?;
+        let f_t = patch.add_node_simple(
+            format!("{}-f_t-sigmoid", node.name),
+            nn::Sigmoid::default(),
+            tvec!(f_t),
+            fact.clone(),
+        )?;
+
+        // let c_t = f_t * c_prev + i_t * tanh_f32(c_part);
+        let tanh_c = patch.add_node_simple(
+            format!("{}-c_t-tanh", node.name),
+            nn::Tanh::default(),
+            tvec!(c),
+            fact.clone(),
+        )?;
+        let i_t_tanh_c = patch.add_node_simple(
+            format!("{}-i_t_c_t-tanh", node.name),
+            math::Mul::default(),
+            tvec!(i_t, tanh_c),
+            fact.clone(),
+        )?;
+        let f_t_c_prev = patch.add_node_simple(
+            format!("{}-f_t_c_prev", node.name),
+            math::Mul::default(),
+            tvec!(f_t, c_prev),
+            fact.clone(),
+        )?;
+        let c_t = patch.add_node_simple(
+            format!("{}-c_t", node.name),
+            math::Add::default(),
+            tvec!(f_t_c_prev, i_t_tanh_c),
+            fact.clone(),
+        )?;
+
+        // let o_t = sigmoid_f32(o_part + w_oc * c_t);
+        let o_t = patch.add_node_simple(
+            format!("{}-o_t-mul", node.name),
+            math::Mul::UnaryA::new(
+                f32::datum_type().into(),
+                params.index_axis(ndarray::Axis(0), 2).to_owned().into_arc_tensor(),
+            ),
+            tvec!(c_t),
+            fact.clone(),
+        )?;
+        let o_t = patch.add_node_simple(
+            format!("{}-o_t-add", node.name),
+            math::Add::default(),
+            tvec!(o_t, o),
+            fact.clone(),
+        )?;
+        let o_t = patch.add_node_simple(
+            format!("{}-o_t-sigmoid", node.name),
+            nn::Sigmoid::default(),
+            tvec!(o_t),
+            fact.clone(),
+        )?;
+
+        // let m_t = o_t * tanh_f32(c_t);
+        let tanh_c_t = patch.add_node_simple(
+            format!("{}-tanh_c_t", node.name),
+            nn::Tanh::default(),
+            tvec!(c_t),
+            fact.clone(),
+        )?;
+
+        let m_t = patch.add_node_simple(
+            format!("{}-m_t", node.name),
+            math::Mul::default(),
+            tvec!(o_t, tanh_c_t),
+            fact.clone(),
+        )?;
+
+        let output = patch.add_node_simple(
+            format!("{}-ouput", node.name),
+            array::Concat::new(1),
+            tvec!(c_t, m_t),
+            node.outputs[0].fact.clone(),
+        )?;
+
+        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(output, 0))?;
+        Ok(Some(patch))
     }
 }
 
