@@ -108,7 +108,7 @@ impl StatelessOp for Direct {
                         *self.output_shape.c_stride() as isize,
                         *self.output_shape.w_stride() as isize,
                     ),
-                    &[],
+                    &*self.fused_ops,
                 );
             }
             Ok(tvec!(output.into_arc_tensor()))

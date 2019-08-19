@@ -22,7 +22,6 @@ where
     pub kernel_fmt: KernelFormat,
     #[debug(skip)]
     pub packed_kernels: Vec<Tensor>,
-    pub bias: Option<ArrayD<T>>,
     pub group: usize,
     pub vmm: Box<dyn VecMatMul<T>>,
 }
@@ -64,10 +63,6 @@ where
                     );
                 }
             }
-        }
-
-        if let Some(ref bias) = self.bias {
-            output += &bias;
         }
 
         Ok(output)

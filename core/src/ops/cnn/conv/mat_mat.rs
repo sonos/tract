@@ -52,7 +52,6 @@ where
     pub packed_kernels: Vec<Tensor>,
     pub group: usize,
     pub tile: Box<dyn MatMatMul<T>>,
-    pub bias: Option<Vec<FusedSpec<T>>>,
     pub non_linear: Vec<FusedSpec<T>>,
 }
 
@@ -85,14 +84,6 @@ where
                         *self.output_shape.c_stride() as isize * co_per_group as isize * g as isize,
                     );
 
-                    let mut non_linear = vec![];
-                    if let Some(bias) = &self.bias {
-                        non_linear.push(bias[g].clone());
-                    }
-                    for nl in &self.non_linear {
-                        non_linear.push(nl.clone());
-                    }
-
                     self.tile.run(
                         &self.tile.a_from_packed(a.as_ptr()?),
                         &self.tile.b_from_packed(
@@ -101,7 +92,7 @@ where
                                 .offset(((self.group * i + g) * packed_b_len) as isize),
                         ),
                         &mut self.tile.c_from_data_and_strides(output_i_g, rsc, csc),
-                        &*non_linear,
+                        &*self.non_linear,
                     );
                 }
             }

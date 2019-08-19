@@ -2,10 +2,6 @@ use ndarray::*;
 
 use num_traits::AsPrimitive;
 
-use itertools::Itertools;
-
-use tract_linalg::mmm::FusedSpec;
-
 use crate::internal::*;
 use crate::model::*;
 
@@ -29,7 +25,6 @@ pub struct ConvUnary {
     pub strides: TVec<usize>,
     pub kernel: Tensor,
 
-    pub bias: Option<Tensor>,
     pub full_input_shape: TVec<TDim>,
     pub full_output_shape: TVec<TDim>,
     pub group: usize,
@@ -41,7 +36,6 @@ impl ConvUnary {
         full_input_shape: &[TDim],
         full_output_shape: &[TDim],
         kernel: Tensor,
-        bias: Option<Tensor>,
         group: usize,
     ) -> TractResult<ConvUnary> {
         let spatial_rank = full_input_shape.len() - 2;
@@ -57,7 +51,6 @@ impl ConvUnary {
             dilations,
             strides,
             kernel,
-            bias,
             full_input_shape: full_input_shape.into(),
             full_output_shape: full_output_shape.into(),
             group,
@@ -96,7 +89,6 @@ impl ConvUnary {
         assert!(
             (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax))
                 && self.group == 1
-                && self.bias.is_none()
         );
 
         let patch = self.patch(input_full_shape);
@@ -167,23 +159,6 @@ impl ConvUnary {
         }
     }
 
-    fn bias_reshaped<T>(&self, output_shape: &[usize]) -> TractResult<Option<ArrayD<T>>>
-    where
-        T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T>,
-        f32: AsPrimitive<T>,
-    {
-        Ok(self
-            .bias
-            .as_ref()
-            .map(|bias| -> TractResult<_> {
-                let mut bias_shape: Vec<usize> =
-                    ::std::iter::repeat(1).take(output_shape.len()).collect();
-                bias_shape[self.data_format.shape(output_shape).c_axis()] = self.output_channels();
-                Ok(bias.to_array_view::<T>()?.into_shape(&*bias_shape)?.to_owned())
-            })
-            .transpose()?)
-    }
-
     pub fn to_im2col_pair<T>(
         &self,
         input_full_shape: &[usize],
@@ -206,8 +181,6 @@ impl ConvUnary {
         let m = self.output_channels() / self.group;
         let k = kernel.len() / self.output_channels();
         let n = patch.output_shape.iter().cloned().product::<usize>();
-
-        let bias = self.bias_reshaped(&*output_shape.shape)?;
 
         let kernel = self.kernel_as_group_o_ihw()?;
         let mut packed_kernels: Vec<Tensor> = vec![];
@@ -243,13 +216,6 @@ impl ConvUnary {
                 packed_kernels,
                 self.group,
                 mm.clone(),
-                bias.map(|bias| {
-                    bias.iter()
-                        .chunks(m)
-                        .into_iter()
-                        .map(|b| FusedSpec::PerRowAdd(b.cloned().collect()))
-                        .collect()
-                }),
                 vec![],
             );
             (Box::new(conv_gemm), b_pack)
@@ -280,7 +246,6 @@ impl ConvUnary {
                 n,
                 self.kernel_fmt,
                 packed_kernels,
-                bias,
                 self.group,
                 mm,
             );
@@ -359,7 +324,6 @@ impl ConvUnary {
             dilations: copy_rm_nth(&self.dilations, geo_axis),
             strides: copy_rm_nth(&self.strides, geo_axis),
             kernel,
-            bias: self.bias.clone(),
             full_input_shape: copy_rm_nth(&self.full_input_shape, axis),
             full_output_shape: copy_rm_nth(&self.full_output_shape, axis),
             group: self.group,
@@ -385,7 +349,6 @@ impl ConvUnary {
             input_shape,
             output_shape,
             self.kernel_as_group_o_ihw()?.into_dyn(),
-            self.bias_reshaped(&*shape)?,
         );
         Ok(Box::new(op))
     }
@@ -414,6 +377,20 @@ impl Op for ConvUnary {
             shape.n().clone() * shape.c() * n_output_channels * n_output_points * kernel_surface
                 / self.group
         )))
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![
+            format!("Data format: {:?}", self.data_format),
+            format!(
+                "Kernel shape, {:?}: {:?} (strides:{:?} dilations:{:?} groups:{}))",
+                self.kernel_fmt,
+                self.kernel.shape(),
+                self.strides,
+                self.dilations,
+                self.group
+            ),
+        ])
     }
 
     fn declutter(
@@ -484,7 +461,6 @@ impl Op for ConvUnary {
             && self.dilations.iter().all(|&x| x == 1)
             && self.strides.iter().all(|&x| x == 1)
             && self.group == 1
-            && self.bias.is_none()
         {
             if self.kernel_fmt == KernelFormat::HWIO && self.data_format == DataFormat::NHWC {
                 use crate::ops::math::mat_mul::MatMulUnaryA;
@@ -502,7 +478,6 @@ impl Op for ConvUnary {
                 if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
                     && dt == f32::datum_type()
                     && self.group == 1
-                    && self.bias.is_none()
                 {
                     let op = self.to_direct(&*shape)?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
