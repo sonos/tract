@@ -70,7 +70,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     }
                 }
                 Err(e) => {
-                    let e = format!("Analysing node {}, {}", self.model.borrow().node(node), e);
+                    let e = e.chain_err(|| format!("Failed analyse for node {}", self.model.borrow().node(node))); 
                     if !obstinate {
                         return Err(e.into());
                     }
@@ -131,8 +131,7 @@ impl<M: BorrowMut<InferenceModel>> Analyser<M> {
                     .borrow_mut()
                     .node_mut(node)
                     .op
-                    .infer(inputs, outputs, observed)
-                    .map_err(|e| format!("while running inference on {} : {}", self.model.borrow().node(node), e))?
+                    .infer(inputs, outputs, observed)?
             };
 
             let node = self.model.borrow().node(node);

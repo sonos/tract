@@ -28,7 +28,12 @@ unsafe impl Sync for Tensor {}
 impl Clone for Tensor {
     fn clone(&self) -> Tensor {
         if self.dt == DatumType::String {
-            let data = self.as_slice::<String>().unwrap().to_vec();
+            let data:Vec<String> = self.as_slice::<String>().unwrap().to_vec();
+            let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
+            std::mem::forget(data);
+            t
+        } else if self.dt == DatumType::TDim {
+            let data:Vec<TDim> = self.as_slice::<TDim>().unwrap().to_vec();
             let t = Tensor { data: data.as_ptr() as *mut u8, shape: self.shape.clone(), ..*self };
             std::mem::forget(data);
             t
@@ -60,6 +65,14 @@ impl Drop for Tensor {
                     .for_each(|s| std::ptr::drop_in_place(s as *mut String));
             }
         }
+        if self.dt == DatumType::TDim {
+            unsafe {
+                self.as_slice_mut::<TDim>()
+                    .unwrap()
+                    .iter_mut()
+                    .for_each(|s| std::ptr::drop_in_place(s as *mut TDim));
+            }
+        }
         if !self.data.is_null() && self.layout.size() > 0 {
             unsafe { alloc::dealloc(self.data, self.layout) }
         }
@@ -79,7 +92,7 @@ impl Tensor {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<Tensor> {
-        Self::uninitialized_aligned_dt(dt, shape, dt.size_of())
+        Self::uninitialized_aligned_dt(dt, shape, dt.alignment())
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
@@ -96,6 +109,11 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> TractResult<Tensor> {
+        if dt == String::datum_type() {
+            return Ok(ndarray::ArrayD::<String>::default(shape).into());
+        } else if dt == TDim::datum_type() {
+            return Ok(ndarray::ArrayD::<TDim>::default(shape).into());
+        }
         let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
         let layout = alloc::Layout::from_size_align(bytes, alignment)?;
         let data = if bytes == 0 { std::ptr::null() } else { alloc::alloc(layout) } as *mut u8;
@@ -290,7 +308,8 @@ impl Tensor {
         &self,
     ) -> TractResult<Tensor> {
         let casted_vec: Vec<Target> =
-            self.as_slice::<Source>()?.iter().map(|s| s.try_into()).collect::<TractResult<_>>()?;
+            self.as_slice::<Source>()?.iter().map(|s| s.try_into()).collect::<TractResult<_>>()
+            .chain_err(|| format!("Casting {:?} to {:?}", self, Target::datum_type()))?;
         let casted_array = ArrayD::from_shape_vec(&*self.shape, casted_vec)?;
         Ok(casted_array.into())
     }

@@ -24,6 +24,9 @@ pub mod scan;
 pub mod source;
 pub mod unimpl;
 
+#[macro_use]
+pub mod binary;
+
 pub use source::Source;
 pub use downsample::Downsample;
 
