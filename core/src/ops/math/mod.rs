@@ -1,5 +1,6 @@
 pub mod gemm;
 pub mod mat_mul;
+mod bin_in_place;
 
 pub use self::gemm::Gemm;
 pub use self::mat_mul::MatMul;
@@ -7,6 +8,8 @@ use crate::internal::*;
 use num_traits::AsPrimitive;
 use num_traits::Float;
 use num_traits::Zero;
+
+pub use bin_in_place::{ add, sub, mul, div, rem, min, max, pow };
 
 element_map!(Abs, [f16, f32, i32], |x| x.abs());
 element_map!(Exp, [f16, f32, f64], |x| x.exp());
@@ -41,16 +44,6 @@ element_map!(Asinh, [f16, f32, f64], |x| x.asinh());
 element_map!(Atanh, [f16, f32, f64], |x| x.atanh());
 
 element_map!(Neg, [i8, i16, i32, i64, f16, f32, f64, TDim], |x| -x);
-element_bin!(Add, [u8, u16, i8, i16, i32, i64, f16, f32, f64, TDim] { |a, b| a + b });
-element_bin!(Sub, [u8, u16, i8, i16, i32, i64, f16, f32, f64, TDim] { |a, b| a - b });
-element_bin!(Mul, [u8, u16, i8, i16, i32, i64, f16, f32, f64, TDim] { |a, b| a * b });
-element_bin!(Div, [u8, u16, i8, i16, i32, i64, f16, f32, f64, TDim] { |a, b| a / b });
-element_bin!(Rem, [u8, u16, i8, i16, i32, i64, f16, f32, f64, TDim] { |a, b| a % b });
-element_bin!(Pow, match
-     f16 => f16 { |a:f16, b| a.powf(b) },
-     f32 => f32 { |a:f32, b| a.powf(b) },
-     f64 => f64 { |a:f64, b| a.powf(b) }
-);
 
 element_map!(Sign, match
      f16 => f16 { |a:f16| if a.is_zero() { (0.0).into() } else { a.signum()} },
@@ -68,11 +61,6 @@ fn fcmp<F: ::num_traits::Float>(a: &F, b: &F) -> ::std::cmp::Ordering {
     a.partial_cmp(b).unwrap()
 }
 
-element_bin!(Max, [u8, u16, i8, i16, i32, i64, f16, f32, f64]
-             { |a, b| if a< b { b } else { a } });
-element_bin!(Min, [u8, u16, i8, i16, i32, i64, f16, f32, f64]
-             { |a, b| if a< b { a } else { b } });
-
 element_nary!(AddN, [f16, f32, f64] { |v:&[_]| v.iter().sum() });
 element_nary!(MaxN, match
   f16 => f16 { |v:&[f16]| v.iter().cloned().max_by(fcmp).unwrap() },
@@ -85,7 +73,7 @@ element_nary!(MinN, match
   f64 => f64 { |v:&[f64]| v.iter().cloned().min_by(fcmp).unwrap() }
 );
 element_nary!(MeanN, match
-  f16 => f16 { |v:&[f16]| v.iter().cloned().sum::<f16>() / (v.len() as f32).into() },
+  f16 => f16 { |v:&[f16]| v.iter().cloned().sum::<f16>() / f16::from(v.len() as f32) },
   f32 => f32 { |v:&[f32]| v.iter().cloned().sum::<f32>() / v.len() as f32 },
   f64 => f64 { |v:&[f64]| v.iter().cloned().sum::<f64>() / v.len() as f64 }
 );

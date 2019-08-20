@@ -10,24 +10,24 @@ mod max;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Abs", with_T!(tractops::math::Abs));
-    reg.insert("Add", with_T!(tractops::math::Add::Bin));
+    reg.insert("Add", |_,_| Ok(Box::new(tractops::math::add())));
     reg.insert("AddN", add_n);
-    reg.insert("BiasAdd", with_T!(tractops::math::Add::Bin));
+    reg.insert("BiasAdd", |_,_| Ok(Box::new(tractops::math::add())));
     reg.insert("Ceil", with_T!(tractops::math::Ceil));
-    reg.insert("Div", with_T!(tractops::math::Div::Bin));
-    reg.insert("FloorMod", with_T!(tractops::math::Rem::Bin));
+    reg.insert("Div", |_,_| Ok(Box::new(tractops::math::div())));
+    reg.insert("FloorMod", |_,_| Ok(Box::new(tractops::math::rem())));
     reg.insert("MatMul", mat_mul);
     reg.insert("Max", max::max);
-    reg.insert("Maximum", with_T!(tractops::math::Max::Bin));
-    reg.insert("Minimum", with_T!(tractops::math::Min::Bin));
+    reg.insert("Maximum", |_,_| Ok(Box::new(tractops::math::max())));
+    reg.insert("Minimum", |_,_| Ok(Box::new(tractops::math::min())));
     reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
     reg.insert("Log", with_T!(tractops::math::Ln));
-    reg.insert("Mul", with_T!(tractops::math::Mul::Bin));
-    reg.insert("Pow", with_T!(tractops::math::Pow::Bin));
+    reg.insert("Mul", |_,_| Ok(Box::new(tractops::math::mul())));
+    reg.insert("Pow", |_,_| Ok(Box::new(tractops::math::pow())));
     reg.insert("Neg", with_T!(tractops::math::Neg));
-    reg.insert("RealDiv", with_T!(tractops::math::Div::Bin));
+    reg.insert("RealDiv", |_,_| Ok(Box::new(tractops::math::div())));
     reg.insert("Rsqrt", with_T!(tractops::math::Rsqrt));
-    reg.insert("Sub", with_T!(tractops::math::Sub::Bin));
+    reg.insert("Sub", |_,_| Ok(Box::new(tractops::math::sub())));
     reg.insert("Tanh", with_T!(tractops::math::Tanh));
 }
 

@@ -67,11 +67,19 @@ impl Drop for Tensor {
 }
 
 impl Tensor {
-    /// Create an uninitialized tensor with a given alignment (in bytes).
+    /// Create an uninitialized tensor (dt as type paramater).
     pub unsafe fn uninitialized<T: Datum>(
         shape: &[usize],
     ) -> TractResult<Tensor> {
-        Self::uninitialized_aligned::<T>(shape, align_of::<T>())
+        Self::uninitialized_dt(T::datum_type(), shape)
+    }
+
+    /// Create an uninitialized tensor (dt as regular parameter).
+    pub unsafe fn uninitialized_dt(
+        dt: DatumType,
+        shape: &[usize],
+    ) -> TractResult<Tensor> {
+        Self::uninitialized_aligned_dt(dt, shape, dt.size_of())
     }
 
     /// Create an uninitialized tensor with a given alignment (in bytes).
@@ -79,10 +87,19 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> TractResult<Tensor> {
-        let bytes = shape.iter().cloned().product::<usize>() * size_of::<T>();
+        Self::uninitialized_aligned_dt(T::datum_type(), shape, alignment)
+    }
+
+    /// Create an uninitialized tensor with a given alignment (in bytes).
+    pub unsafe fn uninitialized_aligned_dt(
+        dt: DatumType,
+        shape: &[usize],
+        alignment: usize,
+    ) -> TractResult<Tensor> {
+        let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
         let layout = alloc::Layout::from_size_align(bytes, alignment)?;
         let data = if bytes == 0 { std::ptr::null() } else { alloc::alloc(layout) } as *mut u8;
-        Ok(Tensor { null: false, layout, dt: T::datum_type(), shape: shape.into(), data })
+        Ok(Tensor { null: false, layout, dt, shape: shape.into(), data })
     }
 
     /// Create an tensor from raw data.

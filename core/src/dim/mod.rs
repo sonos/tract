@@ -246,9 +246,23 @@ impl ops::Div<TDim> for TDim {
     }
 }
 
+impl<'a> ops::Div<&'a TDim> for TDim {
+    type Output = Self;
+    fn div(mut self, rhs: &'a TDim) -> TDim {
+        self /= rhs;
+        self
+    }
+}
+
 impl ops::DivAssign<TDim> for TDim {
     fn div_assign(&mut self, rhs: TDim) {
         self.0 /= rhs.0
+    }
+}
+
+impl<'a> ops::DivAssign<&'a TDim> for TDim {
+    fn div_assign(&mut self, rhs: &'a TDim) {
+        self.0 /= &rhs.0
     }
 }
 
@@ -260,11 +274,27 @@ impl ops::Rem<TDim> for TDim {
     }
 }
 
+impl<'a> ops::Rem<&'a TDim> for TDim {
+    type Output = Self;
+    fn rem(mut self, rhs: &'a TDim) -> TDim {
+        self %= rhs;
+        self
+    }
+}
+
+
 impl ops::RemAssign<TDim> for TDim {
     fn rem_assign(&mut self, rhs: TDim) {
         self.0 %= rhs.0
     }
 }
+
+impl<'a> ops::RemAssign<&'a TDim> for TDim {
+    fn rem_assign(&mut self, rhs: &'a TDim) {
+        self.0 %= &rhs.0
+    }
+}
+
 
 impl ::std::iter::Sum for TDim {
     fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {

@@ -121,7 +121,7 @@ impl Tensorflow {
         let tokens =
             (0..op.num_outputs()).map(|ix| step.request_fetch(&op, ix as i32)).collect::<Vec<_>>();
 
-        let session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
+        let mut session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
         session.run(&mut step)?;
 
         tokens
@@ -199,7 +199,7 @@ impl Tensorflow {
         trace!("{:?}", tokens);
 
         // Execute the graph using tensorflow.
-        let session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
+        let mut session = Session::new(&::tensorflow::SessionOptions::new(), &self.graph)?;
         session.run(&mut step)?;
         trace!("Tensorflow ran succesfully");
 
