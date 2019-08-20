@@ -260,6 +260,13 @@ where
     }
 }
 
+impl<'a> ops::DivAssign<&'a Stack> for Stack {
+    fn div_assign(&mut self, rhs: &'a Stack) {
+        *self = ExpNode::Div(Box::new(self.to_tree()), Box::new(rhs.to_tree())).reduce().to_stack()
+    }
+}
+
+
 impl<I> ops::DivAssign<I> for Stack
 where
     I: Into<Stack>,
@@ -279,6 +286,12 @@ where
     fn div(mut self, rhs: I) -> Self {
         self /= rhs;
         self
+    }
+}
+
+impl<'a> ops::RemAssign<&'a Stack> for Stack {
+    fn rem_assign(&mut self, rhs: &'a Stack) {
+        *self = ExpNode::Rem(Box::new(self.to_tree()), Box::new(rhs.to_tree())).reduce().to_stack()
     }
 }
 

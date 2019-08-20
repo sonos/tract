@@ -2,7 +2,7 @@
 
 export CI=true
 
-set -ex
+set -e
 
 # if [ `uname` = "Linux" -a -z "$TRAVIS" ]
 # then
@@ -77,7 +77,7 @@ fi
     [ -e kaldi/test_cases/librispeech_clean_tdnn_lstm_1e_256 ] \
         || ln -s `pwd`/$CACHEDIR/librispeech_clean_tdnn_lstm_1e_256 kaldi/test_cases/
     cd kaldi/test_cases
-    ./run_all.sh
+    CARGO_OPTS=--release ./run_all.sh
 )
 
 

@@ -5,10 +5,10 @@ use crate::pb::*;
 use tract_core::internal::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Add", |_, _| Ok((Box::new(tractops::math::Add::default()),vec!())));
-    reg.insert("Sub", |_, _| Ok((Box::new(tractops::math::Sub::default()),vec!())));
-    reg.insert("Mul", |_, _| Ok((Box::new(tractops::math::Mul::default()),vec!())));
-    reg.insert("Div", |_, _| Ok((Box::new(tractops::math::Div::default()),vec!())));
+    reg.insert("Add", |_, _| Ok((Box::new(tractops::math::add()),vec!())));
+    reg.insert("Sub", |_, _| Ok((Box::new(tractops::math::sub()),vec!())));
+    reg.insert("Mul", |_, _| Ok((Box::new(tractops::math::mul()),vec!())));
+    reg.insert("Div", |_, _| Ok((Box::new(tractops::math::div()),vec!())));
 
     reg.insert("Sum", |_, _| Ok((Box::new(tractops::math::AddN::default()),vec!())));
     reg.insert("Max", |_, _| Ok((Box::new(tractops::math::MaxN::default()),vec!())));
@@ -45,7 +45,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sign", |_, _| Ok((Box::new(tractops::math::Sign::default()),vec!())));
     reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::Recip::default()),vec!())));
 
-    reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::Pow::default()),vec!())));
+    reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::pow()),vec!())));
 
     reg.insert("MatMul", |_, _| Ok((Box::new(tractops::math::MatMul::default()),vec!())));
     reg.insert("Gemm", gemm);

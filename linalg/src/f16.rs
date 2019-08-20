@@ -214,9 +214,23 @@ impl ops::Add<f16> for f16 {
     }
 }
 
+impl ops::Add<&f16> for f16 {
+    type Output = f16;
+    fn add(self, other: &f16) -> f16 {
+        (self.0.to_f32() + other.0.to_f32()).into()
+    }
+}
+
 impl ops::Sub<f16> for f16 {
     type Output = f16;
     fn sub(self, other: f16) -> f16 {
+        (self.0.to_f32() - other.0.to_f32()).into()
+    }
+}
+
+impl ops::Sub<&f16> for f16 {
+    type Output = f16;
+    fn sub(self, other: &f16) -> f16 {
         (self.0.to_f32() - other.0.to_f32()).into()
     }
 }
@@ -228,6 +242,13 @@ impl ops::Mul<f16> for f16 {
     }
 }
 
+impl ops::Mul<&f16> for f16 {
+    type Output = f16;
+    fn mul(self, other: &f16) -> f16 {
+        (self.0.to_f32() * other.0.to_f32()).into()
+    }
+}
+
 impl ops::Div<f16> for f16 {
     type Output = f16;
     fn div(self, other: f16) -> f16 {
@@ -235,9 +256,23 @@ impl ops::Div<f16> for f16 {
     }
 }
 
+impl ops::Div<&f16> for f16 {
+    type Output = f16;
+    fn div(self, other: &f16) -> f16 {
+        (self.0.to_f32() / other.0.to_f32()).into()
+    }
+}
+
 impl ops::Rem<f16> for f16 {
     type Output = f16;
     fn rem(self, other: f16) -> f16 {
+        (self.0.to_f32() % other.0.to_f32()).into()
+    }
+}
+
+impl ops::Rem<&f16> for f16 {
+    type Output = f16;
+    fn rem(self, other: &f16) -> f16 {
         (self.0.to_f32() % other.0.to_f32()).into()
     }
 }

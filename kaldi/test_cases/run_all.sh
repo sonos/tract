@@ -25,7 +25,7 @@ do
         [[ "$pass" = "txt" ]] && suffix=.txt || suffix=""
         [[ "$pass" = "bin-opti" ]] && opti="-O" || opti=""
         echo -n "$tc ($pass) "
-        cmd="cargo run -q -p tract $CARGO_OPTS -- \
+        cmd="cargo run  -p tract $CARGO_OPTS -- \
             -f kaldi $tc/model.raw$suffix \
             --output-node output \
             --input-bundle $tc/io.npz \
