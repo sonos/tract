@@ -5,13 +5,13 @@ use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Equal", with_T!(tractops::logic::Equals::Bin));
-    reg.insert("Greater", with_T!(tractops::logic::Greater::Bin));
-    reg.insert("GreaterEqual", with_T!(tractops::logic::GreaterEqual::Bin));
-    reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
-    reg.insert("LessEqual", with_T!(tractops::logic::LesserEqual::Bin));
-    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::And::default())));
-    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::Or::default())));
+    reg.insert("Equal", |_,_| Ok(Box::new(tractops::logic::equals())));
+    reg.insert("Greater", |_,_| Ok(Box::new(tractops::logic::greater())));
+    reg.insert("GreaterEqual", |_,_| Ok(Box::new(tractops::logic::greater_equal())));
+    reg.insert("Less", |_,_| Ok(Box::new(tractops::logic::lesser())));
+    reg.insert("LessEqual", |_,_| Ok(Box::new(tractops::logic::lesser_equal())));
+    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and())));
+    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or())));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }

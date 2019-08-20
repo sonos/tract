@@ -263,10 +263,9 @@ fn main() {
     env_logger::Builder::from_env(env).default_format_timestamp_nanos(true).init();
 
     if let Err(e) = handle(matches) {
+        use error_chain::ChainedError;
         error!("{}", e);
-        for e in e.iter().skip(1) {
-            error!("caused by: {}", e);
-        }
+        eprintln!("{}", e.display_chain());
         process::exit(1)
     }
 }

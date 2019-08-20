@@ -20,7 +20,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Max", max::max);
     reg.insert("Maximum", |_,_| Ok(Box::new(tractops::math::max())));
     reg.insert("Minimum", |_,_| Ok(Box::new(tractops::math::min())));
-    reg.insert("Less", with_T!(tractops::logic::Lesser::Bin));
+    reg.insert("Less", |_,_| Ok(Box::new(tractops::logic::lesser())));
     reg.insert("Log", with_T!(tractops::math::Ln));
     reg.insert("Mul", |_,_| Ok(Box::new(tractops::math::mul())));
     reg.insert("Pow", |_,_| Ok(Box::new(tractops::math::pow())));

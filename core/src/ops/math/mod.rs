@@ -1,6 +1,5 @@
 pub mod gemm;
 pub mod mat_mul;
-mod bin_in_place;
 
 pub use self::gemm::Gemm;
 pub use self::mat_mul::MatMul;
@@ -9,7 +8,7 @@ use num_traits::AsPrimitive;
 use num_traits::Float;
 use num_traits::Zero;
 
-pub use bin_in_place::{ add, sub, mul, div, rem, min, max, pow };
+pub use crate::ops::binary::{ add, sub, mul, div, rem, min, max, pow };
 
 element_map!(Abs, [f16, f32, i32], |x| x.abs());
 element_map!(Exp, [f16, f32, f64], |x| x.exp());
