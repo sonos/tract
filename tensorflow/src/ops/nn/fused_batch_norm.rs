@@ -25,8 +25,8 @@ impl FusedBatchNorm {
         variance: &[f32],
     ) -> TractResult<(Vec<f32>, Vec<f32>)> {
         use itertools::izip;
-        let alpha = izip!(variance, scale).map(|(v,s)| s/(v+self.epsilon).sqrt()).collect();
-        let beta = izip!(offset, mean, &alpha).map(|(o, m, s)| o - m*s).collect();
+        let alpha = izip!(variance, scale).map(|(v, s)| s / (v + self.epsilon).sqrt()).collect();
+        let beta = izip!(offset, mean, &alpha).map(|(o, m, s)| o - m * s).collect();
         Ok((alpha, beta))
     }
 }
@@ -56,24 +56,28 @@ impl Op for FusedBatchNorm {
             let (alpha, beta) = self.coeffs(scale, offset, mean, variance)?;
             let mut patch = TypedModelPatch::default();
             patch.tap_model(&model, node.inputs[0])?;
-            patch.chain(
+            let mul = patch.chain(
                 format!("{}-mul", node.name),
-                tract_core::ops::math::Mul::UnaryA::new(
-                    f32::datum_type().into(),
-                    tensor1(&*alpha).into_arc_tensor(),
-                ),
+                tract_core::ops::math::mul(),
                 tvec!(node.outputs[0].fact.clone()),
             )?;
             let id = patch.chain(
                 format!("{}-add", node.name),
-                tract_core::ops::math::Add::UnaryA::new(
-                    f32::datum_type().into(),
-                    tensor1(&*beta).into_arc_tensor(),
-                ),
+                tract_core::ops::math::add(),
                 tvec!(node.outputs[0].fact.clone()),
             )?;
+            patch.plug_const(
+                InletId::new(mul, 1),
+                format!("{}-slope", node.name),
+                tensor1(&*alpha).into_arc_tensor(),
+            )?;
+            patch.plug_const(
+                InletId::new(id, 1),
+                format!("{}-offset", node.name),
+                tensor1(&*beta).into_arc_tensor(),
+            )?;
             patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(id, 0))?;
-            return Ok(Some(patch))
+            return Ok(Some(patch));
         };
         Ok(None)
     }

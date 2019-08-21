@@ -36,27 +36,24 @@ impl Op for Direct {
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<f32>>>> {
-                if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
+                if let Some(op) = succ.op_as::<crate::ops::binary::UnaryAOp>() {
                     if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(tvec!(FusedSpec::PerRowMul(
-                            op.b.as_slice::<f32>()?.to_vec(),
-                        ))));
-                    }
-                } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
-                    if op.b.shape() == &[*self.output_shape.c()] {
-                        return Ok(Some(tvec!(FusedSpec::PerRowAdd(
-                            op.b.as_slice::<f32>()?.to_vec(),
-                        ))));
+                        if op.mini_op.is::<crate::ops::math::Mul>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowMul(
+                                op.b.as_slice::<f32>()?.to_vec(),
+                            ))));
+                        } else if op.mini_op.is::<crate::ops::math::Add>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowAdd(
+                                op.b.as_slice::<f32>()?.to_vec(),
+                            ))));
+                        }
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
                     return Ok(Some(tvec!(FusedSpec::Max(op.max))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
                     return Ok(Some(tvec!(FusedSpec::Min(op.min))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
-                    return Ok(Some(tvec!(
-                                FusedSpec::Min(op.min),
-                                FusedSpec::Max(op.max),
-                                )));
+                    return Ok(Some(tvec!(FusedSpec::Min(op.min), FusedSpec::Max(op.max),)));
                 }
                 Ok(None)
             })()?;

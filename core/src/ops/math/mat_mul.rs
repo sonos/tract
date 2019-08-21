@@ -357,13 +357,17 @@ where
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
         if let Some(succ) = model.single_succ(node.id)? {
             let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
-                if let Some(op) = succ.op_as::<crate::ops::math::Mul::UnaryA>() {
+                if let Some(op) = succ.op_as::<crate::ops::binary::UnaryAOp>() {
                     if op.b.shape() == &[self.geo.n] {
-                        return Ok(Some(tvec!(FusedSpec::PerColMul(op.b.as_slice::<T>()?.to_vec()))));
-                    }
-                } else if let Some(op) = succ.op_as::<crate::ops::math::Add::UnaryA>() {
-                    if op.b.shape() == &[self.geo.n] {
-                        return Ok(Some(tvec!(FusedSpec::PerColAdd(op.b.as_slice::<T>()?.to_vec()))));
+                        if op.mini_op.is::<crate::ops::math::Mul>() {
+                            return Ok(Some(tvec!(FusedSpec::PerColMul(
+                                op.b.as_slice::<T>()?.to_vec(),
+                            ))));
+                        } else if op.mini_op.is::<crate::ops::math::Add>() {
+                            return Ok(Some(tvec!(FusedSpec::PerColAdd(
+                                op.b.as_slice::<T>()?.to_vec(),
+                            ))));
+                        }
                     }
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
                     return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));

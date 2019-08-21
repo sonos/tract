@@ -8,7 +8,24 @@ use num_traits::AsPrimitive;
 use num_traits::Float;
 use num_traits::Zero;
 
-pub use crate::ops::binary::{ add, sub, mul, div, rem, min, max, pow };
+bin_to_super_type!(add, Add,
+     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() + b);
+bin_to_super_type!(sub, Sub,
+     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() - b);
+bin_to_super_type!(mul, Mul,
+     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() * b);
+bin_to_super_type!(div, Div,
+     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() / b);
+bin_to_super_type!(rem, Rem,
+     [f32, i8, i16, i32, i64, u8, u16, f16, f64, TDim] => |c, a, b| *c = a.clone() % b);
+bin_to_super_type!(min, Min,
+     [f32, f64] => |c,a,b| *c = a.min(*b),
+     [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.min(b));
+bin_to_super_type!(max, Max,
+     [f32, f64] => |c,a,b| *c = a.max(*b),
+     [i8, i16, i32, i64, u8, u16] => |c, a, b| *c = *a.max(b));
+bin_to_super_type!(pow, Pow,
+     [f32, f64] => |c,a,b| *c = a.powf(*b));
 
 element_map!(Abs, [f16, f32, i32], |x| x.abs());
 element_map!(Exp, [f16, f32, f64], |x| x.exp());

@@ -152,17 +152,6 @@ pub mod test {
         StorageKerSpec::Packed { ptr: std::ptr::null::<T>() as _ }
     }
 
-    pub fn null_stride_storage<T>() -> StorageKerSpec<T>
-    where
-        T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,
-    {
-        StorageKerSpec::Strides {
-            ptr: std::ptr::null::<T>() as _,
-            row_byte_stride: 0,
-            col_byte_stride: 0,
-        }
-    }
-
     pub fn mmm_stride_storage<T>(v: &mut [T], rsc: usize) -> StorageKerSpec<T>
     where
         T: Mul + Add + Zero + One + Debug + Copy + PartialEq + From<f32>,

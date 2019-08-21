@@ -9,6 +9,8 @@ use std::convert::TryFrom;
 
 #[macro_use]
 pub mod macros;
+#[macro_use]
+pub mod binary;
 
 pub mod array;
 pub mod cast;
@@ -23,9 +25,6 @@ pub mod nn;
 pub mod scan;
 pub mod source;
 pub mod unimpl;
-
-#[macro_use]
-pub mod binary;
 
 pub use source::Source;
 pub use downsample::Downsample;

@@ -1,8 +1,8 @@
+use downcast_rs::Downcast;
 use crate::internal::*;
 use std::fmt;
 
-clone_trait_object!(BinMiniOp);
-pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static {
+pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast {
     fn name(&self) -> &'static str;
     fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
@@ -27,6 +27,8 @@ pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static {
         Ok(tvec!(c.into_arc_tensor()))
     }
 }
+clone_trait_object!(BinMiniOp);
+downcast_rs::impl_downcast!(BinMiniOp);
 
 #[derive(Debug, Clone)]
 pub struct InferenceBinOp(pub Box<dyn BinMiniOp>);
@@ -120,7 +122,7 @@ impl Op for TypedBinOp {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(b) = inputs[1].konst.clone() {
-            let op = UnaryAOp(self.0.clone(), b.clone());
+            let op = UnaryAOp::new(self.0.clone(), b.clone());
             return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs[0..1], op)?));
         }
         if inputs[0].shape == inputs[1].shape {
@@ -137,12 +139,15 @@ impl StatelessOp for TypedBinOp {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct UnaryAOp(pub Box<dyn BinMiniOp>, Arc<Tensor>);
+#[derive(Debug, Clone, new)]
+pub struct UnaryAOp {
+    pub mini_op: Box<dyn BinMiniOp>,
+    pub b: Arc<Tensor>
+}
 
 impl Op for UnaryAOp {
     fn name(&self) -> Cow<str> {
-        format!("{}UnaryA", self.0.name()).into()
+        format!("{}UnaryA", self.mini_op.name()).into()
     }
 
     fn pulsify(
@@ -154,7 +159,7 @@ impl Op for UnaryAOp {
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let mut fact = target.outlet_fact(input)?.clone();
-        fact.dt = self.1.datum_type();
+        fact.dt = self.b.datum_type();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
@@ -162,7 +167,7 @@ impl Op for UnaryAOp {
 
 impl StatelessOp for UnaryAOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.0.eval_broadcast(tvec!(inputs[0].clone(), self.1.clone()))
+        self.mini_op.eval_broadcast(tvec!(inputs[0].clone(), self.b.clone()))
     }
 }
 
@@ -223,7 +228,7 @@ impl StatelessOp for MergeOp {
 macro_rules! bin_to_super_type {
     ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr ),*) => {
         #[derive(Debug, Clone)]
-        struct $Op;
+        pub struct $Op;
         impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
@@ -261,8 +266,8 @@ macro_rules! bin_to_super_type {
 macro_rules! bin_to_bool {
     ($func:ident, $Op:ident, $( [$($typ:ident),*] => $cab:expr ),*) => {
         #[derive(Debug, Clone)]
-        struct $Op;
-        impl BinMiniOp for $Op {
+        pub struct $Op;
+        impl $crate::ops::binary::BinMiniOp for $Op {
             fn name(&self) -> &'static str {
                 stringify!($Op)
             }
@@ -291,7 +296,7 @@ macro_rules! bin_to_bool {
         }
 
         pub fn $func() -> impl InferenceOp {
-            InferenceBinOp(Box::new($Op))
+            $crate::ops::binary::InferenceBinOp(Box::new($Op))
         }
     };
 }

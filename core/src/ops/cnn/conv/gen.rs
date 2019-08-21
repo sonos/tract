@@ -139,7 +139,7 @@ impl Op for Conv {
                 }
                 output = patch.add_node_simple(
                     format!("{}-add-bias", node.name),
-                    crate::ops::math::Add::default(),
+                    crate::ops::math::add(),
                     tvec!(output, tap.node),
                     node.outputs[0].fact.clone(),
                 )?;
