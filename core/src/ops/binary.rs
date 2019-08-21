@@ -4,14 +4,18 @@ use std::fmt;
 clone_trait_object!(BinMiniOp);
 pub trait BinMiniOp: fmt::Debug + objekt::Clone + Send + Sync + 'static {
     fn name(&self) -> &'static str;
+    fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType>;
     fn eval_out_of_place(&self, c: &mut Tensor, a: &Tensor, b: &Tensor) -> TractResult<()>;
-    fn eval_broadcast_and_typecast(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_broadcast_and_typecast(
+        &self,
+        mut inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
         let (a, b) = args_2!(inputs);
-        let c_type = self.result_datum_type(a.datum_type(), b.datum_type())?;
-        let a = a.cast_to_dt(c_type)?.into_owned();
-        let b = b.cast_to_dt(c_type)?.into_owned();
-        self.eval_broadcast(tvec!(a.into_arc_tensor(),b.into_arc_tensor()))
+        let op_type = self.operating_datum_type(a.datum_type(), b.datum_type())?;
+        let a = a.cast_to_dt(op_type)?.into_owned();
+        let b = b.cast_to_dt(op_type)?.into_owned();
+        self.eval_broadcast(tvec!(a.into_arc_tensor(), b.into_arc_tensor()))
     }
     fn eval_broadcast(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (a, b) = args_2!(inputs);
@@ -39,23 +43,23 @@ impl Op for InferenceBinOp {
     ) -> TractResult<Option<TypedModelPatch>> {
         let facts = model.node_input_facts(node.id)?;
         let mut patch = TypedModelPatch::default();
-        let ctype = self.0.result_datum_type(facts[0].datum_type, facts[1].datum_type)?;
+        let operating_datum_type = self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
         let bin = patch.add_node(
             &*node.name,
             TypedBinOp(self.0.clone()),
             tvec!(node.outputs[0].fact.clone()),
         )?;
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(bin, 0))?;
-        for  i in 0..2 {
+        for i in 0..2 {
             let fact = model.node_input_facts(node.id)?[i];
             let tap = patch.tap_model(model, node.inputs[i])?;
-            if fact.datum_type != ctype {
+            if fact.datum_type != operating_datum_type {
                 let mut fact = fact.clone();
-                fact.datum_type = ctype;
+                fact.datum_type = operating_datum_type;
                 let cast = patch.chain_after(
                     tap,
                     format!("{}Cast{}", &*node.name, i),
-                    super::cast::Cast::new(ctype),
+                    super::cast::Cast::new(operating_datum_type),
                     tvec!(fact),
                 )?;
                 patch.add_edge(OutletId::new(cast, 0), InletId::new(bin, i))?;
@@ -93,9 +97,9 @@ impl InferenceRulesOp for InferenceBinOp {
                 Ok(())
             })
         })?;
-        s.given_2(&inputs[0].datum_type, &inputs[1].datum_type, move |s, typa, typb|
+        s.given_2(&inputs[0].datum_type, &inputs[1].datum_type, move |s, typa, typb| {
             s.equals(&outputs[0].datum_type, self.0.result_datum_type(typa, typb)?)
-        )?;
+        })?;
         Ok(())
     }
     inference_op_as_op!();
@@ -117,7 +121,7 @@ impl Op for TypedBinOp {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(b) = inputs[1].konst.clone() {
             let op = UnaryAOp(self.0.clone(), b.clone());
-            return Ok(Some(TypedModelPatch::single_unary_op(&model, &node, op)?));
+            return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs[0..1], op)?));
         }
         if inputs[0].shape == inputs[1].shape {
             let op = MergeOp(self.0.clone());
@@ -158,7 +162,7 @@ impl Op for UnaryAOp {
 
 impl StatelessOp for UnaryAOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.0.eval_broadcast(inputs)
+        self.0.eval_broadcast(tvec!(inputs[0].clone(), self.1.clone()))
     }
 }
 
@@ -178,7 +182,10 @@ impl Op for MergeOp {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         use crate::pulse::delay::Delay;
-        let delay = (0..2).map(|ix| target.outlet_fact(mapping[&node.inputs[ix]]).unwrap().delay).max().unwrap();
+        let delay = (0..2)
+            .map(|ix| target.outlet_fact(mapping[&node.inputs[ix]]).unwrap().delay)
+            .max()
+            .unwrap();
         let mut output_fact = target.outlet_fact(mapping[&node.inputs[0]])?.clone();
         output_fact.delay = delay;
         let id = target.add_node(&*node.name, self.clone(), tvec!(output_fact))?;
@@ -235,8 +242,13 @@ macro_rules! bin_to_super_type {
                 )*
                 bail!("{} does not support {:?}", self.name(), c.datum_type());
             }
-            fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+
+            fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
                 a.common_super_type(b).ok_or_else(|| format!("No super type for {:?} and {:?}", a, b).into())
+            }
+
+            fn result_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                self.operating_datum_type(a, b)
             }
         }
 
@@ -267,6 +279,10 @@ macro_rules! bin_to_bool {
                     )*
                 )*
                 bail!("{} does not support {:?}", self.name(), c.datum_type());
+            }
+
+            fn operating_datum_type(&self, a: DatumType, b: DatumType) -> TractResult<DatumType> {
+                a.common_super_type(b).ok_or_else(|| format!("No super type for {:?} and {:?}", a, b).into())
             }
 
             fn result_datum_type(&self, _a: DatumType, _b: DatumType) -> TractResult<DatumType> {
