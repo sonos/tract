@@ -150,6 +150,24 @@ impl Op for UnaryAOp {
         format!("{}UnaryA", self.mini_op.name()).into()
     }
 
+    fn translation_invariants(&self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        if a.shape.rank() < self.b.shape().len() {
+            return Ok(vec!())
+        }
+        let mut invs = vec!();
+        for i in 0..a.shape.rank() - self.b.shape().len() {
+            invs.push(TranslationInvariant { period: 1, axis: i })
+        }
+        for &d in self.b.shape() {
+            invs.push(TranslationInvariant { period: d, axis: invs.len() })
+        }
+        return Ok(invs)
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
@@ -177,6 +195,14 @@ pub struct MergeOp(pub Box<dyn BinMiniOp>);
 impl Op for MergeOp {
     fn name(&self) -> Cow<str> {
         format!("{}Merge", self.0.name()).into()
+    }
+
+    fn translation_invariants(&self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        Ok((0..a.shape.rank()).into_iter().map(|axis| TranslationInvariant { period: 1, axis }).collect())
     }
 
     fn pulsify(

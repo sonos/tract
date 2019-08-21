@@ -288,6 +288,14 @@ macro_rules! element_map_with_params {
                 let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
                 Ok(tvec!(OutletId::new(id, 0)))
             }
+
+            fn translation_invariants(&self,
+                _model: &TypedModel,
+                node: &TypedNode,
+            ) -> TractResult<Vec<TranslationInvariant>> {
+                let rank = node.outputs[0].fact.shape.rank();
+                Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
+            }
         }
 
         impl InferenceRulesOp for $Name {
