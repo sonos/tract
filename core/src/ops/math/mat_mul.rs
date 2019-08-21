@@ -280,6 +280,28 @@ impl Op for MatMulUnaryA {
         }
         Ok(None)
     }
+
+    fn translation_invariants(
+        &self,
+        _model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let a_rank = node.outputs[0].fact.shape.rank();
+        if self.b.shape().len() > a_rank {
+            return Ok(vec![]);
+        }
+        let mut broadcasted_b_shape: TVec<_> = self.b.shape().into();
+        while broadcasted_b_shape.len() < a_rank {
+            broadcasted_b_shape.insert(0, 1);
+        }
+        let mut invars = broadcasted_b_shape[..broadcasted_b_shape.len() - 2]
+            .into_iter()
+            .enumerate()
+            .map(|(axis, &period)| TranslationInvariant { axis, period })
+            .collect::<Vec<_>>();
+        invars.push(TranslationInvariant { axis: a_rank - 2, period: 1 });
+        Ok(invars)
+    }
 }
 
 impl StatelessOp for MatMulUnaryA {
@@ -375,9 +397,9 @@ where
                     return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
                 } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
                     return Ok(Some(tvec!(
-                                FusedSpec::Min(op.min.as_()),
-                                FusedSpec::Max(op.max.as_()),
-                                )));
+                        FusedSpec::Min(op.min.as_()),
+                        FusedSpec::Max(op.max.as_()),
+                    )));
                 }
                 Ok(None)
             })()?;

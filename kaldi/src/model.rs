@@ -227,9 +227,9 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 }
                 NodeLine::DimRange(line) => {
                     let op = tract_core::ops::array::Slice::new(
-                        vec![1],
-                        vec![line.offset as usize],
-                        vec![(line.offset + line.dim) as usize],
+                        1,
+                        line.offset as usize,
+                        (line.offset + line.dim) as usize,
                     );
                     let id = model.add_node_default(name.to_string(), op)?;
                     line.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire, None)?

@@ -87,8 +87,7 @@ impl ConvUnary {
 
     pub fn to_direct(&self, input_full_shape: &[usize]) -> TractResult<super::Direct> {
         assert!(
-            (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax))
-                && self.group == 1
+            (0..input_full_shape.len() - 2).all(|ax| self.padding.valid_dim(ax)) && self.group == 1
         );
 
         let patch = self.patch(input_full_shape);
@@ -446,15 +445,6 @@ impl Op for ConvUnary {
             patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(id, 0))?;
             return Ok(Some(patch));
         }
-        Ok(None)
-    }
-
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let inputs = model.node_input_facts(node.id)?;
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if kernel_spatial_shape.iter().product::<usize>() == 1
@@ -472,39 +462,49 @@ impl Op for ConvUnary {
                     MatMulUnaryA::new(kernel),
                 )?));
             }
-        } else {
-            if let Some(shape) = inputs[0].shape.as_finite() {
-                let dt = inputs[0].datum_type;
-                if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
-                    && dt == f32::datum_type()
-                    && self.group == 1
-                {
-                    let op = self.to_direct(&*shape)?;
-                    return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-                } else if self.group != 1 && self.group == self.output_channels() {
-                    return Ok(Some(TypedModelPatch::single_unary_op(
-                        model,
-                        node,
-                        dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
-                    )?));
-                } else {
-                    let (op1, shape, op2) =
-                        dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
-                    let mut patch = TypedModelPatch::default();
-                    let _ = patch.tap_model(&model, node.inputs[0])?;
-                    patch.chain(
-                        format!("{}-im2col", node.name),
-                        op1,
-                        tvec!(TypedTensorInfo {
-                            shape: ShapeInfo::from(&*shape),
-                            datum_type: dt,
-                            konst: None,
-                        }),
-                    )?;
-                    let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
-                    patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
-                    return Ok(Some(patch));
-                }
+        }
+        Ok(None)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let inputs = model.node_input_facts(node.id)?;
+        let spatial_rank = self.full_input_shape.len() - 2;
+        let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
+        if let Some(shape) = inputs[0].shape.as_finite() {
+            let dt = inputs[0].datum_type;
+            if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
+                && dt == f32::datum_type()
+                && self.group == 1
+            {
+                let op = self.to_direct(&*shape)?;
+                return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            } else if self.group != 1 && self.group == self.output_channels() {
+                return Ok(Some(TypedModelPatch::single_unary_op(
+                    model,
+                    node,
+                    dispatch_floatlike!(Self::to_depth_wise(dt)(self, &shape))?,
+                )?));
+            } else {
+                let (op1, shape, op2) =
+                    dispatch_floatlike!(Self::to_boxed_im2col_pair(dt)(self, &shape))?;
+                let mut patch = TypedModelPatch::default();
+                let _ = patch.tap_model(&model, node.inputs[0])?;
+                patch.chain(
+                    format!("{}-im2col", node.name),
+                    op1,
+                    tvec!(TypedTensorInfo {
+                        shape: ShapeInfo::from(&*shape),
+                        datum_type: dt,
+                        konst: None,
+                    }),
+                )?;
+                let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
+                patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
+                return Ok(Some(patch));
             }
         }
         Ok(None)

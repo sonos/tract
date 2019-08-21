@@ -60,9 +60,9 @@ impl Op for LstmNonlin {
                 patch.add_node_simple(
                     format!("{}-part-{}", node.name, ix),
                     array::Slice::new(
-                        vec![1],
-                        vec![cell_hidden_dim * ix],
-                        vec![cell_hidden_dim * (ix + 1)],
+                        1,
+                        cell_hidden_dim * ix,
+                        cell_hidden_dim * (ix + 1),
                     ),
                     tvec!(input.node),
                     fact.clone(),

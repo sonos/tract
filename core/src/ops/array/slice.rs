@@ -3,20 +3,18 @@ use ndarray::prelude::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice<D: DimLike + ToDim> {
-    axes: Vec<usize>,
-    starts: Vec<D>,
-    ends: Vec<D>,
+    axis: usize,
+    start: D,
+    end: D,
 }
 
 impl<D: DimLike + ToDim> Slice<D> {
     fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
         let mut input = input.to_array_view::<T>()?;
-        for (axis, b, e) in itertools::izip!(&self.axes, &self.starts, &self.ends) {
-            input.slice_axis_inplace(
-                Axis(*axis),
-                ::ndarray::Slice::from((b.to_integer()?)..(e.to_integer()?)),
-            );
-        }
+        input.slice_axis_inplace(
+            Axis(self.axis),
+            ::ndarray::Slice::from((self.start.to_integer()?)..(self.end.to_integer()?)),
+        );
         Ok(Tensor::from(input.to_owned()).into())
     }
 }
@@ -33,11 +31,20 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
     ) -> TractResult<Vec<TranslationInvariant>> {
         let fact = model.outlet_fact(node.inputs[0])?;
         let axes = (0..fact.shape.rank())
-            .filter(|ax| !self.axes.contains(ax))
+            .filter(|&ax| self.axis != ax)
             .map(|axis| TranslationInvariant { axis, period: 1 })
             .collect();
         Ok(axes)
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+
 }
 
 impl<D: DimLike + ToDim> StatelessOp for Slice<D> {
@@ -61,10 +68,10 @@ impl<D: DimLike + ToDim> InferenceRulesOp for Slice<D> {
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.given(&inputs[0].rank, move |s, rank| {
             (0..(rank as usize)).try_for_each(move |axis| {
-                if let Some(pos) = self.axes.iter().position(|i| i == &axis) {
+                if axis == self.axis {
                     s.equals(
                         &outputs[0].shape[axis],
-                        (self.ends[pos].clone() - &self.starts[pos]).to_dim(),
+                        (self.end.clone() - &self.start).to_dim(),
                     )
                 } else {
                     s.equals(&outputs[0].shape[axis], &inputs[0].shape[axis])

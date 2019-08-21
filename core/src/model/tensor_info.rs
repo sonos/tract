@@ -192,7 +192,7 @@ impl fmt::Debug for ShapeInfo {
 }
 
 /// Fully determined tensor information for TypedModel.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct TypedTensorInfo {
     /// tensor element type
     pub datum_type: DatumType,
