@@ -39,7 +39,7 @@ impl TensorInfo for PulsedTensorFact {
 impl TryFrom<PulsedTensorFact> for TypedTensorInfo {
     type Error = TractError;
     fn try_from(fact: PulsedTensorFact) -> TractResult<TypedTensorInfo> {
-        Ok(TypedTensorInfo { shape: (&fact.shape).into(), datum_type: fact.dt, konst: None })
+        TypedTensorInfo::dt_shape(fact.dt, &*fact.shape)
     }
 }
 
@@ -61,7 +61,7 @@ impl PulsedTensorFact {
     }
 
     pub fn to_pulse_fact(&self) -> NormalizedTensorInfo {
-        NormalizedTensorInfo { datum_type: self.dt, shape: ShapeInfo::from(&*self.shape) }
+        NormalizedTensorInfo::dt_shape(self.dt, &*self.shape).unwrap()
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {

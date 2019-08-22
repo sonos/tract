@@ -82,5 +82,5 @@ impl InferenceRulesOp for ArgMaxMin {
 }
 
 impl TypedOp for ArgMaxMin {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

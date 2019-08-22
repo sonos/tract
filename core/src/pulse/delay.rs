@@ -92,7 +92,7 @@ impl StatefullOp for Delay {
 }
 
 impl TypedOp for Delay {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[cfg(test)]

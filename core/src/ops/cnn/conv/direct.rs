@@ -73,5 +73,5 @@ impl StatelessOp for Direct {
 }
 
 impl TypedOp for Direct {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

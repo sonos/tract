@@ -58,7 +58,7 @@ impl InferenceRulesOp for GlobalAvgPool {
 }
 
 impl TypedOp for GlobalAvgPool {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -123,7 +123,7 @@ impl InferenceRulesOp for GlobalLpPool {
 }
 
 impl TypedOp for GlobalLpPool {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 
@@ -201,5 +201,5 @@ fn rules<'r, 'p: 'r, 's: 'r>(
 }
 
 impl TypedOp for GlobalMaxPool {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

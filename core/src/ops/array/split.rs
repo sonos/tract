@@ -83,4 +83,15 @@ impl InferenceRulesOp for Split {
 
 impl TypedOp for Split {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        self.split_dims(inputs[0].shape.dim(self.axis))?.into_iter().map(|d| {
+            let mut fact = inputs[0].clone();
+            fact.shape.set_dim(self.axis, d)?;
+            Ok(fact)
+        }).collect()
+    }
 }

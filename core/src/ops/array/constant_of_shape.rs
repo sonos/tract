@@ -22,8 +22,6 @@ impl Op for ConstantOfShape {
     fn name(&self) -> Cow<str> {
         "ConstantOfShape".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for ConstantOfShape {
@@ -56,9 +54,5 @@ impl InferenceRulesOp for ConstantOfShape {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for ConstantOfShape {
-    typed_op_as_op!();
 }
 

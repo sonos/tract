@@ -61,6 +61,13 @@ impl InferenceRulesOp for ConstantLike {
 
 impl TypedOp for ConstantLike {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -144,5 +151,12 @@ impl InferenceRulesOp for EyeLike {
 
 impl TypedOp for EyeLike {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }
 

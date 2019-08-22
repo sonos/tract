@@ -18,7 +18,7 @@ impl StatelessOp for Dummy {
 }
 
 impl TypedOp for Dummy {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 impl InferenceRulesOp for Dummy {

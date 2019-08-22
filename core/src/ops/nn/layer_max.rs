@@ -63,7 +63,7 @@ impl InferenceRulesOp for LayerHardmax {
 }
 
 impl TypedOp for LayerHardmax {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -126,7 +126,7 @@ impl InferenceRulesOp for LayerLogSoftmax {
 }
 
 impl TypedOp for LayerLogSoftmax {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -201,6 +201,6 @@ fn rules<'r, 'p: 'r, 's: 'r>(
 }
 
 impl TypedOp for LayerSoftmax {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 

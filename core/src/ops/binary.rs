@@ -108,7 +108,7 @@ impl InferenceRulesOp for InferenceBinOp {
 }
 
 impl TypedOp for InferenceBinOp {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -146,7 +146,7 @@ impl StatelessOp for TypedBinOp {
 }
 
 impl TypedOp for TypedBinOp {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -181,7 +181,7 @@ impl StatelessOp for UnaryAOp {
 }
 
 impl TypedOp for UnaryAOp {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -240,7 +240,7 @@ impl StatelessOp for MergeOp {
 }
 
 impl TypedOp for MergeOp {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[macro_export]

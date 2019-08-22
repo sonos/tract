@@ -201,7 +201,7 @@ impl InferenceRulesOp for Conv {
 }
 
 impl TypedOp for Conv {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 

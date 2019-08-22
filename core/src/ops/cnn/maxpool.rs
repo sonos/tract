@@ -83,7 +83,7 @@ impl InferenceRulesOp for MaxPool {
 }
 
 impl TypedOp for MaxPool {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -152,5 +152,5 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
 }
 
 impl<T: Datum + Float> TypedOp for MaxPoolFixed<T> {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

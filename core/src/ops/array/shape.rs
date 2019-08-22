@@ -81,6 +81,17 @@ impl InferenceRulesOp for Shape {
 
 impl TypedOp for Shape {
     typed_op_as_op!();
+
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            self.dt,
+            [inputs[0].shape.rank()].as_ref()
+        )?))
+    }
 }
 
 /*

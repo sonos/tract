@@ -47,5 +47,5 @@ impl InferenceRulesOp for Cast {
 }
 
 impl TypedOp for Cast {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
