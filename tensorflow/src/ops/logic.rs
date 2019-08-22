@@ -23,8 +23,6 @@ impl Op for Switch {
     fn name(&self) -> Cow<str> {
         "tf.Switch".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Switch {
@@ -59,13 +57,10 @@ impl InferenceRulesOp for Switch {
     inference_op_as_op!();
 }
 
+
 fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let inputs = pb.get_attr_int::<i32>("N")?;
     Ok(Box::new(Merge::new(inputs as usize)))
-}
-
-impl TypedOp for Switch {
-    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -112,4 +107,8 @@ impl InferenceRulesOp for Merge {
 
 impl TypedOp for Merge {
     typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(f32::datum_type(), inputs[0].shape.clone())?))
+    }
 }

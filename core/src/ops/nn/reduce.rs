@@ -215,6 +215,24 @@ impl Reduce {
         resolved_axes.as_ref().map(|axes| axes.contains(&ax)).unwrap_or(true)
     }
 
+    fn output_shape(&self, shape: &[TDim]) -> TVec<TDim> {
+        shape
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, d)| {
+                if self.must_reduce(ix, shape.len()) {
+                    if self.keep_dims {
+                        Some(1.to_dim())
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(d.clone())
+                }
+            })
+            .collect()
+    }
+
     fn resolve_axis(axis: i64, rank: i64) -> TractResult<usize> {
         if 0 <= axis && axis <= rank - 1 {
             Ok(axis as usize)
@@ -270,21 +288,7 @@ impl InferenceRulesOp for Reduce {
             s.equals(&outputs[0].rank, 0)?;
         }
         s.given(&inputs[0].shape, move |s, shape| {
-            let out_shape: TVec<TDim> = shape
-                .iter()
-                .enumerate()
-                .filter_map(|(ix, d)| {
-                    if self.must_reduce(ix, shape.len()) {
-                        if self.keep_dims {
-                            Some(1.to_dim())
-                        } else {
-                            None
-                        }
-                    } else {
-                        Some(d.clone())
-                    }
-                })
-                .collect();
+            let out_shape = self.output_shape(&*shape);
             s.equals(&outputs[0].shape, out_shape)
         })
     }
@@ -293,5 +297,12 @@ impl InferenceRulesOp for Reduce {
 }
 
 impl TypedOp for Reduce {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let shape = self.output_shape(&*inputs[0].shape.to_tvec());
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+    }
 }

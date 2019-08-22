@@ -85,5 +85,15 @@ impl<T> TypedOp for DepthWise<T>
 where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.output_shape.shape
+        )?))
+    }
 }

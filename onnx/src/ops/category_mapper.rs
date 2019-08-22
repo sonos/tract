@@ -73,4 +73,9 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> InferenceRulesOp for CategoryMapper<Src
 
 impl<Src: Datum + Hash + Eq, Dst: Datum> TypedOp for CategoryMapper<Src, Dst> {
     typed_op_as_op!();
+
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(Dst::datum_type(), inputs[0].shape.clone())?))
+    }
 }

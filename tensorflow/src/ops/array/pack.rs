@@ -11,6 +11,8 @@ pub fn pack(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inferenc
     Ok(Box::new(Pack::new(dtype, n, axis)))
 }
 
+//TODO: incorporate as Concat
+
 #[derive(Debug, Clone, new)]
 pub struct Pack {
     t: DatumType,
@@ -45,7 +47,6 @@ impl Op for Pack {
     fn name(&self) -> Cow<str> {
         "tf.Pack".into()
     }
-    to_typed!();
 }
 
 impl StatelessOp for Pack {
@@ -101,10 +102,6 @@ impl InferenceRulesOp for Pack {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for Pack {
-    typed_op_as_op!();
 }
 
 #[cfg(test)]

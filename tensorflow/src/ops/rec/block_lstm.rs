@@ -181,4 +181,11 @@ impl InferenceRulesOp for BlockLSTM {
 
 impl TypedOp for BlockLSTM {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(std::iter::repeat(inputs[1].clone()).take(7).collect())
+    }
 }

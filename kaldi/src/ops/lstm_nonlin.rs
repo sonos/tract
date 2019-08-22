@@ -28,7 +28,7 @@ impl Op for LstmNonlin {
         _model: &TypedModel,
         _node: &TypedNode,
     ) -> TractResult<Vec<TranslationInvariant>> {
-        Ok(vec!(TranslationInvariant { axis: 0, period: 1 }))
+        Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
     }
     to_typed!();
 }
@@ -94,4 +94,14 @@ impl InferenceRulesOp for LstmNonlin {
 
 impl TypedOp for LstmNonlin {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            [inputs[0].shape.dim(0), inputs[1].shape.dim(1) * 5 / 2].as_ref()
+        )?))
+    }
 }

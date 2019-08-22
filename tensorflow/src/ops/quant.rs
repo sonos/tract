@@ -65,4 +65,8 @@ impl InferenceRulesOp for FakeQuantWithMinMaxVars {
 
 impl TypedOp for FakeQuantWithMinMaxVars {
     typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(f32::datum_type(), inputs[0].shape.clone())?))
+    }
 }

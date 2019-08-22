@@ -86,7 +86,12 @@ impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
     impl_op_same_as!();
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("MatMul: (m,k,n):{:?} groups:{} {:?}", (self.m,self.k,self.n), self.group, self.b_pack)))
+        Ok(vec![format!(
+            "MatMul: (m,k,n):{:?} groups:{} {:?}",
+            (self.m, self.k, self.n),
+            self.group,
+            self.b_pack
+        )])
     }
 
     to_typed!();
@@ -100,7 +105,14 @@ impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {
 }
 
 impl<T: Copy + Datum + Mul + Zero> TypedOp for Im2Col<T> {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        _inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

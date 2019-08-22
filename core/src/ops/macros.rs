@@ -25,17 +25,6 @@ macro_rules! typed_op_as_op {
 }
 
 #[macro_export]
-macro_rules! stub_typed_op_as_op {
-    () => {
-    typed_op_as_op!();
-
-        fn output_facts(&self, _inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
-            unimplemented!();
-        }
-    }
-}
-
-#[macro_export]
 macro_rules! to_typed {
     () => {
         fn to_typed(

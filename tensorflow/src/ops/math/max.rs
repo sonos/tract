@@ -55,8 +55,6 @@ impl Op for Max {
     fn name(&self) -> Cow<str> {
         "tf.Max".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Max {
@@ -128,8 +126,4 @@ impl InferenceRulesOp for Max {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for Max {
-    typed_op_as_op!();
 }

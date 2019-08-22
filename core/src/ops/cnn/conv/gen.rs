@@ -201,7 +201,18 @@ impl InferenceRulesOp for Conv {
 }
 
 impl TypedOp for Conv {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        if inputs[1].shape.iter().all(|d| d.to_integer().is_ok()) {
+            let kshape: TVec<usize> =
+                inputs[1].shape.iter().map(|d| d.to_integer().unwrap() as _).collect();
+            let oshape = self.output_shape(&*inputs[0].shape.to_tvec(), &*kshape);
+            Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*oshape)?))
+        } else {
+            bail!("Streaming on kernel is not typeable")
+        }
+    }
 }
 
 

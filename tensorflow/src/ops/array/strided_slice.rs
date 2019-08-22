@@ -261,8 +261,6 @@ impl<T: Copy + Datum> Op for StridedSlice<T> {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
@@ -276,10 +274,6 @@ impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
     }
 
     inference_op_as_op!();
-}
-
-impl<T: Copy + Datum> TypedOp for StridedSlice<T> {
-    typed_op_as_op!();
 }
 
 #[derive(Debug, Default, Clone, new)]
@@ -302,8 +296,6 @@ impl Op for StridedSliceD {
     fn name(&self) -> Cow<str> {
         "tf.StridedSliceD".into()
     }
-
-    to_typed!();
 }
 
 impl InferenceRulesOp for StridedSliceD {
@@ -317,10 +309,6 @@ impl InferenceRulesOp for StridedSliceD {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for StridedSliceD {
-    typed_op_as_op!();
 }
 
 #[cfg(test)]
