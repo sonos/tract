@@ -18,7 +18,14 @@ impl StatelessOp for Dummy {
 }
 
 impl TypedOp for Dummy {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        _inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!())
+    }
 }
 
 impl InferenceRulesOp for Dummy {

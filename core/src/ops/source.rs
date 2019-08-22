@@ -1,14 +1,30 @@
 use crate::internal::*;
+use std::convert::TryFrom;
 
-#[derive(Debug, Clone, new, Default)]
-pub struct Source {}
+#[derive(Debug, Clone, new)]
+pub struct Source {
+    fact: Box<dyn TensorInfo>
+}
 
 impl Op for Source {
     fn name(&self) -> Cow<str> {
         "Source".into()
     }
 
-    to_typed!();
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.fact.is::<NormalizedTensorInfo>() {
+            return Ok(None)
+        }
+        let fact = model.node_output_facts(node.id)?[0];
+        match TypedTensorInfo::try_from(fact.to_tensor_fact()) {
+            Ok(fact) => Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, Source::new(Box::new(fact)))?)),
+            _ => Ok(None)
+        }
+    }
 }
 
 impl StatelessOp for Source {
@@ -16,10 +32,6 @@ impl StatelessOp for Source {
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         panic!("Source should not get evaluated")
     }
-}
-
-impl TypedOp for Source {
-    stub_typed_op_as_op!();
 }
 
 impl InferenceRulesOp for Source {
@@ -36,4 +48,16 @@ impl InferenceRulesOp for Source {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Source {
+    typed_op_as_op!();
+
+    fn output_facts(&self, _inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        if let Some(fact) = self.fact.downcast_ref::<NormalizedTensorInfo>() {
+            Ok(tvec!(fact.clone()))
+        } else {
+            bail!("Untyped source")
+        }
+    }
 }

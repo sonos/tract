@@ -56,7 +56,7 @@ where
     O: Debug + Display + From<crate::ops::source::Source> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize> {
-        let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
+        let id = self.add_node(name, crate::ops::source::Source::new(Box::new(fact.clone())), tvec!(fact))?;
         Ok(id)
     }
 

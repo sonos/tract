@@ -126,7 +126,15 @@ macro_rules! element_map {
         }
 
         impl TypedOp for $Name {
-            stub_typed_op_as_op!();
+            typed_op_as_op!();
+
+            fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+                let dt = inputs[0].datum_type;
+                $(if dt == <$type>::datum_type() {
+                    return Ok(tvec!(NormalizedTensorInfo::shape::<$to,_,_>(inputs[0].shape.clone())?));
+                })*
+                bail!("{} not covering {:?}", stringify!($Name), dt)
+            }
         }
     };
 }
@@ -185,7 +193,11 @@ macro_rules! element_map_with_params {
         }
 
         impl TypedOp for $Name {
-            stub_typed_op_as_op!();
+            typed_op_as_op!();
+
+            fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+                Ok(tvec!(inputs[0].clone()))
+            }
         }
     };
 }
@@ -301,7 +313,11 @@ macro_rules! element_nary {
         }
 
         impl TypedOp for $Name {
-            stub_typed_op_as_op!();
+            typed_op_as_op!();
+
+            fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+                return Ok(tvec!(inputs[0].clone()))
+            }
         }
     }
 }

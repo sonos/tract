@@ -83,7 +83,16 @@ impl InferenceRulesOp for MaxPool {
 }
 
 impl TypedOp for MaxPool {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut facts = self.pool_spec.output_facts(inputs)?;
+        if let Some(idt) = self.with_index_outputs {
+            facts.push(facts[0].clone());
+            facts[1].datum_type = idt;
+        }
+        Ok(facts)
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -152,5 +161,14 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
 }
 
 impl<T: Datum + Float> TypedOp for MaxPoolFixed<T> {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, _inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut facts = tvec!(NormalizedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?);
+        if let Some(idt) = self.with_index_outputs {
+            facts.push(facts[0].clone());
+            facts[1].datum_type = idt;
+        }
+        Ok(facts)
+    }
 }

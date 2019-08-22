@@ -213,7 +213,17 @@ impl InferenceRulesOp for MatMul {
 }
 
 impl TypedOp for MatMul {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*infer_shapes(inputs[0].shape.to_tvec(), inputs[1].shape.to_tvec())?.2
+        )?))
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -329,7 +339,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimp
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.geo.mm)))
+        Ok(vec![format!("{:?}", self.geo.mm)])
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -367,7 +377,14 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplASimpleB<T> {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -411,7 +428,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplA<T> 
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.geo.mm)))
+        Ok(vec![format!("{:?}", self.geo.mm)])
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -474,9 +491,15 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplA<T> {
-    stub_typed_op_as_op!();
-}
+    typed_op_as_op!();
 
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
+    }
+}
 
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnaryB {
@@ -500,5 +523,19 @@ impl StatelessOp for MatMulUnaryB {
 }
 
 impl TypedOp for MatMulUnaryB {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*infer_shapes(
+                self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+                inputs[1].shape.to_tvec()
+            )?
+            .2
+        )?))
+    }
 }
