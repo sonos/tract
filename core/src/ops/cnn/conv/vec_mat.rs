@@ -109,5 +109,15 @@ impl<D> TypedOp for VecMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.output_shape.shape
+        )?))
+    }
 }

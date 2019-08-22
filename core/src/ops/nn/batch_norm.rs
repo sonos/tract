@@ -90,7 +90,11 @@ impl Op for BatchNorm {
 }
 
 impl TypedOp for BatchNorm {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }
 
 impl StatelessOp for BatchNorm {
@@ -218,5 +222,8 @@ where
     T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
     f32: AsPrimitive<T>,
 {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }

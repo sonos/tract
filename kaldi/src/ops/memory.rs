@@ -22,8 +22,6 @@ impl Op for Memory {
     ) -> TractResult<Option<InferenceModelPatch>> {
         Ok(Some(incorporate_memory_ops_as_scans(model, node)?))
     }
-
-    to_typed!();
 }
 
 impl StatefullOp for Memory {
@@ -299,8 +297,4 @@ pub fn all_precursors(model: &InferenceModel, id: usize) -> TractResult<BitSet> 
         }
     }
     Ok(visited)
-}
-
-impl TypedOp for Memory {
-    typed_op_as_op!();
 }

@@ -31,7 +31,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Const", konst);
     reg.insert("Identity", |_, _| Ok(Box::new(tract_core::ops::identity::Identity)));
     reg.insert("NoOp", |_, _| Ok(Box::new(Noop)));
-    reg.insert("Placeholder", |_, _| Ok(Box::new(::tract_core::ops::source::Source::new())));
+    reg.insert("Placeholder", |_, _| Ok(Box::new(::tract_core::ops::source::Source::new(Box::new(TensorFact::default())))));
 }
 
 fn cast(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -57,8 +57,6 @@ impl Op for Noop {
     fn name(&self) -> Cow<str> {
         "tf.Noop".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Noop {
@@ -82,6 +80,3 @@ impl InferenceRulesOp for Noop {
     inference_op_as_op!();
 }
 
-impl TypedOp for Noop {
-    typed_op_as_op!();
-}

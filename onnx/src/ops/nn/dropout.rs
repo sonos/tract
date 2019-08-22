@@ -71,4 +71,7 @@ impl InferenceRulesOp for Dropout {
 
 impl TypedOp for Dropout {
     typed_op_as_op!();
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }

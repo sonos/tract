@@ -58,7 +58,11 @@ impl InferenceRulesOp for GlobalAvgPool {
 }
 
 impl TypedOp for GlobalAvgPool {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        output_facts(inputs)
+    }
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -123,7 +127,11 @@ impl InferenceRulesOp for GlobalLpPool {
 }
 
 impl TypedOp for GlobalLpPool {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        output_facts(inputs)
+    }
 }
 
 
@@ -182,11 +190,20 @@ impl InferenceRulesOp for GlobalMaxPool {
     inference_op_as_op!();
 }
 
+impl TypedOp for GlobalMaxPool {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        output_facts(inputs)
+    }
+}
+
 fn rules<'r, 'p: 'r, 's: 'r>(
     s: &mut Solver<'r>,
     inputs: &'p [TensorProxy],
     outputs: &'p [TensorProxy],
 ) -> InferenceResult {
+    check_input_arity(&inputs, 1)?;
     check_output_arity(&outputs, 1)?;
     s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
     s.equals(&outputs[0].rank, &inputs[0].rank)?;
@@ -200,6 +217,11 @@ fn rules<'r, 'p: 'r, 's: 'r>(
     })
 }
 
-impl TypedOp for GlobalMaxPool {
-    stub_typed_op_as_op!();
+
+fn output_facts(inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    let mut output = inputs[0].clone();
+    for i in 2..output.shape.rank() {
+        output.shape.set_dim(i, TDim::from(1))?
+    }
+    Ok(tvec!(output))
 }

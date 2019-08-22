@@ -40,8 +40,6 @@ impl Op for Range {
     fn name(&self) -> Cow<str> {
         "tf.Range".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Range {
@@ -71,8 +69,4 @@ impl InferenceRulesOp for Range {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for Range {
-    typed_op_as_op!();
 }

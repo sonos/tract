@@ -1,8 +1,8 @@
+use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
 use tract_core::ops::cnn::*;
 use tract_core::ops::nn::*;
-use crate::tfpb::node_def::NodeDef;
-use crate::model::ParsingContext;
 
 pub fn depthwise_conv2d(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let data_format = super::data_format(pb)?;
@@ -134,4 +134,29 @@ impl InferenceRulesOp for DepthwiseConv2d {
 
 impl TypedOp for DepthwiseConv2d {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let img = self.data_format.shape(inputs[0].shape.to_tvec());
+        let ker = &inputs[1].shape;
+        if ker.iter().all(|d| d.to_integer().is_ok()) {
+            let ker: TVec<usize> = ker.iter().map(|d| d.to_integer().unwrap() as usize).collect();
+            let output_shape = self.padding.compute(
+                img.hw_dims(),
+                &ker[0..2],
+                &self.dilations[img.hw_axes()],
+                &self.strides[img.hw_axes()],
+            );
+            let shape = self.data_format.from_n_c_hw(
+                img.n().clone(),
+                (ker[2] * ker[3]).into(),
+                &[output_shape[0].output.clone(), output_shape[1].output.clone()],
+            );
+            Ok(tvec!(NormalizedTensorInfo::dt_shape(f32::datum_type(), &*shape.shape)?))
+        } else {
+            bail!("Can not stream filters")
+        }
+    }
 }

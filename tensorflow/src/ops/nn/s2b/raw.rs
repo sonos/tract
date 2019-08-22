@@ -51,8 +51,6 @@ impl Op for SpaceToBatch {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for SpaceToBatch {
@@ -85,10 +83,6 @@ impl InferenceRulesOp for SpaceToBatch {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for SpaceToBatch {
-    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -139,8 +133,6 @@ impl Op for BatchToSpace {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for BatchToSpace {
@@ -216,9 +208,5 @@ fn rules<'r, 'p: 'r>(
             Ok(())
         })
     })
-}
-
-impl TypedOp for BatchToSpace {
-    typed_op_as_op!();
 }
 

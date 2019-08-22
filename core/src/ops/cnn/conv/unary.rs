@@ -608,5 +608,15 @@ impl StatelessOp for ConvUnary {
 
 
 impl TypedOp for ConvUnary {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.full_output_shape
+        )?))
+    }
 }

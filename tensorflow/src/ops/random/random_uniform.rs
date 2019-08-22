@@ -53,8 +53,6 @@ impl Op for RandomUniform {
             Validation::Accurate
         }
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for RandomUniform {
@@ -92,10 +90,6 @@ impl InferenceRulesOp for RandomUniform {
     inference_op_as_op!();
 }
 
-impl TypedOp for RandomUniform {
-    typed_op_as_op!();
-}
-
 #[derive(Debug, Clone, new)]
 pub struct RandomUniformInt {
     t: DatumType,
@@ -131,8 +125,6 @@ impl Op for RandomUniformInt {
             Validation::Accurate
         }
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for RandomUniformInt {
@@ -172,9 +164,5 @@ impl InferenceRulesOp for RandomUniformInt {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for RandomUniformInt {
-    typed_op_as_op!();
 }
 

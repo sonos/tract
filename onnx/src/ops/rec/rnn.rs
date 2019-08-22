@@ -64,8 +64,6 @@ impl Op for RNN {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
-    to_typed!();
 }
 
 impl InferenceRulesOp for RNN {
@@ -195,6 +193,3 @@ impl StatelessOp for RNN {
     }
 }
 
-impl TypedOp for RNN {
-    typed_op_as_op!();
-}

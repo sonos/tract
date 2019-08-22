@@ -58,8 +58,6 @@ where
     fn name(&self) -> Cow<str> {
         "tf.Pad".into()
     }
-
-    to_typed!();
 }
 
 impl<T: Copy + Datum + Zero> StatelessOp for Pad<T> {
@@ -103,10 +101,6 @@ impl<T: Copy + Datum + Zero> InferenceRulesOp for Pad<T> {
     }
 
     inference_op_as_op!();
-}
-
-impl<T: Copy + Datum + Zero> TypedOp for Pad<T> {
-    typed_op_as_op!();
 }
 
 #[cfg(test)]

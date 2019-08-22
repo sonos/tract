@@ -305,7 +305,21 @@ impl StatelessOp for MatMulUnaryA {
 }
 
 impl TypedOp for MatMulUnaryA {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*infer_shapes(
+                inputs[0].shape.to_tvec(),
+                self.b.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+            )?
+            .2
+        )?))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -533,7 +547,7 @@ impl TypedOp for MatMulUnaryB {
             inputs[0].datum_type,
             &*infer_shapes(
                 self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
-                inputs[1].shape.to_tvec()
+                inputs[0].shape.to_tvec()
             )?
             .2
         )?))

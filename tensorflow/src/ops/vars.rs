@@ -55,8 +55,6 @@ impl Op for VariableV2 {
     fn name(&self) -> Cow<str> {
         "tf.VariableV2".into()
     }
-
-    to_typed!();
 }
 
 impl StatefullOp for VariableV2 {
@@ -88,10 +86,6 @@ impl InferenceRulesOp for VariableV2 {
     inference_op_as_op!();
 }
 
-impl TypedOp for VariableV2 {
-    typed_op_as_op!();
-}
-
 // need some dummy state to make sure Assign is a StatefullOp, and will not be
 // eval-ed() in Stateless context
 #[derive(Clone, Debug, new)]
@@ -106,8 +100,6 @@ impl Op for Assign {
     fn name(&self) -> Cow<str> {
         "tf.Assign".into()
     }
-
-    to_typed!();
 }
 
 impl OpState for AssignState {
@@ -167,10 +159,6 @@ impl InferenceRulesOp for Assign {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for Assign {
-    typed_op_as_op!();
 }
 
 #[cfg(test)]

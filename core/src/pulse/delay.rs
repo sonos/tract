@@ -18,10 +18,9 @@ impl DelayState {
         let mut buffer = self.buffer.to_array_view_mut::<T>()?;
 
         let buffered = op.delay + op.overlap;
-        let mut output_shape: TVec<_> = op.input_fact.shape.clone();
         let input_pulse = op.input_fact.pulse();
         let output_pulse = input_pulse + op.overlap;
-        output_shape[op.input_fact.axis] = output_pulse;
+        let output_shape = op.output_shape();
         // build output
         let output = if op.delay < input_pulse {
             let mut output = unsafe { T::uninitialized_array(&*output_shape) };
@@ -69,6 +68,16 @@ pub struct Delay {
     overlap: usize,
 }
 
+impl Delay {
+    pub fn output_shape(&self) -> TVec<usize> {
+        let mut output_shape: TVec<usize> = self.input_fact.shape.clone();
+        let input_pulse = self.input_fact.pulse();
+        let output_pulse = input_pulse + self.overlap;
+        output_shape[self.input_fact.axis] = output_pulse;
+        output_shape
+    }
+}
+
 impl Op for Delay {
     fn name(&self) -> Cow<str> {
         "Delay".into()
@@ -92,7 +101,11 @@ impl StatefullOp for Delay {
 }
 
 impl TypedOp for Delay {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*self.output_shape())?))
+    }
 }
 
 #[cfg(test)]
