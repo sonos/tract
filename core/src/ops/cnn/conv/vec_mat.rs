@@ -109,5 +109,5 @@ impl<D> TypedOp for VecMat<D>
 where
     D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
 {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

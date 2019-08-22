@@ -40,8 +40,6 @@ impl Op for Reshape {
     fn name(&self) -> Cow<str> {
         "Reshape".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Reshape {
@@ -75,8 +73,4 @@ impl InferenceRulesOp for Reshape {
     }
 
     inference_op_as_op!();
-}
-
-impl TypedOp for Reshape {
-    typed_op_as_op!();
 }

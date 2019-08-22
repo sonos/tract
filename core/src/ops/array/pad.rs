@@ -181,6 +181,17 @@ impl InferenceRulesOp for Pad {
 
 impl TypedOp for Pad {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        for (ix, (b, e)) in self.pads.iter().enumerate() {
+            fact.shape.set_dim(ix, fact.shape.dim(ix).clone() + *b + *e)?
+        }
+        Ok(tvec!(fact))
+    }
 }
 
 
@@ -301,5 +312,12 @@ impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
 
 impl<T: Datum + Copy> TypedOp for PulsePad<T> {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }
 

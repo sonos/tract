@@ -178,9 +178,17 @@ impl ShapeInfo {
     }
 }
 
-impl<T: AsRef<[usize]>> From<T> for ShapeInfo {
-    fn from(it: T) -> ShapeInfo {
-        ShapeInfo { shape: it.as_ref().iter().cloned().collect(), stream_info: None }
+impl TryFrom<&[TDim]> for ShapeInfo {
+    type Error = TractError;
+    fn try_from(it: &[TDim]) -> TractResult<ShapeInfo> {
+        ShapeInfo::from_dims(it)
+    }
+}
+
+impl TryFrom<&[usize]> for ShapeInfo {
+    type Error = TractError;
+    fn try_from(it: &[usize]) -> TractResult<ShapeInfo> {
+        Ok(ShapeInfo { shape: it.into(), stream_info: None })
     }
 }
 
@@ -203,11 +211,17 @@ pub struct TypedTensorInfo {
 }
 
 impl TypedTensorInfo {
-    pub fn shape<T: Datum>(shape: &[usize]) -> TypedTensorInfo {
-        TypedTensorInfo { datum_type: T::datum_type(), shape: ShapeInfo::from(shape), konst: None }
+    pub fn shape<T: Datum, S: TryInto<ShapeInfo, Error = TractError>>(
+        shape: S,
+    ) -> TractResult<TypedTensorInfo> {
+        Self::dt_shape(T::datum_type(), shape)
     }
-    pub fn dt_shape(datum_type: DatumType, shape: &[usize]) -> TypedTensorInfo {
-        TypedTensorInfo { datum_type, shape: ShapeInfo::from(shape), konst: None }
+
+    pub fn dt_shape<S: TryInto<ShapeInfo, Error = TractError>>(
+        datum_type: DatumType,
+        shape: S,
+    ) -> TractResult<TypedTensorInfo> {
+        Ok(TypedTensorInfo { datum_type, shape: shape.try_into()?, konst: None })
     }
 }
 
@@ -275,6 +289,20 @@ pub struct NormalizedTensorInfo {
     pub shape: ShapeInfo,
 }
 
+impl NormalizedTensorInfo {
+    pub fn shape<T: Datum, S: TryInto<ShapeInfo, Error = TractError>>(
+        shape: S,
+    ) -> TractResult<NormalizedTensorInfo> {
+        Self::dt_shape(T::datum_type(), shape)
+    }
+    pub fn dt_shape<S: TryInto<ShapeInfo, Error = TractError>>(
+        datum_type: DatumType,
+        shape: S,
+    ) -> TractResult<NormalizedTensorInfo> {
+        Ok(NormalizedTensorInfo { datum_type, shape: shape.try_into()? })
+    }
+}
+
 impl TensorInfo for NormalizedTensorInfo {
     fn to_tensor_fact(&self) -> TensorFact {
         TensorFact::dt_shape(self.datum_type, self.shape.to_shape_fact())
@@ -296,6 +324,6 @@ impl fmt::Debug for NormalizedTensorInfo {
 
 impl<'t> From<&'t Tensor> for NormalizedTensorInfo {
     fn from(t: &'t Tensor) -> NormalizedTensorInfo {
-        NormalizedTensorInfo { datum_type: t.datum_type(), shape: t.shape().into() }
+        NormalizedTensorInfo { datum_type: t.datum_type(), shape: t.shape().try_into().unwrap() }
     }
 }

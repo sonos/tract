@@ -84,4 +84,15 @@ impl InferenceRulesOp for Crop {
 
 impl TypedOp for Crop {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        for (ix, (b, e)) in self.prune.iter().enumerate() {
+            fact.shape.set_dim(ix, fact.shape.dim(ix).clone() - *b - *e)?
+        }
+        Ok(tvec!(fact))
+    }
 }

@@ -293,5 +293,5 @@ impl InferenceRulesOp for Reduce {
 }
 
 impl TypedOp for Reduce {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

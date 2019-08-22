@@ -130,7 +130,9 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     /// Called during translation to TypedModel.
     fn to_typed(
         &self,
-    ) -> TractResult<Box<dyn TypedOp>>;
+    ) -> TractResult<Box<dyn TypedOp>> {
+        bail!("Operator {} is not a TypedOp.", self.name())
+    }
 
     /// Declutter the op to the tract_core operator set as much as possible.
     fn declutter(
@@ -211,12 +213,14 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
 pub trait TypedOp:
     Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
 {
-    // fn output_facts(&self, inputs: TVec<&TensorFact>) -> TractResult<TensorFact>;
     /// Reinterpret the TypedOp as an Op.
     fn as_op(&self) -> &dyn Op;
 
     /// Reinterpret the TypedOp as an Op, mutably.
     fn as_op_mut(&mut self) -> &mut dyn Op;
+
+    /// Deduce output facts from input facts.
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>>;
 }
 
 /// An operation with tensor type inference

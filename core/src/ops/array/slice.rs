@@ -81,4 +81,15 @@ impl<D: DimLike + ToDim> InferenceRulesOp for Slice<D> {
 
 impl<D: DimLike + ToDim> TypedOp for Slice<D> {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        for (axis, b, e) in itertools::izip!(&self.axes, &self.starts, &self.ends) {
+            fact.shape.set_dim(*axis, (e.clone() - b).to_dim())?;
+        }
+        Ok(tvec!(fact))
+    }
 }

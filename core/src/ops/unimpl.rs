@@ -44,5 +44,5 @@ impl InferenceRulesOp for UnimplementedOp {
 }
 
 impl TypedOp for UnimplementedOp {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

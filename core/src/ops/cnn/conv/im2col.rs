@@ -100,7 +100,7 @@ impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {
 }
 
 impl<T: Copy + Datum + Mul + Zero> TypedOp for Im2Col<T> {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Copy, Clone, Debug)]

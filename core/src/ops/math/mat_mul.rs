@@ -213,7 +213,7 @@ impl InferenceRulesOp for MatMul {
 }
 
 impl TypedOp for MatMul {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -295,7 +295,7 @@ impl StatelessOp for MatMulUnaryA {
 }
 
 impl TypedOp for MatMulUnaryA {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -367,7 +367,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplASimpleB<T> {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -474,7 +474,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplA<T> {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 
@@ -500,5 +500,5 @@ impl StatelessOp for MatMulUnaryB {
 }
 
 impl TypedOp for MatMulUnaryB {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

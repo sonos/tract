@@ -25,6 +25,17 @@ macro_rules! typed_op_as_op {
 }
 
 #[macro_export]
+macro_rules! stub_typed_op_as_op {
+    () => {
+    typed_op_as_op!();
+
+        fn output_facts(&self, _inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+            unimplemented!();
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! to_typed {
     () => {
         fn to_typed(
@@ -115,7 +126,7 @@ macro_rules! element_map {
         }
 
         impl TypedOp for $Name {
-            typed_op_as_op!();
+            stub_typed_op_as_op!();
         }
     };
 }
@@ -174,7 +185,7 @@ macro_rules! element_map_with_params {
         }
 
         impl TypedOp for $Name {
-            typed_op_as_op!();
+            stub_typed_op_as_op!();
         }
     };
 }
@@ -290,7 +301,7 @@ macro_rules! element_nary {
         }
 
         impl TypedOp for $Name {
-            typed_op_as_op!();
+            stub_typed_op_as_op!();
         }
     }
 }

@@ -495,11 +495,7 @@ impl Op for ConvUnary {
                     patch.chain(
                         format!("{}-im2col", node.name),
                         op1,
-                        tvec!(TypedTensorInfo {
-                            shape: ShapeInfo::from(&*shape),
-                            datum_type: dt,
-                            konst: None,
-                        }),
+                        tvec!(TypedTensorInfo::dt_shape(dt, &*shape)?)
                     )?;
                     let mm = patch.chain(&*node.name, op2, tvec!(node.outputs[0].fact.clone()))?;
                     patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(mm, 0))?;
@@ -612,5 +608,5 @@ impl StatelessOp for ConvUnary {
 
 
 impl TypedOp for ConvUnary {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

@@ -181,7 +181,7 @@ impl InferenceRulesOp for Gemm {
 }
 
 impl TypedOp for Gemm {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -256,7 +256,7 @@ impl StatelessOp for GemmUnaryA {
 }
 
 impl TypedOp for GemmUnaryA {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -318,5 +318,5 @@ impl StatelessOp for GemmUnaryB {
 }
 
 impl TypedOp for GemmUnaryB {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

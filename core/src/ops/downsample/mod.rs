@@ -122,7 +122,7 @@ impl InferenceRulesOp for Downsample {
 }
 
 impl TypedOp for Downsample {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 fn pull_downsample_up(

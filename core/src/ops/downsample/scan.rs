@@ -110,5 +110,5 @@ pub fn pull_downsample_over_scan(
 }
 
 impl TypedOp for Typed {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

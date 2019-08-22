@@ -65,7 +65,13 @@ impl Op for Concat {
             let mut inlet_slot = 0;
             for (ix, input) in inputs.iter().enumerate() {
                 if input.konst.is_none() {
-                    let tap = patch.tap_model(model, node.inputs[ix])?;
+                    let mut tap = patch.tap_model(model, node.inputs[ix])?;
+                    if model.outlet_fact(node.inputs[ix])?.datum_type != super_type {
+                        let mut fact = model.outlet_fact(node.inputs[ix])?.clone();
+                        fact.datum_type = super_type;
+                        let cast = patch.chain(format!("{}-Cast-{}", node.name, ix), crate::ops::cast::Cast::new(super_type), tvec!(fact))?;
+                        tap = OutletId::new(cast, 0);
+                    }
                     patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
                     inlet_slot += 1;
                 }
@@ -75,8 +81,6 @@ impl Op for Concat {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Concat {
@@ -127,11 +131,6 @@ impl InferenceRulesOp for Concat {
     }
 
     inference_op_as_op!();
-}
-
-
-impl TypedOp for Concat {
-    typed_op_as_op!();
 }
 
 /// NormConcatSlice: fully decluttered Concat equivalent
@@ -246,10 +245,7 @@ impl Op for NormConcat {
         let fact = target.outlet_fact(input)?;
 
         if fact.axis == self.axis {
-            let super_type: DatumType =
-                DatumType::super_type_for(node.inputs.iter().map(|&x| source.outlet_fact(x).unwrap().datum_type))
-                    .ok_or_else(|| format!("No supertype found"))?;
-            dispatch_datum!(Self::pulsify_along_concat_axis_t(super_type)(self, source, node, target, mapping))
+            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.dt)(self, source, node, target, mapping))
         } else {
             bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
         }
@@ -260,6 +256,17 @@ impl Op for NormConcat {
 
 impl TypedOp for NormConcat {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
+            + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();
+        fact.shape.set_dim(self.axis, dim)?;
+        Ok(tvec!(fact))
+    }
 }
 
 impl StatelessOp for NormConcat {
@@ -423,6 +430,18 @@ impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
     }
 }
 
+impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+}
+
+
 #[derive(Clone, Debug, Default)]
 pub struct PulsedSameAxisConcatState<T: Datum> {
     current_pos: usize,
@@ -468,10 +487,6 @@ impl<T: Datum> OpState for PulsedSameAxisConcatState<T> {
     }
 }
 
-impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
-    typed_op_as_op!();
-}
-
 
 ////////////////////////////////////////////////
 
@@ -479,6 +494,15 @@ impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
 pub enum FixedConcatSlice<T> {
     Const(ArrayD<T>),
     Var(TVec<usize>),
+}
+
+impl<T> FixedConcatSlice<T> {
+    pub fn as_const(&self) -> Option<ArrayViewD<T>> {
+        match self {
+            FixedConcatSlice::Const(a) => Some(a.view()),
+            _ => None
+        }
+    }
 }
 
 fn slices<'a, T: Datum>(
@@ -542,4 +566,15 @@ impl<T: Datum> StatelessOp for FixedConcat<T> {
 
 impl<T:Datum> TypedOp for FixedConcat<T> {
     typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
+            + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();
+        fact.shape.set_dim(self.axis, dim)?;
+        Ok(tvec!(fact))
+    }
 }

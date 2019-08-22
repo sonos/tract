@@ -42,5 +42,5 @@ impl InferenceRulesOp for Const {
 }
 
 impl TypedOp for Const {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

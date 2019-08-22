@@ -90,7 +90,7 @@ impl Op for BatchNorm {
 }
 
 impl TypedOp for BatchNorm {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 impl StatelessOp for BatchNorm {
@@ -218,5 +218,5 @@ where
     T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
     f32: AsPrimitive<T>,
 {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

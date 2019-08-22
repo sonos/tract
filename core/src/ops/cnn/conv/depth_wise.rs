@@ -85,5 +85,5 @@ impl<T> TypedOp for DepthWise<T>
 where
     T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
 {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

@@ -219,5 +219,5 @@ impl OpState for State {
 }
 
 impl TypedOp for Codegen {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }

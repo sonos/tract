@@ -83,7 +83,7 @@ impl InferenceRulesOp for AvgPool {
 }
 
 impl TypedOp for AvgPool {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -154,5 +154,5 @@ impl<T: Datum + Float + Sum> TypedOp for AvgPoolFixed<T>
 where
     usize: AsPrimitive<T>,
 {
-    typed_op_as_op!();
+    stub_typed_op_as_op!();
 }
