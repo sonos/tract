@@ -43,7 +43,8 @@ impl Op for InferenceBinOp {
     ) -> TractResult<Option<TypedModelPatch>> {
         let facts = model.node_input_facts(node.id)?;
         let mut patch = TypedModelPatch::default();
-        let operating_datum_type = self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
+        let operating_datum_type =
+            self.0.operating_datum_type(facts[0].datum_type, facts[1].datum_type)?;
         let bin = patch.add_node(
             &*node.name,
             TypedBinOp(self.0.clone()),
@@ -108,7 +109,21 @@ impl InferenceRulesOp for InferenceBinOp {
 }
 
 impl TypedOp for InferenceBinOp {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
+            &*crate::broadcast::multi_broadcast(&[
+                &inputs[0].shape.to_tvec(),
+                &inputs[1].shape.to_tvec()
+            ])
+            .unwrap()
+        )?))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +142,12 @@ impl Op for TypedBinOp {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(b) = inputs[1].konst.clone() {
             let op = UnaryAOp(self.0.clone(), b.clone());
-            return Ok(Some(TypedModelPatch::replace_single_op(&model, &node, &node.inputs[0..1], op)?));
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                &model,
+                &node,
+                &node.inputs[0..1],
+                op,
+            )?));
         }
         if inputs[0].shape == inputs[1].shape {
             let op = MergeOp(self.0.clone());
@@ -146,7 +166,21 @@ impl StatelessOp for TypedBinOp {
 }
 
 impl TypedOp for TypedBinOp {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
+            &*crate::broadcast::multi_broadcast(&[
+                &inputs[0].shape.to_tvec(),
+                &inputs[1].shape.to_tvec()
+            ])
+            .unwrap()
+        )?))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -181,7 +215,21 @@ impl StatelessOp for UnaryAOp {
 }
 
 impl TypedOp for UnaryAOp {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            self.0.result_datum_type(inputs[0].datum_type, self.1.datum_type())?,
+            &*crate::broadcast::multi_broadcast(&[
+                &*inputs[0].shape.to_tvec(),
+                &*self.1.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>()
+            ])
+            .unwrap()
+        )?))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -240,7 +288,21 @@ impl StatelessOp for MergeOp {
 }
 
 impl TypedOp for MergeOp {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
+            &*crate::broadcast::multi_broadcast(&[
+                &inputs[0].shape.to_tvec(),
+                &inputs[1].shape.to_tvec()
+            ])
+            .unwrap()
+        )?))
+    }
 }
 
 #[macro_export]

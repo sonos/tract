@@ -83,7 +83,11 @@ impl InferenceRulesOp for AvgPool {
 }
 
 impl TypedOp for AvgPool {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        self.pool_spec.output_facts(inputs)
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -154,5 +158,9 @@ impl<T: Datum + Float + Sum> TypedOp for AvgPoolFixed<T>
 where
     usize: AsPrimitive<T>,
 {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(&self, _inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
+    }
 }

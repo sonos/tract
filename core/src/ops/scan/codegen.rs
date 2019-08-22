@@ -219,5 +219,44 @@ impl OpState for State {
 }
 
 impl TypedOp for Codegen {
-    stub_typed_op_as_op!();
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut outputs = tvec!();
+        let iters = {
+            let (outside_slot, axis, chunk) = self
+                .input_mapping
+                .iter()
+                .filter_map(|it| match it {
+                    InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, *chunk)),
+                    _ => None,
+                })
+                .next()
+                .unwrap();
+            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_dim())
+        };
+        for (ix, output) in self.output_mapping.iter().enumerate() {
+            let fact = self.plan.model().output_fact(ix)?;
+            match output {
+                OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
+                    let mut shape = fact.shape.clone();
+                    let scanning_dim =
+                        full_dim_hint.clone().unwrap_or(shape.dim(*axis) * &iters);
+                    shape.set_dim(*axis, scanning_dim)?;
+                    outputs.push((slot, NormalizedTensorInfo::dt_shape(fact.datum_type, shape)?));
+                }
+                OutputMapping::State { slot } => {
+                    if let Some(slot) = slot {
+                        outputs.push((slot, NormalizedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                    }
+                }
+            }
+        }
+        outputs.sort_by_key(|a| a.0);
+        let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
+        Ok(outputs)
+    }
 }
