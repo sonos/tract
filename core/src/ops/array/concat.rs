@@ -75,6 +75,8 @@ impl Op for Concat {
         }
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Concat {
@@ -127,6 +129,11 @@ impl InferenceRulesOp for Concat {
     inference_op_as_op!();
 }
 
+
+impl TypedOp for Concat {
+    typed_op_as_op!();
+}
+
 /// NormConcatSlice: fully decluttered Concat equivalent
 #[derive(Debug, Clone)]
 pub enum NormConcatSlice {
@@ -159,7 +166,7 @@ pub struct NormConcat {
 }
 
 impl NormConcat {
-    fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<dyn Op>> {
+    fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<dyn TypedOp>> {
         let mut fixed_slices: TVec<FixedConcatSlice<T>> = tvec![];
         let mut input_idx = 0;
         for slice in &self.slices {
@@ -247,6 +254,12 @@ impl Op for NormConcat {
             bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
         }
     }
+
+    to_typed!();
+}
+
+impl TypedOp for NormConcat {
+    typed_op_as_op!();
 }
 
 impl StatelessOp for NormConcat {
@@ -396,6 +409,8 @@ impl<T: Datum> Op for PulsedSameAxisConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("PulsedSameAxisConcat<{:?}>", T::datum_type()).into()
     }
+
+    to_typed!();
 }
 
 impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
@@ -453,6 +468,11 @@ impl<T: Datum> OpState for PulsedSameAxisConcatState<T> {
     }
 }
 
+impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
+    typed_op_as_op!();
+}
+
+
 ////////////////////////////////////////////////
 
 #[derive(Debug, Clone)]
@@ -504,6 +524,8 @@ impl<T: Datum> Op for FixedConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("FixedConcat<{:?}>", T::datum_type()).into()
     }
+
+    to_typed!();
 }
 
 impl<T: Datum> StatelessOp for FixedConcat<T> {
@@ -516,4 +538,8 @@ impl<T: Datum> StatelessOp for FixedConcat<T> {
         let result = T::stack_views(self.axis, &mats)?;
         Ok(tvec![result.into_arc_tensor()])
     }
+}
+
+impl<T:Datum> TypedOp for FixedConcat<T> {
+    typed_op_as_op!();
 }

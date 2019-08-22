@@ -7,6 +7,8 @@ impl Op for Source {
     fn name(&self) -> Cow<str> {
         "Source".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Source {
@@ -14,6 +16,10 @@ impl StatelessOp for Source {
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         panic!("Source should not get evaluated")
     }
+}
+
+impl TypedOp for Source {
+    typed_op_as_op!();
 }
 
 impl InferenceRulesOp for Source {

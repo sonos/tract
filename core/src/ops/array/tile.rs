@@ -27,6 +27,8 @@ impl Op for Tile {
     fn name(&self) -> Cow<str> {
         "Tile".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Tile {
@@ -76,3 +78,8 @@ impl InferenceRulesOp for Tile {
 
     inference_op_as_op!();
 }
+
+impl TypedOp for Tile {
+    typed_op_as_op!();
+}
+

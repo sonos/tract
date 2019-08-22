@@ -15,6 +15,8 @@ impl Op for MultiBroadcastTo {
     fn name(&self) -> Cow<str> {
         "MultiBroadcastTo".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for MultiBroadcastTo {
@@ -53,4 +55,8 @@ impl InferenceRulesOp for MultiBroadcastTo {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for MultiBroadcastTo {
+    typed_op_as_op!();
 }

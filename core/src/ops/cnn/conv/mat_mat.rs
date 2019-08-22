@@ -122,6 +122,8 @@ where
             batch * self.group * self.tile.m() * self.tile.k() * self.tile.n()
         )))
     }
+
+    to_typed!();
 }
 
 impl<D> StatelessOp for MatMat<D>
@@ -133,4 +135,11 @@ where
         let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into_arc_tensor()))
     }
+}
+
+impl<D> TypedOp for MatMat<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+{
+    typed_op_as_op!();
 }

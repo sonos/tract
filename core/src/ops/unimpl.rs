@@ -16,6 +16,8 @@ impl Op for UnimplementedOp {
     fn name(&self) -> Cow<str> {
         format!("Unimplemented({})", self.name).into()
     }
+
+    to_typed!();
 }
 
 impl StatefullOp for UnimplementedOp {
@@ -39,4 +41,8 @@ impl InferenceRulesOp for UnimplementedOp {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for UnimplementedOp {
+    typed_op_as_op!();
 }

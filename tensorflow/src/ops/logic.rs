@@ -23,6 +23,8 @@ impl Op for Switch {
     fn name(&self) -> Cow<str> {
         "tf.Switch".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Switch {
@@ -62,6 +64,10 @@ fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp
     Ok(Box::new(Merge::new(inputs as usize)))
 }
 
+impl TypedOp for Switch {
+    typed_op_as_op!();
+}
+
 #[derive(Debug, Clone, new)]
 pub struct Merge {
     n: usize,
@@ -71,6 +77,8 @@ impl Op for Merge {
     fn name(&self) -> Cow<str> {
         "tf.Merge".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Merge {
@@ -100,4 +108,8 @@ impl InferenceRulesOp for Merge {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Merge {
+    typed_op_as_op!();
 }

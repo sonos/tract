@@ -78,6 +78,8 @@ impl Op for LSTM {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    to_typed!();
 }
 
 impl InferenceRulesOp for LSTM {
@@ -292,4 +294,7 @@ impl StatelessOp for LSTM {
         outputs.extend(output_y_c.into_iter().map(|t| t.into_arc_tensor()));
         Ok(outputs)
     }
+}
+impl TypedOp for LSTM {
+    typed_op_as_op!();
 }

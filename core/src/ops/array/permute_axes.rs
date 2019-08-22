@@ -57,6 +57,8 @@ impl Op for PermuteAxes {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for PermuteAxes {
@@ -84,3 +86,8 @@ impl InferenceRulesOp for PermuteAxes {
 
     inference_op_as_op!();
 }
+
+impl TypedOp for PermuteAxes {
+    typed_op_as_op!();
+}
+

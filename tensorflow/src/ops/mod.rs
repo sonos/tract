@@ -57,6 +57,8 @@ impl Op for Noop {
     fn name(&self) -> Cow<str> {
         "tf.Noop".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Noop {
@@ -78,4 +80,8 @@ impl InferenceRulesOp for Noop {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Noop {
+    typed_op_as_op!();
 }

@@ -22,6 +22,8 @@ impl Op for Slice {
     fn name(&self) -> Cow<str> {
         "tf.Slice".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Slice {
@@ -62,4 +64,8 @@ impl InferenceRulesOp for Slice {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Slice {
+    typed_op_as_op!();
 }

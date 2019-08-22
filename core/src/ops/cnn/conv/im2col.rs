@@ -88,6 +88,8 @@ impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec!(format!("MatMul: (m,k,n):{:?} groups:{} {:?}", (self.m,self.k,self.n), self.group, self.b_pack)))
     }
+
+    to_typed!();
 }
 
 impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {
@@ -95,6 +97,10 @@ impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {
         let tensor = self.im2col(&inputs[0].to_array_view()?)?;
         Ok(tvec!(tensor.into()))
     }
+}
+
+impl<T: Copy + Datum + Mul + Zero> TypedOp for Im2Col<T> {
+    typed_op_as_op!();
 }
 
 #[derive(Copy, Clone, Debug)]

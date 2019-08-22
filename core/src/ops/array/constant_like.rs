@@ -21,6 +21,8 @@ impl Op for ConstantLike {
     fn name(&self) -> Cow<str> {
         "ConstantLike".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for ConstantLike {
@@ -57,6 +59,10 @@ impl InferenceRulesOp for ConstantLike {
     inference_op_as_op!();
 }
 
+impl TypedOp for ConstantLike {
+    typed_op_as_op!();
+}
+
 #[derive(Debug, Clone, new, Default)]
 pub struct EyeLike {
     dt: Option<DatumType>,
@@ -84,6 +90,8 @@ impl Op for EyeLike {
     fn name(&self) -> Cow<str> {
         "EyeLike".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for EyeLike {
@@ -133,3 +141,8 @@ impl InferenceRulesOp for EyeLike {
 
     inference_op_as_op!();
 }
+
+impl TypedOp for EyeLike {
+    typed_op_as_op!();
+}
+

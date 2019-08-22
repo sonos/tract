@@ -30,6 +30,7 @@ impl Op for LstmNonlin {
     ) -> TractResult<Vec<TranslationInvariant>> {
         Ok(vec!(TranslationInvariant { axis: 0, period: 1 }))
     }
+    to_typed!();
 }
 
 impl StatelessOp for LstmNonlin {
@@ -89,4 +90,8 @@ impl InferenceRulesOp for LstmNonlin {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for LstmNonlin {
+    typed_op_as_op!();
 }

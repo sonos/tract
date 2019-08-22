@@ -136,6 +136,8 @@ impl Op for Gemm {
 
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Gemm {
@@ -176,6 +178,10 @@ impl InferenceRulesOp for Gemm {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Gemm {
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -239,12 +245,18 @@ impl Op for GemmUnaryA {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for GemmUnaryA {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
+}
+
+impl TypedOp for GemmUnaryA {
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new)]
@@ -295,10 +307,16 @@ impl Op for GemmUnaryB {
     fn name(&self) -> Cow<str> {
         "GemmUnaryB".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for GemmUnaryB {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
+}
+
+impl TypedOp for GemmUnaryB {
+    typed_op_as_op!();
 }

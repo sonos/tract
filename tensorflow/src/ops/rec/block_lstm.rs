@@ -26,6 +26,8 @@ impl Op for BlockLSTM {
     fn name(&self) -> Cow<str> {
         "tf.BlockLSTM".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for BlockLSTM {
@@ -175,4 +177,8 @@ impl InferenceRulesOp for BlockLSTM {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for BlockLSTM {
+    typed_op_as_op!();
 }

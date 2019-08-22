@@ -42,6 +42,8 @@ impl Op for ExpandDims {
         }
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for ExpandDims {
@@ -96,4 +98,8 @@ impl InferenceRulesOp for ExpandDims {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for ExpandDims {
+    typed_op_as_op!();
 }

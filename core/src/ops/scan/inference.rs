@@ -16,7 +16,7 @@ impl Op for Inference {
         vec![("loop".into(), &self.body)]
     }
 
-    fn to_typed(&self) -> TractResult<Option<Box<dyn Op>>> {
+    fn to_typed(&self) -> TractResult<Box<dyn TypedOp>> {
         let typed_model = self.body.clone().into_typed()?;
         let input_mapping = self
             .input_mapping
@@ -52,11 +52,11 @@ impl Op for Inference {
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Some(Box::new(Typed::new(
+        Ok(Box::new(Typed::new(
             typed_model,
             input_mapping,
             output_mapping,
-        ))))
+        )))
     }
 }
 

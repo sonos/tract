@@ -50,6 +50,8 @@ impl Op for Crop {
         }
         bail!("Crop only support pulsify on streaming axis")
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Crop {
@@ -78,4 +80,8 @@ impl InferenceRulesOp for Crop {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Crop {
+    typed_op_as_op!();
 }

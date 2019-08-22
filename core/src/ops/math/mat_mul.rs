@@ -179,6 +179,8 @@ impl Op for MatMul {
         let n = &bc_b_shape[bc_b_shape.len() - 1];
         Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for MatMul {
@@ -210,6 +212,10 @@ impl InferenceRulesOp for MatMul {
     inference_op_as_op!();
 }
 
+impl TypedOp for MatMul {
+    typed_op_as_op!();
+}
+
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnaryA {
     b: Tensor,
@@ -219,7 +225,7 @@ impl MatMulUnaryA {
     pub fn codegen<T: Copy + Datum + Add + Mul + Zero + FloatLike>(
         &self,
         a_shape: &[usize],
-    ) -> TractResult<Option<Box<dyn Op>>> {
+    ) -> TractResult<Option<Box<dyn TypedOp>>> {
         if self.b.shape().len() == 2 {
             return Ok(Some(Box::new(MatMulUnaryImplASimpleB::<T>::new(
                 a_shape,
@@ -276,6 +282,8 @@ impl Op for MatMulUnaryA {
         }
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for MatMulUnaryA {
@@ -284,6 +292,10 @@ impl StatelessOp for MatMulUnaryA {
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(&*a, &self.b))?;
         Ok(tvec!(c.into()))
     }
+}
+
+impl TypedOp for MatMulUnaryA {
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -326,6 +338,8 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimp
             (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k()).to_dim()
         )))
     }
+
+    to_typed!();
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnaryImplASimpleB<T> {
@@ -350,6 +364,10 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
             Ok(tvec!(c.into_arc_tensor()))
         }
     }
+}
+
+impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplASimpleB<T> {
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -403,6 +421,8 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplA<T> 
             (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k() * mul).to_dim()
         )))
     }
+
+    to_typed!();
 }
 
 impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnaryImplA<T> {
@@ -453,6 +473,11 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
     }
 }
 
+impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplA<T> {
+    typed_op_as_op!();
+}
+
+
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnaryB {
     a: Tensor,
@@ -462,6 +487,8 @@ impl Op for MatMulUnaryB {
     fn name(&self) -> Cow<str> {
         "MatMulUnaryB".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for MatMulUnaryB {
@@ -470,4 +497,8 @@ impl StatelessOp for MatMulUnaryB {
         let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, &*b))?;
         Ok(tvec!(c.into()))
     }
+}
+
+impl TypedOp for MatMulUnaryB {
+    typed_op_as_op!();
 }
