@@ -60,9 +60,13 @@ impl Op for Inference {
     }
 }
 
-impl StatelessOp for Inference {
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        unimplemented!()
+impl StatefullOp for Inference {
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        self.to_typed()?.state(session, node_id)
     }
 }
 

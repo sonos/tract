@@ -11,18 +11,13 @@ impl Op for Source {
         "Source".into()
     }
 
-    fn declutter(
+    fn to_typed(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if self.fact.is::<NormalizedTensorInfo>() {
-            return Ok(None)
-        }
-        let fact = model.node_output_facts(node.id)?[0];
-        match TypedTensorInfo::try_from(fact.to_tensor_fact()) {
-            Ok(fact) => Ok(Some(TypedModelPatch::replace_single_op(model, node, &node.inputs, Source::new(Box::new(fact)))?)),
-            _ => Ok(None)
+    ) -> TractResult<Box<dyn TypedOp>> {
+        if let Ok(fact) = TypedTensorInfo::try_from(self.fact.to_tensor_fact()) {
+            Ok(Box::new(Source::new(Box::new(fact))))
+        } else {
+            bail!("Source is not a TypedOp {:?}.", self.fact)
         }
     }
 }
