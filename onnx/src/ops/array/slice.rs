@@ -1,6 +1,8 @@
 use ndarray::prelude::*;
 use tract_core::internal::*;
 
+// TODO declutter to a chain of Slice. no need to be TypedOp anymore
+
 #[derive(Debug, Clone, new, Default)]
 pub struct Slice {
     axes: Option<Vec<usize>>,
@@ -26,6 +28,8 @@ impl Op for Slice {
     fn name(&self) -> Cow<str> {
         "onnx.Slice".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Slice {
@@ -84,4 +88,27 @@ impl InferenceRulesOp for Slice {
     }
 
     inference_op_as_op!();
+}
+
+
+impl TypedOp for Slice {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let mut shape = inputs[0].shape.to_tvec();
+        for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {
+            let axis = self.axes.as_ref().map(|axes| axes[ix]).unwrap_or(ix);
+            let mut b = b;
+            let mut e = e;
+            if let Ok(end) = shape[axis].to_integer() {
+                b = b.min(end as isize);
+                e = e.min(end as isize);
+            }
+            shape[axis] = (e - b).to_dim();
+        }
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+    }
 }

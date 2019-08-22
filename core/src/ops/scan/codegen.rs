@@ -103,10 +103,14 @@ impl OpState for State {
         let mut _codegen_op_holder = None;
         let op = if let Some(op) = op.downcast_ref::<Codegen>() {
             op
-        } else {
-            _codegen_op_holder =
-                Some(op.downcast_ref::<Typed>().ok_or("Wrong op")?.to_codegen_op()?);
+        } else if let Some(op) = op.downcast_ref::<Typed>() {
+            _codegen_op_holder = Some(op.to_codegen_op()?);
             _codegen_op_holder.as_ref().unwrap()
+        } else if let Some(op) = op.downcast_ref::<Inference>() {
+            _codegen_op_holder = Some(op.to_typed()?.as_op().downcast_ref::<Typed>().unwrap().to_codegen_op()?);
+            _codegen_op_holder.as_ref().unwrap()
+        } else {
+            panic!("Wrong op");
         };
 
         // initialize state at first pass

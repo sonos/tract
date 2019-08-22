@@ -40,6 +40,24 @@ impl Op for Reshape {
     fn name(&self) -> Cow<str> {
         "Reshape".into()
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(ref shape) = model.outlet_fact(node.inputs[1])?.konst {
+            let shape: TVec<usize> =
+                shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
+            return Ok(Some(TypedModelPatch::replace_single_op(
+                model,
+                node,
+                &node.inputs[0..1],
+                super::IntoShape::new(shape),
+            )?));
+        }
+        Ok(None)
+    }
 }
 
 impl StatelessOp for Reshape {

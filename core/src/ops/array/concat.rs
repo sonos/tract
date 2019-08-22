@@ -81,6 +81,8 @@ impl Op for Concat {
         }
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Concat {
@@ -131,6 +133,21 @@ impl InferenceRulesOp for Concat {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Concat {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
+        let mut fact = inputs[0].clone();
+        let dim = inputs.iter().map(|f| f.shape.dim(axis)).sum::<TDim>();
+        fact.shape.set_dim(axis, dim)?;
+        Ok(tvec!(fact))
+    }
 }
 
 /// NormConcatSlice: fully decluttered Concat equivalent
