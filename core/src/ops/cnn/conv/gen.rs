@@ -130,6 +130,8 @@ impl Op for Conv {
             Ok(None)
         }
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Conv {
@@ -197,6 +199,11 @@ impl InferenceRulesOp for Conv {
 
     inference_op_as_op!();
 }
+
+impl TypedOp for Conv {
+    typed_op_as_op!();
+}
+
 
 #[cfg(test)]
 mod test {

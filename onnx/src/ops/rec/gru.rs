@@ -69,6 +69,8 @@ impl Op for GRU {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    to_typed!();
 }
 
 impl InferenceRulesOp for GRU {
@@ -242,4 +244,8 @@ impl StatelessOp for GRU {
         outputs.extend(output_y_h.into_iter().map(|t| t.into_arc_tensor()));
         Ok(outputs)
     }
+}
+
+impl TypedOp for GRU {
+    typed_op_as_op!();
 }

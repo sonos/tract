@@ -27,8 +27,8 @@ pub mod unimpl;
 #[macro_use]
 pub mod binary;
 
-pub use source::Source;
 pub use downsample::Downsample;
+pub use source::Source;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
@@ -128,11 +128,9 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     }
 
     /// Called during translation to TypedModel.
-    ///
-    /// Most of the time, None is returned, and the InferenceOp is used instead.
-    fn to_typed(&self) -> TractResult<Option<Box<dyn Op>>> {
-        Ok(None)
-    }
+    fn to_typed(
+        &self,
+    ) -> TractResult<Box<dyn TypedOp>>;
 
     /// Declutter the op to the tract_core operator set as much as possible.
     fn declutter(
@@ -185,11 +183,12 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Validation::Accurate
     }
 
-    fn translation_invariants(&self,
+    fn translation_invariants(
+        &self,
         _model: &TypedModel,
         _node: &TypedNode,
     ) -> TractResult<Vec<TranslationInvariant>> {
-        Ok(vec!())
+        Ok(vec![])
     }
 
     /// Compare two ops.
@@ -201,8 +200,23 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
     /// Short (one-line) strings giving hints on internal implementation or
     /// important configuration details to be displayed in dumps.
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!())
+        Ok(vec![])
     }
+
+    fn as_typed(&self) -> Option<&dyn TypedOp> {
+        None
+    }
+}
+
+pub trait TypedOp:
+    Op + fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp
+{
+    // fn output_facts(&self, inputs: TVec<&TensorFact>) -> TractResult<TensorFact>;
+    /// Reinterpret the TypedOp as an Op.
+    fn as_op(&self) -> &dyn Op;
+
+    /// Reinterpret the TypedOp as an Op, mutably.
+    fn as_op_mut(&mut self) -> &mut dyn Op;
 }
 
 /// An operation with tensor type inference
@@ -285,6 +299,7 @@ impl_downcast!(Op);
 
 clone_trait_object!(Op);
 clone_trait_object!(StatelessOp);
+clone_trait_object!(TypedOp);
 clone_trait_object!(InferenceOp);
 
 impl<O: Op> From<O> for Box<dyn Op> {
@@ -299,11 +314,17 @@ impl<O: InferenceOp> From<O> for Box<dyn InferenceOp> {
     }
 }
 
-impl TryFrom<Box<dyn InferenceOp>> for Box<dyn Op> {
+impl<O: TypedOp> From<O> for Box<dyn TypedOp> {
+    fn from(it: O) -> Box<dyn TypedOp> {
+        Box::new(it)
+    }
+}
+
+impl TryFrom<Box<dyn InferenceOp>> for Box<dyn TypedOp> {
     type Error = TractError;
 
-    fn try_from(it: Box<dyn InferenceOp>) -> TractResult<Box<dyn Op>> {
-        Ok(it.to_typed()?.unwrap_or_else(|| objekt::clone_box(it.as_op())))
+    fn try_from(it: Box<dyn InferenceOp>) -> TractResult<Box<dyn TypedOp>> {
+        Ok(it.to_typed()?)
     }
 }
 
@@ -331,6 +352,30 @@ impl AsMut<dyn Op> for Box<dyn InferenceOp> {
     }
 }
 
+impl AsRef<dyn Op> for dyn TypedOp {
+    fn as_ref(&self) -> &dyn Op {
+        self.as_op()
+    }
+}
+
+impl AsRef<dyn Op> for Box<dyn TypedOp> {
+    fn as_ref(&self) -> &dyn Op {
+        self.as_op()
+    }
+}
+
+impl AsMut<dyn Op> for dyn TypedOp {
+    fn as_mut(&mut self) -> &mut dyn Op {
+        self.as_op_mut()
+    }
+}
+
+impl AsMut<dyn Op> for Box<dyn TypedOp> {
+    fn as_mut(&mut self) -> &mut dyn Op {
+        self.as_op_mut()
+    }
+}
+
 impl std::fmt::Display for Box<dyn Op> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.name())
@@ -338,6 +383,12 @@ impl std::fmt::Display for Box<dyn Op> {
 }
 
 impl std::fmt::Display for Box<dyn InferenceOp> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{}", self.name())
+    }
+}
+
+impl std::fmt::Display for Box<dyn TypedOp> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.name())
     }

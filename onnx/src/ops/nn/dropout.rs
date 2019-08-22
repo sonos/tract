@@ -29,6 +29,8 @@ impl Op for Dropout {
             Ok(None)
         }
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Dropout {
@@ -65,4 +67,8 @@ impl InferenceRulesOp for Dropout {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Dropout {
+    typed_op_as_op!();
 }

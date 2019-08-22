@@ -7,12 +7,18 @@ impl Op for Dummy {
     fn name(&self) -> Cow<str> {
         "Dummy".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Dummy {
     fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         bail!("eval() called on a Dummy op. This is a bug.")
     }
+}
+
+impl TypedOp for Dummy {
+    typed_op_as_op!();
 }
 
 impl InferenceRulesOp for Dummy {

@@ -90,6 +90,8 @@ where
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((Cost::FMA(f32::datum_type()), batch * self.group * self.vmm.k() * self.vmm.n())))
     }
+
+    to_typed!();
 }
 
 impl<D> StatelessOp for VecMat<D>
@@ -101,4 +103,11 @@ where
         let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into_arc_tensor()))
     }
+}
+
+impl<D> TypedOp for VecMat<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+{
+    typed_op_as_op!();
 }

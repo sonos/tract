@@ -125,6 +125,8 @@ impl Op for Affine {
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(output, 0))?;
         Ok(Some(patch))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Affine {
@@ -161,4 +163,8 @@ impl InferenceRulesOp for Affine {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Affine {
+    typed_op_as_op!();
 }

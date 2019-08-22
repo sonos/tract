@@ -31,6 +31,8 @@ where
             (self.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
         )))
     }
+
+    to_typed!();
 }
 
 impl<T> StatelessOp for DepthWise<T>
@@ -77,4 +79,11 @@ where
         }
         Ok(tvec!(output.into_arc_tensor()))
     }
+}
+
+impl<T> TypedOp for DepthWise<T>
+where
+    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
+{
+    typed_op_as_op!();
 }

@@ -75,6 +75,7 @@ impl Op for Delay {
     }
 
     impl_op_same_as!();
+    to_typed!();
 }
 
 fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {
@@ -88,6 +89,10 @@ impl StatefullOp for Delay {
         let buffer = dispatch_datum!(self::make_buffer(self.input_fact.dt)(&buffer_shape));
         Ok(Some(Box::new(DelayState { buffer })))
     }
+}
+
+impl TypedOp for Delay {
+    typed_op_as_op!();
 }
 
 #[cfg(test)]

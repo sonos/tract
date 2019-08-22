@@ -15,6 +15,8 @@ impl Op for Identity {
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Identity {
@@ -39,4 +41,8 @@ impl InferenceRulesOp for Identity {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Identity {
+    typed_op_as_op!();
 }

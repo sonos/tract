@@ -79,7 +79,7 @@ impl PulsedTensorFact {
     }
 }
 
-pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<dyn Op>>;
+pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<dyn TypedOp>>;
 
 impl PulsedModel {
     pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
@@ -108,8 +108,8 @@ impl PulsedModel {
             } else {
                 let node = &source.nodes()[old_id];
                 let outlets = node
-                    .op()
-                    .pulsify(&source, &node, &mut target, &mapping)
+                    .op
+                    .pulsify(&source, node, &mut target, &mapping)
                     .chain_err(|| format!("Pulsifying {:?}", node))?;
                 for (ix, outlet) in outlets.into_iter().enumerate() {
                     mapping.insert(OutletId::new(node.id, ix), outlet);

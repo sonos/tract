@@ -51,6 +51,8 @@ impl Op for Transpose {
         }
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Transpose {
@@ -85,4 +87,8 @@ impl InferenceRulesOp for Transpose {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Transpose {
+    typed_op_as_op!();
 }

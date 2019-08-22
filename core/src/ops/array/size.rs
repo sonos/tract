@@ -21,6 +21,8 @@ impl Op for Size {
     fn name(&self) -> Cow<str> {
         "Size".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Size {
@@ -45,4 +47,8 @@ impl InferenceRulesOp for Size {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Size {
+    typed_op_as_op!();
 }

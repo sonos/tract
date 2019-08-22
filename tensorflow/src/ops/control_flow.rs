@@ -24,6 +24,8 @@ impl Op for LoopGate {
     fn name(&self) -> Cow<str> {
         format!("tf.{:?}", self.0).into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for LoopGate {
@@ -49,6 +51,10 @@ impl InferenceRulesOp for LoopGate {
     inference_op_as_op!();
 }
 
+impl TypedOp for LoopGate {
+    typed_op_as_op!();
+}
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum NextIterationRole {
     Source,
@@ -65,6 +71,8 @@ impl Op for NextIteration {
     fn name(&self) -> Cow<str> {
         format!("{:?}({})", self.role, self.name).into()
     }
+
+    to_typed!();
 }
 
 impl StatefullOp for NextIteration {
@@ -94,4 +102,8 @@ impl InferenceRulesOp for NextIteration {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for NextIteration {
+    typed_op_as_op!();
 }

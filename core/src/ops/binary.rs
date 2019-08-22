@@ -69,6 +69,8 @@ impl Op for InferenceBinOp {
         }
         Ok(Some(patch))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for InferenceBinOp {
@@ -105,6 +107,10 @@ impl InferenceRulesOp for InferenceBinOp {
     inference_op_as_op!();
 }
 
+impl TypedOp for InferenceBinOp {
+    typed_op_as_op!();
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedBinOp(pub Box<dyn BinMiniOp>);
 
@@ -129,12 +135,18 @@ impl Op for TypedBinOp {
         }
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for TypedBinOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         self.0.eval_broadcast(inputs)
     }
+}
+
+impl TypedOp for TypedBinOp {
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -158,12 +170,18 @@ impl Op for UnaryAOp {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for UnaryAOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         self.0.eval_broadcast(tvec!(inputs[0].clone(), self.1.clone()))
     }
+}
+
+impl TypedOp for UnaryAOp {
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone)]
@@ -211,12 +229,18 @@ impl Op for MergeOp {
         }
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for MergeOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         self.0.eval_broadcast(inputs)
     }
+}
+
+impl TypedOp for MergeOp {
+    typed_op_as_op!();
 }
 
 #[macro_export]

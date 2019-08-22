@@ -20,6 +20,8 @@ impl Op for Flatten {
     fn name(&self) -> Cow<str> {
         "Flatten".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Flatten {
@@ -48,3 +50,8 @@ impl InferenceRulesOp for Flatten {
 
     inference_op_as_op!();
 }
+
+impl TypedOp for Flatten {
+    typed_op_as_op!();
+}
+

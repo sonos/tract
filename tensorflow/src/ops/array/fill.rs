@@ -33,6 +33,8 @@ impl Op for Fill {
     fn name(&self) -> Cow<str> {
         "tf.Fill".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Fill {
@@ -64,4 +66,8 @@ impl InferenceRulesOp for Fill {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Fill {
+    typed_op_as_op!();
 }

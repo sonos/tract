@@ -44,6 +44,8 @@ impl Op for GatherNd {
     fn name(&self) -> Cow<str> {
         "tf.GatherNd".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for GatherNd {
@@ -86,6 +88,10 @@ impl InferenceRulesOp for GatherNd {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for GatherNd {
+    typed_op_as_op!();
 }
 
 #[cfg(test)]

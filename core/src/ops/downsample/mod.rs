@@ -80,6 +80,7 @@ impl Op for Downsample {
     }
 
     impl_op_same_as!();
+    to_typed!();
 }
 
 impl StatelessOp for Downsample {
@@ -120,6 +121,10 @@ impl InferenceRulesOp for Downsample {
     inference_op_as_op!();
 }
 
+impl TypedOp for Downsample {
+    typed_op_as_op!();
+}
+
 fn pull_downsample_up(
     model: &TypedModel,
     down_node: &TypedNode,
@@ -136,7 +141,7 @@ fn pull_downsample_up(
             let mut patch = TypedModelPatch::default();
             let other = patch.add_node(
                 &*prec.name,
-                objekt::clone_box(prec.op()),
+                prec.op.clone(),
                 tvec!(down_node.outputs[0].fact.clone()),
             )?;
             patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(other, 0))?;

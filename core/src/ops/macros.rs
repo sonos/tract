@@ -12,6 +12,30 @@ macro_rules! inference_op_as_op {
 }
 
 #[macro_export]
+macro_rules! typed_op_as_op {
+    () => {
+        fn as_op(&self) -> &dyn Op {
+            self
+        }
+
+        fn as_op_mut(&mut self) -> &mut dyn Op {
+            self
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! to_typed {
+    () => {
+        fn to_typed(
+            &self,
+        ) -> TractResult<Box<dyn TypedOp>> {
+            Ok(Box::new(self.clone()))
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! element_map {
     ($Name:ident, [$($type:ty),*], $expr:expr) => {
         element_map!($Name, match $($type => { $expr } ),*);
@@ -64,6 +88,8 @@ macro_rules! element_map {
                 Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
             }
 
+
+            to_typed!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -86,6 +112,10 @@ macro_rules! element_map {
             }
 
             inference_op_as_op!();
+        }
+
+        impl TypedOp for $Name {
+            typed_op_as_op!();
         }
     };
 }
@@ -119,6 +149,8 @@ macro_rules! element_map_with_params {
             fn name(&self) -> Cow<str> {
                 stringify!($Name).into()
             }
+
+            to_typed!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -139,6 +171,10 @@ macro_rules! element_map_with_params {
             }
 
             inference_op_as_op!();
+        }
+
+        impl TypedOp for $Name {
+            typed_op_as_op!();
         }
     };
 }
@@ -184,6 +220,7 @@ macro_rules! element_nary {
                 Ok(tvec!(OutletId::new(id, 0)))
             }
 
+            to_typed!();
         }
 
         impl StatelessOp for $Name {
@@ -250,6 +287,10 @@ macro_rules! element_nary {
             }
 
             inference_op_as_op!();
+        }
+
+        impl TypedOp for $Name {
+            typed_op_as_op!();
         }
     }
 }

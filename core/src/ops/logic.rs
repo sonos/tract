@@ -3,7 +3,7 @@ use ndarray::*;
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 
-pub use super::binary::{ and, or, xor, equals, lesser, lesser_equal, greater, greater_equal };
+pub use super::binary::{and, equals, greater, greater_equal, lesser, lesser_equal, or, xor};
 
 element_map!(Not, [bool], |a: bool| !a);
 
@@ -22,7 +22,7 @@ impl Iff {
             .and_broadcast(cond)
             .and_broadcast(t.to_array_view::<T>()?)
             .and_broadcast(f.to_array_view::<T>()?)
-            .apply(|r, c, t, f|  *r = if *c { t.clone() } else { f.clone() });
+            .apply(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() });
         Ok(result)
     }
 }
@@ -31,6 +31,8 @@ impl Op for Iff {
     fn name(&self) -> Cow<str> {
         "Iff".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Iff {
@@ -72,4 +74,8 @@ impl InferenceRulesOp for Iff {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Iff {
+    typed_op_as_op!();
 }

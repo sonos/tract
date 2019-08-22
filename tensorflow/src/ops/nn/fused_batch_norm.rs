@@ -21,6 +21,8 @@ impl Op for FusedBatchNorm {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for FusedBatchNorm {
@@ -70,4 +72,8 @@ impl InferenceRulesOp for FusedBatchNorm {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for FusedBatchNorm {
+    typed_op_as_op!();
 }

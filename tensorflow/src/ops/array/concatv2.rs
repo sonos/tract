@@ -31,6 +31,8 @@ impl<T: Copy + Datum> Op for ConcatV2<T> {
     fn name(&self) -> Cow<str> {
         "tf.ConcatV2".into()
     }
+
+    to_typed!();
 }
 
 impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
@@ -77,4 +79,8 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
     }
 
     inference_op_as_op!();
+}
+
+impl<T: Copy+Datum> TypedOp for ConcatV2<T> {
+    typed_op_as_op!();
 }

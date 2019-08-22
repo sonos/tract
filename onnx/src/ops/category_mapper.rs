@@ -40,6 +40,8 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> Op for CategoryMapper<Src, Dst> {
     fn name(&self) -> Cow<str> {
         format!("onnx-ml.CategoryMapper<{:?},{:?}>", Src::datum_type(), Dst::datum_type()).into()
     }
+
+    to_typed!();
 }
 
 impl<Src: Datum + Hash + Eq, Dst: Datum> StatelessOp for CategoryMapper<Src, Dst> {
@@ -67,4 +69,8 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> InferenceRulesOp for CategoryMapper<Src
     }
 
     inference_op_as_op!();
+}
+
+impl<Src: Datum + Hash + Eq, Dst: Datum> TypedOp for CategoryMapper<Src, Dst> {
+    typed_op_as_op!();
 }

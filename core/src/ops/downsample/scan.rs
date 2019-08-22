@@ -108,3 +108,7 @@ pub fn pull_downsample_over_scan(
     }
     Ok(Some(patch))
 }
+
+impl TypedOp for Typed {
+    typed_op_as_op!();
+}

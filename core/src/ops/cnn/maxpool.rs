@@ -13,7 +13,7 @@ pub struct MaxPool {
 }
 
 impl MaxPool {
-    fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn Op>> {
+    fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn TypedOp>> {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape);
         let op = MaxPoolFixed::<T>::new(patch, input_shape, output_shape, self.with_index_outputs);
         Ok(Box::new(op))
@@ -48,6 +48,8 @@ impl Op for MaxPool {
     ) -> TractResult<TVec<OutletId>> {
         self.pool_spec.pulsify(source, node, target, mapping)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for MaxPool {
@@ -80,6 +82,10 @@ impl InferenceRulesOp for MaxPool {
     inference_op_as_op!();
 }
 
+impl TypedOp for MaxPool {
+    typed_op_as_op!();
+}
+
 #[derive(Debug, Clone, new)]
 pub struct MaxPoolFixed<T: Datum + Float> {
     patch: Patch,
@@ -93,6 +99,8 @@ impl<T: Datum + Float> Op for MaxPoolFixed<T> {
     fn name(&self) -> Cow<str> {
         format!("MaxPool::Fixed<{:?}>", T::datum_type()).into()
     }
+
+    to_typed!();
 }
 
 impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
@@ -141,4 +149,8 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
             Ok(tvec!(values.into_arc_tensor()))
         }
     }
+}
+
+impl<T: Datum + Float> TypedOp for MaxPoolFixed<T> {
+    typed_op_as_op!();
 }

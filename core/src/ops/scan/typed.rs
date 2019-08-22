@@ -143,6 +143,8 @@ impl Op for Typed {
             self.to_codegen_op()?,
         )?))
     }
+
+    to_typed!();
 }
 
 impl StatefullOp for Typed {

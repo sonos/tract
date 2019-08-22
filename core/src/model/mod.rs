@@ -58,7 +58,7 @@ pub use self::order::eval_order;
 pub use self::patch::ModelPatch;
 pub use self::tensor_info::*;
 pub use crate::analyser::types::TensorFact;
-pub use crate::ops::{InferenceOp, Op};
+pub use crate::ops::{InferenceOp, Op, TypedOp};
 
 use crate::TractResult;
 use crate::plan::{ SimplePlan, SimpleState };
@@ -158,27 +158,27 @@ pub type InferenceSimplePlan<M> = SimplePlan<TensorFact, Box<dyn InferenceOp>, M
 pub type InferenceSimpleState<M,P> = SimpleState<TensorFact, Box<dyn InferenceOp>, M, P>;
 
 /// A model with completely determined types and shapes.
-pub type TypedModel = ModelImpl<TypedTensorInfo, Box<dyn Op>>;
+pub type TypedModel = ModelImpl<TypedTensorInfo, Box<dyn TypedOp>>;
 /// Node for TypedModel graph
-pub type TypedNode = Node<TypedTensorInfo>;
+pub type TypedNode = BaseNode<TypedTensorInfo, Box<dyn TypedOp>>;
 /// A ModelPatch for TypedModel.
-pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<dyn Op>>;
+pub type TypedModelPatch = ModelPatch<TypedTensorInfo, Box<dyn TypedOp>>;
 /// An execution plan for TypedModel.
-pub type TypedSimplePlan<M> = SimplePlan<TypedTensorInfo, Box<dyn Op>, M>;
+pub type TypedSimplePlan<M> = SimplePlan<TypedTensorInfo, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
-pub type TypedSimpleState<M,P> = SimpleState<TypedTensorInfo, Box<dyn Op>, M, P>;
+pub type TypedSimpleState<M,P> = SimpleState<TypedTensorInfo, Box<dyn TypedOp>, M, P>;
 
 /// A model with determined types and shapes, where constant have been
 /// eleminated from the graph.
-pub type NormalizedModel = ModelImpl<NormalizedTensorInfo, Box<dyn Op>>;
+pub type NormalizedModel = ModelImpl<NormalizedTensorInfo, Box<dyn TypedOp>>;
 /// A Node for NormalizedModel.
-pub type NormalizedNode = Node<NormalizedTensorInfo>;
+pub type NormalizedNode = BaseNode<NormalizedTensorInfo, Box<dyn TypedOp>>;
 /// A ModelPatch for NormalizedModel.
-pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<dyn Op>>;
+pub type NormalizedModelPatch = ModelPatch<NormalizedTensorInfo, Box<dyn TypedOp>>;
 /// An execution plan for NormalizedModel.
-pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedTensorInfo, Box<dyn Op>, M>;
+pub type NormalizedSimplePlan<M> = SimplePlan<NormalizedTensorInfo, Box<dyn TypedOp>, M>;
 /// An execution state for TypedModel.
-pub type NormalizedSimpleState<M,P> = SimpleState<NormalizedTensorInfo, Box<dyn Op>, M, P>;
+pub type NormalizedSimpleState<M,P> = SimpleState<NormalizedTensorInfo, Box<dyn TypedOp>, M, P>;
 
 impl InferenceModel {
     /// Analyse one node of the graph.

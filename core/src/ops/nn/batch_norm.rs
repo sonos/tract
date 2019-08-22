@@ -61,7 +61,7 @@ impl Op for BatchNorm {
                 mean: Arc<Tensor>,
                 var: Arc<Tensor>,
                 epsilon: f32,
-            ) -> TractResult<Box<dyn Op>>
+            ) -> TractResult<Box<dyn TypedOp>>
             where
                 T: Datum
                     + ::num_traits::Float
@@ -85,6 +85,12 @@ impl Op for BatchNorm {
         }
         Ok(None)
     }
+
+    to_typed!();
+}
+
+impl TypedOp for BatchNorm {
+    typed_op_as_op!();
 }
 
 impl StatelessOp for BatchNorm {
@@ -187,6 +193,8 @@ where
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl<T> StatelessOp for FixedBatchNorm<T>
@@ -205,3 +213,10 @@ where
     }
 }
 
+impl<T> TypedOp for FixedBatchNorm<T>
+where
+    T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
+    f32: AsPrimitive<T>,
+{
+    typed_op_as_op!();
+}

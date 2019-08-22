@@ -10,6 +10,8 @@ impl Op for Gather {
     fn name(&self) -> Cow<str> {
         "Gather".into()
     }
+
+    to_typed!();
 }
 
 impl Gather {
@@ -67,6 +69,11 @@ impl Gather {
         Ok(output.into_arc_tensor())
     }
 }
+
+impl TypedOp for Gather {
+    typed_op_as_op!();
+}
+
 
 impl StatelessOp for Gather {
     /// Evaluates the operation given the input tensors.

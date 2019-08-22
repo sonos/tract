@@ -243,6 +243,8 @@ impl Op for Reduce {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Reduce {
@@ -288,4 +290,8 @@ impl InferenceRulesOp for Reduce {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Reduce {
+    typed_op_as_op!();
 }

@@ -147,6 +147,8 @@ impl Op for Pad {
 
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for Pad {
@@ -176,6 +178,11 @@ impl InferenceRulesOp for Pad {
 
     inference_op_as_op!();
 }
+
+impl TypedOp for Pad {
+    typed_op_as_op!();
+}
+
 
 #[derive(Debug, Clone, Default, new)]
 struct PulsePadOpState<T: Datum + Copy> {
@@ -278,6 +285,8 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
     fn name(&self) -> Cow<str> {
         "Pad".into()
     }
+
+    to_typed!();
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
@@ -289,3 +298,8 @@ impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
         Ok(Some(Box::new(PulsePadOpState::<T>::default())))
     }
 }
+
+impl<T: Datum + Copy> TypedOp for PulsePad<T> {
+    typed_op_as_op!();
+}
+

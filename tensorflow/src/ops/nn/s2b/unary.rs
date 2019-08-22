@@ -59,6 +59,8 @@ impl Op for SpaceToBatchUnary {
         }
         Ok(None)
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for SpaceToBatchUnary {
@@ -86,6 +88,9 @@ impl StatelessOp for SpaceToBatchUnary {
     }
 }
 
+impl TypedOp for SpaceToBatchUnary {
+    typed_op_as_op!();
+}
 
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpaceUnary {
@@ -100,6 +105,8 @@ impl Op for BatchToSpaceUnary {
     fn name(&self) -> Cow<str> {
         "BatchToSpaceUnary".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for BatchToSpaceUnary {
@@ -125,5 +132,9 @@ impl StatelessOp for BatchToSpaceUnary {
         ))?;
         Ok(tvec!(r))
     }
+}
+
+impl TypedOp for BatchToSpaceUnary {
+    typed_op_as_op!();
 }
 

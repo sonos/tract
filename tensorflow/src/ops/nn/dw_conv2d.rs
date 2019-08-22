@@ -79,6 +79,8 @@ impl Op for DepthwiseConv2d {
         let conv = self.to_core(&*input_shape, kernel_shape)?;
         Ok(Some(TypedModelPatch::replace_single_op(model, node, &*node.inputs, conv)?))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for DepthwiseConv2d {
@@ -128,4 +130,8 @@ impl InferenceRulesOp for DepthwiseConv2d {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for DepthwiseConv2d {
+    typed_op_as_op!();
 }

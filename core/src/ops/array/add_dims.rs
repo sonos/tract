@@ -40,6 +40,8 @@ impl Op for AddDims {
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for AddDims {
@@ -66,4 +68,8 @@ impl InferenceRulesOp for AddDims {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for AddDims {
+    typed_op_as_op!();
 }

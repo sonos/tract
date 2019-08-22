@@ -25,6 +25,8 @@ impl<T: Datum> Op for Reshape<T> {
     fn name(&self) -> Cow<str> {
         "tf.Reshape".into()
     }
+
+    to_typed!();
 }
 
 impl<T: Datum> StatelessOp for Reshape<T> {
@@ -64,4 +66,8 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
     }
 
     inference_op_as_op!();
+}
+
+impl<T:Datum> TypedOp for Reshape<T> {
+    typed_op_as_op!();
 }

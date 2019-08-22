@@ -45,6 +45,7 @@ impl Op for Pack {
     fn name(&self) -> Cow<str> {
         "tf.Pack".into()
     }
+    to_typed!();
 }
 
 impl StatelessOp for Pack {
@@ -100,6 +101,10 @@ impl InferenceRulesOp for Pack {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for Pack {
+    typed_op_as_op!();
 }
 
 #[cfg(test)]

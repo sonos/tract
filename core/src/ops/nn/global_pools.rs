@@ -33,6 +33,8 @@ impl Op for GlobalAvgPool {
     fn name(&self) -> Cow<str> {
         "GlobalAvgPool".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for GlobalAvgPool {
@@ -53,6 +55,10 @@ impl InferenceRulesOp for GlobalAvgPool {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for GlobalAvgPool {
+    typed_op_as_op!();
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -92,6 +98,8 @@ impl Op for GlobalLpPool {
     fn name(&self) -> Cow<str> {
         "GlobalLpPool".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for GlobalLpPool {
@@ -113,6 +121,11 @@ impl InferenceRulesOp for GlobalLpPool {
 
     inference_op_as_op!();
 }
+
+impl TypedOp for GlobalLpPool {
+    typed_op_as_op!();
+}
+
 
 #[derive(Debug, Clone, new, Default)]
 pub struct GlobalMaxPool {
@@ -145,6 +158,8 @@ impl Op for GlobalMaxPool {
     fn name(&self) -> Cow<str> {
         "GlobalMaxPool".into()
     }
+
+    to_typed!();
 }
 
 impl StatelessOp for GlobalMaxPool {
@@ -183,4 +198,8 @@ fn rules<'r, 'p: 'r, 's: 'r>(
         }
         Ok(())
     })
+}
+
+impl TypedOp for GlobalMaxPool {
+    typed_op_as_op!();
 }

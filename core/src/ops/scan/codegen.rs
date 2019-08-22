@@ -18,6 +18,8 @@ impl Op for Codegen {
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), self.plan.model())]
     }
+
+    to_typed!();
 }
 
 impl StatefullOp for Codegen {
@@ -214,4 +216,8 @@ impl OpState for State {
 
         Ok(outputs.into_iter().map(Arc::new).collect())
     }
+}
+
+impl TypedOp for Codegen {
+    typed_op_as_op!();
 }
