@@ -109,6 +109,23 @@ impl<O: StatelessOp + Clone> StatefullOp for O {
     }
 }
 
+pub trait Translate<TI1, O1, TI2, O2, Ctx>
+where
+    TI1: TensorInfo + Clone + 'static,
+    TI2: TensorInfo + Clone + 'static,
+    O1: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O2: fmt::Display + fmt::Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    fn translate(
+        &self,
+        source: &ModelImpl<TI1, O1>,
+        node: &BaseNode<TI1,O1>,
+        target: &mut ModelImpl<TI2, O2>,
+        mapping: &HashMap<OutletId, OutletId>,
+        ctx: &Ctx,
+    ) -> TractResult<TVec<OutletId>>;
+}
+
 /// A base operation
 pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + StatefullOp {
     fn name(&self) -> Cow<str>;
@@ -141,18 +158,6 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         _node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(None)
-    }
-
-    /// Translate an op in a normalized network (no constants) to a pulsing
-    /// form, if possible.
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        _node: &NormalizedNode,
-        _target: &mut PulsedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        bail!("Operator {} do not support pulsification", self.name())
     }
 
     /// Translate the op into the most efficient form possible for execution.
@@ -221,6 +226,34 @@ pub trait TypedOp:
 
     /// Deduce output facts from input facts.
     fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>>;
+
+    /// Translate an op in a normalized network (no constants) to a pulsing
+    /// form, if possible.
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        _node: &NormalizedNode,
+        _target: &mut PulsedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        bail!("Operator {} do not support pulsification", self.name())
+    }
+}
+
+impl crate::ops::Translate<NormalizedTensorInfo, Box<dyn TypedOp>, crate::pulse::PulsedTensorFact, Box<dyn TypedOp>, usize>
+    for Box<dyn TypedOp>
+{
+    fn translate(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        ctx: &usize
+    ) -> TractResult<TVec<OutletId>> {
+        self.pulsify(source, node, target, mapping, *ctx)
+    }
 }
 
 /// An operation with tensor type inference
