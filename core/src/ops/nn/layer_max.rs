@@ -38,8 +38,6 @@ impl Op for LayerHardmax {
     fn name(&self) -> Cow<str> {
         "LayerHardmax".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for LayerHardmax {
@@ -60,6 +58,7 @@ impl InferenceRulesOp for LayerHardmax {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for LayerHardmax {
@@ -105,8 +104,6 @@ impl Op for LayerLogSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerLogSoftmax".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for LayerLogSoftmax {
@@ -127,6 +124,7 @@ impl InferenceRulesOp for LayerLogSoftmax {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for LayerLogSoftmax {
@@ -172,8 +170,6 @@ impl Op for LayerSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerSoftmax".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for LayerSoftmax {
@@ -194,6 +190,7 @@ impl InferenceRulesOp for LayerSoftmax {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(

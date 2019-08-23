@@ -38,8 +38,6 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
             .collect();
         Ok(axes)
     }
-
-    to_typed!();
 }
 
 impl<D: DimLike + ToDim> StatelessOp for Slice<D> {
@@ -77,6 +75,7 @@ impl<D: DimLike + ToDim> InferenceRulesOp for Slice<D> {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl<D: DimLike + ToDim> TypedOp for Slice<D> {

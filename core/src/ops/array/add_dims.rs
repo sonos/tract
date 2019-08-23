@@ -25,8 +25,6 @@ impl Op for AddDims {
     fn name(&self) -> Cow<str> {
         "AddDims".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for AddDims {
@@ -53,6 +51,8 @@ impl InferenceRulesOp for AddDims {
     }
 
     inference_op_as_op!();
+
+    to_typed!();
 }
 
 impl TypedOp for AddDims {

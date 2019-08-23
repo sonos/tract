@@ -136,8 +136,6 @@ impl Op for Gemm {
 
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Gemm {
@@ -178,6 +176,7 @@ impl InferenceRulesOp for Gemm {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Gemm {
@@ -238,8 +237,6 @@ impl Op for GemmUnaryA {
     fn name(&self) -> Cow<str> {
         "GemmUnaryA".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for GemmUnaryA {
@@ -320,8 +317,6 @@ impl Op for GemmUnaryB {
     fn name(&self) -> Cow<str> {
         "GemmUnaryB".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for GemmUnaryB {

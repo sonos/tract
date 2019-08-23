@@ -31,8 +31,6 @@ impl Op for Iff {
     fn name(&self) -> Cow<str> {
         "Iff".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Iff {
@@ -74,6 +72,7 @@ impl InferenceRulesOp for Iff {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Iff {

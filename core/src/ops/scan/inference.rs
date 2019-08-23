@@ -15,7 +15,19 @@ impl Op for Inference {
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), &self.body)]
     }
+}
 
+impl StatefullOp for Inference {
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        self.to_typed()?.state(session, node_id)
+    }
+}
+
+impl Inference {
     fn to_typed(&self) -> TractResult<Box<dyn TypedOp>> {
         let typed_model = self.body.clone().into_typed()?;
         let input_mapping = self
@@ -58,19 +70,6 @@ impl Op for Inference {
             output_mapping,
         )))
     }
-}
-
-impl StatefullOp for Inference {
-    fn state(
-        &self,
-        session: &mut SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        self.to_typed()?.state(session, node_id)
-    }
-}
-
-impl Inference {
     fn unify_scanning_tensor_fact(
         outer: &mut TensorFact,
         inner: &mut TensorFact,
@@ -212,6 +211,16 @@ impl InferenceOp for Inference {
         trace!("Finished inner model analyse");
         self.unify_facts(&mut inputs, &mut outputs)?;
         Ok((inputs, outputs, tvec!()))
+    }
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        _node: &InferenceNode,
+        _target: &mut NormalizedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        crate::ops::trivial_inference_op_to_typed(self.to_typed())
     }
 
     inference_op_as_op!();

@@ -41,8 +41,6 @@ impl Op for Split {
     fn name(&self) -> Cow<str> {
         "Split".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Split {
@@ -79,6 +77,7 @@ impl InferenceRulesOp for Split {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Split {

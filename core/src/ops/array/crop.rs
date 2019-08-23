@@ -29,7 +29,6 @@ impl Op for Crop {
     fn name(&self) -> Cow<str> {
         "Crop".into()
     }
-    to_typed!();
 }
 
 impl StatelessOp for Crop {
@@ -58,6 +57,7 @@ impl InferenceRulesOp for Crop {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Crop {

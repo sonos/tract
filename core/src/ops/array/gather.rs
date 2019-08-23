@@ -10,8 +10,6 @@ impl Op for Gather {
     fn name(&self) -> Cow<str> {
         "Gather".into()
     }
-
-    to_typed!();
 }
 
 impl Gather {
@@ -114,6 +112,7 @@ impl InferenceRulesOp for Gather {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 #[cfg(test)]

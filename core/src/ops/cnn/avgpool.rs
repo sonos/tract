@@ -42,8 +42,6 @@ impl Op for AvgPool {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for AvgPool {
@@ -70,6 +68,7 @@ impl InferenceRulesOp for AvgPool {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for AvgPool {
@@ -110,8 +109,6 @@ where
     fn name(&self) -> Cow<str> {
         format!("AvgPool::Fixed<{:?}>", T::datum_type()).into()
     }
-
-    to_typed!();
 }
 
 impl<T: Datum + Float + Sum> StatelessOp for AvgPoolFixed<T>

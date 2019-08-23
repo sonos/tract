@@ -122,8 +122,6 @@ where
             batch * self.group * self.tile.m() * self.tile.k() * self.tile.n()
         )))
     }
-
-    to_typed!();
 }
 
 impl<D> StatelessOp for MatMat<D>

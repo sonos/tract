@@ -23,8 +23,6 @@ impl Op for Shape {
     fn name(&self) -> Cow<str> {
         "Shape".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Shape {
@@ -77,6 +75,7 @@ impl InferenceRulesOp for Shape {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Shape {

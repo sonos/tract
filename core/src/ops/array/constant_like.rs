@@ -21,8 +21,6 @@ impl Op for ConstantLike {
     fn name(&self) -> Cow<str> {
         "ConstantLike".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for ConstantLike {
@@ -57,6 +55,7 @@ impl InferenceRulesOp for ConstantLike {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for ConstantLike {
@@ -97,8 +96,6 @@ impl Op for EyeLike {
     fn name(&self) -> Cow<str> {
         "EyeLike".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for EyeLike {
@@ -147,6 +144,7 @@ impl InferenceRulesOp for EyeLike {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for EyeLike {

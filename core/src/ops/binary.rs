@@ -70,8 +70,6 @@ impl Op for InferenceBinOp {
         }
         Ok(Some(patch))
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for InferenceBinOp {
@@ -106,6 +104,7 @@ impl InferenceRulesOp for InferenceBinOp {
         Ok(())
     }
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for InferenceBinOp {
@@ -155,8 +154,6 @@ impl Op for TypedBinOp {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for TypedBinOp {
@@ -190,8 +187,6 @@ impl Op for UnaryAOp {
     fn name(&self) -> Cow<str> {
         format!("{}UnaryA", self.0.name()).into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for UnaryAOp {
@@ -241,8 +236,6 @@ impl Op for MergeOp {
     fn name(&self) -> Cow<str> {
         format!("{}Merge", self.0.name()).into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for MergeOp {

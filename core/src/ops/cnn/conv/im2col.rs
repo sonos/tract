@@ -93,8 +93,6 @@ impl<T: Copy + Datum + Mul + Zero> Op for Im2Col<T> {
             self.b_pack
         )])
     }
-
-    to_typed!();
 }
 
 impl<T: Copy + Datum + Mul + Zero> StatelessOp for Im2Col<T> {

@@ -39,8 +39,6 @@ impl Op for Direct {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Direct {

@@ -7,8 +7,6 @@ impl Op for Dummy {
     fn name(&self) -> Cow<str> {
         "Dummy".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Dummy {
@@ -39,4 +37,5 @@ impl InferenceRulesOp for Dummy {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }

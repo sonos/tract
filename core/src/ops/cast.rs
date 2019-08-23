@@ -16,8 +16,6 @@ impl Op for Cast {
     fn name(&self) -> Cow<str> {
         "Cast".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Cast {
@@ -44,6 +42,7 @@ impl InferenceRulesOp for Cast {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Cast {

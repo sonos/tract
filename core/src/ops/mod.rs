@@ -5,8 +5,6 @@ use downcast_rs::Downcast;
 
 use objekt;
 
-use std::convert::TryFrom;
-
 #[macro_use]
 pub mod macros;
 
@@ -142,13 +140,6 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         _node: &InferenceNode,
     ) -> TractResult<Option<InferenceModelPatch>> {
         Ok(None)
-    }
-
-    /// Called during translation to TypedModel.
-    fn to_typed(
-        &self,
-    ) -> TractResult<Box<dyn TypedOp>> {
-        bail!("Operator {} is not a TypedOp.", self.name())
     }
 
     /// Declutter the op to the tract_core operator set as much as possible.
@@ -330,6 +321,47 @@ pub trait InferenceOp:
 
     /// Reinterpret the InferenceOp as an Op, mutably.
     fn as_op_mut(&mut self) -> &mut dyn Op;
+
+    /// Called during translation to TypedModel.
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        _node: &InferenceNode,
+        _target: &mut NormalizedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        bail!("Operator can not be made a TypedOp.")
+    }
+}
+
+pub fn trivial_inference_op_to_typed(
+    op: Box<dyn TypedOp>,
+    source: &InferenceModel,
+    node: &InferenceNode,
+    target: &mut NormalizedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+) -> TractResult<TVec<OutletId>> {
+    let input_facts: TVec<&NormalizedTensorInfo> =
+        node.inputs.iter().map(|i| target.outlet_fact(mapping[i])).collect()?;
+    let facts = op.output_facts(input_facts)?;
+    let id = target.add_node(&*node.name, op, facts)?;
+    Ok((0..facts.len()).map(|ix| OutletId::new(id, ix)).collect())
+}
+
+
+impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, NormalizedTensorInfo, Box<dyn TypedOp>, ()>
+    for Box<dyn InferenceOp>
+{
+    fn translate(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut NormalizedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        ctx: &()
+    ) -> TractResult<TVec<OutletId>> {
+        self.to_typed(source, node, target, mapping)
+    }
 }
 
 impl_downcast!(Op);
@@ -354,14 +386,6 @@ impl<O: InferenceOp> From<O> for Box<dyn InferenceOp> {
 impl<O: TypedOp> From<O> for Box<dyn TypedOp> {
     fn from(it: O) -> Box<dyn TypedOp> {
         Box::new(it)
-    }
-}
-
-impl TryFrom<Box<dyn InferenceOp>> for Box<dyn TypedOp> {
-    type Error = TractError;
-
-    fn try_from(it: Box<dyn InferenceOp>) -> TractResult<Box<dyn TypedOp>> {
-        Ok(it.to_typed()?)
     }
 }
 

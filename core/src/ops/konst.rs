@@ -15,8 +15,6 @@ impl Op for Const {
     fn name(&self) -> Cow<str> {
         "Const".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Const {
@@ -39,6 +37,7 @@ impl InferenceRulesOp for Const {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Const {

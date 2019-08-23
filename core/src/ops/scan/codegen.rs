@@ -18,8 +18,6 @@ impl Op for Codegen {
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), self.plan.model())]
     }
-
-    to_typed!();
 }
 
 impl StatefullOp for Codegen {

@@ -26,8 +26,6 @@ impl Op for RmDims {
     fn name(&self) -> Cow<str> {
         "RmDims".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for RmDims {
@@ -58,6 +56,7 @@ impl InferenceRulesOp for RmDims {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for RmDims {

@@ -38,8 +38,6 @@ impl Op for MaxPool {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for MaxPool {
@@ -70,6 +68,7 @@ impl InferenceRulesOp for MaxPool {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for MaxPool {
@@ -109,8 +108,6 @@ impl<T: Datum + Float> Op for MaxPoolFixed<T> {
     fn name(&self) -> Cow<str> {
         format!("MaxPool::Fixed<{:?}>", T::datum_type()).into()
     }
-
-    to_typed!();
 }
 
 impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {

@@ -39,8 +39,6 @@ impl Op for Lrn {
     fn name(&self) -> Cow<str> {
         "Lrn".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Lrn {
@@ -65,6 +63,7 @@ impl InferenceRulesOp for Lrn {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Lrn {
