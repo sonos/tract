@@ -1,5 +1,4 @@
 use crate::internal::*;
-use std::convert::TryFrom;
 
 #[derive(Debug, Clone, new)]
 pub struct Source {
@@ -11,15 +10,6 @@ impl Op for Source {
         "Source".into()
     }
 
-    fn to_typed(
-        &self,
-    ) -> TractResult<Box<dyn TypedOp>> {
-        if let Ok(fact) = TypedTensorInfo::try_from(self.fact.to_tensor_fact()) {
-            Ok(Box::new(Source::new(Box::new(fact))))
-        } else {
-            bail!("Source is not a TypedOp {:?}.", self.fact)
-        }
-    }
 }
 
 impl StatelessOp for Source {
@@ -43,6 +33,7 @@ impl InferenceRulesOp for Source {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Source {

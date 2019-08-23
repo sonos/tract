@@ -48,8 +48,6 @@ impl Op for Squeeze {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Squeeze {
@@ -79,6 +77,7 @@ impl InferenceRulesOp for Squeeze {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 

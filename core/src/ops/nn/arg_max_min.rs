@@ -30,8 +30,6 @@ impl Op for ArgMaxMin {
     fn name(&self) -> Cow<str> {
         "ArgMaxMin".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for ArgMaxMin {
@@ -79,6 +77,7 @@ impl InferenceRulesOp for ArgMaxMin {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for ArgMaxMin {

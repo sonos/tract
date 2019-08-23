@@ -130,8 +130,6 @@ impl Op for Conv {
             Ok(None)
         }
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Conv {
@@ -198,6 +196,7 @@ impl InferenceRulesOp for Conv {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Conv {

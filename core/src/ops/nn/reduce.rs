@@ -248,8 +248,6 @@ impl Op for Reduce {
     fn name(&self) -> Cow<str> {
         format!("Reduce<{:?}>", self.reducer).into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Reduce {
@@ -281,6 +279,7 @@ impl InferenceRulesOp for Reduce {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Reduce {

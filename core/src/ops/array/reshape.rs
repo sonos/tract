@@ -40,7 +40,7 @@ impl Op for Reshape {
     fn name(&self) -> Cow<str> {
         "Reshape".into()
     }
-/*
+
     fn incorporate(
         &self,
         model: &InferenceModel,
@@ -58,7 +58,6 @@ impl Op for Reshape {
         }
         Ok(None)
     }
-*/
 }
 
 impl StatelessOp for Reshape {

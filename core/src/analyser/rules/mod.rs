@@ -46,6 +46,13 @@ pub trait InferenceRulesOp {
 
     fn as_op(&self) -> &dyn Op;
     fn as_op_mut(&mut self) -> &mut dyn Op;
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut NormalizedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>>;
 }
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
@@ -81,5 +88,15 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
 
     fn as_op_mut(&mut self) -> &mut dyn Op {
         self.as_op_mut()
+    }
+
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut NormalizedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        self.to_typed(source, node, target, mapping)
     }
 }

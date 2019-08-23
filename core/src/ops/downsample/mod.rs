@@ -61,7 +61,6 @@ impl Op for Downsample {
     }
 
     impl_op_same_as!();
-    to_typed!();
 }
 
 impl StatelessOp for Downsample {
@@ -100,6 +99,7 @@ impl InferenceRulesOp for Downsample {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Downsample {

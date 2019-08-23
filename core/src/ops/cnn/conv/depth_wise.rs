@@ -31,8 +31,6 @@ where
             (self.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
         )))
     }
-
-    to_typed!();
 }
 
 impl<T> StatelessOp for DepthWise<T>

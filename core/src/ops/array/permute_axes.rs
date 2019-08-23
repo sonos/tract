@@ -38,8 +38,6 @@ impl Op for PermuteAxes {
     fn name(&self) -> Cow<str> {
         "PermuteAxes".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for PermuteAxes {
@@ -66,6 +64,7 @@ impl InferenceRulesOp for PermuteAxes {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for PermuteAxes {

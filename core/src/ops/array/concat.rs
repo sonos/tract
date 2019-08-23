@@ -81,8 +81,6 @@ impl Op for Concat {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Concat {
@@ -133,6 +131,7 @@ impl InferenceRulesOp for Concat {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Concat {
@@ -246,8 +245,6 @@ impl Op for NormConcat {
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
         return Ok(Some(patch));
     }
-
-    to_typed!();
 }
 
 impl TypedOp for NormConcat {
@@ -435,8 +432,6 @@ impl<T: Datum> Op for PulsedSameAxisConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("PulsedSameAxisConcat<{:?}>", T::datum_type()).into()
     }
-
-    to_typed!();
 }
 
 impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
@@ -567,8 +562,6 @@ impl<T: Datum> Op for FixedConcat<T> {
     fn name(&self) -> Cow<str> {
         format!("FixedConcat<{:?}>", T::datum_type()).into()
     }
-
-    to_typed!();
 }
 
 impl<T: Datum> StatelessOp for FixedConcat<T> {

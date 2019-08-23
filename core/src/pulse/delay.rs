@@ -84,7 +84,6 @@ impl Op for Delay {
     }
 
     impl_op_same_as!();
-    to_typed!();
 }
 
 fn make_buffer<T: Datum>(shape: &[usize]) -> Tensor {

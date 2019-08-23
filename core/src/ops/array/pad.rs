@@ -87,7 +87,6 @@ impl Op for Pad {
     fn name(&self) -> Cow<str> {
         "Pad".into()
     }
-    to_typed!();
 }
 
 impl StatelessOp for Pad {
@@ -116,6 +115,7 @@ impl InferenceRulesOp for Pad {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Pad {
@@ -297,8 +297,6 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
     fn name(&self) -> Cow<str> {
         "Pad".into()
     }
-
-    to_typed!();
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {

@@ -29,8 +29,12 @@ macro_rules! to_typed {
     () => {
         fn to_typed(
             &self,
-        ) -> TractResult<Box<dyn TypedOp>> {
-            Ok(Box::new(self.clone()))
+            source: &InferenceModel,
+            node: &InferenceNode,
+            target: &mut NormalizedModel,
+            mapping: &HashMap<OutletId, OutletId>,
+        ) -> TractResult<TVec<OutletId>> {
+            crate::ops::trivial_inference_op_to_typed(self, source, node, target, mapping)
         }
     }
 }
@@ -74,9 +78,6 @@ macro_rules! element_map {
                 let rank = node.outputs[0].fact.shape.rank();
                 Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
             }
-
-
-            to_typed!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -99,6 +100,7 @@ macro_rules! element_map {
             }
 
             inference_op_as_op!();
+            to_typed!();
         }
 
         impl TypedOp for $Name {
@@ -159,7 +161,6 @@ macro_rules! element_map_with_params {
                 stringify!($Name).into()
             }
 
-            to_typed!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -180,6 +181,7 @@ macro_rules! element_map_with_params {
             }
 
             inference_op_as_op!();
+            to_typed!();
         }
 
         impl TypedOp for $Name {
@@ -213,8 +215,6 @@ macro_rules! element_nary {
             fn name(&self) -> Cow<str> {
                 stringify!($Name).into()
             }
-
-            to_typed!();
         }
 
         impl StatelessOp for $Name {
@@ -281,6 +281,7 @@ macro_rules! element_nary {
             }
 
             inference_op_as_op!();
+            to_typed!();
         }
 
         impl TypedOp for $Name {

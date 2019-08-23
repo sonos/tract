@@ -85,8 +85,6 @@ impl Op for BatchNorm {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl TypedOp for BatchNorm {
@@ -135,6 +133,7 @@ impl InferenceRulesOp for BatchNorm {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 #[derive(Debug, Clone)]
@@ -184,8 +183,6 @@ where
     fn name(&self) -> Cow<str> {
         format!("FixedBatchNorm<{:?}>", T::datum_type()).into()
     }
-
-    to_typed!();
 }
 
 impl<T> StatelessOp for FixedBatchNorm<T>
