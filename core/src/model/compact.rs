@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{ Display, Debug };
 
-pub(crate) fn translate2<TI1, TI2, O1, O2, E1, E2, Ctx>(source: &ModelImpl<TI1, O1>, ctx: &Ctx) -> TractResult<(ModelImpl<TI2, O2>, HashMap<OutletId, OutletId>)>
+pub(crate) fn translate2<TI1, TI2, O1, O2, Ctx>(source: &ModelImpl<TI1, O1>, ctx: &Ctx) -> TractResult<(ModelImpl<TI2, O2>, HashMap<OutletId, OutletId>)>
 where
     TI1: TensorInfo + Clone + 'static,
     TI2: TensorInfo + Clone + 'static,

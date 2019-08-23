@@ -506,12 +506,55 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
+    fn translation_invariants(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
+        let mut axes = vec![TranslationInvariant { axis: shape.n_axis(), period: 1 }];
+        let kernel_spatial_shape =
+            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
+        let h_axis = shape.h_axis();
+        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
+            if dim == 1 && self.strides[ix] == 1 {
+                axes.push(TranslationInvariant { axis: ix + h_axis, period: 1 });
+            }
+        }
+        Ok(axes)
+    }
+
+    to_typed!();
+}
+
+impl StatelessOp for ConvUnary {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+    }
+}
+
+
+impl TypedOp for ConvUnary {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.full_output_shape
+        )?))
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let mut input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?;
@@ -576,47 +619,5 @@ impl Op for ConvUnary {
 
             Ok(tvec!(OutletId::new(id, 0)))
         }
-    }
-
-    fn translation_invariants(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
-        let fact = model.outlet_fact(node.inputs[0])?;
-        let shape = self.data_format.shape(fact.shape.iter().collect::<Vec<TDim>>());
-        let mut axes = vec![TranslationInvariant { axis: shape.n_axis(), period: 1 }];
-        let kernel_spatial_shape =
-            &self.kernel.shape()[self.kernel_fmt.h_axis()..][..shape.hw_rank()];
-        let h_axis = shape.h_axis();
-        for (ix, &dim) in kernel_spatial_shape.iter().enumerate() {
-            if dim == 1 && self.strides[ix] == 1 {
-                axes.push(TranslationInvariant { axis: ix + h_axis, period: 1 });
-            }
-        }
-        Ok(axes)
-    }
-
-    to_typed!();
-}
-
-impl StatelessOp for ConvUnary {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
-    }
-}
-
-
-impl TypedOp for ConvUnary {
-    typed_op_as_op!();
-
-    fn output_facts(
-        &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
-            inputs[0].datum_type,
-            &*self.full_output_shape
-        )?))
     }
 }

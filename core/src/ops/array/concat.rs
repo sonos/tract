@@ -247,27 +247,6 @@ impl Op for NormConcat {
         return Ok(Some(patch));
     }
 
-    fn pulsify(
-        &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        if node.inputs.len() > 1 {
-            bail!("Pulsification not implemented for more than one input to Concat")
-        }
-
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?;
-
-        if fact.axis == self.axis {
-            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.dt)(self, source, node, target, mapping))
-        } else {
-            bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
-        }
-    }
-
     to_typed!();
 }
 
@@ -284,6 +263,29 @@ impl TypedOp for NormConcat {
         fact.shape.set_dim(self.axis, dim)?;
         Ok(tvec!(fact))
     }
+
+    fn pulsify(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        if node.inputs.len() > 1 {
+            bail!("Pulsification not implemented for more than one input to Concat")
+        }
+
+        let input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?;
+
+        if fact.axis == self.axis {
+            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.dt)(self, source, node, target, mapping))
+        } else {
+            bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
+        }
+    }
+
 }
 
 impl StatelessOp for NormConcat {

@@ -43,16 +43,6 @@ impl Op for AvgPool {
         Ok(None)
     }
 
-    fn pulsify(
-        &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        self.pool_spec.pulsify(source, node, target, mapping)
-    }
-
     to_typed!();
 }
 
@@ -87,6 +77,17 @@ impl TypedOp for AvgPool {
 
     fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
         self.pool_spec.output_facts(inputs)
+    }
+
+    fn pulsify(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        self.pool_spec.pulsify(source, node, target, mapping)
     }
 }
 

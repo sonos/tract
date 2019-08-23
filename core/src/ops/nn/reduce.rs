@@ -249,19 +249,6 @@ impl Op for Reduce {
         format!("Reduce<{:?}>", self.reducer).into()
     }
 
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?.clone();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
-    }
-
     to_typed!();
 }
 
@@ -305,4 +292,19 @@ impl TypedOp for Reduce {
         let shape = self.output_shape(&*inputs[0].shape.to_tvec());
         Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?.clone();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+
 }
