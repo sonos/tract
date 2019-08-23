@@ -342,8 +342,8 @@ test_tanh_example
 test_thresholdedrelu
 test_thresholdedrelu_default
 test_thresholdedrelu_example
-test_tile
-test_tile_precomputed
+test_tile                                                                           dynsize
+test_tile_precomputed                                                               dynsize
 test_transpose_all_permutations_0
 test_transpose_all_permutations_1
 test_transpose_all_permutations_2

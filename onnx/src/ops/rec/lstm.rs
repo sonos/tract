@@ -78,6 +78,8 @@ impl Op for LSTM {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    to_typed!();
 }
 
 impl InferenceRulesOp for LSTM {
@@ -152,7 +154,7 @@ impl InferenceRulesOp for LSTM {
             s.equals(&outputs[y_h].shape[1], &inputs[0].shape[1])?; // batch_size
             s.equals(&outputs[y_h].shape[2], &inputs[2].shape[2])?; // hidden_size
         }
-        if let Some(y_c) = self.optional_y_h_output {
+        if let Some(y_c) = self.optional_y_c_output {
             s.equals(&outputs[y_c].datum_type, &inputs[0].datum_type)?;
             s.equals(&outputs[y_c].rank, 3)?;
             s.equals(&outputs[y_c].shape[0], &inputs[1].shape[0])?; // num_directions
@@ -163,6 +165,42 @@ impl InferenceRulesOp for LSTM {
     }
 
     inference_op_as_op!();
+}
+
+impl TypedOp for LSTM {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let dt = inputs[0].datum_type;
+        let seq_length = inputs[0].shape.dim(0);
+        let num_directions = inputs[1].shape.dim(0);
+        let batch_size = inputs[0].shape.dim(1);
+        let hidden_size = inputs[2].shape.dim(2);
+        let mut outputs = tvec!();
+        if let Some(_) = self.optional_y_output {
+            outputs.push(NormalizedTensorInfo::dt_shape(
+                dt,
+                [seq_length, num_directions.clone(), batch_size.clone(), hidden_size.clone()]
+                    .as_ref(),
+            )?)
+        }
+        if let Some(_) = self.optional_y_h_output {
+            outputs.push(NormalizedTensorInfo::dt_shape(
+                dt,
+                [num_directions.clone(), batch_size.clone(), hidden_size.clone()].as_ref(),
+            )?)
+        }
+        if let Some(_) = self.optional_y_c_output {
+            outputs.push(NormalizedTensorInfo::dt_shape(
+                dt,
+                [num_directions, batch_size, hidden_size].as_ref(),
+            )?)
+        }
+        Ok(outputs)
+    }
 }
 
 impl StatelessOp for LSTM {
