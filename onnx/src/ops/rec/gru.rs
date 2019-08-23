@@ -69,6 +69,8 @@ impl Op for GRU {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    to_typed!();
 }
 
 impl InferenceRulesOp for GRU {
@@ -133,6 +135,36 @@ impl InferenceRulesOp for GRU {
     inference_op_as_op!();
 }
 
+impl TypedOp for GRU {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        let dt = inputs[0].datum_type;
+        let seq_length = inputs[0].shape.dim(0);
+        let num_directions = inputs[1].shape.dim(0);
+        let batch_size = inputs[0].shape.dim(1);
+        let hidden_size = inputs[2].shape.dim(2);
+        let mut outputs = tvec!();
+        if let Some(_) = self.optional_y_output {
+            outputs.push(NormalizedTensorInfo::dt_shape(
+                dt,
+                [seq_length, num_directions.clone(), batch_size.clone(), hidden_size.clone()]
+                    .as_ref(),
+            )?)
+        }
+        if let Some(_) = self.optional_y_h_output {
+            outputs.push(NormalizedTensorInfo::dt_shape(
+                dt,
+                [num_directions, batch_size, hidden_size].as_ref(),
+            )?)
+        }
+        Ok(outputs)
+    }
+}
+
 impl StatelessOp for GRU {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let x: ArrayView3<f32> = inputs[0].to_array_view::<f32>()?.into_dimensionality()?; // [seq_length, batch_size, input_size]
@@ -140,7 +172,8 @@ impl StatelessOp for GRU {
         let r: ArrayView3<f32> = inputs[2].to_array_view::<f32>()?.into_dimensionality()?; // [num_directions, 3*hidden_size, hidden_size]
 
         let bias = if let Some(ix) = self.optional_bias_input {
-            Some(inputs[ix].to_array_view::<f32>()?.into_dimensionality::<Ix2>()?) // [num_directions, 6*hidden_size]
+            Some(inputs[ix].to_array_view::<f32>()?.into_dimensionality::<Ix2>()?)
+        // [num_directions, 6*hidden_size]
         } else {
             None
         };
@@ -150,15 +183,20 @@ impl StatelessOp for GRU {
         let num_directions = w.shape()[0];
         let hidden_size = r.shape()[2];
 
-        let mut output_y = self.optional_y_output.map(|_| Array4::<f32>::zeros((seq_length, num_directions, batch_size, hidden_size)));
-        let mut output_y_h = self.optional_y_h_output.map(|_| Array3::<f32>::zeros((num_directions, batch_size, hidden_size)));
+        let mut output_y = self
+            .optional_y_output
+            .map(|_| Array4::<f32>::zeros((seq_length, num_directions, batch_size, hidden_size)));
+        let mut output_y_h = self
+            .optional_y_h_output
+            .map(|_| Array3::<f32>::zeros((num_directions, batch_size, hidden_size)));
 
         for dir in 0..num_directions {
             let w = w.index_axis_move(Axis(0), dir);
             let r = r.index_axis_move(Axis(0), dir);
 
             let mut ht = if let Some(ix) = self.optional_initial_h_input {
-                inputs[ix].to_array_view::<f32>()?
+                inputs[ix]
+                    .to_array_view::<f32>()?
                     .index_axis_move(Axis(0), dir)
                     .to_owned()
                     .into_dimensionality()?

@@ -41,15 +41,15 @@ impl Op for Reshape {
         "Reshape".into()
     }
 
-    fn declutter(
+    fn incorporate(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        if let Some(ref shape) = model.outlet_fact(node.inputs[1])?.konst {
+        model: &InferenceModel,
+        node: &InferenceNode,
+    ) -> TractResult<Option<InferenceModelPatch>> {
+        if let Some(ref shape) = model.outlet_fact(node.inputs[1])?.value.concretize() {
             let shape: TVec<usize> =
                 shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
-            return Ok(Some(TypedModelPatch::replace_single_op(
+            return Ok(Some(InferenceModelPatch::replace_single_op(
                 model,
                 node,
                 &node.inputs[0..1],
