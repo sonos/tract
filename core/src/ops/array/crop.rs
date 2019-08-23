@@ -29,28 +29,6 @@ impl Op for Crop {
     fn name(&self) -> Cow<str> {
         "Crop".into()
     }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?;
-        if self.prune.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
-        {
-            let (before, after) = self.prune[fact.axis];
-            let mut fact = fact.clone();
-            fact.delay += before;
-            fact.dim -= before.to_dim() + after.to_dim();
-            let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
-            return Ok(tvec!(OutletId::new(id, 0)));
-        }
-        bail!("Crop only support pulsify on streaming axis")
-    }
-
     to_typed!();
 }
 
@@ -95,4 +73,27 @@ impl TypedOp for Crop {
         }
         Ok(tvec!(fact))
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?;
+        if self.prune.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
+        {
+            let (before, after) = self.prune[fact.axis];
+            let mut fact = fact.clone();
+            fact.delay += before;
+            fact.dim -= before.to_dim() + after.to_dim();
+            let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
+            return Ok(tvec!(OutletId::new(id, 0)));
+        }
+        bail!("Crop only support pulsify on streaming axis")
+    }
+
 }

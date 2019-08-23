@@ -55,4 +55,17 @@ impl TypedOp for Source {
             bail!("Untyped source")
         }
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+        pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+         let pulsed_fact = crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
+         let id = target.add_source(node.name.clone(), pulsed_fact)?;
+         Ok(tvec!(OutletId::new(id, 0)))
+     }
 }

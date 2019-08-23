@@ -39,16 +39,6 @@ impl Op for MaxPool {
         Ok(None)
     }
 
-    fn pulsify(
-        &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        self.pool_spec.pulsify(source, node, target, mapping)
-    }
-
     to_typed!();
 }
 
@@ -92,6 +82,17 @@ impl TypedOp for MaxPool {
             facts[1].datum_type = idt;
         }
         Ok(facts)
+    }
+
+    fn pulsify(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        self.pool_spec.pulsify(source, node, target, mapping)
     }
 }
 

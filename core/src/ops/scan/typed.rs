@@ -98,39 +98,6 @@ impl Op for Typed {
         Ok(None)
     }
 
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        if node.inputs.len() > 1 || node.outputs.len() > 1 {
-            bail!("Scan pulsificiaton limited to single streaming input and output case");
-        }
-        let input = mapping[&node.inputs[0]];
-        let input_fact = target.outlet_fact(input)?;
-        let (_slot, axis, _chunk) = self
-            .input_mapping
-            .iter()
-            .filter_map(InputMapping::as_scan)
-            .find(|mapping| mapping.0 == 0)
-            .unwrap();
-        if input_fact.axis != axis {
-            bail!("Scan pulsification limited to scanning axis");
-        }
-
-        let mut output_fact = crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(
-            &node.outputs[0].fact,
-            input_fact.pulse(),
-        )?;
-        output_fact.delay = input_fact.delay;
-        let mut op = self.clone();
-        op.skip = input_fact.delay;
-        let id = target.chain_after(input, &*node.name, op, tvec!(output_fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
-    }
-
     fn codegen(
         &self,
         model: &TypedModel,
@@ -198,4 +165,39 @@ impl TypedOp for Typed {
         let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
         Ok(outputs)
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize
+    ) -> TractResult<TVec<OutletId>> {
+        if node.inputs.len() > 1 || node.outputs.len() > 1 {
+            bail!("Scan pulsificiaton limited to single streaming input and output case");
+        }
+        let input = mapping[&node.inputs[0]];
+        let input_fact = target.outlet_fact(input)?;
+        let (_slot, axis, _chunk) = self
+            .input_mapping
+            .iter()
+            .filter_map(InputMapping::as_scan)
+            .find(|mapping| mapping.0 == 0)
+            .unwrap();
+        if input_fact.axis != axis {
+            bail!("Scan pulsification limited to scanning axis");
+        }
+
+        let mut output_fact = crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(
+            &node.outputs[0].fact,
+            input_fact.pulse(),
+        )?;
+        output_fact.delay = input_fact.delay;
+        let mut op = self.clone();
+        op.skip = input_fact.delay;
+        let id = target.chain_after(input, &*node.name, op, tvec!(output_fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+
 }

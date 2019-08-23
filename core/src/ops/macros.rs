@@ -67,19 +67,6 @@ macro_rules! element_map {
                 stringify!($Name).into()
             }
 
-            fn pulsify(
-                &self,
-                _source: &NormalizedModel,
-                node: &NormalizedNode,
-                target: &mut PulsedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let input = mapping[&node.inputs[0]];
-                let fact = target.outlet_fact(input)?.clone();
-                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-                Ok(tvec!(OutletId::new(id, 0)))
-            }
-
             fn translation_invariants(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
@@ -123,6 +110,20 @@ macro_rules! element_map {
                     return Ok(tvec!(NormalizedTensorInfo::shape::<$to,_,_>(inputs[0].shape.clone())?));
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
+            }
+
+            fn pulsify(
+                &self,
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+                _pulse: usize,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let fact = target.outlet_fact(input)?.clone();
+                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+                Ok(tvec!(OutletId::new(id, 0)))
             }
         }
     };
@@ -213,25 +214,6 @@ macro_rules! element_nary {
                 stringify!($Name).into()
             }
 
-            fn pulsify(
-                &self,
-                _source: &NormalizedModel,
-                node: &NormalizedNode,
-                target: &mut PulsedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let input = mapping[&node.inputs[0]];
-                let mut fact = target.outlet_fact(input)?.clone();
-                $(if fact.dt == <$type>::datum_type() {
-                    fact.dt = <$to>::datum_type().into();
-                })*
-                let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
-                for (ix, i) in node.inputs.iter().enumerate() {
-                    target.add_edge(mapping[i], InletId::new(id, ix))?;
-                }
-                Ok(tvec!(OutletId::new(id, 0)))
-            }
-
             to_typed!();
         }
 
@@ -306,6 +288,26 @@ macro_rules! element_nary {
 
             fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
                 return Ok(tvec!(inputs[0].clone()))
+            }
+
+            fn pulsify(
+                &self,
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+                _pulse: usize,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let mut fact = target.outlet_fact(input)?.clone();
+                $(if fact.dt == <$type>::datum_type() {
+                    fact.dt = <$to>::datum_type().into();
+                })*
+                let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
+                for (ix, i) in node.inputs.iter().enumerate() {
+                    target.add_edge(mapping[i], InletId::new(id, ix))?;
+                }
+                Ok(tvec!(OutletId::new(id, 0)))
             }
         }
     }

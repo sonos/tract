@@ -191,20 +191,6 @@ impl Op for UnaryAOp {
         format!("{}UnaryA", self.0.name()).into()
     }
 
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
-        fact.dt = self.1.datum_type();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
-    }
-
     to_typed!();
 }
 
@@ -230,6 +216,22 @@ impl TypedOp for UnaryAOp {
             .unwrap()
         )?))
     }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.outlet_fact(input)?.clone();
+        fact.dt = self.1.datum_type();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+
 }
 
 #[derive(Debug, Clone)]
@@ -240,12 +242,39 @@ impl Op for MergeOp {
         format!("{}Merge", self.0.name()).into()
     }
 
+    to_typed!();
+}
+
+impl StatelessOp for MergeOp {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        self.0.eval_broadcast(inputs)
+    }
+}
+
+impl TypedOp for MergeOp {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: TVec<&NormalizedTensorInfo>,
+    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
+            &*crate::broadcast::multi_broadcast(&[
+                &inputs[0].shape.to_tvec(),
+                &inputs[1].shape.to_tvec()
+            ])
+            .unwrap()
+        )?))
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         use crate::pulse::delay::Delay;
         let delay = (0..2)
@@ -278,31 +307,6 @@ impl Op for MergeOp {
         Ok(tvec!(OutletId::new(id, 0)))
     }
 
-    to_typed!();
-}
-
-impl StatelessOp for MergeOp {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.0.eval_broadcast(inputs)
-    }
-}
-
-impl TypedOp for MergeOp {
-    typed_op_as_op!();
-
-    fn output_facts(
-        &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
-            self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
-            &*crate::broadcast::multi_broadcast(&[
-                &inputs[0].shape.to_tvec(),
-                &inputs[1].shape.to_tvec()
-            ])
-            .unwrap()
-        )?))
-    }
 }
 
 #[macro_export]
