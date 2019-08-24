@@ -105,7 +105,7 @@ impl InferenceRulesOp for Downsample {
 impl TypedOp for Downsample {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let mut downed = inputs[0].clone();
         let down_len = self.transform_dim(&downed.shape.dim(self.axis));
         downed.shape.set_dim(self.axis, down_len.clone())?;

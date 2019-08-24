@@ -235,7 +235,7 @@ where
 
                 let vs = match states[node.id] {
                     Some(ref mut state) => state.eval(session_state, node.op(), inputs),
-                    None => node.op().as_stateless().unwrap().eval(inputs),
+                    None => node.op().as_stateless().expect("as_stateless").eval(inputs)
                 }
                 .chain_err(|| format!("Evaluating {}", node))?;
 

@@ -59,9 +59,9 @@ impl TypedOp for Flatten {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
             self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
         )?))

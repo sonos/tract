@@ -112,9 +112,9 @@ impl TypedOp for InferenceBinOp {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
@@ -167,9 +167,9 @@ impl TypedOp for TypedBinOp {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),
@@ -200,9 +200,9 @@ impl TypedOp for UnaryAOp {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, self.1.datum_type())?,
             &*crate::broadcast::multi_broadcast(&[
                 &*inputs[0].shape.to_tvec(),
@@ -249,9 +249,9 @@ impl TypedOp for MergeOp {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             self.0.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?,
             &*crate::broadcast::multi_broadcast(&[
                 &inputs[0].shape.to_tvec(),

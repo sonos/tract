@@ -89,7 +89,7 @@ impl PulsedModel {
         source: &NormalizedModel,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
-        crate::model::compact::translate2(source, &pulse)
+        crate::model::compact::translate(source, &pulse)
     }
 
     pub fn into_typed(self) -> TractResult<TypedModel> {

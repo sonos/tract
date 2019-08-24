@@ -20,8 +20,8 @@ impl TypedOp for Dummy {
 
     fn output_facts(
         &self,
-        _inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        _inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!())
     }
 }

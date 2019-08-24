@@ -97,7 +97,7 @@ impl TypedOp for LstmNonlin {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
+        inputs: &[&NormalizedTensorInfo],
     ) -> TractResult<TVec<NormalizedTensorInfo>> {
         Ok(tvec!(NormalizedTensorInfo::dt_shape(
             inputs[0].datum_type,

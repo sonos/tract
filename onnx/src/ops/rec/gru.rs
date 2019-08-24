@@ -140,7 +140,7 @@ impl TypedOp for GRU {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
+        inputs: &[&NormalizedTensorInfo],
     ) -> TractResult<TVec<NormalizedTensorInfo>> {
         let dt = inputs[0].datum_type;
         let seq_length = inputs[0].shape.dim(0);

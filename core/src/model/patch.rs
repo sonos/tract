@@ -2,9 +2,9 @@ use std::fmt::{Debug, Display};
 use std::ops::{Deref, DerefMut};
 
 use crate::internal::*;
+use crate::model::dsl::ModelSpecialOps;
 use crate::model::*;
-use crate::ops::dummy::Dummy;
-use crate::ops::source::Source;
+use crate::ops::source:: { Source, TypedSource };
 
 /// A change to apply to a model.
 ///
@@ -16,6 +16,7 @@ pub struct ModelPatch<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
     /// the model-like 'patch' of nodes to add to the model
     pub model: ModelImpl<TI, O>,
@@ -28,6 +29,7 @@ impl<TI, O> Default for ModelPatch<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
     fn default() -> ModelPatch<TI, O> {
         ModelPatch {
@@ -43,6 +45,7 @@ impl<TI, O> Deref for ModelPatch<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
     type Target = ModelImpl<TI, O>;
     fn deref(&self) -> &ModelImpl<TI, O> {
@@ -54,6 +57,7 @@ impl<TI, O> DerefMut for ModelPatch<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
     fn deref_mut(&mut self) -> &mut ModelImpl<TI, O> {
         &mut self.model
@@ -63,14 +67,8 @@ where
 impl<TI, O> ModelPatch<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Display
-        + Debug
-        + From<Source>
-        + From<Dummy>
-        + AsRef<dyn Op>
-        + AsMut<dyn Op>
-        + Clone
-        + 'static,
+    O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
     pub fn is_empty(&self) -> bool {
         self.model.nodes.is_empty() && self.shunt_outlet_by.is_empty() && self.obliterate.is_empty()
@@ -178,8 +176,8 @@ where
         let ModelPatch { model: patch, incoming: mut mapping, shunt_outlet_by, obliterate } = self;
         let mut all_inputs = HashMap::new(); // new_id -> [ old_inputs ]
         for node in patch.nodes {
-            if node.op_is::<Source>() {
-                continue;
+            if node.op_is::<Source>() || node.op_is::<TypedSource>() {
+                continue
             }
             let BaseNode { id, name, inputs, control_inputs, op, outputs } = node;
             let n_outputs = outputs.len();
@@ -219,10 +217,11 @@ where
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
         for node in obliterate {
-            target.node_mut(node).op = Dummy::new().into();
+            target.node_mut(node).op = target.create_dummy();
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
+        dbg!(&target);
         Ok(())
     }
 }

@@ -182,10 +182,10 @@ impl InferenceRulesOp for Gemm {
 impl TypedOp for Gemm {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let cols = inputs[1].shape.dim(if self.trans_b { 1 } else { 0 });
         let rows = inputs[0].shape.dim(if self.trans_a { 0 } else { 1 });
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
     }
 }
 
@@ -248,10 +248,10 @@ impl StatelessOp for GemmUnaryA {
 impl TypedOp for GemmUnaryA {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let cols = self.b.shape()[if self.trans_b { 1 } else { 0 }].to_dim();
         let rows = inputs[0].shape.dim(if self.trans_a { 0 } else { 1 });
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
     }
 
     fn pulsify(
@@ -328,9 +328,9 @@ impl StatelessOp for GemmUnaryB {
 impl TypedOp for GemmUnaryB {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let cols = inputs[0].shape.dim(if self.trans_b { 1 } else { 0 });
         let rows = self.a.shape()[if self.trans_a { 0 } else { 1 }].to_dim();
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
     }
 }

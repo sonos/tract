@@ -59,7 +59,7 @@ impl InferenceRulesOp for GlobalAvgPool {
 impl TypedOp for GlobalAvgPool {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         output_facts(inputs)
     }
 }
@@ -127,7 +127,7 @@ impl InferenceRulesOp for GlobalLpPool {
 impl TypedOp for GlobalLpPool {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         output_facts(inputs)
     }
 }
@@ -190,7 +190,7 @@ impl InferenceRulesOp for GlobalMaxPool {
 impl TypedOp for GlobalMaxPool {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         output_facts(inputs)
     }
 }
@@ -215,7 +215,7 @@ fn rules<'r, 'p: 'r, 's: 'r>(
 }
 
 
-fn output_facts(inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+fn output_facts(inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
     let mut output = inputs[0].clone();
     for i in 2..output.shape.rank() {
         output.shape.set_dim(i, TDim::from(1))?

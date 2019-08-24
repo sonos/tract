@@ -184,7 +184,7 @@ impl TypedOp for BlockLSTM {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
+        inputs: &[&NormalizedTensorInfo],
     ) -> TractResult<TVec<NormalizedTensorInfo>> {
         Ok(std::iter::repeat(inputs[1].clone()).take(7).collect())
     }

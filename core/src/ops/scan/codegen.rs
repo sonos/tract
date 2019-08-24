@@ -105,7 +105,7 @@ impl OpState for State {
             _codegen_op_holder = Some(op.to_codegen_op()?);
             _codegen_op_holder.as_ref().unwrap()
         } else if let Some(op) = op.downcast_ref::<Inference>() {
-            _codegen_op_holder = Some(op.to_typed()?.as_op().downcast_ref::<Typed>().unwrap().to_codegen_op()?);
+            _codegen_op_holder = Some(op.to_typed_scan()?.to_codegen_op()?);
             _codegen_op_holder.as_ref().unwrap()
         } else {
             panic!("Wrong op");
@@ -225,8 +225,8 @@ impl TypedOp for Codegen {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -248,11 +248,11 @@ impl TypedOp for Codegen {
                     let scanning_dim =
                         full_dim_hint.clone().unwrap_or(shape.dim(*axis) * &iters);
                     shape.set_dim(*axis, scanning_dim)?;
-                    outputs.push((slot, NormalizedTensorInfo::dt_shape(fact.datum_type, shape)?));
+                    outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
                 }
                 OutputMapping::State { slot } => {
                     if let Some(slot) = slot {
-                        outputs.push((slot, NormalizedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                        outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
                     }
                 }
             }
