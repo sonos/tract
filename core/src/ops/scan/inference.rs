@@ -23,12 +23,12 @@ impl StatefullOp for Inference {
         session: &mut SessionState,
         node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
-        self.to_typed()?.state(session, node_id)
+        self.to_typed_scan()?.state(session, node_id)
     }
 }
 
 impl Inference {
-    fn to_typed(&self) -> TractResult<Box<dyn TypedOp>> {
+    pub(super) fn to_typed_scan(&self) -> TractResult<Box<Typed>> {
         let typed_model = self.body.clone().into_typed()?;
         let input_mapping = self
             .input_mapping
@@ -215,12 +215,12 @@ impl InferenceOp for Inference {
 
     fn to_typed(
         &self,
-        _source: &InferenceModel,
-        _node: &InferenceNode,
-        _target: &mut NormalizedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        crate::ops::trivial_inference_op_to_typed(self.to_typed())
+        crate::ops::trivial_inference_op_to_typed(self.to_typed_scan()?, source, node, target, mapping)
     }
 
     inference_op_as_op!();

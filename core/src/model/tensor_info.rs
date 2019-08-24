@@ -213,16 +213,19 @@ pub struct TypedTensorInfo {
 }
 
 impl TypedTensorInfo {
-    pub fn shape<T: Datum, S: TryInto<ShapeInfo, Error = TractError>>(
-        shape: S,
-    ) -> TractResult<TypedTensorInfo> {
+    pub fn shape<T, S, E>(shape: S) -> TractResult<TypedTensorInfo>
+    where
+        T: Datum,
+        S: TryInto<ShapeInfo, Error = E>,
+        TractError: From<E>,
+    {
         Self::dt_shape(T::datum_type(), shape)
     }
-
-    pub fn dt_shape<S: TryInto<ShapeInfo, Error = TractError>>(
-        datum_type: DatumType,
-        shape: S,
-    ) -> TractResult<TypedTensorInfo> {
+    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<TypedTensorInfo>
+    where
+        S: TryInto<ShapeInfo, Error = E>,
+        TractError: From<E>,
+    {
         Ok(TypedTensorInfo { datum_type, shape: shape.try_into()?, konst: None })
     }
 }

@@ -85,8 +85,8 @@ impl TypedOp for Split {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         self.split_dims(inputs[0].shape.dim(self.axis))?.into_iter().map(|d| {
             let mut fact = inputs[0].clone();
             fact.shape.set_dim(self.axis, d)?;

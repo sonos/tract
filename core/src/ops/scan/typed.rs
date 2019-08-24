@@ -127,8 +127,8 @@ impl TypedOp for Typed {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let mut outputs = tvec!();
         let iters = {
             let (outside_slot, axis, chunk) = self
@@ -150,11 +150,11 @@ impl TypedOp for Typed {
                     let scanning_dim =
                         full_dim_hint.clone().unwrap_or(shape.dim(*axis) * &iters);
                     shape.set_dim(*axis, scanning_dim)?;
-                    outputs.push((slot, NormalizedTensorInfo::dt_shape(fact.datum_type, shape)?));
+                    outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
                 }
                 OutputMapping::State { slot } => {
                     if let Some(slot) = slot {
-                        outputs.push((slot, NormalizedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                        outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
                     }
                 }
             }

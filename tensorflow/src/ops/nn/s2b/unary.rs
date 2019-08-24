@@ -94,7 +94,7 @@ impl TypedOp for SpaceToBatchUnary {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
+        inputs: &[&NormalizedTensorInfo],
     ) -> TractResult<TVec<NormalizedTensorInfo>> {
         Ok(tvec!(NormalizedTensorInfo::dt_shape(
             inputs[0].datum_type,
@@ -150,7 +150,7 @@ impl TypedOp for BatchToSpaceUnary {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
+        inputs: &[&NormalizedTensorInfo],
     ) -> TractResult<TVec<NormalizedTensorInfo>> {
         Ok(tvec!(NormalizedTensorInfo::dt_shape(
             inputs[0].datum_type,

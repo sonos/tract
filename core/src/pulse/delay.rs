@@ -102,8 +102,8 @@ impl StatefullOp for Delay {
 impl TypedOp for Delay {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*self.output_shape())?))
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.output_shape())?))
     }
 }
 

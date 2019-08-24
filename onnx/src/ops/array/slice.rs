@@ -96,7 +96,7 @@ impl TypedOp for Slice {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
+        inputs: &[&NormalizedTensorInfo],
     ) -> TractResult<TVec<NormalizedTensorInfo>> {
         let mut shape = inputs[0].shape.to_tvec();
         for (ix, (&b, &e)) in self.starts.iter().zip(self.ends.iter()).enumerate() {

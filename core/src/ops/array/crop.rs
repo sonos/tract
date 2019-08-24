@@ -65,8 +65,8 @@ impl TypedOp for Crop {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         for (ix, (b, e)) in self.prune.iter().enumerate() {
             fact.shape.set_dim(ix, fact.shape.dim(ix).clone() - *b - *e)?

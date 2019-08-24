@@ -137,7 +137,7 @@ impl TypedOp for DepthwiseConv2d {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
+        inputs: &[&NormalizedTensorInfo],
     ) -> TractResult<TVec<NormalizedTensorInfo>> {
         let img = self.data_format.shape(inputs[0].shape.to_tvec());
         let ker = &inputs[1].shape;

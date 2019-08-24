@@ -83,8 +83,8 @@ impl<D: DimLike + ToDim> TypedOp for Slice<D> {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         for (axis, b, e) in itertools::izip!(&self.axes, &self.starts, &self.ends) {
             fact.shape.set_dim(*axis, (e.clone() - b).to_dim())?;

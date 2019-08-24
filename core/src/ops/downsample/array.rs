@@ -100,6 +100,7 @@ mod tests {
         stride: usize,
         modulo: usize,
     ) -> TestCaseResult {
+        let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let model = {
             let mut model = InferenceModel::default();
             model.add_source("input", TensorFact::dt_shape(i32::datum_type(), vec![len]))?;
@@ -110,10 +111,13 @@ mod tests {
         };
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let typed = model.into_typed()?;
+        dbg!(&typed);
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
         let expected = SimplePlan::new(&typed)?.run(tvec!(input.clone()))?;
 
+        dbg!("gnagnagna");
         let typed = typed.declutter()?;
+        dbg!(&typed);
         prop_assert!(!typed.node(typed.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let found = SimplePlan::new(&typed)?.run(tvec!(input))?;
         prop_assert_eq!(found, expected);

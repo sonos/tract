@@ -286,10 +286,10 @@ impl TypedOp for Reduce {
     typed_op_as_op!();
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let shape = self.output_shape(&*inputs[0].shape.to_tvec());
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
     }
 
     fn pulsify(

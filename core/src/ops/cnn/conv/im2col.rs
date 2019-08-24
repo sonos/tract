@@ -107,9 +107,9 @@ impl<T: Copy + Datum + Mul + Zero> TypedOp for Im2Col<T> {
 
     fn output_facts(
         &self,
-        _inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
+        _inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
     }
 }
 

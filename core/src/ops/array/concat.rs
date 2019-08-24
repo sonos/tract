@@ -49,7 +49,7 @@ impl Op for Concat {
 
             let mut slices: TVec<NormConcatSlice> = tvec![];
             for input in inputs.iter() {
-                match input.konst.as_ref() {
+                match &input.konst {
                     Some(c_input) => {
                         slices.push(NormConcatSlice::Const(
                             c_input.cast_to_dt(super_type)?.into_owned(),
@@ -139,8 +139,8 @@ impl TypedOp for Concat {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
         let mut fact = inputs[0].clone();
         let dim = inputs.iter().map(|f| f.shape.dim(axis)).sum::<TDim>();
@@ -252,8 +252,8 @@ impl TypedOp for NormConcat {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
             + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();
@@ -449,8 +449,8 @@ impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }
@@ -581,8 +581,8 @@ impl<T:Datum> TypedOp for FixedConcat<T> {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
             + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();

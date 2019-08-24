@@ -84,9 +84,9 @@ impl TypedOp for Shape {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             self.dt,
             [inputs[0].shape.rank()].as_ref()
         )?))

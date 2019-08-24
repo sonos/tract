@@ -39,4 +39,14 @@ impl InferenceRulesOp for UnimplementedOp {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        _node: &InferenceNode,
+        _target: &mut TypedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        bail!("Operator can not be made a TypedOp.")
+    }
 }

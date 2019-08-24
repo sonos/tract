@@ -4,25 +4,6 @@ use ndarray::*;
 #[derive(Debug, Clone, new, Default)]
 pub struct Tile;
 
-impl Tile {
-    fn eval_t<T: Datum + Copy>(
-        &self,
-        data: &Arc<Tensor>,
-        indices: &[usize],
-    ) -> TractResult<Arc<Tensor>> {
-        let data = data.to_array_view::<T>()?;
-        let output_shape: TVec<usize> =
-            data.shape().iter().zip(indices.iter()).map(|(&d, &m)| d * m as usize).collect();
-        let output = ndarray::ArrayD::from_shape_fn(&*output_shape, |coords| {
-            let coords: Vec<usize> =
-                coords.slice().iter().zip(data.shape().iter()).map(|(&x, &d)| x % d).collect();
-            data[&*coords]
-        });
-
-        Ok(output.into_arc_tensor())
-    }
-}
-
 impl Op for Tile {
     fn name(&self) -> Cow<str> {
         "Tile".into()
@@ -38,7 +19,7 @@ impl StatelessOp for Tile {
             .iter()
             .map(|&x| x as usize)
             .collect();
-        Ok(tvec!(dispatch_numbers!(Self::eval_t(data.datum_type())(&self, &data, &*multipliers))?))
+        TypedTile::new(multipliers).eval(tvec!(data))
     }
 }
 
@@ -73,7 +54,59 @@ impl InferenceRulesOp for Tile {
         Ok(())
     }
 
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref mult) = source.outlet_fact(node.inputs[1])?.value.concretize() {
+            let mult: TVec<usize> =
+                mult.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
+            let op = super::IntoShape::new(mult);
+            let facts = op.output_facts(&[target.outlet_fact(mapping[&node.inputs[0]])?])?;
+            let id = target.add_node(&*node.name, op, facts)?;
+            return Ok(tvec!(OutletId::new(id, 0)))
+        }
+        bail!("shape input is variable")
+    }
 
     inference_op_as_op!();
 }
 
+#[derive(Debug, Clone, new, Default)]
+pub struct TypedTile {
+    multipliers: TVec<usize>,
+}
+
+impl TypedTile {
+    fn eval_t<T: Datum>(
+        &self,
+        data: &Arc<Tensor>,
+    ) -> TractResult<Arc<Tensor>> {
+        let data = data.to_array_view::<T>()?;
+        let output_shape: TVec<usize> =
+            data.shape().iter().zip(self.multipliers.iter()).map(|(&d, &m)| d * m as usize).collect();
+        let output = ndarray::ArrayD::from_shape_fn(&*output_shape, |coords| {
+            let coords: TVec<usize> =
+                coords.slice().iter().zip(data.shape().iter()).map(|(&x, &d)| x % d).collect();
+            data[&*coords].clone()
+        });
+
+        Ok(output.into_arc_tensor())
+    }
+}
+
+impl Op for TypedTile {
+    fn name(&self) -> Cow<str> {
+        "TypedTile".into()
+    }
+}
+
+impl StatelessOp for TypedTile {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let result = dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, &inputs[0]))?;
+        Ok(tvec!(result))
+    }
+}

@@ -1,14 +1,77 @@
 use crate::internal::*;
+use crate::pulse::PulsedTensorFact;
+use crate::ops::dummy::Dummy;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display};
 
 pub use super::{InletId, ModelImpl, Node, OutletId};
 
+pub trait ModelSpecialOps<TI, O>
+where
+    TI: TensorInfo + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    /// Adds a source op to the network.
+    ///
+    /// The model will assume this is an input.
+    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize>;
+
+    fn create_dummy(&self) -> O;
+}
+
+impl ModelSpecialOps<TensorFact, Box<dyn InferenceOp>> for InferenceModel {
+    fn add_source(&mut self, name: impl Into<String>, fact: TensorFact) -> TractResult<usize> {
+        let id = self.add_node(name, crate::ops::source::Source::new(), tvec!(fact))?;
+        self.inputs.push(OutletId::new(id, 0));
+        Ok(id)
+    }
+
+    fn create_dummy(&self) -> Box<dyn InferenceOp> {
+        Box::new(Dummy::new())
+    }
+}
+
+impl ModelSpecialOps<TypedTensorInfo, Box<dyn TypedOp>> for TypedModel {
+    fn add_source(&mut self, name: impl Into<String>, fact: TypedTensorInfo) -> TractResult<usize> {
+        let id =
+            self.add_node(name, crate::ops::source::TypedSource::new(fact.clone()), tvec!(fact))?;
+        self.inputs.push(OutletId::new(id, 0));
+        Ok(id)
+    }
+
+    fn create_dummy(&self) -> Box<dyn TypedOp> {
+        Box::new(Dummy::new())
+    }
+}
+
+impl ModelSpecialOps<PulsedTensorFact, Box<dyn TypedOp>> for PulsedModel {
+    fn add_source(
+        &mut self,
+        name: impl Into<String>,
+        fact: PulsedTensorFact,
+    ) -> TractResult<usize> {
+        let id = self.add_node(
+            name,
+            crate::ops::source::TypedSource::new(TypedTensorInfo::dt_shape(
+                fact.dt,
+                &*fact.shape,
+            )?),
+            tvec!(fact),
+        )?;
+        self.inputs.push(OutletId::new(id, 0));
+        Ok(id)
+    }
+
+    fn create_dummy(&self) -> Box<dyn TypedOp> {
+        Box::new(Dummy::new())
+    }
+}
+
 /// Extensions on ModelImpl to explore and build graph models more easily.
 pub trait ModelDsl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + From<crate::ops::source::Source> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     /// Find the lone precursor of a node, if applicable.
     fn single_prec(&self, id: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
@@ -21,10 +84,6 @@ where
     /// operation, if applicable.
     fn single_succ_at(&self, id: usize, count: usize) -> TractResult<Option<&BaseNode<TI, O>>>;
 
-    /// Adds a source op to the network.
-    ///
-    /// The model will assume this is an input.
-    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize>;
     /// Chain a node to the latest inserted node.
     ///
     /// * creates a node with name and op
@@ -53,13 +112,8 @@ where
 impl<TI, O> ModelDsl<TI, O> for ModelImpl<TI, O>
 where
     TI: TensorInfo + Clone + 'static,
-    O: Debug + Display + From<crate::ops::source::Source> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    fn add_source(&mut self, name: impl Into<String>, fact: TI) -> TractResult<usize> {
-        let id = self.add_node(name, crate::ops::source::Source::new(Box::new(fact.clone())), tvec!(fact))?;
-        Ok(id)
-    }
-
     fn chain(
         &mut self,
         name: impl Into<String>,
@@ -148,8 +202,14 @@ pub trait ModelDslConst {
 impl<TI: TensorInfo + Clone + 'static, O, E> ModelDslConst for ModelImpl<TI, O>
 where
     TractError: From<E>,
-    TI: TensorInfo + Clone + 'static + TryFrom<TensorFact, Error=E>,
-    O: Debug + Display + From<crate::ops::konst::Const> + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    TI: TensorInfo + Clone + 'static + TryFrom<TensorFact, Error = E>,
+    O: Debug
+        + Display
+        + From<crate::ops::konst::Const>
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static,
 {
     fn add_const(&mut self, name: impl Into<String>, v: impl IntoArcTensor) -> TractResult<usize> {
         let v = v.into_arc_tensor();

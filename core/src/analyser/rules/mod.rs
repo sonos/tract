@@ -50,7 +50,7 @@ pub trait InferenceRulesOp {
         &self,
         source: &InferenceModel,
         node: &InferenceNode,
-        target: &mut NormalizedModel,
+        target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>>;
 }
@@ -94,7 +94,7 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
         &self,
         source: &InferenceModel,
         node: &InferenceNode,
-        target: &mut NormalizedModel,
+        target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         self.to_typed(source, node, target, mapping)

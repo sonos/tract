@@ -245,7 +245,7 @@ impl InferenceModel {
     pub fn into_typed(mut self) -> TractResult<TypedModel> {
         self.analyse(false)?;
         let m = self.incorporate()?;
-        compact::translate(&m)
+        Ok(compact::translate(&m, &())?.0)
     }
 
     /// Attempt full analyse, decluttering and conversion to NormalizedModel.

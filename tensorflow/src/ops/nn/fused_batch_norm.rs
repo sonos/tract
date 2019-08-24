@@ -77,7 +77,7 @@ impl InferenceRulesOp for FusedBatchNorm {
 impl TypedOp for FusedBatchNorm {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&NormalizedTensorInfo]) -> TractResult<TVec<NormalizedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }

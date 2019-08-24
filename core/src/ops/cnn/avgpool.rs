@@ -14,7 +14,10 @@ pub struct AvgPool {
 }
 
 impl AvgPool {
-    fn to_fixed<T: Datum + Float + Sum>(&self, input_shape: &[usize]) -> TractResult<Box<dyn TypedOp>>
+    fn to_fixed<T: Datum + Float + Sum>(
+        &self,
+        input_shape: &[usize],
+    ) -> TractResult<Box<dyn TypedOp>>
     where
         usize: AsPrimitive<T>,
     {
@@ -74,7 +77,7 @@ impl InferenceRulesOp for AvgPool {
 impl TypedOp for AvgPool {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         self.pool_spec.output_facts(inputs)
     }
 
@@ -151,14 +154,13 @@ where
     }
 }
 
-
 impl<T: Datum + Float + Sum> TypedOp for AvgPoolFixed<T>
 where
     usize: AsPrimitive<T>,
 {
     typed_op_as_op!();
 
-    fn output_facts(&self, _inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
     }
 }

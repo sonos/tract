@@ -31,10 +31,10 @@ macro_rules! to_typed {
             &self,
             source: &InferenceModel,
             node: &InferenceNode,
-            target: &mut NormalizedModel,
+            target: &mut TypedModel,
             mapping: &HashMap<OutletId, OutletId>,
         ) -> TractResult<TVec<OutletId>> {
-            crate::ops::trivial_inference_op_to_typed(self, source, node, target, mapping)
+            crate::ops::trivial_inference_op_to_typed(Box::new(self.clone()), source, node, target, mapping)
         }
     }
 }
@@ -106,10 +106,10 @@ macro_rules! element_map {
         impl TypedOp for $Name {
             typed_op_as_op!();
 
-            fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+            fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
                 let dt = inputs[0].datum_type;
                 $(if dt == <$type>::datum_type() {
-                    return Ok(tvec!(NormalizedTensorInfo::shape::<$to,_,_>(inputs[0].shape.clone())?));
+                    return Ok(tvec!(TypedTensorInfo::shape::<$to,_,_>(inputs[0].shape.clone())?));
                 })*
                 bail!("{} not covering {:?}", stringify!($Name), dt)
             }
@@ -187,7 +187,7 @@ macro_rules! element_map_with_params {
         impl TypedOp for $Name {
             typed_op_as_op!();
 
-            fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+            fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
                 Ok(tvec!(inputs[0].clone()))
             }
         }
@@ -287,7 +287,7 @@ macro_rules! element_nary {
         impl TypedOp for $Name {
             typed_op_as_op!();
 
-            fn output_facts(&self, inputs: TVec<&NormalizedTensorInfo>) -> TractResult<TVec<NormalizedTensorInfo>> {
+            fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
                 return Ok(tvec!(inputs[0].clone()))
             }
 

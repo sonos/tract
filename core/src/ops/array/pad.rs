@@ -123,8 +123,8 @@ impl TypedOp for Pad {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let mut fact = inputs[0].clone();
         for (ix, (b, e)) in self.pads.iter().enumerate() {
             fact.shape.set_dim(ix, fact.shape.dim(ix).clone() + *b + *e)?
@@ -314,8 +314,8 @@ impl<T: Datum + Copy> TypedOp for PulsePad<T> {
 
     fn output_facts(
         &self,
-        inputs: TVec<&NormalizedTensorInfo>,
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }
