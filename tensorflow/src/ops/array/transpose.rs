@@ -85,4 +85,31 @@ impl InferenceRulesOp for Transpose {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref axes) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
+            let axes: Vec<usize> = axes
+                .cast_to::<i32>()?
+                .as_slice::<i32>()?
+                .iter()
+                .map(|&ax| ax as usize)
+                .collect();
+            let op = tract_core::ops::array::PermuteAxes::new(Some(axes));
+            tract_core::ops::trivial_inference_op_to_typed(
+                Box::new(op),
+                source,
+                node,
+                target,
+                mapping,
+            )
+        } else {
+            bail!("Nees axes to be const")
+        }
+    }
 }

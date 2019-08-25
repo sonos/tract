@@ -30,8 +30,6 @@ impl Op for Renorm {
     ) -> TractResult<Vec<TranslationInvariant>> {
         Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for Renorm {
@@ -64,12 +62,13 @@ impl InferenceRulesOp for Renorm {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for Renorm {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&NormalizedTensorInfo]) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
 

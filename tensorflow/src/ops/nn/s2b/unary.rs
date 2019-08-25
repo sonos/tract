@@ -59,8 +59,6 @@ impl Op for SpaceToBatchUnary {
         }
         Ok(None)
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for SpaceToBatchUnary {
@@ -94,9 +92,9 @@ impl TypedOp for SpaceToBatchUnary {
 
     fn output_facts(
         &self,
-        inputs: &[&NormalizedTensorInfo],
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
             &*self.batch_shape
         )?))
@@ -116,8 +114,6 @@ impl Op for BatchToSpaceUnary {
     fn name(&self) -> Cow<str> {
         "BatchToSpaceUnary".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for BatchToSpaceUnary {
@@ -150,9 +146,9 @@ impl TypedOp for BatchToSpaceUnary {
 
     fn output_facts(
         &self,
-        inputs: &[&NormalizedTensorInfo],
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
             &*self.space_shape
         )?))

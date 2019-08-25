@@ -91,14 +91,15 @@ impl InferenceRulesOp for GatherNd {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for GatherNd {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&NormalizedTensorInfo]) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         let shape = self.compute_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?;
-        Ok(tvec!(NormalizedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
     }
 }
 

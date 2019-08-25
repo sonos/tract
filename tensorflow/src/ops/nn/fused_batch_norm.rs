@@ -21,8 +21,6 @@ impl Op for FusedBatchNorm {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for FusedBatchNorm {
@@ -72,12 +70,13 @@ impl InferenceRulesOp for FusedBatchNorm {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for FusedBatchNorm {
     typed_op_as_op!();
 
-    fn output_facts(&self, inputs: &[&NormalizedTensorInfo]) -> TractResult<TVec<NormalizedTensorInfo>> {
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(inputs[0].clone()))
     }
 }

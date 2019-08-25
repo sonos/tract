@@ -34,7 +34,7 @@ where
         let outlets = node
             .op
             .translate(&source, node, &mut target, &mapping, ctx)
-            .chain_err(|| format!("Translating {:?}", node))?;
+            .chain_err(|| format!("Translating {}", node))?;
         for (ix, outlet) in outlets.into_iter().enumerate() {
             mapping.insert(OutletId::new(node.id, ix), outlet);
         }

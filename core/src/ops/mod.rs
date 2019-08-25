@@ -385,7 +385,15 @@ impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Bo
         mapping: &HashMap<OutletId, OutletId>,
         _ctx: &(),
     ) -> TractResult<TVec<OutletId>> {
-        self.to_typed(source, node, target, mapping)
+        if node.outputs.iter().all(|o| o.fact.value.concretize().is_some()) {
+            node.outputs.iter().enumerate().map(|(ix, o)| {
+                let value = o.fact.value.concretize().unwrap();
+                let id = target.add_const(format!("{}-{}", &*node.name, ix), value)?;
+                Ok(OutletId::new(id, 0))
+            }).collect()
+        } else {
+            self.to_typed(source, node, target, mapping)
+        }
     }
 }
 

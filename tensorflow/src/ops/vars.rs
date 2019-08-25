@@ -84,6 +84,16 @@ impl InferenceRulesOp for VariableV2 {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for VariableV2 {
+    typed_op_as_op!();
+
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(self.dt, &*self.shape)?))
+    }
+
 }
 
 // need some dummy state to make sure Assign is a StatefullOp, and will not be
