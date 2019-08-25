@@ -26,8 +26,6 @@ impl Op for BlockLSTM {
     fn name(&self) -> Cow<str> {
         "tf.BlockLSTM".into()
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for BlockLSTM {
@@ -177,6 +175,7 @@ impl InferenceRulesOp for BlockLSTM {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for BlockLSTM {
@@ -184,8 +183,8 @@ impl TypedOp for BlockLSTM {
 
     fn output_facts(
         &self,
-        inputs: &[&NormalizedTensorInfo],
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(std::iter::repeat(inputs[1].clone()).take(7).collect())
     }
 }

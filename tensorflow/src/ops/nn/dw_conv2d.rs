@@ -79,8 +79,6 @@ impl Op for DepthwiseConv2d {
         let conv = self.to_core(&*input_shape, kernel_shape)?;
         Ok(Some(TypedModelPatch::replace_single_op(model, node, &*node.inputs, conv)?))
     }
-
-    to_typed!();
 }
 
 impl StatelessOp for DepthwiseConv2d {
@@ -130,6 +128,7 @@ impl InferenceRulesOp for DepthwiseConv2d {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for DepthwiseConv2d {
@@ -137,8 +136,8 @@ impl TypedOp for DepthwiseConv2d {
 
     fn output_facts(
         &self,
-        inputs: &[&NormalizedTensorInfo],
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let img = self.data_format.shape(inputs[0].shape.to_tvec());
         let ker = &inputs[1].shape;
         if ker.iter().all(|d| d.to_integer().is_ok()) {
@@ -154,7 +153,7 @@ impl TypedOp for DepthwiseConv2d {
                 (ker[2] * ker[3]).into(),
                 &[output_shape[0].output.clone(), output_shape[1].output.clone()],
             );
-            Ok(tvec!(NormalizedTensorInfo::dt_shape(f32::datum_type(), &*shape.shape)?))
+            Ok(tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), &*shape.shape)?))
         } else {
             bail!("Can not stream filters")
         }

@@ -1,7 +1,7 @@
+use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 use ndarray::prelude::*;
 use tract_core::internal::*;
-use crate::tfpb::node_def::NodeDef;
-use crate::model::ParsingContext;
 
 pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let n = pb.get_attr_int("N")?;
@@ -77,4 +77,30 @@ impl<T: Copy + Datum> InferenceRulesOp for ConcatV2<T> {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref axis) =
+            target.outlet_fact(mapping[&node.inputs[node.inputs.len() - 1]])?.konst
+        {
+            use std::convert::TryInto;
+            let axis = *axis.to_scalar::<i32>()?;
+            let id = target.add_node(
+                &*node.name,
+                tract_core::ops::array::Concat::new(axis as i64),
+                tvec!(node.outputs[0].fact.clone().try_into()?),
+            )?;
+            for (ix, input) in node.inputs[..node.inputs.len() - 1].iter().enumerate() {
+                target.add_edge(mapping[input], InletId::new(id, ix))?;
+            }
+            Ok(tvec!(OutletId::new(id, 0)))
+        } else {
+            bail!("Need axes to be const")
+        }
+    }
 }
