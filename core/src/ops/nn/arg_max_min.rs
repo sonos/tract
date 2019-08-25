@@ -90,6 +90,6 @@ impl TypedOp for ArgMaxMin {
         } else {
             shape.remove(self.axis);
         }
-        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+        Ok(tvec!(TypedTensorInfo::dt_shape(i64::datum_type(), &*shape)?))
     }
 }

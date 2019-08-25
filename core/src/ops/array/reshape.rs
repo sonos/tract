@@ -86,6 +86,7 @@ impl InferenceRulesOp for Reshape {
             let op = super::IntoShape::new(shape);
             let facts = op.output_facts(&[target.outlet_fact(mapping[&node.inputs[0]])?])?;
             let id = target.add_node(&*node.name, op, facts)?;
+            target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
             return Ok(tvec!(OutletId::new(id, 0)))
         }
         bail!("shape input is variable")

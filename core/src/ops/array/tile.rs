@@ -64,9 +64,11 @@ impl InferenceRulesOp for Tile {
         if let Some(ref mult) = source.outlet_fact(node.inputs[1])?.value.concretize() {
             let mult: TVec<usize> =
                 mult.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
-            let op = super::IntoShape::new(mult);
-            let facts = op.output_facts(&[target.outlet_fact(mapping[&node.inputs[0]])?])?;
+            let input = mapping[&node.inputs[0]];
+            let op = TypedTile::new(mult);
+            let facts = op.output_facts(&[target.outlet_fact(input)?])?;
             let id = target.add_node(&*node.name, op, facts)?;
+            target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
             return Ok(tvec!(OutletId::new(id, 0)))
         }
         bail!("shape input is variable")
@@ -108,5 +110,18 @@ impl StatelessOp for TypedTile {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let result = dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, &inputs[0]))?;
         Ok(tvec!(result))
+    }
+}
+
+impl TypedOp for TypedTile {
+
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let shape = inputs[0].shape.iter().zip(self.multipliers.iter()).map(|(a,&b)| a.clone()*b).collect::<TVec<_>>();
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
     }
 }

@@ -214,6 +214,9 @@ impl Tensor {
         if self.is_null() != other.is_null() {
             return Ok(())
         }
+        if self.shape() != other.shape() {
+            bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
+        }
         if approx {
             let atol = 5e-4;
             let rtol = 1e-4;

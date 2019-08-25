@@ -34,7 +34,7 @@ macro_rules! to_typed {
             target: &mut TypedModel,
             mapping: &HashMap<OutletId, OutletId>,
         ) -> TractResult<TVec<OutletId>> {
-            crate::ops::trivial_inference_op_to_typed(Box::new(self.clone()), source, node, target, mapping)
+            $crate::ops::trivial_inference_op_to_typed(Box::new(self.clone()), source, node, target, mapping)
         }
     }
 }
