@@ -38,11 +38,13 @@ where
         for (ix, outlet) in outlets.into_iter().enumerate() {
             mapping.insert(OutletId::new(node.id, ix), outlet);
         }
-        trace!("Target is now {}", target.nodes().len());
+        trace!("Target has now {} nodes", target.nodes().len());
+        trace!("Mapping: {:?}", mapping);
     }
     // maintaining order of i/o interface
     target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
     target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
+    trace!("Typed: {:#?}", target);
     Ok((target, mapping))
 }
 

@@ -117,7 +117,7 @@ where
     fn translate(
         &self,
         source: &ModelImpl<TI1, O1>,
-        node: &BaseNode<TI1,O1>,
+        node: &BaseNode<TI1, O1>,
         target: &mut ModelImpl<TI2, O2>,
         mapping: &HashMap<OutletId, OutletId>,
         ctx: &Ctx,
@@ -232,8 +232,14 @@ pub trait TypedOp:
     }
 }
 
-impl crate::ops::Translate<NormalizedTensorInfo, Box<dyn TypedOp>, crate::pulse::PulsedTensorFact, Box<dyn TypedOp>, usize>
-    for Box<dyn TypedOp>
+impl
+    crate::ops::Translate<
+        NormalizedTensorInfo,
+        Box<dyn TypedOp>,
+        crate::pulse::PulsedTensorFact,
+        Box<dyn TypedOp>,
+        usize,
+    > for Box<dyn TypedOp>
 {
     fn translate(
         &self,
@@ -241,7 +247,7 @@ impl crate::ops::Translate<NormalizedTensorInfo, Box<dyn TypedOp>, crate::pulse:
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        ctx: &usize
+        ctx: &usize,
     ) -> TractResult<TVec<OutletId>> {
         self.pulsify(source, node, target, mapping, *ctx)
     }
@@ -343,17 +349,30 @@ pub fn trivial_inference_op_to_typed(
 ) -> TractResult<TVec<OutletId>> {
     let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
     let output_facts = {
-        let input_facts = inputs.iter().map(|&i| target.outlet_fact(i)).collect::<TractResult<TVec<&TypedTensorInfo>>>()?;
+        let input_facts = inputs
+            .iter()
+            .map(|&i| target.outlet_fact(i))
+            .collect::<TractResult<TVec<&TypedTensorInfo>>>()?;
         op.output_facts(&input_facts)?
     };
     let len = output_facts.len();
+    #[cfg(debug_assertions)]
+    for i in 0..len {
+        if let Err(_) = output_facts[i].to_tensor_fact().unify(&node.outputs[i].fact) {
+            bail!(
+                "Output facts translation check failed: slot #{} inference op says: {:?} typed op says: {:?}",
+                i,
+                node.outputs[i].fact,
+                output_facts[i]
+            );
+        }
+    }
     let id = target.add_node(&*node.name, op, output_facts)?;
     for (ix, &i) in inputs.iter().enumerate() {
         target.add_edge(i, InletId::new(id, ix))?;
     }
     Ok((0..len).map(|ix| OutletId::new(id, ix)).collect())
 }
-
 
 impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Box<dyn TypedOp>, ()>
     for Box<dyn InferenceOp>
@@ -364,7 +383,7 @@ impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Bo
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        _ctx: &()
+        _ctx: &(),
     ) -> TractResult<TVec<OutletId>> {
         self.to_typed(source, node, target, mapping)
     }

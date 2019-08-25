@@ -46,13 +46,17 @@ pub trait InferenceRulesOp {
 
     fn as_op(&self) -> &dyn Op;
     fn as_op_mut(&mut self) -> &mut dyn Op;
+
+    #[allow(unused_variables)]
     fn to_typed(
         &self,
         source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>>;
+    ) -> TractResult<TVec<OutletId>> {
+        bail!("Node {} can not be typed", node)
+    }
 }
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {

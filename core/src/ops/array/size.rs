@@ -40,6 +40,7 @@ impl InferenceRulesOp for Size {
     ) -> InferenceResult {
         check_input_arity(&inputs, 1)?;
         check_output_arity(&outputs, 1)?;
+        s.equals(&outputs[0].datum_type, self.dt)?;
         s.equals(&outputs[0].rank, 0)?;
         Ok(())
     }
@@ -51,13 +52,7 @@ impl InferenceRulesOp for Size {
 impl TypedOp for Size {
     typed_op_as_op!();
 
-    fn output_facts(
-        &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
-            inputs[0].datum_type,
-            [inputs[0].shape.rank()].as_ref(),
-        )?))
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(self.dt, [0usize; 0].as_ref())?))
     }
 }

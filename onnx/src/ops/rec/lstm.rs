@@ -78,8 +78,6 @@ impl Op for LSTM {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
-
-    to_typed!();
 }
 
 impl InferenceRulesOp for LSTM {
@@ -165,6 +163,7 @@ impl InferenceRulesOp for LSTM {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 impl TypedOp for LSTM {
@@ -172,8 +171,8 @@ impl TypedOp for LSTM {
 
     fn output_facts(
         &self,
-        inputs: &[&NormalizedTensorInfo],
-    ) -> TractResult<TVec<NormalizedTensorInfo>> {
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
         let dt = inputs[0].datum_type;
         let seq_length = inputs[0].shape.dim(0);
         let num_directions = inputs[1].shape.dim(0);
@@ -181,20 +180,20 @@ impl TypedOp for LSTM {
         let hidden_size = inputs[2].shape.dim(2);
         let mut outputs = tvec!();
         if let Some(_) = self.optional_y_output {
-            outputs.push(NormalizedTensorInfo::dt_shape(
+            outputs.push(TypedTensorInfo::dt_shape(
                 dt,
                 [seq_length, num_directions.clone(), batch_size.clone(), hidden_size.clone()]
                     .as_ref(),
             )?)
         }
         if let Some(_) = self.optional_y_h_output {
-            outputs.push(NormalizedTensorInfo::dt_shape(
+            outputs.push(TypedTensorInfo::dt_shape(
                 dt,
                 [num_directions.clone(), batch_size.clone(), hidden_size.clone()].as_ref(),
             )?)
         }
         if let Some(_) = self.optional_y_c_output {
-            outputs.push(NormalizedTensorInfo::dt_shape(
+            outputs.push(TypedTensorInfo::dt_shape(
                 dt,
                 [num_directions, batch_size, hidden_size].as_ref(),
             )?)
