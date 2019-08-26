@@ -1,23 +1,17 @@
+use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 use ndarray::prelude::*;
 use tract_core::internal::*;
-use crate::tfpb::node_def::NodeDef;
-use crate::model::ParsingContext;
 
 pub fn build(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let begin_mask = pb.get_attr_opt_int("begin_mask")?.unwrap_or(0);
     let end_mask = pb.get_attr_opt_int("end_mask")?.unwrap_or(0);
     let shrink_axis_mask = pb.get_attr_opt_int("shrink_axis_mask")?.unwrap_or(0);
-    let datum_type = pb.get_attr_datum_type("T")?;
-    let base = BaseStridedSlice::new(begin_mask, end_mask, shrink_axis_mask);
-    if datum_type == DatumType::I32 {
-        Ok(Box::new(StridedSliceD::new(base)))
-    } else {
-        Ok(boxed_new!(StridedSlice(datum_type)(base)))
-    }
+    Ok(Box::new(StridedSlice::new(begin_mask, end_mask, shrink_axis_mask)))
 }
 
 #[derive(Debug, Default, Clone, new)]
-pub struct BaseStridedSlice {
+pub struct StridedSlice {
     begin_mask: i64,
     end_mask: i64,
     shrink_axis_mask: i64,
@@ -33,7 +27,8 @@ struct Dim {
 
 impl Dim {
     fn len(&self) -> TractResult<usize> {
-        Ok((((self.stride.abs() as i32 - 1) + (self.end.clone() - &self.begin).to_integer()?.abs() as i32)
+        Ok((((self.stride.abs() as i32 - 1)
+            + (self.end.clone() - &self.begin).to_integer()?.abs() as i32)
             / self.stride.abs()) as usize)
     }
 
@@ -48,7 +43,7 @@ impl Dim {
     }
 }
 
-impl BaseStridedSlice {
+impl StridedSlice {
     fn must_shrink(&self, ix: usize) -> bool {
         self.shrink_axis_mask & (1 << ix) != 0
     }
@@ -79,8 +74,10 @@ impl BaseStridedSlice {
                 bound.eval(100_000_000).unwrap() < 0 // FIXME
             }
         }
-        let b: TDim = if must_add_to_len(&begin[ix]) { dim.clone() + &begin[ix] } else { begin[ix].clone() };
-        let e: TDim = if must_add_to_len(&end[ix]) { dim.clone() + &end[ix] } else { end[ix].clone() };
+        let b: TDim =
+            if must_add_to_len(&begin[ix]) { dim.clone() + &begin[ix] } else { begin[ix].clone() };
+        let e: TDim =
+            if must_add_to_len(&end[ix]) { dim.clone() + &end[ix] } else { end[ix].clone() };
 
         // deal with shrinking
         if self.must_shrink(ix) {
@@ -144,10 +141,7 @@ impl BaseStridedSlice {
         Ok((bounds, mid_shape, end_shape))
     }
 
-    fn eval<T: Datum>(
-        &self,
-        mut inputs: TVec<Arc<Tensor>>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval_t<T: Datum>(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let (input, begin, end, strides) = args_4!(inputs);
         let (bounds, mid_shape, end_shape) = self.prepare(input.shape(), begin, end, strides)?;
         let input = input.to_array_view::<T>()?;
@@ -166,7 +160,22 @@ impl BaseStridedSlice {
         let output = output.into_shape(end_shape)?;
         Ok(tvec![output.into_arc_tensor()])
     }
+}
 
+impl StatelessOp for StridedSlice {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let dt = inputs[0].datum_type();
+        dispatch_datum!(Self::eval_t(dt)(self, inputs))
+    }
+}
+
+impl Op for StridedSlice {
+    fn name(&self) -> Cow<str> {
+        "tf.StridedSliceD".into()
+    }
+}
+
+impl InferenceRulesOp for StridedSlice {
     fn rules<'r, 'p: 'r, 's: 'r>(
         &'s self,
         s: &mut Solver<'r>,
@@ -203,112 +212,82 @@ impl BaseStridedSlice {
             },
         )
     }
-}
 
-#[derive(Debug, Default, Clone, new)]
-pub struct StridedSlice<T: Copy + Datum> {
-    base: BaseStridedSlice,
-    _phantom: PhantomData<T>,
-}
+    inference_op_as_op!();
 
-impl<T: Copy + Datum> StatelessOp for StridedSlice<T> {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.base.eval::<T>(inputs)
-    }
-}
-
-impl<T: Copy + Datum> Op for StridedSlice<T> {
-    fn name(&self) -> Cow<str> {
-        "tf.StridedSlice".into()
-    }
-
-    fn declutter(
+    fn to_typed(
         &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let mut inputs = model.node_input_facts(node.id)?;
-        let (input, begin, end, strides) = args_4!(inputs);
-        if let (Some(ref begin), Some(ref end), Some(ref strides)) =
-            (begin.konst.as_ref(), end.konst.as_ref(), strides.konst.as_ref())
-        {
-            if strides.to_array_view::<i32>()?.iter().any(|&s| s != 1) {
-                info!("Failed to unarize StridedSlices because of strides");
-                return Ok(None);
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let (Some(ref begin), Some(ref end), Some(ref stride)) = (
+            target.outlet_fact(mapping[&node.inputs[1]])?.konst.clone(),
+            target.outlet_fact(mapping[&node.inputs[2]])?.konst.clone(),
+            target.outlet_fact(mapping[&node.inputs[3]])?.konst.clone(),
+        ) {
+            let casted_begin = begin.cast_to::<TDim>()?;
+            let begin = casted_begin.to_array_view::<TDim>()?.into_dimensionality()?;
+            let casted_end = end.cast_to::<TDim>()?;
+            let end = casted_end.to_array_view::<TDim>()?.into_dimensionality()?;
+            let stride = stride.to_array_view::<i32>()?.into_dimensionality()?;
+            if stride.iter().any(|&s| s < 0) {
+                bail!("FIXME: negative stride are not supported by core");
             }
-            let begin = begin.cast_to::<TDim>()?;
-            let begin_view = begin.to_array_view::<TDim>()?.into_dimensionality()?;
-            let end = end.cast_to::<TDim>()?;
-            let end_view = end.to_array_view::<TDim>()?.into_dimensionality()?;
-            let strides = strides.cast_to::<i32>()?;
-            let strides_view = strides.to_array_view::<i32>()?.into_dimensionality()?;
-            let mut prunes = vec![];
-            for ix in 0..input.shape.rank() {
-                let dim = self.base.prepare_one_dim(
-                    ix,
-                    &input.shape.dim(ix),
-                    &begin_view.view(),
-                    &end_view.view(),
-                    &strides_view.view(),
-                );
-                prunes.push((
-                    dim.begin.to_integer()? as usize,
-                    (input.shape.dim(ix) - dim.end).to_integer()? as usize,
-                ));
+            let mut wire = mapping[&node.inputs[0]];
+            let input = target.outlet_fact(wire)?.clone();
+            let mut slice_axis = vec![];
+            let mut slice_begin = vec![];
+            let mut slice_end = vec![];
+            for (ix, d) in input.shape.iter().enumerate() {
+                let preped = self.prepare_one_dim(ix, &d, &begin, &end, &stride);
+                if preped.begin != 0.to_dim() || preped.end != input.shape.dim(ix) {
+                    slice_axis.push(ix);
+                    slice_begin.push(preped.begin);
+                    slice_end.push(preped.end);
+                }
             }
-            let op = ::tract_core::ops::array::Crop::new(prunes);
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            if slice_axis.len() > 0 {
+                wire = target.wire_node(
+                    format!("{}-Slice", node.name),
+                    tract_core::ops::array::Slice::new(slice_axis, slice_begin, slice_end),
+                    [wire].as_ref(),
+                )?[0];
+            }
+            for (ix, d) in input.shape.iter().enumerate() {
+                let preped = self.prepare_one_dim(ix, &d, &begin, &end, &stride);
+                if preped.stride != 1 {
+                    wire = target.wire_node(
+                        format!("{}-Stride-{}", node.name, ix),
+                        tract_core::ops::downsample::Downsample::new(ix, preped.stride as usize, 0),
+                        [wire].as_ref(),
+                    )?[0];
+                }
+            }
+            let shrink = input
+                .shape
+                .iter()
+                .enumerate()
+                .filter(|(ix, d)| {
+                    let preped = self.prepare_one_dim(*ix, &d, &begin, &end, &stride);
+                    preped.shrink
+                })
+                .map(|pair| pair.0)
+                .collect::<Vec<_>>();
+            if shrink.len() > 0 {
+                wire = target.wire_node(
+                    format!("{}-RmDim", node.name),
+                    tract_core::ops::array::RmDims::new(shrink),
+                    [wire].as_ref(),
+                )?[0];
+            }
+            target.rename_node(wire.node, &*node.name)?;
+            Ok(tvec!(wire))
+        } else {
+            bail!("StridedSlice in not typable")
         }
-        Ok(None)
     }
-}
-
-impl<T: Copy + Datum> InferenceRulesOp for StridedSlice<T> {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        self.base.rules(solver, inputs, outputs)
-    }
-
-    inference_op_as_op!();
-}
-
-#[derive(Debug, Default, Clone, new)]
-pub struct StridedSliceD {
-    base: BaseStridedSlice,
-}
-
-impl StatelessOp for StridedSliceD {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let dt = inputs[0].datum_type();
-        match dt {
-            DatumType::TDim => self.base.eval::<TDim>(inputs),
-            DatumType::I32 => self.base.eval::<i32>(inputs),
-            _ => panic!("StridedSliceD only covering i32 and Dim"),
-        }
-    }
-}
-
-impl Op for StridedSliceD {
-    fn name(&self) -> Cow<str> {
-        "tf.StridedSliceD".into()
-    }
-}
-
-impl InferenceRulesOp for StridedSliceD {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        solver: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        self.base.rules(solver, inputs, outputs)
-    }
-
-    inference_op_as_op!();
 }
 
 #[cfg(test)]
@@ -317,7 +296,7 @@ mod tests {
     use super::*;
     use ndarray::*;
 
-    fn eval<I, B, E, S>(op: StridedSlice<i32>, input: I, begin: B, end: E, strides: S) -> Tensor
+    fn eval<I, B, E, S>(op: StridedSlice, input: I, begin: B, end: E, strides: S) -> Tensor
     where
         I: Into<Tensor>,
         B: Into<Tensor>,
@@ -438,7 +417,7 @@ mod tests {
     #[test]
     fn eval_begin_mask_1() {
         let mut op = StridedSlice::default();
-        op.base.begin_mask = 1;
+        op.begin_mask = 1;
         assert_eq!(
             eval(op, tensor1(&[0, 1]), tensor1(&[1]), tensor1(&[1]), tensor1(&[1])),
             Tensor::from(tensor1(&[0]))
@@ -448,7 +427,7 @@ mod tests {
     #[test]
     fn eval_shrink_1() {
         let mut op = StridedSlice::default();
-        op.base.shrink_axis_mask = 1;
+        op.shrink_axis_mask = 1;
         assert_eq!(
             eval(op, arr2(&[[0]]), tensor1(&[0, 0]), tensor1(&[0, 0]), tensor1(&[1, 1])),
             tensor1::<i32>(&[])
@@ -458,7 +437,7 @@ mod tests {
     #[test]
     fn eval_shrink_to_scalar() {
         let mut op = StridedSlice::default();
-        op.base.shrink_axis_mask = 1;
+        op.shrink_axis_mask = 1;
         assert_eq!(
             eval(op, tensor1(&[0]), tensor1(&[0]), tensor1(&[0]), tensor1(&[1])),
             tensor0::<i32>(0)
@@ -467,7 +446,7 @@ mod tests {
 
     #[test]
     fn inference_1() {
-        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
+        let mut op = StridedSlice::new(5, 7, 0);
         let input = TensorFact::default().with_datum_type(DatumType::F32);
         let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
@@ -493,7 +472,7 @@ mod tests {
 
     #[test]
     fn inference_2() {
-        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(1, 1, 2));
+        let mut op = StridedSlice::new(1, 1, 2);
         let input = TensorFact::default().with_datum_type(DatumType::F32);
         let begin = TensorFact::from(tensor1(&[0i32, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 1]));
@@ -519,7 +498,7 @@ mod tests {
 
     #[test]
     fn inference_3() {
-        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
+        let mut op = StridedSlice::new(5, 7, 0);
         let input = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
         let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 0, 0]));
@@ -537,7 +516,7 @@ mod tests {
 
     #[test]
     fn inference_4() {
-        let mut op = StridedSlice::<f32>::new(BaseStridedSlice::new(5, 7, 0));
+        let mut op = StridedSlice::new(5, 7, 0);
         let input = TensorFact::dt_shape(DatumType::F32, shapefact!(1, (TDim::stream() - 2), 16));
         let begin = TensorFact::from(tensor1(&[0i32, 2, 0]));
         let end = TensorFact::from(tensor1(&[0i32, 0, 0]));

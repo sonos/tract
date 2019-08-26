@@ -6,3 +6,5 @@
 # everyone who runs the test benefits from these saved cases.
 xs 107361357 1164668208 2912097219 625237657 # shrinks to (ref i, ref b, ref e, ref s, ref masks) = (I32([0] shape=[1], strides=[1], layout=C | F (0x3)), I32([0] shape=[1], strides=[1], layout=C | F (0x3)), I32([0] shape=[1], strides=[1], layout=C | F (0x3)), I32([1] shape=[1], strides=[1], layout=C | F (0x3)), (0, 0, 0, 0, 0))
 xs 1302349240 1330784477 4100086807 922471477 # shrinks to (ref i, ref b, ref e, ref s, ref masks) = (I32([[[0, 1, 2]]] shape=[1, 1, 3], strides=[3, 3, 1], layout=C (0x1)), I32([-1, -1, -1] shape=[3], strides=[1], layout=C | F (0x3)), I32([0, 0, -2] shape=[3], strides=[1], layout=C | F (0x3)), I32([1, 1, -1] shape=[3], strides=[1], layout=C | F (0x3)), (0, 3, 0, 0, 1))
+cc 3a723fc42d67eb51993f93b6a4b13e1f21aa974145049fc49a19047d0b868fb6 # shrinks to (ref i, ref b, ref e, ref s, ref masks) = (2xI32 0, 1, 1xI32 1, 1xI32 0, 1xI32 -1, (0, 0, 0, 0, 0))
+cc e5ad056ed488ae866246b3eb77347b7687d1b7cbc86554bf5917ef138f89e401 # shrinks to (ref i, ref b, ref e, ref s, ref masks) = (1x2xI32 0, 1, 2xI32 0, 0, 2xI32 0, 0, 2xI32 1, 1, (0, 2, 0, 0, 0))

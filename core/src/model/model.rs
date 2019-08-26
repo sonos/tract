@@ -204,6 +204,12 @@ where
         Ok(&mut self.nodes[*id])
     }
 
+    pub fn rename_node(&mut self, id: usize, name: &str) -> TractResult<()> {
+        self.node_mut(id).name = name.to_string();
+        self.nodes_by_name.insert(name.to_string(), id);
+        Ok(())
+    }
+
     /// Find a node by its id.
     pub fn node(&self, id: usize) -> &BaseNode<TI, O> {
         &self.nodes[id]
@@ -329,7 +335,7 @@ where
         Ok(self
             .nodes_by_name
             .get(name)
-            .ok_or_else(|| format!("Node not found {}", name))
+            .ok_or_else(|| format!("No node found for name: \"{}\"", name))
             .map(|x| *x)?)
     }
 

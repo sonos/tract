@@ -55,6 +55,7 @@ fn cachedir() -> path::PathBuf {
     ::std::env::var("CACHEDIR").ok().unwrap_or("../../.cached".to_string()).into()
 }
 
+#[ignore]
 #[test]
 fn deepspeech() -> TractResult<()> {
     setup_test_logger();

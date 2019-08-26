@@ -29,12 +29,13 @@ macro_rules! to_typed {
     () => {
         fn to_typed(
             &self,
-            source: &InferenceModel,
+            _source: &InferenceModel,
             node: &InferenceNode,
             target: &mut TypedModel,
             mapping: &HashMap<OutletId, OutletId>,
         ) -> TractResult<TVec<OutletId>> {
-            $crate::ops::trivial_inference_op_to_typed(Box::new(self.clone()), source, node, target, mapping)
+            let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
+            target.wire_node(&*node.name, self.clone(), &*inputs)
         }
     }
 }

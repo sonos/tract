@@ -25,6 +25,7 @@ where
     let mut mapping = HashMap::new();
     for old_id in source.eval_order()? {
         let node = source.node(old_id);
+        debug!("Translating {}", node);
         let outlets = node
             .op
             .translate(&source, node, &mut target, &mapping, ctx)

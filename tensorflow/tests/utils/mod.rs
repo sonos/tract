@@ -4,48 +4,73 @@ fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
 }
 
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum Mode { Infer, Type, Opt }
+
 pub fn compare<S: AsRef<str>>(
     graph: &[u8],
     inputs: Vec<(S, Tensor)>,
     output: &str,
 ) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    compare_optim(graph, &inputs, output, false)?;
-    compare_optim(graph, &inputs, output, true)?;
+    for mode in &[Mode::Infer, Mode::Type, Mode::Opt] {
+        compare_optim(graph, &inputs, output, *mode)?;
+    }
     Ok(())
 }
 
-pub fn compare_optim<S: AsRef<str>>(
+pub fn run_tract<S: AsRef<str>>(
     graph: &[u8],
     inputs: &Vec<(S, Tensor)>,
     output: &str,
-    optim: bool,
-) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
-    setup_test_logger();
-    info!("Checking {} output against tensorflow (optimized: {:?})", output, optim);
+    mode: Mode,
+) -> TractResult<TVec<Arc<Tensor>>> {
     let mut model = tract_tensorflow::tensorflow().model_for_read(&mut &*graph)?;
     model.set_input_names(&inputs.iter().map(|pair| pair.0.as_ref()).collect::<Vec<&str>>())?;
     model.set_output_names(&[output])?;
     for (ix, (_, tf)) in inputs.iter().enumerate() {
         model.set_input_fact(ix, TensorFact::dt_shape(tf.datum_type(), tf.shape()))?;
     }
-    let mut model = model.into_typed()?;
-    if optim {
-        model = model.into_optimized()?;
+    info!("analysed");
+    let inputs = inputs.iter().map(|pair| pair.1.clone()).collect();
+    if mode == Mode::Infer {
+        let plan = SimplePlan::new(&model)?;
+        plan.run(inputs)
+    } else {
+        let mut model = model.into_typed()?;
+        info!("typed");
+        if mode == Mode::Opt {
+            model = model.into_optimized()?;
+            info!("optimized");
+        }
+        trace!("{:#?}", model);
+        let plan = SimplePlan::new(&model)?;
+        plan.run(inputs)
     }
-    trace!("{:#?}", model);
-    let plan = SimplePlan::new(&model)?;
-    let mut state = SimpleState::new(&plan)?;
-    for (ix, (_, t)) in inputs.iter().enumerate() {
-        state.set_input(ix, t.clone()).unwrap();
-    }
-    let output = model.node_by_name(output)?;
-    state.compute_recursively(output.id)?;
-    let found = &state.values[output.id].as_ref().unwrap();
+}
 
+pub fn compare_optim<S: AsRef<str>>(
+    graph: &[u8],
+    inputs: &Vec<(S, Tensor)>,
+    output: &str,
+    mode: Mode,
+) -> std::result::Result<(), ::proptest::test_runner::TestCaseError> {
+    setup_test_logger();
     let tf_inputs: Vec<(&str, Tensor)> =
         inputs.iter().map(|(s, m)| (s.as_ref(), m.clone())).collect();
     let expected =
-        tract_tensorflow::conform::tf::for_slice(&graph)?.run(tf_inputs.clone(), &output.name)?;
+        tract_tensorflow::conform::tf::for_slice(&graph)?.run(tf_inputs.clone(), &output)?;
+    info!("Tensorflow says: {:?}", expected);
+    info!("Checking {} output against tensorflow ({:?})", output, mode);
+
+    let found = match run_tract(graph, inputs, output, mode) {
+        Err(e) => {
+            use crate::tract_core::error_chain::ChainedError;
+            error!("{}", e.display_chain());
+            return Err(e.into());
+
+        }
+        Ok(t) => t,
+    };
 
     prop_assert!(
         expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true).is_ok(),
@@ -53,6 +78,7 @@ pub fn compare_optim<S: AsRef<str>>(
         expected[0].to_array_view::<f32>().unwrap(),
         found[0].to_array_view::<f32>().unwrap(),
     );
+    info!("Mode: {:?} passed", mode);
     Ok(())
 }
 
