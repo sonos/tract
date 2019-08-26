@@ -115,6 +115,18 @@ impl fmt::Debug for OutletId {
     }
 }
 
+impl From<usize> for OutletId {
+    fn from(node: usize) -> OutletId {
+        OutletId::new(node, 0)
+    }
+}
+
+impl From<(usize, usize)> for OutletId {
+    fn from(pair: (usize, usize)) -> OutletId {
+        OutletId::new(pair.0, pair.1)
+    }
+}
+
 /// Identifier for a node input in the graph.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, new, Ord, PartialOrd)]
 #[cfg_attr(feature = "serialize", derive(Serialize))]
