@@ -18,7 +18,7 @@ where
     O: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
     ModelImpl<TI, O>: ModelSpecialOps<TI, O>,
 {
-    /// the model-like 'patch' of nodes to add to the model
+    /// the model-like 'pagch' of nodes to add to the model
     pub model: ModelImpl<TI, O>,
     pub incoming: HashMap<OutletId, OutletId>,
     pub shunt_outlet_by: HashMap<OutletId, OutletId>,
@@ -221,7 +221,6 @@ where
         }
         debug_assert_eq!(target.input_outlets()?.len(), prior_target_inputs);
         debug_assert_eq!(target.output_outlets()?.len(), prior_target_outputs);
-        dbg!(&target);
         Ok(())
     }
 }

@@ -101,7 +101,7 @@ impl TypedOp for LstmNonlin {
     ) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
             inputs[0].datum_type,
-            [inputs[0].shape.dim(0), inputs[1].shape.dim(1) * 5 / 2].as_ref()
+            [inputs[0].shape.dim(0), inputs[0].shape.dim(1) * 2 / 5].as_ref()
         )?))
     }
 }
