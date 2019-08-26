@@ -1,9 +1,9 @@
+use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 use ndarray::prelude::*;
 use num_traits::AsPrimitive;
 use std::ops::{Add, Div, Mul, Sub};
 use tract_core::internal::*;
-use crate::tfpb::node_def::NodeDef;
-use crate::model::ParsingContext;
 
 #[derive(Debug, Clone, new)]
 pub struct Range {
@@ -69,4 +69,27 @@ impl InferenceRulesOp for Range {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let (Some(start), Some(limit), Some(delta)) = (
+            target.outlet_fact(mapping[&node.inputs[0]])?.konst.as_ref(),
+            target.outlet_fact(mapping[&node.inputs[1]])?.konst.as_ref(),
+            target.outlet_fact(mapping[&node.inputs[2]])?.konst.as_ref(),
+        ) {
+            let mut value = dispatch_numbers!(Self::eval_t(start.datum_type())(
+                self,
+                tvec!(start.clone(), limit.clone(), delta.clone())
+            ))?;
+            let id = target.add_const(&*node.name, value.remove(0))?;
+            Ok(tvec!(OutletId::new(id, 0)))
+        } else {
+            bail!("Can not type Fill op")
+        }
+    }
 }

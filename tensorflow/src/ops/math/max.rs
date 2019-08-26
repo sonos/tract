@@ -89,7 +89,7 @@ impl InferenceRulesOp for Max {
 
     fn to_typed(
         &self,
-        source: &InferenceModel,
+        _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
@@ -108,13 +108,7 @@ impl InferenceRulesOp for Max {
                 })
                 .collect::<TractResult<_>>()?;
             let op = TypedMax::new(self.t, self.t_idx, self.keep_dims, axes);
-            tract_core::ops::trivial_inference_op_to_typed(
-                Box::new(op),
-                source,
-                node,
-                target,
-                mapping,
-            )
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
         } else {
             bail!("Nees axes to be const")
         }

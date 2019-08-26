@@ -76,7 +76,7 @@ impl InferenceRulesOp for ExpandDims {
         s.given_2(&dims.value, &data.rank, move |s, index, rank| {
             let mut index = *(index.to_scalar::<i32>()?);
             if index < 0 {
-                index += rank
+                index += rank + 1
             }
             let index = index as usize;
 
@@ -99,7 +99,7 @@ impl InferenceRulesOp for ExpandDims {
 
     fn to_typed(
         &self,
-        source: &InferenceModel,
+        _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
@@ -119,13 +119,7 @@ impl InferenceRulesOp for ExpandDims {
                     })
                     .collect::<TractResult<_>>()?,
             );
-            tract_core::ops::trivial_inference_op_to_typed(
-                Box::new(op),
-                source,
-                node,
-                target,
-                mapping,
-            )
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
         } else {
             bail!("Need axes to be const")
         }

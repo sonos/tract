@@ -88,7 +88,7 @@ impl InferenceRulesOp for Transpose {
 
     fn to_typed(
         &self,
-        source: &InferenceModel,
+        _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
@@ -101,13 +101,7 @@ impl InferenceRulesOp for Transpose {
                 .map(|&ax| ax as usize)
                 .collect();
             let op = tract_core::ops::array::PermuteAxes::new(Some(axes));
-            tract_core::ops::trivial_inference_op_to_typed(
-                Box::new(op),
-                source,
-                node,
-                target,
-                mapping,
-            )
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
         } else {
             bail!("Nees axes to be const")
         }

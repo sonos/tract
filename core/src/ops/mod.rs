@@ -26,7 +26,7 @@ pub mod unimpl;
 pub mod binary;
 
 pub use downsample::Downsample;
-pub use source::Source;
+pub use source::{ Source, TypedSource };
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
@@ -278,7 +278,7 @@ pub trait InferenceOp:
         let (infered_inputs, infered_outputs, observed) =
             self.infer_facts(inputs, outputs, observed)?;
 
-        if self.as_op().downcast_ref::<crate::ops::source::Source>().is_some() {
+        if self.as_op().downcast_ref::<Source>().is_some() || self.as_op().downcast_ref::<TypedSource>().is_some() {
             return Ok((infered_inputs, infered_outputs, observed));
         }
 
@@ -385,15 +385,7 @@ impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Bo
         mapping: &HashMap<OutletId, OutletId>,
         _ctx: &(),
     ) -> TractResult<TVec<OutletId>> {
-        if node.outputs.iter().all(|o| o.fact.value.concretize().is_some()) {
-            node.outputs.iter().enumerate().map(|(ix, o)| {
-                let value = o.fact.value.concretize().unwrap();
-                let id = target.add_const(format!("{}-{}", &*node.name, ix), value)?;
-                Ok(OutletId::new(id, 0))
-            }).collect()
-        } else {
-            self.to_typed(source, node, target, mapping)
-        }
+        self.to_typed(source, node, target, mapping)
     }
 }
 

@@ -102,6 +102,28 @@ impl InferenceRulesOp for Pack {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs: TVec<OutletId> = node
+            .inputs
+            .iter()
+            .enumerate()
+            .map(|(ix, &o)| {
+                Ok(target.wire_node(
+                    format!("{}-add_dims-{}", node.name, ix),
+                    tract_core::ops::array::AddDims::new(vec![self.axis]),
+                    [mapping[&o]].as_ref(),
+                )?[0])
+            })
+            .collect::<TractResult<TVec<OutletId>>>()?;
+        target.wire_node(&*node.name, tract_core::ops::array::Concat::new(self.axis as i64), &*inputs)
+    }
 }
 
 #[cfg(test)]
@@ -156,5 +178,4 @@ mod tests {
         let exp: TVec<TensorFact> = tvec!(tensor1(&[TDim::zero(), TDim::zero()]).into());
         assert_eq!(output_facts, exp);
     }
-
 }
