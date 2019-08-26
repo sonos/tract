@@ -95,9 +95,10 @@ fn main() {
         (@arg input_node: --("input-node") +takes_value +multiple number_of_values(1)
             "Override input nodes names (auto-detects otherwise).")
 
-        (@arg output_node: --("output-node") +takes_value
+        (@arg output_node: --("output-node") +takes_value +multiple number_of_values(1)
             "Override output nodes name (auto-detects otherwise).")
 
+        (@arg analyse_fail_fast: --("analyse-fail-fast") "Stop analyse at first error.")
         (@arg recursive: --recursive "Apply to sub graphes")
 
         (@arg proto: --proto "Keep proto model around after parse")
@@ -550,7 +551,7 @@ impl Parameters {
                     return Ok(Box::new(raw_model) as _)
                 }
                 info!("Running analyse");
-                raw_model.analyse(true)?;
+                raw_model.analyse(!matches.is_present("analyse_fail_fast"))?;
                 if stop_at == "analyse" {
                     return Ok(Box::new(raw_model) as _)
                 }

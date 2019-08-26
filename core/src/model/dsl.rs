@@ -1,6 +1,6 @@
 use crate::internal::*;
-use crate::pulse::PulsedTensorFact;
 use crate::ops::dummy::Dummy;
+use crate::pulse::PulsedTensorFact;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display};
 
@@ -52,10 +52,7 @@ impl ModelSpecialOps<PulsedTensorFact, Box<dyn TypedOp>> for PulsedModel {
     ) -> TractResult<usize> {
         let id = self.add_node(
             name,
-            crate::ops::source::TypedSource::new(TypedTensorInfo::dt_shape(
-                fact.dt,
-                &*fact.shape,
-            )?),
+            crate::ops::source::TypedSource::new(TypedTensorInfo::dt_shape(fact.dt, &*fact.shape)?),
             tvec!(fact),
         )?;
         self.inputs.push(OutletId::new(id, 0));
@@ -248,7 +245,6 @@ impl ModelDslConst for super::TypedModel {
 }
 */
 
-/// Model extension for InferenceModel
 pub trait ModelDslInfer: ModelDsl<TensorFact, Box<dyn InferenceOp>> {
     /// Add a source with no tensor information.
     fn add_source_default(&mut self, name: impl Into<String>) -> TractResult<usize>;
@@ -287,5 +283,36 @@ impl ModelDslInfer for super::InferenceModel {
         op: impl Into<Box<dyn InferenceOp>>,
     ) -> TractResult<usize> {
         self.chain(name, op, tvec!(TensorFact::default()))
+    }
+}
+
+pub trait ModelDslTyped: ModelDsl<TypedTensorInfo, Box<dyn TypedOp>> {
+    fn wire_node(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<Box<dyn TypedOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>>;
+}
+
+impl ModelDslTyped for TypedModel {
+    fn wire_node(
+        &mut self,
+        name: impl Into<String>,
+        op: impl Into<Box<dyn TypedOp>>,
+        inputs: &[OutletId],
+    ) -> TractResult<TVec<OutletId>> {
+        let op = op.into();
+        let output_facts = {
+            let input_facts =
+                inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
+            op.output_facts(&*input_facts)?
+        };
+        let id = self.add_node(name, op, output_facts)?;
+        inputs
+            .iter()
+            .enumerate()
+            .try_for_each(|(ix, i)| self.add_edge(*i, InletId::new(id, ix)))?;
+        Ok(self.node(id).outputs.iter().enumerate().map(|(ix, _)| OutletId::new(id, ix)).collect())
     }
 }

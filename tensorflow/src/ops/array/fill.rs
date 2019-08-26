@@ -64,13 +64,22 @@ impl InferenceRulesOp for Fill {
     }
 
     inference_op_as_op!();
+
     fn to_typed(
         &self,
         _source: &InferenceModel,
-        _node: &InferenceNode,
-        _target: &mut TypedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        bail!("Operator can not be made a TypedOp.")
+        if let (Some(shape), Some(value)) = (
+            target.outlet_fact(mapping[&node.inputs[0]])?.konst.as_ref(), 
+            target.outlet_fact(mapping[&node.inputs[1]])?.konst.as_ref()) {
+            let mut value = dispatch_datum!(Self::eval_t(value.datum_type())(self, tvec!(shape.clone(), value.clone())))?;
+            let id = target.add_const(&*node.name, value.remove(0))?;
+            Ok(tvec!(OutletId::new(id, 0)))
+        } else {
+            bail!("Can not type Fill op")
+        }
     }
 }

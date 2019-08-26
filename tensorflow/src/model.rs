@@ -55,6 +55,7 @@ impl Framework<GraphDef> for Tensorflow {
         use crate::ops::control_flow as cf;
 
         let mut model = InferenceModel::default();
+        let mut inputs = tvec!();
         // compute min output arity for all nodes
         let mut arities = HashMap::new();
         for pbnode in graph.get_node().iter() {
@@ -85,12 +86,13 @@ impl Framework<GraphDef> for Tensorflow {
             };
 
             let node_id = model.add_node(name.clone(), op, facts)?;
-            if pbnode.get_op() == "PlaceHolder" {
+            if pbnode.get_op() == "Placeholder" {
                 let dt = pbnode.get_attr_datum_type("dtype")?;
                 let mut fact = TensorFact::dt(dt);
                 if let Some(shape) = pbnode.get_attr_opt_shape("shape")? {
                     fact = fact.with_shape(shape)
                 }
+                inputs.push(OutletId::new(node_id, 0));
                 model.set_outlet_fact(OutletId::new(node_id, 0), fact)?;
             }
         }
@@ -137,6 +139,7 @@ impl Framework<GraphDef> for Tensorflow {
                 }
             }
         }
+        model.set_input_outlets(&*inputs)?;
         model.auto_outputs()?;
         Ok(model)
     }

@@ -1,12 +1,22 @@
 #![allow(unused_imports, dead_code)]
+
+#[macro_use]
+extern crate log;
+
 use std::fs;
 use std::path;
 use std::rc::Rc;
 use std::str::FromStr;
 
+
 use ndarray::*;
 
 use tract_core::internal::*;
+
+#[allow(dead_code)]
+fn setup_test_logger() {
+    let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
+}
 
 fn download() {
     use std::sync::Once;
@@ -47,6 +57,7 @@ fn cachedir() -> path::PathBuf {
 
 #[test]
 fn deepspeech() -> TractResult<()> {
+    setup_test_logger();
     download();
     let tf = tract_tensorflow::tensorflow();
     //    let mut model = tf.model_for_path("deepspeech-0.4.1-models/output_graph.pb")?;
@@ -55,8 +66,10 @@ fn deepspeech() -> TractResult<()> {
     model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), tvec!(1, 16, 19, 26)))?;
     model.set_input_fact(1, TensorFact::dt_shape(i32::datum_type(), tvec!(1)))?;
     model.set_output_names(&["initialize_state", "logits"])?;
+    trace!("{:#?}", &model);
     let model = model.into_typed()?;
     let model = Rc::new(model);
+    trace!("{:#?}", &model);
 
     let init_node = model.node_by_name("initialize_state")?.id;
     let init_plan = SimplePlan::new_for_output(model.clone(), OutletId::new(init_node, 0))?;

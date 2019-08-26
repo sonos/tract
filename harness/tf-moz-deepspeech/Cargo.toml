@@ -5,6 +5,8 @@ authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 edition = "2018"
 
 [dependencies]
+env_logger = "0.6"
+log = "0.4"
 ndarray = { version = "0.12" }
 tract-core = { path = "../../core" }
 tract-tensorflow = { path = "../../tensorflow" }

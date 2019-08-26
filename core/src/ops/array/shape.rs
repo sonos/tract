@@ -86,10 +86,10 @@ impl TypedOp for Shape {
         &self,
         inputs: &[&TypedTensorInfo],
     ) -> TractResult<TVec<TypedTensorInfo>> {
-        Ok(tvec!(TypedTensorInfo::dt_shape(
-            self.dt,
-            [inputs[0].shape.rank()].as_ref()
-        )?))
+        let shape = inputs[0].shape.iter().collect::<TVec<_>>();
+        let tensor = tensor1(&*shape);
+        let casted = tensor.cast_to_dt(self.dt)?;
+        Ok(tvec!(TypedTensorInfo::from(casted.as_ref())))
     }
 }
 

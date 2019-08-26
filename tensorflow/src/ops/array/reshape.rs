@@ -55,7 +55,7 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
 
     fn to_typed(
         &self,
-        source: &InferenceModel,
+        _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
@@ -72,13 +72,7 @@ impl<T: Datum> InferenceRulesOp for Reshape<T> {
                 bail!("Not enough information to infer fixed output shape")
             };
             let op = tract_core::ops::array::IntoShape::new(output_shape);
-            tract_core::ops::trivial_inference_op_to_typed(
-                Box::new(op),
-                source,
-                node,
-                target,
-                mapping,
-            )
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
         } else {
             bail!("Need axes to be const")
         }

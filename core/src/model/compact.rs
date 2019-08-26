@@ -24,12 +24,6 @@ where
     let mut target = ModelImpl::default();
     let mut mapping = HashMap::new();
     for old_id in source.eval_order()? {
-        trace!(
-            "Translate node {} {} ({})",
-            old_id,
-            source.node(old_id).name,
-            source.node(old_id).op().name()
-        );
         let node = source.node(old_id);
         let outlets = node
             .op
@@ -38,13 +32,10 @@ where
         for (ix, outlet) in outlets.into_iter().enumerate() {
             mapping.insert(OutletId::new(node.id, ix), outlet);
         }
-        trace!("Target has now {} nodes", target.nodes().len());
-        trace!("Mapping: {:?}", mapping);
     }
     // maintaining order of i/o interface
     target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
     target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
-    trace!("Typed: {:#?}", target);
     Ok((target, mapping))
 }
 
