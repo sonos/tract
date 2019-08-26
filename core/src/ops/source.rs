@@ -36,7 +36,7 @@ impl InferenceRulesOp for Source {
         _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
-        mapping: &HashMap<OutletId, OutletId>,
+        _mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         use std::convert::TryInto;
         if let Ok(fact) = node.outputs[0].fact.clone().try_into() {
