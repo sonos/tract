@@ -54,21 +54,19 @@ impl Inference {
             .enumerate()
             .map(|(ix, im)| {
                 Ok(match im {
-                    OutputMapping::Scan { axis, slot, full_dim_hint, chunk: _ } => OutputMapping::Scan {
-                        axis: *axis,
-                        slot: *slot,
-                        chunk: typed_model.input_fact(ix)?.shape.dim(*axis),
-                        full_dim_hint: full_dim_hint.clone(),
-                    },
+                    OutputMapping::Scan { axis, slot, full_dim_hint, chunk: _ } => {
+                        OutputMapping::Scan {
+                            axis: *axis,
+                            slot: *slot,
+                            chunk: typed_model.input_fact(ix)?.shape.dim(*axis),
+                            full_dim_hint: full_dim_hint.clone(),
+                        }
+                    }
                     OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Box::new(Typed::new(
-            typed_model,
-            input_mapping,
-            output_mapping,
-        )))
+        Ok(Box::new(Typed::new(typed_model, input_mapping, output_mapping)))
     }
     fn unify_scanning_tensor_fact(
         outer: &mut TensorFact,
@@ -117,7 +115,9 @@ impl Inference {
                 .output_mapping
                 .iter()
                 .enumerate()
-                .filter(|(_ix, map)| if let OutputMapping::State { .. } = map { true } else { false })
+                .filter(
+                    |(_ix, map)| if let OutputMapping::State { .. } = map { true } else { false },
+                )
                 .nth(state_ix)
                 .unwrap()
                 .0;
@@ -215,12 +215,13 @@ impl InferenceOp for Inference {
 
     fn to_typed(
         &self,
-        source: &InferenceModel,
+        _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        crate::ops::trivial_inference_op_to_typed(self.to_typed_scan()?, source, node, target, mapping)
+        let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
+        target.wire_node(&*node.name, self.to_typed_scan()? as Box<dyn TypedOp>, &*inputs)
     }
 
     inference_op_as_op!();

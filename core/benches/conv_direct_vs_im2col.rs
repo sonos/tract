@@ -59,7 +59,7 @@ impl Problem {
     }
 
     pub fn image_type(&self) -> TypedTensorInfo {
-        TypedTensorInfo::shape::<f32>(&*self.image_shape())
+        TypedTensorInfo::dt_shape(f32::datum_type(), &*self.image_shape()).unwrap()
     }
 
     pub fn to_unary(&self) -> Box<ConvUnary> {
@@ -86,7 +86,7 @@ impl Problem {
         let direct = unary.to_direct(&*self.image_shape()).unwrap();
         let mut model_direct = TypedModel::default();
         model_direct.add_source("input", self.image_type()).unwrap();
-        model_direct.chain("conv", direct.clone(), tvec!(TypedTensorInfo::shape::<f32>(direct.output_shape()))).unwrap();
+        model_direct.chain("conv", direct.clone(), tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), direct.output_shape()).unwrap())).unwrap();
         SimplePlan::new(model_direct).unwrap()
     }
 
@@ -97,8 +97,8 @@ impl Problem {
         let (im2col, im2col_shape, cvgemm) = unary.to_im2col_pair::<f32>(&*self.image_shape()).unwrap();
         let mut model_im2col = TypedModel::default();
         model_im2col.add_source("input", self.image_type()).unwrap();
-        model_im2col.chain("im2col", im2col, tvec!(TypedTensorInfo::shape::<f32>(&*im2col_shape))).unwrap();
-        model_im2col.chain("gemm", cvgemm, tvec!(TypedTensorInfo::shape::<f32>(&*output_shape))).unwrap();
+        model_im2col.chain("im2col", im2col, tvec!(TypedTensorInfo::dt_shape(f32::datum_type(), &*im2col_shape).unwrap())).unwrap();
+        model_im2col.chain("gemm", cvgemm, tvec!(TypedTensorInfo::dt_shape(f32::datum_type(),&*output_shape).unwrap())).unwrap();
         SimplePlan::new(model_im2col).unwrap()
     }
 }

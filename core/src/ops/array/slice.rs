@@ -17,7 +17,13 @@ impl<D: DimLike + ToDim> Slice<D> {
                 ::ndarray::Slice::from((b.to_integer()?)..(e.to_integer()?)),
             );
         }
-        Ok(Tensor::from(input.to_owned()).into())
+        if input.len() == 0 {
+            unsafe {
+                Ok(Tensor::from_raw::<T>(input.shape(), &[])?.into())
+            }
+        } else {
+            Ok(Tensor::from(input.to_owned()).into())
+        }
     }
 }
 

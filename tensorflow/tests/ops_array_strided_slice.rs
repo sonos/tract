@@ -37,6 +37,7 @@ fn strided_slice_strat(
         }),
         1..4, // rank
     )
+    .prop_filter("Negatives stride are not typable yet", |dims| dims.iter().all(|d| d.1 <= d.2))
     .prop_flat_map(|dims| {
         let rank = dims.iter().len();
         (Just(dims), (0..(1 << rank), 0..(1 << rank), Just(0), Just(0), 0..(1 << rank)))
@@ -142,5 +143,77 @@ fn strided_slice_2() {
         .unwrap();
 
     let inputs = vec![("input", tensor1(&[0]))];
+    compare(&graph, inputs, "op").unwrap()
+}
+
+#[test]
+fn strided_slice_3() {
+    let graph = tfpb::graph()
+        .node(placeholder_i32("input"))
+        .node(const_i32("begin", &tensor1(&[0])))
+        .node(const_i32("end", &tensor1(&[0])))
+        .node(const_i32("stride", &tensor1(&[1])))
+        .node(
+            tfpb::node()
+                .name("op")
+                .attr("T", DT_INT32)
+                .attr("Index", DT_INT32)
+                .attr("shrink_axis_mask", 1 as i64)
+                .input("input")
+                .input("begin")
+                .input("end")
+                .input("stride")
+                .op("StridedSlice"),
+        );
+    let graph = graph.write_to_bytes().unwrap();
+    let inputs = vec![("input", tensor1(&[0, 1]))];
+    compare(&graph, inputs, "op").unwrap()
+}
+
+#[ignore] // negative stride
+#[test]
+fn strided_slice_4() {
+    let graph = tfpb::graph()
+        .node(placeholder_i32("input"))
+        .node(const_i32("begin", &tensor1(&[1])))
+        .node(const_i32("end", &tensor1(&[0])))
+        .node(const_i32("stride", &tensor1(&[-1])))
+        .node(
+            tfpb::node()
+                .name("op")
+                .attr("T", DT_INT32)
+                .attr("Index", DT_INT32)
+                .input("input")
+                .input("begin")
+                .input("end")
+                .input("stride")
+                .op("StridedSlice"),
+        );
+    let graph = graph.write_to_bytes().unwrap();
+    let inputs = vec![("input", tensor1(&[0, 1]))];
+    compare(&graph, inputs, "op").unwrap()
+}
+
+#[test]
+fn strided_slice_5() {
+    let graph = tfpb::graph()
+        .node(placeholder_i32("input"))
+        .node(const_i32("begin", &tensor1(&[0, 0])))
+        .node(const_i32("end", &tensor1(&[0, 0])))
+        .node(const_i32("stride", &tensor1(&[1, 1])))
+        .node(
+            tfpb::node()
+                .name("op")
+                .attr("T", DT_INT32)
+                .attr("Index", DT_INT32)
+                .attr("end_mask", 2 as i64)
+                .input("input")
+                .input("begin")
+                .input("end")
+                .input("stride")
+                .op("StridedSlice"),
+        );
+    let graph = graph.write_to_bytes().unwrap();
+    let inputs = vec![("input", tensor2(&[[0, 1]]))];
     compare(&graph, inputs, "op").unwrap()
 }

@@ -124,11 +124,15 @@ impl Tensor {
     ///
     /// It copies the data, aligning it to the size of T.
     pub unsafe fn from_raw<T: Datum>(shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
-        let bytes = shape.iter().cloned().product::<usize>() * size_of::<T>();
-        let layout = alloc::Layout::from_size_align(bytes, size_of::<T>())?;
+        Tensor::from_raw_dt(T::datum_type(), shape, content)
+    }
+
+    pub unsafe fn from_raw_dt(dt: DatumType, shape: &[usize], content: &[u8]) -> TractResult<Tensor> {
+        let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
+        let layout = alloc::Layout::from_size_align(bytes, dt.alignment())?;
         let data = alloc::alloc(layout);
         content.as_ptr().copy_to_nonoverlapping(data, bytes);
-        Ok(Tensor { null: false, dt: T::datum_type(), shape: shape.into(), data, layout })
+        Ok(Tensor { null: false, dt: dt, shape: shape.into(), data, layout })
     }
 
     /// Creates a null tensor (this is rare, and should stay that way).

@@ -340,40 +340,6 @@ pub trait InferenceOp:
     }
 }
 
-pub fn trivial_inference_op_to_typed(
-    op: Box<dyn TypedOp>,
-    _source: &InferenceModel,
-    node: &InferenceNode,
-    target: &mut TypedModel,
-    mapping: &HashMap<OutletId, OutletId>,
-) -> TractResult<TVec<OutletId>> {
-    let inputs = node.inputs.iter().map(|i| mapping[i]).collect::<TVec<_>>();
-    let output_facts = {
-        let input_facts = inputs
-            .iter()
-            .map(|&i| target.outlet_fact(i))
-            .collect::<TractResult<TVec<&TypedTensorInfo>>>()?;
-        op.output_facts(&input_facts)?
-    };
-    let len = output_facts.len();
-    #[cfg(debug_assertions)]
-    for i in 0..len {
-        if let Err(_) = output_facts[i].to_tensor_fact().unify(&node.outputs[i].fact) {
-            bail!(
-                "Output facts translation check failed: slot #{} inference op says: {:?} typed op says: {:?}",
-                i,
-                node.outputs[i].fact,
-                output_facts[i]
-            );
-        }
-    }
-    let id = target.add_node(&*node.name, op, output_facts)?;
-    for (ix, &i) in inputs.iter().enumerate() {
-        target.add_edge(i, InletId::new(id, ix))?;
-    }
-    Ok((0..len).map(|ix| OutletId::new(id, ix)).collect())
-}
-
 impl crate::ops::Translate<TensorFact, Box<dyn InferenceOp>, TypedTensorInfo, Box<dyn TypedOp>, ()>
     for Box<dyn InferenceOp>
 {

@@ -33,19 +33,17 @@ impl InferenceRulesOp for Source {
 
     fn to_typed(
         &self,
-        source: &InferenceModel,
+        _source: &InferenceModel,
         node: &InferenceNode,
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         use std::convert::TryInto;
         if let Ok(fact) = node.outputs[0].fact.clone().try_into() {
-            crate::ops::trivial_inference_op_to_typed(
-                Box::new(TypedSource::new(fact)),
-                source,
-                node,
-                target,
-                mapping,
+            target.wire_node(
+                &*node.name,
+                Box::new(TypedSource::new(fact)) as Box<dyn TypedOp>,
+                &[],
             )
         } else {
             bail!("Output type not determined")
