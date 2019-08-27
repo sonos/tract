@@ -1,6 +1,20 @@
 use crate::internal::*;
 
 #[derive(Debug, Clone, new)]
+pub struct SourceState(usize);
+
+impl OpState for SourceState {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        _op: &dyn Op,
+        _inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        Ok(tvec!(session.inputs[&self.0].clone()))
+    }
+}
+
+#[derive(Debug, Clone, new)]
 pub struct Source;
 
 impl Op for Source {
@@ -9,10 +23,13 @@ impl Op for Source {
     }
 }
 
-impl StatelessOp for Source {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        panic!("Source should not get evaluated")
+impl StatefullOp for Source {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(SourceState(node_id))))
     }
 }
 
@@ -40,11 +57,7 @@ impl InferenceRulesOp for Source {
     ) -> TractResult<TVec<OutletId>> {
         use std::convert::TryInto;
         if let Ok(fact) = node.outputs[0].fact.clone().try_into() {
-            target.wire_node(
-                &*node.name,
-                Box::new(TypedSource::new(fact)) as Box<dyn TypedOp>,
-                &[],
-            )
+            target.wire_node(&*node.name, Box::new(TypedSource::new(fact)) as Box<dyn TypedOp>, &[])
         } else {
             bail!("Output type not determined")
         }
@@ -62,10 +75,13 @@ impl Op for TypedSource {
     }
 }
 
-impl StatelessOp for TypedSource {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        panic!("Source should not get evaluated")
+impl StatefullOp for TypedSource {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(SourceState(node_id))))
     }
 }
 

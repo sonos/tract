@@ -8,6 +8,7 @@ use crate::model::{ModelImpl, OutletId, TensorInfo};
 
 #[derive(Debug, Default)]
 pub struct SessionState {
+    pub inputs: HashMap<usize, Arc<Tensor>>,
     pub known_stream_len: Option<usize>,
     pub tensors: HashMap<String, Tensor>,
 }
@@ -184,9 +185,6 @@ where
             let plan = plans[plan].borrow();
             let model = plan.model().borrow();
             for (step, n) in plan.order.iter().enumerate() {
-                if model.inputs.iter().any(|o| o.node == *n) {
-                    continue;
-                }
                 let node = model.node(*n);
                 trace!("Running step {}, node {}", step, node);
                 let mut inputs: TVec<Arc<Tensor>> = tvec![];
@@ -235,7 +233,7 @@ where
 
                 let vs = match states[node.id] {
                     Some(ref mut state) => state.eval(session_state, node.op(), inputs),
-                    None => node.op().as_stateless().expect("as_stateless").eval(inputs)
+                    None => node.op().as_stateless().expect("as_stateless").eval(inputs),
                 }
                 .chain_err(|| format!("Evaluating {}", node))?;
 
@@ -282,14 +280,10 @@ where
     }
 
     pub fn set_inputs(&mut self, inputs: TVec<Tensor>) -> TractResult<()> {
-        let SimpleState { ref plans, ref mut values, .. } = self;
-        plans[0]
-            .borrow()
-            .model()
-            .input_outlets()?
-            .iter()
-            .zip(inputs)
-            .for_each(|(input, t)| values[input.node] = Some(tvec![t.into()]));
+        let SimpleState { ref plans, ref mut session_state, .. } = self;
+        plans[0].borrow().model().input_outlets()?.iter().zip(inputs).for_each(|(input, t)| {
+            session_state.inputs.insert(input.node, t.into());
+        });
         Ok(())
     }
 
@@ -300,7 +294,7 @@ where
             .get(input)
             .ok_or_else(|| format!("Invalid input id for model ({}).", input))?
             .node;
-        self.values[id] = Some(tvec!(t.into()));
+        self.session_state.inputs.insert(id, t.into());
         Ok(())
     }
 

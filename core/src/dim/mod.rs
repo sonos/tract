@@ -282,7 +282,6 @@ impl<'a> ops::Rem<&'a TDim> for TDim {
     }
 }
 
-
 impl ops::RemAssign<TDim> for TDim {
     fn rem_assign(&mut self, rhs: TDim) {
         self.0 %= rhs.0
@@ -294,7 +293,6 @@ impl<'a> ops::RemAssign<&'a TDim> for TDim {
         self.0 %= &rhs.0
     }
 }
-
 
 impl ::std::iter::Sum for TDim {
     fn sum<I: Iterator<Item = TDim>>(iter: I) -> TDim {
@@ -390,6 +388,10 @@ impl FromStr for TDim {
     fn from_str(s: &str) -> Result<TDim, Self::Err> {
         if s == "S" {
             Ok(TDim::s())
+        } else if s.ends_with("S") {
+            let number:String = s.chars().take_while(|c| c.is_digit(10)).collect();
+            let number:i32 = number.parse::<i32>().map(|i| i.into())?;
+            Ok(TDim::s() * number)
         } else {
             s.parse::<i32>().map(|i| i.into())
         }
