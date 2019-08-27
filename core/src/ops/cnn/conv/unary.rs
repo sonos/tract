@@ -38,6 +38,20 @@ impl ConvUnary {
         bias: Option<Tensor>,
         group: usize,
     ) -> TractResult<ConvUnary> {
+        for td in full_input_shape {
+            if let Ok(d) = td.to_integer() {
+                if d < 0 {
+                    bail!("Negative input shape dim detected");
+                }
+            }
+        }
+        for td in full_output_shape {
+            if let Ok(d) = td.to_integer() {
+                if d < 0 {
+                    bail!("Negative output shape dim detected");
+                }
+            }
+        }
         let spatial_rank = full_input_shape.len() - 2;
         let dilations =
             conv.dilations.as_ref().map(|a| TVec::from(&**a)).unwrap_or(tvec!(1; spatial_rank));

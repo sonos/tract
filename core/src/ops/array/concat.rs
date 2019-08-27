@@ -142,10 +142,10 @@ impl TypedOp for Concat {
         inputs: &[&TypedTensorInfo],
     ) -> TractResult<TVec<TypedTensorInfo>> {
         let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
-        let mut fact = inputs[0].clone();
+        let mut shape = inputs[0].shape.clone();
         let dim = inputs.iter().map(|f| f.shape.dim(axis)).sum::<TDim>();
-        fact.shape.set_dim(axis, dim)?;
-        Ok(tvec!(fact))
+        shape.set_dim(axis, dim)?;
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, shape)?))
     }
 }
 
