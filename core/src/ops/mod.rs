@@ -278,10 +278,6 @@ pub trait InferenceOp:
         let (infered_inputs, infered_outputs, observed) =
             self.infer_facts(inputs, outputs, observed)?;
 
-        if self.as_op().downcast_ref::<Source>().is_some() || self.as_op().downcast_ref::<TypedSource>().is_some() {
-            return Ok((infered_inputs, infered_outputs, observed));
-        }
-
         if let Some(stateless) = self.as_stateless() {
             if infered_inputs.iter().all(|i| i.value.is_concrete()) {
                 let input_values = infered_inputs

@@ -306,7 +306,13 @@ impl ModelDslTyped for TypedModel {
         let output_facts = {
             let input_facts =
                 inputs.iter().map(|o| self.outlet_fact(*o)).collect::<TractResult<TVec<_>>>()?;
-            op.output_facts(&*input_facts)?
+            if input_facts.iter().all(|f| f.konst.is_some()) && op.as_stateless().is_some() {
+                let tensors = input_facts.iter().map(|f| f.konst.clone().unwrap()).collect::<TVec<_>>();
+                let outputs = op.as_stateless().unwrap().eval(tensors)?;
+                outputs.into_iter().map(|t| TypedTensorInfo::from(t)).collect()
+            } else {
+                op.output_facts(&*input_facts)?
+            }
         };
         let id = self.add_node(name, op, output_facts)?;
         inputs

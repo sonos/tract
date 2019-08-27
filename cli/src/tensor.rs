@@ -13,7 +13,7 @@ pub fn parse_spec(size: &str) -> CliResult<TensorFact> {
     }
 
     let last = splits.last().unwrap();
-    let (datum_type, shape) = if last == &"S" || last.parse::<i32>().is_ok() {
+    let (datum_type, shape) = if last.ends_with("S") || last.parse::<i32>().is_ok() {
         (None, &*splits)
     } else {
         let datum_type = match splits.last().unwrap().to_lowercase().as_str() {
@@ -91,8 +91,12 @@ fn for_data(filename: &str) -> CliResult<(Option<String>, TensorFact)> {
         let (filename, inner) = (tokens.next().unwrap(), tokens.next().unwrap());
         let mut npz = ndarray_npy::NpzReader::new(std::fs::File::open(filename)?)?;
         let npy = npz
-            .by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(inner).map(|t| t.into_tensor())
-            .or_else(|_| npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(inner).map(|t| t.into_tensor()))?;
+            .by_name::<ndarray::OwnedRepr<f64>, ndarray::IxDyn>(inner)
+            .map(|t| t.into_tensor())
+            .or_else(|_| {
+                npz.by_name::<ndarray::OwnedRepr<f32>, ndarray::IxDyn>(inner)
+                    .map(|t| t.into_tensor())
+            })?;
         Ok((None, npy.into()))
     } else {
         Ok((None, tensor_for_text_data(filename)?.into()))
