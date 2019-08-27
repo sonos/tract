@@ -36,7 +36,10 @@ impl Downsample {
         (input_dim.clone() - self.modulo).div_ceil(self.stride.into())
     }
 
-    pub(crate) fn transform_fact(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
+    pub(crate) fn transform_fact(
+        &self,
+        input_fact: &TypedTensorInfo,
+    ) -> TractResult<TypedTensorInfo> {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape.dim(self.axis));
         downed.shape.set_dim(self.axis, down_len.clone())?;
@@ -146,24 +149,27 @@ fn pull_downsample_up(
             .is_some()
         {
             let mut patch = TypedModelPatch::default();
-            let other = patch.add_node(
-                &*prec.name,
-                prec.op.clone(),
-                tvec!(down_node.outputs[0].fact.clone()),
-            )?;
-            patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(other, 0))?;
+            let mut inputs = vec![];
             for (ix, &oo) in prec.inputs.iter().enumerate() {
-                let _source = patch.tap_model(model, oo)?;
-                let ds = patch.chain(
+                let source = patch.tap_model(model, oo)?;
+                let ds = patch.wire_node(
                     format!("{}-{}", prec.name, ix),
                     down_op.clone(),
-                    tvec!(down_op.transform_fact(model.outlet_fact(oo)?)?),
+                    [source].as_ref(),
                 )?;
-                patch.add_edge(OutletId::new(ds, 0), InletId::new(other, ix))?;
+                inputs.push(ds[0]);
             }
+            let other = patch.wire_node(
+                &*prec.name,
+                prec.op.clone(),
+                &*inputs
+            )?;
+            patch.shunt_outside(OutletId::new(down_node.id, 0), other[0])?;
             return Ok(Some(patch));
-        } else if let Some(crop_op) = prec.op_as::<ops::array::Crop>() {
-            return array::pull_downsample_over_crop(model, prec, crop_op, down_node, down_op);
+        } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<TDim>>() {
+            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
+        } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<usize>>() {
+            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::array::RmDims>() {
             return array::pull_downsample_over_rmdims(model, prec, other_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::array::AddDims>() {

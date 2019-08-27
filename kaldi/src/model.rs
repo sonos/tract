@@ -95,7 +95,13 @@ impl GeneralDescriptor {
                 model.add_edge(OutletId::new(id, 0), inlet)?;
                 for (ix, appendee) in appendees.iter().enumerate() {
                     let name = format!("{}-{}", name, ix);
-                    appendee.wire(InletId::new(id, ix), &*name, model, deferred, adjust_final_offset)?;
+                    appendee.wire(
+                        InletId::new(id, ix),
+                        &*name,
+                        model,
+                        deferred,
+                        adjust_final_offset,
+                    )?;
                 }
                 return Ok(());
             }
@@ -120,7 +126,7 @@ impl GeneralDescriptor {
                 }
                 let id = model.add_node_default(
                     &*name,
-                    tract_core::ops::array::Crop::new(vec!((crop as usize, 0), (0,0)))
+                    tract_core::ops::array::Crop::new(0, crop as usize, 0)
                 )?;
                 model.add_edge(OutletId::new(id, 0), inlet)?;
                 n.wire(InletId::new(id, 0), &*name, model, deferred, adjust_final_offset)?;
@@ -227,16 +233,22 @@ impl Framework<KaldiProtoModel> for Kaldi {
                 }
                 NodeLine::DimRange(line) => {
                     let op = tract_core::ops::array::Slice::new(
-                        vec![1],
-                        vec![line.offset as usize],
-                        vec![(line.offset + line.dim) as usize],
+                        1,
+                        line.offset as usize,
+                        (line.offset + line.dim) as usize,
                     );
                     let id = model.add_node_default(name.to_string(), op)?;
-                    line.input.wire(InletId::new(id, 0), name, &mut model, &mut inputs_to_wire, None)?
+                    line.input.wire(
+                        InletId::new(id, 0),
+                        name,
+                        &mut model,
+                        &mut inputs_to_wire,
+                        None,
+                    )?
                 }
             }
         }
-        let mut outputs = vec!();
+        let mut outputs = vec![];
         for o in &proto_model.config_lines.outputs {
             let output = model.add_node_default(
                 &*o.output_alias,

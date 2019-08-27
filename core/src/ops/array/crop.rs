@@ -1,28 +1,10 @@
 use crate::internal::*;
-use crate::ops::identity::Identity;
-use ndarray::*;
 
 #[derive(Debug, Clone, new, Default)]
 pub struct Crop {
-    pub(crate) prune: Vec<(usize, usize)>,
-}
-
-impl Crop {
-    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<Arc<Tensor>> {
-        let input = input.to_array_view::<T>()?;
-        let slice_spec: Vec<SliceOrIndex> = self
-            .prune
-            .iter()
-            .map(|&(a, b)| SliceOrIndex::Slice {
-                start: a as isize,
-                end: if b != 0 { Some(-(b as isize)) } else { None },
-                step: 1,
-            })
-            .collect();
-        let slice_info = SliceInfo::<_, IxDyn>::new(slice_spec).unwrap();
-        let slice = input.slice(&slice_info.as_ref());
-        Ok(slice.to_owned().into_arc_tensor())
-    }
+    pub axis: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Op for Crop {
@@ -33,9 +15,10 @@ impl Op for Crop {
 
 impl StatelessOp for Crop {
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        Ok(tvec!(dispatch_datum!(Self::eval_t(input.datum_type())(self, input))?))
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let slice =
+            super::Slice::new(self.axis, self.start, inputs[0].shape()[self.axis] - self.end);
+        slice.eval(inputs)
     }
 }
 
@@ -50,50 +33,35 @@ impl InferenceRulesOp for Crop {
         check_output_arity(&outputs, 1)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        for (ix, &(a, b)) in self.prune.iter().enumerate() {
-            s.equals(&inputs[0].shape[ix], outputs[0].shape[ix].bex() + a.to_dim() + b.to_dim())?;
-        }
+        s.given(&inputs[0].rank, move |s, rank| {
+            (0..rank as usize).try_for_each(|ax| {
+                if self.axis == ax {
+                    s.equals(
+                        &inputs[0].shape[ax],
+                        outputs[0].shape[ax].bex() + self.start.to_dim() + self.end.to_dim(),
+                    )
+                } else {
+                    s.equals(&inputs[0].shape[ax], &outputs[0].shape[ax])
+                }
+            })
+        })?;
         Ok(())
     }
 
-    inference_op_as_op!();
-    to_typed!();
-}
-
-impl TypedOp for Crop {
-    typed_op_as_op!();
-
-    fn output_facts(
+    fn to_typed(
         &self,
-        inputs: &[&TypedTensorInfo],
-    ) -> TractResult<TVec<TypedTensorInfo>> {
-        let mut fact = inputs[0].clone();
-        for (ix, (b, e)) in self.prune.iter().enumerate() {
-            fact.shape.set_dim(ix, fact.shape.dim(ix).clone() - *b - *e)?
-        }
-        Ok(tvec!(fact))
-    }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
-        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?;
-        if self.prune.iter().enumerate().all(|(ax, &(a, b))| ax == fact.axis || (a == 0 && b == 0))
-        {
-            let (before, after) = self.prune[fact.axis];
-            let mut fact = fact.clone();
-            fact.delay += before;
-            fact.dim -= before.to_dim() + after.to_dim();
-            let id = target.chain_after(input, &*node.name, Identity::default(), tvec!(fact))?;
-            return Ok(tvec!(OutletId::new(id, 0)));
-        }
-        bail!("Crop only support pulsify on streaming axis")
+        let len = target.outlet_fact(mapping[&node.inputs[0]])?.shape.dim(self.axis);
+        target.wire_node(
+            &*node.name,
+            super::Slice::new(self.axis as usize, self.start.to_dim(), len - self.end.to_dim()),
+            [mapping[&node.inputs[0]]].as_ref(),
+        )
     }
 
+    inference_op_as_op!();
 }

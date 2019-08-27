@@ -72,12 +72,7 @@ pub fn compare_optim<S: AsRef<str>>(
         Ok(t) => t,
     };
 
-    prop_assert!(
-        expected[0].shape() == found[0].shape() && expected[0].close_enough(&found[0], true).is_ok(),
-        "\nexpected:\n{:?}\nfound:\n{:?}\n",
-        expected[0].to_array_view::<f32>().unwrap(),
-        found[0].to_array_view::<f32>().unwrap(),
-    );
+    expected[0].close_enough(&found[0], true).unwrap();
     info!("Mode: {:?} passed", mode);
     Ok(())
 }
