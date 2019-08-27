@@ -62,13 +62,18 @@ impl InferenceRulesOp for ConstantOfShape {
     fn to_typed(
         &self,
         _source: &InferenceModel,
-        _node: &InferenceNode,
-        _target: &mut TypedModel,
-        _mapping: &HashMap<OutletId, OutletId>,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref fact) = target.outlet_fact(mapping[&node.inputs[0]])?.konst {
+            let shape = fact.cast_to::<i32>()?;
+            let shape = shape.as_slice::<i32>()?.iter().map(|&s| s as usize).collect::<TVec<_>>();
+            let value = dispatch_copy!(Self::make_from_shape(self.value.datum_type())(self, &*shape))?;
+            return target.wire_node(&*node.name, crate::ops::konst::Const::new(value), &[]);
+        }
         bail!("shape input is variable")
     }
 
     inference_op_as_op!();
 }
-

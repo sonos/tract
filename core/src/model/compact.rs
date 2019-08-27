@@ -32,6 +32,15 @@ where
             .chain_err(|| format!("Translating {}", node))?;
         for (ix, outlet) in outlets.into_iter().enumerate() {
             mapping.insert(OutletId::new(node.id, ix), outlet);
+            #[cfg(debug_assertions)]
+            {
+                use crate::analyser::types::Fact;
+                node.outputs[ix]
+                    .fact
+                    .to_tensor_fact()
+                    .unify(&target.outlet_fact(outlet)?.to_tensor_fact())
+                    .chain_err(|| format!("Translating {}", node))?;
+            }
         }
     }
     // maintaining order of i/o interface
