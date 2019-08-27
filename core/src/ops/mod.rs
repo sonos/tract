@@ -223,11 +223,12 @@ pub trait TypedOp:
     fn pulsify(
         &self,
         _source: &NormalizedModel,
-        _node: &NormalizedNode,
+        node: &NormalizedNode,
         _target: &mut PulsedModel,
         _mapping: &HashMap<OutletId, OutletId>,
         _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
+        debug!("{:?}", node);
         bail!("Operator {} do not support pulsification", self.name())
     }
 }

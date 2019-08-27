@@ -237,23 +237,15 @@ impl InferenceRulesOp for StridedSlice {
             }
             let mut wire = mapping[&node.inputs[0]];
             let input = target.outlet_fact(wire)?.clone();
-            let mut slice_axis = vec![];
-            let mut slice_begin = vec![];
-            let mut slice_end = vec![];
             for (ix, d) in input.shape.iter().enumerate() {
                 let preped = self.prepare_one_dim(ix, &d, &begin, &end, &stride);
                 if preped.begin != 0.to_dim() || preped.end != input.shape.dim(ix) {
-                    slice_axis.push(ix);
-                    slice_begin.push(preped.begin);
-                    slice_end.push(preped.end);
+                    wire = target.wire_node(
+                        format!("{}-Slice", node.name),
+                        tract_core::ops::array::Slice::new(ix, preped.begin, preped.end),
+                        [wire].as_ref(),
+                    )?[0];
                 }
-            }
-            if slice_axis.len() > 0 {
-                wire = target.wire_node(
-                    format!("{}-Slice", node.name),
-                    tract_core::ops::array::Slice::new(slice_axis, slice_begin, slice_end),
-                    [wire].as_ref(),
-                )?[0];
             }
             for (ix, d) in input.shape.iter().enumerate() {
                 let preped = self.prepare_one_dim(ix, &d, &begin, &end, &stride);
