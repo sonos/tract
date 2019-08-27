@@ -32,6 +32,8 @@ where
             .chain_err(|| format!("Translating {}", node))?;
         for (ix, outlet) in outlets.into_iter().enumerate() {
             mapping.insert(OutletId::new(node.id, ix), outlet);
+            /* This is only valid between analyse and typed, but may be useful
+             * for debugging
             #[cfg(debug_assertions)]
             {
                 use crate::analyser::types::Fact;
@@ -41,6 +43,7 @@ where
                     .unify(&target.outlet_fact(outlet)?.to_tensor_fact())
                     .chain_err(|| format!("Translating {}", node))?;
             }
+            */
         }
     }
     // maintaining order of i/o interface
