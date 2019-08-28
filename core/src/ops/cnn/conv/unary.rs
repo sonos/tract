@@ -519,6 +519,7 @@ impl Op for ConvUnary {
         Ok(None)
     }
 
+    /*
     fn translation_invariants(
         &self,
         model: &TypedModel,
@@ -537,6 +538,7 @@ impl Op for ConvUnary {
         }
         Ok(axes)
     }
+    */
 }
 
 impl StatelessOp for ConvUnary {
