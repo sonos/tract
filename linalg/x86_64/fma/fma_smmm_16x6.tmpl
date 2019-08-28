@@ -39,7 +39,7 @@ fma_smmm16x6 proc
 {% endif %}
 
     push        rbp
-    mov         ebp, esp
+    mov         rbp, rsp
 
     push        rbx
     push        r12
@@ -210,7 +210,8 @@ fma_smmm16x6 proc
     pop r13
     pop r12
     pop rbx
-    pop rbp
+
+    pop        rbp
     ret
 
 {{L}}unimplemented:
