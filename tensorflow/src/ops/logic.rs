@@ -5,13 +5,13 @@ use tract_core::internal::*;
 use tract_core::ops as tractops;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Equal", |_, _| Ok(Box::new(tractops::logic::equals())));
-    reg.insert("Greater", |_, _| Ok(Box::new(tractops::logic::greater())));
-    reg.insert("GreaterEqual", |_, _| Ok(Box::new(tractops::logic::greater_equal())));
-    reg.insert("Less", |_, _| Ok(Box::new(tractops::logic::lesser())));
-    reg.insert("LessEqual", |_, _| Ok(Box::new(tractops::logic::lesser_equal())));
-    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and())));
-    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or())));
+    reg.insert("Equal", |_, _| Ok(Box::new(tractops::logic::equals::bin())));
+    reg.insert("Greater", |_, _| Ok(Box::new(tractops::logic::greater::bin())));
+    reg.insert("GreaterEqual", |_, _| Ok(Box::new(tractops::logic::greater_equal::bin())));
+    reg.insert("Less", |_, _| Ok(Box::new(tractops::logic::lesser::bin())));
+    reg.insert("LessEqual", |_, _| Ok(Box::new(tractops::logic::lesser_equal::bin())));
+    reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and::bin())));
+    reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or::bin())));
     reg.insert("Merge", merge);
     reg.insert("Switch", |_, _| Ok(Box::new(Switch)));
 }

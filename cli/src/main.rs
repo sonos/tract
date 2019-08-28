@@ -497,7 +497,7 @@ impl Parameters {
                 if let Some(t) = t.value.concretize() {
                     input_values.push(Some(t));
                 }
-                raw_model.node_mut(outlet.node).op = Box::new(tract_core::ops::Source::new());
+                raw_model.node_mut(outlet.node).op = Box::new(tract_core::ops::source::Source::new());
                 if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {
                     t.value = GenericFact::Any;
                 }

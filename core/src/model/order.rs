@@ -72,7 +72,7 @@ mod tests {
     fn simple() {
         let mut model = ModelImpl::default();
         model.add_source_default("a").unwrap();
-        model.chain_default("add", math::add()).unwrap();
+        model.chain_default("add", math::add::bin()).unwrap();
         model.add_const("b", Tensor::from(12.0f32)).unwrap();
         model.add_edge(OutletId::new(2, 0), InletId::new(1, 1)).unwrap();
         model.auto_outputs().unwrap();
@@ -83,7 +83,7 @@ mod tests {
     fn diamond() {
         let mut model = ModelImpl::default();
         model.add_source_default("a").unwrap();
-        model.chain_default("add", math::add()).unwrap();
+        model.chain_default("add", math::add::bin()).unwrap();
         model.add_edge(OutletId::new(0, 0), InletId::new(1, 1)).unwrap();
         model.auto_outputs().unwrap();
         assert_eq!(model.eval_order().unwrap(), vec!(0, 1));
@@ -93,8 +93,8 @@ mod tests {
     fn dodge_loop() {
         let mut model = ModelImpl::default();
         model.add_source_default("a").unwrap();
-        let add = model.chain_default("add", math::add()).unwrap();
-        let neg = model.chain_default("neg", math::add()).unwrap();
+        let add = model.chain_default("add", math::add::bin()).unwrap();
+        let neg = model.chain_default("neg", math::add::bin()).unwrap();
         model.add_edge(OutletId::new(neg, 0), InletId::new(add, 1)).unwrap();
         model.set_output_outlets(&tvec!(OutletId::new(neg, 0))).unwrap();
         let (rx, tx) = std::sync::mpsc::channel();

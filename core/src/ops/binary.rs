@@ -142,7 +142,7 @@ impl Op for TypedBinOp {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(b) = inputs[1].konst.clone() {
-            let op = UnaryAOp(self.0.clone(), b.clone());
+            let op = UnaryAOp::new(self.0.clone(), b.clone());
             return Ok(Some(TypedModelPatch::replace_single_op(
                 &model,
                 &node,
@@ -214,7 +214,7 @@ impl Op for UnaryAOp {
 
 impl StatelessOp for UnaryAOp {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.0.eval_broadcast(tvec!(inputs[0].clone(), self.1.clone()))
+        self.mini_op.eval_broadcast(tvec!(inputs[0].clone(), self.b.clone()))
     }
 }
 
@@ -226,10 +226,10 @@ impl TypedOp for UnaryAOp {
         inputs: &[&TypedTensorInfo],
     ) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(
-            self.0.result_datum_type(inputs[0].datum_type, self.1.datum_type())?,
+            self.mini_op.result_datum_type(inputs[0].datum_type, self.b.datum_type())?,
             &*crate::broadcast::multi_broadcast(&[
                 &*inputs[0].shape.to_tvec(),
-                &*self.1.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>()
+                &*self.b.shape().iter().map(|d| d.to_dim()).collect::<TVec<_>>()
             ])
             .unwrap()
         )?))
@@ -251,18 +251,20 @@ impl TypedOp for UnaryAOp {
     }
 }
 
-impl StatelessOp for UnaryAOp {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        self.mini_op.eval_broadcast(tvec!(inputs[0].clone(), self.b.clone()))
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct MergeOp(pub Box<dyn BinMiniOp>);
 
 impl Op for MergeOp {
     fn name(&self) -> Cow<str> {
         format!("{}Merge", self.0.name()).into()
+    }
+
+    fn translation_invariants(&self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let a = model.outlet_fact(node.inputs[0])?;
+        Ok((0..a.shape.rank()).into_iter().map(|axis| TranslationInvariant { period: 1, axis }).collect())
     }
 }
 
@@ -287,14 +289,6 @@ impl TypedOp for MergeOp {
             ])
             .unwrap()
         )?))
-    }
-
-    fn translation_invariants(&self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Vec<TranslationInvariant>> {
-        let a = model.outlet_fact(node.inputs[0])?;
-        Ok((0..a.shape.rank()).into_iter().map(|axis| TranslationInvariant { period: 1, axis }).collect())
     }
 
     fn pulsify(
@@ -371,8 +365,10 @@ macro_rules! bin_to_super_type {
             }
         }
 
-        pub fn $func() -> impl InferenceOp {
-            $crate::ops::binary::InferenceBinOp(Box::new($Op))
+        pub mod $func {
+            pub fn bin() -> $crate::ops::binary::InferenceBinOp {
+                $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
+            }
         }
     };
 }
@@ -409,8 +405,10 @@ macro_rules! bin_to_bool {
             }
         }
 
-        pub fn $func() -> impl InferenceOp {
-            $crate::ops::binary::InferenceBinOp(Box::new($Op))
+        pub mod $func {
+            pub fn bin() -> $crate::ops::binary::InferenceBinOp {
+                $crate::ops::binary::InferenceBinOp(Box::new(super::$Op))
+            }
         }
     };
 }

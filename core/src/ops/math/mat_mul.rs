@@ -234,7 +234,7 @@ pub struct MatMulUnaryA {
 }
 
 impl MatMulUnaryA {
-    pub fn codegen<T>(&self, a_shape: &[usize]) -> TractResult<Option<Box<dyn Op>>>
+    pub fn codegen<T>(&self, a_shape: &[usize]) -> TractResult<Option<Box<dyn TypedOp>>>
     where
         T: Copy + Datum + Add + Mul + Zero + FloatLike,
         f32: AsPrimitive<T>,
@@ -480,7 +480,11 @@ where
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplASimpleB<T> {
+impl<T> TypedOp for MatMulUnaryImplASimpleB<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     typed_op_as_op!();
 
     fn output_facts(
@@ -609,7 +613,11 @@ where
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplA<T> {
+impl<T> TypedOp for MatMulUnaryImplA<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     typed_op_as_op!();
 
     fn output_facts(

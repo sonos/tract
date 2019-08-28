@@ -10,24 +10,24 @@ mod max;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Abs", with_T!(tractops::math::Abs));
-    reg.insert("Add", |_,_| Ok(Box::new(tractops::math::add())));
+    reg.insert("Add", |_,_| Ok(Box::new(tractops::math::add::bin())));
     reg.insert("AddN", add_n);
-    reg.insert("BiasAdd", |_,_| Ok(Box::new(tractops::math::add())));
+    reg.insert("BiasAdd", |_,_| Ok(Box::new(tractops::math::add::bin())));
     reg.insert("Ceil", with_T!(tractops::math::Ceil));
-    reg.insert("Div", |_,_| Ok(Box::new(tractops::math::div())));
-    reg.insert("FloorMod", |_,_| Ok(Box::new(tractops::math::rem())));
+    reg.insert("Div", |_,_| Ok(Box::new(tractops::math::div::bin())));
+    reg.insert("FloorMod", |_,_| Ok(Box::new(tractops::math::rem::bin())));
     reg.insert("MatMul", mat_mul);
     reg.insert("Max", max::max);
-    reg.insert("Maximum", |_,_| Ok(Box::new(tractops::math::max())));
-    reg.insert("Minimum", |_,_| Ok(Box::new(tractops::math::min())));
-    reg.insert("Less", |_,_| Ok(Box::new(tractops::logic::lesser())));
+    reg.insert("Maximum", |_,_| Ok(Box::new(tractops::math::max::bin())));
+    reg.insert("Minimum", |_,_| Ok(Box::new(tractops::math::min::bin())));
+    reg.insert("Less", |_,_| Ok(Box::new(tractops::logic::lesser::bin())));
     reg.insert("Log", with_T!(tractops::math::Ln));
-    reg.insert("Mul", |_,_| Ok(Box::new(tractops::math::mul())));
-    reg.insert("Pow", |_,_| Ok(Box::new(tractops::math::pow())));
+    reg.insert("Mul", |_,_| Ok(Box::new(tractops::math::mul::bin())));
+    reg.insert("Pow", |_,_| Ok(Box::new(tractops::math::pow::bin())));
     reg.insert("Neg", with_T!(tractops::math::Neg));
-    reg.insert("RealDiv", |_,_| Ok(Box::new(tractops::math::div())));
+    reg.insert("RealDiv", |_,_| Ok(Box::new(tractops::math::div::bin())));
     reg.insert("Rsqrt", with_T!(tractops::math::Rsqrt));
-    reg.insert("Sub", |_,_| Ok(Box::new(tractops::math::sub())));
+    reg.insert("Sub", |_,_| Ok(Box::new(tractops::math::sub::bin())));
     reg.insert("Tanh", with_T!(tractops::math::Tanh));
 }
 

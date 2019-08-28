@@ -199,7 +199,7 @@ impl ConvUnary {
         let mut packed_kernels: Vec<Tensor> = vec![];
 
         let (op2, b_pack): (Box<dyn TypedOp>, _) = if m > 1 {
-            let mm = T::tile_op(m, k, n);
+            let mm = T::mmm(m, k, n);
             let b_pack = mm.b_pack();
 
             trace!("Gemm iters={} m={} k={} n={}", input_shape.n_dim() * self.group, m, k, n);
@@ -434,6 +434,7 @@ impl Op for ConvUnary {
                 }
             }
         }
+        let input_fact = model.outlet_fact(node.inputs[0])?;
         if let Some(axis) = (0..self.strides.len()).find(|&ax| {
             self.padding.valid_dim(ax)
                 && self.strides[ax] > 1
@@ -445,7 +446,6 @@ impl Op for ConvUnary {
             new_op.strides[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
             patch.tap_model(model, node.inputs[0])?;
-            let input_fact = model.outlet_fact(node.inputs[0])?;
             let shape = self.data_format.shape(input_fact.shape.iter().collect::<TVec<TDim>>());
             let downample_op =
                 crate::ops::Downsample::new(axis + shape.h_axis(), downsample_factor, 0);
@@ -477,12 +477,11 @@ impl Op for ConvUnary {
                 )?));
             }
         } else {
-            if let Some(shape) = inputs[0].shape.as_finite() {
-                let dt = inputs[0].datum_type;
+            if let Some(shape) = input_fact.shape.as_finite() {
+                let dt = input_fact.datum_type;
                 if (0..spatial_rank).all(|ax| self.padding.valid_dim(ax))
                     && dt == f32::datum_type()
                     && self.group == 1
-                    && self.bias.is_none()
                 {
                     let op = self.to_direct(&*shape)?;
                     return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));

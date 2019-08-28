@@ -117,33 +117,25 @@ impl Op for Conv {
         if let Some(op) = self.to_unary(&*inputs)? {
             let mut patch = TypedModelPatch::default();
             patch.tap_model(model, node.inputs[0])?;
-            let mut output = patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?;
+            let mut output:OutletId = patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?.into();
             if let Some(bias) = node.inputs.get(2) {
                 let mut tap = patch.tap_model(model, *bias)?;
                 if self.data_format == DataFormat::NCHW {
                     let data_rank = node.outputs[0].fact.shape.rank();
-                    let bias_fact = model.outlet_fact(*bias)?;
-                    let mut reshaped = tvec!(1usize; data_rank - 1);
-                    reshaped[0] = bias_fact.shape.dim(0).to_integer()? as usize;
-                    let reshaped_bias_fact =
-                        TypedTensorInfo::dt_shape(bias_fact.datum_type, &*reshaped);
                     let add_dims = crate::ops::array::AddDims::new((1..data_rank-1).collect());
-                    let node = patch.chain_after(
-                        tap,
+                    tap = patch.wire_node(
                         format!("{}-reshaped-bias", node.name),
                         add_dims,
-                        tvec!(reshaped_bias_fact),
-                    )?;
-                    tap = OutletId::new(node, 0);
+                        [tap].as_ref(),
+                    )?[0];
                 }
-                output = patch.add_node_simple(
+                output = patch.wire_node(
                     format!("{}-add-bias", node.name),
-                    crate::ops::math::add(),
-                    tvec!(output, tap.node),
-                    node.outputs[0].fact.clone(),
-                )?;
+                    crate::ops::math::add::bin(),
+                    [output, tap].as_ref()
+                )?[0];
             }
-            patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(output, 0))?;
+            patch.shunt_outside(OutletId::new(node.id, 0), output)?;
             return Ok(Some(patch));
         } else {
             Ok(None)

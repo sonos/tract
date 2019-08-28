@@ -137,7 +137,7 @@ where
     /// Convenience method creating a patch that replace a single operation.
     pub fn fuse_with_next<IO: Into<O>>(
         patched_model: &ModelImpl<TI, O>,
-        node: &Node<TI>,
+        node: &BaseNode<TI, O>,
         new_op: IO,
     ) -> TractResult<ModelPatch<TI, O>> {
         let mut patch = ModelPatch::default();

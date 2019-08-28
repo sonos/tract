@@ -72,19 +72,19 @@ impl Op for LstmNonlin {
         let (i, f, c, o, c_prev) = args_5!(five_parts);
         // let i_t = sigmoid_f32(i_part + w_ic * c_prev);
         let i_t = patch.add_node_simple(
-            format!("{}-i_t-mul", node.name),
-            math::mul(),
+            format!("{}-i_t-mul::bin", node.name),
+            math::mul::bin(),
             tvec!(c_prev),
             fact.clone(),
         )?;
         patch.plug_const(
             InletId::new(i_t, 1),
-            format!("{}-i_t-mul-w_ic", node.name),
+            format!("{}-i_t-mul::bin-w_ic", node.name),
             params.index_axis(ndarray::Axis(0), 0).to_owned().into_arc_tensor(),
         )?;
         let i_t = patch.add_node_simple(
-            format!("{}-i_t-add", node.name),
-            math::add(),
+            format!("{}-i_t-add::bin", node.name),
+            math::add::bin(),
             tvec!(i_t, i),
             fact.clone(),
         )?;
@@ -97,19 +97,19 @@ impl Op for LstmNonlin {
 
         // let f_t = sigmoid_f32(f_part + w_fc * c_prev);
         let f_t = patch.add_node_simple(
-            format!("{}-f_t-mul", node.name),
-            math::mul(),
+            format!("{}-f_t-mul::bin", node.name),
+            math::mul::bin(),
             tvec!(c_prev),
             fact.clone(),
         )?;
         patch.plug_const(
             InletId::new(f_t, 1),
-            format!("{}-f_t-mul-w_fc", node.name),
+            format!("{}-f_t-mul::bin-w_fc", node.name),
             params.index_axis(ndarray::Axis(0), 1).to_owned().into_arc_tensor(),
         )?;
         let f_t = patch.add_node_simple(
-            format!("{}-f_t-add", node.name),
-            math::add(),
+            format!("{}-f_t-add::bin", node.name),
+            math::add::bin(),
             tvec!(f_t, f),
             fact.clone(),
         )?;
@@ -129,38 +129,38 @@ impl Op for LstmNonlin {
         )?;
         let i_t_tanh_c = patch.add_node_simple(
             format!("{}-i_t_c_t-tanh", node.name),
-            math::mul(),
+            math::mul::bin(),
             tvec!(i_t, tanh_c),
             fact.clone(),
         )?;
         let f_t_c_prev = patch.add_node_simple(
             format!("{}-f_t_c_prev", node.name),
-            math::mul(),
+            math::mul::bin(),
             tvec!(f_t, c_prev),
             fact.clone(),
         )?;
         let c_t = patch.add_node_simple(
             format!("{}-c_t", node.name),
-            math::add(),
+            math::add::bin(),
             tvec!(f_t_c_prev, i_t_tanh_c),
             fact.clone(),
         )?;
 
         // let o_t = sigmoid_f32(o_part + w_oc * c_t);
         let o_t = patch.add_node_simple(
-            format!("{}-o_t-mul", node.name),
-            math::mul(),
+            format!("{}-o_t-mul::bin", node.name),
+            math::mul::bin(),
             tvec!(c_t),
             fact.clone(),
         )?;
         patch.plug_const(
             InletId::new(o_t, 1),
-            format!("{}-o_t-mul-w_oc", node.name),
+            format!("{}-o_t-mul::bin-w_oc", node.name),
             params.index_axis(ndarray::Axis(0), 2).to_owned().into_arc_tensor(),
         )?;
         let o_t = patch.add_node_simple(
-            format!("{}-o_t-add", node.name),
-            math::add(),
+            format!("{}-o_t-add::bin", node.name),
+            math::add::bin(),
             tvec!(o_t, o),
             fact.clone(),
         )?;
@@ -181,7 +181,7 @@ impl Op for LstmNonlin {
 
         let m_t = patch.add_node_simple(
             format!("{}-m_t", node.name),
-            math::mul(),
+            math::mul::bin(),
             tvec!(o_t, tanh_c_t),
             fact.clone(),
         )?;

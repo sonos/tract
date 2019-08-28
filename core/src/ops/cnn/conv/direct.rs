@@ -62,7 +62,7 @@ impl Op for Direct {
                 ops.extend(op.into_iter());
                 return Ok(Some(TypedModelPatch::fuse_with_next(
                     model,
-                    &node,
+                    node,
                     Direct { fused_ops: ops, ..self.clone() },
                 )?));
             }

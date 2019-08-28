@@ -179,9 +179,10 @@ where
     }
 }
 
-impl<D> TypedOp for MatMat<D>
+impl<T> TypedOp for MatMat<T>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+    T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    f32: AsPrimitive<T>,
 {
     typed_op_as_op!();
 

@@ -204,7 +204,7 @@ where
             .collect::<Vec<_>>();
         display_graph.add_node_section(n, expected_outputs_section)?;
 
-        if node.op_is::<tract_core::ops::Source>() {
+        if tract.input_outlets()?.iter().any(|o| o.node == n) {
             display_graph.set_node_color(n, Blue)?;
         } else if node.op().validation() == Validation::Random {
             display_graph.set_node_color(n, Blue)?;

@@ -45,7 +45,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("LRN", lrn);
     reg.insert("MaxPool", max_pool);
     reg.insert("ParametricSoftplus", parametric_softplus);
-    reg.insert("PRelu", |_, _| Ok((Box::new(prelu()), vec![])));
+    reg.insert("PRelu", |_, _| Ok((Box::new(prelu::bin()), vec![])));
     reg.insert("ReduceL1", reduce!(L1));
     reg.insert("ReduceL2", reduce!(L2));
     reg.insert("ReduceLogSum", reduce!(LogSum));

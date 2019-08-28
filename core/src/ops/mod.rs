@@ -24,9 +24,6 @@ pub mod scan;
 pub mod source;
 pub mod unimpl;
 
-#[macro_use]
-pub mod binary;
-
 pub use downsample::Downsample;
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {

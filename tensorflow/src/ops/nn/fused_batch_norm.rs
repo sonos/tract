@@ -58,12 +58,12 @@ impl Op for FusedBatchNorm {
             patch.tap_model(&model, node.inputs[0])?;
             let mul = patch.chain(
                 format!("{}-mul", node.name),
-                tract_core::ops::math::mul(),
+                tract_core::ops::math::mul::bin(),
                 tvec!(node.outputs[0].fact.clone()),
             )?;
             let id = patch.chain(
                 format!("{}-add", node.name),
-                tract_core::ops::math::add(),
+                tract_core::ops::math::add::bin(),
                 tvec!(node.outputs[0].fact.clone()),
             )?;
             patch.plug_const(
