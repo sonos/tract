@@ -459,6 +459,15 @@ impl Op for ConvUnary {
             patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(id, 0))?;
             return Ok(Some(patch));
         }
+        Ok(None)
+    }
+
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
         let spatial_rank = self.full_input_shape.len() - 2;
         let kernel_spatial_shape = &self.kernel.shape()[self.kernel_fmt.h_axis()..][..spatial_rank];
         if kernel_spatial_shape.iter().product::<usize>() == 1
