@@ -53,6 +53,15 @@ impl InferenceRulesOp for GlobalAvgPool {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for GlobalAvgPool {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        output_facts(inputs)
+    }
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -112,7 +121,17 @@ impl InferenceRulesOp for GlobalLpPool {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
+
+impl TypedOp for GlobalLpPool {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        output_facts(inputs)
+    }
+}
+
 
 #[derive(Debug, Clone, new, Default)]
 pub struct GlobalMaxPool {
@@ -165,6 +184,15 @@ impl InferenceRulesOp for GlobalMaxPool {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for GlobalMaxPool {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        output_facts(inputs)
+    }
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(
@@ -172,6 +200,7 @@ fn rules<'r, 'p: 'r, 's: 'r>(
     inputs: &'p [TensorProxy],
     outputs: &'p [TensorProxy],
 ) -> InferenceResult {
+    check_input_arity(&inputs, 1)?;
     check_output_arity(&outputs, 1)?;
     s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
     s.equals(&outputs[0].rank, &inputs[0].rank)?;
@@ -183,4 +212,13 @@ fn rules<'r, 'p: 'r, 's: 'r>(
         }
         Ok(())
     })
+}
+
+
+fn output_facts(inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+    let mut output = inputs[0].clone();
+    for i in 2..output.shape.rank() {
+        output.shape.set_dim(i, TDim::from(1))?
+    }
+    Ok(tvec!(output))
 }

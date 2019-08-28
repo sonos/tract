@@ -77,3 +77,4 @@ impl InferenceRulesOp for Compress {
 
     inference_op_as_op!();
 }
+

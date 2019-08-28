@@ -40,6 +40,7 @@ impl Op for Reshape {
     fn name(&self) -> Cow<str> {
         "Reshape".into()
     }
+
 }
 
 impl StatelessOp for Reshape {
@@ -70,6 +71,25 @@ impl InferenceRulesOp for Reshape {
             let shape = self.compute_shape(&ishape, &shape)?;
             s.equals(&outputs[0].shape, ShapeFact::from(shape))
         })
+    }
+
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref shape) = source.outlet_fact(node.inputs[1])?.value.concretize() {
+            let shape: TVec<usize> =
+                shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|i| *i as usize).collect();
+            let op = super::IntoShape::new(shape);
+            let facts = op.output_facts(&[target.outlet_fact(mapping[&node.inputs[0]])?])?;
+            let id = target.add_node(&*node.name, op, facts)?;
+            target.add_edge(mapping[&node.inputs[0]], InletId::new(id, 0))?;
+            return Ok(tvec!(OutletId::new(id, 0)))
+        }
+        bail!("shape input is variable")
     }
 
     inference_op_as_op!();

@@ -78,4 +78,13 @@ impl InferenceRulesOp for Noop {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Noop {
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(bool::datum_type(), ())?))
+    }
+
+    typed_op_as_op!();
 }

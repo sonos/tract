@@ -12,6 +12,35 @@ macro_rules! inference_op_as_op {
 }
 
 #[macro_export]
+macro_rules! typed_op_as_op {
+    () => {
+        fn as_op(&self) -> &dyn Op {
+            self
+        }
+
+        fn as_op_mut(&mut self) -> &mut dyn Op {
+            self
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! to_typed {
+    () => {
+        fn to_typed(
+            &self,
+            _source: &InferenceModel,
+            node: &InferenceNode,
+            target: &mut TypedModel,
+            mapping: &HashMap<OutletId, OutletId>,
+        ) -> TractResult<TVec<OutletId>> {
+            let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
+            target.wire_node(&*node.name, self.clone(), &*inputs)
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! element_map {
     ($Name:ident, [$($type:ty),*], $expr:expr) => {
         element_map!($Name, match $($type => { $expr } ),*);
@@ -118,19 +147,6 @@ macro_rules! element_map_move {
                 stringify!($Name).into()
             }
 
-            fn pulsify(
-                &self,
-                _source: &NormalizedModel,
-                node: &NormalizedNode,
-                target: &mut PulsedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let input = mapping[&node.inputs[0]];
-                let fact = target.outlet_fact(input)?.clone();
-                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-                Ok(tvec!(OutletId::new(id, 0)))
-            }
-
             fn translation_invariants(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
@@ -138,7 +154,6 @@ macro_rules! element_map_move {
                 let rank = node.outputs[0].fact.shape.rank();
                 Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
             }
-
         }
 
         impl InferenceRulesOp for $Name {
@@ -161,6 +176,33 @@ macro_rules! element_map_move {
             }
 
             inference_op_as_op!();
+            to_typed!();
+        }
+
+        impl TypedOp for $Name {
+            typed_op_as_op!();
+
+            fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+                let dt = inputs[0].datum_type;
+                $(if dt == <$type>::datum_type() {
+                    return Ok(tvec!(TypedTensorInfo::shape::<$to,_,_>(inputs[0].shape.clone())?));
+                })*
+                bail!("{} not covering {:?}", stringify!($Name), dt)
+            }
+
+            fn pulsify(
+                &self,
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+                _pulse: usize,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let fact = target.outlet_fact(input)?.clone();
+                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+                Ok(tvec!(OutletId::new(id, 0)))
+            }
         }
     };
 }
@@ -276,19 +318,6 @@ macro_rules! element_map_with_params {
                 stringify!($Name).into()
             }
 
-            fn pulsify(
-                &self,
-                _source: &NormalizedModel,
-                node: &NormalizedNode,
-                target: &mut PulsedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let input = mapping[&node.inputs[0]];
-                let fact = target.outlet_fact(input)?.clone();
-                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-                Ok(tvec!(OutletId::new(id, 0)))
-            }
-
             fn translation_invariants(&self,
                 _model: &TypedModel,
                 node: &TypedNode,
@@ -316,6 +345,29 @@ macro_rules! element_map_with_params {
             }
 
             inference_op_as_op!();
+            to_typed!();
+        }
+
+        impl TypedOp for $Name {
+            typed_op_as_op!();
+
+            fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+                Ok(tvec!(inputs[0].clone()))
+            }
+
+            fn pulsify(
+                &self,
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let fact = target.outlet_fact(input)?.clone();
+                let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+                Ok(tvec!(OutletId::new(id, 0)))
+            }
+
         }
     };
 }
@@ -341,26 +393,6 @@ macro_rules! element_nary {
             fn name(&self) -> Cow<str> {
                 stringify!($Name).into()
             }
-
-            fn pulsify(
-                &self,
-                _source: &NormalizedModel,
-                node: &NormalizedNode,
-                target: &mut PulsedModel,
-                mapping: &HashMap<OutletId, OutletId>,
-            ) -> TractResult<TVec<OutletId>> {
-                let input = mapping[&node.inputs[0]];
-                let mut fact = target.outlet_fact(input)?.clone();
-                $(if fact.dt == <$type>::datum_type() {
-                    fact.dt = <$to>::datum_type().into();
-                })*
-                let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
-                for (ix, i) in node.inputs.iter().enumerate() {
-                    target.add_edge(mapping[i], InletId::new(id, ix))?;
-                }
-                Ok(tvec!(OutletId::new(id, 0)))
-            }
-
         }
 
         impl StatelessOp for $Name {
@@ -427,6 +459,35 @@ macro_rules! element_nary {
             }
 
             inference_op_as_op!();
+            to_typed!();
+        }
+
+        impl TypedOp for $Name {
+            typed_op_as_op!();
+
+            fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+                return Ok(tvec!(inputs[0].clone()))
+            }
+
+            fn pulsify(
+                &self,
+                _source: &NormalizedModel,
+                node: &NormalizedNode,
+                target: &mut PulsedModel,
+                mapping: &HashMap<OutletId, OutletId>,
+                _pulse: usize,
+            ) -> TractResult<TVec<OutletId>> {
+                let input = mapping[&node.inputs[0]];
+                let mut fact = target.outlet_fact(input)?.clone();
+                $(if fact.dt == <$type>::datum_type() {
+                    fact.dt = <$to>::datum_type().into();
+                })*
+                let id = target.add_node(&*node.name, self.clone(), tvec!(fact))?;
+                for (ix, i) in node.inputs.iter().enumerate() {
+                    target.add_edge(mapping[i], InletId::new(id, ix))?;
+                }
+                Ok(tvec!(OutletId::new(id, 0)))
+            }
         }
     }
 }

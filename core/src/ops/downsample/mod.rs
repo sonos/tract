@@ -36,7 +36,10 @@ impl Downsample {
         (input_dim.clone() - self.modulo).div_ceil(self.stride.into())
     }
 
-    pub(crate) fn transform_fact(&self, input_fact: &TypedTensorInfo) -> TractResult<TypedTensorInfo> {
+    pub(crate) fn transform_fact(
+        &self,
+        input_fact: &TypedTensorInfo,
+    ) -> TractResult<TypedTensorInfo> {
         let mut downed = input_fact.clone();
         let down_len = self.transform_dim(&input_fact.shape.dim(self.axis));
         downed.shape.set_dim(self.axis, down_len.clone())?;
@@ -58,25 +61,6 @@ impl Op for Downsample {
             return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?));
         }
         pull_downsample_up(model, node)
-    }
-
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
-        if fact.pulse() % self.stride != 0 {
-            bail!("Pulsificaton requires pulse to be a stride multiple")
-        }
-        fact.shape[self.axis] /= self.stride;
-        fact.dim = fact.dim.div_ceil(self.stride.to_dim());
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
     }
 
     impl_op_same_as!();
@@ -118,6 +102,37 @@ impl InferenceRulesOp for Downsample {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Downsample {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut downed = inputs[0].clone();
+        let down_len = self.transform_dim(&downed.shape.dim(self.axis));
+        downed.shape.set_dim(self.axis, down_len.clone())?;
+        Ok(tvec!(downed))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.outlet_fact(input)?.clone();
+        if fact.pulse() % self.stride != 0 {
+            bail!("Pulsificaton requires pulse to be a stride multiple")
+        }
+        fact.shape[self.axis] /= self.stride;
+        fact.dim = fact.dim.div_ceil(self.stride.to_dim());
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
 }
 
 fn pull_downsample_up(
@@ -134,24 +149,27 @@ fn pull_downsample_up(
             .is_some()
         {
             let mut patch = TypedModelPatch::default();
-            let other = patch.add_node(
-                &*prec.name,
-                objekt::clone_box(prec.op()),
-                tvec!(down_node.outputs[0].fact.clone()),
-            )?;
-            patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(other, 0))?;
+            let mut inputs = vec![];
             for (ix, &oo) in prec.inputs.iter().enumerate() {
-                let _source = patch.tap_model(model, oo)?;
-                let ds = patch.chain(
+                let source = patch.tap_model(model, oo)?;
+                let ds = patch.wire_node(
                     format!("{}-{}", prec.name, ix),
                     down_op.clone(),
-                    tvec!(down_op.transform_fact(model.outlet_fact(oo)?)?),
+                    [source].as_ref(),
                 )?;
-                patch.add_edge(OutletId::new(ds, 0), InletId::new(other, ix))?;
+                inputs.push(ds[0]);
             }
+            let other = patch.wire_node(
+                &*prec.name,
+                prec.op.clone(),
+                &*inputs
+            )?;
+            patch.shunt_outside(OutletId::new(down_node.id, 0), other[0])?;
             return Ok(Some(patch));
-        } else if let Some(crop_op) = prec.op_as::<ops::array::Crop>() {
-            return array::pull_downsample_over_crop(model, prec, crop_op, down_node, down_op);
+        } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<TDim>>() {
+            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
+        } else if let Some(crop_op) = prec.op_as::<ops::array::Slice<usize>>() {
+            return array::pull_downsample_over_slice(model, prec, crop_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::array::RmDims>() {
             return array::pull_downsample_over_rmdims(model, prec, other_op, down_node, down_op);
         } else if let Some(other_op) = prec.op_as::<ops::array::AddDims>() {

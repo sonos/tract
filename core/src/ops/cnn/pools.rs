@@ -54,6 +54,20 @@ impl PoolSpec {
         })
     }
 
+    pub fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let ishape = self.data_format.shape(inputs[0].shape.to_tvec());
+        let ones = tvec![1; ishape.hw_rank()];
+        let computed = self.padding.compute(
+            ishape.hw_dims(),
+            &*self.kernel_shape,
+            &ones,
+            self.strides.as_ref().unwrap_or(&ones),
+        );
+        let spatial_dims = computed.into_iter().map(|d| d.output).collect::<TVec<TDim>>();
+        let oshape = self.data_format.from_n_c_hw(ishape.n().clone(), ishape.c().clone(), spatial_dims);
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*oshape.shape)?))
+    }
+
     pub fn pulsify(
         &self,
         _source: &NormalizedModel,

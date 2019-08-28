@@ -97,3 +97,20 @@ where
         Ok(tvec!(output.into_arc_tensor()))
     }
 }
+
+impl<D> TypedOp for VecMat<D>
+where
+    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+{
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.output_shape.shape
+        )?))
+    }
+}

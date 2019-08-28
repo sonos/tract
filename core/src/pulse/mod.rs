@@ -1,5 +1,4 @@
 use crate::internal::*;
-use crate::ops::source::Source;
 use std::fmt;
 
 use std::convert::TryFrom;
@@ -39,7 +38,7 @@ impl TensorInfo for PulsedTensorFact {
 impl TryFrom<PulsedTensorFact> for TypedTensorInfo {
     type Error = TractError;
     fn try_from(fact: PulsedTensorFact) -> TractResult<TypedTensorInfo> {
-        Ok(TypedTensorInfo { shape: (&fact.shape).into(), datum_type: fact.dt, konst: None })
+        TypedTensorInfo::dt_shape(fact.dt, &*fact.shape)
     }
 }
 
@@ -61,7 +60,7 @@ impl PulsedTensorFact {
     }
 
     pub fn to_pulse_fact(&self) -> NormalizedTensorInfo {
-        NormalizedTensorInfo { datum_type: self.dt, shape: ShapeInfo::from(&*self.shape) }
+        NormalizedTensorInfo::dt_shape(self.dt, &*self.shape).unwrap()
     }
 
     pub fn streaming_shape(&self) -> Vec<TDim> {
@@ -79,7 +78,7 @@ impl PulsedTensorFact {
     }
 }
 
-pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<dyn Op>>;
+pub type PulsedModel = ModelImpl<PulsedTensorFact, Box<dyn TypedOp>>;
 
 impl PulsedModel {
     pub fn new(source: &NormalizedModel, pulse: usize) -> TractResult<PulsedModel> {
@@ -90,37 +89,7 @@ impl PulsedModel {
         source: &NormalizedModel,
         pulse: usize,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
-        let mut target = PulsedModel::default();
-        let mut mapping = HashMap::new();
-        for old_id in source.eval_order()? {
-            trace!(
-                "Pulsify node {} {} ({})",
-                old_id,
-                source.node(old_id).name,
-                source.node(old_id).op().name()
-            );
-            if source.node(old_id).op_as::<Source>().is_some() {
-                let node = source.node(old_id);
-                let pulsed_fact =
-                    PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
-                let id = target.add_source(node.name.clone(), pulsed_fact)?;
-                mapping.insert(OutletId::new(old_id, 0), OutletId::new(id, 0));
-            } else {
-                let node = &source.nodes()[old_id];
-                let outlets = node
-                    .op()
-                    .pulsify(&source, &node, &mut target, &mapping)
-                    .chain_err(|| format!("Pulsifying {:?}", node))?;
-                for (ix, outlet) in outlets.into_iter().enumerate() {
-                    mapping.insert(OutletId::new(node.id, ix), outlet);
-                }
-            }
-            trace!("Target is now {}", target.nodes().len());
-        }
-        // maintaining order of i/o interface
-        target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
-        target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
-        Ok((target, mapping))
+        crate::model::compact::translate(source, &pulse)
     }
 
     pub fn into_typed(self) -> TractResult<TypedModel> {
@@ -180,5 +149,4 @@ mod tests {
             TensorFact::dt_shape(DatumType::F32, vec!(4, 2, 3))
         );
     }
-
 }

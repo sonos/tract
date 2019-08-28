@@ -46,6 +46,17 @@ pub trait InferenceRulesOp {
 
     fn as_op(&self) -> &dyn Op;
     fn as_op_mut(&mut self) -> &mut dyn Op;
+
+    #[allow(unused_variables)]
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        bail!("Node {} can not be typed", node)
+    }
 }
 
 impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
@@ -60,9 +71,12 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
         let outputs_proxy: TVec<TensorProxy> =
             (0..outputs.len()).map(|ix| TensorProxy::new(tvec!(1, ix as isize).into())).collect();
 
+        trace!("Building rules for {:?}", self);
         let mut solver = Solver::default();
         self.rules(&mut solver, &inputs_proxy, &outputs_proxy)?;
+        trace!("Applying rules for {:?}", self);
         let (input, output) = solver.infer_facts((inputs, outputs))?;
+        trace!("Solver done");
         Ok((input, output, observed.into_iter().cloned().collect()))
     }
 
@@ -81,5 +95,15 @@ impl<O: InferenceRulesOp + Op> crate::ops::InferenceOp for O {
 
     fn as_op_mut(&mut self) -> &mut dyn Op {
         self.as_op_mut()
+    }
+
+    fn to_typed(
+        &self,
+        source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        self.to_typed(source, node, target, mapping)
     }
 }

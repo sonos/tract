@@ -58,6 +58,15 @@ impl InferenceRulesOp for LayerHardmax {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for LayerHardmax {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -115,6 +124,15 @@ impl InferenceRulesOp for LayerLogSoftmax {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for LayerLogSoftmax {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -172,6 +190,7 @@ impl InferenceRulesOp for LayerSoftmax {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 fn rules<'r, 'p: 'r, 's: 'r>(
@@ -185,3 +204,12 @@ fn rules<'r, 'p: 'r, 's: 'r>(
     s.equals(&outputs[0].shape, &inputs[0].shape)?;
     Ok(())
 }
+
+impl TypedOp for LayerSoftmax {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+}
+

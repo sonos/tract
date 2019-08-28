@@ -63,4 +63,13 @@ impl InferenceRulesOp for Lrn {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Lrn {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }

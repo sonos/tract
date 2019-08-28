@@ -1,35 +1,32 @@
+use super::Downsample;
 use crate::internal::*;
 use crate::ops;
-use super::Downsample;
 
-pub fn pull_downsample_over_crop(
+pub fn pull_downsample_over_slice<D: DimLike>(
     model: &TypedModel,
-    crop_node: &TypedNode,
-    crop_op: &ops::array::Crop,
+    slice_node: &TypedNode,
+    slice_op: &ops::array::Slice<D>,
     down_node: &TypedNode,
     down_op: &Downsample,
-) -> TractResult<Option<TypedModelPatch>> {
-    let modulo = (down_op.modulo + crop_op.prune[down_op.axis].0) % down_op.stride;
-    let left = (down_op.modulo + crop_op.prune[down_op.axis].0) / down_op.stride;
+) -> TractResult<Option<TypedModelPatch>>
+where
+    TDim: From<D>,
+{
+    let modulo = (down_op.modulo + slice_op.start.to_integer()? as usize) % down_op.stride;
+    let left = (down_op.modulo + slice_op.start.to_integer()? as usize) / down_op.stride;
     let mut patch = TypedModelPatch::default();
-    patch.tap_model(model, crop_node.inputs[0])?;
-    let input_outlet = crop_node.inputs[0].clone();
-    let input_fact = model.outlet_fact(input_outlet).unwrap();
+    let tap = patch.tap_model(model, slice_node.inputs[0])?;
     let final_len = down_node.outputs[0].fact.shape.dim(down_op.axis);
     let new_down = Downsample::new(down_op.axis, down_op.stride, modulo);
-    let downed = new_down.transform_fact(&input_fact)?;
-    let midway_len = downed.shape.dim(down_op.axis);
-    patch.chain(&*down_node.name, new_down, tvec!(downed))?;
-    let mut new_prunes = crop_op.prune.clone();
-    new_prunes[down_op.axis].0 = left;
-    new_prunes[down_op.axis].1 =
-        (midway_len.to_dim() - final_len.to_dim() - left).to_integer()? as usize;
-    let new_crop = patch.chain(
-        &*crop_node.name,
-        ops::array::Crop::new(new_prunes),
-        tvec!(down_node.outputs[0].fact.clone()),
+    let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
+    let new_start = left;
+    let new_end = (final_len.to_dim() + left).to_integer()? as usize;
+    let new_slice = patch.wire_node(
+        &*slice_node.name,
+        ops::array::Slice::new(slice_op.axis, new_start, new_end),
+        &*ds,
     )?;
-    patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_crop, 0))?;
+    patch.shunt_outside(OutletId::new(down_node.id, 0), new_slice[0])?;
     return Ok(Some(patch));
 }
 
@@ -41,16 +38,12 @@ pub fn pull_downsample_over_adddims(
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
     let mut patch = TypedModelPatch::default();
-    patch.tap_model(model, add_node.inputs[0])?;
-    let input_outlet = add_node.inputs[0].clone();
-    let input_fact = model.outlet_fact(input_outlet).unwrap();
+    let tap = patch.tap_model(model, add_node.inputs[0])?;
     let mut new_down = down_op.clone();
     new_down.axis -= add_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
-    let downed = new_down.transform_fact(&input_fact)?;
-    patch.chain(&*down_node.name, new_down, tvec!(downed))?;
-    let new_node =
-        patch.chain(&*add_node.name, add_op.clone(), tvec!(down_node.outputs[0].fact.clone()))?;
-    patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_node, 0))?;
+    let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
+    let add = patch.wire_node(&*add_node.name, add_op.clone(), &*ds)?;
+    patch.shunt_outside(OutletId::new(down_node.id, 0), add[0])?;
     return Ok(Some(patch));
 }
 
@@ -62,16 +55,12 @@ pub fn pull_downsample_over_rmdims(
     down_op: &Downsample,
 ) -> TractResult<Option<TypedModelPatch>> {
     let mut patch = TypedModelPatch::default();
-    patch.tap_model(model, rm_node.inputs[0])?;
-    let input_outlet = rm_node.inputs[0].clone();
-    let input_fact = model.outlet_fact(input_outlet).unwrap();
+    let tap = patch.tap_model(model, rm_node.inputs[0])?;
     let mut new_down = down_op.clone();
     new_down.axis += rm_op.axes.iter().filter(|&ax| *ax <= down_op.axis).count();
-    let downed = new_down.transform_fact(&input_fact)?;
-    patch.chain(&*down_node.name, new_down, tvec!(downed))?;
-    let new_rm =
-        patch.chain(&*rm_node.name, rm_op.clone(), tvec!(down_node.outputs[0].fact.clone()))?;
-    patch.shunt_outside(OutletId::new(down_node.id, 0), OutletId::new(new_rm, 0))?;
+    let ds = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
+    let rm = patch.wire_node(&*rm_node.name, rm_op.clone(), &*ds)?;
+    patch.shunt_outside(OutletId::new(down_node.id, 0), rm[0])?;
     return Ok(Some(patch));
 }
 
@@ -100,20 +89,24 @@ mod tests {
         stride: usize,
         modulo: usize,
     ) -> TestCaseResult {
+        let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
         let model = {
             let mut model = InferenceModel::default();
             model.add_source("input", TensorFact::dt_shape(i32::datum_type(), vec![len]))?;
-            model.chain_default("crop", ops::array::Crop::new(vec![(left, right)]))?;
+            model.chain_default("crop", ops::array::Slice::new(0, left, len - right))?;
             model.chain_default("down", Downsample::new(0, stride, modulo))?;
             model.auto_outputs()?;
             model
         };
+        trace!("{:#?}", model);
         prop_assert!(model.node(model.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let typed = model.into_typed()?;
+        trace!("{:#?}", typed);
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
         let expected = SimplePlan::new(&typed)?.run(tvec!(input.clone()))?;
 
         let typed = typed.declutter()?;
+        trace!("{:#?}", typed);
         prop_assert!(!typed.node(typed.output_outlets().unwrap()[0].node).op_is::<Downsample>());
         let found = SimplePlan::new(&typed)?.run(tvec!(input))?;
         prop_assert_eq!(found, expected);

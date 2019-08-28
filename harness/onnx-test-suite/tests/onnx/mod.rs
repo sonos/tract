@@ -76,18 +76,23 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
         test_path
     };
     let model_file = path.join("model.onnx");
-    debug!("Loading {:?}", model_file);
+    info!("Loading {:?}", model_file);
     let onnx = onnx();
     trace!("Proto Model:\n{:#?}", onnx.proto_model_for_path(&model_file));
     let mut model = onnx.model_for_path(&model_file).unwrap();
+    info!("Analyse");
     trace!("Model:\n{:#?}", model);
     model.analyse(false).unwrap();
+    info!("Incorporate");
+    let model = model.incorporate().unwrap();
+    info!("Check full inference");
     if model.missing_type_shape().unwrap().len() != 0 {
         panic!("Incomplete inference {:?}", model.missing_type_shape());
     }
-    let model = model.into_typed().unwrap();
     info!("Test model (optim: {:?}) {:#?}", optim, path);
     if optim {
+        info!("Into type");
+        let model = model.into_typed().unwrap();
         let optimized = model.into_optimized().unwrap();
         trace!("Run optimized model:\n{:#?}", optimized);
         run_model(optimized, &path)
@@ -97,7 +102,11 @@ pub fn run_one<P: AsRef<path::Path>>(root: P, test: &str, optim: bool) {
     };
 }
 
-fn run_model(model: TypedModel, path: &path::Path) {
+fn run_model<TI, O>(model: ModelImpl<TI, O>, path: &path::Path)
+where
+    TI: TensorInfo + Clone + 'static,
+    O: std::fmt::Debug + std::fmt::Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
     let plan = SimplePlan::new(&model).unwrap();
     for d in fs::read_dir(path).unwrap() {
         let d = d.unwrap();
@@ -148,16 +157,17 @@ fn run_model(model: TypedModel, path: &path::Path) {
                 );
             }
             for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
+                use tract_core::error_chain::ChainedError;
                 //                println!("computed: {:?}", computed[ix].dump(true));
                 //                println!("expected: {:?}", expected[ix].dump(true));
                 if let Err(e) = a.close_enough(b, true) {
                     panic!(
-                        "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}\n{:?}",
+                        "For {:?}, different result for output #{}:\ngot:\n{:?}\nexpected:\n{:?}\n{}",
                         d.file_name(),
                         ix,
                         a.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
                         b.cast_to::<f32>().unwrap().to_array_view::<f32>().unwrap(),
-                        e
+                        e.display_chain()
                     )
                 }
             }

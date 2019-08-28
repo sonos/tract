@@ -87,6 +87,50 @@ impl Op for Pad {
     fn name(&self) -> Cow<str> {
         "Pad".into()
     }
+}
+
+impl StatelessOp for Pad {
+    /// Evaluates the operation given the input tensors.
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let input = args_1!(inputs);
+        Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))
+    }
+}
+
+impl InferenceRulesOp for Pad {
+    fn rules<'r, 'p: 'r, 's: 'r>(
+        &'s self,
+        s: &mut Solver<'r>,
+        inputs: &'p [TensorProxy],
+        outputs: &'p [TensorProxy],
+    ) -> InferenceResult {
+        check_input_arity(&inputs, 1)?;
+        check_output_arity(&outputs, 1)?;
+        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
+        s.equals(&inputs[0].rank, &outputs[0].rank)?;
+        for (ix, &(a, b)) in self.pads.iter().enumerate() {
+            s.equals(&inputs[0].shape[ix], outputs[0].shape[ix].bex() - a.to_dim() - b.to_dim())?;
+        }
+        Ok(())
+    }
+
+    inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Pad {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        for (ix, (b, e)) in self.pads.iter().enumerate() {
+            fact.shape.set_dim(ix, fact.shape.dim(ix).clone() + *b + *e)?
+        }
+        Ok(tvec!(fact))
+    }
 
     fn pulsify(
         &self,
@@ -94,6 +138,7 @@ impl Op for Pad {
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let input_fact = target.outlet_fact(input)?.clone();
@@ -147,35 +192,9 @@ impl Op for Pad {
 
         Ok(tvec!(OutletId::new(id, 0)))
     }
+
 }
 
-impl StatelessOp for Pad {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))
-    }
-}
-
-impl InferenceRulesOp for Pad {
-    fn rules<'r, 'p: 'r, 's: 'r>(
-        &'s self,
-        s: &mut Solver<'r>,
-        inputs: &'p [TensorProxy],
-        outputs: &'p [TensorProxy],
-    ) -> InferenceResult {
-        check_input_arity(&inputs, 1)?;
-        check_output_arity(&outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
-        s.equals(&inputs[0].rank, &outputs[0].rank)?;
-        for (ix, &(a, b)) in self.pads.iter().enumerate() {
-            s.equals(&inputs[0].shape[ix], outputs[0].shape[ix].bex() - a.to_dim() - b.to_dim())?;
-        }
-        Ok(())
-    }
-
-    inference_op_as_op!();
-}
 
 #[derive(Debug, Clone, Default, new)]
 struct PulsePadOpState<T: Datum + Copy> {
@@ -289,3 +308,15 @@ impl<T: Datum + Copy> StatefullOp for PulsePad<T> {
         Ok(Some(Box::new(PulsePadOpState::<T>::default())))
     }
 }
+
+impl<T: Datum + Copy> TypedOp for PulsePad<T> {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+}
+

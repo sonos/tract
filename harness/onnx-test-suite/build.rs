@@ -32,10 +32,13 @@ pub fn make_test_file(tests_set: &str) {
     assert!(node_tests.exists());
     let working_list_file = path::PathBuf::from(".").join(tests_set).with_extension("txt");
     println!("cargo:rerun-if-changed={}", working_list_file.to_str().unwrap());
-    let working_list: Vec<String> = if let Ok(list) = fs::read_to_string(&working_list_file) {
+    let working_list: Vec<(String, bool)> = if let Ok(list) = fs::read_to_string(&working_list_file) {
         list.split("\n")
             .map(|s| s.to_string())
             .filter(|s| s.trim().len() > 1 && s.trim().as_bytes()[0] != b'#')
+            .map(|s| { let splits = s.split_whitespace().collect::<Vec<_>>();
+                (splits[0].to_string(), splits.len() == 1)
+            })
             .collect()
     } else {
         vec![]
@@ -56,7 +59,9 @@ pub fn make_test_file(tests_set: &str) {
         writeln!(rs, "mod {} {{", s).unwrap();
         for t in &tests {
             writeln!(rs, "#[test]").unwrap();
-            if !working_list.contains(&t) {
+            let pair = working_list.iter().find(|pair| &*pair.0 == &*t);
+            let run = pair.is_some() && (pair.unwrap().1 || !optim);
+            if !run {
                 writeln!(rs, "#[ignore]").unwrap();
             }
             writeln!(rs, "fn {}() {{", t).unwrap();

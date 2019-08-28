@@ -55,6 +55,15 @@ impl InferenceRulesOp for ConstantLike {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for ConstantLike {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
 }
 
 #[derive(Debug, Clone, new, Default)]
@@ -91,10 +100,7 @@ impl StatelessOp for EyeLike {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
         let dt = self.dt.unwrap_or(input.datum_type());
-        Ok(tvec!(dispatch_numbers!(Self::make(dt)(
-            self,
-            (input.shape()[0], input.shape()[1])
-        ))?))
+        Ok(tvec!(dispatch_numbers!(Self::make(dt)(self, (input.shape()[0], input.shape()[1])))?))
     }
 }
 
@@ -132,4 +138,16 @@ impl InferenceRulesOp for EyeLike {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for EyeLike {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            self.dt.unwrap_or(inputs[0].datum_type),
+            inputs[0].shape.clone()
+        )?))
+    }
 }

@@ -1,15 +1,15 @@
-use tract_core::internal::*;
-use tract_core::ops as tractops;
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
 use crate::model::TfOpRegister;
+use crate::tfpb::node_def::NodeDef;
+use tract_core::internal::*;
+use tract_core::ops as tractops;
 
 pub fn register_all_ops(reg: &mut TfOpRegister) {
-    reg.insert("Equal", |_,_| Ok(Box::new(tractops::logic::equals())));
-    reg.insert("Greater", |_,_| Ok(Box::new(tractops::logic::greater())));
-    reg.insert("GreaterEqual", |_,_| Ok(Box::new(tractops::logic::greater_equal())));
-    reg.insert("Less", |_,_| Ok(Box::new(tractops::logic::lesser())));
-    reg.insert("LessEqual", |_,_| Ok(Box::new(tractops::logic::lesser_equal())));
+    reg.insert("Equal", |_, _| Ok(Box::new(tractops::logic::equals())));
+    reg.insert("Greater", |_, _| Ok(Box::new(tractops::logic::greater())));
+    reg.insert("GreaterEqual", |_, _| Ok(Box::new(tractops::logic::greater_equal())));
+    reg.insert("Less", |_, _| Ok(Box::new(tractops::logic::lesser())));
+    reg.insert("LessEqual", |_, _| Ok(Box::new(tractops::logic::lesser_equal())));
     reg.insert("LogicalAnd", |_, _| Ok(Box::new(tractops::logic::and())));
     reg.insert("LogicalOr", |_, _| Ok(Box::new(tractops::logic::or())));
     reg.insert("Merge", merge);
@@ -55,6 +55,16 @@ impl InferenceRulesOp for Switch {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Switch {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let fact = TypedTensorInfo::dt_shape(f32::datum_type(), inputs[0].shape.clone())?;
+        Ok(tvec!(fact.clone(), fact))
+    }
 }
 
 fn merge(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
@@ -100,4 +110,16 @@ impl InferenceRulesOp for Merge {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Merge {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(
+            TypedTensorInfo::dt_shape(f32::datum_type(), inputs[0].shape.clone())?,
+            TypedTensorInfo::dt_shape(i32::datum_type(), ())?
+        ))
+    }
 }

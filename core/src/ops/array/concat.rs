@@ -49,7 +49,7 @@ impl Op for Concat {
 
             let mut slices: TVec<NormConcatSlice> = tvec![];
             for input in inputs.iter() {
-                match input.konst.as_ref() {
+                match &input.konst {
                     Some(c_input) => {
                         slices.push(NormConcatSlice::Const(
                             c_input.cast_to_dt(super_type)?.into_owned(),
@@ -65,7 +65,13 @@ impl Op for Concat {
             let mut inlet_slot = 0;
             for (ix, input) in inputs.iter().enumerate() {
                 if input.konst.is_none() {
-                    let tap = patch.tap_model(model, node.inputs[ix])?;
+                    let mut tap = patch.tap_model(model, node.inputs[ix])?;
+                    if model.outlet_fact(node.inputs[ix])?.datum_type != super_type {
+                        let mut fact = model.outlet_fact(node.inputs[ix])?.clone();
+                        fact.datum_type = super_type;
+                        let cast = patch.chain(format!("{}-Cast-{}", node.name, ix), crate::ops::cast::Cast::new(super_type), tvec!(fact))?;
+                        tap = OutletId::new(cast, 0);
+                    }
                     patch.add_edge(tap, InletId::new(node_id, inlet_slot))?;
                     inlet_slot += 1;
                 }
@@ -125,6 +131,22 @@ impl InferenceRulesOp for Concat {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Concat {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let axis = self.resolve_axis(inputs[0].shape.rank() as i64)?;
+        let mut shape = inputs[0].shape.clone();
+        let dim = inputs.iter().map(|f| f.shape.dim(axis)).sum::<TDim>();
+        shape.set_dim(axis, dim)?;
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, shape)?))
+    }
 }
 
 /// NormConcatSlice: fully decluttered Concat equivalent
@@ -159,7 +181,7 @@ pub struct NormConcat {
 }
 
 impl NormConcat {
-    fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<dyn Op>> {
+    fn to_codegen_op<T: Datum>(&self, input_shapes: &[&[usize]]) -> TractResult<Box<dyn TypedOp>> {
         let mut fixed_slices: TVec<FixedConcatSlice<T>> = tvec![];
         let mut input_idx = 0;
         for slice in &self.slices {
@@ -223,6 +245,21 @@ impl Op for NormConcat {
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(node_id, 0))?;
         return Ok(Some(patch));
     }
+}
+
+impl TypedOp for NormConcat {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
+            + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();
+        fact.shape.set_dim(self.axis, dim)?;
+        Ok(tvec!(fact))
+    }
 
     fn pulsify(
         &self,
@@ -230,6 +267,7 @@ impl Op for NormConcat {
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         if node.inputs.len() > 1 {
             bail!("Pulsification not implemented for more than one input to Concat")
@@ -239,14 +277,12 @@ impl Op for NormConcat {
         let fact = target.outlet_fact(input)?;
 
         if fact.axis == self.axis {
-            let super_type: DatumType =
-                DatumType::super_type_for(node.inputs.iter().map(|&x| source.outlet_fact(x).unwrap().datum_type))
-                    .ok_or_else(|| format!("No supertype found"))?;
-            dispatch_datum!(Self::pulsify_along_concat_axis_t(super_type)(self, source, node, target, mapping))
+            dispatch_datum!(Self::pulsify_along_concat_axis_t(fact.dt)(self, source, node, target, mapping))
         } else {
             bail!("Pulsify for Concat on a separate axis is not implemented (but possible)");
         }
     }
+
 }
 
 impl StatelessOp for NormConcat {
@@ -408,6 +444,18 @@ impl<T: Datum> StatefullOp for PulsedSameAxisConcat<T> {
     }
 }
 
+impl<T: Datum> TypedOp for PulsedSameAxisConcat<T> {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+}
+
+
 #[derive(Clone, Debug, Default)]
 pub struct PulsedSameAxisConcatState<T: Datum> {
     current_pos: usize,
@@ -453,12 +501,22 @@ impl<T: Datum> OpState for PulsedSameAxisConcatState<T> {
     }
 }
 
+
 ////////////////////////////////////////////////
 
 #[derive(Debug, Clone)]
 pub enum FixedConcatSlice<T> {
     Const(ArrayD<T>),
     Var(TVec<usize>),
+}
+
+impl<T> FixedConcatSlice<T> {
+    pub fn as_const(&self) -> Option<ArrayViewD<T>> {
+        match self {
+            FixedConcatSlice::Const(a) => Some(a.view()),
+            _ => None
+        }
+    }
 }
 
 fn slices<'a, T: Datum>(
@@ -515,5 +573,20 @@ impl<T: Datum> StatelessOp for FixedConcat<T> {
         let mats = slices(&self.slices, &refs)?;
         let result = T::stack_views(self.axis, &mats)?;
         Ok(tvec![result.into_arc_tensor()])
+    }
+}
+
+impl<T:Datum> TypedOp for FixedConcat<T> {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut fact = inputs[0].clone();
+        let dim = inputs.iter().map(|f| f.shape.dim(self.axis)).sum::<TDim>()
+            + self.slices.iter().filter_map(|s| s.as_const()).map(|s| s.shape()[self.axis]).sum::<usize>();
+        fact.shape.set_dim(self.axis, dim)?;
+        Ok(tvec!(fact))
     }
 }

@@ -1,16 +1,18 @@
 use tract_core::internal::*;
 use tract_core::ndarray;
 
-use crate::model::ParsingContext;
 use crate::model::NodeLine;
+use crate::model::ParsingContext;
 
 pub fn affine_component(ctx: &ParsingContext, name: &str) -> TractResult<Box<dyn InferenceOp>> {
     let node = &ctx.proto_model.config_lines.nodes.iter().find(|l| l.0 == name);
-    let line = if let Some((_, NodeLine::Component(line))) = node { line } else {
+    let line = if let Some((_, NodeLine::Component(line))) = node {
+        line
+    } else {
         bail!("Could not find component {}", name);
     };
     let component = &ctx.proto_model.components[&line.component];
-    let (kernel_len, dilation) = line.input.as_conv_shape_dilation().unwrap_or((1,1));
+    let (kernel_len, dilation) = line.input.as_conv_shape_dilation().unwrap_or((1, 1));
     let kernel: &Tensor =
         component.attributes.get("LinearParams").ok_or("missing attribute LinearParams")?;
     let bias = component.attributes.get("BiasParams").ok_or("missing attribute BiasParams")?;
@@ -75,56 +77,6 @@ impl Op for Affine {
     fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.Affine".into()
     }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let mut patch = TypedModelPatch::default();
-        let input = patch.tap_model(model, node.inputs[0])?;
-
-        let mut input_fact = patch.outlet_fact(input)?.clone();
-        let mut shape = input_fact.shape.to_tvec();
-        shape.insert(0,1.to_dim());
-        input_fact.shape = ShapeInfo::from_dims(shape)?;
-
-        patch.chain(
-            format!("{}-AddBatchDim", node.name),
-            tract_core::ops::array::AddDims::new(vec![0]),
-            tvec!(input_fact),
-        )?;
-
-        let mut output_fact = node.outputs[0].fact.clone();
-        let mut shape = output_fact.shape.to_tvec();
-        shape.insert(0,1.to_dim());
-        output_fact.shape = ShapeInfo::from_dims(shape)?;
-
-        let conv = patch.chain(
-            format!("{}-Conv", node.name),
-            self.as_conv(),
-            tvec!(output_fact),
-        )?;
-
-        let output = patch.chain(
-            &*node.name,
-            tract_core::ops::array::RmDims::new(vec![0]),
-            tvec!(node.outputs[0].fact.clone())
-        )?;
-
-        patch.plug_const(
-            InletId::new(conv, 1), 
-            format!("{}-Linear", node.name),
-            self.linear_params.clone())?;
-
-        patch.plug_const(
-            InletId::new(conv, 2), 
-            format!("{}-Bias", node.name),
-            self.bias_params.clone())?;
-
-        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(output, 0))?;
-        Ok(Some(patch))
-    }
 }
 
 impl StatelessOp for Affine {
@@ -161,4 +113,37 @@ impl InferenceRulesOp for Affine {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+
+        let add_dim = target.wire_node(
+            format!("{}-AddBatchDim", node.name),
+            tract_core::ops::array::AddDims::new(vec![0]),
+            [input].as_ref(),
+        )?;
+
+        let lin = target.add_const(format!("{}-Linear", node.name), self.linear_params.clone())?;
+        let bias = target.add_const(format!("{}-Bias", node.name), self.bias_params.clone())?;
+
+        let conv = target.wire_node(
+            format!("{}-Conv", node.name),
+            self.as_conv(),
+            [add_dim[0], lin.into(), bias.into()].as_ref(),
+        )?;
+
+        let rm_dim = target.wire_node(
+            &*node.name,
+            tract_core::ops::array::RmDims::new(vec![0]),
+            &*conv
+        )?;
+
+        Ok(rm_dim)
+    }
 }

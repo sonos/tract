@@ -15,8 +15,20 @@ impl Op for Inference {
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), &self.body)]
     }
+}
 
-    fn to_typed(&self) -> TractResult<Option<Box<dyn Op>>> {
+impl StatefullOp for Inference {
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        self.to_typed_scan()?.state(session, node_id)
+    }
+}
+
+impl Inference {
+    pub(super) fn to_typed_scan(&self) -> TractResult<Box<Typed>> {
         let typed_model = self.body.clone().into_typed()?;
         let input_mapping = self
             .input_mapping
@@ -42,31 +54,20 @@ impl Op for Inference {
             .enumerate()
             .map(|(ix, im)| {
                 Ok(match im {
-                    OutputMapping::Scan { axis, slot, full_dim_hint, chunk: _ } => OutputMapping::Scan {
-                        axis: *axis,
-                        slot: *slot,
-                        chunk: typed_model.input_fact(ix)?.shape.dim(*axis),
-                        full_dim_hint: full_dim_hint.clone(),
-                    },
+                    OutputMapping::Scan { axis, slot, full_dim_hint, chunk: _ } => {
+                        OutputMapping::Scan {
+                            axis: *axis,
+                            slot: *slot,
+                            chunk: typed_model.input_fact(ix)?.shape.dim(*axis),
+                            full_dim_hint: full_dim_hint.clone(),
+                        }
+                    }
                     OutputMapping::State { slot } => OutputMapping::State { slot: *slot },
                 })
             })
             .collect::<TractResult<_>>()?;
-        Ok(Some(Box::new(Typed::new(
-            typed_model,
-            input_mapping,
-            output_mapping,
-        ))))
+        Ok(Box::new(Typed::new(typed_model, input_mapping, output_mapping)))
     }
-}
-
-impl StatelessOp for Inference {
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        unimplemented!()
-    }
-}
-
-impl Inference {
     fn unify_scanning_tensor_fact(
         outer: &mut TensorFact,
         inner: &mut TensorFact,
@@ -114,7 +115,9 @@ impl Inference {
                 .output_mapping
                 .iter()
                 .enumerate()
-                .filter(|(_ix, map)| if let OutputMapping::State { .. } = map { true } else { false })
+                .filter(
+                    |(_ix, map)| if let OutputMapping::State { .. } = map { true } else { false },
+                )
                 .nth(state_ix)
                 .unwrap()
                 .0;
@@ -208,6 +211,17 @@ impl InferenceOp for Inference {
         trace!("Finished inner model analyse");
         self.unify_facts(&mut inputs, &mut outputs)?;
         Ok((inputs, outputs, tvec!()))
+    }
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let inputs = node.inputs.iter().map(|m| mapping[m]).collect::<TVec<_>>();
+        target.wire_node(&*node.name, self.to_typed_scan()? as Box<dyn TypedOp>, &*inputs)
     }
 
     inference_op_as_op!();

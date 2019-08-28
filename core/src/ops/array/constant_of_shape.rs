@@ -8,13 +8,19 @@ pub struct ConstantOfShape {
 }
 
 impl ConstantOfShape {
+    pub fn make_from_shape<T>(&self, shape: &[usize]) -> TractResult<Arc<Tensor>>
+    where
+        T: Datum + Copy,
+    {
+        Ok(Array::<T, _>::from_elem(&*shape, *self.value.to_scalar()?).into_arc_tensor())
+    }
     pub fn make<T>(&self, shape: &Arc<Tensor>) -> TractResult<Arc<Tensor>>
     where
         T: Datum + Copy,
     {
         let shape: TVec<usize> =
             shape.cast_to::<i64>()?.as_slice::<i64>()?.iter().map(|&x| x as usize).collect();
-        Ok(Array::<T, _>::from_elem(&*shape, *self.value.to_scalar()?).into_arc_tensor())
+        self.make_from_shape::<T>(&*shape)
     }
 }
 
@@ -51,6 +57,22 @@ impl InferenceRulesOp for ConstantOfShape {
         //            Ok(())
         //        })?;
         Ok(())
+    }
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref fact) = target.outlet_fact(mapping[&node.inputs[0]])?.konst {
+            let shape = fact.cast_to::<i32>()?;
+            let shape = shape.as_slice::<i32>()?.iter().map(|&s| s as usize).collect::<TVec<_>>();
+            let value = dispatch_copy!(Self::make_from_shape(self.value.datum_type())(self, &*shape))?;
+            return target.wire_node(&*node.name, crate::ops::konst::Const::new(value), &[]);
+        }
+        bail!("shape input is variable")
     }
 
     inference_op_as_op!();

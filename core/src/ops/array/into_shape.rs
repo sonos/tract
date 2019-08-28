@@ -1,32 +1,40 @@
 use crate::internal::*;
 
 #[derive(Debug, Clone, new, Default)]
-pub struct IntoShape<D: DimLike> {
-    shape: TVec<D>,
+pub struct IntoShape {
+    shape: TVec<usize>,
 }
 
 impl IntoShape {
     /// Evaluates the operation given the input tensors.
-    fn eval_t<T: Datum>(
-        &self,
-        input: Arc<Tensor>,
-    ) -> TractResult<TVec<Arc<Tensor>>> {
-        Ok(tvec![input.into_tensor().into_array::<T>()?.into_shape(shape)?.into_arc_tensor()])
+    fn eval_t<T: Datum>(&self, input: Arc<Tensor>) -> TractResult<TVec<Arc<Tensor>>> {
+        Ok(tvec![input
+            .into_tensor()
+            .into_array::<T>()?
+            .into_shape(&*self.shape)?
+            .into_arc_tensor()])
     }
 }
 
-impl Op for Reshape {
+impl Op for IntoShape {
     fn name(&self) -> Cow<str> {
         "IntoShape".into()
     }
 }
 
-impl StatelessOp for Reshape {
+impl StatelessOp for IntoShape {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        let (input, shape) = args_2!(inputs);
-        let shape: Vec<isize> =
-            shape.cast_to::<i64>()?.to_array_view::<i64>()?.iter().map(|&i| i as isize).collect();
-        let oshape = self.compute_shape(input.shape(), &shape)?;
-        dispatch_datum!(Self::eval_t(input.datum_type())(self, input, &oshape))
+        dispatch_datum!(Self::eval_t(inputs[0].datum_type())(self, args_1!(inputs)))
+    }
+}
+
+impl TypedOp for IntoShape {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.shape)?))
     }
 }

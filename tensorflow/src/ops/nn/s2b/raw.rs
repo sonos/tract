@@ -10,47 +10,6 @@ impl Op for SpaceToBatch {
     fn name(&self) -> Cow<str> {
         "SpaceToBatch".into()
     }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let mut inputs = model.node_input_facts(node.id)?;
-        let mut outputs = model.node_output_facts(node.id)?;
-        let (input, block_shape, paddings) = args_3!(inputs);
-        let output = args_1!(outputs);
-        if let (Some(block_shape), Some(paddings)) =
-            (block_shape.konst.as_ref(), paddings.konst.as_ref())
-        {
-            let paddings = paddings.cast_to::<TDim>()?;
-            let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
-            let mut paddings = tvec![];
-            for p in paddings_view.outer_iter() {
-                let pad = match (p[0].to_integer(), p[1].to_integer()) {
-                    (Ok(bef), Ok(aft)) => {
-                        super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
-                    }
-                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
-                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
-                    _ => {
-                        info!("Failed to unarize SpaceToBatch because of padding");
-                        return Ok(None);
-                    }
-                };
-                paddings.push(pad);
-            }
-            let op = super::unary::SpaceToBatchUnary::new(
-                self.datum_type,
-                input.shape.iter().collect(),
-                output.shape.iter().collect(),
-                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
-                paddings,
-            );
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-        }
-        Ok(None)
-    }
 }
 
 impl StatelessOp for SpaceToBatch {
@@ -83,6 +42,44 @@ impl InferenceRulesOp for SpaceToBatch {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let (Some(block_shape), Some(paddings)) = (
+            target.outlet_fact(mapping[&node.inputs[1]])?.konst.clone(),
+            target.outlet_fact(mapping[&node.inputs[2]])?.konst.clone(),
+        ) {
+            let paddings = paddings.cast_to::<TDim>()?;
+            let paddings_view = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
+            let mut paddings = tvec![];
+            for p in paddings_view.outer_iter() {
+                let pad = match (p[0].to_integer(), p[1].to_integer()) {
+                    (Ok(bef), Ok(aft)) => {
+                        super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
+                    }
+                    (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
+                    (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                    _ => bail!("Failed to unarize SpaceToBatch because of padding"),
+                };
+                paddings.push(pad);
+            }
+            let op = super::unary::SpaceToBatchUnary::new(
+                self.datum_type,
+                target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec(),
+                node.outputs[0].fact.shape.concretize().unwrap().iter().cloned().collect::<TVec<_>>(),
+                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
+                paddings,
+            );
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
+        } else {
+            bail!("Need fixed block shape and padding")
+        }
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -93,45 +90,6 @@ pub struct BatchToSpace {
 impl Op for BatchToSpace {
     fn name(&self) -> Cow<str> {
         "BatchToSpace".into()
-    }
-
-    fn declutter(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        let mut inputs = model.node_input_facts(node.id)?;
-        let mut outputs = model.node_output_facts(node.id)?;
-        let (input, block_shape, paddings) = args_3!(inputs);
-        let output = args_1!(outputs);
-        if let (Some(block_shape), Some(paddings)) =
-            (block_shape.konst.as_ref(), paddings.konst.as_ref())
-        {
-            let paddings = paddings.cast_to::<TDim>()?;
-            let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
-            let paddings = paddings
-                .outer_iter()
-                .map(|p| {
-                    Ok(match (p[0].to_integer(), p[1].to_integer()) {
-                        (Ok(bef), Ok(aft)) => {
-                            super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
-                        }
-                        (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
-                        (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
-                        _ => bail!("Failed to unarize SpaceToBatch because of padding"),
-                    })
-                })
-                .collect::<TractResult<_>>()?;
-            let op = super::unary::BatchToSpaceUnary::new(
-                self.datum_type,
-                input.shape.iter().collect(),
-                output.shape.iter().collect(),
-                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
-                paddings,
-            );
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
-        }
-        Ok(None)
     }
 }
 
@@ -165,6 +123,44 @@ impl InferenceRulesOp for BatchToSpace {
         rules(s, self.datum_type, &inputs[0], &outputs[0], &inputs[1], &inputs[2])
     }
 
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let (Some(block_shape), Some(paddings)) = (
+            target.outlet_fact(mapping[&node.inputs[1]])?.konst.clone(),
+            target.outlet_fact(mapping[&node.inputs[2]])?.konst.clone(),
+        ) {
+            let paddings = paddings.cast_to::<TDim>()?;
+            let paddings = paddings.to_array_view::<TDim>()?.into_dimensionality::<Ix2>()?;
+            let paddings = paddings
+                .outer_iter()
+                .map(|p| {
+                    Ok(match (p[0].to_integer(), p[1].to_integer()) {
+                        (Ok(bef), Ok(aft)) => {
+                            super::unary::PaddingStrat::FixedFixed(bef as usize, aft as usize)
+                        }
+                        (_, Ok(aft)) => super::unary::PaddingStrat::FlexFixed(aft as usize),
+                        (Ok(bef), _) => super::unary::PaddingStrat::FixedFlex(bef as usize),
+                        _ => bail!("Failed to unarize SpaceToBatch because of padding"),
+                    })
+                })
+                .collect::<TractResult<_>>()?;
+            let op = super::unary::BatchToSpaceUnary::new(
+                self.datum_type,
+                target.outlet_fact(mapping[&node.inputs[0]])?.shape.to_tvec(),
+                node.outputs[0].fact.shape.concretize().unwrap().iter().cloned().collect::<TVec<_>>(),
+                block_shape.clone().into_tensor().into_array::<i32>()?.into_dimensionality()?,
+                paddings,
+            );
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
+        } else {
+            bail!("Need fixed block shape and padding")
+        }
+    }
     inference_op_as_op!();
 }
 

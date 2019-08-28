@@ -38,25 +38,6 @@ impl Op for PermuteAxes {
     fn name(&self) -> Cow<str> {
         "PermuteAxes".into()
     }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
-        if let Some(axes) = &self.axes {
-            fact.axis = axes.iter().position(|x| x == &fact.axis).ok_or_else(|| {
-                format!("Could not find streaming axis {} if permute axes {:?}", fact.axis, axes)
-            })?;
-            fact.shape = axes.iter().map(|idx| fact.shape[*idx]).collect();
-        }
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
-    }
 }
 
 impl StatelessOp for PermuteAxes {
@@ -83,4 +64,40 @@ impl InferenceRulesOp for PermuteAxes {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
+
+impl TypedOp for PermuteAxes {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
+        )?))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.outlet_fact(input)?.clone();
+        if let Some(axes) = &self.axes {
+            fact.axis = axes.iter().position(|x| x == &fact.axis).ok_or_else(|| {
+                format!("Could not find streaming axis {} if permute axes {:?}", fact.axis, axes)
+            })?;
+            fact.shape = axes.iter().map(|idx| fact.shape[*idx]).collect();
+        }
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+}
+

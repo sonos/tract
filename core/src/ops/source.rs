@@ -1,7 +1,21 @@
 use crate::internal::*;
 
-#[derive(Debug, Clone, new, Default)]
-pub struct Source {}
+#[derive(Debug, Clone, new)]
+pub struct SourceState(usize);
+
+impl OpState for SourceState {
+    fn eval(
+        &mut self,
+        session: &mut SessionState,
+        _op: &dyn Op,
+        _inputs: TVec<Arc<Tensor>>,
+    ) -> TractResult<TVec<Arc<Tensor>>> {
+        Ok(tvec!(session.inputs[&self.0].clone()))
+    }
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Source;
 
 impl Op for Source {
     fn name(&self) -> Cow<str> {
@@ -9,10 +23,13 @@ impl Op for Source {
     }
 }
 
-impl StatelessOp for Source {
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        panic!("Source should not get evaluated")
+impl StatefullOp for Source {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(SourceState(node_id))))
     }
 }
 
@@ -30,4 +47,62 @@ impl InferenceRulesOp for Source {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        use std::convert::TryInto;
+        if let Ok(fact) = node.outputs[0].fact.clone().try_into() {
+            target.wire_node(&*node.name, Box::new(TypedSource::new(fact)) as Box<dyn TypedOp>, &[])
+        } else {
+            bail!("Output type not determined")
+        }
+    }
+}
+
+#[derive(Debug, Clone, new)]
+pub struct TypedSource {
+    fact: TypedTensorInfo,
+}
+
+impl Op for TypedSource {
+    fn name(&self) -> Cow<str> {
+        "TypedSource".into()
+    }
+}
+
+impl StatefullOp for TypedSource {
+    fn state(
+        &self,
+        _session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(SourceState(node_id))))
+    }
+}
+
+impl TypedOp for TypedSource {
+    typed_op_as_op!();
+
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(self.fact.clone()))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        _mapping: &HashMap<OutletId, OutletId>,
+        pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let pulsed_fact =
+            crate::pulse::PulsedTensorFact::from_tensor_fact_pulse(&node.outputs[0].fact, pulse)?;
+        let id = target.add_source(node.name.clone(), pulsed_fact)?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
 }

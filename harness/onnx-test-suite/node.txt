@@ -74,9 +74,9 @@ test_clip_example
 test_clip_inbounds
 test_clip_outbounds
 test_clip_splitbounds
-test_compress_0
-test_compress_1
-test_compress_default_axis
+test_compress_0 dynsize
+test_compress_1 dynsize
+test_compress_default_axis dynsize
 test_concat_1d_axis_0
 test_concat_2d_axis_0
 test_concat_2d_axis_1
@@ -88,8 +88,8 @@ test_constant_pad
 test_constantlike_ones_with_input
 test_constantlike_threes_with_shape_and_dtype
 test_constantlike_zeros_without_input_dtype
-test_constantofshape_float_ones
-test_constantofshape_int_zeros
+test_constantofshape_float_ones                                                     dynsize
+test_constantofshape_int_zeros                                                      dynsize
 test_conv_with_strides_and_asymmetric_padding
 test_conv_with_strides_no_padding
 test_conv_with_strides_padding
@@ -111,8 +111,8 @@ test_equal_bcast
 test_erf
 test_exp
 test_exp_example
-test_expand_dim_changed
-test_expand_dim_unchanged
+test_expand_dim_changed                                                             dynsize
+test_expand_dim_unchanged                                                           dynsize
 test_eyelike_populate_off_main_diagonal
 test_eyelike_with_dtype
 test_eyelike_without_dtype
@@ -275,11 +275,11 @@ test_reduce_sum_square_keepdims_example
 test_reduce_sum_square_keepdims_random
 test_reflect_pad
 test_relu
-test_reshape_extended_dims
-test_reshape_negative_dim
-test_reshape_one_dim
-test_reshape_reduced_dims
-test_reshape_reordered_dims
+test_reshape_extended_dims                                                          dynsize
+test_reshape_negative_dim                                                           dynsize
+test_reshape_one_dim                                                                dynsize
+test_reshape_reduced_dims                                                           dynsize
+test_reshape_reordered_dims                                                         dynsize
 test_rnn_seq_length
 test_scan9_sum
 test_selu
@@ -342,8 +342,8 @@ test_tanh_example
 test_thresholdedrelu
 test_thresholdedrelu_default
 test_thresholdedrelu_example
-test_tile
-test_tile_precomputed
+test_tile                                                                           dynsize
+test_tile_precomputed                                                               dynsize
 test_transpose_all_permutations_0
 test_transpose_all_permutations_1
 test_transpose_all_permutations_2

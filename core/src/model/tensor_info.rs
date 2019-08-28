@@ -2,16 +2,18 @@
 use crate::internal::*;
 use crate::prelude::*;
 use crate::tensor::Tensor;
+use downcast_rs::Downcast;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
-pub trait TensorInfo: std::fmt::Debug + objekt::Clone {
+pub trait TensorInfo: std::fmt::Debug + Downcast + objekt::Clone + Send + Sync + 'static {
     /// Convert to TensorFact, the most accomoding variant of TensorInfo.
     fn to_tensor_fact(&self) -> TensorFact;
 }
 
+impl_downcast!(TensorInfo);
 objekt::clone_trait_object!(TensorInfo);
 
 impl TensorInfo for TensorFact {
@@ -178,9 +180,24 @@ impl ShapeInfo {
     }
 }
 
-impl<T: AsRef<[usize]>> From<T> for ShapeInfo {
-    fn from(it: T) -> ShapeInfo {
-        ShapeInfo { shape: it.as_ref().iter().cloned().collect(), stream_info: None }
+impl TryFrom<()> for ShapeInfo {
+    type Error = TractError;
+    fn try_from(_it: ()) -> TractResult<ShapeInfo> {
+        ShapeInfo::from_dims([0.to_dim();0].as_ref())
+    }
+}
+
+impl TryFrom<&[TDim]> for ShapeInfo {
+    type Error = TractError;
+    fn try_from(it: &[TDim]) -> TractResult<ShapeInfo> {
+        ShapeInfo::from_dims(it)
+    }
+}
+
+impl TryFrom<&[usize]> for ShapeInfo {
+    type Error = TractError;
+    fn try_from(it: &[usize]) -> TractResult<ShapeInfo> {
+        Ok(ShapeInfo { shape: it.into(), stream_info: None })
     }
 }
 
@@ -203,11 +220,20 @@ pub struct TypedTensorInfo {
 }
 
 impl TypedTensorInfo {
-    pub fn shape<T: Datum>(shape: &[usize]) -> TypedTensorInfo {
-        TypedTensorInfo { datum_type: T::datum_type(), shape: ShapeInfo::from(shape), konst: None }
+    pub fn shape<T, S, E>(shape: S) -> TractResult<TypedTensorInfo>
+    where
+        T: Datum,
+        S: TryInto<ShapeInfo, Error = E>,
+        TractError: From<E>,
+    {
+        Self::dt_shape(T::datum_type(), shape)
     }
-    pub fn dt_shape(datum_type: DatumType, shape: &[usize]) -> TypedTensorInfo {
-        TypedTensorInfo { datum_type, shape: ShapeInfo::from(shape), konst: None }
+    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<TypedTensorInfo>
+    where
+        S: TryInto<ShapeInfo, Error = E>,
+        TractError: From<E>,
+    {
+        Ok(TypedTensorInfo { datum_type, shape: shape.try_into()?, konst: None })
     }
 }
 
@@ -275,6 +301,24 @@ pub struct NormalizedTensorInfo {
     pub shape: ShapeInfo,
 }
 
+impl NormalizedTensorInfo {
+    pub fn shape<T, S, E>(shape: S) -> TractResult<NormalizedTensorInfo>
+    where
+        T: Datum,
+        S: TryInto<ShapeInfo, Error = E>,
+        TractError: From<E>,
+    {
+        Self::dt_shape(T::datum_type(), shape)
+    }
+    pub fn dt_shape<S, E>(datum_type: DatumType, shape: S) -> TractResult<NormalizedTensorInfo>
+    where
+        S: TryInto<ShapeInfo, Error = E>,
+        TractError: From<E>,
+    {
+        Ok(NormalizedTensorInfo { datum_type, shape: shape.try_into()? })
+    }
+}
+
 impl TensorInfo for NormalizedTensorInfo {
     fn to_tensor_fact(&self) -> TensorFact {
         TensorFact::dt_shape(self.datum_type, self.shape.to_shape_fact())
@@ -296,6 +340,6 @@ impl fmt::Debug for NormalizedTensorInfo {
 
 impl<'t> From<&'t Tensor> for NormalizedTensorInfo {
     fn from(t: &'t Tensor) -> NormalizedTensorInfo {
-        NormalizedTensorInfo { datum_type: t.datum_type(), shape: t.shape().into() }
+        NormalizedTensorInfo { datum_type: t.datum_type(), shape: t.shape().try_into().unwrap() }
     }
 }

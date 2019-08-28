@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 
 pub fn build(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     Ok(Box::new(ExpandDims))
@@ -76,7 +76,7 @@ impl InferenceRulesOp for ExpandDims {
         s.given_2(&dims.value, &data.rank, move |s, index, rank| {
             let mut index = *(index.to_scalar::<i32>()?);
             if index < 0 {
-                index += rank
+                index += rank + 1
             }
             let index = index as usize;
 
@@ -96,4 +96,32 @@ impl InferenceRulesOp for ExpandDims {
     }
 
     inference_op_as_op!();
+
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref axes) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
+            let axes = axes.cast_to::<i64>()?;
+            let op = tract_core::ops::array::AddDims::new(
+                axes.as_slice::<i64>()?
+                    .iter()
+                    .map(|&ax| {
+                        Ok(if ax < 0 {
+                            (ax + target.outlet_fact(mapping[&node.inputs[0]])?.shape.rank() as i64)
+                                as usize
+                        } else {
+                            ax as usize
+                        })
+                    })
+                    .collect::<TractResult<_>>()?,
+            );
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
+        } else {
+            bail!("Need axes to be const")
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 
-use crate::tfpb::node_def::NodeDef;
 use crate::model::ParsingContext;
+use crate::tfpb::node_def::NodeDef;
 
 #[derive(Debug, Clone, new)]
 pub struct Max {
@@ -17,39 +17,7 @@ pub fn max(_ctx: &ParsingContext, pb: &NodeDef) -> TractResult<Box<dyn Inference
     Ok(Box::new(Max::new(t, t_idx, keep_dims)))
 }
 
-impl Max {
-    fn eval_t<T>(
-        &self,
-        input: Arc<Tensor>,
-        full_output_shape: TVec<usize>,
-        axes: TVec<usize>,
-    ) -> TractResult<TVec<Arc<Tensor>>>
-    where
-        T: Copy + Datum + PartialOrd + num_traits::Bounded,
-    {
-        use ndarray::*;
-        let input = input.to_array_view::<T>()?;
-        let mut result = Array::from_shape_fn(&*full_output_shape, |coords| {
-            let slice_spec: Vec<SliceOrIndex> = coords
-                .slice()
-                .iter()
-                .enumerate()
-                .map(|(ax, &d)| if axes.contains(&ax) { (..).into() } else { d.into() })
-                .collect();
-            let slice_info = SliceInfo::<_, IxDyn>::new(&slice_spec).unwrap();
-            let slice = input.slice(slice_info.as_ref());
-            slice.iter().fold(T::min_value(), |a, &b| if a < b { b } else { a })
-        });
-        if !self.keep_dims {
-            for ax in (0..full_output_shape.len()).rev() {
-                if axes.contains(&ax) {
-                    result = result.index_axis_move(Axis(ax), 0);
-                }
-            }
-        }
-        Ok(tvec!(result.into_arc_tensor()))
-    }
-}
+impl Max {}
 
 impl Op for Max {
     fn name(&self) -> Cow<str> {
@@ -66,13 +34,7 @@ impl StatelessOp for Max {
             .iter()
             .map(|&ax| if ax >= 0 { ax as usize } else { ax as usize + input.shape().len() })
             .collect();
-        let full_output_shape: TVec<usize> = input
-            .shape()
-            .iter()
-            .enumerate()
-            .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
-            .collect();
-        dispatch_numbers!(Self::eval_t(self.t)(self, input, full_output_shape, axes))
+        dispatch_numbers!(self::eval_t(self.t)(input, &*axes, self.keep_dims))
     }
 }
 
@@ -125,5 +87,110 @@ impl InferenceRulesOp for Max {
         Ok(())
     }
 
+    fn to_typed(
+        &self,
+        _source: &InferenceModel,
+        node: &InferenceNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        if let Some(ref axes) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
+            let axes: TVec<usize> = axes
+                .cast_to::<i32>()?
+                .as_slice::<i32>()?
+                .iter()
+                .map(|&ax| {
+                    Ok(if ax >= 0 {
+                        ax as usize
+                    } else {
+                        ax as usize + target.outlet_fact(mapping[&node.inputs[0]])?.shape.rank()
+                    })
+                })
+                .collect::<TractResult<_>>()?;
+            let op = TypedMax::new(self.t, self.t_idx, self.keep_dims, axes);
+            target.wire_node(&*node.name, op, [mapping[&node.inputs[0]]].as_ref())
+        } else {
+            bail!("Nees axes to be const")
+        }
+    }
+
     inference_op_as_op!();
+}
+
+#[derive(Debug, Clone, new)]
+pub struct TypedMax {
+    t: DatumType,
+    t_idx: DatumType,
+    keep_dims: bool,
+    axes: TVec<usize>,
+}
+
+impl Op for TypedMax {
+    fn name(&self) -> Cow<str> {
+        "tf.TypedMax".into()
+    }
+}
+
+impl StatelessOp for TypedMax {
+    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        let input = args_1!(inputs);
+        dispatch_numbers!(self::eval_t(self.t)(input, &*self.axes, self.keep_dims))
+    }
+}
+
+impl TypedOp for TypedMax {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let output_shape: TVec<TDim> = inputs[0]
+            .shape
+            .iter()
+            .enumerate()
+            .filter_map(|(ax, d)| {
+                if self.axes.contains(&ax) {
+                    if self.keep_dims {
+                        Some(1.to_dim())
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(d)
+                }
+            })
+            .collect();
+        Ok(tvec!(TypedTensorInfo::dt_shape(self.t, &*output_shape)?))
+    }
+}
+
+fn eval_t<T>(input: Arc<Tensor>, axes: &[usize], keep_dims: bool) -> TractResult<TVec<Arc<Tensor>>>
+where
+    T: Copy + Datum + PartialOrd + num_traits::Bounded,
+{
+    use ndarray::*;
+    let input = input.to_array_view::<T>()?;
+    let full_output_shape: TVec<usize> = input
+        .shape()
+        .iter()
+        .enumerate()
+        .map(|(ax, &d)| if axes.contains(&ax) { 1 } else { d })
+        .collect();
+    let mut result = Array::from_shape_fn(&*full_output_shape, |coords| {
+        let slice_spec: Vec<SliceOrIndex> = coords
+            .slice()
+            .iter()
+            .enumerate()
+            .map(|(ax, &d)| if axes.contains(&ax) { (..).into() } else { d.into() })
+            .collect();
+        let slice_info = SliceInfo::<_, IxDyn>::new(&slice_spec).unwrap();
+        let slice = input.slice(slice_info.as_ref());
+        slice.iter().fold(T::min_value(), |a, &b| if a < b { b } else { a })
+    });
+    if !keep_dims {
+        for ax in (0..full_output_shape.len()).rev() {
+            if axes.contains(&ax) {
+                result = result.index_axis_move(Axis(ax), 0);
+            }
+        }
+    }
+    Ok(tvec!(result.into_arc_tensor()))
 }

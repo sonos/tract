@@ -13,15 +13,20 @@ pub fn gather_nd(_ctx: &ParsingContext, _pb: &NodeDef) -> TractResult<Box<dyn In
 }
 
 impl GatherNd {
+    fn compute_shape<D: DimLike>(&self, data_shape: &[D], indices_shape: &[D]) -> TractResult<TVec<D>> {
+        let mut shape: TVec<D> = indices_shape.into();
+        let n = shape.pop().unwrap().to_integer()? as usize;
+        shape.extend(data_shape[n..].iter().cloned());
+        Ok(shape)
+    }
+
     fn eval_t<T: Datum>(
         &self,
         data: &Arc<Tensor>,
         indices: &ArrayViewD<i32>,
     ) -> TractResult<TVec<Arc<Tensor>>> {
         let data = data.to_array_view::<T>()?;
-        let mut shape: TVec<usize> = indices.shape().into();
-        let n = shape.pop().unwrap();
-        shape.extend(data.shape()[n..].iter().cloned());
+        let shape = self.compute_shape(&data.shape(), &indices.shape())?;
         let mut array = unsafe { T::uninitialized_array(&*shape) };
         for prefix in ndarray::indices(&indices.shape()[0..indices.ndim() - 1]) {
             let mut dst = array.view_mut();
@@ -86,6 +91,16 @@ impl InferenceRulesOp for GatherNd {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for GatherNd {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let shape = self.compute_shape(&inputs[0].shape.to_tvec(), &inputs[1].shape.to_tvec())?;
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*shape)?))
+    }
 }
 
 #[cfg(test)]

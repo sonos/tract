@@ -14,7 +14,10 @@ pub struct AvgPool {
 }
 
 impl AvgPool {
-    fn to_fixed<T: Datum + Float + Sum>(&self, input_shape: &[usize]) -> TractResult<Box<dyn Op>>
+    fn to_fixed<T: Datum + Float + Sum>(
+        &self,
+        input_shape: &[usize],
+    ) -> TractResult<Box<dyn TypedOp>>
     where
         usize: AsPrimitive<T>,
     {
@@ -42,16 +45,6 @@ impl Op for AvgPool {
         }
         Ok(None)
     }
-
-    fn pulsify(
-        &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        self.pool_spec.pulsify(source, node, target, mapping)
-    }
 }
 
 impl StatelessOp for AvgPool {
@@ -78,6 +71,26 @@ impl InferenceRulesOp for AvgPool {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for AvgPool {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        self.pool_spec.output_facts(inputs)
+    }
+
+    fn pulsify(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        self.pool_spec.pulsify(source, node, target, mapping)
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -141,3 +154,13 @@ where
     }
 }
 
+impl<T: Datum + Float + Sum> TypedOp for AvgPoolFixed<T>
+where
+    usize: AsPrimitive<T>,
+{
+    typed_op_as_op!();
+
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?))
+    }
+}

@@ -1,16 +1,16 @@
 #![cfg(test)]
 
-use tract_core::ndarray::*;
-use tract_core::internal::*;
 use proptest::prelude::*;
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
 use proptest::*;
 use tract_core::dimfact;
+use tract_core::internal::*;
+use tract_core::ndarray::*;
 use tract_core::shapefact;
 
-mod pad_plus_conv;
 mod conv_plus_conv;
+mod pad_plus_conv;
 
 fn proptest_regular_against_pulse(
     model: InferenceModel,
@@ -19,8 +19,7 @@ fn proptest_regular_against_pulse(
     axis: usize,
 ) -> TestCaseResult {
     let mut ref_model = model.clone();
-    ref_model
-        .set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), input_array.shape()))?;
+    ref_model.set_input_fact(0, TensorFact::dt_shape(f32::datum_type(), input_array.shape()))?;
     let input = Tensor::from(input_array.clone());
     let plan = SimplePlan::new(&ref_model).unwrap();
     let outputs = plan.run(tvec!(input.clone())).unwrap();
@@ -84,16 +83,16 @@ fn proptest_regular_against_pulse(
 proptest! {
     #[test]
     fn proptest_crop(pulse in 1i32..3, input_len in 0i32..10, begin in 0i32..3, end in 0i32..3) {
-        use tract_core::ops::array::Crop;
-        let input_len = input_len + begin + end;
+        use tract_core::ops::array::Slice;
+        let full_len = input_len + begin + end;
         let mut model = InferenceModel::default();
         let _ = model
             .add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S)))
             .unwrap();
-        model.chain_default("slice", Crop::new(vec![(begin as usize, end as usize)])).unwrap();
+        model.chain_default("slice", Slice::new(0, begin as usize, (input_len + begin) as usize)).unwrap();
         model.auto_outputs().unwrap();
 
-        let input = Array1::range(1.0f32, input_len as f32 + 1.0, 1.0);
+        let input = Array1::range(1.0f32, full_len as f32 + 1.0, 1.0);
         proptest_regular_against_pulse(model, pulse as _, input.into_dyn(), 0)?;
     }
 
@@ -137,11 +136,22 @@ fn test_simple_conv() {
 }
 
 #[test]
+fn test_crop_after_1() {
+    use tract_core::ops::array::Slice;
+    let mut model = InferenceModel::default();
+    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    model.chain_default("slice", Slice::new(0, 0, 0)).unwrap();
+    model.auto_outputs().unwrap();
+
+    let input = arr1(&[1.0]);
+    proptest_regular_against_pulse(model, 1, input.into_dyn(), 0).unwrap();
+}
+
+#[test]
 fn test_pad_after_1() {
     use tract_core::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let _ =
-        model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
     model
         .chain_default(
             "pad",
@@ -158,8 +168,7 @@ fn test_pad_after_1() {
 fn test_pad_before_1() {
     use tract_core::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let _ =
-        model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
     model
         .chain_default(
             "pad",
@@ -176,8 +185,7 @@ fn test_pad_before_1() {
 fn test_pad_before_2() {
     use tract_core::ops::array::{Pad, PadMode};
     let mut model = InferenceModel::default();
-    let _ =
-        model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
+    let _ = model.add_source("a", TensorFact::dt_shape(f32::datum_type(), shapefact!(S))).unwrap();
     model
         .chain_default(
             "pad",

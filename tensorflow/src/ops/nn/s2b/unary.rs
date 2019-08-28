@@ -86,6 +86,20 @@ impl StatelessOp for SpaceToBatchUnary {
 }
 
 
+impl TypedOp for SpaceToBatchUnary {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.batch_shape
+        )?))
+    }
+}
+
 #[derive(Debug, Clone, new)]
 pub struct BatchToSpaceUnary {
     datum_type: DatumType,
@@ -126,3 +140,16 @@ impl StatelessOp for BatchToSpaceUnary {
     }
 }
 
+impl TypedOp for BatchToSpaceUnary {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.space_shape
+        )?))
+    }
+}

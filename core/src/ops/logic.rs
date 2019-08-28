@@ -34,7 +34,7 @@ impl Iff {
             .and_broadcast(cond)
             .and_broadcast(t.to_array_view::<T>()?)
             .and_broadcast(f.to_array_view::<T>()?)
-            .apply(|r, c, t, f|  *r = if *c { t.clone() } else { f.clone() });
+            .apply(|r, c, t, f| *r = if *c { t.clone() } else { f.clone() });
         Ok(result)
     }
 }
@@ -84,4 +84,14 @@ impl InferenceRulesOp for Iff {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Iff {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let shape = multi_broadcast(&[inputs[0].shape.to_tvec(), inputs[1].shape.to_tvec(), inputs[2].shape.to_tvec()]).unwrap();
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[1].datum_type, &*shape)?))
+    }
 }

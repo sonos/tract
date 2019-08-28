@@ -74,3 +74,20 @@ where
         Ok(tvec!(output.into_arc_tensor()))
     }
 }
+
+impl<T> TypedOp for DepthWise<T>
+where
+    T: Datum + Clone + ndarray::LinalgScalar + std::ops::AddAssign<T> + PartialEq + Sum,
+{
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.output_shape.shape
+        )?))
+    }
+}

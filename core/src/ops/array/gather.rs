@@ -68,6 +68,21 @@ impl Gather {
     }
 }
 
+impl TypedOp for Gather {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*self.compute_output_shape(&*inputs[0].shape.to_tvec(), &*inputs[1].shape.to_tvec())?
+        )?))
+    }
+}
+
+
 impl StatelessOp for Gather {
     /// Evaluates the operation given the input tensors.
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
@@ -97,6 +112,7 @@ impl InferenceRulesOp for Gather {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 #[cfg(test)]

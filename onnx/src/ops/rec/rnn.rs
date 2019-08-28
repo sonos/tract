@@ -126,7 +126,10 @@ impl InferenceRulesOp for RNN {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
+
+
 
 impl StatelessOp for RNN {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
@@ -189,6 +192,36 @@ impl StatelessOp for RNN {
         let mut outputs = tvec!();
         outputs.extend(output_y.into_iter().map(|t| t.into_arc_tensor()));
         outputs.extend(output_y_h.into_iter().map(|t| t.into_arc_tensor()));
+        Ok(outputs)
+    }
+}
+
+impl TypedOp for RNN {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let dt = inputs[0].datum_type;
+        let seq_length = inputs[0].shape.dim(0);
+        let num_directions = inputs[1].shape.dim(0);
+        let batch_size = inputs[0].shape.dim(1);
+        let hidden_size = inputs[2].shape.dim(2);
+        let mut outputs = tvec!();
+        if let Some(_) = self.optional_y_output {
+            outputs.push(TypedTensorInfo::dt_shape(
+                dt,
+                [seq_length, num_directions.clone(), batch_size.clone(), hidden_size.clone()]
+                    .as_ref(),
+            )?)
+        }
+        if let Some(_) = self.optional_y_h_output {
+            outputs.push(TypedTensorInfo::dt_shape(
+                dt,
+                [num_directions.clone(), batch_size.clone(), hidden_size.clone()].as_ref(),
+            )?)
+        }
         Ok(outputs)
     }
 }

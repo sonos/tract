@@ -98,12 +98,79 @@ impl Op for Typed {
         Ok(None)
     }
 
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(Some(TypedModelPatch::replace_single_op(
+            &model,
+            node,
+            &node.inputs,
+            self.to_codegen_op()?,
+        )?))
+    }
+}
+
+impl StatefullOp for Typed {
+    fn state(
+        &self,
+        session: &mut SessionState,
+        node_id: usize,
+    ) -> TractResult<Option<Box<dyn OpState>>> {
+        self.to_codegen_op()?.state(session, node_id)
+    }
+}
+
+impl TypedOp for Typed {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut outputs = tvec!();
+        let iters = {
+            let (outside_slot, axis, chunk) = self
+                .input_mapping
+                .iter()
+                .filter_map(|it| match it {
+                    InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, chunk.clone())),
+                    _ => None,
+                })
+                .next()
+                .unwrap();
+            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_dim())
+        };
+        for (ix, output) in self.output_mapping.iter().enumerate() {
+            let fact = self.body.output_fact(ix)?;
+            match output {
+                OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
+                    let mut shape = fact.shape.clone();
+                    let scanning_dim =
+                        full_dim_hint.clone().unwrap_or(shape.dim(*axis) * &iters);
+                    shape.set_dim(*axis, scanning_dim)?;
+                    outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
+                }
+                OutputMapping::State { slot } => {
+                    if let Some(slot) = slot {
+                        outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                    }
+                }
+            }
+        }
+        outputs.sort_by_key(|a| a.0);
+        let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
+        Ok(outputs)
+    }
+
     fn pulsify(
         &self,
         _source: &NormalizedModel,
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize
     ) -> TractResult<TVec<OutletId>> {
         if node.inputs.len() > 1 || node.outputs.len() > 1 {
             bail!("Scan pulsificiaton limited to single streaming input and output case");
@@ -131,26 +198,4 @@ impl Op for Typed {
         Ok(tvec!(OutletId::new(id, 0)))
     }
 
-    fn codegen(
-        &self,
-        model: &TypedModel,
-        node: &TypedNode,
-    ) -> TractResult<Option<TypedModelPatch>> {
-        Ok(Some(TypedModelPatch::replace_single_op(
-            &model,
-            node,
-            &node.inputs,
-            self.to_codegen_op()?,
-        )?))
-    }
-}
-
-impl StatefullOp for Typed {
-    fn state(
-        &self,
-        session: &mut SessionState,
-        node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
-        self.to_codegen_op()?.state(session, node_id)
-    }
 }

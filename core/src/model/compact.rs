@@ -1,44 +1,66 @@
 use crate::model::{InletId, ModelImpl, OutletId, TensorInfo};
+use crate::ops::Translate;
 use crate::prelude::*;
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::{ Display, Debug };
+use std::fmt::{Debug, Display};
 
-pub(crate) fn translate<TI1, TI2, O1, O2, E1, E2>(old: &ModelImpl<TI1, O1>) -> TractResult<ModelImpl<TI2, O2>>
+pub(crate) fn translate<TI1, TI2, O1, O2, Ctx>(
+    source: &ModelImpl<TI1, O1>,
+    ctx: &Ctx,
+) -> TractResult<(ModelImpl<TI2, O2>, HashMap<OutletId, OutletId>)>
 where
-    TractError: From<E1> + From<E2>,
     TI1: TensorInfo + Clone + 'static,
-    TI2: TensorInfo + TryFrom<TI1, Error=E1> + Clone + 'static,
-    O1: Display + Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    TI2: TensorInfo + Clone + 'static,
+    O1: Display
+        + Debug
+        + AsRef<dyn Op>
+        + AsMut<dyn Op>
+        + Clone
+        + 'static
+        + Translate<TI1, O1, TI2, O2, Ctx>,
+    O2: Display + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
-    let mut model = ModelImpl::default();
-    for old_node in old.nodes() {
-        let facts = old_node
-            .outputs
-            .iter()
-            .map(|of| Ok(TI2::try_from(of.fact.clone())?))
-            .collect::<TractResult<TVec<_>>>()
-            .map_err(|e| format!("While translating {}: {:?}", old_node, e))?;
-        let new_op = O2::try_from(old_node.op.clone())?;
-        model.add_node(old_node.name.clone(), new_op, facts)?;
-        model.node_mut(old_node.id).outputs.iter_mut().zip(old_node.outputs.iter())
-            .for_each(|(new, old)| new.successors = old.successors.clone());
-        model.node_mut(old_node.id).inputs = old_node.inputs.clone();
-        model.node_mut(old_node.id).control_inputs = old_node.control_inputs.clone();
+    let mut target = ModelImpl::default();
+    let mut mapping = HashMap::new();
+    for old_id in source.eval_order()? {
+        let node = source.node(old_id);
+        debug!("Translating {}", node);
+        let outlets = node
+            .op
+            .translate(&source, node, &mut target, &mapping, ctx)
+            .chain_err(|| format!("Translating {}", node))?;
+        for (ix, outlet) in outlets.into_iter().enumerate() {
+            mapping.insert(OutletId::new(node.id, ix), outlet);
+            /* This is only valid between analyse and typed, but may be useful
+             * for debugging
+            #[cfg(debug_assertions)]
+            {
+                use crate::analyser::types::Fact;
+                node.outputs[ix]
+                    .fact
+                    .to_tensor_fact()
+                    .unify(&target.outlet_fact(outlet)?.to_tensor_fact())
+                    .chain_err(|| format!("Translating {}", node))?;
+            }
+            */
+        }
     }
-    model.inputs = old.input_outlets()?.to_vec();
-    model.outputs = old.output_outlets()?.to_vec();
-    Ok(model)
+    // maintaining order of i/o interface
+    target.inputs = source.input_outlets()?.iter().map(|i| mapping[&i]).collect();
+    target.outputs = source.output_outlets()?.iter().map(|o| mapping[&o]).collect();
+    Ok((target, mapping))
 }
 
-pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(old: &ModelImpl<TI1, O1>) -> TractResult<ModelImpl<TI2, O2>>
+pub(crate) fn compact<TI1, TI2, O1, O2, E1, E2>(
+    old: &ModelImpl<TI1, O1>,
+) -> TractResult<ModelImpl<TI2, O2>>
 where
     TractError: From<E1> + From<E2>,
     TI1: TensorInfo + Clone + 'static,
-    TI2: TensorInfo + TryFrom<TI1, Error=E1> + Clone + 'static,
+    TI2: TensorInfo + TryFrom<TI1, Error = E1> + Clone + 'static,
     O1: Display + Debug + Clone + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-    O2: Display + TryFrom<O1, Error=E2> + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+    O2: Display + TryFrom<O1, Error = E2> + Debug + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     let mut model = ModelImpl::default();
     let mut map = HashMap::new();

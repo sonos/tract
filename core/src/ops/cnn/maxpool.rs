@@ -13,7 +13,7 @@ pub struct MaxPool {
 }
 
 impl MaxPool {
-    fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn Op>> {
+    fn to_fixed<T: Datum + Float>(&self, input_shape: &[usize]) -> TractResult<Box<dyn TypedOp>> {
         let (input_shape, patch, output_shape) = self.pool_spec.compute_geo(input_shape);
         let op = MaxPoolFixed::<T>::new(patch, input_shape, output_shape, self.with_index_outputs);
         Ok(Box::new(op))
@@ -37,16 +37,6 @@ impl Op for MaxPool {
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
-    }
-
-    fn pulsify(
-        &self,
-        source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        self.pool_spec.pulsify(source, node, target, mapping)
     }
 }
 
@@ -78,6 +68,31 @@ impl InferenceRulesOp for MaxPool {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for MaxPool {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut facts = self.pool_spec.output_facts(inputs)?;
+        if let Some(idt) = self.with_index_outputs {
+            facts.push(facts[0].clone());
+            facts[1].datum_type = idt;
+        }
+        Ok(facts)
+    }
+
+    fn pulsify(
+        &self,
+        source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        self.pool_spec.pulsify(source, node, target, mapping)
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -140,5 +155,18 @@ impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {
         } else {
             Ok(tvec!(values.into_arc_tensor()))
         }
+    }
+}
+
+impl<T: Datum + Float> TypedOp for MaxPoolFixed<T> {
+    typed_op_as_op!();
+
+    fn output_facts(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut facts = tvec!(TypedTensorInfo::dt_shape(T::datum_type(), &*self.output_shape.shape)?);
+        if let Some(idt) = self.with_index_outputs {
+            facts.push(facts[0].clone());
+            facts[1].datum_type = idt;
+        }
+        Ok(facts)
     }
 }

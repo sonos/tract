@@ -211,6 +211,21 @@ impl InferenceRulesOp for MatMul {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for MatMul {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*infer_shapes(inputs[0].shape.to_tvec(), inputs[1].shape.to_tvec())?.2
+        )?))
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -241,29 +256,6 @@ impl MatMulUnaryA {
 impl Op for MatMulUnaryA {
     fn name(&self) -> Cow<str> {
         "MatMulUnaryA".into()
-    }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
-        if fact.axis >= fact.shape.len() - 1 {
-            bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
-        }
-        let (_, _, cshape_pulse) = infer_shapes(fact.shape.clone(), self.b.shape().into())?;
-        let (_, _, cshape_full) = infer_shapes(
-            fact.streaming_shape().into(),
-            self.b.shape().iter().map(|d| d.to_dim()).collect(),
-        )?;
-        fact.shape = cshape_pulse;
-        fact.dim = cshape_full[fact.axis].clone();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
     }
 
     fn codegen(
@@ -309,6 +301,48 @@ impl StatelessOp for MatMulUnaryA {
         let a = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(a.datum_type())(&*a, &self.b))?;
         Ok(tvec!(c.into()))
+    }
+}
+
+impl TypedOp for MatMulUnaryA {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*infer_shapes(
+                inputs[0].shape.to_tvec(),
+                self.b.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+            )?
+            .2
+        )?))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.outlet_fact(input)?.clone();
+        if fact.axis >= fact.shape.len() - 1 {
+            bail!("Can not pulsify MatMulUnaryA on the most inner dimension (k)");
+        }
+        let (_, _, cshape_pulse) = infer_shapes(fact.shape.clone(), self.b.shape().into())?;
+        let (_, _, cshape_full) = infer_shapes(
+            fact.streaming_shape().into(),
+            self.b.shape().iter().map(|d| d.to_dim()).collect(),
+        )?;
+        fact.shape = cshape_pulse;
+        fact.dim = cshape_full[fact.axis].clone();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
     }
 }
 
@@ -446,6 +480,17 @@ where
     }
 }
 
+impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplASimpleB<T> {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MatMulUnaryImplA<T>
 where
@@ -564,6 +609,17 @@ where
     }
 }
 
+impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplA<T> {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*self.geo.c_shape)?))
+    }
+}
+
 #[derive(Debug, Clone, new)]
 pub struct MatMulUnaryB {
     a: Tensor,
@@ -580,5 +636,23 @@ impl StatelessOp for MatMulUnaryB {
         let b = args_1!(inputs);
         let c = dispatch_floatlike!(self::eval_t(b.datum_type())(&self.a, &*b))?;
         Ok(tvec!(c.into()))
+    }
+}
+
+impl TypedOp for MatMulUnaryB {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            &*infer_shapes(
+                self.a.shape().into_iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+                inputs[0].shape.to_tvec()
+            )?
+            .2
+        )?))
     }
 }

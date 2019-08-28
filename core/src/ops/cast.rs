@@ -42,4 +42,13 @@ impl InferenceRulesOp for Cast {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Cast {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(self.to, inputs[0].shape.clone())?))
+    }
 }

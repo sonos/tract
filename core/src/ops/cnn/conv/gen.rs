@@ -37,7 +37,6 @@ impl Conv {
         debug_assert_eq!(ishape.len(), kshape.len(), "Input and kernel should have the same rank");
         let mut result: TVec<D> = ishape.into();
         let ishape = self.data_format.shape(ishape);
-        trace!("ishape: {:?}", ishape);
         let spatial_rank = ishape.hw_rank();
         let ones = tvec![1; spatial_rank];
         let kernel_spatial_shape = &kshape[self.kernel_fmt.h_axis()..][..spatial_rank];
@@ -223,7 +222,24 @@ impl InferenceRulesOp for Conv {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
+
+impl TypedOp for Conv {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        if inputs[1].shape.iter().all(|d| d.to_integer().is_ok()) {
+            let kshape: TVec<usize> =
+                inputs[1].shape.iter().map(|d| d.to_integer().unwrap() as _).collect();
+            let oshape = self.output_shape(&*inputs[0].shape.to_tvec(), &*kshape);
+            Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, &*oshape)?))
+        } else {
+            bail!("Streaming on kernel is not typeable")
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod test {

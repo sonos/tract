@@ -101,10 +101,14 @@ impl OpState for State {
         let mut _codegen_op_holder = None;
         let op = if let Some(op) = op.downcast_ref::<Codegen>() {
             op
-        } else {
-            _codegen_op_holder =
-                Some(op.downcast_ref::<Typed>().ok_or("Wrong op")?.to_codegen_op()?);
+        } else if let Some(op) = op.downcast_ref::<Typed>() {
+            _codegen_op_holder = Some(op.to_codegen_op()?);
             _codegen_op_holder.as_ref().unwrap()
+        } else if let Some(op) = op.downcast_ref::<Inference>() {
+            _codegen_op_holder = Some(op.to_typed_scan()?.to_codegen_op()?);
+            _codegen_op_holder.as_ref().unwrap()
+        } else {
+            panic!("Wrong op");
         };
 
         // initialize state at first pass
@@ -213,5 +217,48 @@ impl OpState for State {
         }
 
         Ok(outputs.into_iter().map(Arc::new).collect())
+    }
+}
+
+impl TypedOp for Codegen {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        let mut outputs = tvec!();
+        let iters = {
+            let (outside_slot, axis, chunk) = self
+                .input_mapping
+                .iter()
+                .filter_map(|it| match it {
+                    InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, *chunk)),
+                    _ => None,
+                })
+                .next()
+                .unwrap();
+            inputs[outside_slot].shape.dim(axis).div_ceil(chunk.to_dim())
+        };
+        for (ix, output) in self.output_mapping.iter().enumerate() {
+            let fact = self.plan.model().output_fact(ix)?;
+            match output {
+                OutputMapping::Scan { slot, axis, full_dim_hint, .. } => {
+                    let mut shape = fact.shape.clone();
+                    let scanning_dim =
+                        full_dim_hint.clone().unwrap_or(shape.dim(*axis) * &iters);
+                    shape.set_dim(*axis, scanning_dim)?;
+                    outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, shape)?));
+                }
+                OutputMapping::State { slot } => {
+                    if let Some(slot) = slot {
+                        outputs.push((slot, TypedTensorInfo::dt_shape(fact.datum_type, fact.shape.clone())?));
+                    }
+                }
+            }
+        }
+        outputs.sort_by_key(|a| a.0);
+        let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
+        Ok(outputs)
     }
 }

@@ -176,6 +176,17 @@ impl InferenceRulesOp for Gemm {
     }
 
     inference_op_as_op!();
+    to_typed!();
+}
+
+impl TypedOp for Gemm {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let cols = inputs[1].shape.dim(if self.trans_b { 0 } else { 1 });
+        let rows = inputs[0].shape.dim(if self.trans_a { 1 } else { 0 });
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
+    }
 }
 
 #[derive(Debug, Clone, new)]
@@ -226,6 +237,22 @@ impl Op for GemmUnaryA {
     fn name(&self) -> Cow<str> {
         "GemmUnaryA".into()
     }
+}
+
+impl StatelessOp for GemmUnaryA {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+    }
+}
+
+impl TypedOp for GemmUnaryA {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let cols = self.b.shape()[if self.trans_b { 0 } else { 1 }].to_dim();
+        let rows = inputs[0].shape.dim(if self.trans_a { 1 } else { 0 });
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
+    }
 
     fn pulsify(
         &self,
@@ -233,17 +260,12 @@ impl Op for GemmUnaryA {
         node: &NormalizedNode,
         target: &mut PulsedModel,
         mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
     ) -> TractResult<TVec<OutletId>> {
         let input = mapping[&node.inputs[0]];
         let fact = target.outlet_fact(input)?.clone();
         let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
         Ok(tvec!(OutletId::new(id, 0)))
-    }
-}
-
-impl StatelessOp for GemmUnaryA {
-    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
-        dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
     }
 }
 
@@ -300,5 +322,15 @@ impl Op for GemmUnaryB {
 impl StatelessOp for GemmUnaryB {
     fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         dispatch_floatlike!(Self::eval_t(inputs[0].datum_type())(self, inputs))
+    }
+}
+
+impl TypedOp for GemmUnaryB {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        let cols = inputs[0].shape.dim(if self.trans_b { 0 } else { 1 });
+        let rows = self.a.shape()[if self.trans_a { 1 } else { 0 }].to_dim();
+        Ok(tvec!(TypedTensorInfo::dt_shape(inputs[0].datum_type, [rows, cols].as_ref())?))
     }
 }

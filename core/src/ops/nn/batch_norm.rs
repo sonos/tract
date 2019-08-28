@@ -61,7 +61,7 @@ impl Op for BatchNorm {
                 mean: Arc<Tensor>,
                 var: Arc<Tensor>,
                 epsilon: f32,
-            ) -> TractResult<Box<dyn Op>>
+            ) -> TractResult<Box<dyn TypedOp>>
             where
                 T: Datum
                     + ::num_traits::Float
@@ -84,6 +84,14 @@ impl Op for BatchNorm {
             return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
         }
         Ok(None)
+    }
+}
+
+impl TypedOp for BatchNorm {
+    typed_op_as_op!();
+
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
     }
 }
 
@@ -125,6 +133,7 @@ impl InferenceRulesOp for BatchNorm {
     }
 
     inference_op_as_op!();
+    to_typed!();
 }
 
 #[derive(Debug, Clone)]
@@ -174,19 +183,6 @@ where
     fn name(&self) -> Cow<str> {
         format!("FixedBatchNorm<{:?}>", T::datum_type()).into()
     }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let fact = target.outlet_fact(input)?.clone();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
-    }
 }
 
 impl<T> StatelessOp for FixedBatchNorm<T>
@@ -205,3 +201,27 @@ where
     }
 }
 
+impl<T> TypedOp for FixedBatchNorm<T>
+where
+    T: Datum + ::num_traits::Float + ::num_traits::FromPrimitive + ::ndarray::ScalarOperand,
+    f32: AsPrimitive<T>,
+{
+    typed_op_as_op!();
+    fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(inputs[0].clone()))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let fact = target.outlet_fact(input)?.clone();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+}

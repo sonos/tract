@@ -25,21 +25,6 @@ impl Op for AddDims {
     fn name(&self) -> Cow<str> {
         "AddDims".into()
     }
-
-    fn pulsify(
-        &self,
-        _source: &NormalizedModel,
-        node: &NormalizedNode,
-        target: &mut PulsedModel,
-        mapping: &HashMap<OutletId, OutletId>,
-    ) -> TractResult<TVec<OutletId>> {
-        let input = mapping[&node.inputs[0]];
-        let mut fact = target.outlet_fact(input)?.clone();
-        fact.shape = self.compute_shape(&fact.shape);
-        fact.axis += self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
-        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
-        Ok(tvec!(OutletId::new(id, 0)))
-    }
 }
 
 impl StatelessOp for AddDims {
@@ -66,4 +51,37 @@ impl InferenceRulesOp for AddDims {
     }
 
     inference_op_as_op!();
+
+    to_typed!();
+}
+
+impl TypedOp for AddDims {
+    typed_op_as_op!();
+
+    fn output_facts(
+        &self,
+        inputs: &[&TypedTensorInfo],
+    ) -> TractResult<TVec<TypedTensorInfo>> {
+        Ok(tvec!(TypedTensorInfo::dt_shape(
+            inputs[0].datum_type,
+            self.compute_shape(&*inputs[0].shape.to_tvec()).as_ref(),
+        )?))
+    }
+
+    fn pulsify(
+        &self,
+        _source: &NormalizedModel,
+        node: &NormalizedNode,
+        target: &mut PulsedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        _pulse: usize,
+    ) -> TractResult<TVec<OutletId>> {
+        let input = mapping[&node.inputs[0]];
+        let mut fact = target.outlet_fact(input)?.clone();
+        fact.shape = self.compute_shape(&fact.shape);
+        fact.axis += self.axes.iter().filter(|&ax| *ax <= fact.axis).count();
+        let id = target.chain_after(input, &*node.name, self.clone(), tvec!(fact))?;
+        Ok(tvec!(OutletId::new(id, 0)))
+    }
+
 }
