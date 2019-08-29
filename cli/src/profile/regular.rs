@@ -1,5 +1,5 @@
-use std::fmt::{Debug, Display};
 use std::convert::TryInto;
+use std::fmt::{Debug, Display};
 
 use ansi_term::Colour::*;
 use atty;
@@ -61,7 +61,8 @@ where
         state.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
-    let dur = Duration::since(&start, iters);
+    let mut dur = Duration::since(&start);
+    dur /= iters as f64;
 
     if params.machine_friendly {
         println!("real: {}", dur.avg_real());
@@ -108,7 +109,8 @@ where
         let _ = plan.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
-    let entire = Duration::since(&start, iters);
+    let mut entire = Duration::since(&start);
+    entire /= iters as f64;
 
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
@@ -152,13 +154,22 @@ where
                 iters += 1;
             }
 
-            let measure = Duration::since(&start, (iters as f32 / multiplier) as u64);
+            let mut measure = Duration::since(&start);
+            measure *= multiplier as f64 / iters as f64;
             full_id[prefix.len()] = n;
             profile.add(&*full_id, measure)?;
+            if prefix.len() > 0 {
+                profile.sub(&*prefix, measure)?;
+            }
 
-            let inputs:TVec<TypedTensorInfo> = model.node_input_facts(n)?.iter().map(|&i| Ok(i.to_tensor_fact().try_into()?)).collect::<TractResult<_>>()?;
-            let ref_inputs:TVec<&TypedTensorInfo> = inputs.iter().collect();
-            let nested_multis = model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
+            let inputs: TVec<TypedTensorInfo> = model
+                .node_input_facts(n)?
+                .iter()
+                .map(|&i| Ok(i.to_tensor_fact().try_into()?))
+                .collect::<TractResult<_>>()?;
+            let ref_inputs: TVec<&TypedTensorInfo> = inputs.iter().collect();
+            let nested_multis =
+                model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
 
             for (ix, (_name, m)) in model.node_op(n).nested_models().iter().enumerate() {
                 if let Some(m) = m.downcast_ref::<ModelImpl<TI, O>>() {

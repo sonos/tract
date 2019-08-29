@@ -18,6 +18,7 @@ extern crate tract_onnx;
 #[cfg(feature = "tf")]
 extern crate tract_tensorflow;
 
+#[allow(unused_imports)]
 use itertools::Itertools;
 use std::process;
 use std::str::FromStr;
