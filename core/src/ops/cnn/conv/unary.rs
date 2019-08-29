@@ -539,6 +539,7 @@ impl Op for ConvUnary {
         Ok(axes)
     }
     */
+    op_as_typed_op!();
 }
 
 impl StatelessOp for ConvUnary {

@@ -21,6 +21,8 @@ impl Op for Size {
     fn name(&self) -> Cow<str> {
         "Size".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Size {

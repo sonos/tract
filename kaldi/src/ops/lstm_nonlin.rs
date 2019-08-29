@@ -196,6 +196,8 @@ impl Op for LstmNonlin {
         patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(output, 0))?;
         Ok(Some(patch))
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for LstmNonlin {

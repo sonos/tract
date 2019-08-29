@@ -64,6 +64,8 @@ impl Op for RNN {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    op_as_typed_op!();
 }
 
 impl InferenceRulesOp for RNN {

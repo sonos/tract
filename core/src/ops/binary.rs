@@ -72,6 +72,8 @@ impl Op for InferenceBinOp {
         }
         Ok(Some(patch))
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for InferenceBinOp {
@@ -156,6 +158,8 @@ impl Op for TypedBinOp {
         }
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for TypedBinOp {
@@ -210,6 +214,8 @@ impl Op for UnaryAOp {
         }
         return Ok(invs)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for UnaryAOp {
@@ -266,6 +272,8 @@ impl Op for MergeOp {
         let a = model.outlet_fact(node.inputs[0])?;
         Ok((0..a.shape.rank()).into_iter().map(|axis| TranslationInvariant { period: 1, axis }).collect())
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MergeOp {

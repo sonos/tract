@@ -182,6 +182,8 @@ impl Op for MatMul {
         let n = &bc_b_shape[bc_b_shape.len() - 1];
         Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MatMul {
@@ -294,6 +296,8 @@ impl Op for MatMulUnaryA {
         invars.push(TranslationInvariant { axis: a_rank - 2, period: 1 });
         Ok(invars)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MatMulUnaryA {
@@ -449,6 +453,8 @@ where
         }
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl<T> StatelessOp for MatMulUnaryImplASimpleB<T>
@@ -558,6 +564,8 @@ where
             (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k() * mul).to_dim()
         )))
     }
+
+    op_as_typed_op!();
 }
 
 impl<T> StatelessOp for MatMulUnaryImplA<T>
@@ -637,6 +645,8 @@ impl Op for MatMulUnaryB {
     fn name(&self) -> Cow<str> {
         "MatMulUnaryB".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MatMulUnaryB {

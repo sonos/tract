@@ -141,6 +141,8 @@ impl Op for Conv {
             Ok(None)
         }
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Conv {

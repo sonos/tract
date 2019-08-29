@@ -28,6 +28,8 @@ impl Op for Slice {
     fn name(&self) -> Cow<str> {
         "onnx.Slice".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Slice {

@@ -7,6 +7,8 @@ use crate::ops::cnn::pools::PoolSpec;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::DataShape;
 
+// TODO check why AvgPool need to be typed
+
 #[derive(Debug, Clone, new, Default)]
 pub struct AvgPool {
     pool_spec: PoolSpec,
@@ -45,6 +47,8 @@ impl Op for AvgPool {
         }
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for AvgPool {
@@ -112,6 +116,8 @@ where
     fn name(&self) -> Cow<str> {
         format!("AvgPool::Fixed<{:?}>", T::datum_type()).into()
     }
+
+    op_as_typed_op!();
 }
 
 impl<T: Datum + Float + Sum> StatelessOp for AvgPoolFixed<T>

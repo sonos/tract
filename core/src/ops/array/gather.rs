@@ -10,6 +10,8 @@ impl Op for Gather {
     fn name(&self) -> Cow<str> {
         "Gather".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl Gather {

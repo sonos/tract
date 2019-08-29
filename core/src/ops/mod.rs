@@ -208,9 +208,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(vec![])
     }
 
-    fn as_typed(&self) -> Option<&dyn TypedOp> {
-        None
-    }
+    fn as_typed(&self) -> Option<&dyn TypedOp>;
 }
 
 pub trait TypedOp:
@@ -237,6 +235,11 @@ pub trait TypedOp:
     ) -> TractResult<TVec<OutletId>> {
         debug!("{:?}", node);
         bail!("Operator {} do not support pulsification", self.name())
+    }
+
+    /// Nested model multipliers, with label (for profiling).
+    fn nested_model_multipliers(&self, inputs:&[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
+        vec![]
     }
 }
 

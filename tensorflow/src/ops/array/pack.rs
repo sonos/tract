@@ -47,6 +47,8 @@ impl Op for Pack {
     fn name(&self) -> Cow<str> {
         "tf.Pack".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Pack {

@@ -78,6 +78,8 @@ impl Op for LSTM {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    op_as_typed_op!();
 }
 
 impl InferenceRulesOp for LSTM {

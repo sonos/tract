@@ -41,6 +41,7 @@ impl Op for Reshape {
         "Reshape".into()
     }
 
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Reshape {

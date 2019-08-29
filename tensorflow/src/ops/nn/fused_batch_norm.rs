@@ -81,6 +81,8 @@ impl Op for FusedBatchNorm {
         };
         Ok(None)
     }
+
+    op_as_typed_op!(); // FIXME use to_fixed instead of declutter
 }
 
 impl StatelessOp for FusedBatchNorm {

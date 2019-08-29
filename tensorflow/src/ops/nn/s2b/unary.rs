@@ -58,6 +58,8 @@ impl Op for SpaceToBatchUnary {
         }
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for SpaceToBatchUnary {
@@ -113,6 +115,8 @@ impl Op for BatchToSpaceUnary {
     fn name(&self) -> Cow<str> {
         "BatchToSpaceUnary".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for BatchToSpaceUnary {

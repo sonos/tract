@@ -41,6 +41,8 @@ impl Op for Split {
     fn name(&self) -> Cow<str> {
         "Split".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Split {

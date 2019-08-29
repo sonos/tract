@@ -21,6 +21,8 @@ impl Op for ConstantLike {
     fn name(&self) -> Cow<str> {
         "ConstantLike".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for ConstantLike {
@@ -93,6 +95,8 @@ impl Op for EyeLike {
     fn name(&self) -> Cow<str> {
         "EyeLike".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for EyeLike {

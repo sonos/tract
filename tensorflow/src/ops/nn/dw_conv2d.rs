@@ -79,6 +79,8 @@ impl Op for DepthwiseConv2d {
         let conv = self.to_core(&*input_shape, kernel_shape)?;
         Ok(Some(TypedModelPatch::replace_single_op(model, node, &*node.inputs, conv)?))
     }
+
+    op_as_typed_op!(); // FIXME translate to core as to_fixed instead of declutter, get rid of typed op impl
 }
 
 impl StatelessOp for DepthwiseConv2d {

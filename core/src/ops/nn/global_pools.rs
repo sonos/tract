@@ -33,6 +33,7 @@ impl Op for GlobalAvgPool {
     fn name(&self) -> Cow<str> {
         "GlobalAvgPool".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for GlobalAvgPool {
@@ -101,6 +102,7 @@ impl Op for GlobalLpPool {
     fn name(&self) -> Cow<str> {
         "GlobalLpPool".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for GlobalLpPool {
@@ -164,6 +166,7 @@ impl Op for GlobalMaxPool {
     fn name(&self) -> Cow<str> {
         "GlobalMaxPool".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for GlobalMaxPool {

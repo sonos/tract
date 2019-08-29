@@ -38,6 +38,8 @@ impl Op for MaxPool {
         }
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MaxPool {
@@ -108,6 +110,8 @@ impl<T: Datum + Float> Op for MaxPoolFixed<T> {
     fn name(&self) -> Cow<str> {
         format!("MaxPool::Fixed<{:?}>", T::datum_type()).into()
     }
+
+    op_as_typed_op!();
 }
 
 impl<T: Datum + Float> StatelessOp for MaxPoolFixed<T> {

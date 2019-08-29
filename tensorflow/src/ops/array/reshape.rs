@@ -14,6 +14,8 @@ impl<T: Datum> Op for Reshape<T> {
     fn name(&self) -> Cow<str> {
         "tf.Reshape".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl<T: Datum> StatelessOp for Reshape<T> {

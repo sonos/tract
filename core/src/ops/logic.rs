@@ -43,6 +43,7 @@ impl Op for Iff {
     fn name(&self) -> Cow<str> {
         "Iff".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Iff {

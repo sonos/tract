@@ -20,16 +20,25 @@ pub struct DisplayOptions {
     pub quiet: bool,
     pub natural_order: bool,
     pub debug_op: bool,
-    pub node_ids: Option<Vec<usize>>,
+    pub node_ids: Option<Vec<TVec<usize>>>,
     pub op_name: Option<String>,
     pub node_name: Option<String>,
-    pub successors: Option<usize>,
+//    pub successors: Option<TVec<usize>>,
 }
 
 impl DisplayOptions {
-    pub fn filter(&self, model: &dyn Model, node_id: usize) -> CliResult<bool> {
+    pub fn filter(
+        &self,
+        model: &dyn Model,
+        current_prefix: &[usize],
+        node_id: usize,
+    ) -> CliResult<bool> {
         if let Some(nodes) = self.node_ids.as_ref() {
-            return Ok(nodes.contains(&node_id));
+            return Ok(nodes.iter().any(|n| {
+                n.len() == current_prefix.len() + 1
+                    && &n[0..current_prefix.len()] == current_prefix
+                    && *n.last().unwrap() == node_id
+            }));
         }
         if let Some(node_name) = self.node_name.as_ref() {
             return Ok(model.node_name(node_id).starts_with(&*node_name));
@@ -37,9 +46,11 @@ impl DisplayOptions {
         if let Some(op_name) = self.op_name.as_ref() {
             return Ok(model.node_op(node_id).name().starts_with(op_name));
         }
+        /*
         if let Some(successor) = self.successors {
             return Ok(model.node_inputs(node_id).iter().any(|i| i.node == successor));
         }
+        */
         Ok(model.node_op(node_id).name() != "Const" || self.konst)
     }
 }
@@ -47,6 +58,7 @@ impl DisplayOptions {
 #[derive(Debug, Clone)]
 pub struct DisplayGraph<'a> {
     model: &'a dyn Model,
+    prefix: TVec<usize>,
     pub options: Arc<DisplayOptions>,
     node_color: HashMap<usize, Style>,
     node_labels: HashMap<usize, Vec<String>>,
@@ -63,14 +75,13 @@ impl<'a> DisplayGraph<'a> {
         if self.options.quiet {
             return Ok(());
         }
-        let model = self.model.borrow();
         let node_ids = if self.options.natural_order {
-            (0..model.nodes_len()).collect()
+            (0..self.model.nodes_len()).collect()
         } else {
-            model.eval_order()?
+            self.model.eval_order()?
         };
         for node in node_ids {
-            if self.options.filter(model, node)? {
+            if self.options.filter(self.model, &*self.prefix, node)? {
                 self.render_node_prefixed(node, prefix)?
             }
         }
@@ -98,7 +109,11 @@ impl<'a> DisplayGraph<'a> {
             println!("{}  * {}", prefix, label);
         }
         if model.node_control_inputs(node_id).len() > 0 {
-            println!("{}  * control nodes: {}", prefix, model.node_control_inputs(node_id).iter().join(", "));
+            println!(
+                "{}  * control nodes: {}",
+                prefix,
+                model.node_control_inputs(node_id).iter().join(", ")
+            );
         }
         for (ix, i) in model.node_inputs(node_id).iter().enumerate() {
             let star = if ix == 0 { '*' } else { ' ' };
@@ -171,17 +186,27 @@ impl<'a> DisplayGraph<'a> {
         model: &'a dyn Model,
         options: Arc<DisplayOptions>,
     ) -> CliResult<DisplayGraph<'a>> {
+        Self::from_model_prefix_and_options(model, [].as_ref(), options)
+    }
+
+    fn from_model_prefix_and_options(
+        model: &'a dyn Model,
+        prefix: &[usize],
+        options: Arc<DisplayOptions>,
+    ) -> CliResult<DisplayGraph<'a>> {
         let mut node_nested_graphs = HashMap::new();
         for n in 0..model.nodes_len() {
             let subs = model.node_op(n).nested_models();
             if subs.len() > 0 {
+                let mut prefix: TVec<usize> = prefix.into();
+                prefix.push(n);
                 node_nested_graphs.insert(
                     n,
                     subs.into_iter()
                         .map(|(label, sub)| {
                             Ok((
                                 label.into_owned(),
-                                Self::from_model_and_options(sub, Arc::clone(&options))?,
+                                Self::from_model_prefix_and_options(sub, &*prefix, Arc::clone(&options))?,
                             ))
                         })
                         .collect::<CliResult<_>>()?,
@@ -190,6 +215,7 @@ impl<'a> DisplayGraph<'a> {
         }
         Ok(DisplayGraph {
             model,
+            prefix: prefix.into(),
             options,
             node_color: HashMap::new(),
             node_labels: HashMap::new(),
@@ -215,9 +241,13 @@ impl<'a> DisplayGraph<'a> {
         Ok(())
     }
 
-    pub fn add_node_label<S: Into<String>>(&mut self, id: usize, label: S) -> CliResult<()> {
-        self.node_labels.entry(id).or_insert(vec![]).push(label.into());
-        Ok(())
+    pub fn add_node_label<S: Into<String>>(&mut self, id: &[usize], label: S) -> CliResult<()> {
+        if id.len() == 1 {
+            self.node_labels.entry(id[0]).or_insert(vec![]).push(label.into());
+            Ok(())
+        } else {
+            self.node_nested_graphs.get_mut(&id[0]).unwrap()[0].1.add_node_label(&id[1..], label)
+        }
     }
 
     pub fn add_node_section(&mut self, id: usize, section: Vec<String>) -> CliResult<()> {

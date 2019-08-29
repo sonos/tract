@@ -55,6 +55,8 @@ impl Op for VariableV2 {
     fn name(&self) -> Cow<str> {
         "tf.VariableV2".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatefullOp for VariableV2 {
@@ -110,6 +112,8 @@ impl Op for Assign {
     fn name(&self) -> Cow<str> {
         "tf.Assign".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl OpState for AssignState {

@@ -40,6 +40,8 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> Op for CategoryMapper<Src, Dst> {
     fn name(&self) -> Cow<str> {
         format!("onnx-ml.CategoryMapper<{:?},{:?}>", Src::datum_type(), Dst::datum_type()).into()
     }
+
+    op_as_typed_op!();
 }
 
 impl<Src: Datum + Hash + Eq, Dst: Datum> StatelessOp for CategoryMapper<Src, Dst> {
@@ -71,10 +73,9 @@ impl<Src: Datum + Hash + Eq, Dst: Datum> InferenceRulesOp for CategoryMapper<Src
 }
 
 impl<Src: Datum + Hash + Eq, Dst: Datum> TypedOp for CategoryMapper<Src, Dst> {
-    typed_op_as_op!();
-
-
     fn output_facts(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<TypedTensorInfo>> {
         Ok(tvec!(TypedTensorInfo::dt_shape(Dst::datum_type(), inputs[0].shape.clone())?))
     }
+
+    typed_op_as_op!();
 }

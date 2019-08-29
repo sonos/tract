@@ -51,6 +51,8 @@ impl Op for Transpose {
         }
         Ok(None)
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Transpose {

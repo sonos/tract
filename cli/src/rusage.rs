@@ -48,7 +48,7 @@ impl Duration {
     }
 
     /// Returns a measure from a given instant and iterations.
-    pub fn since(start: &Instant, iters: u64) -> Duration {
+    pub fn since(start: &Instant, iters: u64,) -> Duration {
         let total_real = start.elapsed_real();
         let total_user = start.elapsed_user();
         let total_sys = start.elapsed_sys();
@@ -69,7 +69,7 @@ impl Duration {
     }
 }
 
-impl ::std::ops::AddAssign for Duration {
+impl std::ops::AddAssign for Duration {
     fn add_assign(&mut self, other: Duration) {
         *self = Duration {
             total_real: self.total_real + other.total_real,

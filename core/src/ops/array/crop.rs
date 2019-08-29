@@ -11,6 +11,8 @@ impl Op for Crop {
     fn name(&self) -> Cow<str> {
         "Crop".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Crop {

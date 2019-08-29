@@ -165,6 +165,7 @@ where
         }
         Ok(None)
     }
+    op_as_typed_op!();
 }
 
 impl<T> StatelessOp for MatMat<T>

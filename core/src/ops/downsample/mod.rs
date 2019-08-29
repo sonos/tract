@@ -64,6 +64,7 @@ impl Op for Downsample {
     }
 
     impl_op_same_as!();
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Downsample {

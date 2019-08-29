@@ -77,6 +77,8 @@ impl Op for Affine {
     fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.Affine".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Affine {

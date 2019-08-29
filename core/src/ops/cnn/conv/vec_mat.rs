@@ -85,6 +85,8 @@ where
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((Cost::FMA(f32::datum_type()), batch * self.group * self.vmm.k() * self.vmm.n())))
     }
+
+    op_as_typed_op!();
 }
 
 impl<D> StatelessOp for VecMat<D>

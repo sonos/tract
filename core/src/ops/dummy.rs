@@ -7,6 +7,8 @@ impl Op for Dummy {
     fn name(&self) -> Cow<str> {
         "Dummy".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Dummy {

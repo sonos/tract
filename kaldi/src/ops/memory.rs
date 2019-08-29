@@ -22,6 +22,8 @@ impl Op for Memory {
     ) -> TractResult<Option<InferenceModelPatch>> {
         Ok(Some(incorporate_memory_ops_as_scans(model, node)?))
     }
+
+    not_a_typed_op!();
 }
 
 impl StatefullOp for Memory {

@@ -23,6 +23,8 @@ impl Op for Switch {
     fn name(&self) -> Cow<str> {
         "tf.Switch".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Switch {
@@ -81,6 +83,8 @@ impl Op for Merge {
     fn name(&self) -> Cow<str> {
         "tf.Merge".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Merge {

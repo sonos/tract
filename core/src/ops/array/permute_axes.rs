@@ -38,6 +38,8 @@ impl Op for PermuteAxes {
     fn name(&self) -> Cow<str> {
         "PermuteAxes".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for PermuteAxes {

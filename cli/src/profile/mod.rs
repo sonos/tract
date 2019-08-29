@@ -17,20 +17,20 @@ mod regular;
 
 #[derive(Debug, Default)]
 pub struct ProfileData {
-    pub nodes: HashMap<usize, Duration>,
+    pub nodes: HashMap<TVec<usize>, Duration>,
 }
 
 impl ProfileData {
-    pub fn add<TI: TensorInfo, O>(
+    pub fn add(
         &mut self,
-        node: &BaseNode<TI, O>,
+        node_id: &[usize],
         dur: Duration,
     ) -> ::tract_core::TractResult<()> {
-        *self.nodes.entry(node.id).or_insert(Duration::default()) += dur;
+        *self.nodes.entry(node_id.into()).or_insert(Duration::default()) += dur;
         Ok(())
     }
 
-    pub fn most_consuming_nodes(&self) -> CliResult<Vec<usize>> {
+    pub fn most_consuming_nodes(&self) -> CliResult<Vec<TVec<usize>>> {
         let top = self
             .nodes
             .iter()
@@ -40,7 +40,7 @@ impl ProfileData {
             .into_iter()
             .rev()
             .take(5)
-            .map(|a| *a.0)
+            .map(|a| a.0.iter().cloned().collect())
             .collect();
         Ok(top)
     }
@@ -50,6 +50,7 @@ impl ProfileData {
         TI: TensorInfo + Clone + 'static,
         O: AsRef<dyn Op> + AsMut<dyn Op> + Display + Debug + Clone + 'static,
     {
+        /*
         let sum = self.summed();
         println!("Most time consuming operations:");
         let mut operations = HashMap::new();
@@ -82,6 +83,7 @@ impl ProfileData {
                 dur_avg_oneline_ratio(*measure, sum)
             );
         }
+        */
         Ok(())
     }
 

@@ -15,6 +15,8 @@ impl Op for MultiBroadcastTo {
     fn name(&self) -> Cow<str> {
         "MultiBroadcastTo".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for MultiBroadcastTo {

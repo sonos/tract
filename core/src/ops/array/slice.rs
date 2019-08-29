@@ -92,6 +92,8 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         }
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl<D: DimLike + ToDim> StatelessOp for Slice<D> {

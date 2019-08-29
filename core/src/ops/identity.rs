@@ -23,6 +23,8 @@ impl Op for Identity {
     ) -> TractResult<Option<TypedModelPatch>> {
         Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Identity {

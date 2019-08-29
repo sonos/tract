@@ -20,6 +20,8 @@ impl Op for IntoShape {
     fn name(&self) -> Cow<str> {
         "IntoShape".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for IntoShape {

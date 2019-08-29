@@ -16,6 +16,8 @@ impl Op for Cast {
     fn name(&self) -> Cow<str> {
         "Cast".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Cast {

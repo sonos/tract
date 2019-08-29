@@ -30,6 +30,8 @@ impl Op for Renorm {
     ) -> TractResult<Vec<TranslationInvariant>> {
         Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Renorm {

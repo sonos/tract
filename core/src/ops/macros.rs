@@ -25,6 +25,24 @@ macro_rules! typed_op_as_op {
 }
 
 #[macro_export]
+macro_rules! op_as_typed_op {
+    () => {
+        fn as_typed(&self) -> Option<&dyn TypedOp> {
+            Some(self)
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! not_a_typed_op {
+    () => {
+        fn as_typed(&self) -> Option<&dyn TypedOp> {
+            None
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! to_typed {
     () => {
         fn to_typed(
@@ -80,7 +98,7 @@ macro_rules! element_map {
                 let rank = node.outputs[0].fact.shape.rank();
                 Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
             }
-
+            op_as_typed_op!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -164,6 +182,8 @@ macro_rules! element_map_move {
                 let rank = node.outputs[0].fact.shape.rank();
                 Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
             }
+
+            op_as_typed_op!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -257,6 +277,7 @@ macro_rules! element_map_inplace {
                 Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
             }
 
+            op_as_typed_op!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -345,6 +366,8 @@ macro_rules! element_map_with_params {
                 let rank = node.outputs[0].fact.shape.rank();
                 Ok((0..rank).map(|axis| TranslationInvariant { axis, period: 1 }).collect())
             }
+
+            op_as_typed_op!();
         }
 
         impl InferenceRulesOp for $Name {
@@ -414,6 +437,8 @@ macro_rules! element_nary {
             fn name(&self) -> Cow<str> {
                 stringify!($Name).into()
             }
+
+            op_as_typed_op!();
         }
 
         impl StatelessOp for $Name {

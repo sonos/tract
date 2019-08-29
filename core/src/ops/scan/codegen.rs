@@ -18,6 +18,8 @@ impl Op for Codegen {
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), self.plan.model())]
     }
+
+    op_as_typed_op!();
 }
 
 impl StatefullOp for Codegen {
@@ -260,5 +262,21 @@ impl TypedOp for Codegen {
         outputs.sort_by_key(|a| a.0);
         let outputs: TVec<_> = outputs.into_iter().map(|(_slot, v)| v).collect();
         Ok(outputs)
+    }
+
+    fn nested_model_multipliers(&self, inputs: &[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
+        let iters = {
+            let (outside_slot, axis, chunk) = self
+                .input_mapping
+                .iter()
+                .filter_map(|it| match it {
+                    InputMapping::Scan { axis, slot, chunk } => Some((*slot, *axis, *chunk)),
+                    _ => None,
+                })
+                .next()
+                .unwrap();
+            inputs[outside_slot].shape.dim(axis).to_integer().unwrap() as f32 / chunk as f32
+        };
+        vec![("loop".into(), iters as f32)]
     }
 }

@@ -28,6 +28,8 @@ impl Op for ConstantOfShape {
     fn name(&self) -> Cow<str> {
         "ConstantOfShape".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for ConstantOfShape {
