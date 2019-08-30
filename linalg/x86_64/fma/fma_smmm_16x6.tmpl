@@ -4,11 +4,11 @@
 /* mmm 16 x 6:
 
     ymm0 ymm2 ymm4 ymm6 ymm8 ymm10
-    ymm1 ymm3 ymm5 ymm7 ymm8 ymm11
+    ymm1 ymm3 ymm5 ymm7 ymm9 ymm11
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
-    preserve: rbx, rsp, rbp, r12, r13, r14, r15 
+    preserve: rbx, rsp, rbp, r12, r13, r14, r15
     scratch: rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11
     return: rax (+rdx)
 */
@@ -46,7 +46,6 @@ fma_smmm16x6 proc
     push        r13
     push        r14
     push        r15
-    mov         rax, 1
 
     vzeroall
 
@@ -211,7 +210,7 @@ fma_smmm16x6 proc
     pop r12
     pop rbx
 
-    pop        rbp
+    pop rbp
     ret
 
 {{L}}unimplemented:
