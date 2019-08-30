@@ -26,3 +26,4 @@ maplit = "1"
 nom = "5.0.0-beta3"
 num-traits = "0.2"
 tract-core = { path = "../core" }
+tract-linalg = { path = "../linalg" }

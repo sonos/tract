@@ -1,14 +1,14 @@
-use crate::frame::tiling_kernel::*;
+use crate::frame::mmm::*;
 
 extern "C" {
     #[no_mangle]
-    fn vfpv2_tile_s4x4(op: *const TileOpSpec<f32>) -> isize;
+    fn armvfpv2_smmm_4x4(op: *const MatMatMulKerSpec<f32>) -> isize;
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct STile4x4;
+pub struct SMatMatMul4x4;
 
-impl TilingKer<f32> for STile4x4 {
+impl MatMatMulKer<f32> for SMatMatMul4x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "vfpv2"
@@ -28,13 +28,13 @@ impl TilingKer<f32> for STile4x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &TileOpSpec<f32>) -> isize {
-        unsafe { vfpv2_tile_s4x4(spec) }
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+        unsafe { armvfpv2_smmm_4x4(spec) }
     }
 }
 
 #[cfg(test)]
 mod test {
-    tile_kernel_tests!(crate::arm32::has_neon(), crate::arm32::armvfpv2::STile4x4, f32);
-    tile_frame_tests!(crate::arm32::has_neon(), crate::arm32::armvfpv2::STile4x4);
+    mmm_kernel_tests!(crate::arm32::has_neon(), crate::arm32::armvfpv2::SMatMatMul4x4, f32);
+    mmm_frame_tests!(crate::arm32::has_neon(), crate::arm32::armvfpv2::SMatMatMul4x4);
 }

@@ -72,37 +72,28 @@ impl Conv {
         if input_shape.c_dim() != &channels_in {
             bail!("Input has {} channels, kernel expects {}", input_shape.c_dim(), channels_in)
         }
-        if inputs.len() == 2 {
-            if let Some(kvalue) = kernel.borrow().konst.clone() {
-                let ishape: TVec<TDim> = input.borrow().shape.iter().collect();
-                let reduced = ConvUnary::new(
-                    &self,
-                    &ishape,
-                    &self.output_shape(&*ishape, kvalue.shape()),
-                    kvalue.into_tensor(),
-                    None,
-                    self.group,
-                )?;
-                return Ok(Some(reduced));
-            }
-        } else {
-            let bias = &inputs[2];
-            if let (Some(kvalue), Some(bias)) =
-                (kernel.borrow().konst.clone(), bias.borrow().konst.clone())
-            {
-                let ishape: TVec<TDim> = input.borrow().shape.iter().collect();
-                let reduced = ConvUnary::new(
-                    &self,
-                    &ishape,
-                    &self.output_shape(&ishape, kvalue.shape()),
-                    kvalue.into_tensor(),
-                    Some(bias.into_tensor()),
-                    self.group,
-                )?;
-                return Ok(Some(reduced));
-            }
+        if let Some(kvalue) = kernel.borrow().konst.clone() {
+            let ishape: TVec<TDim> = input.borrow().shape.iter().collect();
+            let reduced = ConvUnary::new(
+                &self,
+                &ishape,
+                &self.output_shape(&*ishape, kvalue.shape()),
+                kvalue.into_tensor(),
+                self.group,
+            )?;
+            return Ok(Some(reduced));
         }
         Ok(None)
+    }
+
+    pub fn add_bias_t<T: FloatLike + std::ops::AddAssign>(&self, conv_result: &mut Tensor, bias: &Tensor) -> TractResult<()> {
+        let mut conv = conv_result.to_array_view_mut::<T>()?;
+        let shape = self.data_format.shape(conv.shape());
+        let bias = bias.to_array_view::<T>()?;
+        let mut reshaped = vec!(1; conv.ndim());
+        reshaped[shape.c_axis()] = bias.len();
+        conv += &bias.into_shape(reshaped)?;
+        Ok(())
     }
 }
 
@@ -124,19 +115,49 @@ impl Op for Conv {
     ) -> TractResult<Option<TypedModelPatch>> {
         let inputs = model.node_input_facts(node.id)?;
         if let Some(op) = self.to_unary(&*inputs)? {
-            return Ok(Some(TypedModelPatch::single_unary_op(model, node, op)?));
+            let mut patch = TypedModelPatch::default();
+            patch.tap_model(model, node.inputs[0])?;
+            let mut output:OutletId = patch.chain(&*node.name, op, tvec!(node.outputs[0].fact.clone()))?.into();
+            if let Some(bias) = node.inputs.get(2) {
+                let mut tap = patch.tap_model(model, *bias)?;
+                if self.data_format == DataFormat::NCHW {
+                    let data_rank = node.outputs[0].fact.shape.rank();
+                    let add_dims = crate::ops::array::AddDims::new((1..data_rank-1).collect());
+                    tap = patch.wire_node(
+                        format!("{}-reshaped-bias", node.name),
+                        add_dims,
+                        [tap].as_ref(),
+                    )?[0];
+                }
+                output = patch.wire_node(
+                    format!("{}-add-bias", node.name),
+                    crate::ops::math::add::bin(),
+                    [output, tap].as_ref()
+                )?[0];
+            }
+            patch.shunt_outside(OutletId::new(node.id, 0), output)?;
+            return Ok(Some(patch));
         } else {
             Ok(None)
         }
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Conv {
-    fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
+    fn eval(&self, inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let inputs_info: TVec<TypedTensorInfo> =
             inputs.iter().map(|t| TypedTensorInfo::from(&**t)).collect();
         let unary = self.to_unary(&*inputs_info)?.unwrap();
-        unary.eval(tvec!(inputs.remove(0)))
+        let mut result = unary.eval(tvec!(inputs[0].clone()))?;
+        if let Some(bias) = inputs.get(2) {
+            let mut result = result.remove(0).into_tensor();
+            dispatch_floatlike!(Self::add_bias_t(bias.datum_type())(self, &mut result, bias))?;
+            Ok(tvec!(result.into_arc_tensor()))
+        } else {
+            Ok(result)
+        }
     }
 }
 

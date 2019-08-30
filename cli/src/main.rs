@@ -18,6 +18,7 @@ extern crate tract_onnx;
 #[cfg(feature = "tf")]
 extern crate tract_tensorflow;
 
+#[allow(unused_imports)]
 use itertools::Itertools;
 use std::process;
 use std::str::FromStr;
@@ -497,7 +498,8 @@ impl Parameters {
                 if let Some(t) = t.value.concretize() {
                     input_values.push(Some(t));
                 }
-                raw_model.node_mut(outlet.node).op = Box::new(tract_core::ops::Source::new());
+                raw_model.node_mut(outlet.node).op =
+                    Box::new(tract_core::ops::source::Source::new());
                 if !const_inputs.contains(&raw_model.node_name(outlet.node).to_string()) {
                     t.value = GenericFact::Any;
                 }
@@ -546,25 +548,25 @@ impl Parameters {
         let mut typed_model = None;
         let mut tract_model: Box<dyn Model> = {
             let stop_at = matches.value_of("pass").unwrap();
-            (|| -> CliResult<Box<dyn Model>>{
+            (|| -> CliResult<Box<dyn Model>> {
                 if stop_at == "load" {
-                    return Ok(Box::new(raw_model) as _)
+                    return Ok(Box::new(raw_model) as _);
                 }
                 info!("Running analyse");
                 raw_model.analyse(!matches.is_present("analyse_fail_fast"))?;
                 if stop_at == "analyse" {
-                    return Ok(Box::new(raw_model) as _)
+                    return Ok(Box::new(raw_model) as _);
                 }
                 info!("Running incorporate");
                 let model = raw_model.incorporate()?;
                 if stop_at == "incorporate" {
-                    return Ok(Box::new(model) as _)
+                    return Ok(Box::new(model) as _);
                 }
                 info!("Running typing");
                 let model = model.into_typed()?;
                 typed_model = Some(model.clone());
                 if stop_at == "type" {
-                    return Ok(Box::new(model) as _)
+                    return Ok(Box::new(model) as _);
                 }
                 info!("Running declutter");
                 let model = model.declutter()?;
@@ -651,10 +653,12 @@ pub fn display_options_from_clap(matches: &clap::ArgMatches) -> CliResult<Displa
         quiet: matches.is_present("quiet"),
         natural_order: matches.is_present("natural-order"),
         debug_op: matches.is_present("debug-op"),
-        node_ids: matches.values_of("node_id").map(|id| id.map(|id| id.parse().unwrap()).collect()),
+        node_ids: matches.values_of("node_id").map(|id| {
+            id.map(|id| id.split("/").map(|i| i.parse::<usize>().unwrap()).collect()).collect()
+        }),
         node_name: matches.value_of("node_name").map(String::from),
         op_name: matches.value_of("op_name").map(String::from),
-        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
+//        successors: matches.value_of("successors").map(|id| id.parse().unwrap()),
     })
 }
 

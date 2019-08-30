@@ -42,6 +42,8 @@ impl Op for ExpandDims {
         }
         Ok(None)
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for ExpandDims {

@@ -8,6 +8,8 @@ impl Op for Tile {
     fn name(&self) -> Cow<str> {
         "Tile".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Tile {
@@ -104,6 +106,8 @@ impl Op for TypedTile {
     fn name(&self) -> Cow<str> {
         "TypedTile".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for TypedTile {

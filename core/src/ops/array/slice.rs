@@ -28,6 +28,10 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
         "Slice".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis: {}, {}..{}", self.axis, self.start, self.end)])
+    }
+
     fn translation_invariants(
         &self,
         model: &TypedModel,
@@ -40,6 +44,56 @@ impl<D: DimLike + ToDim> Op for Slice<D> {
             .collect();
         Ok(axes)
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let prec = model.node(node.inputs[0].node);
+        if self.start == D::zero() && (self.end.clone().to_dim() == model.outlet_fact(node.inputs[0])?.shape.dim(self.axis)) {
+            return Ok(Some(TypedModelPatch::shunt_one_op(model, node)?))
+        }
+        let (start, end) = if let (Ok(s), Ok(e)) = (self.start.to_integer(), self.end.to_integer())
+        {
+            (s as usize, e as usize)
+        } else {
+            return Ok(None);
+        };
+        if let Some(concat) = prec.op_as::<super::concat::NormConcat>() {
+            if concat.axis == self.axis {
+                let mut offset = 0;
+                for &input in &prec.inputs {
+                    let len: usize = if let Ok(i) =
+                        model.outlet_fact(input)?.shape.dim(self.axis).to_integer()
+                    {
+                        i as usize
+                    } else {
+                        return Ok(None);
+                    };
+                    if start >= offset && end <= offset + len {
+                        let mut patch = TypedModelPatch::default();
+                        patch.tap_model(model, input)?;
+                        let s = patch.chain(
+                            &*node.name,
+                            Slice {
+                                axis: self.axis,
+                                start: start - offset,
+                                end: end - offset,
+                            },
+                            tvec!(node.outputs[0].fact.clone()),
+                        )?;
+                        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(s, 0))?;
+                        return Ok(Some(patch));
+                    }
+                    offset += len;
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    op_as_typed_op!();
 }
 
 impl<D: DimLike + ToDim> StatelessOp for Slice<D> {

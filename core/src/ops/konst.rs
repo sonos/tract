@@ -15,6 +15,8 @@ impl Op for Const {
     fn name(&self) -> Cow<str> {
         "Const".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Const {

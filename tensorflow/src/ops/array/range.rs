@@ -40,6 +40,8 @@ impl Op for Range {
     fn name(&self) -> Cow<str> {
         "tf.Range".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Range {

@@ -85,6 +85,7 @@ impl Op for BatchNorm {
         }
         Ok(None)
     }
+    op_as_typed_op!();
 }
 
 impl TypedOp for BatchNorm {
@@ -183,6 +184,8 @@ where
     fn name(&self) -> Cow<str> {
         format!("FixedBatchNorm<{:?}>", T::datum_type()).into()
     }
+
+    op_as_typed_op!();
 }
 
 impl<T> StatelessOp for FixedBatchNorm<T>

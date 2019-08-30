@@ -1,4 +1,4 @@
-use num_traits::Zero;
+use num_traits::{AsPrimitive, Zero};
 use std::ops::{Add, AddAssign, Mul};
 
 use crate::internal::*;
@@ -8,7 +8,7 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::{DataFormat, DataShape};
 
-use tract_linalg::Tile;
+use tract_linalg::frame::mmm::{FusedSpec, MatMatMul};
 
 /*
  * group=1, N=1         N>1             g>1
@@ -40,6 +40,7 @@ use tract_linalg::Tile;
 pub struct MatMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy,
+    f32: AsPrimitive<T>,
 {
     pub patch: Patch,
     pub output_shape: DataShape,
@@ -49,14 +50,15 @@ where
     pub kernel_fmt: KernelFormat,
     #[debug(skip)]
     pub packed_kernels: Vec<Tensor>,
-    pub bias: Option<ArrayD<T>>,
     pub group: usize,
-    pub tile: Box<dyn Tile<T>>,
+    pub tile: Box<dyn MatMatMul<T>>,
+    pub non_linear: Vec<FusedSpec<T>>,
 }
 
 impl<T> MatMat<T>
 where
     T: Datum + Add + Mul + Zero + Copy + AddAssign + ndarray::LinalgScalar,
+    f32: AsPrimitive<T>,
 {
     pub(super) fn conv_gemm<'i>(
         &'i self,
@@ -90,54 +92,98 @@ where
                                 .offset(((self.group * i + g) * packed_b_len) as isize),
                         ),
                         &mut self.tile.c_from_data_and_strides(output_i_g, rsc, csc),
+                        &*self.non_linear,
                     );
                 }
             }
         }
-
-        if let Some(ref bias) = self.bias {
-            output += &bias;
-        }
-
         Ok(output)
     }
 }
 
-impl<D> Op for MatMat<D>
+impl<T> Op for MatMat<T>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+    T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    f32: AsPrimitive<T>,
 {
     fn name(&self) -> Cow<str> {
         "MatMat".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.tile)))
+        let mut info = vec![format!("{:?}", self.tile)];
+        for op in &self.non_linear {
+            info.push(format!(" + {:?}", op));
+        }
+        Ok(info)
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((
-            Cost::FMA(f32::datum_type()),
+            Cost::FMA(T::datum_type()),
             batch * self.group * self.tile.m() * self.tile.k() * self.tile.n()
         )))
     }
+
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(succ) = model.single_succ(node.id)? {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
+                if let Some(op) = succ.op_as::<crate::ops::binary::UnaryAOp>() {
+                    if op.b.shape() == &[*self.output_shape.c()] {
+                        if op.mini_op.is::<crate::ops::math::Mul>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowMul(
+                                op.b.as_slice::<T>()?.to_vec(),
+                            ))));
+                        } else if op.mini_op.is::<crate::ops::math::Add>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowAdd(
+                                op.b.as_slice::<T>()?.to_vec(),
+                            ))));
+                        }
+                    }
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
+                    return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
+                    return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
+                    return Ok(Some(tvec!(
+                                FusedSpec::Min(op.min.as_()),
+                                FusedSpec::Max(op.max.as_()),
+                                )));
+                }
+                Ok(None)
+            })()?;
+            if let Some(op) = fused_micro_op {
+                let mut ops = self.non_linear.clone();
+                ops.extend(op.into_iter());
+                return Ok(Some(TypedModelPatch::fuse_with_next(
+                    model,
+                    &node,
+                    Self { non_linear: ops, ..self.clone() },
+                )?));
+            }
+        }
+        Ok(None)
+    }
+    op_as_typed_op!();
 }
 
-impl<D> StatelessOp for MatMat<D>
+impl<T> StatelessOp for MatMat<T>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+    T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    f32: AsPrimitive<T>,
 {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let input = args_1!(inputs);
-        let output = self.conv_gemm(&input.to_array_view::<D>()?.into_dimensionality()?)?;
+        let output = self.conv_gemm(&input.to_array_view::<T>()?.into_dimensionality()?)?;
         Ok(tvec!(output.into_arc_tensor()))
     }
 }
 
-impl<D> TypedOp for MatMat<D>
+impl<T> TypedOp for MatMat<T>
 where
-    D: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<D> + PartialEq,
+    T: Datum + Clone + ::ndarray::LinalgScalar + ::std::ops::AddAssign<T> + PartialEq,
+    f32: AsPrimitive<T>,
 {
     typed_op_as_op!();
 

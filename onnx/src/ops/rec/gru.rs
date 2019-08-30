@@ -55,7 +55,7 @@ impl Default for GRU {
             optional_y_output: None,
             optional_y_h_output: None,
             f: Box::new(core_ops::nn::Sigmoid::new(f32::datum_type().into())),
-            g: Box::new(core_ops::nn::Tanh::new(f32::datum_type().into())),
+            g: Box::new(core_ops::math::Tanh::new(f32::datum_type().into())),
             linear_before_reset: false,
         }
     }
@@ -69,6 +69,8 @@ impl Op for GRU {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    op_as_typed_op!();
 }
 
 impl InferenceRulesOp for GRU {

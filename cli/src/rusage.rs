@@ -38,7 +38,6 @@ pub struct Duration {
     pub total_real: f64,
     pub total_user: f64,
     pub total_sys: f64,
-    pub counter: u64,
 }
 
 impl Duration {
@@ -48,34 +47,63 @@ impl Duration {
     }
 
     /// Returns a measure from a given instant and iterations.
-    pub fn since(start: &Instant, iters: u64) -> Duration {
+    pub fn since(start: &Instant) -> Duration {
         let total_real = start.elapsed_real();
         let total_user = start.elapsed_user();
         let total_sys = start.elapsed_sys();
 
-        Duration { total_real, total_user, total_sys, counter: iters }
+        Duration { total_real, total_user, total_sys }
     }
 
     pub fn avg_real(&self) -> f64 {
-        self.total_real / self.counter as f64
+        self.total_real
     }
 
     pub fn avg_user(&self) -> f64 {
-        self.total_user / self.counter as f64
+        self.total_user
     }
 
     pub fn avg_sys(&self) -> f64 {
-        self.total_sys / self.counter as f64
+        self.total_sys
     }
 }
 
-impl ::std::ops::AddAssign for Duration {
+impl std::ops::AddAssign for Duration {
     fn add_assign(&mut self, other: Duration) {
         *self = Duration {
             total_real: self.total_real + other.total_real,
             total_user: self.total_user + other.total_user,
             total_sys: self.total_sys + other.total_sys,
-            counter: self.counter + other.counter,
+        };
+    }
+}
+
+impl std::ops::SubAssign for Duration {
+    fn sub_assign(&mut self, other: Duration) {
+        *self = Duration {
+            total_real: self.total_real - other.total_real,
+            total_user: self.total_user - other.total_user,
+            total_sys: self.total_sys - other.total_sys,
+        };
+    }
+}
+
+impl std::ops::MulAssign<f64> for Duration {
+    fn mul_assign(&mut self, other: f64) {
+        *self = Duration {
+            total_real: self.total_real * other,
+            total_user: self.total_user * other,
+            total_sys: self.total_sys * other,
+        };
+    }
+}
+
+impl std::ops::DivAssign<f64> for Duration {
+    fn div_assign(&mut self, other: f64) {
+        *self = Duration {
+            total_real: self.total_real / other,
+            total_user: self.total_user / other,
+            total_sys: self.total_sys / other,
         };
     }
 }

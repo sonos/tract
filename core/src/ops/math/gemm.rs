@@ -136,6 +136,8 @@ impl Op for Gemm {
 
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Gemm {
@@ -237,6 +239,7 @@ impl Op for GemmUnaryA {
     fn name(&self) -> Cow<str> {
         "GemmUnaryA".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for GemmUnaryA {
@@ -317,6 +320,7 @@ impl Op for GemmUnaryB {
     fn name(&self) -> Cow<str> {
         "GemmUnaryB".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for GemmUnaryB {

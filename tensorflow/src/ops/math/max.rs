@@ -23,6 +23,8 @@ impl Op for Max {
     fn name(&self) -> Cow<str> {
         "tf.Max".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Max {
@@ -129,6 +131,8 @@ impl Op for TypedMax {
     fn name(&self) -> Cow<str> {
         "tf.TypedMax".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for TypedMax {

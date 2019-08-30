@@ -40,6 +40,8 @@ impl Op for RandomUniform {
             Validation::Accurate
         }
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for RandomUniform {
@@ -117,6 +119,8 @@ impl Op for TypedRandomUniform {
             Validation::Accurate
         }
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for TypedRandomUniform {
@@ -191,6 +195,8 @@ impl Op for RandomUniformInt {
             Validation::Accurate
         }
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for RandomUniformInt {

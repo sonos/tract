@@ -87,6 +87,8 @@ impl Op for Pad {
     fn name(&self) -> Cow<str> {
         "Pad".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Pad {
@@ -297,6 +299,8 @@ impl<T: Datum + Copy> Op for PulsePad<T> {
     fn name(&self) -> Cow<str> {
         "Pad".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl<T: Datum + Copy> StatefullOp for PulsePad<T> {

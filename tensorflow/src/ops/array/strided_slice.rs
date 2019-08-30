@@ -173,6 +173,8 @@ impl Op for StridedSlice {
     fn name(&self) -> Cow<str> {
         "tf.StridedSliceD".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl InferenceRulesOp for StridedSlice {

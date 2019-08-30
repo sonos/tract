@@ -49,6 +49,8 @@ impl Op for GatherNd {
     fn name(&self) -> Cow<str> {
         "tf.GatherNd".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for GatherNd {

@@ -3,7 +3,19 @@ use ndarray::*;
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 
-pub use super::binary::{and, equals, greater, greater_equal, lesser, lesser_equal, or, xor};
+bin_to_super_type!(and, And,
+     [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 && b as i64 != 0) as _);
+bin_to_super_type!(or, Or,
+     [bool, u8, i8, i16, i32, i64] => |c, &a, &b| *c = (a as i64 != 0 || b as i64 != 0) as _);
+bin_to_super_type!(xor, Xor, [bool] => |c, &a, &b| *c = a ^ b);
+bin_to_bool!(equals, Equals,
+     [bool, u8, i8, i16, i32, i64, f32, f64, TDim] => |c, a, b | *c = a == b
+);
+
+bin_to_bool!(lesser, Lesser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a < b);
+bin_to_bool!(lesser_equal, LesserEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a <= b);
+bin_to_bool!(greater, Greatser, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a > b);
+bin_to_bool!(greater_equal, GreaterEqual, [bool, u8, i8, i16, i32, i64, f32, f64] => |c, &a, &b | *c = a >= b);
 
 element_map!(Not, [bool], |a: bool| !a);
 
@@ -31,6 +43,7 @@ impl Op for Iff {
     fn name(&self) -> Cow<str> {
         "Iff".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Iff {

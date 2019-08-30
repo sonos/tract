@@ -24,6 +24,8 @@ impl Op for FakeQuantWithMinMaxVars {
     fn name(&self) -> Cow<str> {
         "tf.FakeQuantWithMinMaxVars".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for FakeQuantWithMinMaxVars {

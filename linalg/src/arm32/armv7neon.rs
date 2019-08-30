@@ -1,14 +1,20 @@
-use crate::frame::tiling_kernel::*;
+use crate::frame::mmm::*;
+use crate::frame::sigmoid::*;
+use crate::frame::tanh::*;
 
 extern "C" {
     #[no_mangle]
-    fn neon_stile8x4(op: *const TileOpSpec<f32>) -> isize;
+    fn armv7neon_smmm_8x4(op: *const MatMatMulKerSpec<f32>) -> isize;
+    #[no_mangle]
+    fn armv7neon_ssigmoid_4(ptr: *mut f32, count: usize);
+    #[no_mangle]
+    fn armv7neon_stanh_4(ptr: *mut f32, count: usize);
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct STile8x4;
+pub struct SMatMatMul8x4;
 
-impl TilingKer<f32> for STile8x4 {
+impl MatMatMulKer<f32> for SMatMatMul8x4 {
     #[inline(always)]
     fn name() -> &'static str {
         "neon"
@@ -28,13 +34,57 @@ impl TilingKer<f32> for STile8x4 {
         4
     }
     #[inline(never)]
-    fn kernel(spec: &TileOpSpec<f32>) -> isize {
-        unsafe { neon_stile8x4(spec) }
+    fn kernel(spec: &MatMatMulKerSpec<f32>) -> isize {
+        unsafe { armv7neon_smmm_8x4(spec) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SSigmoid4;
+
+impl SigmoidKer<f32> for SSigmoid4 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "neon"
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        4
+    }
+    #[inline(always)]
+    fn alignment_bytes() -> usize {
+        16
+    }
+    #[inline(never)]
+    fn run(buf: &mut [f32]) {
+        unsafe { armv7neon_ssigmoid_4(buf.as_mut_ptr(), buf.len()) }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct STanh4;
+
+impl TanhKer<f32> for STanh4 {
+    #[inline(always)]
+    fn name() -> &'static str {
+        "neon"
+    }
+    #[inline(always)]
+    fn nr() -> usize {
+        4
+    }
+    #[inline(always)]
+    fn alignment_bytes() -> usize {
+        16
+    }
+    #[inline(never)]
+    fn run(buf: &mut [f32]) {
+        unsafe { armv7neon_stanh_4(buf.as_mut_ptr(), buf.len()) }
     }
 }
 
 #[cfg(test)]
 mod test {
-    tile_kernel_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::STile8x4, f32);
-    tile_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::STile8x4);
+    sigmoid_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::SSigmoid4);
+    tanh_frame_tests!(crate::arm32::has_neon(), crate::arm32::armv7neon::STanh4);
 }

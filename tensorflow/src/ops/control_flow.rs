@@ -24,6 +24,8 @@ impl Op for LoopGate {
     fn name(&self) -> Cow<str> {
         format!("tf.{:?}", self.0).into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for LoopGate {
@@ -65,6 +67,8 @@ impl Op for NextIteration {
     fn name(&self) -> Cow<str> {
         format!("{:?}({})", self.role, self.name).into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatefullOp for NextIteration {

@@ -36,6 +36,8 @@ impl Op for Compress {
     fn name(&self) -> Cow<str> {
         "onnx.Compress".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Compress {

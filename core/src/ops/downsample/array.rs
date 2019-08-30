@@ -25,8 +25,8 @@ where
         &*slice_node.name,
         ops::array::Slice::new(slice_op.axis, new_start, new_end),
         &*ds,
-    )?;
-    patch.shunt_outside(OutletId::new(down_node.id, 0), new_slice[0])?;
+    )?[0];
+    patch.shunt_outside(OutletId::new(down_node.id, 0), new_slice)?;
     return Ok(Some(patch));
 }
 
@@ -105,9 +105,11 @@ mod tests {
         let input = tensor1(&(0i32..len as _).collect::<Vec<_>>());
         let expected = SimplePlan::new(&typed)?.run(tvec!(input.clone()))?;
 
+        info!("Decluttering");
         let typed = typed.declutter()?;
         trace!("{:#?}", typed);
-        prop_assert!(!typed.node(typed.output_outlets().unwrap()[0].node).op_is::<Downsample>());
+        let order = typed.eval_order()?;
+        prop_assert!(typed.node(order[1]).op_is::<Downsample>() || !typed.nodes().iter().any(|n| n.op_is::<Downsample>()));
         let found = SimplePlan::new(&typed)?.run(tvec!(input))?;
         prop_assert_eq!(found, expected);
         Ok(())

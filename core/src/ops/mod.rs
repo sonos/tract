@@ -7,6 +7,8 @@ use objekt;
 
 #[macro_use]
 pub mod macros;
+#[macro_use]
+pub mod binary;
 
 pub mod array;
 pub mod cast;
@@ -22,11 +24,7 @@ pub mod scan;
 pub mod source;
 pub mod unimpl;
 
-#[macro_use]
-pub mod binary;
-
 pub use downsample::Downsample;
-pub use source::{ Source, TypedSource };
 
 pub fn check_input_arity(inputs: &[TensorProxy], expected: usize) -> TractResult<()> {
     if inputs.len() != expected {
@@ -163,6 +161,15 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(None)
     }
 
+    /// Fuse op after codegen to deal with local optimisations.
+    fn fuse(
+        &self,
+        _model: &TypedModel,
+        _node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        Ok(None)
+    }
+
     /// Computes a cost hint of the operation.
     ///
     /// Each pair is a type of operation and a number per call on eval.
@@ -201,9 +208,7 @@ pub trait Op: fmt::Debug + objekt::Clone + Send + Sync + 'static + Downcast + St
         Ok(vec![])
     }
 
-    fn as_typed(&self) -> Option<&dyn TypedOp> {
-        None
-    }
+    fn as_typed(&self) -> Option<&dyn TypedOp>;
 }
 
 pub trait TypedOp:
@@ -230,6 +235,12 @@ pub trait TypedOp:
     ) -> TractResult<TVec<OutletId>> {
         debug!("{:?}", node);
         bail!("Operator {} do not support pulsification", self.name())
+    }
+
+    /// Nested model multipliers, with label (for profiling).
+    #[allow(unused_variables)]
+    fn nested_model_multipliers(&self, inputs:&[&TypedTensorInfo]) -> Vec<(Cow<str>, f32)> {
+        vec![]
     }
 }
 

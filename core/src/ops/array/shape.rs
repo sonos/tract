@@ -23,6 +23,8 @@ impl Op for Shape {
     fn name(&self) -> Cow<str> {
         "Shape".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Shape {

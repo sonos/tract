@@ -22,6 +22,8 @@ impl Op for Slice {
     fn name(&self) -> Cow<str> {
         "tf.Slice".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for Slice {

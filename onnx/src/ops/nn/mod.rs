@@ -45,7 +45,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("LRN", lrn);
     reg.insert("MaxPool", max_pool);
     reg.insert("ParametricSoftplus", parametric_softplus);
-    reg.insert("PRelu", |_, _| Ok((Box::new(prelu()), vec![])));
+    reg.insert("PRelu", |_, _| Ok((Box::new(prelu::bin()), vec![])));
     reg.insert("ReduceL1", reduce!(L1));
     reg.insert("ReduceL2", reduce!(L2));
     reg.insert("ReduceLogSum", reduce!(LogSum));
@@ -56,7 +56,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ReduceProd", reduce!(Prod));
     reg.insert("ReduceSum", reduce!(Sum));
     reg.insert("ReduceSumSquare", reduce!(SumSquare));
-    reg.insert("Relu", |_, _| Ok((Box::new(tractops::nn::Relu::default()), vec![])));
+    reg.insert("Relu", |_, _| Ok((Box::new(tractops::math::ScalarMax::new(0.0)),vec!())));
     reg.insert("ScaledTanh", scaled_tanh);
     reg.insert("Shrink", shrink);
     reg.insert("ThresholdedRelu", thresholded_relu);

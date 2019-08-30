@@ -29,6 +29,8 @@ impl Op for Dropout {
             Ok(None)
         }
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Dropout {

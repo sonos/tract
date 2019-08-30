@@ -10,6 +10,8 @@ impl Op for SpaceToBatch {
     fn name(&self) -> Cow<str> {
         "SpaceToBatch".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for SpaceToBatch {
@@ -91,6 +93,8 @@ impl Op for BatchToSpace {
     fn name(&self) -> Cow<str> {
         "BatchToSpace".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatelessOp for BatchToSpace {

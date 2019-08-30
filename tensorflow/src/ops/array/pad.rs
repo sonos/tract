@@ -58,6 +58,8 @@ where
     fn name(&self) -> Cow<str> {
         "tf.Pad".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl<T: Copy + Datum + Zero> StatelessOp for Pad<T> {

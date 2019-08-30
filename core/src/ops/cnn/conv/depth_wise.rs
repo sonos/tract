@@ -13,7 +13,6 @@ where
     input_shape: DataShape,
     output_shape: DataShape,
     kernel_chw: ArrayD<T>,
-    bias: Option<ArrayD<T>>,
 }
 
 impl<T> Op for DepthWise<T>
@@ -31,6 +30,8 @@ where
             (self.input_shape.n() * n_output_points * self.kernel_chw.len()).to_dim()
         )))
     }
+
+    op_as_typed_op!();
 }
 
 impl<T> StatelessOp for DepthWise<T>
@@ -71,9 +72,6 @@ where
                     }
                 }
             });
-        }
-        if let Some(ref bias) = self.bias {
-            output += bias;
         }
         Ok(tvec!(output.into_arc_tensor()))
     }

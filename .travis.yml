@@ -1,7 +1,7 @@
 language: rust
 dist: trusty
 cache:
-- cargo
+  # - cargo
   #- directories:
   #- $HOME/cached
 addons:
@@ -23,6 +23,8 @@ env:
 matrix:
   include:
     - rust: stable
+    - rust: stable
+      env: PLATFORM=raspbian
     - rust: 1.35.0
     - rust: stable
       script: .travis/tf.sh
@@ -32,8 +34,6 @@ matrix:
       os: osx
       osx_image: xcode9.3
       env: PARTIAL_CI=true
-    - rust: stable
-      env: PLATFORM=raspbian
     - rust: stable
       env: PLATFORM=aarch64-unknown-linux-gnu
     - rust: stable

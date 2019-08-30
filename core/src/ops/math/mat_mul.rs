@@ -1,8 +1,10 @@
-use num_traits::Zero;
+use num_traits::{AsPrimitive, Zero};
 use std::ops::{Add, Mul};
 
 use crate::internal::*;
 use ndarray::*;
+
+use tract_linalg::mmm::{FusedSpec, MatMatMul};
 
 fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
     a: &Tensor,
@@ -56,6 +58,7 @@ fn eval_t<T: Copy + Datum + LinalgScalar + FloatLike>(
                     c.strides()[prefix.ndim()],
                     c.strides()[prefix.ndim() + 1],
                 ),
+                &[],
             );
         }
     }
@@ -94,7 +97,7 @@ struct Geo<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
     m: usize,
     k: usize,
     n: usize,
-    mm: Box<dyn tract_linalg::Tile<T>>,
+    mm: Box<dyn MatMatMul<T>>,
     a_shape: TVec<usize>,
     b_shape: TVec<usize>,
     bc_a_shape: TVec<usize>,
@@ -112,7 +115,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Geo<T> {
         let m = bc_a_shape[bc_a_shape.len() - 2];
         let k = bc_a_shape[bc_a_shape.len() - 1];
         let n = bc_b_shape[bc_b_shape.len() - 1];
-        let mm = T::tile_op(m, k, n);
+        let mm = T::mmm(m, k, n);
         let a_stride_prefix = bc_a_shape
             .iter()
             .rev()
@@ -179,6 +182,8 @@ impl Op for MatMul {
         let n = &bc_b_shape[bc_b_shape.len() - 1];
         Ok(tvec!((Cost::FMA(dt), (mul * m * k * n))))
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MatMul {
@@ -231,10 +236,11 @@ pub struct MatMulUnaryA {
 }
 
 impl MatMulUnaryA {
-    pub fn codegen<T: Copy + Datum + Add + Mul + Zero + FloatLike>(
-        &self,
-        a_shape: &[usize],
-    ) -> TractResult<Option<Box<dyn TypedOp>>> {
+    pub fn codegen<T>(&self, a_shape: &[usize]) -> TractResult<Option<Box<dyn TypedOp>>>
+    where
+        T: Copy + Datum + Add + Mul + Zero + FloatLike,
+        f32: AsPrimitive<T>,
+    {
         if self.b.shape().len() == 2 {
             return Ok(Some(Box::new(MatMulUnaryImplASimpleB::<T>::new(
                 a_shape,
@@ -268,6 +274,30 @@ impl Op for MatMulUnaryA {
         }
         Ok(None)
     }
+
+    fn translation_invariants(
+        &self,
+        _model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Vec<TranslationInvariant>> {
+        let a_rank = node.outputs[0].fact.shape.rank();
+        if self.b.shape().len() > a_rank {
+            return Ok(vec![]);
+        }
+        let mut broadcasted_b_shape: TVec<_> = self.b.shape().into();
+        while broadcasted_b_shape.len() < a_rank {
+            broadcasted_b_shape.insert(0, 1);
+        }
+        let mut invars = broadcasted_b_shape[..broadcasted_b_shape.len() - 2]
+            .into_iter()
+            .enumerate()
+            .map(|(axis, &period)| TranslationInvariant { axis, period })
+            .collect::<Vec<_>>();
+        invars.push(TranslationInvariant { axis: a_rank - 2, period: 1 });
+        Ok(invars)
+    }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MatMulUnaryA {
@@ -321,14 +351,23 @@ impl TypedOp for MatMulUnaryA {
 }
 
 #[derive(Debug, Clone)]
-pub struct MatMulUnaryImplASimpleB<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
+pub struct MatMulUnaryImplASimpleB<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     geo: Geo<T>,
     packed_b: Tensor,
     a_shape: TVec<usize>,
     c_shape: TVec<usize>,
+    non_linear: Vec<FusedSpec<T>>,
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplASimpleB<T> {
+impl<T> MatMulUnaryImplASimpleB<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplASimpleB<T>> {
         assert_eq!(b.ndim(), 2);
         let geo_ext = Geo::<T>::new(a_shape, b.shape())?;
@@ -341,17 +380,31 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplASimpleB<T> 
         let mut packed_b =
             unsafe { Tensor::uninitialized_aligned::<T>(&[b_pack.len()], b_pack.alignment())? };
         b_pack.pack(packed_b.as_ptr_mut()?, b.as_ptr(), b.strides()[0], b.strides()[1]);
-        Ok(MatMulUnaryImplASimpleB { geo, packed_b, c_shape, a_shape: a_shape.into() })
+        Ok(MatMulUnaryImplASimpleB {
+            geo,
+            packed_b,
+            c_shape,
+            a_shape: a_shape.into(),
+            non_linear: vec![],
+        })
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimpleB<T> {
+impl<T> Op for MatMulUnaryImplASimpleB<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     fn name(&self) -> Cow<str> {
         "MatMulUnaryImplASimpleB".into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}", self.geo.mm)])
+        let mut info = vec![format!("{:?}", self.geo.mm)];
+        for op in &self.non_linear {
+            info.push(format!(" + {:?}", op));
+        }
+        Ok(info)
     }
 
     fn cost(&self, _inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -360,9 +413,55 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplASimp
             (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k()).to_dim()
         )))
     }
+
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(succ) = model.single_succ(node.id)? {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<T>>>> {
+                if let Some(op) = succ.op_as::<crate::ops::binary::UnaryAOp>() {
+                    if op.b.shape() == &[self.geo.n] {
+                        if op.mini_op.is::<crate::ops::math::Mul>() {
+                            return Ok(Some(tvec!(FusedSpec::PerColMul(
+                                op.b.as_slice::<T>()?.to_vec(),
+                            ))));
+                        } else if op.mini_op.is::<crate::ops::math::Add>() {
+                            return Ok(Some(tvec!(FusedSpec::PerColAdd(
+                                op.b.as_slice::<T>()?.to_vec(),
+                            ))));
+                        }
+                    }
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
+                    return Ok(Some(tvec!(FusedSpec::Max(op.max.as_()))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
+                    return Ok(Some(tvec!(FusedSpec::Min(op.min.as_()))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
+                    return Ok(Some(tvec!(
+                        FusedSpec::Min(op.min.as_()),
+                        FusedSpec::Max(op.max.as_()),
+                    )));
+                }
+                Ok(None)
+            })()?;
+            if let Some(op) = fused_micro_op {
+                let mut ops = self.non_linear.clone();
+                ops.extend(op.into_iter());
+                return Ok(Some(TypedModelPatch::fuse_with_next(
+                    model,
+                    &node,
+                    Self { non_linear: ops, ..self.clone() },
+                )?));
+            }
+        }
+        Ok(None)
+    }
+
+    op_as_typed_op!();
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnaryImplASimpleB<T> {
+impl<T> StatelessOp for MatMulUnaryImplASimpleB<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let a = args_1!(inputs);
         let a = a.to_array_view::<T>()?;
@@ -380,13 +479,18 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
                 &self.geo.mm.a_from_packed(pa.as_ptr()?),
                 &self.geo.mm.b_from_packed(self.packed_b.as_ptr()?),
                 &mut self.geo.mm.c_from_data_and_strides(c.as_mut_ptr(), self.geo.n as isize, 1),
+                &*self.non_linear,
             );
             Ok(tvec!(c.into_arc_tensor()))
         }
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplASimpleB<T> {
+impl<T> TypedOp for MatMulUnaryImplASimpleB<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     typed_op_as_op!();
 
     fn output_facts(
@@ -398,12 +502,20 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImpl
 }
 
 #[derive(Debug, Clone)]
-pub struct MatMulUnaryImplA<T: Copy + Datum + Add + Mul + Zero + FloatLike> {
+pub struct MatMulUnaryImplA<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     geo: Geo<T>,
     packed_bs: Tensor,
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplA<T> {
+impl<T> MatMulUnaryImplA<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     pub fn new(a_shape: &[usize], b: &ArrayViewD<T>) -> TractResult<MatMulUnaryImplA<T>> {
         let geo = Geo::new(a_shape, b.shape())?;
         let b_pack = geo.mm.b_pack();
@@ -432,7 +544,11 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> MatMulUnaryImplA<T> {
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplA<T> {
+impl<T> Op for MatMulUnaryImplA<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     fn name(&self) -> Cow<str> {
         "MatMulUnaryImplA".into()
     }
@@ -448,9 +564,15 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> Op for MatMulUnaryImplA<T> 
             (self.geo.mm.m() * self.geo.mm.n() * self.geo.mm.k() * mul).to_dim()
         )))
     }
+
+    op_as_typed_op!();
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnaryImplA<T> {
+impl<T> StatelessOp for MatMulUnaryImplA<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         let a = args_1!(inputs);
         let a = a.to_array_view::<T>()?.into_shape(&*self.geo.bc_a_shape)?;
@@ -491,6 +613,7 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
                         c.strides()[prefix.ndim()],
                         c.strides()[prefix.ndim() + 1],
                     ),
+                    &[],
                 );
             }
         }
@@ -498,7 +621,11 @@ impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> StatelessOp for MatMulUnary
     }
 }
 
-impl<T: Copy + Datum + Add + Mul + Zero + FloatLike> TypedOp for MatMulUnaryImplA<T> {
+impl<T> TypedOp for MatMulUnaryImplA<T>
+where
+    T: Copy + Datum + Add + Mul + Zero + FloatLike,
+    f32: AsPrimitive<T>,
+{
     typed_op_as_op!();
 
     fn output_facts(
@@ -518,6 +645,8 @@ impl Op for MatMulUnaryB {
     fn name(&self) -> Cow<str> {
         "MatMulUnaryB".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for MatMulUnaryB {

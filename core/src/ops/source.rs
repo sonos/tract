@@ -21,6 +21,8 @@ impl Op for Source {
     fn name(&self) -> Cow<str> {
         "Source".into()
     }
+
+    not_a_typed_op!();
 }
 
 impl StatefullOp for Source {
@@ -73,6 +75,7 @@ impl Op for TypedSource {
     fn name(&self) -> Cow<str> {
         "TypedSource".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatefullOp for TypedSource {

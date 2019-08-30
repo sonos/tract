@@ -4,86 +4,96 @@ use std::ops::{Add, Mul};
 
 use num_traits::Zero;
 
-use super::PackA;
-use super::PackB;
+use crate::frame::{PackA, PackB};
 
 use super::*;
 
-#[repr(C, usize)]
-#[derive(PartialEq, Clone, Debug)]
-pub enum StorageSpec<T>
+#[derive(Default)]
+struct ScratchSpace<T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
 {
-    Strides { ptr: *const T, row_byte_stride: isize, col_byte_stride: isize, mr: usize, nr: usize },
-    Packed { ptr: *const T, panel_len: usize },
-    OffsetsAndPtrs { row_byte_offsets: Vec<isize>, col_ptrs: Vec<*const T>, nr: usize },
+    uspecs: Vec<FusedKerSpec<T>>,
+    non_linear_buffers: Vec<Vec<T>>,
 }
 
-impl<T> StorageSpec<T>
+impl<T> ScratchSpace<T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
 {
-    unsafe fn panel_a(&self, i: usize) -> TileStorageSpec<T> {
-        match self {
-            StorageSpec::Packed { ptr, panel_len } => {
-                TileStorageSpec::Packed { ptr: ptr.offset((panel_len * i) as isize) }
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    unsafe fn panel_b(&self, i: usize) -> TileStorageSpec<T> {
-        match self {
-            StorageSpec::Packed { ptr, panel_len } => {
-                TileStorageSpec::Packed { ptr: ptr.offset((panel_len * i) as isize) }
-            }
-            StorageSpec::OffsetsAndPtrs { row_byte_offsets, col_ptrs, nr } => {
-                TileStorageSpec::OffsetsAndPtrs {
-                    row_byte_offsets: row_byte_offsets.as_ptr(),
-                    col_ptrs: col_ptrs.as_ptr().offset((nr * i) as isize),
+    unsafe fn non_linear<K: MatMatMulKer<T>>(
+        &mut self,
+        specs: &[FusedSpec<T>],
+        down: usize,
+        right: usize,
+    ) -> *const FusedKerSpec<T> {
+        self.uspecs.clear();
+        for spec in specs {
+            let s = match spec {
+                FusedSpec::Min(m) => FusedKerSpec::Min(*m),
+                FusedSpec::Max(m) => FusedKerSpec::Max(*m),
+                FusedSpec::AddC => FusedKerSpec::AddC,
+                FusedSpec::PerRowMul(v) => {
+                    let have = v.len() - down * K::mr();
+                    let ptr = if have < K::mr() {
+                        let mut buf = vec![T::zero(); K::mr()];
+                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(down * K::mr())
+                    };
+                    FusedKerSpec::PerRowMul(ptr)
                 }
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    fn tile(&self, down: usize, right: usize) -> TileStorageSpec<T> {
-        match self {
-            StorageSpec::Strides { ptr, row_byte_stride, col_byte_stride, mr, nr } => {
-                TileStorageSpec::Strides {
-                    ptr: ((*ptr as isize)
-                        + (*row_byte_stride as usize * down * mr
-                            + *col_byte_stride as usize * right * nr)
-                            as isize) as *mut T,
-                    row_byte_stride: *row_byte_stride,
-                    col_byte_stride: *col_byte_stride,
+                FusedSpec::PerRowAdd(v) => {
+                    let have = v.len() - down * K::mr();
+                    let ptr = if have < K::mr() {
+                        let mut buf = vec![T::zero(); K::mr()];
+                        buf[..have].copy_from_slice(&v[down * K::mr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(down * K::mr())
+                    };
+                    FusedKerSpec::PerRowAdd(ptr)
                 }
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    unsafe fn set_from_tile(&mut self, down: usize, right: usize, height:usize, width: usize, tile: &[T]) {
-        match self {
-            StorageSpec::Strides { ptr, row_byte_stride, col_byte_stride, mr, nr } => {
-                for y in 0..height {
-                    for x in 0..width {
-                        let ptr = ((*ptr as isize)
-                            + (*row_byte_stride as usize * (down * *mr + y)
-                                + *col_byte_stride as usize * (right * *nr + x))
-                                as isize) as *mut T;
-                        let value = *tile.get_unchecked(y * *nr + x);
-                        *ptr = value;
-                    }
+                FusedSpec::PerColMul(v) => {
+                    let have = v.len() - right * K::nr();
+                    let ptr = if have < K::nr() {
+                        let mut buf = vec![T::zero(); K::nr()];
+                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(right * K::nr())
+                    };
+                    FusedKerSpec::PerColMul(ptr)
                 }
-            }
-            _ => unimplemented!(),
+                FusedSpec::PerColAdd(v) => {
+                    let have = v.len() - right * K::nr();
+                    let ptr = if have < K::nr() {
+                        let mut buf = vec![T::zero(); K::nr()];
+                        buf[..have].copy_from_slice(&v[right * K::nr()..][..have]);
+                        let ptr = buf.as_ptr();
+                        self.non_linear_buffers.push(buf);
+                        ptr
+                    } else {
+                        v.as_ptr().add(right * K::nr())
+                    };
+                    FusedKerSpec::PerColAdd(ptr)
+                }
+            };
+            self.uspecs.push(s);
         }
+        self.uspecs.push(FusedKerSpec::Done);
+        self.uspecs.as_ptr()
     }
 }
 
-pub trait Tile<T: Copy + Add + Mul + Zero + Debug>: Send + Sync + Debug + objekt::Clone
+pub trait MatMatMul<T>: Send + Sync + Debug + objekt::Clone
 where
     T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
 {
@@ -111,16 +121,22 @@ where
         col_stride: isize,
     ) -> StorageSpec<T>;
 
-    unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>);
+    unsafe fn run(
+        &self,
+        a: &StorageSpec<T>,
+        b: &StorageSpec<T>,
+        c: &mut StorageSpec<T>,
+        non_linear: &[FusedSpec<T>],
+    );
 }
 
-clone_trait_object!(<T> Tile<T> where T: Copy + Add + Mul + Zero);
+clone_trait_object!(<T> MatMatMul<T> where T: Copy + Add + Mul + Zero);
 
 #[derive(Debug, Clone, new)]
-pub struct TileOp<K, T>
+pub struct MatMatMulImpl<K, T>
 where
     T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
-    K: TilingKer<T>,
+    K: MatMatMulKer<T>,
 {
     pub m: usize,
     pub k: usize,
@@ -128,10 +144,10 @@ where
     phantom: PhantomData<(K, T)>,
 }
 
-impl<K, T> Tile<T> for TileOp<K, T>
+impl<K, T> MatMatMul<T> for MatMatMulImpl<K, T>
 where
-    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync,
-    K: TilingKer<T>,
+    T: Copy + Add + Mul + Zero + Debug + PartialEq + Send + Sync + Default,
+    K: MatMatMulKer<T>,
 {
     fn a_pack(&self) -> PackA<T> {
         PackA::new(self.k, self.m, K::mr(), K::alignment_bytes_packed_a())
@@ -181,13 +197,14 @@ where
         }
         // repeat the last offset four times to simplify kernel loop unrolling
         let mut row_byte_offsets: Vec<_> = Vec::with_capacity(rows_offsets.len() + 4);
-        row_byte_offsets.set_len(rows_offsets.len()+4);
+        row_byte_offsets.set_len(rows_offsets.len() + 4);
         for i in 0..rows_offsets.len() {
-            *row_byte_offsets.get_unchecked_mut(i) = *rows_offsets.get_unchecked(i) * std::mem::size_of::<T>() as isize;
+            *row_byte_offsets.get_unchecked_mut(i) =
+                *rows_offsets.get_unchecked(i) * std::mem::size_of::<T>() as isize;
         }
         let pad = *row_byte_offsets.get_unchecked(rows_offsets.len() - 1);
         for i in 0..4 {
-            *row_byte_offsets.get_unchecked_mut(rows_offsets.len()+i) = pad;
+            *row_byte_offsets.get_unchecked_mut(rows_offsets.len() + i) = pad;
         }
         StorageSpec::OffsetsAndPtrs { col_ptrs, row_byte_offsets, nr: K::nr() }
     }
@@ -207,26 +224,33 @@ where
         }
     }
 
-    unsafe fn run(&self, a: &StorageSpec<T>, b: &StorageSpec<T>, c: &mut StorageSpec<T>) {
+    unsafe fn run(
+        &self,
+        a: &StorageSpec<T>,
+        b: &StorageSpec<T>,
+        c: &mut StorageSpec<T>,
+        non_linear: &[FusedSpec<T>],
+    ) {
         let mr = K::mr();
         let nr = K::nr();
         let m = self.m;
         let k = self.k;
         let n = self.n;
+        let mut scratch = ScratchSpace::default();
         let tmpc = vec![T::zero(); mr * nr];
         let ref mut tmp_tile = self.c_from_data_and_strides(tmpc.as_ptr(), nr as isize, 1);
         let linear = LinearSpec::Mul { k };
         let linear = (&linear) as *const LinearSpec;
-        let non_linear = std::ptr::null();
         for ia in 0..m / mr {
             let ref a = a.panel_a(ia);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
-                let ref tile_c = c.tile(ia, ib);
-                let err = K::kernel(&TileOpSpec {
+                let ref mmm_c = c.mmm(ia, ib);
+                let non_linear = scratch.non_linear::<K>(non_linear, ia, ib);
+                let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
-                    c: tile_c as _,
+                    c: mmm_c as _,
                     linear,
                     non_linear,
                 });
@@ -234,8 +258,9 @@ where
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
-                let ref tmp_tile_c = tmp_tile.tile(0, 0);
-                let err = K::kernel(&TileOpSpec {
+                let ref tmp_tile_c = tmp_tile.mmm(0, 0);
+                let non_linear = scratch.non_linear::<K>(non_linear, ia, n / nr);
+                let err = K::kernel(&MatMatMulKerSpec {
                     a: a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
@@ -243,15 +268,16 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(ia, n/nr, mr, n%nr, &*tmpc);
+                c.set_from_mmm(ia, n / nr, mr, n % nr, &*tmpc);
             }
         }
         if m % mr != 0 {
             let ref panel_a = a.panel_a(m / mr);
-            let ref tmp_tile_c = tmp_tile.tile(0, 0);
+            let ref tmp_tile_c = tmp_tile.mmm(0, 0);
             for ib in 0..n / nr {
                 let ref b = b.panel_b(ib);
-                let err = K::kernel(&TileOpSpec {
+                let non_linear = scratch.non_linear::<K>(non_linear, m / mr, ib);
+                let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
@@ -259,11 +285,12 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(m/mr, ib, m%mr, nr, &*tmpc);
+                c.set_from_mmm(m / mr, ib, m % mr, nr, &*tmpc);
             }
             if n % nr != 0 {
                 let ref b = b.panel_b(n / nr);
-                let err = K::kernel(&TileOpSpec {
+                let non_linear = scratch.non_linear::<K>(non_linear, m / mr, n / nr);
+                let err = K::kernel(&MatMatMulKerSpec {
                     a: panel_a as _,
                     b: b as _,
                     c: tmp_tile_c as _,
@@ -271,7 +298,7 @@ where
                     non_linear,
                 });
                 debug_assert_eq!(err, 0, "Kernel return error {}", err);
-                c.set_from_tile(m/mr, n/nr, m%mr, n%nr, &*tmpc);
+                c.set_from_mmm(m / mr, n / nr, m % mr, n % nr, &*tmpc);
             }
         }
     }
@@ -283,24 +310,13 @@ pub mod test {
     use super::*;
     use crate::align;
     use proptest::prelude::*;
-    use proptest::test_runner::TestCaseResult;
-
-    pub fn check_close(found: &[f32], expected: &[f32]) -> TestCaseResult {
-        proptest::prop_assert!(
-            found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
-            "found: {:?} expected: {:?}",
-            found,
-            expected
-        );
-        Ok(())
-    }
 
     #[macro_export]
-    macro_rules! tile_frame_tests {
+    macro_rules! mmm_frame_tests {
         ($cond:expr, $ker:ty) => {
             mod frame {
                 #[allow(unused_imports)]
-                use crate::frame::tiling::test::*;
+                use crate::frame::mmm::mmm::test::*;
                 proptest::proptest! {
                     #[test]
                     fn mat_mul_prepacked((m, k, n, ref a, ref b) in strat_mat_mul()) {
@@ -312,7 +328,7 @@ pub mod test {
                     #[test]
                     fn conv_prepacked(pb in strat_conv_1d()) {
                         if $cond {
-                            check_close(&*pb.run::<$ker>(), &*pb.expected())?;
+                            crate::check_close(&*pb.run::<$ker>(), &*pb.expected())?;
                         }
                     }
                 }
@@ -347,7 +363,49 @@ pub mod test {
                             filters,
                             data,
                         };
-                        check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
+                        crate::check_close(&*pb.run::<$ker>(), &*pb.expected()).unwrap();
+                    }
+                }
+
+                #[test]
+                fn row_mul_2_1_3() {
+                    if $cond {
+                        unsafe { row_mul::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn row_add_2_1_3() {
+                    if $cond {
+                        unsafe { row_add::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn col_mul_2_1_3() {
+                    if $cond {
+                        unsafe { col_mul::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn col_add_2_1_3() {
+                    if $cond {
+                        unsafe { col_add::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn max_2_1_3() {
+                    if $cond {
+                        unsafe { max::<$ker>(2, 1, 3).unwrap() }
+                    }
+                }
+
+                #[test]
+                fn min_2_1_3() {
+                    if $cond {
+                        unsafe { min::<$ker>(2, 3, 3).unwrap() }
                     }
                 }
             }
@@ -368,14 +426,14 @@ pub mod test {
             .boxed()
     }
 
-    pub fn test_mat_mul_prep_f32<K: TilingKer<f32>>(
+    pub fn test_mat_mul_prep_f32<K: MatMatMulKer<f32>>(
         m: usize,
         k: usize,
         n: usize,
         a: &[f32],
         b: &[f32],
     ) -> Result<(), proptest::test_runner::TestCaseError> {
-        let op = TileOp::<K, f32>::new(m, k, n);
+        let op = MatMatMulImpl::<K, f32>::new(m, k, n);
         unsafe {
             let mut packed_a: Vec<f32> =
                 align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
@@ -391,6 +449,7 @@ pub mod test {
                 &op.a_from_packed(packed_a.as_ptr()),
                 &op.b_from_packed(packed_b.as_ptr()),
                 &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
+                &[],
             );
 
             let mut expected = vec![0.0f32; m * n];
@@ -410,6 +469,133 @@ pub mod test {
             );
         }
         Ok(())
+    }
+
+    pub unsafe fn fused_op<K: MatMatMulKer<f32>, F: Fn(&mut [f32])>(
+        m: usize,
+        k: usize,
+        n: usize,
+        spec: &[FusedSpec<f32>],
+        expect: F,
+    ) -> proptest::test_runner::TestCaseResult {
+        let a = vec![1.0f32; m * k];
+        let b = vec![1.0f32; n * k];
+        let op = MatMatMulImpl::<K, f32>::new(m, k, n);
+
+        let mut packed_a: Vec<f32> =
+            align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
+        op.a_pack().pack(packed_a.as_mut_ptr(), a.as_ptr(), k as isize, 1);
+
+        let mut packed_b: Vec<f32> =
+            align::uninitialized(op.b_pack().len(), op.b_pack().alignment());
+        op.b_pack().pack(packed_b.as_mut_ptr(), b.as_ptr(), n as isize, 1);
+
+        let mut found = vec![9999.0f32; m * n];
+
+        op.run(
+            &op.a_from_packed(packed_a.as_ptr()),
+            &op.b_from_packed(packed_b.as_ptr()),
+            &mut op.c_from_data_and_strides(found.as_mut_ptr(), n as isize, 1),
+            spec,
+        );
+
+        let mut expected = vec![0.0f32; m * n];
+        for x in 0..n {
+            for y in 0..m {
+                for i in 0..k {
+                    expected[x + y * n] += a[i + k * y] * b[x + i * n]
+                }
+            }
+        }
+        expect(&mut expected);
+
+        proptest::prop_assert!(
+            found.iter().zip(expected.iter()).all(|(a, b)| (a - b).abs() < 0.001),
+            "found: {:?} expected: {:?}",
+            found,
+            expected
+        );
+        Ok(())
+    }
+
+    pub unsafe fn row_add<K: MatMatMulKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[FusedSpec::PerRowAdd(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] += bias[y]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn row_mul<K: MatMatMulKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..m).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[FusedSpec::PerRowMul(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] *= bias[y]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn col_add<K: MatMatMulKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[FusedSpec::PerColAdd(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] += bias[x]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn col_mul<K: MatMatMulKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        let bias = (0..n).map(|f| f as f32).collect::<Vec<f32>>();
+        fused_op::<K, _>(m, k, n, &[FusedSpec::PerColMul(bias.clone())], |exp| {
+            for x in 0..n {
+                for y in 0..m {
+                    exp[x + y * n] *= bias[x]
+                }
+            }
+        })
+    }
+
+    pub unsafe fn max<K: MatMatMulKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        fused_op::<K, _>(m, k, n, &[FusedSpec::Max(5f32)], |exp| {
+            exp.iter_mut().for_each(|x| *x = x.max(5f32))
+        })
+    }
+
+    pub unsafe fn min<K: MatMatMulKer<f32>>(
+        m: usize,
+        k: usize,
+        n: usize,
+    ) -> proptest::test_runner::TestCaseResult {
+        fused_op::<K, _>(m, k, n, &[FusedSpec::Min(1f32)], |exp| {
+            exp.iter_mut().for_each(|x| *x = x.min(1f32))
+        })
     }
 
     #[derive(Clone, Debug)]
@@ -472,8 +658,8 @@ pub mod test {
             expect
         }
 
-        pub fn run<K: TilingKer<f32>>(&self) -> Vec<f32> {
-            let op = TileOp::<K, f32>::new(self.m(), self.k(), self.n());
+        pub fn run<K: MatMatMulKer<f32>>(&self) -> Vec<f32> {
+            let op = MatMatMulImpl::<K, f32>::new(self.m(), self.k(), self.n());
             unsafe {
                 let mut packed_a: Vec<f32> =
                     align::uninitialized(op.a_pack().len(), op.a_pack().alignment());
@@ -493,6 +679,7 @@ pub mod test {
                         &self.data_cols_offsets(),
                     ),
                     &mut op.c_from_data_and_strides(found.as_mut_ptr(), self.n() as isize, 1),
+                    &[],
                 );
                 found
             }

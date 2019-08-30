@@ -3,8 +3,6 @@ use ndarray::*;
 use crate::model::ParsingContext;
 use crate::tfpb::node_def::NodeDef;
 use tract_core::internal::*;
-use tract_core::ops::nn::sigmoid::sigmoid_f32;
-use tract_core::ops::nn::tanh::tanh_f32;
 
 pub fn block_lstm(_ctx: &ParsingContext, node: &NodeDef) -> TractResult<Box<dyn InferenceOp>> {
     let forget_bias = node.get_attr_opt_float("forget_bias")?.unwrap_or(1.0);
@@ -26,6 +24,8 @@ impl Op for BlockLSTM {
     fn name(&self) -> Cow<str> {
         "tf.BlockLSTM".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for BlockLSTM {
@@ -54,6 +54,20 @@ impl StatelessOp for BlockLSTM {
         dbg!(&h_prev);
         dbg!(&cs_prev);
         */
+
+        let sigmoid = (tract_linalg::ops().ssigmoid)();
+        let sigmoid_f32 = |f: f32| -> f32 {
+            let mut f = [f];
+            sigmoid.run(&mut f);
+            f[0]
+        };
+
+        let tanh = (tract_linalg::ops().stanh)();
+        let tanh_f32 = |f: f32| -> f32 {
+            let mut f = [f];
+            tanh.run(&mut f);
+            f[0]
+        };
 
         for n in 0..len {
             let x = x.index_axis(Axis(0), n);

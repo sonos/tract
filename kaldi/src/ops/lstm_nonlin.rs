@@ -23,6 +23,7 @@ impl Op for LstmNonlin {
     fn name(&self) -> std::borrow::Cow<str> {
         "kaldi.LstmNonlin".into()
     }
+
     fn translation_invariants(
         &self,
         _model: &TypedModel,
@@ -30,13 +31,192 @@ impl Op for LstmNonlin {
     ) -> TractResult<Vec<TranslationInvariant>> {
         Ok(vec![TranslationInvariant { axis: 0, period: 1 }])
     }
+
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        use std::convert::TryInto;
+        use tract_core::ndarray;
+        use tract_core::ops::{array, math, nn};
+
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let ref t_len = input_fact.shape.dim(0);
+        let cell_hidden_dim = input_fact.shape.dim(1).to_integer()? as usize / 5;
+
+        let params =
+            self.peepholes_params.to_array_view::<f32>()?.into_dimensionality::<ndarray::Ix2>()?;
+
+        let mut patch = TypedModelPatch::default();
+        let input = patch.tap_model(&model, node.inputs[0])?;
+
+        let fact: TypedTensorInfo =
+            TensorFact::dt_shape(f32::datum_type(), tvec!(t_len.clone(), cell_hidden_dim.to_dim()))
+                .try_into()?;
+
+        let mut five_parts = (0..5)
+            .map(|ix| {
+                patch.add_node_simple(
+                    format!("{}-part-{}", node.name, ix),
+                    array::Slice::new(
+                        1,
+                        cell_hidden_dim * ix,
+                        cell_hidden_dim * (ix + 1),
+                    ),
+                    tvec!(input.node),
+                    fact.clone(),
+                )
+            })
+            .collect::<TractResult<Vec<_>>>()?;
+        let (i, f, c, o, c_prev) = args_5!(five_parts);
+        // let i_t = sigmoid_f32(i_part + w_ic * c_prev);
+        let i_t = patch.add_node_simple(
+            format!("{}-i_t-mul::bin", node.name),
+            math::mul::bin(),
+            tvec!(c_prev),
+            fact.clone(),
+        )?;
+        patch.plug_const(
+            InletId::new(i_t, 1),
+            format!("{}-i_t-mul::bin-w_ic", node.name),
+            params.index_axis(ndarray::Axis(0), 0).to_owned().into_arc_tensor(),
+        )?;
+        let i_t = patch.add_node_simple(
+            format!("{}-i_t-add::bin", node.name),
+            math::add::bin(),
+            tvec!(i_t, i),
+            fact.clone(),
+        )?;
+        let i_t = patch.add_node_simple(
+            format!("{}-i_t-sigmoid", node.name),
+            nn::Sigmoid::default(),
+            tvec!(i_t),
+            fact.clone(),
+        )?;
+
+        // let f_t = sigmoid_f32(f_part + w_fc * c_prev);
+        let f_t = patch.add_node_simple(
+            format!("{}-f_t-mul::bin", node.name),
+            math::mul::bin(),
+            tvec!(c_prev),
+            fact.clone(),
+        )?;
+        patch.plug_const(
+            InletId::new(f_t, 1),
+            format!("{}-f_t-mul::bin-w_fc", node.name),
+            params.index_axis(ndarray::Axis(0), 1).to_owned().into_arc_tensor(),
+        )?;
+        let f_t = patch.add_node_simple(
+            format!("{}-f_t-add::bin", node.name),
+            math::add::bin(),
+            tvec!(f_t, f),
+            fact.clone(),
+        )?;
+        let f_t = patch.add_node_simple(
+            format!("{}-f_t-sigmoid", node.name),
+            nn::Sigmoid::default(),
+            tvec!(f_t),
+            fact.clone(),
+        )?;
+
+        // let c_t = f_t * c_prev + i_t * tanh_f32(c_part);
+        let tanh_c = patch.add_node_simple(
+            format!("{}-c_t-tanh", node.name),
+            math::Tanh::default(),
+            tvec!(c),
+            fact.clone(),
+        )?;
+        let i_t_tanh_c = patch.add_node_simple(
+            format!("{}-i_t_c_t-tanh", node.name),
+            math::mul::bin(),
+            tvec!(i_t, tanh_c),
+            fact.clone(),
+        )?;
+        let f_t_c_prev = patch.add_node_simple(
+            format!("{}-f_t_c_prev", node.name),
+            math::mul::bin(),
+            tvec!(f_t, c_prev),
+            fact.clone(),
+        )?;
+        let c_t = patch.add_node_simple(
+            format!("{}-c_t", node.name),
+            math::add::bin(),
+            tvec!(f_t_c_prev, i_t_tanh_c),
+            fact.clone(),
+        )?;
+
+        // let o_t = sigmoid_f32(o_part + w_oc * c_t);
+        let o_t = patch.add_node_simple(
+            format!("{}-o_t-mul::bin", node.name),
+            math::mul::bin(),
+            tvec!(c_t),
+            fact.clone(),
+        )?;
+        patch.plug_const(
+            InletId::new(o_t, 1),
+            format!("{}-o_t-mul::bin-w_oc", node.name),
+            params.index_axis(ndarray::Axis(0), 2).to_owned().into_arc_tensor(),
+        )?;
+        let o_t = patch.add_node_simple(
+            format!("{}-o_t-add::bin", node.name),
+            math::add::bin(),
+            tvec!(o_t, o),
+            fact.clone(),
+        )?;
+        let o_t = patch.add_node_simple(
+            format!("{}-o_t-sigmoid", node.name),
+            nn::Sigmoid::default(),
+            tvec!(o_t),
+            fact.clone(),
+        )?;
+
+        // let m_t = o_t * tanh_f32(c_t);
+        let tanh_c_t = patch.add_node_simple(
+            format!("{}-tanh_c_t", node.name),
+            math::Tanh::default(),
+            tvec!(c_t),
+            fact.clone(),
+        )?;
+
+        let m_t = patch.add_node_simple(
+            format!("{}-m_t", node.name),
+            math::mul::bin(),
+            tvec!(o_t, tanh_c_t),
+            fact.clone(),
+        )?;
+
+        let output = patch.add_node_simple(
+            format!("{}-ouput", node.name),
+            array::Concat::new(1),
+            tvec!(c_t, m_t),
+            node.outputs[0].fact.clone(),
+        )?;
+
+        patch.shunt_outside(OutletId::new(node.id, 0), OutletId::new(output, 0))?;
+        Ok(Some(patch))
+    }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for LstmNonlin {
     fn eval(&self, mut inputs: TVec<Arc<Tensor>>) -> TractResult<TVec<Arc<Tensor>>> {
         use tract_core::ndarray::*;
-        use tract_core::ops::nn::sigmoid::sigmoid_f32;
-        use tract_core::ops::nn::tanh::tanh_f32;
+
+        let sigmoid = (tract_linalg::ops().ssigmoid)();
+        let sigmoid_f32 = |f: f32| -> f32 {
+            let mut f = [f];
+            sigmoid.run(&mut f);
+            f[0]
+        };
+
+        let tanh = (tract_linalg::ops().stanh)();
+        let tanh_f32 = |f: f32| -> f32 {
+            let mut f = [f];
+            tanh.run(&mut f);
+            f[0]
+        };
 
         let input = args_1!(inputs);
         let input = input.to_array_view::<f32>()?.into_dimensionality()?;

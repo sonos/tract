@@ -26,6 +26,8 @@ impl Op for RmDims {
     fn name(&self) -> Cow<str> {
         "RmDims".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for RmDims {

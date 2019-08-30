@@ -48,6 +48,8 @@ impl Op for Squeeze {
         }
         Ok(None)
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Squeeze {

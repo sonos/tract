@@ -1,16 +1,17 @@
 use crate::internal::*;
 use crate::ops::nn::DataShape;
 use ndarray::prelude::*;
-use tract_linalg::Tile;
+use tract_linalg::mmm::*;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct Direct {
-    tile: Box<dyn Tile<f32>>,
+    tile: Box<dyn MatMatMul<f32>>,
     data_offsets: Vec<isize>,
     kernel_offsets: Vec<isize>,
     input_shape: DataShape,
     output_shape: DataShape,
     packed_filters: Tensor,
+    fused_ops: Vec<FusedSpec<f32>>,
 }
 
 impl Direct {
@@ -25,7 +26,48 @@ impl Op for Direct {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec!(format!("{:?}", self.tile)))
+        let mut info = vec![format!("{:?}", self.tile)];
+        for op in &self.fused_ops {
+            info.push(format!(" + {:?}", op));
+        }
+        Ok(info)
+    }
+
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if let Some(succ) = model.single_succ(node.id)? {
+            let fused_micro_op = (|| -> TractResult<Option<TVec<FusedSpec<f32>>>> {
+                if let Some(op) = succ.op_as::<crate::ops::binary::UnaryAOp>() {
+                    if op.b.shape() == &[*self.output_shape.c()] {
+                        if op.mini_op.is::<crate::ops::math::Mul>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowMul(
+                                op.b.as_slice::<f32>()?.to_vec(),
+                            ))));
+                        } else if op.mini_op.is::<crate::ops::math::Add>() {
+                            return Ok(Some(tvec!(FusedSpec::PerRowAdd(
+                                op.b.as_slice::<f32>()?.to_vec(),
+                            ))));
+                        }
+                    }
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMax>() {
+                    return Ok(Some(tvec!(FusedSpec::Max(op.max))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMin>() {
+                    return Ok(Some(tvec!(FusedSpec::Min(op.min))));
+                } else if let Some(op) = succ.op_as::<crate::ops::math::ScalarMinMax>() {
+                    return Ok(Some(tvec!(FusedSpec::Min(op.min), FusedSpec::Max(op.max),)));
+                }
+                Ok(None)
+            })()?;
+            if let Some(op) = fused_micro_op {
+                let mut ops = self.fused_ops.clone();
+                ops.extend(op.into_iter());
+                return Ok(Some(TypedModelPatch::fuse_with_next(
+                    model,
+                    node,
+                    Direct { fused_ops: ops, ..self.clone() },
+                )?));
+            }
+        }
+        Ok(None)
     }
 
     fn cost(&self, inputs: &[&TypedTensorInfo]) -> TractResult<TVec<(Cost, TDim)>> {
@@ -39,6 +81,8 @@ impl Op for Direct {
     fn validation(&self) -> Validation {
         Validation::Rounding
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Direct {
@@ -63,6 +107,7 @@ impl StatelessOp for Direct {
                         *self.output_shape.c_stride() as isize,
                         *self.output_shape.w_stride() as isize,
                     ),
+                    &*self.fused_ops,
                 );
             }
             Ok(tvec!(output.into_arc_tensor()))

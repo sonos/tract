@@ -25,7 +25,7 @@ pub fn declutter() -> Vec<Box<dyn TypedPass>> {
 }
 
 pub fn codegen() -> Vec<Box<dyn TypedPass>> {
-    vec![Box::new(CodegenOps), Box::new(PushSplitDown)]
+    vec![Box::new(CodegenOps), Box::new(PushSplitDown), Box::new(FuseOps)]
 }
 
 #[derive(Debug)]
@@ -117,6 +117,43 @@ impl TypedPass for CodegenOps {
                     debug!("Codegen {}", node);
                     node.op
                         .codegen(model, node)
+                        .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
+                };
+                if let Some(red) = reduced {
+                    {
+                        let node = &model.nodes()[id];
+                        debug!("Apply a model patch for {:?} {}", self, node);
+                    }
+                    red.apply(model)?;
+                    if cfg!(debug_assertions) {
+                        model.check_edges()?;
+                    }
+                    done_something_this_time = true
+                }
+            }
+            done_something = done_something || done_something_this_time;
+            if !done_something_this_time {
+                break;
+            }
+        }
+        Ok(done_something)
+    }
+}
+
+#[derive(Debug)]
+pub struct FuseOps;
+
+impl TypedPass for FuseOps {
+    fn pass(&self, model: &mut TypedModel) -> TractResult<bool> {
+        let mut done_something = false;
+        loop {
+            let mut done_something_this_time = false;
+            for id in model.eval_order()? {
+                let reduced = {
+                    let node = &model.nodes()[id];
+                    debug!("Fuse {}", node);
+                    node.op
+                        .fuse(model, node)
                         .map_err(|e| format!("{:?} node {}, {:?}", self, node, e))?
                 };
                 if let Some(red) = reduced {

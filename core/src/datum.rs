@@ -295,33 +295,53 @@ datum!(TDim, TDim);
 datum!(String, String);
 
 pub trait FloatLike: Datum {
-    fn tile_op(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::Tile<Self>>;
-    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<dyn tract_linalg::VecMatMul<Self>>;
+    fn mmm(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::mmm::MatMatMul<Self>>;
+    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>>;
+    fn sigmoid() -> Box<dyn tract_linalg::sigmoid::Sigmoid<Self>>;
+    fn tanh() -> Box<dyn tract_linalg::tanh::Tanh<Self>>;
 }
 
 impl FloatLike for f16 {
-    fn tile_op(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::Tile<Self>> {
+    fn mmm(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::mmm::MatMatMul<Self>> {
         unimplemented!("f16 ops");
     }
-    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::VecMatMul<Self>> {
+    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn sigmoid() -> Box<dyn tract_linalg::sigmoid::Sigmoid<Self>> {
+        unimplemented!("f16 ops");
+    }
+    fn tanh() -> Box<dyn tract_linalg::tanh::Tanh<Self>> {
         unimplemented!("f16 ops");
     }
 }
 
 impl FloatLike for f32 {
-    fn tile_op(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::Tile<Self>> {
-        (tract_linalg::ops().stile)(m, k, n)
+    fn mmm(m: usize, k: usize, n: usize) -> Box<dyn tract_linalg::mmm::MatMatMul<Self>> {
+        (tract_linalg::ops().smmm)(m, k, n)
     }
-    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<dyn tract_linalg::VecMatMul<Self>> {
+    fn packed_vec_mat_mul(k: usize, n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
         (tract_linalg::ops().svmm)(k, n)
+    }
+    fn sigmoid() -> Box<dyn tract_linalg::sigmoid::Sigmoid<Self>> {
+        (tract_linalg::ops().ssigmoid)()
+    }
+    fn tanh() -> Box<dyn tract_linalg::tanh::Tanh<Self>> {
+        (tract_linalg::ops().stanh)()
     }
 }
 
 impl FloatLike for f64 {
-    fn tile_op(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::Tile<Self>> {
+    fn mmm(_m: usize, _k: usize, _n: usize) -> Box<dyn tract_linalg::mmm::MatMatMul<Self>> {
         unimplemented!("f64 ops");
     }
-    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::VecMatMul<Self>> {
+    fn packed_vec_mat_mul(_k: usize, _n: usize) -> Box<dyn tract_linalg::vecmatmul::VecMatMul<Self>> {
+        unimplemented!("f64 ops");
+    }
+    fn sigmoid() -> Box<dyn tract_linalg::sigmoid::Sigmoid<Self>> {
+        unimplemented!("f64 ops");
+    }
+    fn tanh() -> Box<dyn tract_linalg::tanh::Tanh<Self>> {
         unimplemented!("f64 ops");
     }
 }

@@ -17,10 +17,10 @@
 
     .arm
     .text
-    .global neon_stile8x4
-    .type neon_stile8x4, %function
+    .global armv7neon_smmm_8x4
+    .type armv7neon_smmm_8x4, %function
 
-neon_stile8x4:
+armv7neon_smmm_8x4:
 
     pld     [r0]
     push    { r4-r12 }
@@ -364,8 +364,20 @@ neon_stile8x4:
     ldr     r2, [r1]
     cmp     r2, #0
     beq     .store
+    cmp     r2, #1
+    beq     .min
+    cmp     r2, #2
+    beq     .max
     cmp     r2, #3
     beq     .non_linear_addc
+    cmp     r2, #4
+    beq     .per_row_mul
+    cmp     r2, #5
+    beq     .per_row_add
+    cmp     r2, #6
+    beq     .per_col_mul
+    cmp     r2, #7
+    beq     .per_col_add
 
     b .unsupported
 
@@ -390,6 +402,71 @@ neon_stile8x4:
             vadd.f32    d{{col | times: 4 | plus: reg | plus : 16}}, d0
         {% endfor %}
         add r4, r4, r6
+    {% endfor %}
+
+    b .non_linear_loop
+
+.max:
+    vldr            s0, [r1, #4]
+    vdup.32         q0, d0[0]
+    {% for reg in (8..15) %}
+        vmax.f32    q{{reg}}, q{{reg}}, q0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.min:
+    vldr            s0, [r1, #4]
+    vdup.32         q0, d0[0]
+    {% for reg in (8..15) %}
+        vmin.f32    q{{reg}}, q{{reg}}, q0
+    {% endfor %}
+    b .non_linear_loop
+
+.per_row_add:
+    ldr     r2, [r1, #4]
+    vldmia  r2!, { q0, q1 }
+    {% for col in (0..3) %}
+        vadd.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q0
+        vadd.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q1
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_row_mul:
+    ldr     r2, [r1, #4]
+    vldmia  r2!, { q0, q1 }
+    {% for col in (0..3) %}
+        vmul.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q0
+        vmul.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q1
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_add:
+    ldr         r2, [r1, #4]
+    vldm        r2, { q0 }
+    vdup.f32    q3, d1[1]
+    vdup.f32    q2, d1[0]
+    vdup.f32    q1, d0[1]
+    vdup.f32    q0, d0[0]
+    {% for col in (0..3) %}
+        vadd.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q{{col}}
+        vadd.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q{{col}}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_mul:
+    ldr         r2, [r1, #4]
+    vldm        r2, { q0 }
+    vdup.f32    q3, d1[1]
+    vdup.f32    q2, d1[0]
+    vdup.f32    q1, d0[1]
+    vdup.f32    q0, d0[0]
+    {% for col in (0..3) %}
+        vmul.f32 q{{col|times:2|plus:8}}, q{{col|times:2|plus:8}}, q{{col}}
+        vmul.f32 q{{col|times:2|plus:9}}, q{{col|times:2|plus:9}}, q{{col}}
     {% endfor %}
 
     b .non_linear_loop

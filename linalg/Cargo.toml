@@ -21,7 +21,7 @@ objekt = "0.1.1"
 
 [build-dependencies]
 cc = "1.0"
-liquid = "0.19"
+liquid = "0.18"
 
 [dev-dependencies]
 criterion = "0.2"
@@ -37,4 +37,8 @@ harness = false
 
 [[bench]]
 name = "mm_for_inception"
+harness = false
+
+[[bench]]
+name = "sigmoid"
 harness = false

@@ -58,6 +58,12 @@ impl<T: Copy + Add + Mul + Zero + Debug> PackB<T> {
                         *b.offset(j as isize * csb + i as isize * rsb)
                 }
             }
+            #[cfg(debug_assertions)]
+            for j in cols..nr {
+                unsafe {
+                    *pb.offset((i * nr + j) as isize) = T::zero();
+                }
+            }
         }
     }
 

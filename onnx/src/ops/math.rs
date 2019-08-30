@@ -5,10 +5,10 @@ use crate::pb::*;
 use tract_core::internal::*;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
-    reg.insert("Add", |_, _| Ok((Box::new(tractops::math::add()),vec!())));
-    reg.insert("Sub", |_, _| Ok((Box::new(tractops::math::sub()),vec!())));
-    reg.insert("Mul", |_, _| Ok((Box::new(tractops::math::mul()),vec!())));
-    reg.insert("Div", |_, _| Ok((Box::new(tractops::math::div()),vec!())));
+    reg.insert("Add", |_, _| Ok((Box::new(tractops::math::add::bin()),vec!())));
+    reg.insert("Sub", |_, _| Ok((Box::new(tractops::math::sub::bin()),vec!())));
+    reg.insert("Mul", |_, _| Ok((Box::new(tractops::math::mul::bin()),vec!())));
+    reg.insert("Div", |_, _| Ok((Box::new(tractops::math::div::bin()),vec!())));
 
     reg.insert("Sum", |_, _| Ok((Box::new(tractops::math::AddN::default()),vec!())));
     reg.insert("Max", |_, _| Ok((Box::new(tractops::math::MaxN::default()),vec!())));
@@ -29,7 +29,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
 
     reg.insert("Cosh", |_, _| Ok((Box::new(tractops::math::Cosh::default()),vec!())));
     reg.insert("Sinh", |_, _| Ok((Box::new(tractops::math::Sinh::default()),vec!())));
-    reg.insert("Tanh", |_, _| Ok((Box::new(tractops::nn::Tanh::default()),vec!())));
+    reg.insert("Tanh", |_, _| Ok((Box::new(tractops::math::Tanh::default()),vec!())));
     reg.insert("Acosh", |_, _| Ok((Box::new(tractops::math::Acosh::default()),vec!())));
     reg.insert("Asinh", |_, _| Ok((Box::new(tractops::math::Asinh::default()),vec!())));
     reg.insert("Atanh", |_, _| Ok((Box::new(tractops::math::Atanh::default()),vec!())));
@@ -45,16 +45,22 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("Sign", |_, _| Ok((Box::new(tractops::math::Sign::default()),vec!())));
     reg.insert("Reciprocal", |_, _| Ok((Box::new(tractops::math::Recip::default()),vec!())));
 
-    reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::pow()),vec!())));
+    reg.insert("Pow", |_, _| Ok((Box::new(tractops::math::pow::bin()),vec!())));
 
     reg.insert("MatMul", |_, _| Ok((Box::new(tractops::math::MatMul::default()),vec!())));
     reg.insert("Gemm", gemm);
 }
 
 pub fn clip(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let min = node.get_attr_opt("min")?.unwrap_or(::std::f32::MIN);
-    let max = node.get_attr_opt("max")?.unwrap_or(::std::f32::MAX);
-    Ok((Box::new(tractops::math::Clip::new(min, max)),vec!()))
+    let min = node.get_attr_opt("min")?;
+    let max = node.get_attr_opt("max")?;
+    let op:Box<dyn InferenceOp> = match (min, max) {
+        (Some(min), Some(max)) => Box::new(tractops::math::ScalarMinMax::new(max, min)),
+        (None, Some(max)) => Box::new(tractops::math::ScalarMin::new(max)),
+        (Some(min), None) => Box::new(tractops::math::ScalarMax::new(min)),
+        (None, None) => Box::new(tractops::identity::Identity::default()),
+    };
+    Ok((op, vec!()))
 }
 
 pub fn gemm(_ctx: &ParsingContext, node: &NodeProto) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {

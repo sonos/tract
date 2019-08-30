@@ -17,15 +17,13 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("DepthwiseConv2dNative", dw_conv2d::depthwise_conv2d);
     reg.insert("FusedBatchNorm", fused_batch_norm::fused_batch_norm);
     reg.insert("MaxPool", pools::maxpool);
-    reg.insert("Relu", with_T!(::tract_core::ops::nn::Relu));
-    reg.insert("Relu6", |_, _| Ok(Box::new(Relu6::default())));
+    reg.insert("Relu", |_, _| Ok(Box::new(::tract_core::ops::math::ScalarMax::new(0.0))));
+    reg.insert("Relu6", |_, _| Ok(Box::new(::tract_core::ops::math::ScalarMinMax::new(6.0, 0.0))));
     reg.insert("Sigmoid", with_T!(::tract_core::ops::nn::Sigmoid));
     reg.insert("Softmax", |_, _| Ok(Box::new(LayerSoftmax::new(1))));
     reg.insert("SpaceToBatchND", s2b::space_to_batch_nd);
     reg.insert("BatchToSpaceND", s2b::batch_to_space_nd);
 }
-
-element_map!(Relu6, [f32, i32], |x| x.max(0 as _).min(6 as _));
 
 pub fn strides(pb: &NodeDef) -> TractResult<Vec<usize>> {
     let strides: Vec<usize> = pb.get_attr_list_int("strides")?;

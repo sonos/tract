@@ -64,6 +64,7 @@ impl Op for Downsample {
     }
 
     impl_op_same_as!();
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Downsample {
@@ -141,8 +142,8 @@ fn pull_downsample_up(
 ) -> TractResult<Option<TypedModelPatch>> {
     let down_op = down_node.op_as::<Downsample>().unwrap();
     if let Some(prec) = model.single_prec(down_node.id)? {
-        debug!("Consider pull {:?} over {:?}", down_op, prec);
         let invariants = prec.op().translation_invariants(model, prec)?;
+        debug!("Consider pull {:?} over {:?} (invariants: {:?})", down_op, prec, invariants);
         if invariants
             .iter()
             .find(|inv| inv.axis == down_op.axis && down_op.stride % inv.period == 0)

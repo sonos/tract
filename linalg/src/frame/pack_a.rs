@@ -33,6 +33,12 @@ impl<T: Copy + Add + Mul + Zero + Debug + PartialEq> PackA<T> {
                         *a.offset(i as isize * csa + j as isize * rsa)
                 }
             }
+            #[cfg(debug_assertions)]
+            for j in rows..mr {
+                unsafe {
+                    *pa.offset((i * mr + j) as isize) = T::zero();
+                }
+            }
         }
     }
 

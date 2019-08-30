@@ -2,8 +2,8 @@
 
     .arm
     .text
-    .global vfpv2_tile_s4x4
-    .type vfpv2_tile_s4x4, %function
+    .global armvfpv2_smmm_4x4
+    .type armvfpv2_smmm_4x4, %function
 
 // C tile:
 
@@ -17,7 +17,7 @@
 
 // all vfp registers in use.
 
-vfpv2_tile_s4x4:
+armvfpv2_smmm_4x4:
 
 /*
     pld [r1]
@@ -325,8 +325,20 @@ vfpv2_tile_s4x4:
     ldr     r2, [r1]
     cmp     r2, #0
     beq     .store
+    cmp     r2, #1
+    beq     .min
+    cmp     r2, #2
+    beq     .max
     cmp     r2, #3
     beq     .non_linear_addc
+    cmp     r2, #4
+    beq     .per_row_mul
+    cmp     r2, #5
+    beq     .per_row_add
+    cmp     r2, #6
+    beq     .per_col_mul
+    cmp     r2, #7
+    beq     .per_col_add
 
     b .unsupported
 
@@ -353,6 +365,70 @@ vfpv2_tile_s4x4:
         {% if col < 3 %}
             add r4, r4, r6
         {% endif %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.min:
+    vldr            s0, [r1, #4]
+    {% for reg in (16..31) %}
+        vcmp.f32        s{{reg}}, s0
+        vmrs            apsr_nzcv, fpscr
+        vmovge          s{{reg}}, s0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.max:
+    vldr            s0, [r1, #4]
+    {% for reg in (16..31) %}
+        vcmp.f32        s{{reg}}, s0
+        vmrs            apsr_nzcv, fpscr
+        vmovle          s{{reg}}, s0
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_row_mul:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vmul.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{row}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_row_add:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vadd.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{row}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_mul:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vmul.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{col}}
+        {% endfor %}
+    {% endfor %}
+
+    b .non_linear_loop
+
+.per_col_add:
+    ldr     r2, [r1, #4]
+    vldm    r2, {s0, s1, s2, s3}
+    {% for row in (0..3) %}
+        {% for col in (0..3) %}
+            vadd.f32    s{{col|times:4|plus:row|plus:16}}, s{{col|times:4|plus:row|plus:16}}, s{{col}}
+        {% endfor %}
     {% endfor %}
 
     b .non_linear_loop

@@ -134,6 +134,30 @@ where
         Ok(patch)
     }
 
+    /// Convenience method creating a patch that replace a single operation.
+    pub fn fuse_with_next<IO: Into<O>>(
+        patched_model: &ModelImpl<TI, O>,
+        node: &BaseNode<TI, O>,
+        new_op: IO,
+    ) -> TractResult<ModelPatch<TI, O>> {
+        let mut patch = ModelPatch::default();
+        let succ = if let Some(succ) = patched_model.single_succ(node.id)? {
+            succ
+        } else {
+            bail!("Non single successor fuse attempt")
+        };
+        let new_op = new_op.into();
+        let by = patch.add_node(&*node.name, new_op, tvec!(succ.outputs[0].fact.clone()))?;
+        for (ix, i) in node.inputs.iter().enumerate() {
+            let o = patch.tap_model(&patched_model, *i)?;
+            patch.add_edge(o, InletId::new(by, ix))?;
+        }
+        for ix in 0..node.outputs.len() {
+            patch.shunt_outside(OutletId::new(succ.id, ix), OutletId::new(by, ix))?;
+        }
+        Ok(patch)
+    }
+
     /// Convenience method creating a patch that shunt the given node.
     pub fn shunt_one_op(
         patched_model: &ModelImpl<TI, O>,

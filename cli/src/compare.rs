@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use std::fs;
 use std::fmt::{Debug, Display};
 
@@ -184,12 +185,12 @@ where
             Some(Ok(it)) => it,
             Some(Err(e)) => {
                 display_graph.set_node_color(n, Yellow)?;
-                display_graph.add_node_label(n, format!("{} {}", Yellow.paint("TF Error"), e))?;
+                display_graph.add_node_label(&[n], format!("{} {}", Yellow.paint("TF Error"), e))?;
                 continue;
             },
             None => {
                 display_graph.set_node_color(n, Yellow)?;
-                display_graph.add_node_label(n, Yellow.paint("Not in reference").to_string())?;
+                display_graph.add_node_label(&[n], Yellow.paint("Not in reference").to_string())?;
                 debug!("Skipping node (no reference) {}", node);
                 continue;
             }
@@ -203,14 +204,14 @@ where
             .collect::<Vec<_>>();
         display_graph.add_node_section(n, expected_outputs_section)?;
 
-        if node.op_is::<tract_core::ops::Source>() {
+        if tract.input_outlets()?.iter().any(|o| o.node == n) {
             display_graph.set_node_color(n, Blue)?;
         } else if node.op().validation() == Validation::Random {
             display_graph.set_node_color(n, Blue)?;
-            display_graph.add_node_label(n, Blue.paint("Random").to_string())?;
+            display_graph.add_node_label(&[n], Blue.paint("Random").to_string())?;
         } else if node.op_is::<tract_core::ops::unimpl::UnimplementedOp>() {
             display_graph.set_node_color(n, Red)?;
-            display_graph.add_node_label(n, Red.paint("Unimplemented").to_string())?;
+            display_graph.add_node_label(&[n], Red.paint("Unimplemented").to_string())?;
             failing.push(n);
         } else {
             debug!("Computing {} in tract", node);
@@ -228,14 +229,14 @@ where
                 if f.fact.to_tensor_fact().unify(&expected[ix].clone().unwrap().into()).is_err() {
                     failing.push(n);
                     display_graph.set_node_color(n, Red.bold())?;
-                    display_graph.add_node_label(n, format!("{}: Could not reconcile infered fact for output #{} ({:?}) with reference.", Red.bold().paint("ERROR"), ix, f.fact))?;
+                    display_graph.add_node_label(&[n], format!("{}: Could not reconcile infered fact for output #{} ({:?}) with reference.", Red.bold().paint("ERROR"), ix, f.fact))?;
                 }
             }
             match error {
                 Some(e) => {
                     failing.push(n);
                     display_graph.set_node_color(n, Red.bold())?;
-                    display_graph.add_node_label(n, format!("{}: {}", Red.bold().paint("ERROR"), e))?;
+                    display_graph.add_node_label(&[n], format!("{}: {}", Red.bold().paint("ERROR"), e))?;
                     display_graph.add_node_section(n, inputs)?;
                 }
                 _ => {
@@ -250,10 +251,10 @@ where
                                 .try_for_each(|(ix, data)| -> CliResult<()> {
                                     if ix >= tf_output.len() {
                                         display_graph.set_node_color(n, Yellow)?;
-                                        display_graph.add_node_label(n, format!("Extra output (#{})", ix))?;
+                                        display_graph.add_node_label(&[n], format!("Extra output (#{})", ix))?;
                                     } else if tf_output[ix].shape() != data.shape() {
                                         display_graph.set_node_color(n, Red.bold())?;
-                                        display_graph.add_node_label(n, format!("Output {} has wrong shape. Expected {:?}, got {:?}", ix, tf_output[ix].shape(), data.shape()))?;
+                                        display_graph.add_node_label(&[n], format!("Output {} has wrong shape. Expected {:?}, got {:?}", ix, tf_output[ix].shape(), data.shape()))?;
                                     } else if let Err(e) = tf_output[ix].close_enough(
                                         data,
                                         node.op().validation() == Validation::Rounding,
@@ -264,7 +265,7 @@ where
                                         display_graph.add_node_section(n, msg)?;
                                     } else {
                                         display_graph.set_node_color(n, Red.bold())?;
-                                        display_graph.add_node_label(n, format!("{:?}", e))?;
+                                        display_graph.add_node_label(&[n], format!("{:?}", e))?;
                                     };
                                     Ok(())
                                 })?;

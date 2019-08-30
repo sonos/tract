@@ -1,4 +1,4 @@
-element_map!(Sigmoid, [f32], sigmoid_f32);
+use crate::frame::sigmoid::SigmoidKer;
 
 const LOW: f32 = -18.0;
 const HIGH: f32 = 18.0;
@@ -14,26 +14,53 @@ const BETA_4: f32 = 1.70198817374094e-03;
 const BETA_2: f32 = 1.16817656904453e-01;
 const BETA_0: f32 = 9.93151921023180e-01;
 
-pub fn sigmoid_f32(x: f32) -> f32 {
-    if x <= LOW {
-        return 0.0;
-    }
-    if x >= HIGH {
-        return 1.0;
-    }
+pub fn ssigmoid(x: f32) -> f32 {
+    let x = x.max(LOW).min(HIGH);
+
     let x2 = x * x;
 
-    let p = x2 * ALPHA_9 + ALPHA_7;
+    let p = ALPHA_9;
+    let p = x2 * p + ALPHA_7;
     let p = x2 * p + ALPHA_5;
     let p = x2 * p + ALPHA_3;
     let p = x2 * p + ALPHA_1;
     let p = p * x;
 
-    let q = x2 * BETA_10 + BETA_8;
+    let q = BETA_10;
+    let q = x2 * q + BETA_8;
     let q = x2 * q + BETA_6;
     let q = x2 * q + BETA_4;
     let q = x2 * q + BETA_2;
     let q = x2 * q + BETA_0;
 
     p / q + 0.5
+}
+
+#[derive(Clone, Debug)]
+pub struct SSigmoid4;
+
+impl SigmoidKer<f32> for SSigmoid4 {
+    fn name() -> &'static str {
+        "generic"
+    }
+
+    fn alignment_bytes() -> usize {
+        16
+    }
+
+    fn nr() -> usize {
+        4
+    }
+
+    fn run(x: &mut [f32]) {
+        debug_assert!(x.len() % Self::nr() == 0);
+        debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
+        x.iter_mut().for_each(|px| { *px = ssigmoid(*px) })
+    }
+}
+
+#[cfg(test)]
+#[macro_use]
+pub mod test {
+    sigmoid_frame_tests!(true, crate::generic::sigmoid::SSigmoid4);
 }

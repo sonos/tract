@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::fmt::{Debug, Display};
 
 use ansi_term::Colour::*;
@@ -8,7 +9,7 @@ use log::Level::Info;
 
 use crate::display_graph::DisplayOptions;
 use crate::errors::*;
-use crate::{Parameters, ProfilingMode, Model};
+use crate::{Model, Parameters, ProfilingMode};
 
 use crate::format::*;
 use crate::profile::ProfileData;
@@ -60,7 +61,8 @@ where
         state.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
-    let dur = Duration::since(&start, iters);
+    let mut dur = Duration::since(&start);
+    dur /= iters as f64;
 
     if params.machine_friendly {
         println!("real: {}", dur.avg_real());
@@ -107,62 +109,95 @@ where
         let _ = plan.run(make_inputs_for_model(model)?)?;
         iters += 1;
     }
-    let entire = Duration::since(&start, iters);
+    let mut entire = Duration::since(&start);
+    entire /= iters as f64;
 
     info!("Running {} iterations max. for each node.", max_iters);
     info!("Running for {} ms max. for each node.", max_time);
 
-    let mut state = SimpleState::new(&plan)?;
-    state.set_inputs(make_inputs_for_model(model)?)?;
-    debug!("Using execution plan: {:?}", plan);
-
     let mut profile = ProfileData::default();
-    let mut progress = ProgressBar::new(plan.order.len() as u64);
 
-    // Then execute the plan while profiling each step.
-    for &n in &plan.order {
-        let node = &model.nodes()[n];
+    let mut queue: Vec<(&ModelImpl<TI, O>, TVec<usize>, f32)> = vec![(model, tvec!(), 1f32)];
+    while let Some((model, prefix, multiplier)) = queue.pop() {
+        let plan = SimplePlan::new(model)?;
+        let mut state = SimpleState::new(&plan)?;
+        let mut progress = ProgressBar::new(plan.order.len() as u64);
+        let mut full_id: TVec<usize> = prefix.iter().cloned().collect();
+        full_id.push(0);
+        if prefix.len() != 0 {
+            info!("Doing subnet {:?}", prefix);
+        }
+
+        state.set_inputs(make_inputs_for_model(model)?)?;
+
+        for &n in &plan.order {
+            let node = &model.nodes()[n];
+
+            if atty::is(atty::Stream::Stdout) {
+                progress.inc();
+            }
+
+            if node.op.as_ref().name() == "Source" {
+                continue;
+            }
+
+            if !display_options.filter(model, &*prefix, node.id)? {
+                continue;
+            }
+            state.compute_recursively(n)?;
+
+            let mut iters = 0;
+            let start = Instant::now();
+
+            while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
+                state.compute_one(n)?;
+                iters += 1;
+            }
+
+            let mut measure = Duration::since(&start);
+            measure *= multiplier as f64 / iters as f64;
+            full_id[prefix.len()] = n;
+            profile.add(&*full_id, measure)?;
+            if prefix.len() > 0 {
+                profile.sub(&*prefix, measure)?;
+            }
+
+            let inputs: TVec<TypedTensorInfo> = model
+                .node_input_facts(n)?
+                .iter()
+                .map(|&i| Ok(i.to_tensor_fact().try_into()?))
+                .collect::<TractResult<_>>()?;
+            let ref_inputs: TVec<&TypedTensorInfo> = inputs.iter().collect();
+            let nested_multis =
+                model.node_op(n).as_typed().unwrap().nested_model_multipliers(&*ref_inputs);
+
+            for (ix, (_name, m)) in model.node_op(n).nested_models().iter().enumerate() {
+                if let Some(m) = m.downcast_ref::<ModelImpl<TI, O>>() {
+                    let mut prefix: TVec<usize> = prefix.clone();
+                    prefix.push(n);
+                    queue.push((m, prefix, multiplier * nested_multis[ix].1));
+                }
+            }
+        }
 
         if atty::is(atty::Stream::Stdout) {
-            progress.inc();
+            progress.finish_print("");
         }
-
-        if node.op.as_ref().name() == "Source" {
-            continue;
-        }
-
-        if !display_options.filter(model, node.id)? {
-            continue;
-        }
-        state.compute_recursively(n)?;
-
-        let mut iters = 0;
-        let start = Instant::now();
-
-        while iters < max_iters && start.elapsed_real() < (max_time as f64 * 1e-3) {
-            state.compute_one(n)?;
-            iters += 1;
-        }
-
-        let measure = Duration::since(&start, iters);
-        profile.add(&node, measure)?;
     }
 
     if display_options == DisplayOptions::default() {
         display_options.node_ids = Some(profile.most_consuming_nodes()?);
     };
 
-    let mut display_graph =
-        crate::display_graph::DisplayGraph::from_model_and_options(model, Arc::new(display_options))?
-            .with_graph_def(&params.graph)?;
+    let mut display_graph = crate::display_graph::DisplayGraph::from_model_and_options(
+        model,
+        Arc::new(display_options),
+    )?
+    .with_graph_def(&params.graph)?;
 
     let sum = profile.summed();
     for (ix, measure) in profile.nodes.iter() {
-        display_graph.add_node_label(*ix, dur_avg_oneline_ratio(*measure, sum))?;
-    }
-
-    if atty::is(atty::Stream::Stdout) {
-        progress.finish_print("");
+        display_graph.add_node_label(&ix, dur_avg_oneline_ratio(*measure, sum))?;
     }
 
     display_graph.render()?;

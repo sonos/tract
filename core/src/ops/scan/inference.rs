@@ -15,6 +15,8 @@ impl Op for Inference {
     fn nested_models(&self) -> Vec<(Cow<str>, &dyn Model)> {
         vec![("loop".into(), &self.body)]
     }
+
+    not_a_typed_op!();
 }
 
 impl StatefullOp for Inference {

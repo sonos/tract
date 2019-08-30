@@ -26,6 +26,8 @@ impl Op for Flatten {
     fn name(&self) -> Cow<str> {
         "Flatten".into()
     }
+
+    op_as_typed_op!();
 }
 
 impl StatelessOp for Flatten {

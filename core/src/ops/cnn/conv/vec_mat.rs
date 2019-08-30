@@ -8,7 +8,7 @@ use crate::ops::cnn::conv::KernelFormat;
 use crate::ops::cnn::Patch;
 use crate::ops::nn::{DataFormat, DataShape};
 
-use tract_linalg::VecMatMul;
+use tract_linalg::vecmatmul::VecMatMul;
 
 #[derive(CustomDebug, Clone, new)]
 pub struct VecMat<T>
@@ -22,7 +22,6 @@ where
     pub kernel_fmt: KernelFormat,
     #[debug(skip)]
     pub packed_kernels: Vec<Tensor>,
-    pub bias: Option<ArrayD<T>>,
     pub group: usize,
     pub vmm: Box<dyn VecMatMul<T>>,
 }
@@ -66,10 +65,6 @@ where
             }
         }
 
-        if let Some(ref bias) = self.bias {
-            output += &bias;
-        }
-
         Ok(output)
     }
 }
@@ -90,6 +85,8 @@ where
         let batch = inputs[0].shape.dim(0);
         Ok(tvec!((Cost::FMA(f32::datum_type()), batch * self.group * self.vmm.k() * self.vmm.n())))
     }
+
+    op_as_typed_op!();
 }
 
 impl<D> StatelessOp for VecMat<D>

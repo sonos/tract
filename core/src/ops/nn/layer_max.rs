@@ -38,6 +38,7 @@ impl Op for LayerHardmax {
     fn name(&self) -> Cow<str> {
         "LayerHardmax".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for LayerHardmax {
@@ -104,6 +105,7 @@ impl Op for LayerLogSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerLogSoftmax".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for LayerLogSoftmax {
@@ -170,6 +172,7 @@ impl Op for LayerSoftmax {
     fn name(&self) -> Cow<str> {
         "LayerSoftmax".into()
     }
+    op_as_typed_op!();
 }
 
 impl StatelessOp for LayerSoftmax {
