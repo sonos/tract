@@ -32,12 +32,13 @@ fma_smmm16x6:
 
 {% elsif family == "windows" %}
 
+// FIXME: https://www.agner.org/optimize/calling_conventions.pdf xmm6-15 are not scratch
+
 _text segment
 fma_smmm16x6 proc
     mov         rdi,    rcx
 
 {% endif %}
-
     push        rbp
     mov         rbp, rsp
 
@@ -47,6 +48,12 @@ fma_smmm16x6 proc
     push        r14
     push        r15
 
+    sub         rsp, 8
+    stmxcsr     [rsp + 4]
+    mov         rax, 0x1FC0
+    mov         [rsp], eax
+    ldmxcsr     [rsp]
+
     vzeroall
 
     mov     rax,    [rdi]       // A
@@ -55,6 +62,7 @@ fma_smmm16x6 proc
     mov     rcx,    [rdi + 24]  // Linear spec
     mov     rcx,    [rcx + 8]   // k
     test    rcx,    rcx
+
     je      {{L}}non_linear
 
     mov     rsi, [rbx]   // B discriminant
@@ -204,6 +212,9 @@ fma_smmm16x6 proc
     mov     rax,    0
 
 {{L}}return:
+    stmxcsr     [rsp + 4]
+    add         rsp, 8
+
     pop r15
     pop r14
     pop r13
