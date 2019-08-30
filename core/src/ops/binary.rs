@@ -197,6 +197,10 @@ impl Op for UnaryAOp {
         format!("{}UnaryA", self.mini_op.name()).into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("B: {:?}", self.b.shape())))
+    }
+
     fn translation_invariants(&self,
         model: &TypedModel,
         node: &TypedNode,

@@ -260,6 +260,10 @@ impl Op for MatMulUnaryA {
         "MatMulUnaryA".into()
     }
 
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec!(format!("B: {:?}", self.b.shape())))
+    }
+
     fn codegen(
         &self,
         model: &TypedModel,
