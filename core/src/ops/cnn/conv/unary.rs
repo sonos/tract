@@ -438,11 +438,13 @@ impl Op for ConvUnary {
         if let Some(axis) = (0..self.strides.len()).find(|&ax| {
             self.padding.valid_dim(ax)
                 && self.strides[ax] > 1
-                && self.dilations[ax] % self.strides[ax] == 0
+                && (self.kernel.shape()[ax+ self.kernel_fmt.h_axis()] == 1 || (self.dilations[ax] % self.strides[ax] == 0))
         }) {
             let downsample_factor = self.strides[axis];
             let mut new_op = self.clone();
-            new_op.dilations[axis] /= downsample_factor;
+            if new_op.dilations[axis] > 1 {
+                new_op.dilations[axis] /= downsample_factor;
+            }
             new_op.strides[axis] /= downsample_factor;
             let mut patch = TypedModelPatch::default();
             patch.tap_model(model, node.inputs[0])?;
